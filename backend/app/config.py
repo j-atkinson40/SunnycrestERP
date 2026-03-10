@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def strip_database_url(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
