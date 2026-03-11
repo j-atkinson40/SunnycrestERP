@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from "react-router-dom";
+import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { Sidebar } from "./sidebar";
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,12 @@ export function AppLayout() {
         <header className="flex h-14 items-center justify-between border-b px-6">
           <div />
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
+            <Link
+              to="/profile"
+              className="text-sm text-muted-foreground hover:underline"
+            >
               {user?.first_name} {user?.last_name}
-            </span>
+            </Link>
             <Badge variant="secondary" className="capitalize">
               {user?.role_name}
             </Badge>

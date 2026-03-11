@@ -25,6 +25,11 @@ def _user_to_response(user: User) -> dict:
     if user.role_obj:
         data["role_name"] = user.role_obj.name
         data["role_slug"] = user.role_obj.slug
+    # Include profile summary if loaded
+    if hasattr(user, "profile") and user.profile:
+        data["phone"] = user.profile.phone
+        data["position"] = user.profile.position
+        data["department"] = user.profile.department
     return data
 
 

@@ -11,6 +11,9 @@ import Dashboard from "@/pages/dashboard/employee-dashboard";
 import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
 import AuditLogs from "@/pages/admin/audit-logs";
+import CompanySettings from "@/pages/admin/company-settings";
+import MyProfile from "@/pages/my-profile";
+import AdminEmployeeProfile from "@/pages/admin/employee-profile";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -63,6 +66,33 @@ export default function App() {
                     <Route
                       path="/admin/roles"
                       element={<RoleManagement />}
+                    />
+                  </Route>
+
+                  {/* My Profile — any authenticated user */}
+                  <Route path="/profile" element={<MyProfile />} />
+
+                  {/* Admin employee profile — requires employees.view */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="employees.view" />
+                    }
+                  >
+                    <Route
+                      path="/admin/users/:userId/profile"
+                      element={<AdminEmployeeProfile />}
+                    />
+                  </Route>
+
+                  {/* Company settings — requires company.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="company.view" />
+                    }
+                  >
+                    <Route
+                      path="/admin/settings"
+                      element={<CompanySettings />}
                     />
                   </Route>
 

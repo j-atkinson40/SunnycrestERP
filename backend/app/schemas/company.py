@@ -31,11 +31,31 @@ class CompanyCreate(BaseModel):
         return validate_company_slug(v)
 
 
+class CompanyUpdate(BaseModel):
+    name: str | None = None
+    address_street: str | None = None
+    address_city: str | None = None
+    address_state: str | None = None
+    address_zip: str | None = None
+    phone: str | None = None
+    email: EmailStr | None = None
+    timezone: str | None = None
+    logo_url: str | None = None
+
+
 class CompanyResponse(BaseModel):
     id: str
     name: str
     slug: str
     is_active: bool
+    address_street: str | None = None
+    address_city: str | None = None
+    address_state: str | None = None
+    address_zip: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    timezone: str | None = None
+    logo_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

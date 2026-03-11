@@ -41,3 +41,6 @@ class User(Base):
     permission_overrides = relationship(
         "UserPermissionOverride", back_populates="user", cascade="all, delete-orphan"
     )
+    profile = relationship(
+        "EmployeeProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )

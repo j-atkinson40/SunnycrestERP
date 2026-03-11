@@ -19,6 +19,7 @@ interface AuthContextType {
   permissions: Set<string>;
   hasPermission: (key: string) => boolean;
   isAdmin: boolean;
+  refreshCompany: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => void;
@@ -67,6 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshCompany = useCallback(async () => {
+    const me = await authService.getMe();
+    if (me.company) {
+      setCompany(me.company);
+    }
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     const tokens = await authService.login({ email, password });
     localStorage.setItem("access_token", tokens.access_token);
@@ -110,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         permissions,
         hasPermission,
         isAdmin,
+        refreshCompany,
         login,
         register,
         logout,

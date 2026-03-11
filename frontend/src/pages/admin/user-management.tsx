@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { userService } from "@/services/user-service";
 import { roleService } from "@/services/role-service";
 import type { User } from "@/types/auth";
@@ -240,6 +241,8 @@ export default function UserManagement() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>Position</TableHead>
+              <TableHead>Department</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -248,13 +251,13 @@ export default function UserManagement() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center">
+                <TableCell colSpan={7} className="text-center">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center">
+                <TableCell colSpan={7} className="text-center">
                   No users found
                 </TableCell>
               </TableRow>
@@ -265,6 +268,12 @@ export default function UserManagement() {
                     {user.first_name} {user.last_name}
                   </TableCell>
                   <TableCell>{user.email}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {(user as User & { position?: string }).position || "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {(user as User & { department?: string }).department || "—"}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant={
@@ -283,7 +292,12 @@ export default function UserManagement() {
                       {user.is_active ? "Active" : "Inactive"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right space-x-1">
+                    <Link to={`/admin/users/${user.id}/profile`}>
+                      <Button variant="ghost" size="sm">
+                        Profile
+                      </Button>
+                    </Link>
                     <Button
                       variant="ghost"
                       size="sm"

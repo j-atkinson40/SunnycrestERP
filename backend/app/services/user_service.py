@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.security import hash_password
 from app.models.role import Role
@@ -48,7 +48,7 @@ def get_users(
     per_page: int = 20,
     search: str | None = None,
 ) -> dict:
-    query = db.query(User).filter(User.company_id == company_id)
+    query = db.query(User).options(joinedload(User.profile)).filter(User.company_id == company_id)
     if search:
         pattern = f"%{search}%"
         query = query.filter(

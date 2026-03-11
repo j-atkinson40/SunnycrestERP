@@ -18,6 +18,23 @@ class Company(Base):
         String(63), unique=True, nullable=False, index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Address
+    address_street: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    address_state: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    address_zip: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Contact
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Configuration
+    timezone: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default="America/Los_Angeles"
+    )
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
