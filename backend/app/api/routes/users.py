@@ -22,9 +22,9 @@ def list_users(
     per_page: int = Query(20, ge=1, le=100),
     search: str | None = Query(None),
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
-    result = get_users(db, page, per_page, search)
+    result = get_users(db, admin.company_id, page, per_page, search)
     return {
         "items": [UserResponse.model_validate(u) for u in result["items"]],
         "total": result["total"],
@@ -37,18 +37,18 @@ def list_users(
 def read_user(
     user_id: str,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
-    return get_user(db, user_id)
+    return get_user(db, user_id, admin.company_id)
 
 
 @router.post("", response_model=UserResponse, status_code=201)
 def create(
     data: UserCreate,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
-    return create_user(db, data)
+    return create_user(db, data, admin.company_id)
 
 
 @router.patch("/{user_id}", response_model=UserResponse)
@@ -56,16 +56,16 @@ def update(
     user_id: str,
     data: UserUpdate,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
-    return update_user(db, user_id, data)
+    return update_user(db, user_id, data, admin.company_id)
 
 
 @router.delete("/{user_id}")
 def delete(
     user_id: str,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
-    deactivate_user(db, user_id)
+    deactivate_user(db, user_id, admin.company_id)
     return {"detail": "User deactivated"}

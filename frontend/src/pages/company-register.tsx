@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/auth-context";
-import { getCompanySlug } from "@/lib/tenant";
+import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,11 +12,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import axios from "axios";
+import { companyService } from "@/services/company-service";
+import { setCompanySlug } from "@/lib/tenant";
 
-export default function RegisterPage() {
-  const { register } = useAuth();
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63);
+}
+
+export default function CompanyRegisterPage() {
   const navigate = useNavigate();
+  const [companyName, setCompanyName] = useState("");
+  const [companySlug, setCompanySlugValue] = useState("");
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -25,21 +36,44 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  function handleCompanyNameChange(value: string) {
+    setCompanyName(value);
+    if (!slugManuallyEdited) {
+      setCompanySlugValue(slugify(value));
+    }
+  }
+
+  function handleSlugChange(value: string) {
+    setSlugManuallyEdited(true);
+    setCompanySlugValue(slugify(value));
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await register({
+      await companyService.registerCompany({
+        company_name: companyName,
+        company_slug: companySlug,
         email,
         password,
         first_name: firstName,
         last_name: lastName,
       });
-      navigate("/");
+
+      // Store the slug for tenant context and redirect to login
+      setCompanySlug(companySlug);
+      // Force a full page reload so the app picks up the new tenant context
+      window.location.href = "/login";
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.detail || "Registration failed");
+        const detail = err.response?.data?.detail;
+        if (Array.isArray(detail)) {
+          setError(detail.map((d: { msg: string }) => d.msg).join(", "));
+        } else {
+          setError(detail || "Registration failed");
+        }
       } else {
         setError("An unexpected error occurred");
       }
@@ -50,11 +84,11 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Create Account</CardTitle>
+          <CardTitle className="text-2xl">Register Your Company</CardTitle>
           <CardDescription>
-            Register for {getCompanySlug() || "Sunnycrest ERP"}
+            Create a company workspace and admin account
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -64,6 +98,43 @@ export default function RegisterPage() {
                 {error}
               </div>
             )}
+
+            {/* Company Details */}
+            <div className="space-y-2">
+              <Label htmlFor="companyName">Company Name</Label>
+              <Input
+                id="companyName"
+                placeholder="Acme Corporation"
+                value={companyName}
+                onChange={(e) => handleCompanyNameChange(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="companySlug">Company URL Slug</Label>
+              <Input
+                id="companySlug"
+                placeholder="acme"
+                value={companySlug}
+                onChange={(e) => handleSlugChange(e.target.value)}
+                required
+                minLength={3}
+                maxLength={63}
+              />
+              <p className="text-xs text-muted-foreground">
+                Your workspace will be accessible at{" "}
+                <span className="font-mono">
+                  {companySlug || "your-company"}.sunnycrest.app
+                </span>
+              </p>
+            </div>
+
+            <div className="my-2 border-t" />
+
+            {/* Admin User Details */}
+            <p className="text-sm font-medium text-muted-foreground">
+              Admin Account
+            </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
@@ -109,12 +180,11 @@ export default function RegisterPage() {
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating account..." : "Create Account"}
+              {loading ? "Creating company..." : "Create Company"}
             </Button>
             <p className="text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <Link to="/login" className="text-primary underline">
-                Sign in
+              <Link to="/" className="text-primary underline">
+                Back to home
               </Link>
             </p>
           </CardFooter>

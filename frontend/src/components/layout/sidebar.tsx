@@ -17,7 +17,7 @@ const employeeNav: NavItem[] = [
 ];
 
 export function Sidebar() {
-  const { user } = useAuth();
+  const { user, company } = useAuth();
   const location = useLocation();
 
   const navItems = user?.role === "admin" ? adminNav : employeeNav;
@@ -26,7 +26,7 @@ export function Sidebar() {
     <aside className="flex h-full w-64 flex-col border-r bg-sidebar">
       <div className="flex h-14 items-center border-b px-6">
         <Link to="/" className="text-lg font-semibold text-sidebar-foreground">
-          Sunnycrest ERP
+          {company?.name || "Sunnycrest ERP"}
         </Link>
       </div>
       <nav className="flex-1 space-y-1 p-4">

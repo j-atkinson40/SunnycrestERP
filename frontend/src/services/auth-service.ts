@@ -1,5 +1,10 @@
 import apiClient from "@/lib/api-client";
 import type { LoginRequest, RegisterRequest, TokenResponse, User } from "@/types/auth";
+import type { Company } from "@/types/company";
+
+interface MeResponse extends User {
+  company: Company;
+}
 
 export const authService = {
   async login(data: LoginRequest): Promise<TokenResponse> {
@@ -12,8 +17,8 @@ export const authService = {
     return response.data;
   },
 
-  async getMe(): Promise<User> {
-    const response = await apiClient.get<User>("/auth/me");
+  async getMe(): Promise<MeResponse> {
+    const response = await apiClient.get<MeResponse>("/auth/me");
     return response.data;
   },
 };

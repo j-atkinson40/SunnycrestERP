@@ -7,9 +7,13 @@ from app.schemas.user import UserCreate, UserUpdate
 
 
 def get_users(
-    db: Session, page: int = 1, per_page: int = 20, search: str | None = None
+    db: Session,
+    company_id: str,
+    page: int = 1,
+    per_page: int = 20,
+    search: str | None = None,
 ) -> dict:
-    query = db.query(User)
+    query = db.query(User).filter(User.company_id == company_id)
     if search:
         pattern = f"%{search}%"
         query = query.filter(
@@ -28,8 +32,12 @@ def get_users(
     return {"items": users, "total": total, "page": page, "per_page": per_page}
 
 
-def get_user(db: Session, user_id: str) -> User:
-    user = db.query(User).filter(User.id == user_id).first()
+def get_user(db: Session, user_id: str, company_id: str) -> User:
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.company_id == company_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
@@ -37,8 +45,12 @@ def get_user(db: Session, user_id: str) -> User:
     return user
 
 
-def create_user(db: Session, data: UserCreate) -> User:
-    existing = db.query(User).filter(User.email == data.email).first()
+def create_user(db: Session, data: UserCreate, company_id: str) -> User:
+    existing = (
+        db.query(User)
+        .filter(User.email == data.email, User.company_id == company_id)
+        .first()
+    )
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -51,6 +63,7 @@ def create_user(db: Session, data: UserCreate) -> User:
         first_name=data.first_name,
         last_name=data.last_name,
         role=data.role,
+        company_id=company_id,
     )
     db.add(user)
     db.commit()
@@ -58,14 +71,20 @@ def create_user(db: Session, data: UserCreate) -> User:
     return user
 
 
-def update_user(db: Session, user_id: str, data: UserUpdate) -> User:
-    user = get_user(db, user_id)
+def update_user(
+    db: Session, user_id: str, data: UserUpdate, company_id: str
+) -> User:
+    user = get_user(db, user_id, company_id)
 
     update_data = data.model_dump(exclude_unset=True)
     if "email" in update_data:
         existing = (
             db.query(User)
-            .filter(User.email == update_data["email"], User.id != user_id)
+            .filter(
+                User.email == update_data["email"],
+                User.company_id == company_id,
+                User.id != user_id,
+            )
             .first()
         )
         if existing:
@@ -82,8 +101,8 @@ def update_user(db: Session, user_id: str, data: UserUpdate) -> User:
     return user
 
 
-def deactivate_user(db: Session, user_id: str) -> User:
-    user = get_user(db, user_id)
+def deactivate_user(db: Session, user_id: str, company_id: str) -> User:
+    user = get_user(db, user_id, company_id)
     user.is_active = False
     db.commit()
     db.refresh(user)

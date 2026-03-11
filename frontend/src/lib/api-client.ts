@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import { getCompanySlug } from "./tenant";
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const apiClient = axios.create({
@@ -7,12 +9,18 @@ const apiClient = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// Attach access token to every request
+// Attach access token and company slug to every request
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem("access_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  const slug = getCompanySlug();
+  if (slug) {
+    config.headers["X-Company-Slug"] = slug;
+  }
+
   return config;
 });
 
@@ -53,9 +61,16 @@ apiClient.interceptors.response.use(
         const refreshToken = localStorage.getItem("refresh_token");
         if (!refreshToken) throw new Error("No refresh token");
 
+        const slug = getCompanySlug();
+        const headers: Record<string, string> = {};
+        if (slug) {
+          headers["X-Company-Slug"] = slug;
+        }
+
         const { data } = await axios.post(
           `${API_BASE_URL}/api/auth/refresh`,
-          { refresh_token: refreshToken }
+          { refresh_token: refreshToken },
+          { headers }
         );
         localStorage.setItem("access_token", data.access_token);
         localStorage.setItem("refresh_token", data.refresh_token);

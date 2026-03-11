@@ -12,6 +12,7 @@ class UserResponse(BaseModel):
     last_name: str
     role: Role
     is_active: bool
+    company_id: str
     created_at: datetime
 
     model_config = {"from_attributes": True}

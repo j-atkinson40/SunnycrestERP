@@ -8,9 +8,11 @@ import {
 } from "react";
 import { authService } from "@/services/auth-service";
 import type { RegisterRequest, User } from "@/types/auth";
+import type { Company } from "@/types/company";
 
 interface AuthContextType {
   user: User | null;
+  company: Company | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -22,6 +24,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -29,7 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (token) {
       authService
         .getMe()
-        .then(setUser)
+        .then((data) => {
+          setUser(data);
+          if (data.company) {
+            setCompany(data.company);
+          }
+        })
         .catch(() => {
           localStorage.removeItem("access_token");
           localStorage.removeItem("refresh_token");
@@ -46,6 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("refresh_token", tokens.refresh_token);
     const me = await authService.getMe();
     setUser(me);
+    if (me.company) {
+      setCompany(me.company);
+    }
   }, []);
 
   const register = useCallback(async (data: RegisterRequest) => {
@@ -58,17 +69,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("refresh_token", tokens.refresh_token);
     const me = await authService.getMe();
     setUser(me);
+    if (me.company) {
+      setCompany(me.company);
+    }
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     setUser(null);
+    setCompany(null);
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: !!user, login, register, logout }}
+      value={{
+        user,
+        company,
+        isLoading,
+        isAuthenticated: !!user,
+        login,
+        register,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>
