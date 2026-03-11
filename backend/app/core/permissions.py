@@ -12,8 +12,8 @@ PERMISSIONS: dict[str, list[str]] = {
     "employees": ["view", "edit", "view_notes"],
     "users": ["view", "create", "edit", "delete"],
     "roles": ["view", "create", "edit", "delete"],
+    "products": ["view", "create", "edit", "delete"],
     # Future modules:
-    # "products": ["view", "create", "edit", "delete"],
     # "inventory": ["view", "create", "edit", "delete"],
     # "sales": ["view", "create", "edit", "delete"],
     # "customers": ["view", "create", "edit", "delete"],

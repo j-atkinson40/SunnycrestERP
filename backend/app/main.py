@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import audit, auth, companies, employee_profiles, notifications, roles, users
+from app.api.routes import audit, auth, companies, employee_profiles, notifications, products, roles, users
 from app.config import settings
 
 app = FastAPI(title="Sunnycrest ERP", version="0.2.0")
@@ -33,6 +33,11 @@ app.include_router(
     notifications.router,
     prefix="/api/notifications",
     tags=["Notifications"],
+)
+app.include_router(
+    products.router,
+    prefix="/api/products",
+    tags=["Products"],
 )
 
 

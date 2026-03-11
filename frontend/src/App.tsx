@@ -15,6 +15,8 @@ import CompanySettings from "@/pages/admin/company-settings";
 import MyProfile from "@/pages/my-profile";
 import AdminEmployeeProfile from "@/pages/admin/employee-profile";
 import NotificationsPage from "@/pages/notifications";
+import ProductsPage from "@/pages/products";
+import ProductDetailPage from "@/pages/product-detail";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -67,6 +69,22 @@ export default function App() {
                     <Route
                       path="/admin/roles"
                       element={<RoleManagement />}
+                    />
+                  </Route>
+
+                  {/* Products — requires products.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="products.view" />
+                    }
+                  >
+                    <Route
+                      path="/products"
+                      element={<ProductsPage />}
+                    />
+                    <Route
+                      path="/products/:productId"
+                      element={<ProductDetailPage />}
                     />
                   </Route>
 

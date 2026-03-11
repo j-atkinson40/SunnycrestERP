@@ -11,11 +11,11 @@ interface NavItem {
 const allNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", permission: "dashboard.view" },
   { label: "My Profile", href: "/profile" },
+  { label: "Products", href: "/products", permission: "products.view" },
   { label: "User Management", href: "/admin/users", permission: "users.view" },
   { label: "Role Management", href: "/admin/roles", permission: "roles.view" },
   { label: "Company Settings", href: "/admin/settings", permission: "company.view" },
   { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit.view" },
-  // Future: { label: "Products", href: "/products", permission: "products.view" },
   // Future: { label: "Inventory", href: "/inventory", permission: "inventory.view" },
 ];
 
@@ -41,7 +41,8 @@ export function Sidebar() {
             to={item.href}
             className={cn(
               "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              location.pathname === item.href
+              location.pathname === item.href ||
+              location.pathname.startsWith(item.href + "/")
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             )}
