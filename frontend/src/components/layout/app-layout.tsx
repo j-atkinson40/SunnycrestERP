@@ -1,6 +1,7 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { Sidebar } from "./sidebar";
+import { NotificationDropdown } from "./notification-dropdown";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -21,6 +22,8 @@ export function AppLayout() {
         <header className="flex h-14 items-center justify-between border-b px-6">
           <div />
           <div className="flex items-center gap-3">
+            <NotificationDropdown />
+            <Separator orientation="vertical" className="h-6" />
             <Link
               to="/profile"
               className="text-sm text-muted-foreground hover:underline"

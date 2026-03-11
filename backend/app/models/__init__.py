@@ -1,6 +1,7 @@
 from app.models.audit_log import AuditLog
 from app.models.company import Company
 from app.models.employee_profile import EmployeeProfile
+from app.models.notification import Notification
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.user import User
@@ -10,6 +11,7 @@ __all__ = [
     "AuditLog",
     "Company",
     "EmployeeProfile",
+    "Notification",
     "Role",
     "RolePermission",
     "User",

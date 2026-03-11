@@ -14,6 +14,7 @@ import AuditLogs from "@/pages/admin/audit-logs";
 import CompanySettings from "@/pages/admin/company-settings";
 import MyProfile from "@/pages/my-profile";
 import AdminEmployeeProfile from "@/pages/admin/employee-profile";
+import NotificationsPage from "@/pages/notifications";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -68,6 +69,12 @@ export default function App() {
                       element={<RoleManagement />}
                     />
                   </Route>
+
+                  {/* Notifications — any authenticated user */}
+                  <Route
+                    path="/notifications"
+                    element={<NotificationsPage />}
+                  />
 
                   {/* My Profile — any authenticated user */}
                   <Route path="/profile" element={<MyProfile />} />

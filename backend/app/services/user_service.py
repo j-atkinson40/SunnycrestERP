@@ -5,7 +5,7 @@ from app.core.security import hash_password
 from app.models.role import Role
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
-from app.services import audit_service
+from app.services import audit_service, notification_service
 
 
 def _get_default_employee_role(db: Session, company_id: str) -> Role:
@@ -127,6 +127,23 @@ def create_user(
         },
     )
 
+    # Look up company name for the welcome notification
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == company_id).first()
+    company_name = company.name if company else "the company"
+    notification_service.create_notification(
+        db,
+        company_id,
+        user.id,
+        title="Welcome!",
+        message=f"Welcome to {company_name}! Your account has been created.",
+        type="success",
+        category="user",
+        link="/profile",
+        actor_id=actor_id,
+    )
+
     db.commit()
     db.refresh(user)
     return user
@@ -187,6 +204,36 @@ def update_user(
             user_id=actor_id, changes=changes,
         )
 
+        # Notify user if their role was changed
+        if "role_id" in changes:
+            new_role = (
+                db.query(Role).filter(Role.id == user.role_id).first()
+            )
+            role_name = new_role.name if new_role else "a new role"
+            notification_service.create_notification(
+                db,
+                company_id,
+                user.id,
+                title="Role Updated",
+                message=f"Your role has been updated to {role_name}.",
+                type="info",
+                category="user",
+                actor_id=actor_id,
+            )
+
+        # Notify user if their account was reactivated
+        if "is_active" in changes and changes["is_active"]["new"] is True:
+            notification_service.create_notification(
+                db,
+                company_id,
+                user.id,
+                title="Account Reactivated",
+                message="Your account has been reactivated.",
+                type="success",
+                category="user",
+                actor_id=actor_id,
+            )
+
     db.commit()
     db.refresh(user)
     return user
@@ -202,6 +249,17 @@ def deactivate_user(
         db, company_id, "deactivated", "user", user.id,
         user_id=actor_id,
         changes={"is_active": {"old": True, "new": False}},
+    )
+
+    notification_service.create_notification(
+        db,
+        company_id,
+        user.id,
+        title="Account Deactivated",
+        message="Your account has been deactivated.",
+        type="warning",
+        category="user",
+        actor_id=actor_id,
     )
 
     db.commit()

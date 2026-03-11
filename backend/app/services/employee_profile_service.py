@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.models.employee_profile import EmployeeProfile
 from app.schemas.employee_profile import EmployeeProfileAdminUpdate, EmployeeProfileUpdate
-from app.services import audit_service
+from app.services import audit_service, notification_service
 
 
 def get_or_create_profile(db: Session, user_id: str) -> EmployeeProfile:
@@ -66,6 +66,26 @@ def update_profile(
             db, company_id, "updated", "employee_profile", user_id,
             user_id=actor_id, changes=changes,
         )
+
+        # Notify user when an admin updates their profile (not self-edit)
+        if actor_id and actor_id != user_id:
+            from app.models.user import User
+
+            actor = db.query(User).filter(User.id == actor_id).first()
+            actor_name = (
+                f"{actor.first_name} {actor.last_name}" if actor else "An administrator"
+            )
+            notification_service.create_notification(
+                db,
+                company_id,
+                user_id,
+                title="Profile Updated",
+                message=f"Your employee profile was updated by {actor_name}.",
+                type="info",
+                category="employee",
+                link="/profile",
+                actor_id=actor_id,
+            )
 
     db.commit()
     db.refresh(profile)
