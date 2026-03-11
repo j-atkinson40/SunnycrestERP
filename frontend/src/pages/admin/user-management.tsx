@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { userService } from "@/services/user-service";
+import { roleService } from "@/services/role-service";
 import type { User } from "@/types/auth";
 import type { UserCreate } from "@/types/user";
+import type { RoleResponse } from "@/types/role";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +32,7 @@ export default function UserManagement() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [roles, setRoles] = useState<RoleResponse[]>([]);
 
   // Create user dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -38,7 +41,7 @@ export default function UserManagement() {
     password: "",
     first_name: "",
     last_name: "",
-    role: "employee",
+    role_id: "",
   });
   const [createError, setCreateError] = useState("");
 
@@ -53,21 +56,56 @@ export default function UserManagement() {
     }
   }, [page, search]);
 
+  const loadRoles = useCallback(async () => {
+    try {
+      const data = await roleService.getRoles();
+      setRoles(data);
+      // Set default role_id to the employee system role
+      const employeeRole = data.find(
+        (r) => r.is_system && r.slug === "employee"
+      );
+      if (employeeRole) {
+        setNewUser((prev) =>
+          prev.role_id ? prev : { ...prev, role_id: employeeRole.id }
+        );
+      }
+    } catch {
+      // Roles may not be available if user lacks roles.view permission
+    }
+  }, []);
+
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    loadRoles();
+  }, [loadRoles]);
+
+  function getRoleName(roleId: string): string {
+    const role = roles.find((r) => r.id === roleId);
+    return role?.name || "Unknown";
+  }
+
+  function getRoleSlug(roleId: string): string {
+    const role = roles.find((r) => r.id === roleId);
+    return role?.slug || "";
+  }
 
   async function handleCreate() {
     setCreateError("");
     try {
       await userService.createUser(newUser);
       setDialogOpen(false);
+      const employeeRole = roles.find(
+        (r) => r.is_system && r.slug === "employee"
+      );
       setNewUser({
         email: "",
         password: "",
         first_name: "",
         last_name: "",
-        role: "employee",
+        role_id: employeeRole?.id || "",
       });
       loadUsers();
     } catch (err: unknown) {
@@ -155,16 +193,22 @@ export default function UserManagement() {
                 <Label>Role</Label>
                 <select
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                  value={newUser.role}
+                  value={newUser.role_id}
                   onChange={(e) =>
-                    setNewUser({
-                      ...newUser,
-                      role: e.target.value as "admin" | "employee",
-                    })
+                    setNewUser({ ...newUser, role_id: e.target.value })
                   }
                 >
-                  <option value="employee">Employee</option>
-                  <option value="admin">Admin</option>
+                  {roles.length === 0 ? (
+                    <option value="">Loading roles...</option>
+                  ) : (
+                    roles
+                      .filter((r) => r.is_active)
+                      .map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))
+                  )}
                 </select>
               </div>
             </div>
@@ -222,8 +266,14 @@ export default function UserManagement() {
                   </TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className="capitalize">
-                      {user.role}
+                    <Badge
+                      variant={
+                        getRoleSlug(user.role_id) === "admin"
+                          ? "default"
+                          : "secondary"
+                      }
+                    >
+                      {user.role_name || getRoleName(user.role_id)}
                     </Badge>
                   </TableCell>
                   <TableCell>

@@ -2,7 +2,7 @@ import apiClient from "@/lib/api-client";
 import type { LoginRequest, RegisterRequest, TokenResponse, User } from "@/types/auth";
 import type { Company } from "@/types/company";
 
-interface MeResponse extends User {
+export interface MeResponse extends User {
   company: Company;
 }
 

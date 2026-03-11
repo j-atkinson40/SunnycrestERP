@@ -4,11 +4,12 @@ from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.api.company_resolver import get_current_company
-from app.core.roles import Role
 from app.core.security import decode_token
 from app.database import get_db
 from app.models.company import Company
+from app.models.role import Role
 from app.models.user import User
+from app.services.permission_service import user_has_permission
 
 bearer_scheme = HTTPBearer()
 
@@ -57,10 +58,36 @@ def get_current_user(
     return user
 
 
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != Role.ADMIN:
+def require_admin(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Backward-compatible admin check using the new Role model."""
+    role = db.query(Role).filter(Role.id == current_user.role_id).first()
+    if not (role and role.is_system and role.slug == "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
     return current_user
+
+
+def require_permission(permission_key: str):
+    """
+    Dependency factory for permission-based authorization.
+
+    Usage: Depends(require_permission("users.view"))
+    """
+
+    def _check_permission(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        if not user_has_permission(current_user, db, permission_key):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission required: {permission_key}",
+            )
+        return current_user
+
+    return _check_permission

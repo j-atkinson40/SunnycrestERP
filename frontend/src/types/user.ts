@@ -1,18 +1,18 @@
-import type { Role, User } from "./auth";
+import type { User } from "./auth";
 
 export interface UserCreate {
   email: string;
   password: string;
   first_name: string;
   last_name: string;
-  role: Role;
+  role_id: string;
 }
 
 export interface UserUpdate {
   email?: string;
   first_name?: string;
   last_name?: string;
-  role?: Role;
+  role_id?: string;
   is_active?: boolean;
 }
 

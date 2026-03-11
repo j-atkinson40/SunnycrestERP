@@ -2,7 +2,6 @@ from fastapi import HTTPException, status
 from jose import JWTError
 from sqlalchemy.orm import Session
 
-from app.core.roles import Role
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -11,9 +10,11 @@ from app.core.security import (
     verify_password,
 )
 from app.models.company import Company
+from app.models.role import Role
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.company import CompanyRegisterRequest
+from app.services.role_service import seed_default_roles
 
 
 def register_company(db: Session, data: CompanyRegisterRequest) -> dict:
@@ -31,6 +32,9 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> dict:
     db.add(company)
     db.flush()
 
+    # Seed default roles for the new company
+    admin_role, _employee_role = seed_default_roles(db, company.id)
+
     existing_user = (
         db.query(User)
         .filter(User.email == data.email, User.company_id == company.id)
@@ -47,7 +51,7 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> dict:
         hashed_password=hash_password(data.password),
         first_name=data.first_name,
         last_name=data.last_name,
-        role=Role.ADMIN,
+        role_id=admin_role.id,
         company_id=company.id,
     )
     db.add(user)
@@ -71,18 +75,32 @@ def register_user(db: Session, data: RegisterRequest, company: Company) -> User:
             detail="Email already registered in this company",
         )
 
-    # First user in this company becomes admin
+    # First user in this company becomes admin, otherwise employee
     company_user_count = (
         db.query(User).filter(User.company_id == company.id).count()
     )
-    role = Role.ADMIN if company_user_count == 0 else Role.EMPLOYEE
+    role_slug = "admin" if company_user_count == 0 else "employee"
+    role = (
+        db.query(Role)
+        .filter(
+            Role.company_id == company.id,
+            Role.slug == role_slug,
+            Role.is_system == True,  # noqa: E712
+        )
+        .first()
+    )
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"System role '{role_slug}' not found for company",
+        )
 
     user = User(
         email=data.email,
         hashed_password=hash_password(data.password),
         first_name=data.first_name,
         last_name=data.last_name,
-        role=role,
+        role_id=role.id,
         company_id=company.id,
     )
     db.add(user)

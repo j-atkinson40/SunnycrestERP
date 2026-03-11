@@ -5,22 +5,24 @@ import { cn } from "@/lib/utils";
 interface NavItem {
   label: string;
   href: string;
+  permission?: string;
 }
 
-const adminNav: NavItem[] = [
-  { label: "Dashboard", href: "/admin/dashboard" },
-  { label: "User Management", href: "/admin/users" },
-];
-
-const employeeNav: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard" },
+const allNavItems: NavItem[] = [
+  { label: "Dashboard", href: "/dashboard", permission: "dashboard.view" },
+  { label: "User Management", href: "/admin/users", permission: "users.view" },
+  { label: "Role Management", href: "/admin/roles", permission: "roles.view" },
+  // Future: { label: "Products", href: "/products", permission: "products.view" },
+  // Future: { label: "Inventory", href: "/inventory", permission: "inventory.view" },
 ];
 
 export function Sidebar() {
-  const { user, company } = useAuth();
+  const { company, hasPermission } = useAuth();
   const location = useLocation();
 
-  const navItems = user?.role === "admin" ? adminNav : employeeNav;
+  const navItems = allNavItems.filter(
+    (item) => !item.permission || hasPermission(item.permission)
+  );
 
   return (
     <aside className="flex h-full w-64 flex-col border-r bg-sidebar">

@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 
 export function RootRedirect() {
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated } = useAuth();
 
   if (isLoading) {
     return (
@@ -14,10 +14,6 @@ export function RootRedirect() {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
-  }
-
-  if (user?.role === "admin") {
-    return <Navigate to="/admin/dashboard" replace />;
   }
 
   return <Navigate to="/dashboard" replace />;

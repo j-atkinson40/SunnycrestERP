@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -15,6 +16,9 @@ interface AuthContextType {
   company: Company | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  permissions: Set<string>;
+  hasPermission: (key: string) => boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => void;
@@ -26,6 +30,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const permissions = useMemo(
+    () => new Set(user?.permissions ?? []),
+    [user?.permissions]
+  );
+
+  const hasPermission = useCallback(
+    (key: string) => permissions.has(key),
+    [permissions]
+  );
+
+  const isAdmin = useMemo(
+    () => user?.role_slug === "admin",
+    [user?.role_slug]
+  );
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -88,6 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         company,
         isLoading,
         isAuthenticated: !!user,
+        permissions,
+        hasPermission,
+        isAdmin,
         login,
         register,
         logout,

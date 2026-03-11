@@ -7,9 +7,9 @@ import { Toaster } from "@/components/ui/sonner";
 import { getCompanySlug } from "@/lib/tenant";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
-import AdminDashboard from "@/pages/dashboard/admin-dashboard";
-import EmployeeDashboard from "@/pages/dashboard/employee-dashboard";
+import Dashboard from "@/pages/dashboard/employee-dashboard";
 import UserManagement from "@/pages/admin/user-management";
+import RoleManagement from "@/pages/admin/role-management";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -32,25 +32,42 @@ export default function App() {
               {/* Protected routes */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
-                  {/* Admin routes */}
-                  <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-                    <Route
-                      path="/admin/dashboard"
-                      element={<AdminDashboard />}
-                    />
-                    <Route path="/admin/users" element={<UserManagement />} />
+                  {/* Dashboard — all authenticated users */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="dashboard.view" />
+                    }
+                  >
+                    <Route path="/dashboard" element={<Dashboard />} />
                   </Route>
 
-                  {/* Employee routes */}
+                  {/* User management — requires users.view permission */}
                   <Route
-                    element={<ProtectedRoute allowedRoles={["employee"]} />}
+                    element={
+                      <ProtectedRoute requiredPermission="users.view" />
+                    }
                   >
-                    <Route path="/dashboard" element={<EmployeeDashboard />} />
+                    <Route
+                      path="/admin/users"
+                      element={<UserManagement />}
+                    />
+                  </Route>
+
+                  {/* Role management — requires roles.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="roles.view" />
+                    }
+                  >
+                    <Route
+                      path="/admin/roles"
+                      element={<RoleManagement />}
+                    />
                   </Route>
                 </Route>
               </Route>
 
-              {/* Root redirect based on role */}
+              {/* Root redirect */}
               <Route path="/" element={<RootRedirect />} />
               <Route path="*" element={<NotFound />} />
             </>

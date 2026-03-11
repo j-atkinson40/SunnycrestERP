@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.roles import Role
 from app.database import Base
 
 
@@ -21,8 +20,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    role: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=Role.EMPLOYEE
+    role_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("roles.id"), nullable=False, index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     company_id: Mapped[str] = mapped_column(
@@ -38,3 +37,7 @@ class User(Base):
     )
 
     company = relationship("Company", back_populates="users")
+    role_obj = relationship("Role", back_populates="users")
+    permission_overrides = relationship(
+        "UserPermissionOverride", back_populates="user", cascade="all, delete-orphan"
+    )
