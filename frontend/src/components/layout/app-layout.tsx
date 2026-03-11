@@ -25,7 +25,7 @@ export function AppLayout() {
               {user?.first_name} {user?.last_name}
             </span>
             <Badge variant="secondary" className="capitalize">
-              {user?.role}
+              {user?.role_name}
             </Badge>
             <Separator orientation="vertical" className="h-6" />
             <Button variant="ghost" size="sm" onClick={handleLogout}>
