@@ -17,6 +17,8 @@ import AdminEmployeeProfile from "@/pages/admin/employee-profile";
 import NotificationsPage from "@/pages/notifications";
 import ProductsPage from "@/pages/products";
 import ProductDetailPage from "@/pages/product-detail";
+import InventoryPage from "@/pages/inventory";
+import InventoryDetailPage from "@/pages/inventory-detail";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -85,6 +87,22 @@ export default function App() {
                     <Route
                       path="/products/:productId"
                       element={<ProductDetailPage />}
+                    />
+                  </Route>
+
+                  {/* Inventory — requires inventory.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="inventory.view" />
+                    }
+                  >
+                    <Route
+                      path="/inventory"
+                      element={<InventoryPage />}
+                    />
+                    <Route
+                      path="/inventory/:productId"
+                      element={<InventoryDetailPage />}
                     />
                   </Route>
 

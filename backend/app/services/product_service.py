@@ -10,6 +10,7 @@ from app.schemas.product import (
     ProductUpdate,
 )
 from app.services import audit_service
+from app.services.inventory_service import create_inventory_item
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +281,9 @@ def create_product(
         user_id=actor_id,
         changes={"name": data.name, "sku": data.sku},
     )
+
+    # Auto-create inventory item with quantity 0
+    create_inventory_item(db, product.id, company_id)
 
     db.commit()
     db.refresh(product)

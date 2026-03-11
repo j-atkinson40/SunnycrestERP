@@ -13,8 +13,8 @@ PERMISSIONS: dict[str, list[str]] = {
     "users": ["view", "create", "edit", "delete"],
     "roles": ["view", "create", "edit", "delete"],
     "products": ["view", "create", "edit", "delete"],
+    "inventory": ["view", "create", "edit", "delete"],
     # Future modules:
-    # "inventory": ["view", "create", "edit", "delete"],
     # "sales": ["view", "create", "edit", "delete"],
     # "customers": ["view", "create", "edit", "delete"],
     # "driver_scheduling": ["view", "create", "edit", "delete"],

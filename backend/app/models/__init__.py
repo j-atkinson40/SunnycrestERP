@@ -1,6 +1,8 @@
 from app.models.audit_log import AuditLog
 from app.models.company import Company
 from app.models.employee_profile import EmployeeProfile
+from app.models.inventory_item import InventoryItem
+from app.models.inventory_transaction import InventoryTransaction
 from app.models.notification import Notification
 from app.models.product import Product
 from app.models.product_category import ProductCategory
@@ -13,6 +15,8 @@ __all__ = [
     "AuditLog",
     "Company",
     "EmployeeProfile",
+    "InventoryItem",
+    "InventoryTransaction",
     "Notification",
     "Product",
     "ProductCategory",
