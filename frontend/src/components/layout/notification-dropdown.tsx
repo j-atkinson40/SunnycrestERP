@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Popover } from "@base-ui/react/popover";
 import {
   Bell,
   Check,
@@ -13,14 +14,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { notificationService } from "@/services/notification-service";
 import type { Notification } from "@/types/notification";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 function timeAgo(dateStr: string): string {
   const now = new Date();
@@ -136,9 +130,7 @@ export function NotificationDropdown() {
     }
   }
 
-  async function handleMarkAllAsRead(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  async function handleMarkAllAsRead() {
     try {
       await notificationService.markAllAsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
@@ -151,8 +143,8 @@ export function NotificationDropdown() {
   if (!isAuthenticated) return null;
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
-      <DropdownMenuTrigger
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
+      <Popover.Trigger
         render={
           <Button variant="ghost" size="icon" className="relative" />
         }
@@ -163,90 +155,106 @@ export function NotificationDropdown() {
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80">
-        <div className="flex items-center justify-between px-1.5 py-1">
-          <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
-          {unreadCount > 0 && (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={handleMarkAllAsRead}
-              className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <CheckCheck className="size-3" />
-              Mark all read
-            </span>
-          )}
-        </div>
-        <DropdownMenuSeparator />
-        {loading ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            Loading...
-          </div>
-        ) : notifications.length === 0 ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            No notifications
-          </div>
-        ) : (
-          <>
-            {notifications.map((notification) => (
-              <DropdownMenuItem
-                key={notification.id}
-                className="flex cursor-pointer items-start gap-2 p-2"
-                onClick={() => handleNotificationClick(notification)}
-              >
-                <div className="mt-0.5">
-                  <NotificationIcon type={notification.type} />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner
+          className="z-50 outline-none"
+          align="end"
+          side="bottom"
+          sideOffset={4}
+        >
+          <Popover.Popup className="w-80 rounded-lg border bg-popover text-popover-foreground shadow-md">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b px-3 py-2">
+              <span className="text-sm font-medium">Notifications</span>
+              {unreadCount > 0 && (
+                <button
+                  onClick={handleMarkAllAsRead}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <CheckCheck className="size-3" />
+                  Mark all read
+                </button>
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="max-h-80 overflow-y-auto">
+              {loading ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  Loading...
                 </div>
-                <div className="flex-1 space-y-0.5 overflow-hidden">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`text-sm leading-tight ${
-                        notification.is_read
-                          ? "text-muted-foreground"
-                          : "font-medium"
-                      }`}
-                    >
-                      {notification.title}
-                    </span>
+              ) : notifications.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  No notifications
+                </div>
+              ) : (
+                notifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    onClick={() => handleNotificationClick(notification)}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-2 border-b px-3 py-2.5 transition-colors last:border-b-0 hover:bg-muted/50",
+                      !notification.is_read && "bg-muted/30"
+                    )}
+                  >
+                    <div className="mt-0.5">
+                      <NotificationIcon type={notification.type} />
+                    </div>
+                    <div className="flex-1 space-y-0.5 overflow-hidden">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "text-sm leading-tight",
+                            notification.is_read
+                              ? "text-muted-foreground"
+                              : "font-medium"
+                          )}
+                        >
+                          {notification.title}
+                        </span>
+                        {!notification.is_read && (
+                          <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />
+                        )}
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {notification.message}
+                      </p>
+                      <p className="text-xs text-muted-foreground/70">
+                        {timeAgo(notification.created_at)}
+                      </p>
+                    </div>
                     {!notification.is_read && (
-                      <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <button
+                        onClick={(e) => handleMarkAsRead(e, notification)}
+                        className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+                        title="Mark as read"
+                      >
+                        <Check className="size-3.5" />
+                      </button>
                     )}
                   </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {notification.message}
-                  </p>
-                  <p className="text-xs text-muted-foreground/70">
-                    {timeAgo(notification.created_at)}
-                  </p>
-                </div>
-                {!notification.is_read && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => handleMarkAsRead(e, notification)}
-                    className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                    title="Mark as read"
-                  >
-                    <Check className="size-3.5" />
-                  </span>
-                )}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="justify-center text-sm text-muted-foreground"
-              onClick={() => {
-                setOpen(false);
-                navigate("/notifications");
-              }}
-            >
-              View all notifications
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            {notifications.length > 0 && (
+              <div className="border-t">
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    navigate("/notifications");
+                  }}
+                  className="w-full px-3 py-2 text-center text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                >
+                  View all notifications
+                </button>
+              </div>
+            )}
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
