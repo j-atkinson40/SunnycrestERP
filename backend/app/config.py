@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     CORS_ORIGINS: str = "http://localhost:5173"
     CORS_ORIGIN_REGEX: str = ""
+    ANTHROPIC_API_KEY: str = ""
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
