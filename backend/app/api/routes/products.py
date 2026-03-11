@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_permission
@@ -6,6 +6,10 @@ from app.database import get_db
 from app.models.product import Product
 from app.models.user import User
 from app.schemas.product import (
+    ImportResult,
+    PriceTierCreate,
+    PriceTierResponse,
+    PriceTierUpdate,
     ProductCategoryCreate,
     ProductCategoryResponse,
     ProductCategoryUpdate,
@@ -15,13 +19,18 @@ from app.schemas.product import (
 )
 from app.services.product_service import (
     create_category,
+    create_price_tier,
     create_product,
     deactivate_category,
     deactivate_product,
+    delete_price_tier,
     get_categories,
+    get_price_tiers,
     get_product,
     get_products,
+    import_products_from_csv,
     update_category,
+    update_price_tier,
     update_product,
 )
 
@@ -34,7 +43,13 @@ router = APIRouter()
 
 
 def _category_to_response(cat) -> dict:
-    return ProductCategoryResponse.model_validate(cat).model_dump()
+    data = ProductCategoryResponse.model_validate(cat).model_dump()
+    data["parent_id"] = cat.parent_id
+    if cat.parent:
+        data["parent_name"] = cat.parent.name
+    else:
+        data["parent_name"] = None
+    return data
 
 
 @router.get("/categories", response_model=list[ProductCategoryResponse])
@@ -89,6 +104,11 @@ def _product_to_response(product: Product) -> dict:
     data = ProductResponse.model_validate(product).model_dump()
     if product.category:
         data["category_name"] = product.category.name
+    # Price tiers
+    data["price_tiers"] = [
+        PriceTierResponse.model_validate(t).model_dump()
+        for t in (product.price_tiers or [])
+    ]
     return data
 
 
@@ -162,3 +182,74 @@ def delete(
 ):
     deactivate_product(db, product_id, current_user.company_id, actor_id=current_user.id)
     return {"detail": "Product deactivated"}
+
+
+# ---------------------------------------------------------------------------
+# Price Tier endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{product_id}/price-tiers", response_model=list[PriceTierResponse])
+def list_price_tiers(
+    product_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("products.view")),
+):
+    tiers = get_price_tiers(db, product_id, current_user.company_id)
+    return [PriceTierResponse.model_validate(t).model_dump() for t in tiers]
+
+
+@router.post("/{product_id}/price-tiers", status_code=201)
+def create_tier(
+    product_id: str,
+    data: PriceTierCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("products.edit")),
+):
+    tier = create_price_tier(
+        db, product_id, data, current_user.company_id, actor_id=current_user.id
+    )
+    return PriceTierResponse.model_validate(tier).model_dump()
+
+
+@router.patch("/{product_id}/price-tiers/{tier_id}")
+def update_tier(
+    product_id: str,
+    tier_id: str,
+    data: PriceTierUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("products.edit")),
+):
+    tier = update_price_tier(
+        db, tier_id, data, current_user.company_id, actor_id=current_user.id
+    )
+    return PriceTierResponse.model_validate(tier).model_dump()
+
+
+@router.delete("/{product_id}/price-tiers/{tier_id}")
+def delete_tier(
+    product_id: str,
+    tier_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("products.edit")),
+):
+    delete_price_tier(db, tier_id, current_user.company_id, actor_id=current_user.id)
+    return {"detail": "Price tier deleted"}
+
+
+# ---------------------------------------------------------------------------
+# CSV Import endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.post("/import", response_model=ImportResult)
+async def import_csv(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("products.create")),
+):
+    content = await file.read()
+    result = import_products_from_csv(
+        db, content, current_user.company_id, actor_id=current_user.id
+    )
+    return result

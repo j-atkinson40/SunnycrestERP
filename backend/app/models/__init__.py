@@ -7,6 +7,7 @@ from app.models.inventory_transaction import InventoryTransaction
 from app.models.notification import Notification
 from app.models.product import Product
 from app.models.product_category import ProductCategory
+from app.models.product_price_tier import ProductPriceTier
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.user import User
@@ -22,6 +23,7 @@ __all__ = [
     "Notification",
     "Product",
     "ProductCategory",
+    "ProductPriceTier",
     "Role",
     "RolePermission",
     "User",

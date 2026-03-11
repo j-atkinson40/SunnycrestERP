@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { SparklesIcon, XIcon } from "lucide-react";
+import { SparklesIcon, UploadIcon, XIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { productService } from "@/services/product-service";
 import { getApiErrorMessage } from "@/lib/api-error";
-import type { Product, ProductCategory } from "@/types/product";
+import type { ImportResult, Product, ProductCategory } from "@/types/product";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +38,36 @@ Return a JSON object with:
 - confidence: "high", "medium", or "low" indicating how confident you are in the matches
 - clarificationNeeded: boolean, true if the query was too vague or ambiguous to return useful results
 - clarificationMessage: string (only when clarificationNeeded is true) — a follow-up question to help narrow down the search`;
+
+/** Build hierarchical options for a category <select> */
+function buildCategoryOptions(
+  categories: ProductCategory[],
+  activeOnly = true,
+  currentId?: string,
+) {
+  const active = activeOnly
+    ? categories.filter((c) => c.is_active || c.id === currentId)
+    : categories;
+  const parents = active.filter((c) => !c.parent_id);
+  const childrenOf = (parentId: string) =>
+    active.filter((c) => c.parent_id === parentId);
+
+  const options: { id: string; label: string; isParent: boolean }[] = [];
+  for (const p of parents) {
+    options.push({ id: p.id, label: p.name, isParent: true });
+    for (const c of childrenOf(p.id)) {
+      options.push({ id: c.id, label: `  └ ${c.name}`, isParent: false });
+    }
+  }
+  // Include categories that are children of inactive parents (orphans)
+  const orphans = active.filter(
+    (c) => c.parent_id && !active.some((p) => p.id === c.parent_id),
+  );
+  for (const o of orphans) {
+    options.push({ id: o.id, label: o.name, isParent: false });
+  }
+  return options;
+}
 
 export default function ProductsPage() {
   const { hasPermission } = useAuth();
@@ -81,7 +111,15 @@ export default function ProductsPage() {
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatDescription, setNewCatDescription] = useState("");
+  const [newCatParentId, setNewCatParentId] = useState("");
   const [catError, setCatError] = useState("");
+
+  // Import CSV dialog
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importError, setImportError] = useState("");
 
   const loadCategories = useCallback(async () => {
     try {
@@ -145,6 +183,17 @@ export default function ProductsPage() {
       })),
     }),
     [allProducts],
+  );
+
+  // Category hierarchy helpers
+  const categoryOptions = useMemo(
+    () => buildCategoryOptions(categories, true),
+    [categories],
+  );
+
+  const rootCategories = useMemo(
+    () => categories.filter((c) => !c.parent_id),
+    [categories],
   );
 
   // Handle AI search result
@@ -244,9 +293,11 @@ export default function ProductsPage() {
       await productService.createCategory({
         name: newCatName.trim(),
         description: newCatDescription.trim() || undefined,
+        parent_id: newCatParentId || undefined,
       });
       setNewCatName("");
       setNewCatDescription("");
+      setNewCatParentId("");
       toast.success("Category created");
       loadCategories();
     } catch (err: unknown) {
@@ -266,6 +317,27 @@ export default function ProductsPage() {
       loadCategories();
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Failed to update category"));
+    }
+  }
+
+  async function handleImport() {
+    if (!importFile) return;
+    setImporting(true);
+    setImportError("");
+    setImportResult(null);
+    try {
+      const result = await productService.importProducts(importFile);
+      setImportResult(result);
+      if (result.created > 0) {
+        toast.success(`Imported ${result.created} products`);
+        loadProducts();
+        loadAllProducts();
+        loadCategories();
+      }
+    } catch (err: unknown) {
+      setImportError(getApiErrorMessage(err, "Import failed"));
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -293,7 +365,7 @@ export default function ProductsPage() {
                 <DialogHeader>
                   <DialogTitle>Manage Categories</DialogTitle>
                   <DialogDescription>
-                    Create and manage product categories.
+                    Create and manage product categories and subcategories.
                   </DialogDescription>
                 </DialogHeader>
                 {catError && (
@@ -309,6 +381,23 @@ export default function ProductsPage() {
                       onChange={(e) => setNewCatName(e.target.value)}
                       placeholder="e.g. Annuals"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Parent Category (optional)</Label>
+                    <select
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                      value={newCatParentId}
+                      onChange={(e) => setNewCatParentId(e.target.value)}
+                    >
+                      <option value="">None (top-level category)</option>
+                      {rootCategories
+                        .filter((c) => c.is_active)
+                        .map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <Label>Description (optional)</Label>
@@ -330,36 +419,76 @@ export default function ProductsPage() {
                       <p className="mb-2 text-sm font-medium text-muted-foreground">
                         Existing Categories
                       </p>
-                      <div className="space-y-2">
-                        {categories.map((cat) => (
-                          <div
-                            key={cat.id}
-                            className="flex items-center justify-between rounded-md border px-3 py-2"
-                          >
-                            <div>
-                              <span className="text-sm font-medium">
-                                {cat.name}
-                              </span>
-                              {!cat.is_active && (
-                                <Badge
-                                  variant="destructive"
-                                  className="ml-2"
-                                >
-                                  Inactive
-                                </Badge>
-                              )}
+                      <div className="space-y-1">
+                        {categories
+                          .filter((c) => !c.parent_id)
+                          .map((cat) => (
+                            <div key={cat.id}>
+                              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                                <div>
+                                  <span className="text-sm font-medium">
+                                    {cat.name}
+                                  </span>
+                                  {!cat.is_active && (
+                                    <Badge
+                                      variant="destructive"
+                                      className="ml-2"
+                                    >
+                                      Inactive
+                                    </Badge>
+                                  )}
+                                </div>
+                                {canDelete && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleToggleCategoryActive(cat)
+                                    }
+                                  >
+                                    {cat.is_active ? "Deactivate" : "Activate"}
+                                  </Button>
+                                )}
+                              </div>
+                              {/* Subcategories */}
+                              {categories
+                                .filter((sc) => sc.parent_id === cat.id)
+                                .map((sub) => (
+                                  <div
+                                    key={sub.id}
+                                    className="ml-6 flex items-center justify-between rounded-md border px-3 py-1.5 mt-1"
+                                  >
+                                    <div>
+                                      <span className="text-sm text-muted-foreground">
+                                        └{" "}
+                                      </span>
+                                      <span className="text-sm">{sub.name}</span>
+                                      {!sub.is_active && (
+                                        <Badge
+                                          variant="destructive"
+                                          className="ml-2"
+                                        >
+                                          Inactive
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {canDelete && (
+                                      <Button
+                                        variant="ghost"
+                                        size="xs"
+                                        onClick={() =>
+                                          handleToggleCategoryActive(sub)
+                                        }
+                                      >
+                                        {sub.is_active
+                                          ? "Deactivate"
+                                          : "Activate"}
+                                      </Button>
+                                    )}
+                                  </div>
+                                ))}
                             </div>
-                            {canDelete && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleToggleCategoryActive(cat)}
-                              >
-                                {cat.is_active ? "Deactivate" : "Activate"}
-                              </Button>
-                            )}
-                          </div>
-                        ))}
+                          ))}
                       </div>
                     </div>
                   )}
@@ -371,6 +500,123 @@ export default function ProductsPage() {
                   >
                     Close
                   </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+          {canCreate && (
+            <Dialog
+              open={importOpen}
+              onOpenChange={(open) => {
+                setImportOpen(open);
+                if (!open) {
+                  setImportFile(null);
+                  setImportResult(null);
+                  setImportError("");
+                }
+              }}
+            >
+              <DialogTrigger render={<Button variant="outline" />}>
+                <UploadIcon className="mr-1 size-4" />
+                Import CSV
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Import Products from CSV</DialogTitle>
+                  <DialogDescription>
+                    Upload a CSV file to bulk-create products. Categories will be
+                    auto-created if they don't exist.
+                  </DialogDescription>
+                </DialogHeader>
+                {importError && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {importError}
+                  </div>
+                )}
+                {!importResult ? (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>CSV File</Label>
+                      <Input
+                        type="file"
+                        accept=".csv"
+                        onChange={(e) =>
+                          setImportFile(e.target.files?.[0] || null)
+                        }
+                      />
+                    </div>
+                    <div className="rounded-md bg-muted p-3">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">
+                        Expected columns:
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        name (required), sku, description, category, price,
+                        cost_price, unit_of_measure
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Column headers are flexible — e.g. "Product Name", "Item
+                        Number", "UOM" all work.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex gap-4">
+                      <div className="rounded-md bg-green-50 dark:bg-green-950/30 p-3 flex-1 text-center">
+                        <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                          {importResult.created}
+                        </p>
+                        <p className="text-xs text-green-600 dark:text-green-500">
+                          Created
+                        </p>
+                      </div>
+                      {importResult.skipped > 0 && (
+                        <div className="rounded-md bg-yellow-50 dark:bg-yellow-950/30 p-3 flex-1 text-center">
+                          <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-400">
+                            {importResult.skipped}
+                          </p>
+                          <p className="text-xs text-yellow-600 dark:text-yellow-500">
+                            Skipped
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {importResult.errors.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-destructive">
+                          Errors:
+                        </p>
+                        <div className="max-h-40 overflow-y-auto rounded-md border p-2 text-xs space-y-0.5">
+                          {importResult.errors.map((err, i) => (
+                            <p key={i} className="text-muted-foreground">
+                              <span className="font-medium">Row {err.row}:</span>{" "}
+                              {err.message}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <DialogFooter>
+                  {!importResult ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => setImportOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleImport}
+                        disabled={!importFile || importing}
+                      >
+                        {importing ? "Importing..." : "Upload & Import"}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button onClick={() => setImportOpen(false)}>Done</Button>
+                  )}
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -425,13 +671,11 @@ export default function ProductsPage() {
                         }
                       >
                         <option value="">No category</option>
-                        {categories
-                          .filter((c) => c.is_active)
-                          .map((cat) => (
-                            <option key={cat.id} value={cat.id}>
-                              {cat.name}
-                            </option>
-                          ))}
+                        {categoryOptions.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -551,10 +795,7 @@ export default function ProductsPage() {
             Found {aiMatchedIds.size} matching{" "}
             {aiMatchedIds.size === 1 ? "product" : "products"}
             {aiConfidence && (
-              <Badge
-                variant="secondary"
-                className="ml-2"
-              >
+              <Badge variant="secondary" className="ml-2">
                 {aiConfidence} confidence
               </Badge>
             )}
@@ -587,13 +828,11 @@ export default function ProductsPage() {
             }}
           >
             <option value="">All Categories</option>
-            {categories
-              .filter((c) => c.is_active)
-              .map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
+            {categoryOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </div>
       )}

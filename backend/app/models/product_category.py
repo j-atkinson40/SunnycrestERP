@@ -11,7 +11,8 @@ class ProductCategory(Base):
     __tablename__ = "product_categories"
     __table_args__ = (
         UniqueConstraint(
-            "name", "company_id", name="uq_product_category_name_company"
+            "name", "company_id", "parent_id",
+            name="uq_product_category_name_company_parent",
         ),
     )
 
@@ -20,6 +21,9 @@ class ProductCategory(Base):
     )
     company_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("companies.id"), nullable=False, index=True
+    )
+    parent_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("product_categories.id"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -34,4 +38,8 @@ class ProductCategory(Base):
     )
 
     company = relationship("Company")
+    parent = relationship(
+        "ProductCategory", remote_side=[id], back_populates="children"
+    )
+    children = relationship("ProductCategory", back_populates="parent")
     products = relationship("Product", back_populates="category")

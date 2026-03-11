@@ -42,3 +42,8 @@ class Product(Base):
 
     company = relationship("Company")
     category = relationship("ProductCategory", back_populates="products")
+    price_tiers = relationship(
+        "ProductPriceTier",
+        back_populates="product",
+        order_by="ProductPriceTier.min_quantity",
+    )

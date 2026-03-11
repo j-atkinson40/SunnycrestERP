@@ -2,8 +2,24 @@ export interface ProductCategory {
   id: string;
   name: string;
   description: string | null;
+  parent_id: string | null;
+  parent_name: string | null;
   is_active: boolean;
   created_at: string;
+}
+
+export interface PriceTier {
+  id: string;
+  product_id: string;
+  min_quantity: number;
+  price: number;
+  label: string | null;
+}
+
+export interface PriceTierCreate {
+  min_quantity: number;
+  price: number;
+  label?: string;
 }
 
 export interface Product {
@@ -21,6 +37,7 @@ export interface Product {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  price_tiers: PriceTier[];
 }
 
 export interface ProductCreate {
@@ -56,10 +73,17 @@ export interface PaginatedProducts {
 export interface CategoryCreate {
   name: string;
   description?: string;
+  parent_id?: string;
 }
 
 export interface CategoryUpdate {
   name?: string;
   description?: string;
   is_active?: boolean;
+}
+
+export interface ImportResult {
+  created: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
 }

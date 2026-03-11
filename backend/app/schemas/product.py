@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -12,6 +12,7 @@ from pydantic import BaseModel, field_validator
 class ProductCategoryCreate(BaseModel):
     name: str
     description: str | None = None
+    parent_id: str | None = None
 
 
 class ProductCategoryUpdate(BaseModel):
@@ -31,8 +32,44 @@ class ProductCategoryResponse(BaseModel):
     id: str
     name: str
     description: str | None = None
+    parent_id: str | None = None
+    parent_name: str | None = None
     is_active: bool
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Price Tier schemas
+# ---------------------------------------------------------------------------
+
+
+class PriceTierCreate(BaseModel):
+    min_quantity: int = Field(..., ge=1)
+    price: Decimal
+    label: str | None = None
+
+
+class PriceTierUpdate(BaseModel):
+    min_quantity: int | None = Field(None, ge=1)
+    price: Decimal | None = None
+    label: str | None = None
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: object) -> object:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+
+class PriceTierResponse(BaseModel):
+    id: str
+    product_id: str
+    min_quantity: int
+    price: Decimal
+    label: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -87,6 +124,7 @@ class ProductResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    price_tiers: list[PriceTierResponse] = []
 
     model_config = {"from_attributes": True}
 
@@ -96,3 +134,19 @@ class PaginatedProducts(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+# ---------------------------------------------------------------------------
+# CSV Import schemas
+# ---------------------------------------------------------------------------
+
+
+class ImportResultRow(BaseModel):
+    row: int
+    message: str
+
+
+class ImportResult(BaseModel):
+    created: int
+    skipped: int
+    errors: list[ImportResultRow]

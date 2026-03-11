@@ -2,7 +2,10 @@ import apiClient from "@/lib/api-client";
 import type {
   CategoryCreate,
   CategoryUpdate,
+  ImportResult,
   PaginatedProducts,
+  PriceTier,
+  PriceTierCreate,
   Product,
   ProductCategory,
   ProductCreate,
@@ -86,5 +89,58 @@ export const productService = {
 
   async deleteCategory(id: string): Promise<void> {
     await apiClient.delete(`/products/categories/${id}`);
+  },
+
+  // -----------------------------------------------------------------------
+  // Price Tiers
+  // -----------------------------------------------------------------------
+
+  async getPriceTiers(productId: string): Promise<PriceTier[]> {
+    const response = await apiClient.get<PriceTier[]>(
+      `/products/${productId}/price-tiers`,
+    );
+    return response.data;
+  },
+
+  async createPriceTier(
+    productId: string,
+    data: PriceTierCreate,
+  ): Promise<PriceTier> {
+    const response = await apiClient.post<PriceTier>(
+      `/products/${productId}/price-tiers`,
+      data,
+    );
+    return response.data;
+  },
+
+  async updatePriceTier(
+    productId: string,
+    tierId: string,
+    data: Partial<PriceTierCreate>,
+  ): Promise<PriceTier> {
+    const response = await apiClient.patch<PriceTier>(
+      `/products/${productId}/price-tiers/${tierId}`,
+      data,
+    );
+    return response.data;
+  },
+
+  async deletePriceTier(productId: string, tierId: string): Promise<void> {
+    await apiClient.delete(`/products/${productId}/price-tiers/${tierId}`);
+  },
+
+  // -----------------------------------------------------------------------
+  // CSV Import
+  // -----------------------------------------------------------------------
+
+  async importProducts(file: File): Promise<ImportResult> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiClient.post<ImportResult>(
+      "/products/import",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return response.data;
   },
 };
