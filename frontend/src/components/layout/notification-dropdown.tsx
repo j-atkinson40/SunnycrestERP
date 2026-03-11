@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Check, CheckCheck, Info, AlertTriangle, XCircle, CheckCircle } from "lucide-react";
+import {
+  Bell,
+  Check,
+  CheckCheck,
+  Info,
+  AlertTriangle,
+  XCircle,
+  CheckCircle,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { notificationService } from "@/services/notification-service";
 import type { Notification } from "@/types/notification";
@@ -45,6 +53,7 @@ function NotificationIcon({ type }: { type: string }) {
 export function NotificationDropdown() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
@@ -81,6 +90,13 @@ export function NotificationDropdown() {
     return () => clearInterval(interval);
   }, [fetchUnreadCount, isAuthenticated]);
 
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      fetchNotifications();
+    }
+  }
+
   async function handleNotificationClick(notification: Notification) {
     if (!notification.is_read) {
       try {
@@ -95,12 +111,34 @@ export function NotificationDropdown() {
         // Silently fail
       }
     }
+    setOpen(false);
     if (notification.link) {
       navigate(notification.link);
     }
   }
 
-  async function handleMarkAllAsRead() {
+  async function handleMarkAsRead(
+    e: React.MouseEvent,
+    notification: Notification
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await notificationService.markAsRead(notification.id);
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notification.id ? { ...n, is_read: true } : n
+        )
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      // Silently fail
+    }
+  }
+
+  async function handleMarkAllAsRead(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       await notificationService.markAllAsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
@@ -113,7 +151,7 @@ export function NotificationDropdown() {
   if (!isAuthenticated) return null;
 
   return (
-    <DropdownMenu onOpenChange={(open) => open && fetchNotifications()}>
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger
         render={
           <Button variant="ghost" size="icon" className="relative" />
@@ -130,16 +168,15 @@ export function NotificationDropdown() {
         <div className="flex items-center justify-between px-1.5 py-1">
           <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
           {unreadCount > 0 && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleMarkAllAsRead();
-              }}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={handleMarkAllAsRead}
+              className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
             >
               <CheckCheck className="size-3" />
               Mark all read
-            </button>
+            </span>
           )}
         </div>
         <DropdownMenuSeparator />
@@ -157,7 +194,7 @@ export function NotificationDropdown() {
               <DropdownMenuItem
                 key={notification.id}
                 className="flex cursor-pointer items-start gap-2 p-2"
-                onSelect={() => handleNotificationClick(notification)}
+                onClick={() => handleNotificationClick(notification)}
               >
                 <div className="mt-0.5">
                   <NotificationIcon type={notification.type} />
@@ -185,31 +222,25 @@ export function NotificationDropdown() {
                   </p>
                 </div>
                 {!notification.is_read && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      notificationService.markAsRead(notification.id);
-                      setNotifications((prev) =>
-                        prev.map((n) =>
-                          n.id === notification.id
-                            ? { ...n, is_read: true }
-                            : n
-                        )
-                      );
-                      setUnreadCount((prev) => Math.max(0, prev - 1));
-                    }}
-                    className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => handleMarkAsRead(e, notification)}
+                    className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
                     title="Mark as read"
                   >
                     <Check className="size-3.5" />
-                  </button>
+                  </span>
                 )}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="justify-center text-sm text-muted-foreground"
-              onSelect={() => navigate("/notifications")}
+              onClick={() => {
+                setOpen(false);
+                navigate("/notifications");
+              }}
             >
               View all notifications
             </DropdownMenuItem>
