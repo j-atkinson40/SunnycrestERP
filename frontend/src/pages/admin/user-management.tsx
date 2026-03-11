@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { userService } from "@/services/user-service";
 import { roleService } from "@/services/role-service";
+import { getApiErrorMessage } from "@/lib/api-error";
 import type { User } from "@/types/auth";
 import type { UserCreate } from "@/types/user";
 import type { RoleResponse } from "@/types/role";
@@ -110,8 +111,7 @@ export default function UserManagement() {
       });
       loadUsers();
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { detail?: string } } };
-      setCreateError(error.response?.data?.detail || "Failed to create user");
+      setCreateError(getApiErrorMessage(err, "Failed to create user"));
     }
   }
 

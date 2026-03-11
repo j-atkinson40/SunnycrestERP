@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { companyService } from "@/services/company-service";
 import { setCompanySlug } from "@/lib/tenant";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 function slugify(text: string): string {
   return text
@@ -65,17 +65,8 @@ export default function CompanyRegisterPage() {
       setCompanySlug(companySlug);
       // Force a full page reload so the app picks up the new tenant context
       window.location.href = "/login";
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        const detail = err.response?.data?.detail;
-        if (Array.isArray(detail)) {
-          setError(detail.map((d: { msg: string }) => d.msg).join(", "));
-        } else {
-          setError(detail || "Registration failed");
-        }
-      } else {
-        setError("An unexpected error occurred");
-      }
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Registration failed"));
     } finally {
       setLoading(false);
     }

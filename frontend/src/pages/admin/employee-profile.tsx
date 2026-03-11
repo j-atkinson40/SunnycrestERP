@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { employeeProfileService } from "@/services/employee-profile-service";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,10 +94,7 @@ export default function AdminEmployeeProfile() {
       populateForm(updated);
       toast.success("Employee profile saved");
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { detail?: string } } }).response?.data
-          ?.detail || "Failed to save profile";
-      setError(message);
+      setError(getApiErrorMessage(err, "Failed to save profile"));
     } finally {
       setSaving(false);
     }

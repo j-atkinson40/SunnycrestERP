@@ -42,6 +42,15 @@ class CompanyUpdate(BaseModel):
     timezone: str | None = None
     logo_url: str | None = None
 
+    @field_validator("*", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: object) -> object:
+        """Convert empty / whitespace-only strings to None so optional fields
+        don't fail validation (e.g. EmailStr rejects '')."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
 
 class CompanyResponse(BaseModel):
     id: str

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { getCompanySlug } from "@/lib/tenant";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import axios from "axios";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -37,12 +37,8 @@ export default function RegisterPage() {
         last_name: lastName,
       });
       navigate("/");
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.detail || "Registration failed");
-      } else {
-        setError("An unexpected error occurred");
-      }
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Registration failed"));
     } finally {
       setLoading(false);
     }

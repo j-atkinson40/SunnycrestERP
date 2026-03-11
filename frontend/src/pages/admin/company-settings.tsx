@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { companyService } from "@/services/company-service";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,25 +73,25 @@ export default function CompanySettings() {
     setError("");
     setSaving(true);
     try {
+      // Convert empty strings to undefined so the backend receives null
+      // (avoids pydantic EmailStr validation failing on "")
+      const emptyToUndefined = (v: string) => v.trim() || undefined;
       const updated = await companyService.updateSettings({
         name,
-        address_street: addressStreet,
-        address_city: addressCity,
-        address_state: addressState,
-        address_zip: addressZip,
-        phone,
-        email,
+        address_street: emptyToUndefined(addressStreet),
+        address_city: emptyToUndefined(addressCity),
+        address_state: emptyToUndefined(addressState),
+        address_zip: emptyToUndefined(addressZip),
+        phone: emptyToUndefined(phone),
+        email: emptyToUndefined(email),
         timezone,
-        logo_url: logoUrl,
+        logo_url: emptyToUndefined(logoUrl),
       });
       populateForm(updated);
       await refreshCompany();
       toast.success("Company settings saved");
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { detail?: string } } }).response?.data
-          ?.detail || "Failed to save settings";
-      setError(message);
+      setError(getApiErrorMessage(err, "Failed to save settings"));
     } finally {
       setSaving(false);
     }

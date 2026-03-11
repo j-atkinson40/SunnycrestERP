@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { getCompanySlug } from "@/lib/tenant";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import axios from "axios";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -31,12 +31,8 @@ export default function LoginPage() {
     try {
       await login(email, password);
       navigate("/");
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.detail || "Login failed");
-      } else {
-        setError("An unexpected error occurred");
-      }
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Login failed"));
     } finally {
       setLoading(false);
     }

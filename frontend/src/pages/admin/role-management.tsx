@@ -24,6 +24,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 function slugify(name: string): string {
   return name
@@ -183,8 +184,7 @@ export default function RoleManagement() {
       toast.success("Role created");
       loadData();
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { detail?: string } } };
-      setCreateError(error.response?.data?.detail || "Failed to create role");
+      setCreateError(getApiErrorMessage(err, "Failed to create role"));
     }
   }
 
@@ -218,8 +218,7 @@ export default function RoleManagement() {
       toast.success("Role updated");
       loadData();
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { detail?: string } } };
-      setEditError(error.response?.data?.detail || "Failed to update role");
+      setEditError(getApiErrorMessage(err, "Failed to update role"));
     }
   }
 
@@ -233,8 +232,7 @@ export default function RoleManagement() {
       toast.success("Role deleted");
       loadData();
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { detail?: string } } };
-      toast.error(error.response?.data?.detail || "Failed to delete role");
+      toast.error(getApiErrorMessage(err, "Failed to delete role"));
       setDeleteRole(null);
     }
   }
