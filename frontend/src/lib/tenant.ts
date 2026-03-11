@@ -23,13 +23,20 @@ export function getCompanySlug(): string {
     return "";
   }
 
-  // Production: extract subdomain (acme.sunnycrest.app -> "acme")
-  const parts = hostname.split(".");
-  if (parts.length >= 3 && parts[0] !== "www" && parts[0] !== "api") {
-    return parts[0];
+  // Production: extract subdomain only if we know the base domain
+  // e.g., acme.sunnycrest.app -> "acme" (base domain = "sunnycrest.app")
+  const baseDomain = import.meta.env.VITE_APP_DOMAIN;
+  if (baseDomain && hostname.endsWith(`.${baseDomain}`)) {
+    const slug = hostname.slice(0, -(baseDomain.length + 1));
+    if (slug && slug !== "www" && slug !== "api") {
+      return slug;
+    }
+    return "";
   }
 
-  return "";
+  // No custom domain configured — fall back to localStorage
+  // (covers Railway URLs like xxx.up.railway.app)
+  return localStorage.getItem("company_slug") || "";
 }
 
 /**
