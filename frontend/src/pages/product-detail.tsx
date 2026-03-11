@@ -72,19 +72,16 @@ export default function ProductDetailPage() {
     setError("");
     setSaving(true);
     try {
-      const payload: Record<string, unknown> = { name };
-      payload.sku = sku.trim() || null;
-      payload.description = description.trim() || null;
-      payload.category_id = categoryId || null;
-      payload.price = price.trim() ? parseFloat(price) : null;
-      payload.cost_price = costPrice.trim() ? parseFloat(costPrice) : null;
-      payload.unit_of_measure = unitOfMeasure.trim() || null;
-      payload.image_url = imageUrl.trim() || null;
-
-      const updated = await productService.updateProduct(
-        productId,
-        payload as Parameters<typeof productService.updateProduct>[1],
-      );
+      const updated = await productService.updateProduct(productId, {
+        name,
+        sku: sku.trim() || undefined,
+        description: description.trim() || undefined,
+        category_id: categoryId || null,
+        price: price.trim() ? parseFloat(price) : null,
+        cost_price: costPrice.trim() ? parseFloat(costPrice) : null,
+        unit_of_measure: unitOfMeasure.trim() || undefined,
+        image_url: imageUrl.trim() || undefined,
+      });
       setName(updated.name);
       setSku(updated.sku || "");
       setDescription(updated.description || "");

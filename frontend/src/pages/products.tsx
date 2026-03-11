@@ -99,21 +99,19 @@ export default function ProductsPage() {
   async function handleCreateProduct() {
     setCreateError("");
     try {
-      const payload: Record<string, unknown> = { name: newProduct.name };
-      if (newProduct.sku.trim()) payload.sku = newProduct.sku.trim();
-      if (newProduct.description.trim())
-        payload.description = newProduct.description.trim();
-      if (newProduct.category_id) payload.category_id = newProduct.category_id;
-      if (newProduct.price.trim())
-        payload.price = parseFloat(newProduct.price);
-      if (newProduct.cost_price.trim())
-        payload.cost_price = parseFloat(newProduct.cost_price);
-      if (newProduct.unit_of_measure.trim())
-        payload.unit_of_measure = newProduct.unit_of_measure.trim();
-
-      await productService.createProduct(
-        payload as Parameters<typeof productService.createProduct>[0],
-      );
+      await productService.createProduct({
+        name: newProduct.name,
+        sku: newProduct.sku.trim() || undefined,
+        description: newProduct.description.trim() || undefined,
+        category_id: newProduct.category_id || undefined,
+        price: newProduct.price.trim()
+          ? parseFloat(newProduct.price)
+          : undefined,
+        cost_price: newProduct.cost_price.trim()
+          ? parseFloat(newProduct.cost_price)
+          : undefined,
+        unit_of_measure: newProduct.unit_of_measure.trim() || undefined,
+      });
       setCreateOpen(false);
       setNewProduct({
         name: "",
