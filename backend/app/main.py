@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, companies, roles, users
+from app.api.routes import audit, auth, companies, roles, users
 from app.config import settings
 
 app = FastAPI(title="Sunnycrest ERP", version="0.2.0")
@@ -23,6 +23,7 @@ app.include_router(
     companies.router, prefix="/api/companies", tags=["Company Management"]
 )
 app.include_router(roles.router, prefix="/api/roles", tags=["Role Management"])
+app.include_router(audit.router, prefix="/api/audit-logs", tags=["Audit Logs"])
 
 
 @app.get("/api/health")

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.company_resolver import get_current_company
@@ -14,6 +14,7 @@ from app.schemas.auth import (
 )
 from app.schemas.company import CompanyResponse
 from app.schemas.user import UserResponse
+from app.services import audit_service
 from app.services.auth_service import login_user, refresh_tokens, register_user
 from app.services.permission_service import get_user_permissions
 
@@ -44,10 +45,31 @@ def register(
 @router.post("/login", response_model=TokenResponse)
 def login(
     data: LoginRequest,
+    request: Request,
     db: Session = Depends(get_db),
     company: Company = Depends(get_current_company),
 ):
-    return login_user(db, data, company)
+    result = login_user(db, data, company)
+
+    # Log successful login
+    user = (
+        db.query(User)
+        .filter(User.email == data.email, User.company_id == company.id)
+        .first()
+    )
+    if user:
+        audit_service.log_action(
+            db,
+            company.id,
+            "login",
+            "session",
+            user_id=user.id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        db.commit()
+
+    return result
 
 
 @router.post("/refresh", response_model=TokenResponse)

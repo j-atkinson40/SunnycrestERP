@@ -7,6 +7,7 @@ from app.models.role_permission import RolePermission
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
 from app.schemas.role import RoleCreate, RoleUpdate
+from app.services import audit_service
 
 
 def seed_default_roles(db: Session, company_id: str) -> tuple[Role, Role]:
@@ -60,7 +61,9 @@ def get_role(db: Session, role_id: str, company_id: str) -> Role:
     return role
 
 
-def create_role(db: Session, data: RoleCreate, company_id: str) -> Role:
+def create_role(
+    db: Session, data: RoleCreate, company_id: str, actor_id: str | None = None
+) -> Role:
     # Validate permission keys
     valid_keys = set(get_all_permission_keys())
     invalid = set(data.permission_keys) - valid_keys
@@ -96,15 +99,28 @@ def create_role(db: Session, data: RoleCreate, company_id: str) -> Role:
     for perm_key in data.permission_keys:
         db.add(RolePermission(role_id=role.id, permission_key=perm_key))
 
+    audit_service.log_action(
+        db, company_id, "created", "role", role.id,
+        user_id=actor_id,
+        changes={"name": data.name, "slug": data.slug,
+                 "permission_keys": data.permission_keys},
+    )
+
     db.commit()
     db.refresh(role)
     return role
 
 
 def update_role(
-    db: Session, role_id: str, data: RoleUpdate, company_id: str
+    db: Session,
+    role_id: str,
+    data: RoleUpdate,
+    company_id: str,
+    actor_id: str | None = None,
 ) -> Role:
     role = get_role(db, role_id, company_id)
+
+    old_data = {"name": role.name, "description": role.description, "is_active": role.is_active}
 
     if data.name is not None:
         role.name = data.name
@@ -118,12 +134,22 @@ def update_role(
             )
         role.is_active = data.is_active
 
+    new_data = {"name": role.name, "description": role.description, "is_active": role.is_active}
+    changes = audit_service.compute_changes(old_data, new_data)
+    if changes:
+        audit_service.log_action(
+            db, company_id, "updated", "role", role.id,
+            user_id=actor_id, changes=changes,
+        )
+
     db.commit()
     db.refresh(role)
     return role
 
 
-def delete_role(db: Session, role_id: str, company_id: str) -> None:
+def delete_role(
+    db: Session, role_id: str, company_id: str, actor_id: str | None = None
+) -> None:
     role = get_role(db, role_id, company_id)
 
     if role.is_system:
@@ -142,12 +168,22 @@ def delete_role(db: Session, role_id: str, company_id: str) -> None:
             detail=f"Cannot delete role with {user_count} assigned user(s). Reassign them first.",
         )
 
+    audit_service.log_action(
+        db, company_id, "deleted", "role", role.id,
+        user_id=actor_id,
+        changes={"name": role.name, "slug": role.slug},
+    )
+
     db.delete(role)
     db.commit()
 
 
 def set_role_permissions(
-    db: Session, role_id: str, permission_keys: list[str], company_id: str
+    db: Session,
+    role_id: str,
+    permission_keys: list[str],
+    company_id: str,
+    actor_id: str | None = None,
 ) -> Role:
     role = get_role(db, role_id, company_id)
 
@@ -166,10 +202,20 @@ def set_role_permissions(
             detail=f"Invalid permission keys: {', '.join(sorted(invalid))}",
         )
 
+    old_keys = sorted([rp.permission_key for rp in role.permissions])
+
     # Replace all role permissions
     db.query(RolePermission).filter(RolePermission.role_id == role_id).delete()
     for perm_key in permission_keys:
         db.add(RolePermission(role_id=role_id, permission_key=perm_key))
+
+    new_keys = sorted(permission_keys)
+    if old_keys != new_keys:
+        audit_service.log_action(
+            db, company_id, "updated", "role", role.id,
+            user_id=actor_id,
+            changes={"permission_keys": {"old": old_keys, "new": new_keys}},
+        )
 
     db.commit()
     db.refresh(role)

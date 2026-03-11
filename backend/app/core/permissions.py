@@ -6,6 +6,7 @@ The flat permission key format is "module.action" (e.g., "users.view").
 """
 
 PERMISSIONS: dict[str, list[str]] = {
+    "audit": ["view"],
     "dashboard": ["view"],
     "users": ["view", "create", "edit", "delete"],
     "roles": ["view", "create", "edit", "delete"],

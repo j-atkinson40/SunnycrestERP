@@ -61,7 +61,7 @@ def create(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("users.create")),
 ):
-    user = create_user(db, data, current_user.company_id)
+    user = create_user(db, data, current_user.company_id, actor_id=current_user.id)
     db.refresh(user)
     return _user_to_response(user)
 
@@ -73,7 +73,7 @@ def update(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("users.edit")),
 ):
-    user = update_user(db, user_id, data, current_user.company_id)
+    user = update_user(db, user_id, data, current_user.company_id, actor_id=current_user.id)
     db.refresh(user)
     return _user_to_response(user)
 
@@ -84,7 +84,7 @@ def delete(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("users.delete")),
 ):
-    deactivate_user(db, user_id, current_user.company_id)
+    deactivate_user(db, user_id, current_user.company_id, actor_id=current_user.id)
     return {"detail": "User deactivated"}
 
 

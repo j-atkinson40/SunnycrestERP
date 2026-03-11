@@ -10,6 +10,7 @@ import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
+import AuditLogs from "@/pages/admin/audit-logs";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -62,6 +63,18 @@ export default function App() {
                     <Route
                       path="/admin/roles"
                       element={<RoleManagement />}
+                    />
+                  </Route>
+
+                  {/* Audit logs — requires audit.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="audit.view" />
+                    }
+                  >
+                    <Route
+                      path="/admin/audit-logs"
+                      element={<AuditLogs />}
                     />
                   </Route>
                 </Route>

@@ -56,7 +56,7 @@ def create_role(
     current_user: User = Depends(require_permission("roles.create")),
     db: Session = Depends(get_db),
 ):
-    role = role_service.create_role(db, data, current_user.company_id)
+    role = role_service.create_role(db, data, current_user.company_id, actor_id=current_user.id)
     return _role_to_response(role)
 
 
@@ -77,7 +77,7 @@ def update_role(
     current_user: User = Depends(require_permission("roles.edit")),
     db: Session = Depends(get_db),
 ):
-    role = role_service.update_role(db, role_id, data, current_user.company_id)
+    role = role_service.update_role(db, role_id, data, current_user.company_id, actor_id=current_user.id)
     return _role_to_response(role)
 
 
@@ -87,7 +87,7 @@ def delete_role(
     current_user: User = Depends(require_permission("roles.delete")),
     db: Session = Depends(get_db),
 ):
-    role_service.delete_role(db, role_id, current_user.company_id)
+    role_service.delete_role(db, role_id, current_user.company_id, actor_id=current_user.id)
 
 
 @router.put("/{role_id}/permissions", response_model=RoleResponse)
@@ -98,6 +98,7 @@ def set_role_permissions(
     db: Session = Depends(get_db),
 ):
     role = role_service.set_role_permissions(
-        db, role_id, data.permission_keys, current_user.company_id
+        db, role_id, data.permission_keys, current_user.company_id,
+        actor_id=current_user.id,
     )
     return _role_to_response(role)

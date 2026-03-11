@@ -12,6 +12,7 @@ const allNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", permission: "dashboard.view" },
   { label: "User Management", href: "/admin/users", permission: "users.view" },
   { label: "Role Management", href: "/admin/roles", permission: "roles.view" },
+  { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit.view" },
   // Future: { label: "Products", href: "/products", permission: "products.view" },
   // Future: { label: "Inventory", href: "/inventory", permission: "inventory.view" },
 ];

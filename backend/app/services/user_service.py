@@ -5,6 +5,7 @@ from app.core.security import hash_password
 from app.models.role import Role
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
+from app.services import audit_service
 
 
 def _get_default_employee_role(db: Session, company_id: str) -> Role:
@@ -79,7 +80,9 @@ def get_user(db: Session, user_id: str, company_id: str) -> User:
     return user
 
 
-def create_user(db: Session, data: UserCreate, company_id: str) -> User:
+def create_user(
+    db: Session, data: UserCreate, company_id: str, actor_id: str | None = None
+) -> User:
     existing = (
         db.query(User)
         .filter(User.email == data.email, User.company_id == company_id)
@@ -107,15 +110,45 @@ def create_user(db: Session, data: UserCreate, company_id: str) -> User:
         company_id=company_id,
     )
     db.add(user)
+    db.flush()
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "created",
+        "user",
+        user.id,
+        user_id=actor_id,
+        changes={
+            "email": data.email,
+            "first_name": data.first_name,
+            "last_name": data.last_name,
+            "role_id": role_id,
+        },
+    )
+
     db.commit()
     db.refresh(user)
     return user
 
 
 def update_user(
-    db: Session, user_id: str, data: UserUpdate, company_id: str
+    db: Session,
+    user_id: str,
+    data: UserUpdate,
+    company_id: str,
+    actor_id: str | None = None,
 ) -> User:
     user = get_user(db, user_id, company_id)
+
+    # Capture old values before update
+    old_data = {
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role_id": user.role_id,
+        "is_active": user.is_active,
+    }
 
     update_data = data.model_dump(exclude_unset=True)
     if "email" in update_data:
@@ -140,14 +173,37 @@ def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
 
+    new_data = {
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role_id": user.role_id,
+        "is_active": user.is_active,
+    }
+    changes = audit_service.compute_changes(old_data, new_data)
+    if changes:
+        audit_service.log_action(
+            db, company_id, "updated", "user", user.id,
+            user_id=actor_id, changes=changes,
+        )
+
     db.commit()
     db.refresh(user)
     return user
 
 
-def deactivate_user(db: Session, user_id: str, company_id: str) -> User:
+def deactivate_user(
+    db: Session, user_id: str, company_id: str, actor_id: str | None = None
+) -> User:
     user = get_user(db, user_id, company_id)
     user.is_active = False
+
+    audit_service.log_action(
+        db, company_id, "deactivated", "user", user.id,
+        user_id=actor_id,
+        changes={"is_active": {"old": True, "new": False}},
+    )
+
     db.commit()
     db.refresh(user)
     return user
