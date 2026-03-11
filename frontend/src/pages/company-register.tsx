@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,6 @@ function slugify(text: string): string {
 }
 
 export default function CompanyRegisterPage() {
-  const navigate = useNavigate();
   const [companyName, setCompanyName] = useState("");
   const [companySlug, setCompanySlugValue] = useState("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);

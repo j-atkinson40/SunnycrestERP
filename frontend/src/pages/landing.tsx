@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 
 export default function LandingPage() {
   return (
