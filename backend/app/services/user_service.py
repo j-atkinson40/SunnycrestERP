@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.security import hash_password
+from app.models.employee_profile import EmployeeProfile
 from app.models.role import Role
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
@@ -48,7 +49,13 @@ def get_users(
     per_page: int = 20,
     search: str | None = None,
 ) -> dict:
-    query = db.query(User).options(joinedload(User.profile)).filter(User.company_id == company_id)
+    query = (
+        db.query(User)
+        .options(
+            joinedload(User.profile).joinedload(EmployeeProfile.department_obj)
+        )
+        .filter(User.company_id == company_id)
+    )
     if search:
         pattern = f"%{search}%"
         query = query.filter(
@@ -265,3 +272,38 @@ def deactivate_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+def reset_user_password(
+    db: Session,
+    user_id: str,
+    new_password: str,
+    company_id: str,
+    actor_id: str | None = None,
+) -> None:
+    """Admin reset of another user's password."""
+    user = get_user(db, user_id, company_id)
+    user.hashed_password = hash_password(new_password)
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "password_reset",
+        "user",
+        user.id,
+        user_id=actor_id,
+    )
+
+    notification_service.create_notification(
+        db,
+        company_id,
+        user.id,
+        title="Password Reset",
+        message="Your password has been reset by an administrator.",
+        type="warning",
+        category="user",
+        link="/profile",
+        actor_id=actor_id,
+    )
+
+    db.commit()

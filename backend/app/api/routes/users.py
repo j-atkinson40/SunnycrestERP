@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_permission
 from app.database import get_db
 from app.models.user import User
+from app.schemas.password import ResetPasswordRequest
 from app.schemas.role import UserPermissionOverrideRequest, UserPermissionOverridesResponse
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.services.permission_service import get_user_permissions
@@ -13,6 +14,7 @@ from app.services.user_service import (
     deactivate_user,
     get_user,
     get_users,
+    reset_user_password,
     update_user,
 )
 
@@ -29,7 +31,11 @@ def _user_to_response(user: User) -> dict:
     if hasattr(user, "profile") and user.profile:
         data["phone"] = user.profile.phone
         data["position"] = user.profile.position
-        data["department"] = user.profile.department
+        data["department"] = (
+            user.profile.department_obj.name
+            if user.profile.department_obj
+            else None
+        )
     return data
 
 
@@ -81,6 +87,19 @@ def update(
     user = update_user(db, user_id, data, current_user.company_id, actor_id=current_user.id)
     db.refresh(user)
     return _user_to_response(user)
+
+
+@router.post("/{user_id}/reset-password")
+def reset_password(
+    user_id: str,
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users.edit")),
+):
+    reset_user_password(
+        db, user_id, data.new_password, current_user.company_id, actor_id=current_user.id
+    )
+    return {"detail": "Password reset successfully"}
 
 
 @router.delete("/{user_id}")

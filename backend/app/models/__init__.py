@@ -1,5 +1,6 @@
 from app.models.audit_log import AuditLog
 from app.models.company import Company
+from app.models.department import Department
 from app.models.employee_profile import EmployeeProfile
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
@@ -14,6 +15,7 @@ from app.models.user_permission_override import UserPermissionOverride
 __all__ = [
     "AuditLog",
     "Company",
+    "Department",
     "EmployeeProfile",
     "InventoryItem",
     "InventoryTransaction",

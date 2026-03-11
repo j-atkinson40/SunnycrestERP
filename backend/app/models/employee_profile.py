@@ -20,7 +20,9 @@ class EmployeeProfile(Base):
     # Professional
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     position: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    department: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    department_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("departments.id"), nullable=True, index=True
+    )
     hire_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # Address
@@ -50,3 +52,4 @@ class EmployeeProfile(Base):
     )
 
     user = relationship("User", back_populates="profile")
+    department_obj = relationship("Department", back_populates="employee_profiles")

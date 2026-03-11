@@ -13,9 +13,10 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.schemas.company import CompanyResponse
+from app.schemas.password import ChangePasswordRequest
 from app.schemas.user import UserResponse
 from app.services import audit_service
-from app.services.auth_service import login_user, refresh_tokens, register_user
+from app.services.auth_service import change_password, login_user, refresh_tokens, register_user
 from app.services.permission_service import get_user_permissions
 
 router = APIRouter()
@@ -79,6 +80,16 @@ def refresh(
     company: Company = Depends(get_current_company),
 ):
     return refresh_tokens(db, data.refresh_token, company)
+
+
+@router.post("/change-password")
+def change_pwd(
+    data: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    change_password(db, current_user, data.current_password, data.new_password)
+    return {"detail": "Password changed successfully"}
 
 
 @router.get("/me")

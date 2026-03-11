@@ -3,7 +3,8 @@ export interface EmployeeProfile {
   user_id: string;
   phone: string | null;
   position: string | null;
-  department: string | null;
+  department_id: string | null;
+  department_name: string | null;
   hire_date: string | null;
   address_street: string | null;
   address_city: string | null;
@@ -28,7 +29,7 @@ export interface EmployeeProfileUpdate {
 
 export interface EmployeeProfileAdminUpdate extends EmployeeProfileUpdate {
   position?: string;
-  department?: string;
+  department_id?: string | null;
   hire_date?: string;
   notes?: string;
 }

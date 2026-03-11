@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_permission
 from app.database import get_db
+from app.models.employee_profile import EmployeeProfile
 from app.models.user import User
 from app.schemas.employee_profile import (
     EmployeeProfileAdminUpdate,
@@ -16,6 +17,15 @@ from app.services.user_service import get_user
 router = APIRouter()
 
 
+def _profile_to_response(profile: EmployeeProfile) -> dict:
+    """Convert profile model to response dict, resolving department_name."""
+    data = EmployeeProfileResponse.model_validate(profile).model_dump()
+    data["department_name"] = (
+        profile.department_obj.name if profile.department_obj else None
+    )
+    return data
+
+
 # --- Self-access routes (any authenticated user) ---
 
 
@@ -26,7 +36,7 @@ def get_my_profile(
 ):
     """Any authenticated user can view their own profile."""
     profile = employee_profile_service.get_or_create_profile(db, current_user.id)
-    response = EmployeeProfileResponse.model_validate(profile).model_dump()
+    response = _profile_to_response(profile)
     # Strip notes if user doesn't have view_notes permission
     if not user_has_permission(current_user, db, "employees.view_notes"):
         response.pop("notes", None)
@@ -47,7 +57,7 @@ def update_my_profile(
         actor_id=current_user.id,
         company_id=current_user.company_id,
     )
-    response = EmployeeProfileResponse.model_validate(profile).model_dump()
+    response = _profile_to_response(profile)
     if not user_has_permission(current_user, db, "employees.view_notes"):
         response.pop("notes", None)
     return response
@@ -66,7 +76,7 @@ def get_employee_profile(
     # Verify user belongs to same company
     target_user = get_user(db, user_id, current_user.company_id)
     profile = employee_profile_service.get_or_create_profile(db, target_user.id)
-    response = EmployeeProfileResponse.model_validate(profile).model_dump()
+    response = _profile_to_response(profile)
     if not user_has_permission(current_user, db, "employees.view_notes"):
         response.pop("notes", None)
     return response
@@ -88,4 +98,4 @@ def update_employee_profile(
         actor_id=current_user.id,
         company_id=current_user.company_id,
     )
-    return EmployeeProfileResponse.model_validate(profile)
+    return _profile_to_response(profile)

@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.employee_profile import EmployeeProfile
 from app.schemas.employee_profile import EmployeeProfileAdminUpdate, EmployeeProfileUpdate
@@ -9,6 +9,7 @@ def get_or_create_profile(db: Session, user_id: str) -> EmployeeProfile:
     """Get existing profile or create an empty one."""
     profile = (
         db.query(EmployeeProfile)
+        .options(joinedload(EmployeeProfile.department_obj))
         .filter(EmployeeProfile.user_id == user_id)
         .first()
     )
@@ -25,6 +26,7 @@ def get_profile(db: Session, user_id: str) -> EmployeeProfile | None:
     """Get profile for a user, or None."""
     return (
         db.query(EmployeeProfile)
+        .options(joinedload(EmployeeProfile.department_obj))
         .filter(EmployeeProfile.user_id == user_id)
         .first()
     )
@@ -41,7 +43,7 @@ def update_profile(
     profile = get_or_create_profile(db, user_id)
 
     all_fields = [
-        "phone", "position", "department", "hire_date",
+        "phone", "position", "department_id", "hire_date",
         "address_street", "address_city", "address_state", "address_zip",
         "emergency_contact_name", "emergency_contact_phone", "notes",
     ]

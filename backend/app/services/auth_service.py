@@ -14,6 +14,7 @@ from app.models.role import Role
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.company import CompanyRegisterRequest
+from app.services import audit_service
 from app.services.role_service import seed_default_roles
 
 
@@ -174,3 +175,27 @@ def refresh_tokens(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),
     )
+
+
+def change_password(
+    db: Session, user: User, current_password: str, new_password: str
+) -> None:
+    """Change own password. Verifies current password first."""
+    if not verify_password(current_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    user.hashed_password = hash_password(new_password)
+
+    audit_service.log_action(
+        db,
+        user.company_id,
+        "password_changed",
+        "user",
+        user.id,
+        user_id=user.id,
+    )
+
+    db.commit()

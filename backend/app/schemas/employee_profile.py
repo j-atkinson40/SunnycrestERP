@@ -10,7 +10,8 @@ class EmployeeProfileResponse(BaseModel):
     user_id: str
     phone: str | None = None
     position: str | None = None
-    department: str | None = None
+    department_id: str | None = None
+    department_name: str | None = None
     hire_date: date | None = None
     address_street: str | None = None
     address_city: str | None = None
@@ -41,6 +42,6 @@ class EmployeeProfileAdminUpdate(EmployeeProfileUpdate):
     """Extended fields only admins can set."""
 
     position: str | None = None
-    department: str | None = None
+    department_id: str | None = None
     hire_date: date | None = None
     notes: str | None = None

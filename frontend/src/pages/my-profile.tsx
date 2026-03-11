@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { authService } from "@/services/auth-service";
 import { employeeProfileService } from "@/services/employee-profile-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,13 @@ export default function MyProfile() {
   const [addressZip, setAddressZip] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
+
+  // Change password
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
 
   const loadProfile = useCallback(async () => {
     try {
@@ -73,6 +81,33 @@ export default function MyProfile() {
     }
   }
 
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordError("");
+
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await authService.changePassword(currentPassword, newPassword);
+      toast.success("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: unknown) {
+      setPasswordError(getApiErrorMessage(err, "Failed to change password"));
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl space-y-6">
@@ -110,7 +145,7 @@ export default function MyProfile() {
           </div>
         </div>
         {/* Admin-managed fields shown read-only */}
-        {(profile?.position || profile?.department || profile?.hire_date) && (
+        {(profile?.position || profile?.department_name || profile?.hire_date) && (
           <div className="mt-4 grid grid-cols-3 gap-4">
             {profile?.position && (
               <div className="space-y-2">
@@ -118,10 +153,10 @@ export default function MyProfile() {
                 <Input value={profile.position} disabled />
               </div>
             )}
-            {profile?.department && (
+            {profile?.department_name && (
               <div className="space-y-2">
                 <Label>Department</Label>
-                <Input value={profile.department} disabled />
+                <Input value={profile.department_name} disabled />
               </div>
             )}
             {profile?.hire_date && (
@@ -231,6 +266,60 @@ export default function MyProfile() {
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </div>
+      </form>
+
+      {/* Change Password — separate form */}
+      <form onSubmit={handleChangePassword} className="space-y-6">
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Change Password</h2>
+          <Separator className="my-4" />
+          {passwordError && (
+            <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {passwordError}
+            </div>
+          )}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Current Password</Label>
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>New Password</Label>
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min. 8 characters"
+                  required
+                  minLength={8}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Confirm New Password</Label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                  required
+                  minLength={8}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button type="submit" disabled={changingPassword}>
+              {changingPassword ? "Changing..." : "Change Password"}
+            </Button>
+          </div>
+        </Card>
       </form>
     </div>
   );

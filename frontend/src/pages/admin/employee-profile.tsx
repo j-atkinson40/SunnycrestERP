@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { departmentService } from "@/services/department-service";
 import { employeeProfileService } from "@/services/employee-profile-service";
+import { userService } from "@/services/user-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { User } from "@/types/auth";
+import type { Department } from "@/types/department";
 import type { EmployeeProfile } from "@/types/employee-profile";
 import apiClient from "@/lib/api-client";
 
@@ -27,7 +40,7 @@ export default function AdminEmployeeProfile() {
   // Profile fields
   const [phone, setPhone] = useState("");
   const [position, setPosition] = useState("");
-  const [department, setDepartment] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
   const [hireDate, setHireDate] = useState("");
   const [addressStreet, setAddressStreet] = useState("");
   const [addressCity, setAddressCity] = useState("");
@@ -37,10 +50,26 @@ export default function AdminEmployeeProfile() {
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Departments list
+  const [departments, setDepartments] = useState<Department[]>([]);
+
+  // Reset password dialog
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState("");
+
+  // Manage departments dialog
+  const [deptDialogOpen, setDeptDialogOpen] = useState(false);
+  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptDesc, setNewDeptDesc] = useState("");
+  const [creatingDept, setCreatingDept] = useState(false);
+
   function populateForm(p: EmployeeProfile) {
     setPhone(p.phone || "");
     setPosition(p.position || "");
-    setDepartment(p.department || "");
+    setDepartmentId(p.department_id || "");
     setHireDate(p.hire_date || "");
     setAddressStreet(p.address_street || "");
     setAddressCity(p.address_city || "");
@@ -51,6 +80,15 @@ export default function AdminEmployeeProfile() {
     setNotes(p.notes || "");
   }
 
+  async function loadDepartments() {
+    try {
+      const depts = await departmentService.getDepartments();
+      setDepartments(depts);
+    } catch {
+      // Non-critical — dropdown will just be empty
+    }
+  }
+
   const loadData = useCallback(async () => {
     if (!userId) return;
     try {
@@ -58,6 +96,7 @@ export default function AdminEmployeeProfile() {
       const [userRes, profile] = await Promise.all([
         apiClient.get<User>(`/users/${userId}`),
         employeeProfileService.getProfile(userId),
+        loadDepartments(),
       ]);
       setTargetUser(userRes.data);
       populateForm(profile);
@@ -81,7 +120,7 @@ export default function AdminEmployeeProfile() {
       const updated = await employeeProfileService.updateProfile(userId, {
         phone,
         position,
-        department,
+        department_id: departmentId || null,
         hire_date: hireDate || undefined,
         address_street: addressStreet,
         address_city: addressCity,
@@ -97,6 +136,68 @@ export default function AdminEmployeeProfile() {
       setError(getApiErrorMessage(err, "Failed to save profile"));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!userId) return;
+    setResetPasswordError("");
+
+    if (resetNewPassword.length < 8) {
+      setResetPasswordError("Password must be at least 8 characters");
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetPasswordError("Passwords do not match");
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      await userService.resetPassword(userId, resetNewPassword);
+      toast.success("Password reset successfully");
+      setResetDialogOpen(false);
+      setResetNewPassword("");
+      setResetConfirmPassword("");
+    } catch (err: unknown) {
+      setResetPasswordError(getApiErrorMessage(err, "Failed to reset password"));
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
+  async function handleCreateDepartment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newDeptName.trim()) return;
+    setCreatingDept(true);
+    try {
+      await departmentService.createDepartment({
+        name: newDeptName.trim(),
+        description: newDeptDesc.trim() || undefined,
+      });
+      toast.success("Department created");
+      setNewDeptName("");
+      setNewDeptDesc("");
+      await loadDepartments();
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to create department"));
+    } finally {
+      setCreatingDept(false);
+    }
+  }
+
+  async function handleDeleteDepartment(id: string) {
+    try {
+      await departmentService.deleteDepartment(id);
+      toast.success("Department deactivated");
+      await loadDepartments();
+      // If current profile uses this department, clear it
+      if (departmentId === id) {
+        setDepartmentId("");
+      }
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to delete department"));
     }
   }
 
@@ -134,7 +235,78 @@ export default function AdminEmployeeProfile() {
 
       {/* User info — read-only */}
       <Card className="p-6">
-        <h2 className="text-lg font-semibold">Account Information</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Account Information</h2>
+          {canEdit && (
+            <Dialog
+              open={resetDialogOpen}
+              onOpenChange={(open) => {
+                setResetDialogOpen(open);
+                if (!open) {
+                  setResetNewPassword("");
+                  setResetConfirmPassword("");
+                  setResetPasswordError("");
+                }
+              }}
+            >
+              <DialogTrigger
+                render={<Button variant="outline" size="sm" />}
+              >
+                Reset Password
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Reset Password</DialogTitle>
+                  <DialogDescription>
+                    Set a new password for{" "}
+                    {targetUser
+                      ? `${targetUser.first_name} ${targetUser.last_name}`
+                      : "this user"}
+                    . They will be notified that their password was reset.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleResetPassword}>
+                  {resetPasswordError && (
+                    <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                      {resetPasswordError}
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>New Password</Label>
+                      <Input
+                        type="password"
+                        value={resetNewPassword}
+                        onChange={(e) => setResetNewPassword(e.target.value)}
+                        placeholder="Min. 8 characters"
+                        required
+                        minLength={8}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Confirm Password</Label>
+                      <Input
+                        type="password"
+                        value={resetConfirmPassword}
+                        onChange={(e) =>
+                          setResetConfirmPassword(e.target.value)
+                        }
+                        placeholder="Re-enter password"
+                        required
+                        minLength={8}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter className="mt-4">
+                    <Button type="submit" disabled={resettingPassword}>
+                      {resettingPassword ? "Resetting..." : "Reset Password"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
         <Separator className="my-4" />
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -172,13 +344,116 @@ export default function AdminEmployeeProfile() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Department</Label>
-                <Input
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
+                <div className="flex items-center justify-between">
+                  <Label>Department</Label>
+                  {canEdit && (
+                    <Dialog
+                      open={deptDialogOpen}
+                      onOpenChange={setDeptDialogOpen}
+                    >
+                      <DialogTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-5 w-5"
+                          />
+                        }
+                      >
+                        <SettingsIcon className="size-3.5" />
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Manage Departments</DialogTitle>
+                          <DialogDescription>
+                            Create and manage departments for your organization.
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        {/* New department form */}
+                        <form
+                          onSubmit={handleCreateDepartment}
+                          className="space-y-3"
+                        >
+                          <div className="flex gap-2">
+                            <Input
+                              value={newDeptName}
+                              onChange={(e) => setNewDeptName(e.target.value)}
+                              placeholder="Department name"
+                              className="flex-1"
+                              required
+                            />
+                            <Button
+                              type="submit"
+                              size="icon"
+                              disabled={creatingDept || !newDeptName.trim()}
+                            >
+                              <PlusIcon className="size-4" />
+                            </Button>
+                          </div>
+                          <Input
+                            value={newDeptDesc}
+                            onChange={(e) => setNewDeptDesc(e.target.value)}
+                            placeholder="Description (optional)"
+                          />
+                        </form>
+
+                        <Separator />
+
+                        {/* Existing departments list */}
+                        <div className="max-h-60 space-y-2 overflow-y-auto">
+                          {departments.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                              No departments yet.
+                            </p>
+                          ) : (
+                            departments.map((dept) => (
+                              <div
+                                key={dept.id}
+                                className="flex items-center justify-between rounded-md border p-2 text-sm"
+                              >
+                                <div>
+                                  <span className="font-medium">
+                                    {dept.name}
+                                  </span>
+                                  {dept.description && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {dept.description}
+                                    </p>
+                                  )}
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => handleDeleteDepartment(dept.id)}
+                                >
+                                  <Trash2Icon className="size-3.5 text-destructive" />
+                                </Button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <DialogFooter showCloseButton />
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
+                <select
+                  value={departmentId}
+                  onChange={(e) => setDepartmentId(e.target.value)}
                   disabled={!canEdit}
-                  placeholder="e.g. Logistics"
-                />
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">No department</option>
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
