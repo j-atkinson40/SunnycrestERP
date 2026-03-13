@@ -26,6 +26,13 @@ import CustomersPage from "@/pages/customers";
 import CustomerDetailPage from "@/pages/customer-detail";
 import VendorsPage from "@/pages/vendors";
 import VendorDetailPage from "@/pages/vendor-detail";
+import PurchaseOrdersPage from "@/pages/purchase-orders";
+import PurchaseOrderDetailPage from "@/pages/purchase-order-detail";
+import VendorBillsPage from "@/pages/vendor-bills";
+import VendorBillDetailPage from "@/pages/vendor-bill-detail";
+import VendorPaymentsPage from "@/pages/vendor-payments";
+import VendorPaymentDetailPage from "@/pages/vendor-payment-detail";
+import APAgingPage from "@/pages/ap-aging";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -126,6 +133,42 @@ export default function App() {
                     <Route
                       path="/vendors/:vendorId"
                       element={<VendorDetailPage />}
+                    />
+                  </Route>
+
+                  {/* AP / Purchasing — requires purchasing module + ap.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="ap.view" requiredModule="purchasing" />
+                    }
+                  >
+                    <Route
+                      path="/ap/purchase-orders"
+                      element={<PurchaseOrdersPage />}
+                    />
+                    <Route
+                      path="/ap/purchase-orders/:id"
+                      element={<PurchaseOrderDetailPage />}
+                    />
+                    <Route
+                      path="/ap/bills"
+                      element={<VendorBillsPage />}
+                    />
+                    <Route
+                      path="/ap/bills/:id"
+                      element={<VendorBillDetailPage />}
+                    />
+                    <Route
+                      path="/ap/payments"
+                      element={<VendorPaymentsPage />}
+                    />
+                    <Route
+                      path="/ap/payments/:id"
+                      element={<VendorPaymentDetailPage />}
+                    />
+                    <Route
+                      path="/ap/aging"
+                      element={<APAgingPage />}
                     />
                   </Route>
 

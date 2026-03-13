@@ -148,6 +148,70 @@ Rules:
 """
 
 
+# ---------------------------------------------------------------------------
+# AP / Purchasing AI parsing
+# ---------------------------------------------------------------------------
+
+_AP_SYSTEM_PROMPT = """\
+You are an accounts payable assistant for a business ERP system.
+Your job is to parse natural-language AP and purchasing commands into structured JSON.
+
+You will receive:
+1. A user command (e.g. "Create a PO to Acme Supply for 100 widgets at $5 each")
+2. A vendor catalog with id and name for each active vendor
+
+Return a JSON object with these fields:
+{
+  "intent": one of "create_po", "create_bill", "query_aging", "record_payment",
+  "vendor_name": matched vendor name or the name from user input,
+  "vendor_id": matched vendor's id (string) or null if unmatched,
+  "items": array of line items [{description, quantity, unit_cost}] or null,
+  "invoice_number": vendor invoice number if mentioned (string or null),
+  "amount": total amount if mentioned (number or null),
+  "payment_method": one of "check", "ach", "wire", "credit_card", "cash" or null,
+  "reference_number": check number or reference if mentioned (string or null),
+  "date": date if mentioned in ISO format (string or null),
+  "notes": any additional notes (string or null),
+  "confidence": "high", "medium", or "low",
+  "ambiguous": true if the command is unclear,
+  "clarification_message": a short message asking for clarification if ambiguous (null otherwise)
+}
+
+Rules:
+- Match vendors by name (fuzzy match against the catalog).
+- Keywords: "PO", "purchase order", "order from", "buy" → intent "create_po"
+- Keywords: "bill", "invoice", "received bill" → intent "create_bill"
+- Keywords: "aging", "outstanding", "overdue", "how much do we owe" → intent "query_aging"
+- Keywords: "pay", "payment", "paid", "send check" → intent "record_payment"
+- For create_po, extract line items (description, quantity, unit_cost) if mentioned.
+- For create_bill, extract invoice_number and amount if mentioned.
+- For record_payment, extract amount, payment_method, and reference_number if mentioned.
+- If you cannot determine the intent, set confidence to "low" and ambiguous to true.
+- If you cannot match a vendor, set vendor_id to null and confidence to "medium" at best.
+"""
+
+
+def parse_ap_command(
+    user_input: str,
+    vendor_catalog: list[dict],
+) -> dict:
+    """
+    Parse a natural-language AP command into structured action data.
+
+    Args:
+        user_input: The user's free-text AP command.
+        vendor_catalog: List of dicts with keys: id, name.
+
+    Returns:
+        Parsed result dict with intent, vendor, items, etc.
+    """
+    return call_anthropic(
+        system_prompt=_AP_SYSTEM_PROMPT,
+        user_message=user_input,
+        context_data={"vendor_catalog": vendor_catalog},
+    )
+
+
 def parse_inventory_command(
     user_input: str,
     product_catalog: list[dict],

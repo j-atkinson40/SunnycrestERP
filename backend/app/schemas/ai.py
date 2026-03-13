@@ -46,3 +46,36 @@ class AIInventoryParseResponse(BaseModel):
     command: AIInventoryParsedCommand | None = None
     commands: list[AIInventoryParsedCommand] | None = None
     error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# AP / Purchasing AI schemas
+# ---------------------------------------------------------------------------
+
+
+class AIAPParseRequest(BaseModel):
+    user_input: str = Field(
+        ..., min_length=1, description="Natural language AP / purchasing command"
+    )
+
+
+class AIAPParsedResult(BaseModel):
+    intent: str | None = None  # create_po, create_bill, query_aging, record_payment
+    vendor_name: str | None = None
+    vendor_id: str | None = None
+    items: list[dict] | None = None  # [{description, quantity, unit_cost}]
+    invoice_number: str | None = None
+    amount: float | None = None
+    payment_method: str | None = None
+    reference_number: str | None = None
+    date: str | None = None
+    notes: str | None = None
+    confidence: str = "low"
+    ambiguous: bool = False
+    clarification_message: str | None = None
+
+
+class AIAPParseResponse(BaseModel):
+    success: bool
+    result: AIAPParsedResult | None = None
+    error: str | None = None

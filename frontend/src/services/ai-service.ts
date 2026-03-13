@@ -1,5 +1,6 @@
 import apiClient from "@/lib/api-client";
 import type {
+  AIAPParseResponse,
   AIInventoryParseResponse,
   AIPromptRequest,
   AIPromptResponse,
@@ -30,6 +31,16 @@ export const aiService = {
   ): Promise<AIInventoryParseResponse> {
     const response = await apiClient.post<AIInventoryParseResponse>(
       "/ai/parse-inventory",
+      { user_input: userInput },
+    );
+    return response.data;
+  },
+
+  async parseAPCommand(
+    userInput: string,
+  ): Promise<AIAPParseResponse> {
+    const response = await apiClient.post<AIAPParseResponse>(
+      "/ai/parse-ap",
       { user_input: userInput },
     );
     return response.data;

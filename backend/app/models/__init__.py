@@ -17,6 +17,8 @@ from app.models.performance_note import PerformanceNote
 from app.models.product import Product
 from app.models.product_category import ProductCategory
 from app.models.product_price_tier import ProductPriceTier
+from app.models.purchase_order import PurchaseOrder
+from app.models.purchase_order_line import PurchaseOrderLine
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.sage_export_config import SageExportConfig
@@ -24,8 +26,12 @@ from app.models.sync_log import SyncLog
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
 from app.models.vendor import Vendor
+from app.models.vendor_bill import VendorBill
+from app.models.vendor_bill_line import VendorBillLine
 from app.models.vendor_contact import VendorContact
 from app.models.vendor_note import VendorNote
+from app.models.vendor_payment import VendorPayment
+from app.models.vendor_payment_application import VendorPaymentApplication
 
 __all__ = [
     "AuditLog",
@@ -48,6 +54,8 @@ __all__ = [
     "Product",
     "ProductCategory",
     "ProductPriceTier",
+    "PurchaseOrder",
+    "PurchaseOrderLine",
     "Role",
     "RolePermission",
     "SageExportConfig",
@@ -55,6 +63,10 @@ __all__ = [
     "User",
     "UserPermissionOverride",
     "Vendor",
+    "VendorBill",
+    "VendorBillLine",
     "VendorContact",
     "VendorNote",
+    "VendorPayment",
+    "VendorPaymentApplication",
 ]
