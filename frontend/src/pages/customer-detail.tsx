@@ -758,11 +758,12 @@ export default function CustomerDetailPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Contacts</h2>
           {canEdit && (
+            <>
+            <Button variant="outline" size="sm" onClick={openAddContact}>
+              <PlusIcon className="mr-1 size-4" />
+              Add Contact
+            </Button>
             <Dialog open={contactDialogOpen} onOpenChange={setContactDialogOpen}>
-              <DialogTrigger render={<Button variant="outline" size="sm" />}>
-                <PlusIcon className="mr-1 size-4" />
-                Add Contact
-              </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>
@@ -860,6 +861,7 @@ export default function CustomerDetailPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            </>
           )}
         </div>
         <Separator className="my-4" />
