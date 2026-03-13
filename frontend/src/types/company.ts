@@ -11,6 +11,11 @@ export interface Company {
   email: string | null;
   timezone: string | null;
   logo_url: string | null;
+  tax_rate: string | null;
+  default_payment_terms: string | null;
+  payment_terms_options: string | null;
+  email_from_name: string | null;
+  email_from_address: string | null;
   created_at: string;
 }
 
@@ -24,6 +29,11 @@ export interface CompanyUpdate {
   email?: string;
   timezone?: string;
   logo_url?: string;
+  tax_rate?: string;
+  default_payment_terms?: string;
+  payment_terms_options?: string;
+  email_from_name?: string;
+  email_from_address?: string;
 }
 
 export interface CompanyRegisterRequest {

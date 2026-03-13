@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from decimal import Decimal
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -34,6 +36,15 @@ class Company(Base):
         String(50), nullable=True, default="America/Los_Angeles"
     )
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Financial Settings
+    tax_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
+    default_payment_terms: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    payment_terms_options: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Email Settings
+    email_from_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email_from_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

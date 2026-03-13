@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -41,6 +42,11 @@ class CompanyUpdate(BaseModel):
     email: EmailStr | None = None
     timezone: str | None = None
     logo_url: str | None = None
+    tax_rate: Decimal | None = None
+    default_payment_terms: str | None = None
+    payment_terms_options: str | None = None
+    email_from_name: str | None = None
+    email_from_address: EmailStr | None = None
 
     @field_validator("*", mode="before")
     @classmethod
@@ -65,6 +71,11 @@ class CompanyResponse(BaseModel):
     email: str | None = None
     timezone: str | None = None
     logo_url: str | None = None
+    tax_rate: Decimal | None = None
+    default_payment_terms: str | None = None
+    payment_terms_options: str | None = None
+    email_from_name: str | None = None
+    email_from_address: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

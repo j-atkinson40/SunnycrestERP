@@ -28,6 +28,8 @@ def update_company(
     tracked_fields = [
         "name", "address_street", "address_city", "address_state",
         "address_zip", "phone", "email", "timezone", "logo_url",
+        "tax_rate", "default_payment_terms", "payment_terms_options",
+        "email_from_name", "email_from_address",
     ]
     old_data = {f: getattr(company, f) for f in tracked_fields}
 

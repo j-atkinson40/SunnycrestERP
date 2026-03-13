@@ -38,6 +38,11 @@ export default function CompanySettings() {
   const [email, setEmail] = useState("");
   const [timezone, setTimezone] = useState("America/Los_Angeles");
   const [logoUrl, setLogoUrl] = useState("");
+  const [taxRate, setTaxRate] = useState("");
+  const [defaultPaymentTerms, setDefaultPaymentTerms] = useState("");
+  const [paymentTermsOptions, setPaymentTermsOptions] = useState("");
+  const [emailFromName, setEmailFromName] = useState("");
+  const [emailFromAddress, setEmailFromAddress] = useState("");
 
   const loadSettings = useCallback(async () => {
     try {
@@ -62,6 +67,11 @@ export default function CompanySettings() {
     setEmail(company.email || "");
     setTimezone(company.timezone || "America/Los_Angeles");
     setLogoUrl(company.logo_url || "");
+    setTaxRate(company.tax_rate || "");
+    setDefaultPaymentTerms(company.default_payment_terms || "");
+    setPaymentTermsOptions(company.payment_terms_options || "");
+    setEmailFromName(company.email_from_name || "");
+    setEmailFromAddress(company.email_from_address || "");
   }
 
   useEffect(() => {
@@ -86,6 +96,11 @@ export default function CompanySettings() {
         email: emptyToUndefined(email),
         timezone,
         logo_url: emptyToUndefined(logoUrl),
+        tax_rate: emptyToUndefined(taxRate),
+        default_payment_terms: emptyToUndefined(defaultPaymentTerms),
+        payment_terms_options: emptyToUndefined(paymentTermsOptions),
+        email_from_name: emptyToUndefined(emailFromName),
+        email_from_address: emptyToUndefined(emailFromAddress),
       });
       populateForm(updated);
       await refreshCompany();
@@ -245,6 +260,80 @@ export default function CompanySettings() {
               <p className="text-xs text-muted-foreground">
                 Direct URL to your company logo image.
               </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Financial Settings */}
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Financial Settings</h2>
+          <Separator className="my-4" />
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tax Rate (%)</Label>
+                <Input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  max="1"
+                  value={taxRate}
+                  onChange={(e) => setTaxRate(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="0.0875"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter as a decimal (e.g. 0.0875 for 8.75%).
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Default Payment Terms</Label>
+                <Input
+                  value={defaultPaymentTerms}
+                  onChange={(e) => setDefaultPaymentTerms(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="Net 30"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Payment Terms Options</Label>
+              <Input
+                value={paymentTermsOptions}
+                onChange={(e) => setPaymentTermsOptions(e.target.value)}
+                disabled={!canEdit}
+                placeholder="Net 15, Net 30, Net 60, Due on Receipt"
+              />
+              <p className="text-xs text-muted-foreground">
+                Comma-separated list of available payment terms.
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Email Settings */}
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Email Settings</h2>
+          <Separator className="my-4" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>From Name</Label>
+              <Input
+                value={emailFromName}
+                onChange={(e) => setEmailFromName(e.target.value)}
+                disabled={!canEdit}
+                placeholder="Sunnycrest Farm"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>From Email Address</Label>
+              <Input
+                type="email"
+                value={emailFromAddress}
+                onChange={(e) => setEmailFromAddress(e.target.value)}
+                disabled={!canEdit}
+                placeholder="noreply@company.com"
+              />
             </div>
           </div>
         </Card>
