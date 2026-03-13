@@ -25,6 +25,9 @@ import type { User } from "@/types/auth";
 import type { Department } from "@/types/department";
 import type { EmployeeProfile } from "@/types/employee-profile";
 import DocumentList from "@/components/document-list";
+import EquipmentSection from "@/components/equipment-section";
+import OnboardingSection from "@/components/onboarding-section";
+import PerformanceNotesSection from "@/components/performance-notes-section";
 import apiClient from "@/lib/api-client";
 
 export default function AdminEmployeeProfile() {
@@ -590,6 +593,33 @@ export default function AdminEmployeeProfile() {
             entityId={userId}
             canEdit={canEdit}
           />
+        </Card>
+      )}
+
+      {/* Onboarding */}
+      {userId && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Onboarding</h2>
+          <Separator className="my-4" />
+          <OnboardingSection userId={userId} canEdit={canEdit} />
+        </Card>
+      )}
+
+      {/* Performance Notes */}
+      {userId && canViewNotes && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Performance Notes</h2>
+          <Separator className="my-4" />
+          <PerformanceNotesSection userId={userId} canEdit={canEdit} />
+        </Card>
+      )}
+
+      {/* Equipment */}
+      {userId && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Equipment</h2>
+          <Separator className="my-4" />
+          <EquipmentSection userId={userId} canEdit={canEdit} />
         </Card>
       )}
     </div>
