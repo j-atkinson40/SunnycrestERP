@@ -18,6 +18,7 @@ from app.schemas.product import (
 )
 from app.services import audit_service
 from app.services.inventory_service import create_inventory_item
+from app.services.sync_log_service import complete_sync_log, create_sync_log
 
 
 # ---------------------------------------------------------------------------
@@ -676,6 +677,15 @@ def import_products_from_csv(
 
     Returns {"created": int, "skipped": int, "errors": [{"row": int, "message": str}]}
     """
+    # Create sync log entry for this import
+    sync_log = create_sync_log(
+        db,
+        company_id,
+        sync_type="csv_import",
+        source="csv_file",
+        destination="products",
+    )
+
     try:
         text = file_content.decode("utf-8-sig")  # handles BOM from Excel
     except UnicodeDecodeError:
@@ -783,6 +793,12 @@ def import_products_from_csv(
             user_id=actor_id,
             changes={"count": created},
         )
-        db.commit()
+
+    # Complete sync log
+    error_summary = "; ".join(
+        f"Row {e['row']}: {e['message']}" for e in errors[:10]
+    ) if errors else None
+    complete_sync_log(db, sync_log, created, skipped, error_summary)
+    db.commit()
 
     return {"created": created, "skipped": skipped, "errors": errors}
