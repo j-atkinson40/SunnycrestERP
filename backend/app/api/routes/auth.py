@@ -17,6 +17,7 @@ from app.schemas.password import ChangePasswordRequest
 from app.schemas.user import UserResponse
 from app.services import audit_service
 from app.services.auth_service import change_password, login_user, refresh_tokens, register_user
+from app.services.module_service import get_enabled_module_keys
 from app.services.permission_service import get_user_permissions
 
 router = APIRouter()
@@ -99,9 +100,11 @@ def me(
     db: Session = Depends(get_db),
 ):
     permissions = sorted(get_user_permissions(current_user, db))
+    enabled_modules = get_enabled_module_keys(db, current_user.company_id)
     user_data = _user_to_response(current_user)
     return {
         **user_data,
         "permissions": permissions,
+        "enabled_modules": enabled_modules,
         "company": CompanyResponse.model_validate(company).model_dump(),
     }

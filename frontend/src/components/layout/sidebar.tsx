@@ -6,13 +6,14 @@ interface NavItem {
   label: string;
   href: string;
   permission?: string;
+  module?: string;
 }
 
 const allNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", permission: "dashboard.view" },
   { label: "My Profile", href: "/profile" },
-  { label: "Products", href: "/products", permission: "products.view" },
-  { label: "Inventory", href: "/inventory", permission: "inventory.view" },
+  { label: "Products", href: "/products", permission: "products.view", module: "products" },
+  { label: "Inventory", href: "/inventory", permission: "inventory.view", module: "inventory" },
   { label: "User Management", href: "/admin/users", permission: "users.view" },
   { label: "Role Management", href: "/admin/roles", permission: "roles.view" },
   { label: "Company Settings", href: "/admin/settings", permission: "company.view" },
@@ -20,11 +21,13 @@ const allNavItems: NavItem[] = [
 ];
 
 export function Sidebar() {
-  const { company, hasPermission } = useAuth();
+  const { company, hasPermission, hasModule } = useAuth();
   const location = useLocation();
 
   const navItems = allNavItems.filter(
-    (item) => !item.permission || hasPermission(item.permission)
+    (item) =>
+      (!item.permission || hasPermission(item.permission)) &&
+      (!item.module || hasModule(item.module))
   );
 
   return (

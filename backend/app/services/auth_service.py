@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.company import CompanyRegisterRequest
 from app.services import audit_service
+from app.services.module_service import seed_company_modules
 from app.services.role_service import seed_default_roles
 
 
@@ -33,8 +34,9 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> dict:
     db.add(company)
     db.flush()
 
-    # Seed default roles for the new company
+    # Seed default roles and modules for the new company
     admin_role, _employee_role = seed_default_roles(db, company.id)
+    seed_company_modules(db, company.id)
 
     existing_user = (
         db.query(User)

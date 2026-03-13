@@ -74,10 +74,10 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Products — requires products.view permission */}
+                  {/* Products — requires products module + products.view permission */}
                   <Route
                     element={
-                      <ProtectedRoute requiredPermission="products.view" />
+                      <ProtectedRoute requiredPermission="products.view" requiredModule="products" />
                     }
                   >
                     <Route
@@ -90,10 +90,10 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Inventory — requires inventory.view permission */}
+                  {/* Inventory — requires inventory module + inventory.view permission */}
                   <Route
                     element={
-                      <ProtectedRoute requiredPermission="inventory.view" />
+                      <ProtectedRoute requiredPermission="inventory.view" requiredModule="inventory" />
                     }
                   >
                     <Route

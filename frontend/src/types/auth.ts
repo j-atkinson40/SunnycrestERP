@@ -7,6 +7,7 @@ export interface User {
   role_name: string;
   role_slug: string;
   permissions: string[];
+  enabled_modules: string[];
   is_active: boolean;
   company_id: string;
   created_at: string;

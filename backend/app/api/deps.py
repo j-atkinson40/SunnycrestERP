@@ -91,3 +91,26 @@ def require_permission(permission_key: str):
         return current_user
 
     return _check_permission
+
+
+def require_module(module_name: str):
+    """
+    Dependency factory for module-based authorization.
+
+    Usage: Depends(require_module("products"))
+    """
+
+    def _check_module(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        from app.services.module_service import is_module_enabled
+
+        if not is_module_enabled(db, current_user.company_id, module_name):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Module '{module_name}' is not enabled for this company",
+            )
+        return current_user
+
+    return _check_module

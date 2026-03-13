@@ -18,6 +18,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   permissions: Set<string>;
   hasPermission: (key: string) => boolean;
+  enabledModules: Set<string>;
+  hasModule: (key: string) => boolean;
   isAdmin: boolean;
   refreshCompany: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -40,6 +42,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = useCallback(
     (key: string) => permissions.has(key),
     [permissions]
+  );
+
+  const enabledModules = useMemo(
+    () => new Set(user?.enabled_modules ?? []),
+    [user?.enabled_modules]
+  );
+
+  const hasModule = useCallback(
+    (key: string) => enabledModules.has(key),
+    [enabledModules]
   );
 
   const isAdmin = useMemo(
@@ -117,6 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         permissions,
         hasPermission,
+        enabledModules,
+        hasModule,
         isAdmin,
         refreshCompany,
         login,
