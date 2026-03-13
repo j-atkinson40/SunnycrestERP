@@ -1,9 +1,18 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_module, require_permission
+from app.database import get_db
+from app.models.product import Product
 from app.models.user import User
-from app.schemas.ai import AIPromptRequest, AIPromptResponse
-from app.services.ai_service import call_anthropic
+from app.schemas.ai import (
+    AIInventoryParseRequest,
+    AIInventoryParseResponse,
+    AIInventoryParsedCommand,
+    AIPromptRequest,
+    AIPromptResponse,
+)
+from app.services.ai_service import call_anthropic, parse_inventory_command
 
 router = APIRouter()
 
@@ -23,3 +32,40 @@ def ai_prompt(
         context_data=request.context_data,
     )
     return AIPromptResponse(success=True, data=result)
+
+
+@router.post("/parse-inventory", response_model=AIInventoryParseResponse)
+def parse_inventory(
+    request: AIInventoryParseRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("inventory.create")),
+    _module: User = Depends(require_module("inventory")),
+):
+    """
+    Parse a natural-language inventory command into structured data.
+    Requires inventory.create permission and the inventory module.
+    """
+    # Build product catalog for the user's company
+    products = (
+        db.query(Product)
+        .filter(
+            Product.company_id == current_user.company_id,
+            Product.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+    catalog = [
+        {"id": p.id, "name": p.name, "sku": p.sku}
+        for p in products
+    ]
+
+    result = parse_inventory_command(request.user_input, catalog)
+
+    # Handle multi-product commands
+    if "commands" in result and isinstance(result["commands"], list):
+        commands = [AIInventoryParsedCommand(**cmd) for cmd in result["commands"]]
+        return AIInventoryParseResponse(success=True, commands=commands)
+
+    # Single command
+    command = AIInventoryParsedCommand(**result)
+    return AIInventoryParseResponse(success=True, command=command)

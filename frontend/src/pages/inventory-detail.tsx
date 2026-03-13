@@ -60,6 +60,21 @@ export default function InventoryDetailPage() {
   const [adjustNotes, setAdjustNotes] = useState("");
   const [adjustError, setAdjustError] = useState("");
 
+  // Production dialog state
+  const [productionOpen, setProductionOpen] = useState(false);
+  const [prodQty, setProdQty] = useState("");
+  const [prodRef, setProdRef] = useState("");
+  const [prodNotes, setProdNotes] = useState("");
+  const [prodError, setProdError] = useState("");
+
+  // Write-off dialog state
+  const [writeOffOpen, setWriteOffOpen] = useState(false);
+  const [woQty, setWoQty] = useState("");
+  const [woReason, setWoReason] = useState("");
+  const [woRef, setWoRef] = useState("");
+  const [woNotes, setWoNotes] = useState("");
+  const [woError, setWoError] = useState("");
+
   // Transaction history
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [txTotal, setTxTotal] = useState(0);
@@ -136,6 +151,48 @@ export default function InventoryDetailPage() {
     }
   }
 
+  async function handleProduction() {
+    if (!productId) return;
+    setProdError("");
+    try {
+      await inventoryService.recordProduction(productId, {
+        quantity: parseInt(prodQty, 10),
+        reference: prodRef.trim() || undefined,
+        notes: prodNotes.trim() || undefined,
+      });
+      setProductionOpen(false);
+      setProdQty("");
+      setProdRef("");
+      setProdNotes("");
+      toast.success("Production recorded");
+      loadData();
+    } catch (err: unknown) {
+      setProdError(getApiErrorMessage(err, "Failed to record production"));
+    }
+  }
+
+  async function handleWriteOff() {
+    if (!productId) return;
+    setWoError("");
+    try {
+      await inventoryService.writeOffStock(productId, {
+        quantity: parseInt(woQty, 10),
+        reason: woReason.trim(),
+        reference: woRef.trim() || undefined,
+        notes: woNotes.trim() || undefined,
+      });
+      setWriteOffOpen(false);
+      setWoQty("");
+      setWoReason("");
+      setWoRef("");
+      setWoNotes("");
+      toast.success("Stock written off");
+      loadData();
+    } catch (err: unknown) {
+      setWoError(getApiErrorMessage(err, "Failed to write off stock"));
+    }
+  }
+
   async function handleSaveSettings(e: React.FormEvent) {
     e.preventDefault();
     if (!productId) return;
@@ -176,6 +233,8 @@ export default function InventoryDetailPage() {
       adjust: "Adjusted",
       count: "Counted",
       return: "Returned",
+      production: "Production",
+      write_off: "Written Off",
     };
     return map[type] || type;
   }
@@ -183,8 +242,9 @@ export default function InventoryDetailPage() {
   function txTypeBadgeVariant(
     type: string,
   ): "default" | "secondary" | "destructive" {
-    if (type === "receive" || type === "return") return "default";
-    if (type === "sell") return "destructive";
+    if (type === "receive" || type === "return" || type === "production")
+      return "default";
+    if (type === "sell" || type === "write_off") return "destructive";
     return "secondary";
   }
 
@@ -340,6 +400,146 @@ export default function InventoryDetailPage() {
                       }
                     >
                       Receive
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+            {canCreate && (
+              <Dialog open={productionOpen} onOpenChange={setProductionOpen}>
+                <DialogTrigger render={<Button variant="outline" />}>
+                  Record Production
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Record Production</DialogTitle>
+                    <DialogDescription>
+                      Record manufactured output for {item.product_name}.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {prodError && (
+                    <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                      {prodError}
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Quantity Produced</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={prodQty}
+                        onChange={(e) => setProdQty(e.target.value)}
+                        placeholder="e.g. 200"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reference (optional)</Label>
+                      <Input
+                        value={prodRef}
+                        onChange={(e) => setProdRef(e.target.value)}
+                        placeholder="e.g. Batch-2026-0301"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Notes (optional)</Label>
+                      <Input
+                        value={prodNotes}
+                        onChange={(e) => setProdNotes(e.target.value)}
+                        placeholder="Additional notes..."
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setProductionOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleProduction}
+                      disabled={!prodQty || parseInt(prodQty, 10) <= 0}
+                    >
+                      Record
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+            {canEdit && (
+              <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
+                <DialogTrigger render={<Button variant="destructive" />}>
+                  Write Off
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Write Off Stock</DialogTitle>
+                    <DialogDescription>
+                      Write off damaged, expired, or lost stock for{" "}
+                      {item.product_name}. Current: {item.quantity_on_hand}{" "}
+                      units.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {woError && (
+                    <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                      {woError}
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Quantity</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max={item.quantity_on_hand}
+                        value={woQty}
+                        onChange={(e) => setWoQty(e.target.value)}
+                        placeholder="e.g. 10"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reason</Label>
+                      <Input
+                        value={woReason}
+                        onChange={(e) => setWoReason(e.target.value)}
+                        placeholder="e.g. Damaged, Expired, Lost"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reference (optional)</Label>
+                      <Input
+                        value={woRef}
+                        onChange={(e) => setWoRef(e.target.value)}
+                        placeholder="e.g. WO-2026-001"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Notes (optional)</Label>
+                      <Input
+                        value={woNotes}
+                        onChange={(e) => setWoNotes(e.target.value)}
+                        placeholder="Additional details..."
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setWriteOffOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleWriteOff}
+                      disabled={
+                        !woQty ||
+                        parseInt(woQty, 10) <= 0 ||
+                        !woReason.trim()
+                      }
+                    >
+                      Write Off
                     </Button>
                   </DialogFooter>
                 </DialogContent>

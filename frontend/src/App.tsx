@@ -19,6 +19,9 @@ import ProductsPage from "@/pages/products";
 import ProductDetailPage from "@/pages/product-detail";
 import InventoryPage from "@/pages/inventory";
 import InventoryDetailPage from "@/pages/inventory-detail";
+import ProductionEntryPage from "@/pages/production-entry";
+import WriteOffsPage from "@/pages/write-offs";
+import SageExportsPage from "@/pages/sage-exports";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -99,6 +102,18 @@ export default function App() {
                     <Route
                       path="/inventory"
                       element={<InventoryPage />}
+                    />
+                    <Route
+                      path="/inventory/production"
+                      element={<ProductionEntryPage />}
+                    />
+                    <Route
+                      path="/inventory/write-offs"
+                      element={<WriteOffsPage />}
+                    />
+                    <Route
+                      path="/inventory/sage-exports"
+                      element={<SageExportsPage />}
                     />
                     <Route
                       path="/inventory/:productId"

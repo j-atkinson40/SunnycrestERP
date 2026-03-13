@@ -1,5 +1,9 @@
 import apiClient from "@/lib/api-client";
-import type { AIPromptRequest, AIPromptResponse } from "@/types/ai";
+import type {
+  AIInventoryParseResponse,
+  AIPromptRequest,
+  AIPromptResponse,
+} from "@/types/ai";
 
 export const aiService = {
   async sendPrompt(
@@ -17,6 +21,16 @@ export const aiService = {
     const response = await apiClient.post<AIPromptResponse>(
       "/ai/prompt",
       payload,
+    );
+    return response.data;
+  },
+
+  async parseInventoryCommand(
+    userInput: string,
+  ): Promise<AIInventoryParseResponse> {
+    const response = await apiClient.post<AIInventoryParseResponse>(
+      "/ai/parse-inventory",
+      { user_input: userInput },
     );
     return response.data;
   },

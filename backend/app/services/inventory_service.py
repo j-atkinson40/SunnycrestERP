@@ -222,6 +222,154 @@ def adjust_stock(
     return item
 
 
+def record_production(
+    db: Session,
+    product_id: str,
+    quantity: int,
+    company_id: str,
+    actor_id: str | None = None,
+    reference: str | None = None,
+    notes: str | None = None,
+) -> InventoryItem:
+    """Record production output — increases stock."""
+    item = get_inventory_item(db, product_id, company_id)
+    old_qty = item.quantity_on_hand
+    item.quantity_on_hand += quantity
+    item.modified_by = actor_id
+
+    tx = InventoryTransaction(
+        company_id=company_id,
+        product_id=product_id,
+        transaction_type="production",
+        quantity_change=quantity,
+        quantity_after=item.quantity_on_hand,
+        reference=reference,
+        notes=notes,
+        created_by=actor_id,
+    )
+    db.add(tx)
+    db.flush()
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "production_recorded",
+        "inventory",
+        product_id,
+        user_id=actor_id,
+        changes={"quantity_on_hand": {"old": old_qty, "new": item.quantity_on_hand}},
+    )
+
+    _check_low_stock_and_notify(db, item, actor_id)
+
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def write_off_stock(
+    db: Session,
+    product_id: str,
+    quantity: int,
+    company_id: str,
+    actor_id: str | None = None,
+    reason: str = "",
+    reference: str | None = None,
+    notes: str | None = None,
+) -> InventoryItem:
+    """Write off damaged, expired, or lost stock — decreases quantity."""
+    item = get_inventory_item(db, product_id, company_id)
+    if item.quantity_on_hand < quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Insufficient stock to write off. Available: {item.quantity_on_hand}, "
+                f"requested: {quantity}"
+            ),
+        )
+    old_qty = item.quantity_on_hand
+    item.quantity_on_hand -= quantity
+    item.modified_by = actor_id
+
+    full_notes = f"Reason: {reason}"
+    if notes:
+        full_notes += f". {notes}"
+
+    tx = InventoryTransaction(
+        company_id=company_id,
+        product_id=product_id,
+        transaction_type="write_off",
+        quantity_change=-quantity,
+        quantity_after=item.quantity_on_hand,
+        reference=reference,
+        notes=full_notes,
+        created_by=actor_id,
+    )
+    db.add(tx)
+    db.flush()
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "stock_written_off",
+        "inventory",
+        product_id,
+        user_id=actor_id,
+        changes={"quantity_on_hand": {"old": old_qty, "new": item.quantity_on_hand}},
+    )
+
+    _check_low_stock_and_notify(db, item, actor_id)
+
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def batch_record_production(
+    db: Session,
+    entries: list[dict],
+    company_id: str,
+    actor_id: str | None = None,
+    batch_reference: str | None = None,
+) -> dict:
+    """Record production for multiple products in one batch."""
+    results = []
+    success_count = 0
+    failure_count = 0
+
+    for entry in entries:
+        ref = entry.get("reference") or batch_reference
+        try:
+            record_production(
+                db,
+                entry["product_id"],
+                entry["quantity"],
+                company_id,
+                actor_id=actor_id,
+                reference=ref,
+                notes=entry.get("notes"),
+            )
+            results.append({
+                "product_id": entry["product_id"],
+                "success": True,
+                "error": None,
+            })
+            success_count += 1
+        except Exception as exc:
+            results.append({
+                "product_id": entry["product_id"],
+                "success": False,
+                "error": str(exc),
+            })
+            failure_count += 1
+
+    return {
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "results": results,
+    }
+
+
 def record_sale(
     db: Session,
     product_id: str,
@@ -334,6 +482,7 @@ def get_transactions(
     db: Session,
     company_id: str,
     product_id: str | None = None,
+    transaction_type: str | None = None,
     page: int = 1,
     per_page: int = 20,
 ) -> dict:
@@ -342,6 +491,8 @@ def get_transactions(
     )
     if product_id:
         query = query.filter(InventoryTransaction.product_id == product_id)
+    if transaction_type:
+        query = query.filter(InventoryTransaction.transaction_type == transaction_type)
 
     total = query.count()
     items = (

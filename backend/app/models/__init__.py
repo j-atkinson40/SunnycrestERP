@@ -15,6 +15,7 @@ from app.models.product_category import ProductCategory
 from app.models.product_price_tier import ProductPriceTier
 from app.models.role import Role
 from app.models.role_permission import RolePermission
+from app.models.sage_export_config import SageExportConfig
 from app.models.sync_log import SyncLog
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
@@ -38,6 +39,7 @@ __all__ = [
     "ProductPriceTier",
     "Role",
     "RolePermission",
+    "SageExportConfig",
     "SyncLog",
     "User",
     "UserPermissionOverride",

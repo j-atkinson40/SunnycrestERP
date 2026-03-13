@@ -57,6 +57,37 @@ class AdjustStockRequest(BaseModel):
     notes: str | None = None
 
 
+class ProductionEntryRequest(BaseModel):
+    quantity: int = Field(..., gt=0, description="Units produced (must be positive)")
+    reference: str | None = None
+    notes: str | None = None
+
+
+class WriteOffRequest(BaseModel):
+    quantity: int = Field(..., gt=0, description="Units to write off (must be positive)")
+    reason: str = Field(..., min_length=1, description="Reason for write-off (damage, expiry, loss, etc.)")
+    reference: str | None = None
+    notes: str | None = None
+
+
+class BatchProductionEntry(BaseModel):
+    product_id: str
+    quantity: int = Field(..., gt=0, description="Units produced")
+    reference: str | None = None
+    notes: str | None = None
+
+
+class BatchProductionRequest(BaseModel):
+    entries: list[BatchProductionEntry] = Field(..., min_length=1, max_length=50)
+    batch_reference: str | None = None
+
+
+class BatchProductionResult(BaseModel):
+    success_count: int
+    failure_count: int
+    results: list[dict]
+
+
 # ---------------------------------------------------------------------------
 # Transaction schemas
 # ---------------------------------------------------------------------------

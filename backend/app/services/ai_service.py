@@ -103,3 +103,67 @@ def call_anthropic(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred with the AI service.",
         )
+
+
+# ---------------------------------------------------------------------------
+# Inventory-specific AI parsing
+# ---------------------------------------------------------------------------
+
+_INVENTORY_SYSTEM_PROMPT = """\
+You are an inventory management assistant for a food production company.
+Your job is to parse natural-language inventory commands into structured JSON.
+
+You will receive:
+1. A user command (e.g. "Add 500 units of SKU-1042 to bin 4B")
+2. A product catalog with id, name, and sku for each product
+
+Return a JSON object with these fields:
+{
+  "action": one of "receive", "production", "write_off", "adjust",
+  "product_id": the matched product's id (string) or null if unmatched,
+  "product_name": the matched product's name or the name from user input,
+  "product_sku": the matched product's SKU or the SKU from user input,
+  "quantity": integer quantity parsed from the command (null if unclear),
+  "location": storage location if mentioned (string or null),
+  "reference": reference number if mentioned (string or null),
+  "reason": reason for write-off if applicable (string or null),
+  "notes": any additional notes (string or null),
+  "confidence": "high", "medium", or "low",
+  "ambiguous": true if the command is unclear or could be interpreted multiple ways,
+  "clarification_message": a short message asking for clarification if ambiguous (null otherwise)
+}
+
+Rules:
+- Match products by SKU first (exact or partial match), then by name (fuzzy).
+- Keywords: "produce", "produced", "made", "manufacture" → action "production"
+- Keywords: "receive", "received", "incoming", "delivery" → action "receive"
+- Keywords: "write off", "writeoff", "damaged", "expired", "lost", "spoiled", "discard" → action "write_off"
+- Keywords: "adjust", "set", "correct", "count" → action "adjust"
+- If the user mentions adding/increasing stock without a specific keyword, default to "receive".
+- For write_off, extract the reason from context (e.g. "damaged", "expired").
+- If you cannot match a product from the catalog, set product_id to null and confidence to "low".
+- If quantity is not specified, set it to null and set ambiguous to true.
+- If the command mentions multiple products, return a JSON object with a "commands" array instead,
+  where each element follows the same structure above.
+"""
+
+
+def parse_inventory_command(
+    user_input: str,
+    product_catalog: list[dict],
+) -> dict:
+    """
+    Parse a natural-language inventory command into structured action data.
+
+    Args:
+        user_input: The user's free-text inventory command.
+        product_catalog: List of dicts with keys: id, name, sku.
+
+    Returns:
+        Parsed command dict with action, product_id, quantity, etc.
+    """
+    return call_anthropic(
+        system_prompt=_INVENTORY_SYSTEM_PROMPT,
+        user_message=user_input,
+        context_data={"product_catalog": product_catalog},
+    )

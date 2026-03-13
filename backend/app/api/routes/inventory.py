@@ -8,18 +8,24 @@ from app.models.inventory_transaction import InventoryTransaction
 from app.models.user import User
 from app.schemas.inventory import (
     AdjustStockRequest,
+    BatchProductionRequest,
     InventoryItemResponse,
     InventorySettingsUpdate,
     InventoryTransactionResponse,
+    ProductionEntryRequest,
     ReceiveStockRequest,
+    WriteOffRequest,
 )
 from app.services.inventory_service import (
     adjust_stock,
+    batch_record_production,
     get_inventory_item,
     get_inventory_items,
     get_transactions,
     receive_stock,
+    record_production,
     update_inventory_settings,
+    write_off_stock,
 )
 
 router = APIRouter()
@@ -76,8 +82,49 @@ def list_inventory(
     }
 
 
-# NOTE: /transactions must be before /{product_id} to avoid FastAPI matching
-# "transactions" as a product_id path parameter.
+# NOTE: All literal paths (/transactions, /batch-production, /write-offs)
+# must be before /{product_id} to avoid FastAPI matching them as path params.
+
+
+@router.post("/batch-production", status_code=201)
+def batch_production_endpoint(
+    data: BatchProductionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("inventory.create")),
+):
+    entries = [e.model_dump() for e in data.entries]
+    result = batch_record_production(
+        db,
+        entries,
+        current_user.company_id,
+        actor_id=current_user.id,
+        batch_reference=data.batch_reference,
+    )
+    return result
+
+
+@router.get("/write-offs")
+def list_write_offs(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("inventory.view")),
+):
+    result = get_transactions(
+        db,
+        current_user.company_id,
+        transaction_type="write_off",
+        page=page,
+        per_page=per_page,
+    )
+    return {
+        "items": [_tx_to_response(tx) for tx in result["items"]],
+        "total": result["total"],
+        "page": result["page"],
+        "per_page": result["per_page"],
+    }
+
+
 @router.get("/transactions")
 def list_all_transactions(
     page: int = Query(1, ge=1),
@@ -103,6 +150,45 @@ def read_inventory_item(
     current_user: User = Depends(require_permission("inventory.view")),
 ):
     item = get_inventory_item(db, product_id, current_user.company_id)
+    return _item_to_response(item)
+
+
+@router.post("/{product_id}/production", status_code=201)
+def production_entry_endpoint(
+    product_id: str,
+    data: ProductionEntryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("inventory.create")),
+):
+    item = record_production(
+        db,
+        product_id,
+        data.quantity,
+        current_user.company_id,
+        actor_id=current_user.id,
+        reference=data.reference,
+        notes=data.notes,
+    )
+    return _item_to_response(item)
+
+
+@router.post("/{product_id}/write-off", status_code=201)
+def write_off_endpoint(
+    product_id: str,
+    data: WriteOffRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("inventory.edit")),
+):
+    item = write_off_stock(
+        db,
+        product_id,
+        data.quantity,
+        current_user.company_id,
+        actor_id=current_user.id,
+        reason=data.reason,
+        reference=data.reference,
+        notes=data.notes,
+    )
     return _item_to_response(item)
 
 

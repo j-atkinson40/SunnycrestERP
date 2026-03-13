@@ -40,6 +40,41 @@ export interface InventorySettingsUpdate {
   location?: string | null;
 }
 
+export interface ProductionEntryRequest {
+  quantity: number;
+  reference?: string;
+  notes?: string;
+}
+
+export interface WriteOffRequest {
+  quantity: number;
+  reason: string;
+  reference?: string;
+  notes?: string;
+}
+
+export interface BatchProductionEntry {
+  product_id: string;
+  quantity: number;
+  reference?: string;
+  notes?: string;
+}
+
+export interface BatchProductionRequest {
+  entries: BatchProductionEntry[];
+  batch_reference?: string;
+}
+
+export interface BatchProductionResult {
+  success_count: number;
+  failure_count: number;
+  results: Array<{
+    product_id: string;
+    success: boolean;
+    error?: string;
+  }>;
+}
+
 export interface InventoryTransaction {
   id: string;
   product_id: string;
