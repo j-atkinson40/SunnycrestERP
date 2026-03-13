@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.permissions import EMPLOYEE_DEFAULT_PERMISSIONS, get_all_permission_keys
+from app.core.permissions import ACCOUNTING_DEFAULT_PERMISSIONS, EMPLOYEE_DEFAULT_PERMISSIONS, get_all_permission_keys
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.user import User
@@ -11,7 +11,7 @@ from app.services import audit_service
 
 
 def seed_default_roles(db: Session, company_id: str) -> tuple[Role, Role]:
-    """Create Admin and Employee system roles for a new company."""
+    """Create Admin, Employee, and Accounting system roles for a new company."""
     admin_role = Role(
         company_id=company_id,
         name="Admin",
@@ -26,12 +26,24 @@ def seed_default_roles(db: Session, company_id: str) -> tuple[Role, Role]:
         description="Basic employee access",
         is_system=True,
     )
-    db.add_all([admin_role, employee_role])
+    accounting_role = Role(
+        company_id=company_id,
+        name="Accounting",
+        slug="accounting",
+        description="Read access to financial and operational data",
+        is_system=True,
+    )
+    db.add_all([admin_role, employee_role, accounting_role])
     db.flush()
 
     # Employee gets default permissions
     for perm_key in EMPLOYEE_DEFAULT_PERMISSIONS:
         db.add(RolePermission(role_id=employee_role.id, permission_key=perm_key))
+
+    # Accounting gets broad read access
+    for perm_key in ACCOUNTING_DEFAULT_PERMISSIONS:
+        db.add(RolePermission(role_id=accounting_role.id, permission_key=perm_key))
+
     # Admin doesn't need explicit permissions — handled by wildcard logic
 
     db.flush()

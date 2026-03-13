@@ -34,3 +34,13 @@ def get_all_permission_keys() -> list[str]:
 
 # Default permissions for seeded roles
 EMPLOYEE_DEFAULT_PERMISSIONS = ["dashboard.view"]
+
+ACCOUNTING_DEFAULT_PERMISSIONS = [
+    "dashboard.view",
+    "products.view",
+    "inventory.view",
+    "audit.view",
+    "company.view",
+    "departments.view",
+    "employees.view",
+]
