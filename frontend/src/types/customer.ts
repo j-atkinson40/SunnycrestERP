@@ -1,0 +1,152 @@
+export interface CustomerContact {
+  id: string;
+  customer_id: string;
+  name: string;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  is_primary: boolean;
+  created_at: string;
+}
+
+export interface CustomerContactCreate {
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  is_primary?: boolean;
+}
+
+export interface CustomerContactUpdate {
+  name?: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  is_primary?: boolean;
+}
+
+export interface CustomerNote {
+  id: string;
+  customer_id: string;
+  note_type: string;
+  content: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface CustomerNoteCreate {
+  note_type?: string;
+  content: string;
+}
+
+export interface Customer {
+  id: string;
+  company_id: string;
+  name: string;
+  account_number: string | null;
+  email: string | null;
+  phone: string | null;
+  fax: string | null;
+  contact_name: string | null;
+  website: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  country: string | null;
+  billing_address_line1: string | null;
+  billing_address_line2: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_zip: string | null;
+  billing_country: string | null;
+  credit_limit: number | null;
+  payment_terms: string | null;
+  account_status: string;
+  current_balance: number;
+  tax_exempt: boolean;
+  tax_id: string | null;
+  notes: string | null;
+  sage_customer_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  contacts: CustomerContact[];
+  recent_notes: CustomerNote[];
+}
+
+export interface CustomerListItem {
+  id: string;
+  name: string;
+  account_number: string | null;
+  email: string | null;
+  phone: string | null;
+  contact_name: string | null;
+  city: string | null;
+  state: string | null;
+  account_status: string;
+  current_balance: number;
+  credit_limit: number | null;
+  payment_terms: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CustomerCreate {
+  name: string;
+  account_number?: string;
+  email?: string;
+  phone?: string;
+  fax?: string;
+  contact_name?: string;
+  website?: string;
+  address_line1?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  country?: string;
+  credit_limit?: number;
+  payment_terms?: string;
+  account_status?: string;
+  tax_exempt?: boolean;
+  notes?: string;
+  sage_customer_id?: string;
+}
+
+export interface CustomerUpdate extends Partial<CustomerCreate> {
+  is_active?: boolean;
+  billing_address_line1?: string;
+  billing_address_line2?: string;
+  billing_city?: string;
+  billing_state?: string;
+  billing_zip?: string;
+  billing_country?: string;
+  tax_id?: string;
+  address_line2?: string;
+}
+
+export interface PaginatedCustomers {
+  items: CustomerListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface CustomerStats {
+  total_customers: number;
+  active_customers: number;
+  on_hold: number;
+  suspended: number;
+  total_outstanding: number;
+  over_limit_count: number;
+}
+
+export interface CreditCheckResult {
+  allowed: boolean;
+  credit_limit: number | null;
+  current_balance: number;
+  available_credit: number | null;
+  requested_amount: number;
+}

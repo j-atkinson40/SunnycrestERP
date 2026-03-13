@@ -24,6 +24,12 @@ AVAILABLE_MODULES: dict[str, dict] = {
         "default_enabled": True,
         "locked": False,
     },
+    "sales": {
+        "label": "Sales & Customers",
+        "description": "Customer database, charge accounts, quotes, sales orders, invoices, and accounts receivable.",
+        "default_enabled": True,
+        "locked": False,
+    },
     "hr_time": {
         "label": "HR & Time Tracking",
         "description": "Flexible time and attendance, early release model, PTO management, employee records, and payroll export.",

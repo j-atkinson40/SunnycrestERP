@@ -1,6 +1,9 @@
 from app.models.audit_log import AuditLog
 from app.models.company import Company
 from app.models.company_module import CompanyModule
+from app.models.customer import Customer
+from app.models.customer_contact import CustomerContact
+from app.models.customer_note import CustomerNote
 from app.models.department import Department
 from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
@@ -24,6 +27,9 @@ __all__ = [
     "AuditLog",
     "Company",
     "CompanyModule",
+    "Customer",
+    "CustomerContact",
+    "CustomerNote",
     "Department",
     "Document",
     "EmployeeProfile",

@@ -22,6 +22,8 @@ import InventoryDetailPage from "@/pages/inventory-detail";
 import ProductionEntryPage from "@/pages/production-entry";
 import WriteOffsPage from "@/pages/write-offs";
 import SageExportsPage from "@/pages/sage-exports";
+import CustomersPage from "@/pages/customers";
+import CustomerDetailPage from "@/pages/customer-detail";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -90,6 +92,22 @@ export default function App() {
                     <Route
                       path="/products/:productId"
                       element={<ProductDetailPage />}
+                    />
+                  </Route>
+
+                  {/* Customers — requires sales module + customers.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="customers.view" requiredModule="sales" />
+                    }
+                  >
+                    <Route
+                      path="/customers"
+                      element={<CustomersPage />}
+                    />
+                    <Route
+                      path="/customers/:customerId"
+                      element={<CustomerDetailPage />}
                     />
                   </Route>
 
