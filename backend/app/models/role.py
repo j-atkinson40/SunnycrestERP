@@ -44,4 +44,4 @@ class Role(Base):
     permissions = relationship(
         "RolePermission", back_populates="role", cascade="all, delete-orphan"
     )
-    users = relationship("User", back_populates="role_obj")
+    users = relationship("User", back_populates="role_obj", foreign_keys="[User.role_id]")

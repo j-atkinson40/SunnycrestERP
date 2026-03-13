@@ -44,10 +44,11 @@ class User(Base):
     )
 
     company = relationship("Company", back_populates="users", foreign_keys=[company_id])
-    role_obj = relationship("Role", back_populates="users")
+    role_obj = relationship("Role", back_populates="users", foreign_keys=[role_id])
     permission_overrides = relationship(
         "UserPermissionOverride", back_populates="user", cascade="all, delete-orphan"
     )
     profile = relationship(
-        "EmployeeProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
+        "EmployeeProfile", back_populates="user", uselist=False, cascade="all, delete-orphan",
+        foreign_keys="[EmployeeProfile.user_id]",
     )
