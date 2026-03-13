@@ -436,6 +436,7 @@ def get_price_tiers(
         .filter(
             ProductPriceTier.product_id == product_id,
             ProductPriceTier.company_id == company_id,
+            ProductPriceTier.is_active == True,  # noqa: E712
         )
         .order_by(ProductPriceTier.min_quantity)
         .all()
@@ -452,12 +453,13 @@ def create_price_tier(
     # Validate product exists
     get_product(db, product_id, company_id)
 
-    # Check no duplicate min_quantity
+    # Check no duplicate min_quantity among active tiers
     existing = (
         db.query(ProductPriceTier)
         .filter(
             ProductPriceTier.product_id == product_id,
             ProductPriceTier.min_quantity == data.min_quantity,
+            ProductPriceTier.is_active == True,  # noqa: E712
         )
         .first()
     )
@@ -588,21 +590,24 @@ def delete_price_tier(
             status_code=status.HTTP_404_NOT_FOUND, detail="Price tier not found"
         )
 
+    tier.is_active = False
+    tier.modified_by = actor_id
+
     audit_service.log_action(
         db,
         company_id,
-        "deleted",
+        "deactivated",
         "product_price_tier",
         tier.id,
         user_id=actor_id,
         changes={
+            "is_active": {"old": True, "new": False},
             "product_id": tier.product_id,
             "min_quantity": tier.min_quantity,
             "price": str(tier.price),
         },
     )
 
-    db.delete(tier)
     db.commit()
 
 
