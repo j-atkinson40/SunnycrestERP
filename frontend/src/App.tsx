@@ -24,6 +24,8 @@ import WriteOffsPage from "@/pages/write-offs";
 import SageExportsPage from "@/pages/sage-exports";
 import CustomersPage from "@/pages/customers";
 import CustomerDetailPage from "@/pages/customer-detail";
+import VendorsPage from "@/pages/vendors";
+import VendorDetailPage from "@/pages/vendor-detail";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -108,6 +110,22 @@ export default function App() {
                     <Route
                       path="/customers/:customerId"
                       element={<CustomerDetailPage />}
+                    />
+                  </Route>
+
+                  {/* Vendors — requires purchasing module + vendors.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="vendors.view" requiredModule="purchasing" />
+                    }
+                  >
+                    <Route
+                      path="/vendors"
+                      element={<VendorsPage />}
+                    />
+                    <Route
+                      path="/vendors/:vendorId"
+                      element={<VendorDetailPage />}
                     />
                   </Route>
 

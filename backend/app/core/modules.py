@@ -54,6 +54,12 @@ AVAILABLE_MODULES: dict[str, dict] = {
         "default_enabled": False,
         "locked": False,
     },
+    "purchasing": {
+        "label": "Purchasing & Vendors",
+        "description": "Vendor database, purchase orders, and accounts payable tracking.",
+        "default_enabled": True,
+        "locked": False,
+    },
     "analytics": {
         "label": "Advanced Analytics",
         "description": "Custom dashboard builder, trend analysis, forecasting, and scheduled report delivery.",

@@ -23,6 +23,9 @@ from app.models.sage_export_config import SageExportConfig
 from app.models.sync_log import SyncLog
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
+from app.models.vendor import Vendor
+from app.models.vendor_contact import VendorContact
+from app.models.vendor_note import VendorNote
 
 __all__ = [
     "AuditLog",
@@ -51,4 +54,7 @@ __all__ = [
     "SyncLog",
     "User",
     "UserPermissionOverride",
+    "Vendor",
+    "VendorContact",
+    "VendorNote",
 ]

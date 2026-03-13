@@ -14,6 +14,7 @@ const allNavItems: NavItem[] = [
   { label: "My Profile", href: "/profile" },
   { label: "Products", href: "/products", permission: "products.view", module: "products" },
   { label: "Customers", href: "/customers", permission: "customers.view", module: "sales" },
+  { label: "Vendors", href: "/vendors", permission: "vendors.view", module: "purchasing" },
   { label: "Inventory", href: "/inventory", permission: "inventory.view", module: "inventory" },
   { label: "Production Entry", href: "/inventory/production", permission: "inventory.create", module: "inventory" },
   { label: "Write-offs", href: "/inventory/write-offs", permission: "inventory.view", module: "inventory" },

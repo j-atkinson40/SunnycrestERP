@@ -17,6 +17,7 @@ PERMISSIONS: dict[str, list[str]] = {
     "inventory": ["view", "create", "edit", "delete"],
     "equipment": ["view", "create", "edit", "delete"],
     "customers": ["view", "create", "edit", "delete"],
+    "vendors": ["view", "create", "edit", "delete"],
     # Future modules:
     # "sales": ["view", "create", "edit", "delete"],
     # "driver_scheduling": ["view", "create", "edit", "delete"],
@@ -45,4 +46,5 @@ ACCOUNTING_DEFAULT_PERMISSIONS = [
     "departments.view",
     "employees.view",
     "customers.view",
+    "vendors.view",
 ]
