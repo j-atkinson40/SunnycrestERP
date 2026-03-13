@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import type { User } from "@/types/auth";
 import type { Department } from "@/types/department";
 import type { EmployeeProfile } from "@/types/employee-profile";
+import DocumentList from "@/components/document-list";
 import apiClient from "@/lib/api-client";
 
 export default function AdminEmployeeProfile() {
@@ -578,6 +579,19 @@ export default function AdminEmployeeProfile() {
           </div>
         )}
       </form>
+
+      {/* Documents — outside the form */}
+      {userId && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Documents</h2>
+          <Separator className="my-4" />
+          <DocumentList
+            entityType="employee"
+            entityId={userId}
+            canEdit={canEdit}
+          />
+        </Card>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ from app.models.audit_log import AuditLog
 from app.models.company import Company
 from app.models.company_module import CompanyModule
 from app.models.department import Department
+from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
@@ -20,6 +21,7 @@ __all__ = [
     "Company",
     "CompanyModule",
     "Department",
+    "Document",
     "EmployeeProfile",
     "InventoryItem",
     "InventoryTransaction",
