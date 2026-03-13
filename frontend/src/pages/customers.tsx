@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, UploadIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { customerService } from "@/services/customer-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type {
+  CustomerImportResult,
   CustomerListItem,
   CustomerStats,
 } from "@/types/customer";
@@ -81,6 +82,13 @@ export default function CustomersPage() {
   });
   const [createError, setCreateError] = useState("");
 
+  // Import CSV dialog
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<CustomerImportResult | null>(null);
+  const [importError, setImportError] = useState("");
+
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
@@ -151,6 +159,26 @@ export default function CustomersPage() {
     }
   }
 
+  async function handleImport() {
+    if (!importFile) return;
+    setImporting(true);
+    setImportError("");
+    setImportResult(null);
+    try {
+      const result = await customerService.importCustomers(importFile);
+      setImportResult(result);
+      if (result.created > 0) {
+        toast.success(`Imported ${result.created} customers`);
+        loadCustomers();
+        loadStats();
+      }
+    } catch (err: unknown) {
+      setImportError(getApiErrorMessage(err, "Import failed"));
+    } finally {
+      setImporting(false);
+    }
+  }
+
   const totalPages = Math.ceil(total / 20);
 
   return (
@@ -161,164 +189,282 @@ export default function CustomersPage() {
           <p className="text-muted-foreground">{total} total customers</p>
         </div>
         {canCreate && (
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger render={<Button />}>Add Customer</DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Customer</DialogTitle>
-                <DialogDescription>
-                  Add a new customer to the database.
-                </DialogDescription>
-              </DialogHeader>
-              {createError && (
-                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                  {createError}
+          <div className="flex items-center gap-2">
+            <Dialog
+              open={importOpen}
+              onOpenChange={(open) => {
+                setImportOpen(open);
+                if (!open) {
+                  setImportFile(null);
+                  setImportResult(null);
+                  setImportError("");
+                }
+              }}
+            >
+              <DialogTrigger render={<Button variant="outline" />}>
+                <UploadIcon className="mr-1 size-4" />
+                Import CSV
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Import Customers from CSV</DialogTitle>
+                  <DialogDescription>
+                    Upload a CSV file to bulk-create customers. Duplicate account
+                    numbers will be skipped.
+                  </DialogDescription>
+                </DialogHeader>
+                {importError && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {importError}
+                  </div>
+                )}
+                {!importResult ? (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>CSV File</Label>
+                      <Input
+                        type="file"
+                        accept=".csv"
+                        onChange={(e) =>
+                          setImportFile(e.target.files?.[0] || null)
+                        }
+                      />
+                    </div>
+                    <div className="rounded-md bg-muted p-3">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">
+                        Expected columns:
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        name (required), account_number, email, phone,
+                        contact_name, city, state, zip_code, credit_limit,
+                        payment_terms
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Column headers are flexible — e.g. "Customer Name",
+                        "Account #", "Phone Number" all work.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex gap-4">
+                      <div className="rounded-md bg-green-50 dark:bg-green-950/30 p-3 flex-1 text-center">
+                        <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                          {importResult.created}
+                        </p>
+                        <p className="text-xs text-green-600 dark:text-green-500">
+                          Created
+                        </p>
+                      </div>
+                      {importResult.skipped > 0 && (
+                        <div className="rounded-md bg-yellow-50 dark:bg-yellow-950/30 p-3 flex-1 text-center">
+                          <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-400">
+                            {importResult.skipped}
+                          </p>
+                          <p className="text-xs text-yellow-600 dark:text-yellow-500">
+                            Skipped
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {importResult.errors.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-destructive">
+                          Errors:
+                        </p>
+                        <div className="max-h-40 overflow-y-auto rounded-md border p-2 text-xs space-y-0.5">
+                          {importResult.errors.map((err, i) => (
+                            <p key={i} className="text-muted-foreground">
+                              <span className="font-medium">Row {err.row}:</span>{" "}
+                              {err.message}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <DialogFooter>
+                  {!importResult ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => setImportOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleImport}
+                        disabled={!importFile || importing}
+                      >
+                        {importing ? "Importing..." : "Upload & Import"}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button onClick={() => setImportOpen(false)}>Done</Button>
+                  )}
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <DialogTrigger render={<Button />}>Add Customer</DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Customer</DialogTitle>
+                  <DialogDescription>
+                    Add a new customer to the database.
+                  </DialogDescription>
+                </DialogHeader>
+                {createError && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {createError}
+                  </div>
+                )}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Customer Name</Label>
+                    <Input
+                      value={newCustomer.name}
+                      onChange={(e) =>
+                        setNewCustomer({ ...newCustomer, name: e.target.value })
+                      }
+                      placeholder="e.g. Smith Landscaping"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Account #</Label>
+                      <Input
+                        value={newCustomer.account_number}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            account_number: e.target.value,
+                          })
+                        }
+                        placeholder="e.g. CUST-001"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact Name</Label>
+                      <Input
+                        value={newCustomer.contact_name}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            contact_name: e.target.value,
+                          })
+                        }
+                        placeholder="e.g. John Smith"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Email</Label>
+                      <Input
+                        type="email"
+                        value={newCustomer.email}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            email: e.target.value,
+                          })
+                        }
+                        placeholder="john@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phone</Label>
+                      <Input
+                        value={newCustomer.phone}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            phone: e.target.value,
+                          })
+                        }
+                        placeholder="(555) 123-4567"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>City</Label>
+                      <Input
+                        value={newCustomer.city}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            city: e.target.value,
+                          })
+                        }
+                        placeholder="e.g. Springfield"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>State</Label>
+                      <Input
+                        value={newCustomer.state}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            state: e.target.value,
+                          })
+                        }
+                        placeholder="e.g. IL"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Payment Terms</Label>
+                      <Input
+                        value={newCustomer.payment_terms}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            payment_terms: e.target.value,
+                          })
+                        }
+                        placeholder="e.g. Net 30"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Credit Limit</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={newCustomer.credit_limit}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            credit_limit: e.target.value,
+                          })
+                        }
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
                 </div>
-              )}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Customer Name</Label>
-                  <Input
-                    value={newCustomer.name}
-                    onChange={(e) =>
-                      setNewCustomer({ ...newCustomer, name: e.target.value })
-                    }
-                    placeholder="e.g. Smith Landscaping"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Account #</Label>
-                    <Input
-                      value={newCustomer.account_number}
-                      onChange={(e) =>
-                        setNewCustomer({
-                          ...newCustomer,
-                          account_number: e.target.value,
-                        })
-                      }
-                      placeholder="e.g. CUST-001"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Contact Name</Label>
-                    <Input
-                      value={newCustomer.contact_name}
-                      onChange={(e) =>
-                        setNewCustomer({
-                          ...newCustomer,
-                          contact_name: e.target.value,
-                        })
-                      }
-                      placeholder="e.g. John Smith"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      value={newCustomer.email}
-                      onChange={(e) =>
-                        setNewCustomer({
-                          ...newCustomer,
-                          email: e.target.value,
-                        })
-                      }
-                      placeholder="john@example.com"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Phone</Label>
-                    <Input
-                      value={newCustomer.phone}
-                      onChange={(e) =>
-                        setNewCustomer({
-                          ...newCustomer,
-                          phone: e.target.value,
-                        })
-                      }
-                      placeholder="(555) 123-4567"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>City</Label>
-                    <Input
-                      value={newCustomer.city}
-                      onChange={(e) =>
-                        setNewCustomer({
-                          ...newCustomer,
-                          city: e.target.value,
-                        })
-                      }
-                      placeholder="e.g. Springfield"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>State</Label>
-                    <Input
-                      value={newCustomer.state}
-                      onChange={(e) =>
-                        setNewCustomer({
-                          ...newCustomer,
-                          state: e.target.value,
-                        })
-                      }
-                      placeholder="e.g. IL"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Payment Terms</Label>
-                    <Input
-                      value={newCustomer.payment_terms}
-                      onChange={(e) =>
-                        setNewCustomer({
-                          ...newCustomer,
-                          payment_terms: e.target.value,
-                        })
-                      }
-                      placeholder="e.g. Net 30"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Credit Limit</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={newCustomer.credit_limit}
-                      onChange={(e) =>
-                        setNewCustomer({
-                          ...newCustomer,
-                          credit_limit: e.target.value,
-                        })
-                      }
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setCreateOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateCustomer}
-                  disabled={!newCustomer.name.trim()}
-                >
-                  Create Customer
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCreateOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreateCustomer}
+                    disabled={!newCustomer.name.trim()}
+                  >
+                    Create Customer
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         )}
       </div>
 

@@ -1,4 +1,6 @@
-from decimal import Decimal
+import csv
+import io
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_
@@ -17,6 +19,7 @@ from app.schemas.customer import (
     CustomerUpdate,
 )
 from app.services import audit_service
+from app.services.sync_log_service import complete_sync_log, create_sync_log
 
 
 # ---------------------------------------------------------------------------
@@ -588,3 +591,244 @@ def get_balance_adjustments(
         .all()
     )
     return {"items": adjustments, "total": total, "page": page, "per_page": per_page}
+
+
+# ---------------------------------------------------------------------------
+# CSV Import
+# ---------------------------------------------------------------------------
+
+# Mapping of flexible header names → canonical field names
+_CUSTOMER_HEADER_MAP: dict[str, str] = {
+    # Name (required)
+    "name": "name",
+    "customer name": "name",
+    "customer_name": "name",
+    "company name": "name",
+    "company_name": "name",
+    # Account number
+    "account number": "account_number",
+    "account_number": "account_number",
+    "account #": "account_number",
+    "acct #": "account_number",
+    "acct": "account_number",
+    # Email
+    "email": "email",
+    "email address": "email",
+    "email_address": "email",
+    # Phone
+    "phone": "phone",
+    "phone number": "phone",
+    "phone_number": "phone",
+    # Fax
+    "fax": "fax",
+    "fax number": "fax",
+    "fax_number": "fax",
+    # Contact
+    "contact": "contact_name",
+    "contact name": "contact_name",
+    "contact_name": "contact_name",
+    "primary contact": "contact_name",
+    # Website
+    "website": "website",
+    "web": "website",
+    "url": "website",
+    # Address
+    "address": "address_line1",
+    "address line 1": "address_line1",
+    "address_line1": "address_line1",
+    "street": "address_line1",
+    "street address": "address_line1",
+    "address line 2": "address_line2",
+    "address_line2": "address_line2",
+    "suite": "address_line2",
+    "apt": "address_line2",
+    # City / State / Zip / Country
+    "city": "city",
+    "state": "state",
+    "state/province": "state",
+    "province": "state",
+    "zip": "zip_code",
+    "zip code": "zip_code",
+    "zip_code": "zip_code",
+    "postal code": "zip_code",
+    "postal_code": "zip_code",
+    "country": "country",
+    # Charge account
+    "credit limit": "credit_limit",
+    "credit_limit": "credit_limit",
+    "payment terms": "payment_terms",
+    "payment_terms": "payment_terms",
+    "terms": "payment_terms",
+    # Other
+    "tax exempt": "tax_exempt",
+    "tax_exempt": "tax_exempt",
+    "tax id": "tax_id",
+    "tax_id": "tax_id",
+    "ein": "tax_id",
+    "notes": "notes",
+    "comments": "notes",
+    "sage id": "sage_customer_id",
+    "sage_customer_id": "sage_customer_id",
+    "sage customer id": "sage_customer_id",
+}
+
+
+def _normalise_customer_headers(raw_headers: list[str]) -> dict[str, str]:
+    """Map raw CSV headers to canonical customer field names."""
+    mapping: dict[str, str] = {}
+    for h in raw_headers:
+        key = h.strip().lower()
+        if key in _CUSTOMER_HEADER_MAP:
+            mapping[h] = _CUSTOMER_HEADER_MAP[key]
+    return mapping
+
+
+def import_customers_from_csv(
+    db: Session,
+    file_content: bytes,
+    company_id: str,
+    actor_id: str | None = None,
+) -> dict:
+    """Parse a CSV file and bulk-create customers.
+
+    Returns {"created": int, "skipped": int, "errors": [{"row": int, "message": str}]}
+    """
+    # Create sync log entry
+    sync_log = create_sync_log(
+        db,
+        company_id,
+        sync_type="csv_import",
+        source="csv_file",
+        destination="customers",
+    )
+
+    try:
+        text = file_content.decode("utf-8-sig")  # handles BOM from Excel
+    except UnicodeDecodeError:
+        text = file_content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV file is empty or has no headers",
+        )
+
+    header_map = _normalise_customer_headers(list(reader.fieldnames))
+    if "name" not in header_map.values():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV must contain a 'name' or 'Customer Name' column",
+        )
+
+    errors: list[dict[str, object]] = []
+    created = 0
+    skipped = 0
+
+    # Pre-load existing account numbers for fast duplicate checking
+    existing_accounts: set[str] = {
+        a[0].upper()
+        for a in db.query(Customer.account_number)
+        .filter(
+            Customer.company_id == company_id,
+            Customer.account_number.isnot(None),
+        )
+        .all()
+    }
+
+    for row_num, raw_row in enumerate(reader, start=2):  # row 1 = headers
+        # Map raw headers to canonical names
+        row: dict[str, str] = {}
+        for raw_key, value in raw_row.items():
+            canonical = header_map.get(raw_key)
+            if canonical:
+                row[canonical] = (value or "").strip()
+
+        name = row.get("name", "").strip()
+        if not name:
+            errors.append({"row": row_num, "message": "Missing customer name"})
+            skipped += 1
+            continue
+
+        # Check for duplicate account numbers
+        acct = row.get("account_number", "").strip() or None
+        if acct and acct.upper() in existing_accounts:
+            errors.append(
+                {"row": row_num, "message": f"Duplicate account number: {acct}"}
+            )
+            skipped += 1
+            continue
+
+        # Parse credit limit
+        credit_limit = None
+        try:
+            raw_limit = row.get("credit_limit", "").strip()
+            if raw_limit:
+                credit_limit = Decimal(
+                    raw_limit.replace(",", "").replace("$", "")
+                )
+        except (InvalidOperation, ValueError):
+            errors.append(
+                {"row": row_num, "message": f"Invalid credit limit: {row.get('credit_limit')}"}
+            )
+            skipped += 1
+            continue
+
+        # Parse tax_exempt
+        tax_exempt = False
+        raw_tax = row.get("tax_exempt", "").strip().lower()
+        if raw_tax in ("true", "yes", "1", "y"):
+            tax_exempt = True
+
+        # Build customer record
+        customer = Customer(
+            company_id=company_id,
+            name=name,
+            account_number=acct,
+            email=row.get("email", "").strip() or None,
+            phone=row.get("phone", "").strip() or None,
+            fax=row.get("fax", "").strip() or None,
+            contact_name=row.get("contact_name", "").strip() or None,
+            website=row.get("website", "").strip() or None,
+            address_line1=row.get("address_line1", "").strip() or None,
+            address_line2=row.get("address_line2", "").strip() or None,
+            city=row.get("city", "").strip() or None,
+            state=row.get("state", "").strip() or None,
+            zip_code=row.get("zip_code", "").strip() or None,
+            country=row.get("country", "").strip() or "US",
+            credit_limit=credit_limit,
+            payment_terms=row.get("payment_terms", "").strip() or None,
+            tax_exempt=tax_exempt,
+            tax_id=row.get("tax_id", "").strip() or None,
+            notes=row.get("notes", "").strip() or None,
+            sage_customer_id=row.get("sage_customer_id", "").strip() or None,
+            created_by=actor_id,
+        )
+        db.add(customer)
+        db.flush()
+
+        if acct:
+            existing_accounts.add(acct.upper())
+        created += 1
+
+    if created > 0:
+        audit_service.log_action(
+            db,
+            company_id,
+            "bulk_imported",
+            "customer",
+            None,
+            user_id=actor_id,
+            changes={"count": created},
+        )
+
+    # Complete sync log
+    error_summary = (
+        "; ".join(f"Row {e['row']}: {e['message']}" for e in errors[:10])
+        if errors
+        else None
+    )
+    complete_sync_log(db, sync_log, created, skipped, error_summary)
+    db.commit()
+
+    return {"created": created, "skipped": skipped, "errors": errors}

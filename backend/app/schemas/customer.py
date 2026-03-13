@@ -255,3 +255,19 @@ class PaginatedBalanceAdjustments(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+# ---------------------------------------------------------------------------
+# CSV Import schemas
+# ---------------------------------------------------------------------------
+
+
+class CustomerImportResultRow(BaseModel):
+    row: int
+    message: str
+
+
+class CustomerImportResult(BaseModel):
+    created: int
+    skipped: int
+    errors: list[CustomerImportResultRow]

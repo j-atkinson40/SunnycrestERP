@@ -176,3 +176,9 @@ export interface PaginatedBalanceAdjustments {
   page: number;
   per_page: number;
 }
+
+export interface CustomerImportResult {
+  created: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
+}

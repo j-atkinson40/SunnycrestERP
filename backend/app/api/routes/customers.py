@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_module, require_permission
@@ -13,6 +13,7 @@ from app.schemas.customer import (
     CustomerContactResponse,
     CustomerContactUpdate,
     CustomerCreate,
+    CustomerImportResult,
     CustomerListItem,
     CustomerNoteCreate,
     CustomerNoteResponse,
@@ -119,6 +120,20 @@ def create_customer(
     )
     db.refresh(customer)
     return _customer_to_response(customer)
+
+
+@router.post("/import", response_model=CustomerImportResult)
+async def import_csv(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.create")),
+):
+    content = await file.read()
+    result = customer_service.import_customers_from_csv(
+        db, content, current_user.company_id, actor_id=current_user.id
+    )
+    return result
 
 
 @router.get("/{customer_id}")

@@ -8,6 +8,7 @@ import type {
   CustomerContactCreate,
   CustomerContactUpdate,
   CustomerCreate,
+  CustomerImportResult,
   CustomerNote,
   CustomerNoteCreate,
   CustomerStats,
@@ -161,6 +162,21 @@ export const customerService = {
     const response = await apiClient.post<BalanceAdjustment>(
       `/customers/${customerId}/adjustments`,
       data,
+    );
+    return response.data;
+  },
+
+  // -----------------------------------------------------------------------
+  // CSV Import
+  // -----------------------------------------------------------------------
+
+  async importCustomers(file: File): Promise<CustomerImportResult> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiClient.post<CustomerImportResult>(
+      "/customers/import",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
     );
     return response.data;
   },
