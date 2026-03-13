@@ -222,3 +222,36 @@ class CustomerStats(BaseModel):
     suspended: int
     total_outstanding: Decimal
     over_limit_count: int
+
+
+# ---------------------------------------------------------------------------
+# Balance Adjustment schemas
+# ---------------------------------------------------------------------------
+
+
+class BalanceAdjustmentCreate(BaseModel):
+    adjustment_type: str = Field(..., pattern="^(charge|payment)$")
+    amount: Decimal = Field(..., gt=0)
+    description: str | None = None
+    reference_number: str | None = None
+
+
+class BalanceAdjustmentResponse(BaseModel):
+    id: str
+    customer_id: str
+    adjustment_type: str
+    amount: Decimal
+    description: str | None = None
+    reference_number: str | None = None
+    created_by: str | None = None
+    created_by_name: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PaginatedBalanceAdjustments(BaseModel):
+    items: list[BalanceAdjustmentResponse]
+    total: int
+    page: int
+    per_page: int

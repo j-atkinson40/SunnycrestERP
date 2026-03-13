@@ -1,5 +1,7 @@
 import apiClient from "@/lib/api-client";
 import type {
+  BalanceAdjustment,
+  BalanceAdjustmentCreate,
   CreditCheckResult,
   Customer,
   CustomerContact,
@@ -10,6 +12,7 @@ import type {
   CustomerNoteCreate,
   CustomerStats,
   CustomerUpdate,
+  PaginatedBalanceAdjustments,
   PaginatedCustomers,
 } from "@/types/customer";
 
@@ -131,6 +134,32 @@ export const customerService = {
   ): Promise<CustomerNote> {
     const response = await apiClient.post<CustomerNote>(
       `/customers/${customerId}/notes`,
+      data,
+    );
+    return response.data;
+  },
+
+  // -----------------------------------------------------------------------
+  // Balance Adjustments
+  // -----------------------------------------------------------------------
+
+  async getAdjustments(
+    customerId: string,
+    page = 1,
+    perPage = 20,
+  ): Promise<PaginatedBalanceAdjustments> {
+    const response = await apiClient.get<PaginatedBalanceAdjustments>(
+      `/customers/${customerId}/adjustments?page=${page}&per_page=${perPage}`,
+    );
+    return response.data;
+  },
+
+  async createAdjustment(
+    customerId: string,
+    data: BalanceAdjustmentCreate,
+  ): Promise<BalanceAdjustment> {
+    const response = await apiClient.post<BalanceAdjustment>(
+      `/customers/${customerId}/adjustments`,
       data,
     );
     return response.data;

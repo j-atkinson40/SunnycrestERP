@@ -1,4 +1,5 @@
 from app.models.audit_log import AuditLog
+from app.models.balance_adjustment import BalanceAdjustment
 from app.models.company import Company
 from app.models.company_module import CompanyModule
 from app.models.customer import Customer
@@ -25,6 +26,7 @@ from app.models.user_permission_override import UserPermissionOverride
 
 __all__ = [
     "AuditLog",
+    "BalanceAdjustment",
     "Company",
     "CompanyModule",
     "Customer",

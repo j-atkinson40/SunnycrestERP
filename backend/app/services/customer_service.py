@@ -4,10 +4,12 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.models.balance_adjustment import BalanceAdjustment
 from app.models.customer import Customer
 from app.models.customer_contact import CustomerContact
 from app.models.customer_note import CustomerNote
 from app.schemas.customer import (
+    BalanceAdjustmentCreate,
     CustomerContactCreate,
     CustomerContactUpdate,
     CustomerCreate,
@@ -452,3 +454,137 @@ def create_customer_note(
     db.commit()
     db.refresh(note)
     return note
+
+
+# ---------------------------------------------------------------------------
+# Balance Adjustments
+# ---------------------------------------------------------------------------
+
+
+def create_balance_adjustment(
+    db: Session,
+    customer_id: str,
+    company_id: str,
+    actor_id: str | None,
+    data: BalanceAdjustmentCreate,
+) -> BalanceAdjustment:
+    customer = get_customer(db, customer_id, company_id)
+
+    # For charges, enforce credit limit
+    if data.adjustment_type == "charge" and customer.credit_limit is not None:
+        new_balance = customer.current_balance + data.amount
+        if new_balance > customer.credit_limit:
+            available = customer.credit_limit - customer.current_balance
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Charge of ${data.amount} would exceed credit limit. "
+                    f"Available credit: ${max(available, Decimal('0'))}"
+                ),
+            )
+
+    adjustment = BalanceAdjustment(
+        company_id=company_id,
+        customer_id=customer_id,
+        adjustment_type=data.adjustment_type,
+        amount=data.amount,
+        description=data.description,
+        reference_number=data.reference_number,
+        created_by=actor_id,
+    )
+    db.add(adjustment)
+
+    # Update customer balance
+    if data.adjustment_type == "charge":
+        customer.current_balance = customer.current_balance + data.amount
+    else:
+        customer.current_balance = customer.current_balance - data.amount
+        # Don't let balance go negative
+        if customer.current_balance < Decimal("0"):
+            customer.current_balance = Decimal("0")
+
+    # Auto-hold if over limit
+    if (
+        customer.credit_limit is not None
+        and customer.current_balance > customer.credit_limit
+        and customer.account_status == "active"
+    ):
+        customer.account_status = "hold"
+        # Add a credit note explaining the auto-hold
+        auto_note = CustomerNote(
+            customer_id=customer_id,
+            company_id=company_id,
+            note_type="credit",
+            content=(
+                f"Account automatically placed on hold — balance "
+                f"${customer.current_balance} exceeds credit limit "
+                f"${customer.credit_limit}."
+            ),
+            created_by=actor_id,
+        )
+        db.add(auto_note)
+
+    # Auto-restore if payment brings balance back under limit
+    if (
+        data.adjustment_type == "payment"
+        and customer.credit_limit is not None
+        and customer.current_balance <= customer.credit_limit
+        and customer.account_status == "hold"
+    ):
+        customer.account_status = "active"
+        auto_note = CustomerNote(
+            customer_id=customer_id,
+            company_id=company_id,
+            note_type="credit",
+            content=(
+                f"Account automatically restored to active — balance "
+                f"${customer.current_balance} is within credit limit "
+                f"${customer.credit_limit}."
+            ),
+            created_by=actor_id,
+        )
+        db.add(auto_note)
+
+    customer.modified_by = actor_id
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "created",
+        "balance_adjustment",
+        adjustment.id,
+        user_id=actor_id,
+        changes={
+            "customer_id": customer_id,
+            "type": data.adjustment_type,
+            "amount": str(data.amount),
+            "new_balance": str(customer.current_balance),
+        },
+    )
+
+    db.commit()
+    db.refresh(adjustment)
+    return adjustment
+
+
+def get_balance_adjustments(
+    db: Session,
+    customer_id: str,
+    company_id: str,
+    page: int = 1,
+    per_page: int = 20,
+) -> dict:
+    get_customer(db, customer_id, company_id)  # validates existence
+
+    query = db.query(BalanceAdjustment).filter(
+        BalanceAdjustment.customer_id == customer_id,
+        BalanceAdjustment.company_id == company_id,
+    )
+    total = query.count()
+    adjustments = (
+        query.order_by(BalanceAdjustment.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return {"items": adjustments, "total": total, "page": page, "per_page": per_page}

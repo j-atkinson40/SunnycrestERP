@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { PlusIcon, Trash2Icon } from "lucide-react";
+import { AlertTriangleIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { customerService } from "@/services/customer-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type {
+  BalanceAdjustment,
+  CreditCheckResult,
   Customer,
   CustomerContact,
   CustomerNote,
@@ -48,9 +50,12 @@ function statusBadge(status: string) {
 function noteTypeBadge(type: string) {
   const colors: Record<string, string> = {
     call: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-    email: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-    visit: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-    credit: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+    email:
+      "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+    visit:
+      "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    credit:
+      "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
     general: "",
   };
   return (
@@ -131,7 +136,9 @@ export default function CustomerDetailPage() {
   // Contacts
   const [contacts, setContacts] = useState<CustomerContact[]>([]);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
-  const [editingContact, setEditingContact] = useState<CustomerContact | null>(null);
+  const [editingContact, setEditingContact] = useState<CustomerContact | null>(
+    null,
+  );
   const [contactForm, setContactForm] = useState({
     name: "",
     title: "",
@@ -148,11 +155,31 @@ export default function CustomerDetailPage() {
   const [newNoteType, setNewNoteType] = useState("general");
   const [newNoteContent, setNewNoteContent] = useState("");
 
+  // Credit check widget
+  const [creditCheckAmount, setCreditCheckAmount] = useState("");
+  const [creditCheckResult, setCreditCheckResult] =
+    useState<CreditCheckResult | null>(null);
+  const [creditCheckLoading, setCreditCheckLoading] = useState(false);
+
+  // Balance adjustments
+  const [adjustments, setAdjustments] = useState<BalanceAdjustment[]>([]);
+  const [adjustmentsTotal, setAdjustmentsTotal] = useState(0);
+  const [adjustmentsPage, setAdjustmentsPage] = useState(1);
+  const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    adjustment_type: "charge" as "charge" | "payment",
+    amount: "",
+    description: "",
+    reference_number: "",
+  });
+  const [adjustmentError, setAdjustmentError] = useState("");
+
   const loadData = useCallback(async () => {
     if (!customerId) return;
     try {
       setLoading(true);
-      const customer: Customer = await customerService.getCustomer(customerId);
+      const customer: Customer =
+        await customerService.getCustomer(customerId);
 
       setName(customer.name);
       setAccountNumber(customer.account_number || "");
@@ -208,6 +235,21 @@ export default function CustomerDetailPage() {
     }
   }, [customerId, notesPage]);
 
+  const loadAdjustments = useCallback(async () => {
+    if (!customerId) return;
+    try {
+      const data = await customerService.getAdjustments(
+        customerId,
+        adjustmentsPage,
+        20,
+      );
+      setAdjustments(data.items);
+      setAdjustmentsTotal(data.total);
+    } catch {
+      // Non-critical
+    }
+  }, [customerId, adjustmentsPage]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -215,6 +257,10 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     if (!loading) loadNotes();
   }, [loadNotes, loading]);
+
+  useEffect(() => {
+    if (!loading) loadAdjustments();
+  }, [loadAdjustments, loading]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -269,11 +315,76 @@ export default function CustomerDetailPage() {
     setBillingCountry(country);
   }
 
+  // ------- Credit check -------
+
+  async function handleCreditCheck() {
+    if (!customerId || !creditCheckAmount.trim()) return;
+    setCreditCheckLoading(true);
+    setCreditCheckResult(null);
+    try {
+      const result = await customerService.checkCredit(
+        customerId,
+        parseFloat(creditCheckAmount),
+      );
+      setCreditCheckResult(result);
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Credit check failed"));
+    } finally {
+      setCreditCheckLoading(false);
+    }
+  }
+
+  // ------- Balance adjustment handlers -------
+
+  function openAdjustmentDialog(type: "charge" | "payment") {
+    setAdjustmentForm({
+      adjustment_type: type,
+      amount: "",
+      description: "",
+      reference_number: "",
+    });
+    setAdjustmentError("");
+    setAdjustmentDialogOpen(true);
+  }
+
+  async function handleCreateAdjustment() {
+    if (!customerId || !adjustmentForm.amount.trim()) return;
+    setAdjustmentError("");
+    try {
+      await customerService.createAdjustment(customerId, {
+        adjustment_type: adjustmentForm.adjustment_type,
+        amount: parseFloat(adjustmentForm.amount),
+        description: adjustmentForm.description.trim() || undefined,
+        reference_number: adjustmentForm.reference_number.trim() || undefined,
+      });
+      setAdjustmentDialogOpen(false);
+      toast.success(
+        adjustmentForm.adjustment_type === "charge"
+          ? "Charge recorded"
+          : "Payment recorded",
+      );
+      // Reload everything to reflect balance + status changes
+      loadData();
+      loadAdjustments();
+      loadNotes();
+    } catch (err: unknown) {
+      setAdjustmentError(
+        getApiErrorMessage(err, "Failed to record adjustment"),
+      );
+    }
+  }
+
   // ------- Contact handlers -------
 
   function openAddContact() {
     setEditingContact(null);
-    setContactForm({ name: "", title: "", email: "", phone: "", is_primary: false });
+    setContactForm({
+      name: "",
+      title: "",
+      email: "",
+      phone: "",
+      is_primary: false,
+    });
     setContactError("");
     setContactDialogOpen(true);
   }
@@ -376,6 +487,13 @@ export default function CustomerDetailPage() {
     ? parseFloat(creditLimit) - currentBalance
     : null;
 
+  // Over-limit check
+  const isOverLimit =
+    creditLimit.trim() && currentBalance > parseFloat(creditLimit);
+  const overLimitAmount = isOverLimit
+    ? currentBalance - parseFloat(creditLimit)
+    : 0;
+
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
@@ -386,6 +504,7 @@ export default function CustomerDetailPage() {
   }
 
   const notesTotalPages = Math.ceil(notesTotal / 20);
+  const adjustmentsTotalPages = Math.ceil(adjustmentsTotal / 20);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -398,7 +517,11 @@ export default function CustomerDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {canDelete && isActive && (
-            <Button variant="destructive" size="sm" onClick={handleDeactivate}>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDeactivate}
+            >
               Deactivate
             </Button>
           )}
@@ -417,6 +540,24 @@ export default function CustomerDetailPage() {
         </div>
       )}
 
+      {/* Over-Limit Warning Banner */}
+      {isOverLimit && (
+        <div className="flex items-center gap-3 rounded-md border border-red-300 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950">
+          <AlertTriangleIcon className="size-5 shrink-0 text-red-600 dark:text-red-400" />
+          <div>
+            <p className="font-medium text-red-800 dark:text-red-200">
+              Over Credit Limit
+            </p>
+            <p className="text-sm text-red-700 dark:text-red-300">
+              This customer is over their credit limit by{" "}
+              {formatCurrency(overLimitAmount)}. Balance:{" "}
+              {formatCurrency(currentBalance)}, Limit:{" "}
+              {formatCurrency(parseFloat(creditLimit))}.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Account Summary */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card className="p-4">
@@ -425,12 +566,18 @@ export default function CustomerDetailPage() {
         </Card>
         <Card className="p-4">
           <p className="text-xs text-muted-foreground">Balance</p>
-          <p className="mt-1 text-lg font-bold">{formatCurrency(currentBalance)}</p>
+          <p
+            className={`mt-1 text-lg font-bold ${isOverLimit ? "text-destructive" : ""}`}
+          >
+            {formatCurrency(currentBalance)}
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-xs text-muted-foreground">Credit Limit</p>
           <p className="mt-1 text-lg font-bold">
-            {creditLimit.trim() ? formatCurrency(parseFloat(creditLimit)) : "None"}
+            {creditLimit.trim()
+              ? formatCurrency(parseFloat(creditLimit))
+              : "None"}
           </p>
         </Card>
         <Card className="p-4">
@@ -442,10 +589,67 @@ export default function CustomerDetailPage() {
                 : ""
             }`}
           >
-            {availableCredit !== null ? formatCurrency(availableCredit) : "N/A"}
+            {availableCredit !== null
+              ? formatCurrency(availableCredit)
+              : "N/A"}
           </p>
         </Card>
       </div>
+
+      {/* Credit Check Widget */}
+      <Card className="p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Check Credit</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              value={creditCheckAmount}
+              onChange={(e) => {
+                setCreditCheckAmount(e.target.value);
+                setCreditCheckResult(null);
+              }}
+              placeholder="Amount"
+              className="w-32"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            onClick={handleCreditCheck}
+            disabled={
+              !creditCheckAmount.trim() ||
+              creditCheckLoading ||
+              parseFloat(creditCheckAmount) <= 0
+            }
+          >
+            {creditCheckLoading ? "Checking..." : "Check"}
+          </Button>
+          {creditCheckResult && (
+            <div
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+                creditCheckResult.allowed
+                  ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
+                  : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+              }`}
+            >
+              <span className="font-medium">
+                {creditCheckResult.allowed ? "✓ Allowed" : "✗ Denied"}
+              </span>
+              {creditCheckResult.available_credit !== null && (
+                <span>
+                  — Available: {formatCurrency(creditCheckResult.available_credit)}
+                </span>
+              )}
+              {creditCheckResult.credit_limit === null && (
+                <span>— No credit limit set</span>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Customer Info */}
@@ -752,114 +956,357 @@ export default function CustomerDetailPage() {
         )}
       </form>
 
+      {/* Balance Adjustments */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Balance Adjustments</h2>
+          {canEdit && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openAdjustmentDialog("charge")}
+              >
+                Record Charge
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openAdjustmentDialog("payment")}
+              >
+                Record Payment
+              </Button>
+            </div>
+          )}
+        </div>
+        <Separator className="my-4" />
+
+        {/* Adjustment dialog */}
+        <Dialog
+          open={adjustmentDialogOpen}
+          onOpenChange={setAdjustmentDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                Record{" "}
+                {adjustmentForm.adjustment_type === "charge"
+                  ? "Charge"
+                  : "Payment"}
+              </DialogTitle>
+              <DialogDescription>
+                {adjustmentForm.adjustment_type === "charge"
+                  ? "Add a charge to this customer's balance."
+                  : "Record a payment received from this customer."}
+              </DialogDescription>
+            </DialogHeader>
+            {adjustmentError && (
+              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                {adjustmentError}
+              </div>
+            )}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Amount</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={adjustmentForm.amount}
+                  onChange={(e) =>
+                    setAdjustmentForm({
+                      ...adjustmentForm,
+                      amount: e.target.value,
+                    })
+                  }
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input
+                  value={adjustmentForm.description}
+                  onChange={(e) =>
+                    setAdjustmentForm({
+                      ...adjustmentForm,
+                      description: e.target.value,
+                    })
+                  }
+                  placeholder={
+                    adjustmentForm.adjustment_type === "charge"
+                      ? "e.g. Invoice #1234"
+                      : "e.g. Check #5678"
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Reference # (optional)</Label>
+                <Input
+                  value={adjustmentForm.reference_number}
+                  onChange={(e) =>
+                    setAdjustmentForm({
+                      ...adjustmentForm,
+                      reference_number: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. INV-001, CHK-5678"
+                />
+              </div>
+              {adjustmentForm.adjustment_type === "charge" &&
+                creditLimit.trim() && (
+                  <div className="rounded-md bg-muted p-3 text-sm">
+                    <p className="text-muted-foreground">
+                      Current balance: {formatCurrency(currentBalance)} /{" "}
+                      {formatCurrency(parseFloat(creditLimit))} limit
+                    </p>
+                    {adjustmentForm.amount.trim() &&
+                      parseFloat(adjustmentForm.amount) > 0 && (
+                        <p
+                          className={
+                            currentBalance +
+                              parseFloat(adjustmentForm.amount) >
+                            parseFloat(creditLimit)
+                              ? "text-destructive font-medium mt-1"
+                              : "text-green-700 dark:text-green-400 mt-1"
+                          }
+                        >
+                          After charge:{" "}
+                          {formatCurrency(
+                            currentBalance +
+                              parseFloat(adjustmentForm.amount),
+                          )}{" "}
+                          {currentBalance +
+                            parseFloat(adjustmentForm.amount) >
+                          parseFloat(creditLimit)
+                            ? "— exceeds limit!"
+                            : "— within limit"}
+                        </p>
+                      )}
+                  </div>
+                )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setAdjustmentDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateAdjustment}
+                disabled={
+                  !adjustmentForm.amount.trim() ||
+                  parseFloat(adjustmentForm.amount) <= 0
+                }
+              >
+                {adjustmentForm.adjustment_type === "charge"
+                  ? "Record Charge"
+                  : "Record Payment"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Adjustments table */}
+        {adjustments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No balance adjustments recorded yet.
+          </p>
+        ) : (
+          <div className="rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-3 py-2 text-left font-medium">Date</th>
+                  <th className="px-3 py-2 text-left font-medium">Type</th>
+                  <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2 text-left font-medium">
+                    Description
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium">Ref #</th>
+                  <th className="px-3 py-2 text-left font-medium">By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adjustments.map((adj) => (
+                  <tr key={adj.id} className="border-b last:border-0">
+                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                      {formatDate(adj.created_at)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge
+                        variant="secondary"
+                        className={
+                          adj.adjustment_type === "charge"
+                            ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                            : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                        }
+                      >
+                        {adj.adjustment_type}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono">
+                      {adj.adjustment_type === "charge" ? "+" : "−"}
+                      {formatCurrency(adj.amount)}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {adj.description || "—"}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {adj.reference_number || "—"}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {adj.created_by_name || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Adjustments pagination */}
+        {adjustmentsTotalPages > 1 && (
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={adjustmentsPage <= 1}
+              onClick={() => setAdjustmentsPage(adjustmentsPage - 1)}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {adjustmentsPage} of {adjustmentsTotalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={adjustmentsPage >= adjustmentsTotalPages}
+              onClick={() => setAdjustmentsPage(adjustmentsPage + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </Card>
+
       {/* Contacts Section */}
       <Card className="p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Contacts</h2>
           {canEdit && (
             <>
-            <Button variant="outline" size="sm" onClick={openAddContact}>
-              <PlusIcon className="mr-1 size-4" />
-              Add Contact
-            </Button>
-            <Dialog open={contactDialogOpen} onOpenChange={setContactDialogOpen}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingContact ? "Edit Contact" : "Add Contact"}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {editingContact
-                      ? "Update the contact details."
-                      : "Add a new contact for this customer."}
-                  </DialogDescription>
-                </DialogHeader>
-                {contactError && (
-                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                    {contactError}
-                  </div>
-                )}
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Name</Label>
-                    <Input
-                      value={contactForm.name}
-                      onChange={(e) =>
-                        setContactForm({ ...contactForm, name: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Title</Label>
-                    <Input
-                      value={contactForm.title}
-                      onChange={(e) =>
-                        setContactForm({
-                          ...contactForm,
-                          title: e.target.value,
-                        })
-                      }
-                      placeholder="e.g. Purchasing Manager"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+              <Button variant="outline" size="sm" onClick={openAddContact}>
+                <PlusIcon className="mr-1 size-4" />
+                Add Contact
+              </Button>
+              <Dialog
+                open={contactDialogOpen}
+                onOpenChange={setContactDialogOpen}
+              >
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingContact ? "Edit Contact" : "Add Contact"}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {editingContact
+                        ? "Update the contact details."
+                        : "Add a new contact for this customer."}
+                    </DialogDescription>
+                  </DialogHeader>
+                  {contactError && (
+                    <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                      {contactError}
+                    </div>
+                  )}
+                  <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Email</Label>
+                      <Label>Name</Label>
                       <Input
-                        type="email"
-                        value={contactForm.email}
+                        value={contactForm.name}
                         onChange={(e) =>
                           setContactForm({
                             ...contactForm,
-                            email: e.target.value,
+                            name: e.target.value,
                           })
                         }
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Phone</Label>
+                      <Label>Title</Label>
                       <Input
-                        value={contactForm.phone}
+                        value={contactForm.title}
                         onChange={(e) =>
                           setContactForm({
                             ...contactForm,
-                            phone: e.target.value,
+                            title: e.target.value,
                           })
                         }
+                        placeholder="e.g. Purchasing Manager"
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Email</Label>
+                        <Input
+                          type="email"
+                          value={contactForm.email}
+                          onChange={(e) =>
+                            setContactForm({
+                              ...contactForm,
+                              email: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Phone</Label>
+                        <Input
+                          value={contactForm.phone}
+                          onChange={(e) =>
+                            setContactForm({
+                              ...contactForm,
+                              phone: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={contactForm.is_primary}
+                        onChange={(e) =>
+                          setContactForm({
+                            ...contactForm,
+                            is_primary: e.target.checked,
+                          })
+                        }
+                        className="size-4 rounded border-input"
+                      />
+                      Primary contact
+                    </label>
                   </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={contactForm.is_primary}
-                      onChange={(e) =>
-                        setContactForm({
-                          ...contactForm,
-                          is_primary: e.target.checked,
-                        })
-                      }
-                      className="size-4 rounded border-input"
-                    />
-                    Primary contact
-                  </label>
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => setContactDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleSaveContact}
-                    disabled={!contactForm.name.trim()}
-                  >
-                    {editingContact ? "Update" : "Add"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setContactDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveContact}
+                      disabled={!contactForm.name.trim()}
+                    >
+                      {editingContact ? "Update" : "Add"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </div>

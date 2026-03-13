@@ -150,3 +150,29 @@ export interface CreditCheckResult {
   available_credit: number | null;
   requested_amount: number;
 }
+
+export interface BalanceAdjustment {
+  id: string;
+  customer_id: string;
+  adjustment_type: string;
+  amount: number;
+  description: string | null;
+  reference_number: string | null;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface BalanceAdjustmentCreate {
+  adjustment_type: "charge" | "payment";
+  amount: number;
+  description?: string;
+  reference_number?: string;
+}
+
+export interface PaginatedBalanceAdjustments {
+  items: BalanceAdjustment[];
+  total: number;
+  page: number;
+  per_page: number;
+}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { customerService } from "@/services/customer-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -323,7 +324,7 @@ export default function CustomersPage() {
 
       {/* Stats bar */}
       {stats && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
           <Card className="p-4">
             <p className="text-sm text-muted-foreground">Total Customers</p>
             <p className="text-2xl font-bold">{stats.total_customers}</p>
@@ -338,6 +339,12 @@ export default function CustomersPage() {
             <p className="text-sm text-muted-foreground">On Hold</p>
             <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
               {stats.on_hold}
+            </p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-sm text-muted-foreground">Over Limit</p>
+            <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+              {stats.over_limit_count}
             </p>
           </Card>
           <Card className="p-4">
@@ -446,7 +453,15 @@ export default function CustomersPage() {
                   </TableCell>
                   <TableCell>{statusBadge(customer.account_status)}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(customer.current_balance)}
+                    {customer.credit_limit !== null &&
+                    customer.current_balance > customer.credit_limit ? (
+                      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                        <AlertTriangle className="size-3.5" />
+                        {formatCurrency(customer.current_balance)}
+                      </span>
+                    ) : (
+                      formatCurrency(customer.current_balance)
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {customer.payment_terms || "—"}

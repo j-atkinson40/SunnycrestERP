@@ -7,6 +7,8 @@ from app.api.deps import require_module, require_permission
 from app.database import get_db
 from app.models.user import User
 from app.schemas.customer import (
+    BalanceAdjustmentCreate,
+    BalanceAdjustmentResponse,
     CustomerContactCreate,
     CustomerContactResponse,
     CustomerContactUpdate,
@@ -17,6 +19,7 @@ from app.schemas.customer import (
     CustomerResponse,
     CustomerStats,
     CustomerUpdate,
+    PaginatedBalanceAdjustments,
     PaginatedCustomers,
 )
 from app.services import customer_service
@@ -33,6 +36,15 @@ def _note_to_response(note) -> dict:
     data = CustomerNoteResponse.model_validate(note).model_dump()
     if note.author:
         data["created_by_name"] = f"{note.author.first_name or ''} {note.author.last_name or ''}".strip() or note.author.email
+    else:
+        data["created_by_name"] = None
+    return data
+
+
+def _adjustment_to_response(adj) -> dict:
+    data = BalanceAdjustmentResponse.model_validate(adj).model_dump()
+    if adj.author:
+        data["created_by_name"] = f"{adj.author.first_name or ''} {adj.author.last_name or ''}".strip() or adj.author.email
     else:
         data["created_by_name"] = None
     return data
@@ -266,3 +278,42 @@ def credit_check(
     return customer_service.check_credit_limit(
         db, customer_id, current_user.company_id, amount
     )
+
+
+# ---------------------------------------------------------------------------
+# Balance Adjustment endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{customer_id}/adjustments", response_model=PaginatedBalanceAdjustments)
+def list_adjustments(
+    customer_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.view")),
+):
+    result = customer_service.get_balance_adjustments(
+        db, customer_id, current_user.company_id, page, per_page
+    )
+    return {
+        "items": [_adjustment_to_response(a) for a in result["items"]],
+        "total": result["total"],
+        "page": result["page"],
+        "per_page": result["per_page"],
+    }
+
+
+@router.post("/{customer_id}/adjustments", status_code=201)
+def create_adjustment(
+    customer_id: str,
+    data: BalanceAdjustmentCreate,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.edit")),
+):
+    adjustment = customer_service.create_balance_adjustment(
+        db, customer_id, current_user.company_id, current_user.id, data
+    )
+    return _adjustment_to_response(adjustment)
