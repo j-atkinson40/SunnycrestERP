@@ -49,6 +49,7 @@ def create_department(
         company_id=company_id,
         name=data.name,
         description=data.description,
+        created_by=actor_id,
     )
     db.add(dept)
     db.flush()
@@ -100,6 +101,7 @@ def update_department(
 
     for field, value in update_data.items():
         setattr(dept, field, value)
+    dept.modified_by = actor_id
 
     new_data = {"name": dept.name, "description": dept.description, "is_active": dept.is_active}
     changes = audit_service.compute_changes(old_data, new_data)

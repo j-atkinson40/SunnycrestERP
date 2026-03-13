@@ -115,6 +115,7 @@ def create_user(
         last_name=data.last_name,
         role_id=role_id,
         company_id=company_id,
+        created_by=actor_id,
     )
     db.add(user)
     db.flush()
@@ -196,6 +197,7 @@ def update_user(
 
     for field, value in update_data.items():
         setattr(user, field, value)
+    user.modified_by = actor_id
 
     new_data = {
         "email": user.email,

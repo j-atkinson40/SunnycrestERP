@@ -33,6 +33,13 @@ class Role(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    modified_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+
     company = relationship("Company", back_populates="roles")
     permissions = relationship(
         "RolePermission", back_populates="role", cascade="all, delete-orphan"

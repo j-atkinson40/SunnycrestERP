@@ -56,6 +56,7 @@ def update_profile(
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(profile, field, value)
+    profile.modified_by = actor_id
 
     new_data = {}
     for f in all_fields:

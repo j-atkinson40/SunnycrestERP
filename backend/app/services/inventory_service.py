@@ -145,6 +145,7 @@ def receive_stock(
     item = get_inventory_item(db, product_id, company_id)
     old_qty = item.quantity_on_hand
     item.quantity_on_hand += quantity
+    item.modified_by = actor_id
 
     tx = InventoryTransaction(
         company_id=company_id,
@@ -189,6 +190,7 @@ def adjust_stock(
     old_qty = item.quantity_on_hand
     delta = new_quantity - old_qty
     item.quantity_on_hand = new_quantity
+    item.modified_by = actor_id
 
     tx = InventoryTransaction(
         company_id=company_id,
@@ -240,6 +242,7 @@ def record_sale(
         )
     old_qty = item.quantity_on_hand
     item.quantity_on_hand -= quantity
+    item.modified_by = actor_id
 
     tx = InventoryTransaction(
         company_id=company_id,
@@ -298,6 +301,7 @@ def update_inventory_settings(
         item.reorder_quantity = reorder_quantity
     if location is not None:
         item.location = location
+    item.modified_by = actor_id
 
     new_data = {
         "reorder_point": item.reorder_point,

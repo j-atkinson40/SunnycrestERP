@@ -37,6 +37,13 @@ class ProductCategory(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    modified_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+
     company = relationship("Company")
     parent = relationship(
         "ProductCategory", remote_side=[id], back_populates="children"

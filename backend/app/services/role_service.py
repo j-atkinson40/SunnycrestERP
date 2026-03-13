@@ -103,6 +103,7 @@ def create_role(
         slug=data.slug,
         description=data.description,
         is_system=False,
+        created_by=actor_id,
     )
     db.add(role)
     db.flush()
@@ -145,6 +146,7 @@ def update_role(
                 detail="Cannot deactivate system roles",
             )
         role.is_active = data.is_active
+    role.modified_by = actor_id
 
     new_data = {"name": role.name, "description": role.description, "is_active": role.is_active}
     changes = audit_service.compute_changes(old_data, new_data)

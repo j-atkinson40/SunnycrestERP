@@ -34,6 +34,7 @@ def update_company(
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(company, field, value)
+    company.modified_by = actor_id
 
     new_data = {f: getattr(company, f) for f in tracked_fields}
     changes = audit_service.compute_changes(old_data, new_data)

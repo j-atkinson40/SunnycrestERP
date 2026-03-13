@@ -45,5 +45,12 @@ class ProductPriceTier(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    modified_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+
     product = relationship("Product", back_populates="price_tiers")
     company = relationship("Company")

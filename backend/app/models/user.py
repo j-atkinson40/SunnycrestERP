@@ -36,7 +36,14 @@ class User(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    company = relationship("Company", back_populates="users")
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    modified_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+
+    company = relationship("Company", back_populates="users", foreign_keys=[company_id])
     role_obj = relationship("Role", back_populates="users")
     permission_overrides = relationship(
         "UserPermissionOverride", back_populates="user", cascade="all, delete-orphan"

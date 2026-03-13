@@ -51,5 +51,12 @@ class EmployeeProfile(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    user = relationship("User", back_populates="profile")
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    modified_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+
+    user = relationship("User", back_populates="profile", foreign_keys=[user_id])
     department_obj = relationship("Department", back_populates="employee_profiles")

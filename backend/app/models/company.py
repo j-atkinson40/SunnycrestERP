@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -44,5 +44,12 @@ class Company(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    users = relationship("User", back_populates="company")
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", use_alter=True), nullable=True
+    )
+    modified_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", use_alter=True), nullable=True
+    )
+
+    users = relationship("User", back_populates="company", foreign_keys="[User.company_id]")
     roles = relationship("Role", back_populates="company", cascade="all, delete-orphan")

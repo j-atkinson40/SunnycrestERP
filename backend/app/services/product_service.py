@@ -98,6 +98,7 @@ def create_category(
         name=data.name,
         description=data.description,
         parent_id=data.parent_id,
+        created_by=actor_id,
     )
     db.add(cat)
     db.flush()
@@ -150,6 +151,7 @@ def update_category(
 
     for field, value in update_data.items():
         setattr(cat, field, value)
+    cat.modified_by = actor_id
 
     new_data = {"name": cat.name, "description": cat.description, "is_active": cat.is_active}
     changes = audit_service.compute_changes(old_data, new_data)
@@ -296,6 +298,7 @@ def create_product(
         cost_price=data.cost_price,
         unit_of_measure=data.unit_of_measure,
         image_url=data.image_url,
+        created_by=actor_id,
     )
     db.add(product)
     db.flush()
@@ -364,6 +367,7 @@ def update_product(
 
     for field, value in update_data.items():
         setattr(product, field, value)
+    product.modified_by = actor_id
 
     new_data = {
         "name": product.name,
@@ -469,6 +473,7 @@ def create_price_tier(
         min_quantity=data.min_quantity,
         price=data.price,
         label=data.label,
+        created_by=actor_id,
     )
     db.add(tier)
     db.flush()
@@ -540,6 +545,7 @@ def update_price_tier(
 
     for field, value in update_data.items():
         setattr(tier, field, value)
+    tier.modified_by = actor_id
 
     new_data = {
         "min_quantity": tier.min_quantity,
@@ -772,6 +778,7 @@ def import_products_from_csv(
             price=price,
             cost_price=cost_price,
             unit_of_measure=row.get("unit_of_measure", "").strip() or None,
+            created_by=actor_id,
         )
         db.add(product)
         db.flush()
