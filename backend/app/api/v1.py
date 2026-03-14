@@ -8,6 +8,7 @@ kept as a deprecated alias that adds a Deprecation header.
 from fastapi import APIRouter
 
 from app.api.routes import (
+    accounting,
     ai,
     ap,
     api_keys,
@@ -39,6 +40,9 @@ from app.api.routes import (
 v1_router = APIRouter()
 
 # --- Route registration (alphabetical) ---
+v1_router.include_router(
+    accounting.router, prefix="/accounting", tags=["Accounting Integration"]
+)
 v1_router.include_router(ai.router, prefix="/ai", tags=["AI"])
 v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["API Keys"])
 v1_router.include_router(ap.router, prefix="/ap", tags=["Accounts Payable"])

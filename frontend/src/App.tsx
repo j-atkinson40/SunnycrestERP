@@ -13,6 +13,7 @@ import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
 import AuditLogs from "@/pages/admin/audit-logs";
 import CompanySettings from "@/pages/admin/company-settings";
+import AccountingPage from "@/pages/admin/accounting";
 import ApiKeysPage from "@/pages/admin/api-keys";
 import FeatureFlagsPage from "@/pages/admin/feature-flags";
 import MyProfile from "@/pages/my-profile";
@@ -266,6 +267,16 @@ export default function App() {
                     <Route
                       path="/admin/api-keys"
                       element={<ApiKeysPage />}
+                    />
+                  </Route>
+
+                  {/* Accounting integration — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route
+                      path="/admin/accounting"
+                      element={<AccountingPage />}
                     />
                   </Route>
                 </Route>

@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # QuickBooks Online OAuth (optional — only needed if QBO integration is used)
+    QBO_CLIENT_ID: str = ""
+    QBO_CLIENT_SECRET: str = ""
+    QBO_REDIRECT_URI: str = ""
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def strip_database_url(cls, v):

@@ -26,6 +26,7 @@ app = FastAPI(
         "name": "Proprietary",
     },
     openapi_tags=[
+        {"name": "Accounting Integration", "description": "Accounting provider management, sync, and account mapping"},
         {"name": "Authentication", "description": "Login, registration, token refresh"},
         {"name": "User Management", "description": "User CRUD and password management"},
         {"name": "Company Management", "description": "Tenant registration and settings"},

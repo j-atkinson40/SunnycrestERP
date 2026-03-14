@@ -46,6 +46,14 @@ class Company(Base):
     email_from_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     email_from_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Accounting Integration
+    accounting_provider: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default="sage_csv"
+    )  # none, sage_csv, quickbooks_online
+    accounting_config: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # JSON blob for provider-specific settings (OAuth tokens, mappings, etc.)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
