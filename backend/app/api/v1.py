@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     ai,
     ap,
+    api_keys,
     audit,
     auth,
     companies,
@@ -39,6 +40,7 @@ v1_router = APIRouter()
 
 # --- Route registration (alphabetical) ---
 v1_router.include_router(ai.router, prefix="/ai", tags=["AI"])
+v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["API Keys"])
 v1_router.include_router(ap.router, prefix="/ap", tags=["Accounts Payable"])
 v1_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs"])
 v1_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])

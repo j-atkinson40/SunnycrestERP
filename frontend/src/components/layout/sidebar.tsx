@@ -30,6 +30,7 @@ const allNavItems: NavItem[] = [
   { label: "Company Settings", href: "/admin/settings", permission: "company.view" },
   { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit.view" },
   { label: "Feature Flags", href: "/admin/feature-flags", adminOnly: true },
+  { label: "API Keys", href: "/admin/api-keys", adminOnly: true },
 ];
 
 export function Sidebar() {

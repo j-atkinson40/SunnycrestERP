@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.company_resolver import get_current_company
 from app.core.security import decode_token
 from app.database import get_db
+from app.models.api_key import ApiKey
 from app.models.company import Company
 from app.models.role import Role
 from app.models.user import User
@@ -146,3 +147,60 @@ def require_module(module_name: str):
         return current_user
 
     return _check_module
+
+
+# ---------------------------------------------------------------------------
+# API key authentication (separate from JWT user auth)
+# ---------------------------------------------------------------------------
+
+
+def get_api_key_auth(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ApiKey:
+    """Authenticate via X-API-Key header. For external integrations."""
+    from app.services.api_key_service import record_usage, validate_api_key
+
+    key_header = request.headers.get("X-API-Key")
+    if not key_header:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="X-API-Key header required",
+        )
+
+    api_key, error = validate_api_key(db, key_header)
+    if error:
+        if error == "Rate limit exceeded":
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=error,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=error,
+        )
+
+    # Record usage (non-error)
+    record_usage(db, api_key.id, is_error=False)
+    return api_key
+
+
+def require_api_scope(scope: str):
+    """Dependency factory for API key scope checking.
+
+    Usage: Depends(require_api_scope("customers.read"))
+    """
+
+    def _check_scope(
+        api_key: ApiKey = Depends(get_api_key_auth),
+    ) -> ApiKey:
+        from app.services.api_key_service import has_scope
+
+        if not has_scope(api_key, scope):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"API key missing required scope: {scope}",
+            )
+        return api_key
+
+    return _check_scope

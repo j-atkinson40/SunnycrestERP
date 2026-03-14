@@ -50,6 +50,7 @@ app = FastAPI(
         {"name": "Sage Exports", "description": "Sage 100 CSV data exports"},
         {"name": "Sync Logs", "description": "Import/export sync tracking"},
         {"name": "AI", "description": "AI-powered command parsing"},
+        {"name": "API Keys", "description": "API key management for external integrations"},
         {"name": "Audit Logs", "description": "System audit trail"},
     ],
 )

@@ -1,3 +1,5 @@
+from app.models.api_key import ApiKey
+from app.models.api_key_usage import ApiKeyUsage
 from app.models.audit_log import AuditLog
 from app.models.balance_adjustment import BalanceAdjustment
 from app.models.company import Company
@@ -37,6 +39,8 @@ from app.models.vendor_payment import VendorPayment
 from app.models.vendor_payment_application import VendorPaymentApplication
 
 __all__ = [
+    "ApiKey",
+    "ApiKeyUsage",
     "AuditLog",
     "BalanceAdjustment",
     "Company",
