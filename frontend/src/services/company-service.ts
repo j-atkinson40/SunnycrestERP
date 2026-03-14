@@ -15,7 +15,7 @@ export const companyService = {
     data: CompanyRegisterRequest
   ): Promise<CompanyRegisterResponse> {
     const response = await axios.post<CompanyRegisterResponse>(
-      `${API_BASE_URL}/api/companies/register`,
+      `${API_BASE_URL}/api/v1/companies/register`,
       data
     );
     return response.data;

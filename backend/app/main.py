@@ -1,11 +1,62 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api.routes import ai, ap, audit, auth, companies, customers, departments, documents, employee_profiles, equipment, feature_flags, inventory, modules, notifications, onboarding, performance_notes, products, purchase_orders, roles, sage_exports, sync_logs, users, vendor_bills, vendor_payments, vendors
+from app.api.v1 import v1_router
 from app.config import settings
 
-app = FastAPI(title="Sunnycrest ERP", version="0.2.0")
+# ---------------------------------------------------------------------------
+# OpenAPI / docs configuration
+# ---------------------------------------------------------------------------
+app = FastAPI(
+    title="Sunnycrest ERP",
+    description=(
+        "Multi-tenant SaaS business management platform. "
+        "Supports manufacturing, death care, and hospitality verticals."
+    ),
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    contact={
+        "name": "Sunnycrest ERP Support",
+        "email": "support@sunnycrest.dev",
+    },
+    license_info={
+        "name": "Proprietary",
+    },
+    openapi_tags=[
+        {"name": "Authentication", "description": "Login, registration, token refresh"},
+        {"name": "User Management", "description": "User CRUD and password management"},
+        {"name": "Company Management", "description": "Tenant registration and settings"},
+        {"name": "Role Management", "description": "Roles, permissions, and RBAC"},
+        {"name": "Modules", "description": "Module enablement per tenant"},
+        {"name": "Feature Flags", "description": "Feature flag registry and tenant overrides"},
+        {"name": "Departments", "description": "Department CRUD"},
+        {"name": "Employee Profiles", "description": "Employee profile management"},
+        {"name": "Performance Notes", "description": "Employee performance tracking"},
+        {"name": "Equipment", "description": "Equipment asset management"},
+        {"name": "Documents", "description": "Document storage and management"},
+        {"name": "Notifications", "description": "In-app notification system"},
+        {"name": "Onboarding", "description": "Employee onboarding workflows"},
+        {"name": "Customers", "description": "Customer CRUD, contacts, and notes"},
+        {"name": "Products", "description": "Product catalog, categories, and price tiers"},
+        {"name": "Inventory", "description": "Inventory management and adjustments"},
+        {"name": "Vendors", "description": "Vendor CRUD, contacts, and notes"},
+        {"name": "Purchase Orders", "description": "Purchase order lifecycle"},
+        {"name": "Vendor Bills", "description": "Vendor bill entry and approval"},
+        {"name": "Vendor Payments", "description": "Vendor payment recording"},
+        {"name": "Accounts Payable", "description": "AP aging, Sage export, and reporting"},
+        {"name": "Sage Exports", "description": "Sage 100 CSV data exports"},
+        {"name": "Sync Logs", "description": "Import/export sync tracking"},
+        {"name": "AI", "description": "AI-powered command parsing"},
+        {"name": "Audit Logs", "description": "System audit trail"},
+    ],
+)
 
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
 cors_kwargs = {
     "allow_origins": settings.cors_origins_list,
     "allow_credentials": True,
@@ -17,107 +68,44 @@ if settings.CORS_ORIGIN_REGEX:
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
 
-app.include_router(ai.router, prefix="/api/ai", tags=["AI"])
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(users.router, prefix="/api/users", tags=["User Management"])
-app.include_router(
-    companies.router, prefix="/api/companies", tags=["Company Management"]
-)
-app.include_router(roles.router, prefix="/api/roles", tags=["Role Management"])
-app.include_router(audit.router, prefix="/api/audit-logs", tags=["Audit Logs"])
-app.include_router(
-    departments.router, prefix="/api/departments", tags=["Departments"]
-)
-app.include_router(
-    documents.router, prefix="/api/documents", tags=["Documents"]
-)
-app.include_router(
-    employee_profiles.router,
-    prefix="/api/employee-profiles",
-    tags=["Employee Profiles"],
-)
-app.include_router(
-    equipment.router,
-    prefix="/api/equipment",
-    tags=["Equipment"],
-)
-app.include_router(
-    notifications.router,
-    prefix="/api/notifications",
-    tags=["Notifications"],
-)
-app.include_router(
-    modules.router,
-    prefix="/api/modules",
-    tags=["Modules"],
-)
-app.include_router(
-    onboarding.router,
-    prefix="/api/onboarding",
-    tags=["Onboarding"],
-)
-app.include_router(
-    performance_notes.router,
-    prefix="/api/performance-notes",
-    tags=["Performance Notes"],
-)
-app.include_router(
-    customers.router,
-    prefix="/api/customers",
-    tags=["Customers"],
-)
-app.include_router(
-    products.router,
-    prefix="/api/products",
-    tags=["Products"],
-)
-app.include_router(
-    inventory.router,
-    prefix="/api/inventory",
-    tags=["Inventory"],
-)
-app.include_router(
-    sage_exports.router,
-    prefix="/api/sage-exports",
-    tags=["Sage Exports"],
-)
-app.include_router(
-    sync_logs.router,
-    prefix="/api/sync-logs",
-    tags=["Sync Logs"],
-)
-app.include_router(
-    vendors.router,
-    prefix="/api/vendors",
-    tags=["Vendors"],
-)
-app.include_router(
-    purchase_orders.router,
-    prefix="/api/purchase-orders",
-    tags=["Purchase Orders"],
-)
-app.include_router(
-    vendor_bills.router,
-    prefix="/api/vendor-bills",
-    tags=["Vendor Bills"],
-)
-app.include_router(
-    vendor_payments.router,
-    prefix="/api/vendor-payments",
-    tags=["Vendor Payments"],
-)
-app.include_router(
-    ap.router,
-    prefix="/api/ap",
-    tags=["Accounts Payable"],
-)
-app.include_router(
-    feature_flags.router,
-    prefix="/api/feature-flags",
-    tags=["Feature Flags"],
-)
+
+# ---------------------------------------------------------------------------
+# Deprecation middleware — adds header for bare /api/ requests
+# ---------------------------------------------------------------------------
+class DeprecationMiddleware(BaseHTTPMiddleware):
+    """Adds a Deprecation header to responses served via the bare /api/ prefix.
+
+    Clients should migrate to /api/v1/.  The bare prefix will be removed in a
+    future release.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        path = request.url.path
+        # Only tag bare /api/ that is NOT /api/v1/, /api/docs, /api/redoc, /api/openapi.json
+        if path.startswith("/api/") and not path.startswith(("/api/v1/", "/api/docs", "/api/redoc", "/api/openapi.json", "/api/health")):
+            response.headers["Deprecation"] = "true"
+            response.headers["Sunset"] = "2026-09-01"
+            response.headers["Link"] = f'</api/v1{path[4:]}>; rel="successor-version"'
+        # Add API-Version header to all versioned responses
+        if path.startswith("/api/v1/"):
+            response.headers["API-Version"] = "v1"
+        return response
 
 
-@app.get("/api/health")
+app.add_middleware(DeprecationMiddleware)
+
+# ---------------------------------------------------------------------------
+# Route mounting
+# ---------------------------------------------------------------------------
+
+# Primary: /api/v1/
+app.include_router(v1_router, prefix="/api/v1")
+
+# Deprecated alias: /api/ (same routes, triggers deprecation headers)
+app.include_router(v1_router, prefix="/api")
+
+
+@app.get("/api/health", tags=["System"])
 def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "api_version": "v1"}

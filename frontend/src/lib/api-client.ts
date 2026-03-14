@@ -5,7 +5,7 @@ import { getCompanySlug } from "./tenant";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const apiClient = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
+  baseURL: `${API_BASE_URL}/api/v1`,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -68,7 +68,7 @@ apiClient.interceptors.response.use(
         }
 
         const { data } = await axios.post(
-          `${API_BASE_URL}/api/auth/refresh`,
+          `${API_BASE_URL}/api/v1/auth/refresh`,
           { refresh_token: refreshToken },
           { headers }
         );
