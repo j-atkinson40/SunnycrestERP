@@ -22,6 +22,7 @@ from app.api.routes import (
     equipment,
     feature_flags,
     inventory,
+    job_queue,
     modules,
     notifications,
     onboarding,
@@ -73,6 +74,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     inventory.router, prefix="/inventory", tags=["Inventory"]
+)
+v1_router.include_router(
+    job_queue.router, prefix="/jobs", tags=["Job Queue"]
 )
 v1_router.include_router(modules.router, prefix="/modules", tags=["Modules"])
 v1_router.include_router(

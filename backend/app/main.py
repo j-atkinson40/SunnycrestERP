@@ -43,6 +43,7 @@ app = FastAPI(
         {"name": "Customers", "description": "Customer CRUD, contacts, and notes"},
         {"name": "Products", "description": "Product catalog, categories, and price tiers"},
         {"name": "Inventory", "description": "Inventory management and adjustments"},
+        {"name": "Job Queue", "description": "Background job queue, dead letter, and sync monitoring"},
         {"name": "Vendors", "description": "Vendor CRUD, contacts, and notes"},
         {"name": "Purchase Orders", "description": "Purchase order lifecycle"},
         {"name": "Vendor Bills", "description": "Vendor bill entry and approval"},

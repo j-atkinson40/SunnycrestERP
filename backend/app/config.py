@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # Redis (optional — job queue degrades to DB polling without it)
+    REDIS_URL: str = ""
+
     # QuickBooks Online OAuth (optional — only needed if QBO integration is used)
     QBO_CLIENT_ID: str = ""
     QBO_CLIENT_SECRET: str = ""

@@ -16,6 +16,7 @@ import CompanySettings from "@/pages/admin/company-settings";
 import AccountingPage from "@/pages/admin/accounting";
 import ApiKeysPage from "@/pages/admin/api-keys";
 import FeatureFlagsPage from "@/pages/admin/feature-flags";
+import SyncDashboardPage from "@/pages/admin/sync-dashboard";
 import MyProfile from "@/pages/my-profile";
 import AdminEmployeeProfile from "@/pages/admin/employee-profile";
 import NotificationsPage from "@/pages/notifications";
@@ -277,6 +278,16 @@ export default function App() {
                     <Route
                       path="/admin/accounting"
                       element={<AccountingPage />}
+                    />
+                  </Route>
+
+                  {/* Sync monitoring — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route
+                      path="/admin/sync-dashboard"
+                      element={<SyncDashboardPage />}
                     />
                   </Route>
                 </Route>

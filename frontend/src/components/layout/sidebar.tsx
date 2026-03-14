@@ -32,6 +32,7 @@ const allNavItems: NavItem[] = [
   { label: "Feature Flags", href: "/admin/feature-flags", adminOnly: true },
   { label: "API Keys", href: "/admin/api-keys", adminOnly: true },
   { label: "Accounting", href: "/admin/accounting", adminOnly: true },
+  { label: "Sync Monitor", href: "/admin/sync-dashboard", adminOnly: true },
 ];
 
 export function Sidebar() {
