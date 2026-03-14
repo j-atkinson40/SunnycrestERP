@@ -57,6 +57,8 @@ app = FastAPI(
         {"name": "Org Hierarchy", "description": "Organizational company hierarchy management"},
         {"name": "Network", "description": "Cross-tenant relationships and transactions"},
         {"name": "Platform Fees", "description": "Platform fee configuration and management"},
+        {"name": "Billing", "description": "Subscription plans, billing, and payment management"},
+        {"name": "Super Admin", "description": "Platform-wide admin dashboard and system health"},
     ],
 )
 

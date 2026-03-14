@@ -30,6 +30,8 @@ from app.models.purchase_order_line import PurchaseOrderLine
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.sage_export_config import SageExportConfig
+from app.models.subscription import BillingEvent, Subscription
+from app.models.subscription_plan import SubscriptionPlan
 from app.models.sync_log import SyncLog
 from app.models.tenant_feature_flag import TenantFeatureFlag
 from app.models.user import User
@@ -77,6 +79,9 @@ __all__ = [
     "Role",
     "RolePermission",
     "SageExportConfig",
+    "Subscription",
+    "SubscriptionPlan",
+    "BillingEvent",
     "SyncLog",
     "TenantFeatureFlag",
     "User",

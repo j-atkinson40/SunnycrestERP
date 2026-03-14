@@ -36,6 +36,8 @@ const allNavItems: NavItem[] = [
   { label: "Org Hierarchy", href: "/admin/hierarchy", adminOnly: true },
   { label: "Partner Network", href: "/admin/network", adminOnly: true },
   { label: "Platform Fees", href: "/admin/platform-fees", adminOnly: true },
+  { label: "Billing", href: "/admin/billing", adminOnly: true },
+  { label: "Platform Overview", href: "/admin/super-dashboard", adminOnly: true },
 ];
 
 export function Sidebar() {

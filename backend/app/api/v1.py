@@ -14,6 +14,7 @@ from app.api.routes import (
     api_keys,
     audit,
     auth,
+    billing,
     companies,
     customers,
     departments,
@@ -34,6 +35,7 @@ from app.api.routes import (
     purchase_orders,
     roles,
     sage_exports,
+    super_admin,
     sync_logs,
     users,
     vendor_bills,
@@ -52,6 +54,9 @@ v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["API Keys"])
 v1_router.include_router(ap.router, prefix="/ap", tags=["Accounts Payable"])
 v1_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs"])
 v1_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+v1_router.include_router(
+    billing.router, prefix="/billing", tags=["Billing"]
+)
 v1_router.include_router(
     companies.router, prefix="/companies", tags=["Company Management"]
 )
@@ -111,6 +116,9 @@ v1_router.include_router(
 v1_router.include_router(roles.router, prefix="/roles", tags=["Role Management"])
 v1_router.include_router(
     sage_exports.router, prefix="/sage-exports", tags=["Sage Exports"]
+)
+v1_router.include_router(
+    super_admin.router, prefix="/super-admin", tags=["Super Admin"]
 )
 v1_router.include_router(
     sync_logs.router, prefix="/sync-logs", tags=["Sync Logs"]

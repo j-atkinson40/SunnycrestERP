@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # Redis (optional — job queue degrades to DB polling without it)
     REDIS_URL: str = ""
 
+    # Stripe (optional — only needed if billing is configured)
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+
     # QuickBooks Online OAuth (optional — only needed if QBO integration is used)
     QBO_CLIENT_ID: str = ""
     QBO_CLIENT_SECRET: str = ""
