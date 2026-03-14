@@ -33,6 +33,9 @@ const allNavItems: NavItem[] = [
   { label: "API Keys", href: "/admin/api-keys", adminOnly: true },
   { label: "Accounting", href: "/admin/accounting", adminOnly: true },
   { label: "Sync Monitor", href: "/admin/sync-dashboard", adminOnly: true },
+  { label: "Org Hierarchy", href: "/admin/hierarchy", adminOnly: true },
+  { label: "Partner Network", href: "/admin/network", adminOnly: true },
+  { label: "Platform Fees", href: "/admin/platform-fees", adminOnly: true },
 ];
 
 export function Sidebar() {

@@ -54,6 +54,9 @@ app = FastAPI(
         {"name": "AI", "description": "AI-powered command parsing"},
         {"name": "API Keys", "description": "API key management for external integrations"},
         {"name": "Audit Logs", "description": "System audit trail"},
+        {"name": "Org Hierarchy", "description": "Organizational company hierarchy management"},
+        {"name": "Network", "description": "Cross-tenant relationships and transactions"},
+        {"name": "Platform Fees", "description": "Platform fee configuration and management"},
     ],
 )
 

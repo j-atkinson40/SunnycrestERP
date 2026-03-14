@@ -17,6 +17,9 @@ import AccountingPage from "@/pages/admin/accounting";
 import ApiKeysPage from "@/pages/admin/api-keys";
 import FeatureFlagsPage from "@/pages/admin/feature-flags";
 import SyncDashboardPage from "@/pages/admin/sync-dashboard";
+import OrgHierarchyPage from "@/pages/admin/org-hierarchy";
+import NetworkManagementPage from "@/pages/admin/network-management";
+import PlatformFeesPage from "@/pages/admin/platform-fees";
 import MyProfile from "@/pages/my-profile";
 import AdminEmployeeProfile from "@/pages/admin/employee-profile";
 import NotificationsPage from "@/pages/notifications";
@@ -288,6 +291,36 @@ export default function App() {
                     <Route
                       path="/admin/sync-dashboard"
                       element={<SyncDashboardPage />}
+                    />
+                  </Route>
+
+                  {/* Org Hierarchy — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route
+                      path="/admin/hierarchy"
+                      element={<OrgHierarchyPage />}
+                    />
+                  </Route>
+
+                  {/* Partner Network — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route
+                      path="/admin/network"
+                      element={<NetworkManagementPage />}
+                    />
+                  </Route>
+
+                  {/* Platform Fees — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route
+                      path="/admin/platform-fees"
+                      element={<PlatformFeesPage />}
                     />
                   </Route>
                 </Route>

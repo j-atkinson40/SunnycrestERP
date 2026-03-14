@@ -21,12 +21,15 @@ from app.api.routes import (
     employee_profiles,
     equipment,
     feature_flags,
+    hierarchy,
     inventory,
     job_queue,
     modules,
+    network,
     notifications,
     onboarding,
     performance_notes,
+    platform_fees,
     products,
     purchase_orders,
     roles,
@@ -73,12 +76,18 @@ v1_router.include_router(
     feature_flags.router, prefix="/feature-flags", tags=["Feature Flags"]
 )
 v1_router.include_router(
+    hierarchy.router, prefix="/hierarchy", tags=["Org Hierarchy"]
+)
+v1_router.include_router(
     inventory.router, prefix="/inventory", tags=["Inventory"]
 )
 v1_router.include_router(
     job_queue.router, prefix="/jobs", tags=["Job Queue"]
 )
 v1_router.include_router(modules.router, prefix="/modules", tags=["Modules"])
+v1_router.include_router(
+    network.router, prefix="/network", tags=["Network"]
+)
 v1_router.include_router(
     notifications.router, prefix="/notifications", tags=["Notifications"]
 )
@@ -89,6 +98,9 @@ v1_router.include_router(
     performance_notes.router,
     prefix="/performance-notes",
     tags=["Performance Notes"],
+)
+v1_router.include_router(
+    platform_fees.router, prefix="/platform-fees", tags=["Platform Fees"]
 )
 v1_router.include_router(
     products.router, prefix="/products", tags=["Products"]

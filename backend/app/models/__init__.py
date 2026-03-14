@@ -14,6 +14,9 @@ from app.models.equipment import Equipment
 from app.models.feature_flag import FeatureFlag
 from app.models.job_queue import Job
 from app.models.flag_audit_log import FlagAuditLog
+from app.models.network_relationship import NetworkRelationship
+from app.models.network_transaction import NetworkTransaction
+from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.notification import Notification
@@ -55,7 +58,11 @@ __all__ = [
     "Equipment",
     "FeatureFlag",
     "Job",
+    "FeeRateConfig",
     "FlagAuditLog",
+    "NetworkRelationship",
+    "NetworkTransaction",
+    "PlatformFee",
     "InventoryItem",
     "InventoryTransaction",
     "Notification",

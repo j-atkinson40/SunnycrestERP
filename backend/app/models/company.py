@@ -54,6 +54,17 @@ class Company(Base):
         Text, nullable=True
     )  # JSON blob for provider-specific settings (OAuth tokens, mappings, etc.)
 
+    # Organizational Hierarchy
+    parent_company_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("companies.id"), nullable=True, index=True
+    )
+    hierarchy_level: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # corporate, regional, location
+    hierarchy_path: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )  # Materialized path: "corp1.region2.loc5"
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -72,3 +83,5 @@ class Company(Base):
 
     users = relationship("User", back_populates="company", foreign_keys="[User.company_id]")
     roles = relationship("Role", back_populates="company", cascade="all, delete-orphan")
+    children = relationship("Company", back_populates="parent", foreign_keys="[Company.parent_company_id]")
+    parent = relationship("Company", back_populates="children", remote_side="[Company.id]", foreign_keys="[Company.parent_company_id]")
