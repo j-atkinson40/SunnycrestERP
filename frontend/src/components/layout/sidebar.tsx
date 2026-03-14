@@ -2,11 +2,13 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 
+
 interface NavItem {
   label: string;
   href: string;
   permission?: string;
   module?: string;
+  adminOnly?: boolean;
 }
 
 const allNavItems: NavItem[] = [
@@ -27,16 +29,18 @@ const allNavItems: NavItem[] = [
   { label: "Role Management", href: "/admin/roles", permission: "roles.view" },
   { label: "Company Settings", href: "/admin/settings", permission: "company.view" },
   { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit.view" },
+  { label: "Feature Flags", href: "/admin/feature-flags", adminOnly: true },
 ];
 
 export function Sidebar() {
-  const { company, hasPermission, hasModule } = useAuth();
+  const { company, hasPermission, hasModule, isAdmin } = useAuth();
   const location = useLocation();
 
   const navItems = allNavItems.filter(
     (item) =>
       (!item.permission || hasPermission(item.permission)) &&
-      (!item.module || hasModule(item.module))
+      (!item.module || hasModule(item.module)) &&
+      (!item.adminOnly || isAdmin)
   );
 
   return (

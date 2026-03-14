@@ -5,10 +5,11 @@ import { ModuleUpsell, getModuleMeta } from "@/components/module-upsell";
 interface ProtectedRouteProps {
   requiredPermission?: string;
   requiredModule?: string;
+  adminOnly?: boolean;
 }
 
-export function ProtectedRoute({ requiredPermission, requiredModule }: ProtectedRouteProps) {
-  const { user, isLoading, isAuthenticated, hasPermission, hasModule } = useAuth();
+export function ProtectedRoute({ requiredPermission, requiredModule, adminOnly }: ProtectedRouteProps) {
+  const { user, isLoading, isAuthenticated, hasPermission, hasModule, isAdmin } = useAuth();
 
   if (isLoading) {
     return (
@@ -30,6 +31,10 @@ export function ProtectedRoute({ requiredPermission, requiredModule }: Protected
         moduleDescription={meta.description}
       />
     );
+  }
+
+  if (adminOnly && !isAdmin) {
+    return <Navigate to="/unauthorized" replace />;
   }
 
   if (requiredPermission && user && !hasPermission(requiredPermission)) {

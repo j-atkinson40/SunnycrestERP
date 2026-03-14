@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -91,6 +91,38 @@ def require_permission(permission_key: str):
         return current_user
 
     return _check_permission
+
+
+def require_feature(flag_key: str):
+    """
+    Dependency factory for feature-flag-based authorization.
+    Returns 404 (not 403) to hide the existence of disabled features.
+
+    Usage: Depends(require_feature("feature.ai_assistant"))
+    """
+
+    def _check_feature(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        from app.services.feature_flag_service import is_enabled, log_blocked_request
+
+        if not is_enabled(db, current_user.company_id, flag_key):
+            log_blocked_request(
+                db,
+                current_user.company_id,
+                flag_key,
+                str(request.url.path),
+                user_id=current_user.id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found",
+            )
+        return current_user
+
+    return _check_feature
 
 
 def require_module(module_name: str):

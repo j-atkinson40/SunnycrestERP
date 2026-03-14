@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import ai, ap, audit, auth, companies, customers, departments, documents, employee_profiles, equipment, inventory, modules, notifications, onboarding, performance_notes, products, purchase_orders, roles, sage_exports, sync_logs, users, vendor_bills, vendor_payments, vendors
+from app.api.routes import ai, ap, audit, auth, companies, customers, departments, documents, employee_profiles, equipment, feature_flags, inventory, modules, notifications, onboarding, performance_notes, products, purchase_orders, roles, sage_exports, sync_logs, users, vendor_bills, vendor_payments, vendors
 from app.config import settings
 
 app = FastAPI(title="Sunnycrest ERP", version="0.2.0")
@@ -110,6 +110,11 @@ app.include_router(
     ap.router,
     prefix="/api/ap",
     tags=["Accounts Payable"],
+)
+app.include_router(
+    feature_flags.router,
+    prefix="/api/feature-flags",
+    tags=["Feature Flags"],
 )
 
 

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/auth-context";
+import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
 import { AppLayout } from "@/components/layout/app-layout";
@@ -12,6 +13,7 @@ import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
 import AuditLogs from "@/pages/admin/audit-logs";
 import CompanySettings from "@/pages/admin/company-settings";
+import FeatureFlagsPage from "@/pages/admin/feature-flags";
 import MyProfile from "@/pages/my-profile";
 import AdminEmployeeProfile from "@/pages/admin/employee-profile";
 import NotificationsPage from "@/pages/notifications";
@@ -44,6 +46,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+      <FeatureFlagProvider>
         <Routes>
           {slug ? (
             <>
@@ -244,6 +247,16 @@ export default function App() {
                       element={<AuditLogs />}
                     />
                   </Route>
+
+                  {/* Feature flags — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route
+                      path="/admin/feature-flags"
+                      element={<FeatureFlagsPage />}
+                    />
+                  </Route>
                 </Route>
               </Route>
 
@@ -264,6 +277,7 @@ export default function App() {
           )}
         </Routes>
         <Toaster />
+      </FeatureFlagProvider>
       </AuthProvider>
     </BrowserRouter>
   );

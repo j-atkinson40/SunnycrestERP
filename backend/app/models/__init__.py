@@ -9,6 +9,8 @@ from app.models.department import Department
 from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
 from app.models.equipment import Equipment
+from app.models.feature_flag import FeatureFlag
+from app.models.flag_audit_log import FlagAuditLog
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.notification import Notification
@@ -23,6 +25,7 @@ from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.sage_export_config import SageExportConfig
 from app.models.sync_log import SyncLog
+from app.models.tenant_feature_flag import TenantFeatureFlag
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
 from app.models.vendor import Vendor
@@ -45,6 +48,8 @@ __all__ = [
     "Document",
     "EmployeeProfile",
     "Equipment",
+    "FeatureFlag",
+    "FlagAuditLog",
     "InventoryItem",
     "InventoryTransaction",
     "Notification",
@@ -60,6 +65,7 @@ __all__ = [
     "RolePermission",
     "SageExportConfig",
     "SyncLog",
+    "TenantFeatureFlag",
     "User",
     "UserPermissionOverride",
     "Vendor",
