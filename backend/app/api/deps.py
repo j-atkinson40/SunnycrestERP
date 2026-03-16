@@ -15,6 +15,11 @@ from app.services.permission_service import user_has_permission
 bearer_scheme = HTTPBearer()
 
 
+# ---------------------------------------------------------------------------
+# Tenant auth dependencies
+# ---------------------------------------------------------------------------
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     company: Company = Depends(get_current_company),
@@ -27,6 +32,12 @@ def get_current_user(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token type",
+            )
+        # Reject platform tokens on tenant endpoints
+        if payload.get("realm") == "platform":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Platform tokens cannot access tenant endpoints",
             )
         user_id: str = payload.get("sub")
         token_company_id: str = payload.get("company_id")
@@ -56,6 +67,34 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+
+    # Track impersonation context on the request state for audit logging
+    if payload.get("impersonation"):
+        from app.models.impersonation_session import ImpersonationSession
+
+        session_id = payload.get("session_id")
+        imp_session = (
+            db.query(ImpersonationSession)
+            .filter(
+                ImpersonationSession.id == session_id,
+                ImpersonationSession.ended_at.is_(None),
+            )
+            .first()
+        )
+        if not imp_session:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Impersonation session expired or ended",
+            )
+        # Increment action counter
+        imp_session.actions_performed = (imp_session.actions_performed or 0) + 1
+        db.commit()
+        # Stash impersonation metadata on the user for audit logging
+        user._impersonation_context = {  # type: ignore[attr-defined]
+            "platform_user_id": payload.get("platform_user_id"),
+            "session_id": session_id,
+        }
+
     return user
 
 
@@ -147,6 +186,78 @@ def require_module(module_name: str):
         return current_user
 
     return _check_module
+
+
+# ---------------------------------------------------------------------------
+# Platform admin auth dependencies
+# ---------------------------------------------------------------------------
+
+
+def get_current_platform_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    """Authenticate a platform admin user from JWT.
+
+    Rejects tenant tokens — only accepts tokens with realm='platform'.
+    """
+    from app.models.platform_user import PlatformUser
+
+    token = credentials.credentials
+    try:
+        payload = decode_token(token)
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+            )
+        if payload.get("realm") != "platform":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Tenant tokens cannot access platform endpoints",
+            )
+        user_id: str = payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    platform_user = (
+        db.query(PlatformUser).filter(PlatformUser.id == user_id).first()
+    )
+    if platform_user is None or not platform_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Platform user not found or inactive",
+        )
+    return platform_user
+
+
+def require_platform_role(*allowed_roles: str):
+    """Dependency factory for platform role checking.
+
+    Usage: Depends(require_platform_role("super_admin"))
+           Depends(require_platform_role("super_admin", "support"))
+    """
+    from app.models.platform_user import PlatformUser
+
+    def _check_role(
+        platform_user: PlatformUser = Depends(get_current_platform_user),
+    ) -> PlatformUser:
+        if platform_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Required platform role: {', '.join(allowed_roles)}",
+            )
+        return platform_user
+
+    return _check_role
 
 
 # ---------------------------------------------------------------------------

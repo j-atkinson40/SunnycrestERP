@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
 
+    # Platform admin seed (optional — creates initial super admin on startup)
+    PLATFORM_ADMIN_EMAIL: str = ""
+    PLATFORM_ADMIN_PASSWORD: str = ""
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def strip_database_url(cls, v):

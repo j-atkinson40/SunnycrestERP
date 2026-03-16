@@ -21,11 +21,13 @@ from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
 from app.models.equipment import Equipment
 from app.models.feature_flag import FeatureFlag
+from app.models.impersonation_session import ImpersonationSession
 from app.models.job_queue import Job
 from app.models.flag_audit_log import FlagAuditLog
 from app.models.network_relationship import NetworkRelationship
 from app.models.network_transaction import NetworkTransaction
 from app.models.platform_fee import FeeRateConfig, PlatformFee
+from app.models.platform_user import PlatformUser
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
@@ -89,6 +91,8 @@ __all__ = [
     "NetworkRelationship",
     "NetworkTransaction",
     "PlatformFee",
+    "PlatformUser",
+    "ImpersonationSession",
     "Invoice",
     "InvoiceLine",
     "InventoryItem",

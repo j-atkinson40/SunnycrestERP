@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text as sa_text
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.api.platform import platform_router
 from app.api.v1 import v1_router
 from app.config import settings
 
@@ -93,7 +94,7 @@ class DeprecationMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         path = request.url.path
         # Only tag bare /api/ that is NOT /api/v1/, /api/docs, /api/redoc, /api/openapi.json
-        if path.startswith("/api/") and not path.startswith(("/api/v1/", "/api/docs", "/api/redoc", "/api/openapi.json", "/api/health")):
+        if path.startswith("/api/") and not path.startswith(("/api/v1/", "/api/platform/", "/api/docs", "/api/redoc", "/api/openapi.json", "/api/health")):
             response.headers["Deprecation"] = "true"
             response.headers["Sunset"] = "2026-09-01"
             response.headers["Link"] = f'</api/v1{path[4:]}>; rel="successor-version"'
@@ -112,8 +113,29 @@ app.add_middleware(DeprecationMiddleware)
 # Primary: /api/v1/
 app.include_router(v1_router, prefix="/api/v1")
 
+# Platform admin: /api/platform/
+app.include_router(platform_router, prefix="/api/platform")
+
 # Deprecated alias: /api/ (same routes, triggers deprecation headers)
 app.include_router(v1_router, prefix="/api")
+
+
+@app.on_event("startup")
+def seed_platform_admin():
+    """Create the initial platform admin user if configured via env vars."""
+    if settings.PLATFORM_ADMIN_EMAIL and settings.PLATFORM_ADMIN_PASSWORD:
+        from app.database import SessionLocal
+        from app.services.platform_auth_service import get_or_create_initial_admin
+
+        db = SessionLocal()
+        try:
+            get_or_create_initial_admin(
+                db,
+                email=settings.PLATFORM_ADMIN_EMAIL,
+                password=settings.PLATFORM_ADMIN_PASSWORD,
+            )
+        finally:
+            db.close()
 
 
 @app.get("/api/health", tags=["System"])

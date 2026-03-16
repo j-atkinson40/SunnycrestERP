@@ -17,7 +17,7 @@ export function getCompanySlug(): string {
   // Support *.localhost subdomains (e.g., acme.localhost)
   if (hostname.endsWith(".localhost")) {
     const parts = hostname.split(".");
-    if (parts.length >= 2 && parts[0] !== "www" && parts[0] !== "api") {
+    if (parts.length >= 2 && parts[0] !== "www" && parts[0] !== "api" && parts[0] !== "admin") {
       return parts[0];
     }
     return "";
@@ -28,7 +28,7 @@ export function getCompanySlug(): string {
   const baseDomain = import.meta.env.VITE_APP_DOMAIN;
   if (baseDomain && hostname.endsWith(`.${baseDomain}`)) {
     const slug = hostname.slice(0, -(baseDomain.length + 1));
-    if (slug && slug !== "www" && slug !== "api") {
+    if (slug && slug !== "www" && slug !== "api" && slug !== "admin") {
       return slug;
     }
     return "";

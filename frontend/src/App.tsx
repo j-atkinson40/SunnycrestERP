@@ -5,7 +5,10 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Toaster } from "@/components/ui/sonner";
+import { ImpersonationBanner } from "@/components/platform/impersonation-banner";
 import { getCompanySlug } from "@/lib/tenant";
+import { isPlatformAdmin } from "@/lib/platform";
+import PlatformApp from "@/PlatformApp";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
@@ -15,13 +18,6 @@ import AuditLogs from "@/pages/admin/audit-logs";
 import CompanySettings from "@/pages/admin/company-settings";
 import AccountingPage from "@/pages/admin/accounting";
 import ApiKeysPage from "@/pages/admin/api-keys";
-import FeatureFlagsPage from "@/pages/admin/feature-flags";
-import SyncDashboardPage from "@/pages/admin/sync-dashboard";
-import OrgHierarchyPage from "@/pages/admin/org-hierarchy";
-import NetworkManagementPage from "@/pages/admin/network-management";
-import PlatformFeesPage from "@/pages/admin/platform-fees";
-import BillingPage from "@/pages/admin/billing";
-import SuperDashboardPage2 from "@/pages/admin/super-dashboard";
 import MyProfile from "@/pages/my-profile";
 import AdminEmployeeProfile from "@/pages/admin/employee-profile";
 import NotificationsPage from "@/pages/notifications";
@@ -69,14 +65,26 @@ import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import CompanyRegisterPage from "@/pages/company-register";
+import PlatformAdminEntry from "@/pages/platform-admin-entry";
 
 export default function App() {
+  // Platform admin gets an entirely separate app
+  if (isPlatformAdmin()) {
+    return (
+      <BrowserRouter>
+        <PlatformApp />
+        <Toaster />
+      </BrowserRouter>
+    );
+  }
+
   const slug = getCompanySlug();
 
   return (
     <BrowserRouter>
       <AuthProvider>
       <FeatureFlagProvider>
+        <ImpersonationBanner />
         <Routes>
           {slug ? (
             <>
@@ -339,16 +347,6 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Feature flags — admin only */}
-                  <Route
-                    element={<ProtectedRoute adminOnly />}
-                  >
-                    <Route
-                      path="/admin/feature-flags"
-                      element={<FeatureFlagsPage />}
-                    />
-                  </Route>
-
                   {/* API keys — admin only */}
                   <Route
                     element={<ProtectedRoute adminOnly />}
@@ -369,56 +367,6 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Sync monitoring — admin only */}
-                  <Route
-                    element={<ProtectedRoute adminOnly />}
-                  >
-                    <Route
-                      path="/admin/sync-dashboard"
-                      element={<SyncDashboardPage />}
-                    />
-                  </Route>
-
-                  {/* Org Hierarchy — admin only */}
-                  <Route
-                    element={<ProtectedRoute adminOnly />}
-                  >
-                    <Route
-                      path="/admin/hierarchy"
-                      element={<OrgHierarchyPage />}
-                    />
-                  </Route>
-
-                  {/* Partner Network — admin only */}
-                  <Route
-                    element={<ProtectedRoute adminOnly />}
-                  >
-                    <Route
-                      path="/admin/network"
-                      element={<NetworkManagementPage />}
-                    />
-                  </Route>
-
-                  {/* Platform Fees — admin only */}
-                  <Route
-                    element={<ProtectedRoute adminOnly />}
-                  >
-                    <Route
-                      path="/admin/platform-fees"
-                      element={<PlatformFeesPage />}
-                    />
-                  </Route>
-
-                  {/* Billing — admin only */}
-                  <Route
-                    element={<ProtectedRoute adminOnly />}
-                  >
-                    <Route
-                      path="/admin/billing"
-                      element={<BillingPage />}
-                    />
-                  </Route>
-
                   {/* Modules — admin only */}
                   <Route
                     element={<ProtectedRoute adminOnly />}
@@ -429,15 +377,6 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Super Dashboard — admin only */}
-                  <Route
-                    element={<ProtectedRoute adminOnly />}
-                  >
-                    <Route
-                      path="/admin/super-dashboard"
-                      element={<SuperDashboardPage2 />}
-                    />
-                  </Route>
                 </Route>
               </Route>
 
@@ -456,6 +395,9 @@ export default function App() {
                 <Route path="/carrier/deliveries" element={<CarrierDeliveriesPage />} />
               </Route>
 
+              {/* Platform admin entry (for non-subdomain setups) */}
+              <Route path="/platform-admin" element={<PlatformAdminEntry />} />
+
               {/* Root redirect */}
               <Route path="/" element={<RootRedirect />} />
               <Route path="*" element={<NotFound />} />
@@ -468,6 +410,7 @@ export default function App() {
                 path="/register-company"
                 element={<CompanyRegisterPage />}
               />
+              <Route path="/platform-admin" element={<PlatformAdminEntry />} />
               <Route path="*" element={<NotFound />} />
             </>
           )}
