@@ -7,8 +7,16 @@ from app.models.company_module import CompanyModule
 from app.models.customer import Customer
 from app.models.customer_contact import CustomerContact
 from app.models.customer_note import CustomerNote
+from app.models.carrier import Carrier
 from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
+from app.models.delivery import Delivery
+from app.models.delivery_event import DeliveryEvent
+from app.models.delivery_media import DeliveryMedia
+from app.models.delivery_route import DeliveryRoute
+from app.models.delivery_settings import DeliverySettings
+from app.models.delivery_stop import DeliveryStop
 from app.models.department import Department
+from app.models.driver import Driver
 from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
 from app.models.equipment import Equipment
@@ -38,8 +46,10 @@ from app.models.subscription import BillingEvent, Subscription
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.sync_log import SyncLog
 from app.models.tenant_feature_flag import TenantFeatureFlag
+from app.models.tenant_notification import TenantNotification
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
+from app.models.vehicle import Vehicle
 from app.models.vendor import Vendor
 from app.models.vendor_bill import VendorBill
 from app.models.vendor_bill_line import VendorBillLine
@@ -59,8 +69,16 @@ __all__ = [
     "CustomerContact",
     "CustomerNote",
     "CustomerPayment",
+    "Carrier",
     "CustomerPaymentApplication",
+    "Delivery",
+    "DeliveryEvent",
+    "DeliveryMedia",
+    "DeliveryRoute",
+    "DeliverySettings",
+    "DeliveryStop",
     "Department",
+    "Driver",
     "Document",
     "EmployeeProfile",
     "Equipment",
@@ -96,8 +114,10 @@ __all__ = [
     "BillingEvent",
     "SyncLog",
     "TenantFeatureFlag",
+    "TenantNotification",
     "User",
     "UserPermissionOverride",
+    "Vehicle",
     "Vendor",
     "VendorBill",
     "VendorBillLine",

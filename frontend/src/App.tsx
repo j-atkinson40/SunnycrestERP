@@ -51,6 +51,19 @@ import InvoicesPage from "@/pages/invoices";
 import InvoiceDetailPage from "@/pages/invoice-detail";
 import CustomerPaymentsPage from "@/pages/customer-payments";
 import ARAgingPage2 from "@/pages/ar-aging";
+import DeliverySettingsPage from "@/pages/admin/delivery-settings";
+import DispatchPage from "@/pages/delivery/dispatch";
+import OperationsPage from "@/pages/delivery/operations";
+import HistoryPage from "@/pages/delivery/history";
+import DeliveryDetailPage from "@/pages/delivery/delivery-detail";
+import RouteDetailPage from "@/pages/delivery/route-detail";
+import CarriersPage from "@/pages/delivery/carriers";
+import { DriverLayout } from "@/components/layout/driver-layout";
+import DriverHomePage from "@/pages/driver/home";
+import DriverRoutePage from "@/pages/driver/route";
+import StopDetailPage from "@/pages/driver/stop-detail";
+import MileagePage from "@/pages/driver/mileage";
+import CarrierDeliveriesPage from "@/pages/carrier/deliveries";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -259,6 +272,27 @@ export default function App() {
                     />
                   </Route>
 
+                  {/* Delivery & Logistics — requires driver_delivery module */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="delivery.view" requiredModule="driver_delivery" />
+                    }
+                  >
+                    <Route path="/delivery/dispatch" element={<DispatchPage />} />
+                    <Route path="/delivery/operations" element={<OperationsPage />} />
+                    <Route path="/delivery/history" element={<HistoryPage />} />
+                    <Route path="/delivery/deliveries/:id" element={<DeliveryDetailPage />} />
+                    <Route path="/delivery/routes/:id" element={<RouteDetailPage />} />
+                    <Route path="/delivery/settings" element={<DeliverySettingsPage />} />
+                  </Route>
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="carriers.view" requiredModule="driver_delivery" />
+                    }
+                  >
+                    <Route path="/delivery/carriers" element={<CarriersPage />} />
+                  </Route>
+
                   {/* Notifications — any authenticated user */}
                   <Route
                     path="/notifications"
@@ -394,6 +428,21 @@ export default function App() {
                     />
                   </Route>
                 </Route>
+              </Route>
+
+              {/* Driver mobile — uses DriverLayout (no sidebar) */}
+              <Route element={<ProtectedRoute />}>
+                <Route element={<DriverLayout />}>
+                  <Route path="/driver" element={<DriverHomePage />} />
+                  <Route path="/driver/route" element={<DriverRoutePage />} />
+                  <Route path="/driver/stops/:stopId" element={<StopDetailPage />} />
+                  <Route path="/driver/mileage" element={<MileagePage />} />
+                </Route>
+              </Route>
+
+              {/* Carrier portal — authenticated, minimal UI */}
+              <Route element={<ProtectedRoute />}>
+                <Route path="/carrier/deliveries" element={<CarrierDeliveriesPage />} />
               </Route>
 
               {/* Root redirect */}

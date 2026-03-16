@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     QBO_CLIENT_SECRET: str = ""
     QBO_REDIRECT_URI: str = ""
 
+    # Twilio (optional — only needed for SMS notifications)
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_NUMBER: str = ""
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def strip_database_url(cls, v):

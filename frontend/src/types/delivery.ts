@@ -1,0 +1,407 @@
+// ---------------------------------------------------------------------------
+// Vehicles
+// ---------------------------------------------------------------------------
+
+export interface Vehicle {
+  id: string;
+  company_id: string;
+  name: string;
+  license_plate: string | null;
+  vehicle_type: string;
+  max_weight_lbs: string | null;
+  max_stops: number | null;
+  active: boolean;
+  notes: string | null;
+  created_at: string;
+  modified_at: string | null;
+}
+
+export interface VehicleCreate {
+  name: string;
+  license_plate?: string | null;
+  vehicle_type?: string;
+  max_weight_lbs?: string | null;
+  max_stops?: number | null;
+  notes?: string | null;
+}
+
+export interface VehicleUpdate {
+  name?: string;
+  license_plate?: string | null;
+  vehicle_type?: string;
+  max_weight_lbs?: string | null;
+  max_stops?: number | null;
+  active?: boolean;
+  notes?: string | null;
+}
+
+export interface PaginatedVehicles {
+  items: Vehicle[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+// ---------------------------------------------------------------------------
+// Drivers
+// ---------------------------------------------------------------------------
+
+export interface Driver {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  employee_name: string | null;
+  license_number: string | null;
+  license_class: string | null;
+  license_expiry: string | null;
+  active: boolean;
+  preferred_vehicle_id: string | null;
+  notes: string | null;
+  created_at: string;
+  modified_at: string | null;
+}
+
+export interface DriverCreate {
+  employee_id: string;
+  license_number?: string | null;
+  license_class?: string | null;
+  license_expiry?: string | null;
+  preferred_vehicle_id?: string | null;
+  notes?: string | null;
+}
+
+export interface DriverUpdate {
+  license_number?: string | null;
+  license_class?: string | null;
+  license_expiry?: string | null;
+  preferred_vehicle_id?: string | null;
+  active?: boolean;
+  notes?: string | null;
+}
+
+export interface PaginatedDrivers {
+  items: Driver[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+// ---------------------------------------------------------------------------
+// Carriers
+// ---------------------------------------------------------------------------
+
+export interface Carrier {
+  id: string;
+  company_id: string;
+  name: string;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  carrier_type: string;
+  active: boolean;
+  notes: string | null;
+  created_at: string;
+  modified_at: string | null;
+}
+
+export interface CarrierCreate {
+  name: string;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  carrier_type?: string;
+  notes?: string | null;
+}
+
+export interface CarrierUpdate {
+  name?: string;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  carrier_type?: string;
+  active?: boolean;
+  notes?: string | null;
+}
+
+export interface PaginatedCarriers {
+  items: Carrier[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+// ---------------------------------------------------------------------------
+// Delivery Settings
+// ---------------------------------------------------------------------------
+
+export interface DeliverySettings {
+  id: string;
+  company_id: string;
+  preset: string;
+  require_photo_on_delivery: boolean;
+  require_signature: boolean;
+  require_weight_ticket: boolean;
+  require_setup_confirmation: boolean;
+  require_departure_photo: boolean;
+  require_mileage_entry: boolean;
+  allow_partial_delivery: boolean;
+  allow_driver_resequence: boolean;
+  track_gps: boolean;
+  notify_customer_on_dispatch: boolean;
+  notify_customer_on_arrival: boolean;
+  notify_customer_on_complete: boolean;
+  notify_connected_tenant_on_arrival: boolean;
+  notify_connected_tenant_on_setup: boolean;
+  enable_driver_messaging: boolean;
+  enable_delivery_portal: boolean;
+  auto_create_delivery_from_order: boolean;
+  auto_invoice_on_complete: boolean;
+  sms_carrier_updates: boolean;
+  carrier_portal: boolean;
+  max_stops_per_route: number | null;
+  default_delivery_window_minutes: number | null;
+  created_at: string;
+  modified_at: string | null;
+}
+
+export interface DeliverySettingsUpdate {
+  preset?: string;
+  require_photo_on_delivery?: boolean;
+  require_signature?: boolean;
+  require_weight_ticket?: boolean;
+  require_setup_confirmation?: boolean;
+  require_departure_photo?: boolean;
+  require_mileage_entry?: boolean;
+  allow_partial_delivery?: boolean;
+  allow_driver_resequence?: boolean;
+  track_gps?: boolean;
+  notify_customer_on_dispatch?: boolean;
+  notify_customer_on_arrival?: boolean;
+  notify_customer_on_complete?: boolean;
+  notify_connected_tenant_on_arrival?: boolean;
+  notify_connected_tenant_on_setup?: boolean;
+  enable_driver_messaging?: boolean;
+  enable_delivery_portal?: boolean;
+  auto_create_delivery_from_order?: boolean;
+  auto_invoice_on_complete?: boolean;
+  sms_carrier_updates?: boolean;
+  carrier_portal?: boolean;
+  max_stops_per_route?: number | null;
+  default_delivery_window_minutes?: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Deliveries
+// ---------------------------------------------------------------------------
+
+export type DeliveryType = "funeral_vault" | "precast" | "redi_rock";
+export type DeliveryStatus =
+  | "pending"
+  | "scheduled"
+  | "in_transit"
+  | "arrived"
+  | "setup"
+  | "completed"
+  | "cancelled"
+  | "failed";
+export type DeliveryPriority = "low" | "normal" | "high" | "urgent";
+
+export interface DeliveryListItem {
+  id: string;
+  company_id: string;
+  delivery_type: string;
+  order_id: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  carrier_id: string | null;
+  carrier_name: string | null;
+  carrier_tracking_reference: string | null;
+  delivery_address: string | null;
+  requested_date: string | null;
+  status: string;
+  priority: string;
+  weight_lbs: string | null;
+  scheduled_at: string | null;
+  created_at: string;
+}
+
+export interface Delivery extends DeliveryListItem {
+  delivery_lat: string | null;
+  delivery_lng: string | null;
+  required_window_start: string | null;
+  required_window_end: string | null;
+  type_config: Record<string, unknown> | null;
+  special_instructions: string | null;
+  completed_at: string | null;
+  created_by: string | null;
+  modified_at: string | null;
+}
+
+export interface DeliveryCreate {
+  delivery_type: string;
+  order_id?: string | null;
+  customer_id?: string | null;
+  carrier_id?: string | null;
+  carrier_tracking_reference?: string | null;
+  delivery_address?: string | null;
+  delivery_lat?: string | null;
+  delivery_lng?: string | null;
+  requested_date?: string | null;
+  required_window_start?: string | null;
+  required_window_end?: string | null;
+  priority?: string;
+  type_config?: Record<string, unknown> | null;
+  special_instructions?: string | null;
+  weight_lbs?: string | null;
+}
+
+export interface DeliveryUpdate {
+  carrier_id?: string | null;
+  carrier_tracking_reference?: string | null;
+  delivery_address?: string | null;
+  delivery_lat?: string | null;
+  delivery_lng?: string | null;
+  requested_date?: string | null;
+  required_window_start?: string | null;
+  required_window_end?: string | null;
+  status?: string;
+  priority?: string;
+  type_config?: Record<string, unknown> | null;
+  special_instructions?: string | null;
+  weight_lbs?: string | null;
+}
+
+export interface PaginatedDeliveries {
+  items: DeliveryListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+export type RouteStatus =
+  | "draft"
+  | "dispatched"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+export interface DeliveryStop {
+  id: string;
+  route_id: string;
+  delivery_id: string;
+  delivery: DeliveryListItem | null;
+  sequence_number: number;
+  estimated_arrival: string | null;
+  estimated_departure: string | null;
+  actual_arrival: string | null;
+  actual_departure: string | null;
+  status: string;
+  driver_notes: string | null;
+  created_at: string;
+}
+
+export interface DeliveryRoute {
+  id: string;
+  company_id: string;
+  driver_id: string;
+  driver_name: string | null;
+  vehicle_id: string | null;
+  vehicle_name: string | null;
+  route_date: string;
+  status: string;
+  notes: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  total_mileage: string | null;
+  total_stops: number;
+  stops: DeliveryStop[];
+  created_by: string | null;
+  created_at: string;
+  modified_at: string | null;
+}
+
+export interface RouteCreate {
+  driver_id: string;
+  vehicle_id?: string | null;
+  route_date: string;
+  notes?: string | null;
+}
+
+export interface RouteUpdate {
+  driver_id?: string;
+  vehicle_id?: string | null;
+  status?: string;
+  notes?: string | null;
+  total_mileage?: string | null;
+}
+
+export interface PaginatedRoutes {
+  items: DeliveryRoute[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+export type EventSource = "driver" | "dispatch_manual" | "carrier_sms" | "carrier_portal" | "system";
+
+export interface DeliveryEvent {
+  id: string;
+  company_id: string;
+  delivery_id: string;
+  route_id: string | null;
+  driver_id: string | null;
+  event_type: string;
+  source: string | null;
+  lat: string | null;
+  lng: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface EventCreate {
+  delivery_id: string;
+  route_id?: string | null;
+  event_type: string;
+  source?: string;
+  lat?: string | null;
+  lng?: string | null;
+  notes?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Media
+// ---------------------------------------------------------------------------
+
+export interface DeliveryMedia {
+  id: string;
+  company_id: string;
+  delivery_id: string;
+  event_id: string | null;
+  media_type: string;
+  file_url: string;
+  captured_at: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------
+
+export interface DeliveryStats {
+  total_deliveries: number;
+  pending: number;
+  scheduled: number;
+  in_transit: number;
+  completed_today: number;
+  active_routes: number;
+  available_drivers: number;
+  available_vehicles: number;
+}

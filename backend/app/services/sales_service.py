@@ -3,6 +3,7 @@ Invoices, Customer Payments, AR Aging, and sales statistics."""
 
 import csv
 import io
+import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -25,6 +26,8 @@ from app.schemas.sales import (
 )
 from app.services import audit_service
 from app.services.sync_log_service import complete_sync_log, create_sync_log
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +435,8 @@ def update_sales_order(
     order.modified_by = user_id
     order.modified_at = datetime.now(timezone.utc)
 
+    new_status = getattr(data, "status", None)
+
     audit_service.log_action(
         db,
         company_id,
@@ -442,6 +447,16 @@ def update_sales_order(
     )
     db.commit()
     db.refresh(order)
+
+    # Hook: auto-create delivery when order is confirmed
+    if new_status == "confirmed":
+        try:
+            from app.services import order_integration_service
+
+            order_integration_service.on_order_confirmed(db, order)
+        except Exception as exc:
+            logger.error("Order integration hook failed for %s: %s", order.id, exc)
+
     return order
 
 

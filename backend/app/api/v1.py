@@ -15,10 +15,15 @@ from app.api.routes import (
     audit,
     auth,
     billing,
+    carrier_portal,
     companies,
     customers,
+    deliveries,
+    delivery_portal,
+    delivery_settings,
     departments,
     documents,
+    driver_mobile,
     employee_profiles,
     equipment,
     feature_flags,
@@ -42,6 +47,7 @@ from app.api.routes import (
     vendor_bills,
     vendor_payments,
     vendors,
+    webhooks,
 )
 
 v1_router = APIRouter()
@@ -59,16 +65,31 @@ v1_router.include_router(
     billing.router, prefix="/billing", tags=["Billing"]
 )
 v1_router.include_router(
+    carrier_portal.router, prefix="/carrier", tags=["Carrier Portal"]
+)
+v1_router.include_router(
     companies.router, prefix="/companies", tags=["Company Management"]
 )
 v1_router.include_router(
     customers.router, prefix="/customers", tags=["Customers"]
 )
 v1_router.include_router(
+    deliveries.router, prefix="/delivery", tags=["Delivery & Dispatch"]
+)
+v1_router.include_router(
+    delivery_portal.router, prefix="/portal", tags=["Delivery Portal"]
+)
+v1_router.include_router(
+    delivery_settings.router, prefix="/settings", tags=["Delivery Settings"]
+)
+v1_router.include_router(
     departments.router, prefix="/departments", tags=["Departments"]
 )
 v1_router.include_router(
     documents.router, prefix="/documents", tags=["Documents"]
+)
+v1_router.include_router(
+    driver_mobile.router, prefix="/driver", tags=["Driver Mobile"]
 )
 v1_router.include_router(
     employee_profiles.router,
@@ -135,3 +156,6 @@ v1_router.include_router(
     vendor_payments.router, prefix="/vendor-payments", tags=["Vendor Payments"]
 )
 v1_router.include_router(vendors.router, prefix="/vendors", tags=["Vendors"])
+v1_router.include_router(
+    webhooks.router, prefix="/webhooks", tags=["Webhooks"]
+)

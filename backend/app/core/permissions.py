@@ -36,6 +36,11 @@ PERMISSIONS: dict[str, list[str]] = {
         "record_payment",
         "void",
     ],
+    "delivery": ["view", "create", "edit", "delete", "dispatch", "track"],
+    "drivers": ["view", "create", "edit", "delete"],
+    "vehicles": ["view", "create", "edit", "delete"],
+    "routes": ["view", "create", "edit", "delete", "dispatch"],
+    "carriers": ["view", "create", "edit", "delete"],
 }
 
 
@@ -49,7 +54,7 @@ def get_all_permission_keys() -> list[str]:
 
 
 # Default permissions for seeded roles
-EMPLOYEE_DEFAULT_PERMISSIONS = ["dashboard.view"]
+EMPLOYEE_DEFAULT_PERMISSIONS = ["dashboard.view", "delivery.view", "drivers.view", "routes.view"]
 
 ACCOUNTING_DEFAULT_PERMISSIONS = [
     "dashboard.view",
