@@ -52,14 +52,12 @@ export default function TenantsPage() {
       // Store impersonation token as regular tenant token
       localStorage.setItem("access_token", result.access_token);
 
-      // Navigate to tenant
-      const tenantUrl =
-        window.location.hostname === "localhost" ||
-        window.location.hostname.endsWith(".localhost")
-          ? `${window.location.protocol}//${result.tenant_slug}.localhost:${window.location.port}/dashboard`
-          : `${window.location.protocol}//${result.tenant_slug}.${import.meta.env.VITE_APP_DOMAIN || window.location.hostname}/dashboard`;
-
-      window.location.href = tenantUrl;
+      // Always stay on the same origin for impersonation.
+      // Subdomain redirects break because localStorage (where the token lives)
+      // is per-origin — admin.localhost can't share tokens with tenant.localhost.
+      localStorage.setItem("company_slug", result.tenant_slug);
+      localStorage.removeItem("platform_mode");
+      window.location.href = "/dashboard";
     } catch {
       toast.error("Failed to start impersonation");
     }
