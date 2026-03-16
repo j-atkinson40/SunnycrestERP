@@ -43,6 +43,14 @@ import VendorBillDetailPage from "@/pages/vendor-bill-detail";
 import VendorPaymentsPage from "@/pages/vendor-payments";
 import VendorPaymentDetailPage from "@/pages/vendor-payment-detail";
 import APAgingPage from "@/pages/ap-aging";
+import QuotesPage from "@/pages/quotes";
+import QuoteDetailPage from "@/pages/quote-detail";
+import SalesOrdersPage from "@/pages/sales-orders";
+import SalesOrderDetailPage from "@/pages/sales-order-detail";
+import InvoicesPage from "@/pages/invoices";
+import InvoiceDetailPage from "@/pages/invoice-detail";
+import CustomerPaymentsPage from "@/pages/customer-payments";
+import ARAgingPage2 from "@/pages/ar-aging";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -128,6 +136,46 @@ export default function App() {
                     <Route
                       path="/customers/:customerId"
                       element={<CustomerDetailPage />}
+                    />
+                  </Route>
+
+                  {/* Sales / AR — requires sales module + ar.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="ar.view" requiredModule="sales" />
+                    }
+                  >
+                    <Route
+                      path="/ar/quotes"
+                      element={<QuotesPage />}
+                    />
+                    <Route
+                      path="/ar/quotes/:id"
+                      element={<QuoteDetailPage />}
+                    />
+                    <Route
+                      path="/ar/orders"
+                      element={<SalesOrdersPage />}
+                    />
+                    <Route
+                      path="/ar/orders/:id"
+                      element={<SalesOrderDetailPage />}
+                    />
+                    <Route
+                      path="/ar/invoices"
+                      element={<InvoicesPage />}
+                    />
+                    <Route
+                      path="/ar/invoices/:id"
+                      element={<InvoiceDetailPage />}
+                    />
+                    <Route
+                      path="/ar/payments"
+                      element={<CustomerPaymentsPage />}
+                    />
+                    <Route
+                      path="/ar/aging"
+                      element={<ARAgingPage2 />}
                     />
                   </Route>
 

@@ -28,10 +28,14 @@ PERMISSIONS: dict[str, list[str]] = {
         "export",
         "void",
     ],
-    # Future modules:
-    # "sales": ["view", "create", "edit", "delete"],
-    # "driver_scheduling": ["view", "create", "edit", "delete"],
-    # "reports": ["view", "export"],
+    "ar": [
+        "view",
+        "create_quote",
+        "create_order",
+        "create_invoice",
+        "record_payment",
+        "void",
+    ],
 }
 
 
@@ -64,4 +68,10 @@ ACCOUNTING_DEFAULT_PERMISSIONS = [
     "ap.record_payment",
     "ap.export",
     "ap.void",
+    "ar.view",
+    "ar.create_quote",
+    "ar.create_order",
+    "ar.create_invoice",
+    "ar.record_payment",
+    "ar.void",
 ]

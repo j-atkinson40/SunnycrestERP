@@ -7,6 +7,7 @@ from app.models.company_module import CompanyModule
 from app.models.customer import Customer
 from app.models.customer_contact import CustomerContact
 from app.models.customer_note import CustomerNote
+from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
 from app.models.department import Department
 from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
@@ -17,6 +18,7 @@ from app.models.flag_audit_log import FlagAuditLog
 from app.models.network_relationship import NetworkRelationship
 from app.models.network_transaction import NetworkTransaction
 from app.models.platform_fee import FeeRateConfig, PlatformFee
+from app.models.invoice import Invoice, InvoiceLine
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.notification import Notification
@@ -25,11 +27,13 @@ from app.models.performance_note import PerformanceNote
 from app.models.product import Product
 from app.models.product_category import ProductCategory
 from app.models.product_price_tier import ProductPriceTier
+from app.models.quote import Quote, QuoteLine
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_line import PurchaseOrderLine
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.sage_export_config import SageExportConfig
+from app.models.sales_order import SalesOrder, SalesOrderLine
 from app.models.subscription import BillingEvent, Subscription
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.sync_log import SyncLog
@@ -54,6 +58,8 @@ __all__ = [
     "Customer",
     "CustomerContact",
     "CustomerNote",
+    "CustomerPayment",
+    "CustomerPaymentApplication",
     "Department",
     "Document",
     "EmployeeProfile",
@@ -65,6 +71,8 @@ __all__ = [
     "NetworkRelationship",
     "NetworkTransaction",
     "PlatformFee",
+    "Invoice",
+    "InvoiceLine",
     "InventoryItem",
     "InventoryTransaction",
     "Notification",
@@ -74,11 +82,15 @@ __all__ = [
     "Product",
     "ProductCategory",
     "ProductPriceTier",
+    "Quote",
+    "QuoteLine",
     "PurchaseOrder",
     "PurchaseOrderLine",
     "Role",
     "RolePermission",
     "SageExportConfig",
+    "SalesOrder",
+    "SalesOrderLine",
     "Subscription",
     "SubscriptionPlan",
     "BillingEvent",

@@ -35,6 +35,7 @@ from app.api.routes import (
     purchase_orders,
     roles,
     sage_exports,
+    sales,
     super_admin,
     sync_logs,
     users,
@@ -116,6 +117,9 @@ v1_router.include_router(
 v1_router.include_router(roles.router, prefix="/roles", tags=["Role Management"])
 v1_router.include_router(
     sage_exports.router, prefix="/sage-exports", tags=["Sage Exports"]
+)
+v1_router.include_router(
+    sales.router, prefix="/sales", tags=["Sales & AR"]
 )
 v1_router.include_router(
     super_admin.router, prefix="/super-admin", tags=["Super Admin"]

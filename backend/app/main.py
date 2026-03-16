@@ -50,6 +50,7 @@ app = FastAPI(
         {"name": "Vendor Bills", "description": "Vendor bill entry and approval"},
         {"name": "Vendor Payments", "description": "Vendor payment recording"},
         {"name": "Accounts Payable", "description": "AP aging, Sage export, and reporting"},
+        {"name": "Sales & AR", "description": "Quotes, sales orders, invoices, customer payments, and AR aging"},
         {"name": "Sage Exports", "description": "Sage 100 CSV data exports"},
         {"name": "Sync Logs", "description": "Import/export sync tracking"},
         {"name": "AI", "description": "AI-powered command parsing"},
