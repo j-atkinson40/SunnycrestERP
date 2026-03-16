@@ -51,26 +51,12 @@ export default function TenantDetailPage() {
       );
       localStorage.setItem("access_token", result.access_token);
 
-      const hostname = window.location.hostname;
-      const hasSubdomainSupport =
-        hostname === "admin.localhost" ||
-        hostname.endsWith(".localhost") ||
-        (import.meta.env.VITE_APP_DOMAIN &&
-          hostname.endsWith(`.${import.meta.env.VITE_APP_DOMAIN}`));
-
-      if (hasSubdomainSupport) {
-        // Subdomain-based routing: navigate to tenant subdomain
-        const tenantUrl = hostname.endsWith(".localhost")
-          ? `${window.location.protocol}//${result.tenant_slug}.localhost:${window.location.port}/dashboard`
-          : `${window.location.protocol}//${result.tenant_slug}.${import.meta.env.VITE_APP_DOMAIN}/dashboard`;
-        window.location.href = tenantUrl;
-      } else {
-        // Non-subdomain setup (Railway, single-origin): stay on same origin,
-        // switch from platform mode to tenant mode via localStorage
-        localStorage.setItem("company_slug", result.tenant_slug);
-        localStorage.removeItem("platform_mode");
-        window.location.href = "/dashboard";
-      }
+      // Always stay on the same origin for impersonation.
+      // Subdomain redirects break because localStorage (where the token lives)
+      // is per-origin — admin.localhost can't share tokens with tenant.localhost.
+      localStorage.setItem("company_slug", result.tenant_slug);
+      localStorage.removeItem("platform_mode");
+      window.location.href = "/dashboard";
     } catch (err: unknown) {
       const detail =
         err && typeof err === "object" && "response" in err

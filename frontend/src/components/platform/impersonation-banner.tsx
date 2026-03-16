@@ -56,24 +56,9 @@ export function ImpersonationBanner() {
     localStorage.removeItem("impersonation_info");
     localStorage.removeItem("company_slug");
 
-    const hostname = window.location.hostname;
-    const hasSubdomainSupport =
-      hostname === "localhost" ||
-      hostname.endsWith(".localhost") ||
-      (import.meta.env.VITE_APP_DOMAIN &&
-        hostname.endsWith(`.${import.meta.env.VITE_APP_DOMAIN}`));
-
-    if (hasSubdomainSupport) {
-      // Redirect back to admin subdomain
-      const adminUrl = hostname.endsWith(".localhost")
-        ? `${window.location.protocol}//admin.localhost:${window.location.port}`
-        : `${window.location.protocol}//admin.${import.meta.env.VITE_APP_DOMAIN}`;
-      window.location.href = adminUrl;
-    } else {
-      // Non-subdomain setup: switch back to platform mode on same origin
-      localStorage.setItem("platform_mode", "true");
-      window.location.href = "/dashboard";
-    }
+    // Return to platform admin on the same origin
+    localStorage.setItem("platform_mode", "true");
+    window.location.href = "/dashboard";
   }, []);
 
   if (!info) return null;
