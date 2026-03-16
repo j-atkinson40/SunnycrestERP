@@ -50,12 +50,27 @@ export default function TenantDetailPage() {
         })
       );
       localStorage.setItem("access_token", result.access_token);
-      const tenantUrl =
-        window.location.hostname === "localhost" ||
-        window.location.hostname.endsWith(".localhost")
+
+      const hostname = window.location.hostname;
+      const hasSubdomainSupport =
+        hostname === "admin.localhost" ||
+        hostname.endsWith(".localhost") ||
+        (import.meta.env.VITE_APP_DOMAIN &&
+          hostname.endsWith(`.${import.meta.env.VITE_APP_DOMAIN}`));
+
+      if (hasSubdomainSupport) {
+        // Subdomain-based routing: navigate to tenant subdomain
+        const tenantUrl = hostname.endsWith(".localhost")
           ? `${window.location.protocol}//${result.tenant_slug}.localhost:${window.location.port}/dashboard`
-          : `${window.location.protocol}//${result.tenant_slug}.${import.meta.env.VITE_APP_DOMAIN || window.location.hostname}/dashboard`;
-      window.location.href = tenantUrl;
+          : `${window.location.protocol}//${result.tenant_slug}.${import.meta.env.VITE_APP_DOMAIN}/dashboard`;
+        window.location.href = tenantUrl;
+      } else {
+        // Non-subdomain setup (Railway, single-origin): stay on same origin,
+        // switch from platform mode to tenant mode via localStorage
+        localStorage.setItem("company_slug", result.tenant_slug);
+        localStorage.removeItem("platform_mode");
+        window.location.href = "/dashboard";
+      }
     } catch {
       toast.error("Failed to start impersonation");
     }
