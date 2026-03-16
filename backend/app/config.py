@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # Environment: dev | staging | production
+    ENVIRONMENT: str = "dev"
+
     # Redis (optional — job queue degrades to DB polling without it)
     REDIS_URL: str = ""
 

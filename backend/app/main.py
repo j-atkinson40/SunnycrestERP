@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text as sa_text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1 import v1_router
@@ -116,4 +117,36 @@ app.include_router(v1_router, prefix="/api")
 
 @app.get("/api/health", tags=["System"])
 def health_check():
-    return {"status": "healthy", "api_version": "v1"}
+    """Health check endpoint — used by Railway, load balancers, and CI."""
+    health: dict = {
+        "status": "healthy",
+        "api_version": "v1",
+        "environment": settings.ENVIRONMENT,
+    }
+
+    # Quick DB check
+    try:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        db.execute(sa_text("SELECT 1"))
+        db.close()
+        health["db"] = "connected"
+    except Exception:
+        health["db"] = "unreachable"
+        health["status"] = "degraded"
+
+    # Quick Redis check
+    try:
+        from app.core.redis import get_redis
+
+        r = get_redis()
+        if r:
+            r.ping()
+            health["redis"] = "connected"
+        else:
+            health["redis"] = "not_configured"
+    except Exception:
+        health["redis"] = "unreachable"
+
+    return health
