@@ -27,7 +27,7 @@ def list_all_flags(
     # Build a lookup: (company_id, flag_id) -> enabled
     override_map = {}
     for o in overrides:
-        override_map[(o.company_id, o.flag_id)] = o.enabled
+        override_map[(o.tenant_id, o.flag_id)] = o.enabled
 
     result = []
     for flag in flags:
@@ -141,7 +141,7 @@ def set_tenant_flag(
         db.query(TenantFeatureFlag)
         .filter(
             TenantFeatureFlag.flag_id == flag_id,
-            TenantFeatureFlag.company_id == tenant_id,
+            TenantFeatureFlag.tenant_id == tenant_id,
         )
         .first()
     )
@@ -151,7 +151,7 @@ def set_tenant_flag(
     else:
         override = TenantFeatureFlag(
             flag_id=flag_id,
-            company_id=tenant_id,
+            tenant_id=tenant_id,
             enabled=enabled,
         )
         db.add(override)
@@ -174,7 +174,7 @@ def remove_tenant_flag_override(
         db.query(TenantFeatureFlag)
         .filter(
             TenantFeatureFlag.flag_id == flag_id,
-            TenantFeatureFlag.company_id == tenant_id,
+            TenantFeatureFlag.tenant_id == tenant_id,
         )
         .first()
     )
