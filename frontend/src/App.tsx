@@ -51,6 +51,7 @@ import InvoicesPage from "@/pages/invoices";
 import InvoiceDetailPage from "@/pages/invoice-detail";
 import CustomerPaymentsPage from "@/pages/customer-payments";
 import ARAgingPage2 from "@/pages/ar-aging";
+import ModulesPage from "@/pages/admin/modules";
 import DeliverySettingsPage from "@/pages/admin/delivery-settings";
 import DispatchPage from "@/pages/delivery/dispatch";
 import OperationsPage from "@/pages/delivery/operations";
@@ -415,6 +416,16 @@ export default function App() {
                     <Route
                       path="/admin/billing"
                       element={<BillingPage />}
+                    />
+                  </Route>
+
+                  {/* Modules — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route
+                      path="/admin/modules"
+                      element={<ModulesPage />}
                     />
                   </Route>
 

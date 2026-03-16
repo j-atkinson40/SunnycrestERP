@@ -73,6 +73,7 @@ const navigation: NavEntry[] = [
       { label: "Role Management", href: "/admin/roles", permission: "roles.view" },
       { label: "Company Settings", href: "/admin/settings", permission: "company.view" },
       { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit.view" },
+      { label: "Modules", href: "/admin/modules", adminOnly: true },
       { label: "Feature Flags", href: "/admin/feature-flags", adminOnly: true },
       { label: "API Keys", href: "/admin/api-keys", adminOnly: true },
       { label: "Accounting", href: "/admin/accounting", adminOnly: true },

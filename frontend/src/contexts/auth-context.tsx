@@ -21,6 +21,7 @@ interface AuthContextType {
   enabledModules: Set<string>;
   hasModule: (key: string) => boolean;
   isAdmin: boolean;
+  refreshUser: () => Promise<void>;
   refreshCompany: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
@@ -80,6 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const me = await authService.getMe();
+    setUser(me);
+    if (me.company) {
+      setCompany(me.company);
+    }
+  }, []);
+
   const refreshCompany = useCallback(async () => {
     const me = await authService.getMe();
     if (me.company) {
@@ -132,6 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         enabledModules,
         hasModule,
         isAdmin,
+        refreshUser,
         refreshCompany,
         login,
         register,
