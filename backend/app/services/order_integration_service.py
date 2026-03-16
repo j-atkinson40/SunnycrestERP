@@ -55,11 +55,11 @@ def on_order_confirmed(db: Session, order: SalesOrder) -> Delivery | None:
     ]
     delivery_address = ", ".join(address_parts) if address_parts else None
 
-    # Default delivery type to "precast" — can be overridden by dispatch later
+    # Default delivery type to "standard" — can be overridden by dispatch later
     delivery = Delivery(
         id=str(uuid.uuid4()),
         company_id=order.company_id,
-        delivery_type="precast",
+        delivery_type="standard",
         order_id=order.id,
         customer_id=order.customer_id,
         delivery_address=delivery_address,

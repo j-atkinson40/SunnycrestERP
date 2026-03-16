@@ -265,7 +265,7 @@ export default function TenantOnboardingPage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="Sunnycrest Precast"
+                placeholder="Acme Corp"
                 className="w-full rounded-md border px-3 py-2 text-sm"
               />
             </div>
@@ -280,7 +280,7 @@ export default function TenantOnboardingPage() {
                   setSlugManual(true);
                   setForm((f) => ({ ...f, slug: e.target.value }));
                 }}
-                placeholder="sunnycrest-precast"
+                placeholder="acme-corp"
                 className="w-full rounded-md border px-3 py-2 text-sm font-mono"
               />
               <p className="mt-1 text-xs text-gray-500">

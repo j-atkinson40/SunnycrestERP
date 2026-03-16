@@ -16,21 +16,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { getDeliveryTypeBadgeClass, getDeliveryTypeName, getAllDeliveryTypeKeys } from "@/lib/delivery-types";
 import type { DeliveryListItem } from "@/types/delivery";
-
-function typeBadge(type: string) {
-  const colors: Record<string, string> = {
-    funeral_vault: "bg-purple-100 text-purple-800",
-    precast: "bg-blue-100 text-blue-800",
-    redi_rock: "bg-orange-100 text-orange-800",
-  };
-  const labels: Record<string, string> = {
-    funeral_vault: "Vault",
-    precast: "Precast",
-    redi_rock: "Redi-Rock",
-  };
-  return <Badge className={colors[type] || ""}>{labels[type] || type}</Badge>;
-}
 
 function statusBadge(status: string) {
   const map: Record<string, { className: string; label: string }> = {
@@ -168,9 +155,9 @@ export default function HistoryPage() {
               className="rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">All Types</option>
-              <option value="funeral_vault">Funeral Vault</option>
-              <option value="precast">Precast</option>
-              <option value="redi_rock">Redi-Rock</option>
+              {getAllDeliveryTypeKeys().map((k) => (
+                <option key={k} value={k}>{getDeliveryTypeName(k)}</option>
+              ))}
             </select>
           </div>
           <div className="space-y-1">
@@ -238,7 +225,7 @@ export default function HistoryPage() {
             ) : (
               items.map((d) => (
                 <TableRow key={d.id}>
-                  <TableCell>{typeBadge(d.delivery_type)}</TableCell>
+                  <TableCell><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(d.delivery_type)}`}>{getDeliveryTypeName(d.delivery_type)}</span></TableCell>
                   <TableCell>
                     <Link
                       to={`/delivery/deliveries/${d.id}`}

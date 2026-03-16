@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { getDeliveryTypeBadgeClass, getDeliveryTypeName, getAllDeliveryTypeKeys } from "@/lib/delivery-types";
 import type {
   DeliveryListItem,
   DeliveryRoute,
@@ -30,24 +31,6 @@ import type {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function typeBadge(type: string) {
-  const colors: Record<string, string> = {
-    funeral_vault: "bg-purple-100 text-purple-800",
-    precast: "bg-blue-100 text-blue-800",
-    redi_rock: "bg-orange-100 text-orange-800",
-  };
-  const labels: Record<string, string> = {
-    funeral_vault: "Vault",
-    precast: "Precast",
-    redi_rock: "Redi-Rock",
-  };
-  return (
-    <Badge className={colors[type] || ""}>
-      {labels[type] || type}
-    </Badge>
-  );
-}
 
 function priorityBadge(priority: string) {
   switch (priority) {
@@ -117,7 +100,7 @@ export default function DispatchPage() {
 
   // Create delivery dialog
   const [showCreateDelivery, setShowCreateDelivery] = useState(false);
-  const [newDeliveryType, setNewDeliveryType] = useState("funeral_vault");
+  const [newDeliveryType, setNewDeliveryType] = useState("standard");
   const [newDeliveryAddress, setNewDeliveryAddress] = useState("");
   const [newDeliveryPriority, setNewDeliveryPriority] = useState("normal");
   const [newDeliveryDate, setNewDeliveryDate] = useState("");
@@ -302,9 +285,9 @@ export default function DispatchPage() {
             className="rounded-md border bg-background px-3 py-2 text-sm"
           >
             <option value="">All Types</option>
-            <option value="funeral_vault">Funeral Vault</option>
-            <option value="precast">Precast</option>
-            <option value="redi_rock">Redi-Rock</option>
+            {getAllDeliveryTypeKeys().map((k) => (
+              <option key={k} value={k}>{getDeliveryTypeName(k)}</option>
+            ))}
           </select>
         </div>
         <div className="flex items-center gap-2">
@@ -341,7 +324,7 @@ export default function DispatchPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {typeBadge(d.delivery_type)}
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(d.delivery_type)}`}>{getDeliveryTypeName(d.delivery_type)}</span>
                         {priorityBadge(d.priority)}
                         {d.carrier_name && (
                           <Badge variant="outline" className="text-xs">
@@ -432,7 +415,7 @@ export default function DispatchPage() {
                           <span className="min-w-0 flex-1 truncate">
                             {stop.delivery?.customer_name || stop.delivery?.delivery_address || "Delivery"}
                           </span>
-                          {stop.delivery && typeBadge(stop.delivery.delivery_type)}
+                          {stop.delivery && <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(stop.delivery.delivery_type)}`}>{getDeliveryTypeName(stop.delivery.delivery_type)}</span>}
                           <Badge variant="outline" className="text-xs">
                             {stop.status}
                           </Badge>
@@ -518,9 +501,9 @@ export default function DispatchPage() {
                   onChange={(e) => setNewDeliveryType(e.target.value)}
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 >
-                  <option value="funeral_vault">Funeral Vault</option>
-                  <option value="precast">Precast</option>
-                  <option value="redi_rock">Redi-Rock</option>
+                  {getAllDeliveryTypeKeys().map((k) => (
+                    <option key={k} value={k}>{getDeliveryTypeName(k)}</option>
+                  ))}
                 </select>
               </div>
               <div className="space-y-1.5">

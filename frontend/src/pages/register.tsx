@@ -50,7 +50,7 @@ export default function RegisterPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Create Account</CardTitle>
           <CardDescription>
-            Register for {getCompanySlug() || "Sunnycrest ERP"}
+            Register for {getCompanySlug() || "ERP Platform"}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>

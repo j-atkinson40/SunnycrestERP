@@ -7,21 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { getDeliveryTypeBadgeClass, getDeliveryTypeName, getDeliveryType } from "@/lib/delivery-types";
 import type { DeliveryRoute, DeliveryStop } from "@/types/delivery";
-
-function typeBadge(type: string) {
-  const labels: Record<string, string> = {
-    funeral_vault: "Funeral Vault",
-    precast: "Precast",
-    redi_rock: "Redi-Rock",
-  };
-  const colors: Record<string, string> = {
-    funeral_vault: "bg-purple-100 text-purple-800",
-    precast: "bg-blue-100 text-blue-800",
-    redi_rock: "bg-orange-100 text-orange-800",
-  };
-  return <Badge className={colors[type] || ""}>{labels[type] || type}</Badge>;
-}
 
 export default function StopDetailPage() {
   const { stopId } = useParams<{ stopId: string }>();
@@ -131,9 +118,8 @@ export default function StopDetailPage() {
   }
 
   const deliveryType = stop.delivery.delivery_type;
+  const dtConfig = getDeliveryType(deliveryType);
   const isFuneral = deliveryType === "funeral_vault";
-  const isPrecast = deliveryType === "precast";
-  const isRediRock = deliveryType === "redi_rock";
 
   return (
     <div className="space-y-4">
@@ -147,7 +133,7 @@ export default function StopDetailPage() {
           <h1 className="text-xl font-bold">
             {stop.delivery.customer_name || "Delivery"}
           </h1>
-          {typeBadge(deliveryType)}
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(deliveryType)}`}>{getDeliveryTypeName(deliveryType)}</span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {stop.delivery.delivery_address || "No address"}
@@ -161,39 +147,14 @@ export default function StopDetailPage() {
       </div>
 
       {/* Type-Specific Info */}
-      {isFuneral && (
-        <Card className="border-purple-200 bg-purple-50 p-4 dark:border-purple-900 dark:bg-purple-950/20">
-          <h3 className="text-sm font-semibold text-purple-800 dark:text-purple-200">
-            Funeral Vault Delivery
-          </h3>
-          <p className="mt-1 text-xs text-purple-700 dark:text-purple-300">
-            Setup confirmation required. Take photos before and after setup.
-            Notify dispatch when setup is complete.
-          </p>
-        </Card>
-      )}
-      {isPrecast && (
-        <Card className="border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/20">
-          <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-200">
-            Precast Delivery
-          </h3>
-          <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">
-            Weight ticket required. Partial delivery may be allowed.
-            {stop.delivery.weight_lbs && ` Expected weight: ${stop.delivery.weight_lbs} lbs`}
-          </p>
-        </Card>
-      )}
-      {isRediRock && (
-        <Card className="border-orange-200 bg-orange-50 p-4 dark:border-orange-900 dark:bg-orange-950/20">
-          <h3 className="text-sm font-semibold text-orange-800 dark:text-orange-200">
-            Redi-Rock Delivery
-          </h3>
-          <p className="mt-1 text-xs text-orange-700 dark:text-orange-300">
-            Weight ticket required. Photo and signature needed.
-            {stop.delivery.weight_lbs && ` Expected weight: ${stop.delivery.weight_lbs} lbs`}
-          </p>
-        </Card>
-      )}
+      {(() => {
+        return dtConfig.driver_instructions ? (
+          <section className="rounded-lg border p-4">
+            <h3 className="mb-2 font-semibold">{dtConfig.name} Delivery</h3>
+            <p className="text-sm text-gray-600 whitespace-pre-line">{dtConfig.driver_instructions}</p>
+          </section>
+        ) : null;
+      })()}
 
       {/* Actions by Status */}
       <Card className="space-y-3 p-4">

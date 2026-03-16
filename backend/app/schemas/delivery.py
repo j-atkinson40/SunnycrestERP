@@ -155,6 +155,8 @@ class PaginatedCarriers(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# Legacy presets — kept for backward compatibility.
+# New tenants should configure delivery types via delivery_type_definitions table.
 DELIVERY_PRESETS: dict[str, dict[str, bool | int | None]] = {
     "standard": {
         "require_photo_on_delivery": False,

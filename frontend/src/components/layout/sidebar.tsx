@@ -147,7 +147,7 @@ export function Sidebar() {
     <aside className="flex h-full w-64 flex-col border-r bg-sidebar">
       <div className="flex h-14 items-center border-b px-6">
         <Link to="/" className="text-lg font-semibold text-sidebar-foreground">
-          {company?.name || "Sunnycrest ERP"}
+          {company?.name || "ERP Platform"}
         </Link>
       </div>
       <nav className="flex-1 overflow-y-auto p-4">

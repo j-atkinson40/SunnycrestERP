@@ -33,7 +33,7 @@ class Company(Base):
 
     # Configuration
     timezone: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, default="America/Los_Angeles"
+        String(50), nullable=True, default="UTC"
     )
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
@@ -48,8 +48,8 @@ class Company(Base):
 
     # Accounting Integration
     accounting_provider: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, default="sage_csv"
-    )  # none, sage_csv, quickbooks_online
+        String(50), nullable=True, default=None
+    )  # none, sage_csv, quickbooks_online — set during tenant onboarding
     accounting_config: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # JSON blob for provider-specific settings (OAuth tokens, mappings, etc.)

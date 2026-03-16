@@ -93,7 +93,7 @@ def upgrade() -> None:
         "deliveries",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("company_id", sa.String(36), sa.ForeignKey("companies.id"), nullable=False, index=True),
-        sa.Column("delivery_type", sa.String(30), nullable=False),  # funeral_vault, precast, redi_rock
+        sa.Column("delivery_type", sa.String(30), nullable=False),  # configurable per tenant
         sa.Column("order_id", sa.String(36), nullable=True, index=True),
         sa.Column("customer_id", sa.String(36), sa.ForeignKey("customers.id"), nullable=True),
         sa.Column("delivery_address", sa.Text, nullable=True),

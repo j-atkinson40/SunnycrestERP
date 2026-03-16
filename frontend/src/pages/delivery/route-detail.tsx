@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { getDeliveryTypeBadgeClass, getDeliveryTypeName } from "@/lib/delivery-types";
 import type { DeliveryRoute, DeliveryListItem } from "@/types/delivery";
 
 function routeStatusBadge(status: string) {
@@ -42,20 +43,6 @@ function stopStatusBadge(status: string) {
   const info = map[status];
   if (info) return <Badge className={info.className}>{info.label}</Badge>;
   return <Badge variant="outline">{status}</Badge>;
-}
-
-function typeBadge(type: string) {
-  const colors: Record<string, string> = {
-    funeral_vault: "bg-purple-100 text-purple-800",
-    precast: "bg-blue-100 text-blue-800",
-    redi_rock: "bg-orange-100 text-orange-800",
-  };
-  const labels: Record<string, string> = {
-    funeral_vault: "Vault",
-    precast: "Precast",
-    redi_rock: "Redi-Rock",
-  };
-  return <Badge className={colors[type] || ""}>{labels[type] || type}</Badge>;
 }
 
 function fmtTime(d: string | null) {
@@ -267,7 +254,7 @@ export default function RouteDetailPage() {
                                 stop.delivery?.delivery_address ||
                                 "Delivery"}
                             </Link>
-                            {stop.delivery && typeBadge(stop.delivery.delivery_type)}
+                            {stop.delivery && <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(stop.delivery.delivery_type)}`}>{getDeliveryTypeName(stop.delivery.delivery_type)}</span>}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {stop.delivery?.delivery_address || "No address"}

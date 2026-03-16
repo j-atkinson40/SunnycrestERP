@@ -59,7 +59,7 @@ export default function PlatformLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-md border border-slate-600 bg-slate-700 px-3 py-2 text-white placeholder-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              placeholder="admin@sunnycrest.dev"
+              placeholder="admin@example.com"
               required
             />
           </div>

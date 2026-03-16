@@ -11,7 +11,7 @@ from app.config import settings
 # OpenAPI / docs configuration
 # ---------------------------------------------------------------------------
 app = FastAPI(
-    title="Sunnycrest ERP",
+    title=settings.APP_NAME,
     description=(
         "Multi-tenant SaaS business management platform. "
         "Supports manufacturing, death care, and hospitality verticals."
@@ -21,8 +21,8 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
     contact={
-        "name": "Sunnycrest ERP Support",
-        "email": "support@sunnycrest.dev",
+        "name": f"{settings.APP_NAME} Support",
+        "email": settings.SUPPORT_EMAIL,
     },
     license_info={
         "name": "Proprietary",

@@ -3,9 +3,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: sunnycrest
-      POSTGRES_PASSWORD: sunnycrest_dev
-      POSTGRES_DB: sunnycrest_erp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: erp_db
     ports:
       - "5432:5432"
     volumes:

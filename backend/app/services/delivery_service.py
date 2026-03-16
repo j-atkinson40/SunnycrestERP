@@ -472,6 +472,41 @@ def list_events(db: Session, delivery_id: str, company_id: str) -> list[Delivery
 # ---------------------------------------------------------------------------
 
 
+def seed_delivery_types(db: Session, company_id: str) -> int:
+    """Seed default delivery types for a new company. Idempotent."""
+    from app.models.delivery_type_definition import DeliveryTypeDefinition
+
+    existing = (
+        db.query(DeliveryTypeDefinition.key)
+        .filter(DeliveryTypeDefinition.company_id == company_id)
+        .all()
+    )
+    existing_keys = {r[0] for r in existing}
+
+    DEFAULTS = [
+        {
+            "key": "standard",
+            "name": "Standard Delivery",
+            "color": "gray",
+            "description": "Standard delivery with basic confirmation.",
+            "driver_instructions": "Deliver to the specified address. Get customer acknowledgment.",
+            "requires_signature": False,
+            "requires_photo": False,
+            "sort_order": 0,
+        },
+    ]
+
+    count = 0
+    for d in DEFAULTS:
+        if d["key"] not in existing_keys:
+            db.add(DeliveryTypeDefinition(company_id=company_id, **d))
+            count += 1
+
+    if count:
+        db.flush()
+    return count
+
+
 def create_media(
     db: Session,
     company_id: str,

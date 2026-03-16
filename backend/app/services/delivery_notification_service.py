@@ -158,10 +158,12 @@ def on_carrier_assigned(db: Session, delivery: Delivery) -> None:
             delivery.customer, "company_name", "N/A"
         )
 
-    company_name = delivery.company.name if delivery.company else "Sunnycrest"
+    from app.config import settings as app_settings
+
+    company_name = delivery.company.name if delivery.company else app_settings.APP_NAME
 
     body = (
-        f"You have a Redi-Rock delivery scheduled. "
+        f"You have a delivery scheduled. "
         f"Customer: {customer_name}. "
         f"Address: {delivery.delivery_address or 'TBD'}. "
         f"Date: {delivery.requested_date or 'TBD'}. "

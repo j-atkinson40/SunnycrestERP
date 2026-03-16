@@ -75,6 +75,7 @@ const TOGGLE_GROUPS: { title: string; toggles: ToggleDef[] }[] = [
   },
 ];
 
+// Legacy presets — will be replaced by tenant-configurable delivery types
 const PRESET_INFO: Record<string, { label: string; description: string; color: string }> = {
   standard: { label: "Standard", description: "Minimal requirements — good starting point", color: "bg-gray-100 text-gray-800" },
   funeral_vault: { label: "Funeral Vault", description: "Full compliance — photos, signatures, setup confirmation, all notifications", color: "bg-purple-100 text-purple-800" },

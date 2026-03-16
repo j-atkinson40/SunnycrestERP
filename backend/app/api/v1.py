@@ -21,6 +21,7 @@ from app.api.routes import (
     deliveries,
     delivery_portal,
     delivery_settings,
+    delivery_types,
     departments,
     documents,
     driver_mobile,
@@ -81,6 +82,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     delivery_settings.router, prefix="/settings", tags=["Delivery Settings"]
+)
+v1_router.include_router(
+    delivery_types.router, prefix="/delivery-types", tags=["Delivery Types"]
 )
 v1_router.include_router(
     departments.router, prefix="/departments", tags=["Departments"]

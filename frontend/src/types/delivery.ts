@@ -194,7 +194,8 @@ export interface DeliverySettingsUpdate {
 // Deliveries
 // ---------------------------------------------------------------------------
 
-export type DeliveryType = "funeral_vault" | "precast" | "redi_rock";
+/** Delivery type key — configurable per tenant via delivery_type_definitions. */
+export type DeliveryType = string;
 export type DeliveryStatus =
   | "pending"
   | "scheduled"

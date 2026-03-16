@@ -22,7 +22,7 @@ class Delivery(Base):
     )
     delivery_type: Mapped[str] = mapped_column(
         String(30), nullable=False
-    )  # funeral_vault, precast, redi_rock
+    )  # configurable per tenant via delivery_type_definitions
     order_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True, index=True
     )

@@ -322,7 +322,7 @@ export default function CompanySettings() {
                 value={emailFromName}
                 onChange={(e) => setEmailFromName(e.target.value)}
                 disabled={!canEdit}
-                placeholder="Sunnycrest Farm"
+                placeholder="My Company"
               />
             </div>
             <div className="space-y-2">

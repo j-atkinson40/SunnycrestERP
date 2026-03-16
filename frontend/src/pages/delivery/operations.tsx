@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { getDeliveryTypeBadgeClass, getDeliveryTypeName } from "@/lib/delivery-types";
 import type {
   DeliveryRoute,
   DeliveryStats,
@@ -45,20 +46,6 @@ function stopStatusDot(status: string) {
       title={status}
     />
   );
-}
-
-function typeBadge(type: string) {
-  const colors: Record<string, string> = {
-    funeral_vault: "bg-purple-100 text-purple-800",
-    precast: "bg-blue-100 text-blue-800",
-    redi_rock: "bg-orange-100 text-orange-800",
-  };
-  const labels: Record<string, string> = {
-    funeral_vault: "Vault",
-    precast: "Precast",
-    redi_rock: "Redi-Rock",
-  };
-  return <Badge className={colors[type] || ""}>{labels[type] || type}</Badge>;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +246,7 @@ export default function OperationsPage() {
                                 "Delivery"}
                             </Link>
                           </span>
-                          {stop.delivery && typeBadge(stop.delivery.delivery_type)}
+                          {stop.delivery && <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(stop.delivery.delivery_type)}`}>{getDeliveryTypeName(stop.delivery.delivery_type)}</span>}
                           {isCarrier && (
                             <Badge variant="outline" className="text-xs">
                               {stop.delivery?.carrier_name || "Carrier"}

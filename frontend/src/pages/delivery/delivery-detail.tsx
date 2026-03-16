@@ -16,21 +16,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { getDeliveryTypeBadgeClass, getDeliveryTypeName } from "@/lib/delivery-types";
 import type { Delivery, DeliveryEvent } from "@/types/delivery";
-
-function typeBadge(type: string) {
-  const colors: Record<string, string> = {
-    funeral_vault: "bg-purple-100 text-purple-800",
-    precast: "bg-blue-100 text-blue-800",
-    redi_rock: "bg-orange-100 text-orange-800",
-  };
-  const labels: Record<string, string> = {
-    funeral_vault: "Funeral Vault",
-    precast: "Precast",
-    redi_rock: "Redi-Rock",
-  };
-  return <Badge className={colors[type] || ""}>{labels[type] || type}</Badge>;
-}
 
 function statusBadge(status: string) {
   const map: Record<string, { className: string; label: string }> = {
@@ -175,7 +162,7 @@ export default function DeliveryDetailPage() {
             </h1>
           </div>
           <div className="mt-1 flex items-center gap-2">
-            {typeBadge(delivery.delivery_type)}
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(delivery.delivery_type)}`}>{getDeliveryTypeName(delivery.delivery_type)}</span>
             {statusBadge(delivery.status)}
             {priorityBadge(delivery.priority)}
           </div>

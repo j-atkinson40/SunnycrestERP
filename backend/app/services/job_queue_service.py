@@ -14,13 +14,14 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.redis import get_redis
 from app.models.job_queue import Job
 
 logger = logging.getLogger(__name__)
 
-REDIS_QUEUE_KEY = "sunnycrest:job_queue"
-REDIS_DLQ_KEY = "sunnycrest:dead_letter_queue"
+REDIS_QUEUE_KEY = f"{settings.APP_NAME}:job_queue"
+REDIS_DLQ_KEY = f"{settings.APP_NAME}:dead_letter_queue"
 
 
 # ---------------------------------------------------------------------------

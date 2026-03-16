@@ -9,7 +9,7 @@ def get_company_slug(request: Request) -> str:
     """
     Extract company slug using a dual strategy:
     1. Check X-Company-Slug header (works for dev and production without subdomains)
-    2. Extract from subdomain (acme.sunnycrest.app -> "acme")
+    2. Extract from subdomain (acme.platform.app -> "acme")
 
     Returns empty string if no company context found (root domain).
     """

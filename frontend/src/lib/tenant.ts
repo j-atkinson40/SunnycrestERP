@@ -1,7 +1,7 @@
 /**
  * Extract the company slug from the current hostname.
  *
- * Production: acme.sunnycrest.app -> "acme"
+ * Production: acme.platform.app -> "acme"
  * Development: reads from localStorage fallback.
  *
  * Returns empty string if on the root domain (no tenant).
@@ -24,7 +24,7 @@ export function getCompanySlug(): string {
   }
 
   // Production: extract subdomain only if we know the base domain
-  // e.g., acme.sunnycrest.app -> "acme" (base domain = "sunnycrest.app")
+  // e.g., acme.platform.app -> "acme" (base domain = "platform.app")
   const baseDomain = import.meta.env.VITE_APP_DOMAIN;
   if (baseDomain && hostname.endsWith(`.${baseDomain}`)) {
     const slug = hostname.slice(0, -(baseDomain.length + 1));
@@ -57,7 +57,7 @@ export function getCompanyUrl(slug: string): string {
     return window.location.origin;
   }
 
-  const baseDomain = import.meta.env.VITE_APP_DOMAIN || "sunnycrest.app";
+  const baseDomain = import.meta.env.VITE_APP_DOMAIN || "platform.app";
   const protocol = window.location.protocol;
   return `${protocol}//${slug}.${baseDomain}`;
 }

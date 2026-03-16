@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # Branding / identity
+    APP_NAME: str = "Sunnycrest ERP"
+    SUPPORT_EMAIL: str = "support@sunnycrest.dev"
+
     # Environment: dev | staging | production
     ENVIRONMENT: str = "dev"
 

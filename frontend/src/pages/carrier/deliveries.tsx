@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { getDeliveryTypeBadgeClass, getDeliveryTypeName } from "@/lib/delivery-types";
 
 interface CarrierDelivery {
   id: string;
@@ -25,20 +26,6 @@ interface CarrierDelivery {
   priority: string;
   customer_name: string | null;
   special_instructions: string | null;
-}
-
-function typeBadge(type: string) {
-  const colors: Record<string, string> = {
-    funeral_vault: "bg-purple-100 text-purple-800",
-    precast: "bg-blue-100 text-blue-800",
-    redi_rock: "bg-orange-100 text-orange-800",
-  };
-  const labels: Record<string, string> = {
-    funeral_vault: "Vault",
-    precast: "Precast",
-    redi_rock: "Redi-Rock",
-  };
-  return <Badge className={colors[type] || ""}>{labels[type] || type}</Badge>;
 }
 
 function statusBadge(status: string) {
@@ -156,7 +143,7 @@ export default function CarrierDeliveriesPage() {
               <div className="flex items-start justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    {typeBadge(d.delivery_type)}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(d.delivery_type)}`}>{getDeliveryTypeName(d.delivery_type)}</span>
                     {statusBadge(d.status)}
                   </div>
                   <p className="mt-1 font-medium">{d.customer_name || "Customer"}</p>

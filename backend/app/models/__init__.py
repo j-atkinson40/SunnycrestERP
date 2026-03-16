@@ -15,6 +15,7 @@ from app.models.delivery_media import DeliveryMedia
 from app.models.delivery_route import DeliveryRoute
 from app.models.delivery_settings import DeliverySettings
 from app.models.delivery_stop import DeliveryStop
+from app.models.delivery_type_definition import DeliveryTypeDefinition
 from app.models.department import Department
 from app.models.driver import Driver
 from app.models.document import Document
@@ -83,6 +84,7 @@ __all__ = [
     "DeliveryRoute",
     "DeliverySettings",
     "DeliveryStop",
+    "DeliveryTypeDefinition",
     "Department",
     "Driver",
     "Document",
