@@ -28,7 +28,9 @@ from app.models.network_relationship import NetworkRelationship
 from app.models.network_transaction import NetworkTransaction
 from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
+from app.models.preset_module import PresetModule
 from app.models.invoice import Invoice, InvoiceLine
+from app.models.module_definition import ModuleDefinition
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.notification import Notification
@@ -48,10 +50,12 @@ from app.models.subscription import BillingEvent, Subscription
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.sync_log import SyncLog
 from app.models.tenant_feature_flag import TenantFeatureFlag
+from app.models.tenant_module_config import TenantModuleConfig
 from app.models.tenant_notification import TenantNotification
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
 from app.models.vehicle import Vehicle
+from app.models.vertical_preset import VerticalPreset
 from app.models.vendor import Vendor
 from app.models.vendor_bill import VendorBill
 from app.models.vendor_bill_line import VendorBillLine
@@ -92,9 +96,11 @@ __all__ = [
     "NetworkTransaction",
     "PlatformFee",
     "PlatformUser",
+    "PresetModule",
     "ImpersonationSession",
     "Invoice",
     "InvoiceLine",
+    "ModuleDefinition",
     "InventoryItem",
     "InventoryTransaction",
     "Notification",
@@ -118,10 +124,12 @@ __all__ = [
     "BillingEvent",
     "SyncLog",
     "TenantFeatureFlag",
+    "TenantModuleConfig",
     "TenantNotification",
     "User",
     "UserPermissionOverride",
     "Vehicle",
+    "VerticalPreset",
     "Vendor",
     "VendorBill",
     "VendorBillLine",

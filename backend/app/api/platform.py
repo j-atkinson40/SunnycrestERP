@@ -11,6 +11,7 @@ from app.api.routes import (
     platform_auth,
     platform_feature_flags,
     platform_impersonation,
+    platform_modules,
     platform_system,
     platform_tenants,
     platform_users_mgmt,
@@ -39,4 +40,9 @@ platform_router.include_router(
     platform_impersonation.router,
     prefix="/impersonation",
     tags=["Platform Impersonation"],
+)
+platform_router.include_router(
+    platform_modules.router,
+    prefix="/modules",
+    tags=["Platform Modules"],
 )

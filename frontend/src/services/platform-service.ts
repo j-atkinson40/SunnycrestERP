@@ -11,6 +11,11 @@ import type {
   TenantDetail,
   TenantOverview,
   ImpersonationSession,
+  ModuleDefinition,
+  VerticalPreset,
+  TenantModuleConfig,
+  OnboardTenantRequest,
+  OnboardTenantResponse,
 } from "@/types/platform";
 
 // ---- Auth ----
@@ -189,6 +194,85 @@ export async function updatePlatformUser(
 ) {
   const { data } = await platformClient.patch<PlatformUser>(
     `/users/${userId}`,
+    payload
+  );
+  return data;
+}
+
+// ---- Module Management ----
+
+export async function listModuleDefinitions() {
+  const { data } = await platformClient.get<Record<string, ModuleDefinition[]>>(
+    "/modules/definitions"
+  );
+  return data;
+}
+
+export async function listModuleDefinitionsFlat() {
+  const { data } = await platformClient.get<ModuleDefinition[]>(
+    "/modules/definitions/flat"
+  );
+  return data;
+}
+
+export async function listVerticalPresets() {
+  const { data } = await platformClient.get<VerticalPreset[]>(
+    "/modules/presets"
+  );
+  return data;
+}
+
+export async function getVerticalPreset(presetKey: string) {
+  const { data } = await platformClient.get<VerticalPreset>(
+    `/modules/presets/${presetKey}`
+  );
+  return data;
+}
+
+export async function getTenantModules(tenantId: string) {
+  const { data } = await platformClient.get<TenantModuleConfig[]>(
+    `/modules/tenants/${tenantId}`
+  );
+  return data;
+}
+
+export async function setTenantModule(
+  tenantId: string,
+  moduleKey: string,
+  enabled: boolean
+) {
+  const { data } = await platformClient.put(
+    `/modules/tenants/${tenantId}/${moduleKey}`,
+    { enabled }
+  );
+  return data;
+}
+
+export async function applyPresetToTenant(
+  tenantId: string,
+  presetKey: string
+) {
+  const { data } = await platformClient.post(
+    `/modules/tenants/${tenantId}/preset`,
+    { preset_key: presetKey }
+  );
+  return data;
+}
+
+export async function bulkSetTenantModules(
+  tenantId: string,
+  moduleKeys: string[]
+) {
+  const { data } = await platformClient.post(
+    `/modules/tenants/${tenantId}/bulk`,
+    { module_keys: moduleKeys }
+  );
+  return data;
+}
+
+export async function onboardTenant(payload: OnboardTenantRequest) {
+  const { data } = await platformClient.post<OnboardTenantResponse>(
+    "/modules/onboard",
     payload
   );
   return data;

@@ -106,3 +106,54 @@ export interface FeatureFlagMatrix {
     has_override: boolean;
   }[];
 }
+
+// ---- Module Configuration ----
+
+export interface ModuleDefinition {
+  key: string;
+  name: string;
+  description: string | null;
+  category: string;
+  icon: string | null;
+  is_core: boolean;
+  dependencies: string[];
+  sort_order: number;
+}
+
+export interface VerticalPreset {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  module_keys: string[];
+}
+
+export interface TenantModuleConfig {
+  key: string;
+  name: string;
+  description: string | null;
+  category: string;
+  icon: string | null;
+  is_core: boolean;
+  dependencies: string[];
+  enabled: boolean;
+  enabled_at: string | null;
+  enabled_by: string | null;
+}
+
+export interface OnboardTenantRequest {
+  name: string;
+  slug: string;
+  vertical: string | null;
+  admin_email: string;
+  admin_password: string;
+  admin_first_name: string;
+  admin_last_name: string;
+}
+
+export interface OnboardTenantResponse {
+  tenant_id: string;
+  slug: string;
+  modules_enabled: number;
+}

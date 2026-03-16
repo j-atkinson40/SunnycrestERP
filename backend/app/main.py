@@ -134,6 +134,9 @@ def seed_platform_admin():
                 email=settings.PLATFORM_ADMIN_EMAIL,
                 password=settings.PLATFORM_ADMIN_PASSWORD,
             )
+
+            from app.services.tenant_module_service import seed_all as seed_modules
+            seed_modules(db)
         finally:
             db.close()
 

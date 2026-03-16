@@ -16,6 +16,8 @@ import PlatformFeatureFlagsPage from "@/pages/platform/feature-flags";
 import SystemHealthPage from "@/pages/platform/system-health";
 import ImpersonationLogPage from "@/pages/platform/impersonation-log";
 import PlatformUsersPage from "@/pages/platform/platform-users";
+import TenantOnboardingPage from "@/pages/platform/tenant-onboarding";
+import TenantModulesPage from "@/pages/platform/tenant-modules";
 
 export default function PlatformApp() {
   return (
@@ -29,8 +31,16 @@ export default function PlatformApp() {
             <Route path="/dashboard" element={<PlatformDashboard />} />
             <Route path="/tenants" element={<TenantsPage />} />
             <Route
+              path="/tenants/new"
+              element={<TenantOnboardingPage />}
+            />
+            <Route
               path="/tenants/:tenantId"
               element={<TenantDetailPage />}
+            />
+            <Route
+              path="/tenants/:tenantId/modules"
+              element={<TenantModulesPage />}
             />
             <Route
               path="/feature-flags"

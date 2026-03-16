@@ -136,7 +136,15 @@ export default function TenantDetailPage() {
 
         {/* Modules */}
         <Card className="p-4">
-          <h3 className="mb-3 font-semibold">Modules</h3>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-semibold">Modules</h3>
+            <Link
+              to={`/tenants/${tenantId}/modules`}
+              className="text-xs text-indigo-600 hover:underline"
+            >
+              Manage Modules &rarr;
+            </Link>
+          </div>
           <div className="flex flex-wrap gap-2">
             {tenant.modules.map((m) => (
               <Badge
