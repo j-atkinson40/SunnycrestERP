@@ -71,8 +71,14 @@ export default function TenantDetailPage() {
         localStorage.removeItem("platform_mode");
         window.location.href = "/dashboard";
       }
-    } catch {
-      toast.error("Failed to start impersonation");
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { detail?: string }; status?: number } })
+              .response?.data?.detail ||
+            `HTTP ${(err as { response?: { status?: number } }).response?.status}`
+          : String(err);
+      toast.error(`Impersonation failed: ${detail}`);
     }
   }
 
