@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { sageExportService } from "@/services/sage-export-service";
+import { salesService } from "@/services/sales-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { SageExportConfig, SyncLogEntry } from "@/types/sage-export";
+import type { PaymentImportResult } from "@/types/sales";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +45,12 @@ export default function SageExportsPage() {
   const [history, setHistory] = useState<SyncLogEntry[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
+
+  // Payment import state
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<PaymentImportResult | null>(null);
 
   // Set default dates (last 7 days)
   useEffect(() => {
@@ -135,6 +143,28 @@ export default function SageExportsPage() {
       toast.error(getApiErrorMessage(err, "Failed to download CSV"));
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function handleImportPayments() {
+    if (!importFile) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const result = await salesService.importPayments(importFile);
+      setImportResult(result);
+      if (result.created > 0) {
+        toast.success(`Imported ${result.created} payment(s)`);
+      } else if (result.skipped > 0 || result.errors.length > 0) {
+        toast.warning("Import completed with warnings — see details below");
+      } else {
+        toast.info("No payments to import");
+      }
+      loadHistory();
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to import payments"));
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -265,6 +295,85 @@ export default function SageExportsPage() {
                 {csvPreview.split("\n").slice(0, 25).join("\n")}
                 {csvPreview.split("\n").length > 25 && "\n... (truncated)"}
               </pre>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Import Sage Payments */}
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold">Import Sage Payments</h2>
+        <p className="text-sm text-muted-foreground">
+          Upload a Sage payment export CSV to import customer payments and
+          apply them to invoices.
+        </p>
+        <Separator className="my-4" />
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => {
+                setImportFile(e.target.files?.[0] || null);
+                setImportResult(null);
+              }}
+            />
+            <Button
+              variant="outline"
+              onClick={() => importFileRef.current?.click()}
+            >
+              {importFile ? importFile.name : "Select CSV File"}
+            </Button>
+            <Button
+              onClick={handleImportPayments}
+              disabled={!importFile || importing}
+            >
+              {importing ? "Importing..." : "Import Payments"}
+            </Button>
+          </div>
+
+          {importResult && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                  {importResult.created} created
+                </Badge>
+                {importResult.skipped > 0 && (
+                  <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                    {importResult.skipped} skipped
+                  </Badge>
+                )}
+                {importResult.errors.length > 0 && (
+                  <Badge variant="destructive">
+                    {importResult.errors.length} errors
+                  </Badge>
+                )}
+              </div>
+
+              {importResult.errors.length > 0 && (
+                <div className="max-h-48 overflow-auto rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-20">Row</TableHead>
+                        <TableHead>Error</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importResult.errors.map((e, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-mono">{e.row}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {e.message}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </div>
           )}
         </div>

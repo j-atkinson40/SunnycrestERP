@@ -1,10 +1,12 @@
 """Service layer for Sales / Accounts Receivable — Quotes, Sales Orders,
 Invoices, Customer Payments, AR Aging, and sales statistics."""
 
+import csv
+import io
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func
@@ -22,6 +24,7 @@ from app.schemas.sales import (
     SalesStats,
 )
 from app.services import audit_service
+from app.services.sync_log_service import complete_sync_log, create_sync_log
 
 
 # ---------------------------------------------------------------------------
@@ -996,3 +999,395 @@ def get_sales_stats(db: Session, company_id: str) -> SalesStats:
         outstanding_invoices=outstanding_invoices,
         total_ar_outstanding=total_ar,
     )
+
+
+# ---------------------------------------------------------------------------
+# Sage Payment CSV Import
+# ---------------------------------------------------------------------------
+
+_PAYMENT_HEADER_MAP: dict[str, str] = {
+    # payment_date
+    "payment date": "payment_date",
+    "payment_date": "payment_date",
+    "date": "payment_date",
+    "posting date": "payment_date",
+    "posting_date": "payment_date",
+    # customer_account
+    "customer id": "customer_account",
+    "customer_id": "customer_account",
+    "customer account": "customer_account",
+    "account number": "customer_account",
+    "account_number": "customer_account",
+    "account #": "customer_account",
+    "acct #": "customer_account",
+    "acct": "customer_account",
+    # sage_customer_id
+    "sage customer id": "sage_customer_id",
+    "sage_customer_id": "sage_customer_id",
+    # invoice_number
+    "invoice number": "invoice_number",
+    "invoice_number": "invoice_number",
+    "invoice #": "invoice_number",
+    "invoice no": "invoice_number",
+    "invoice": "invoice_number",
+    # sage_invoice_id
+    "sage invoice id": "sage_invoice_id",
+    "sage_invoice_id": "sage_invoice_id",
+    # amount_applied
+    "amount applied": "amount_applied",
+    "amount_applied": "amount_applied",
+    "amount": "amount_applied",
+    "applied amount": "amount_applied",
+    # total_amount
+    "total amount": "total_amount",
+    "total_amount": "total_amount",
+    "payment amount": "total_amount",
+    "payment_amount": "total_amount",
+    "total": "total_amount",
+    # payment_method
+    "payment method": "payment_method",
+    "payment_method": "payment_method",
+    "method": "payment_method",
+    "type": "payment_method",
+    # reference_number
+    "reference": "reference_number",
+    "reference number": "reference_number",
+    "reference_number": "reference_number",
+    "check number": "reference_number",
+    "check_number": "reference_number",
+    "check #": "reference_number",
+    "ref #": "reference_number",
+    # notes
+    "notes": "notes",
+    "memo": "notes",
+    "description": "notes",
+}
+
+_PAYMENT_METHOD_MAP: dict[str, str] = {
+    "check": "check",
+    "chk": "check",
+    "ach": "ach",
+    "wire": "wire",
+    "wir": "wire",
+    "credit card": "credit_card",
+    "credit_card": "credit_card",
+    "cc": "credit_card",
+    "cash": "cash",
+    "csh": "cash",
+}
+
+
+def _normalise_payment_headers(fieldnames: list[str]) -> dict[str, str]:
+    """Map raw CSV header names to canonical field names."""
+    mapping: dict[str, str] = {}
+    for raw in fieldnames:
+        key = raw.strip().lower()
+        canonical = _PAYMENT_HEADER_MAP.get(key)
+        if canonical:
+            mapping[raw] = canonical
+    return mapping
+
+
+def _parse_amount(raw: str) -> Decimal | None:
+    """Parse a currency string like '$1,234.56' into a Decimal."""
+    cleaned = raw.strip().replace(",", "").replace("$", "")
+    if not cleaned:
+        return None
+    try:
+        return Decimal(cleaned).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _parse_date(raw: str) -> str | None:
+    """Try common date formats and return ISO date string (YYYY-MM-DD)."""
+    raw = raw.strip()
+    if not raw:
+        return None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%m-%d-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def import_sage_payments_from_csv(
+    db: Session,
+    file_content: bytes,
+    company_id: str,
+    actor_id: str | None = None,
+) -> dict:
+    """Parse a Sage payment CSV and create customer payments.
+
+    Rows are grouped by (reference_number, customer, payment_date) into single
+    CustomerPayment records, each with one or more invoice applications.
+
+    Returns ``{"created": int, "skipped": int, "errors": [{"row": int, "message": str}]}``
+    """
+    sync_log = create_sync_log(
+        db,
+        company_id,
+        sync_type="csv_import",
+        source="sage_csv",
+        destination="customer_payments",
+    )
+
+    # --- Decode CSV ---
+    try:
+        text = file_content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = file_content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV file is empty or has no headers",
+        )
+
+    header_map = _normalise_payment_headers(list(reader.fieldnames))
+    mapped_fields = set(header_map.values())
+
+    # Validate required columns
+    has_customer = "customer_account" in mapped_fields or "sage_customer_id" in mapped_fields
+    has_invoice = "invoice_number" in mapped_fields or "sage_invoice_id" in mapped_fields
+    has_amount = "amount_applied" in mapped_fields
+
+    if not has_customer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV must contain a customer identifier column (e.g. 'Account Number', 'Customer ID')",
+        )
+    if not has_invoice:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV must contain an invoice identifier column (e.g. 'Invoice Number', 'Invoice #')",
+        )
+    if not has_amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV must contain an amount column (e.g. 'Amount Applied', 'Amount')",
+        )
+
+    # --- Pre-load lookup indexes ---
+    customers_by_account: dict[str, Customer] = {}
+    for c in db.query(Customer).filter(Customer.company_id == company_id).all():
+        if c.account_number:
+            customers_by_account[c.account_number.upper()] = c
+        if c.sage_customer_id:
+            customers_by_account[f"SAGE:{c.sage_customer_id}"] = c
+
+    invoices_by_number: dict[str, Invoice] = {}
+    for inv in db.query(Invoice).filter(Invoice.company_id == company_id).all():
+        if inv.number:
+            invoices_by_number[inv.number.upper()] = inv
+        if inv.sage_invoice_id:
+            invoices_by_number[f"SAGE:{inv.sage_invoice_id}"] = inv
+
+    existing_sage_ids: set[str] = {
+        pid[0]
+        for pid in db.query(CustomerPayment.sage_payment_id)
+        .filter(
+            CustomerPayment.company_id == company_id,
+            CustomerPayment.sage_payment_id.isnot(None),
+        )
+        .all()
+    }
+
+    # --- First pass: parse rows and group into payments ---
+    errors: list[dict[str, object]] = []
+    # Key: (ref, customer_id, date_str) -> list of (invoice, amount, row_num, notes)
+    groups: dict[tuple[str, str, str], dict] = {}
+
+    for row_num, raw_row in enumerate(reader, start=2):
+        row: dict[str, str] = {}
+        for raw_key, value in raw_row.items():
+            canonical = header_map.get(raw_key)
+            if canonical:
+                row[canonical] = (value or "").strip()
+
+        # Find customer
+        customer: Customer | None = None
+        acct_raw = row.get("customer_account", "")
+        sage_cid = row.get("sage_customer_id", "")
+
+        if acct_raw:
+            customer = customers_by_account.get(acct_raw.upper())
+        if not customer and sage_cid:
+            customer = customers_by_account.get(f"SAGE:{sage_cid}")
+
+        if not customer:
+            errors.append({"row": row_num, "message": f"Customer not found: {acct_raw or sage_cid}"})
+            continue
+
+        # Find invoice
+        invoice: Invoice | None = None
+        inv_num = row.get("invoice_number", "")
+        sage_inv = row.get("sage_invoice_id", "")
+
+        if inv_num:
+            invoice = invoices_by_number.get(inv_num.upper())
+        if not invoice and sage_inv:
+            invoice = invoices_by_number.get(f"SAGE:{sage_inv}")
+
+        if not invoice:
+            errors.append({"row": row_num, "message": f"Invoice not found: {inv_num or sage_inv}"})
+            continue
+
+        # Validate invoice belongs to this customer
+        if invoice.customer_id != customer.id:
+            errors.append({
+                "row": row_num,
+                "message": f"Invoice {invoice.number} does not belong to customer {customer.name}",
+            })
+            continue
+
+        # Parse amount
+        amount = _parse_amount(row.get("amount_applied", ""))
+        if not amount or amount <= Decimal("0"):
+            errors.append({"row": row_num, "message": f"Invalid amount: {row.get('amount_applied', '')}"})
+            continue
+
+        # Parse date
+        date_str = _parse_date(row.get("payment_date", ""))
+        if not date_str:
+            errors.append({"row": row_num, "message": f"Invalid or missing payment date: {row.get('payment_date', '')}"})
+            continue
+
+        # Payment method
+        raw_method = row.get("payment_method", "").strip().lower()
+        method = _PAYMENT_METHOD_MAP.get(raw_method, "check")
+
+        ref = row.get("reference_number", "").strip() or f"IMPORT-{row_num}"
+        notes = row.get("notes", "").strip() or None
+
+        # Group key
+        group_key = (ref, customer.id, date_str)
+        if group_key not in groups:
+            groups[group_key] = {
+                "customer": customer,
+                "payment_date": date_str,
+                "payment_method": method,
+                "reference_number": ref,
+                "notes": notes,
+                "applications": [],
+            }
+        groups[group_key]["applications"].append({
+            "invoice": invoice,
+            "amount_applied": amount,
+            "row_num": row_num,
+        })
+
+    # --- Second pass: create payments ---
+    created = 0
+    skipped = 0
+
+    for group_key, group in groups.items():
+        ref, customer_id, date_str = group_key
+        customer = group["customer"]
+        acct_display = customer.account_number or customer.id
+
+        # Derive sage_payment_id for duplicate detection
+        sage_payment_id = f"SAGE-{ref}-{acct_display}-{date_str}"
+        if sage_payment_id in existing_sage_ids:
+            skipped += 1
+            continue
+
+        # Validate each application
+        total_amount = Decimal("0.00")
+        valid = True
+
+        for app in group["applications"]:
+            inv = app["invoice"]
+            amt = app["amount_applied"]
+
+            if inv.status in ("void", "draft"):
+                errors.append({
+                    "row": app["row_num"],
+                    "message": f"Invoice {inv.number} is '{inv.status}' and cannot receive payment",
+                })
+                valid = False
+                break
+
+            if amt > inv.balance_remaining:
+                errors.append({
+                    "row": app["row_num"],
+                    "message": (
+                        f"Amount {amt} exceeds balance {inv.balance_remaining} "
+                        f"on invoice {inv.number}"
+                    ),
+                })
+                valid = False
+                break
+
+            total_amount += amt
+
+        if not valid:
+            skipped += 1
+            continue
+
+        # Create payment
+        payment = CustomerPayment(
+            id=str(uuid.uuid4()),
+            company_id=company_id,
+            customer_id=customer.id,
+            payment_date=datetime.strptime(date_str, "%Y-%m-%d"),
+            total_amount=total_amount,
+            payment_method=group["payment_method"],
+            reference_number=group["reference_number"],
+            notes=group["notes"],
+            sage_payment_id=sage_payment_id,
+            created_by=actor_id,
+        )
+        db.add(payment)
+        db.flush()
+
+        # Create applications and update invoices
+        for app in group["applications"]:
+            inv = app["invoice"]
+            amt = app["amount_applied"]
+
+            pa = CustomerPaymentApplication(
+                id=str(uuid.uuid4()),
+                payment_id=payment.id,
+                invoice_id=inv.id,
+                amount_applied=amt,
+            )
+            db.add(pa)
+
+            inv.amount_paid += amt
+            inv.modified_by = actor_id
+            inv.modified_at = datetime.now(timezone.utc)
+
+            if inv.amount_paid >= inv.total:
+                inv.status = "paid"
+            elif inv.amount_paid > Decimal("0.00"):
+                inv.status = "partial"
+
+        # Update customer balance
+        customer.current_balance -= total_amount
+
+        existing_sage_ids.add(sage_payment_id)
+        created += 1
+
+    if created > 0:
+        audit_service.log_action(
+            db,
+            company_id,
+            "bulk_imported",
+            "customer_payment",
+            None,
+            user_id=actor_id,
+            changes={"count": created, "source": "sage_csv"},
+        )
+
+    error_summary = (
+        "; ".join(f"Row {e['row']}: {e['message']}" for e in errors[:10])
+        if errors
+        else None
+    )
+    complete_sync_log(db, sync_log, created, skipped, error_summary)
+    db.commit()
+
+    return {"created": created, "skipped": skipped, "errors": errors}

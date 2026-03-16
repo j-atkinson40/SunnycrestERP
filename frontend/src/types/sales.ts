@@ -323,3 +323,18 @@ export interface SalesStats {
   outstanding_invoices: number;
   total_ar_outstanding: string;
 }
+
+// ---------------------------------------------------------------------------
+// Payment Import
+// ---------------------------------------------------------------------------
+
+export interface PaymentImportResultRow {
+  row: number;
+  message: string;
+}
+
+export interface PaymentImportResult {
+  created: number;
+  skipped: number;
+  errors: PaymentImportResultRow[];
+}

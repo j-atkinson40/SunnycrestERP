@@ -364,3 +364,19 @@ class SalesStats(BaseModel):
     total_invoices: int = 0
     outstanding_invoices: int = 0
     total_ar_outstanding: Decimal = Decimal("0.00")
+
+
+# ---------------------------------------------------------------------------
+# Payment Import
+# ---------------------------------------------------------------------------
+
+
+class PaymentImportResultRow(BaseModel):
+    row: int
+    message: str
+
+
+class PaymentImportResult(BaseModel):
+    created: int
+    skipped: int
+    errors: list[PaymentImportResultRow]

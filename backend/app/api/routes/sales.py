@@ -1,6 +1,6 @@
 """Sales & AR routes — Quotes, Sales Orders, Invoices, Customer Payments, AR Aging."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_module, require_permission
@@ -17,6 +17,7 @@ from app.schemas.sales import (
     PaginatedInvoices,
     PaginatedQuotes,
     PaginatedSalesOrders,
+    PaymentImportResult,
     QuoteCreate,
     QuoteResponse,
     QuoteUpdate,
@@ -481,6 +482,20 @@ def create_payment(
         db, current_user.company_id, current_user.id, data
     )
     return _payment_to_response(payment)
+
+
+@router.post("/payments/import", response_model=PaymentImportResult)
+async def import_payments_csv(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.record_payment")),
+):
+    content = await file.read()
+    result = sales_service.import_sage_payments_from_csv(
+        db, content, current_user.company_id, actor_id=current_user.id
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------

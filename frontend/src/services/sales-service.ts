@@ -10,6 +10,7 @@ import type {
   PaginatedInvoices,
   PaginatedQuotes,
   PaginatedSalesOrders,
+  PaymentImportResult,
   Quote,
   QuoteCreate,
   QuoteUpdate,
@@ -194,6 +195,17 @@ export const salesService = {
     const r = await apiClient.post<CustomerPayment>(
       "/sales/payments",
       data,
+    );
+    return r.data;
+  },
+
+  async importPayments(file: File): Promise<PaymentImportResult> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const r = await apiClient.post<PaymentImportResult>(
+      "/sales/payments/import",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
     );
     return r.data;
   },
