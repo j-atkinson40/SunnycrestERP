@@ -21,6 +21,7 @@ from app.models.driver import Driver
 from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
 from app.models.equipment import Equipment
+from app.models.extension_definition import ExtensionDefinition
 from app.models.feature_flag import FeatureFlag
 from app.models.impersonation_session import ImpersonationSession
 from app.models.job_queue import Job
@@ -50,6 +51,7 @@ from app.models.sales_order import SalesOrder, SalesOrderLine
 from app.models.subscription import BillingEvent, Subscription
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.sync_log import SyncLog
+from app.models.tenant_extension import TenantExtension
 from app.models.tenant_feature_flag import TenantFeatureFlag
 from app.models.tenant_module_config import TenantModuleConfig
 from app.models.tenant_notification import TenantNotification
@@ -90,6 +92,7 @@ __all__ = [
     "Document",
     "EmployeeProfile",
     "Equipment",
+    "ExtensionDefinition",
     "FeatureFlag",
     "Job",
     "FeeRateConfig",
@@ -125,6 +128,7 @@ __all__ = [
     "SubscriptionPlan",
     "BillingEvent",
     "SyncLog",
+    "TenantExtension",
     "TenantFeatureFlag",
     "TenantModuleConfig",
     "TenantNotification",

@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     platform_auth,
+    platform_extensions,
     platform_feature_flags,
     platform_impersonation,
     platform_modules,
@@ -45,4 +46,9 @@ platform_router.include_router(
     platform_modules.router,
     prefix="/modules",
     tags=["Platform Modules"],
+)
+platform_router.include_router(
+    platform_extensions.router,
+    prefix="/extensions",
+    tags=["Platform Extensions"],
 )

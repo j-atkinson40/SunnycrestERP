@@ -137,6 +137,10 @@ def seed_platform_admin():
 
             from app.services.tenant_module_service import seed_all as seed_modules
             seed_modules(db)
+
+            from app.services.extension_service import seed_extensions, seed_tenant_extension_defaults
+            seed_extensions(db)
+            seed_tenant_extension_defaults(db)
         finally:
             db.close()
 

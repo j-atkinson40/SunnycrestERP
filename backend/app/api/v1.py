@@ -28,6 +28,7 @@ from app.api.routes import (
     employee_profiles,
     equipment,
     feature_flags,
+    funeral_kanban,
     hierarchy,
     inventory,
     job_queue,
@@ -105,6 +106,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     feature_flags.router, prefix="/feature-flags", tags=["Feature Flags"]
+)
+v1_router.include_router(
+    funeral_kanban.router, prefix="/extensions/funeral-kanban", tags=["Funeral Kanban"]
 )
 v1_router.include_router(
     hierarchy.router, prefix="/hierarchy", tags=["Org Hierarchy"]
