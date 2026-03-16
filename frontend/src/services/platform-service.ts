@@ -85,6 +85,23 @@ export async function getRecentSyncs(params?: {
 
 // ---- Feature Flags ----
 
+export async function createFeatureFlag(payload: {
+  key: string;
+  name: string;
+  description?: string;
+  category?: string;
+  default_enabled?: boolean;
+  is_global?: boolean;
+}) {
+  const { data } = await platformClient.post("/feature-flags/", payload);
+  return data;
+}
+
+export async function deleteFeatureFlag(flagId: string) {
+  const { data } = await platformClient.delete(`/feature-flags/${flagId}`);
+  return data;
+}
+
 export async function listFeatureFlags() {
   const { data } = await platformClient.get<FeatureFlagMatrix[]>(
     "/feature-flags/"

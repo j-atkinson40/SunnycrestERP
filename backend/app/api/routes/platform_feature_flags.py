@@ -55,6 +55,68 @@ def list_all_flags(
     return result
 
 
+@router.post("/", status_code=201)
+def create_flag(
+    data: dict,
+    _user: PlatformUser = Depends(require_platform_role("super_admin")),
+    db: Session = Depends(get_db),
+):
+    """Create a new feature flag."""
+    from app.models.feature_flag import FeatureFlag
+
+    key = data.get("key", "").strip()
+    if not key:
+        raise HTTPException(status_code=422, detail="'key' is required")
+
+    existing = db.query(FeatureFlag).filter(FeatureFlag.key == key).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Flag '{key}' already exists")
+
+    flag = FeatureFlag(
+        key=key,
+        name=data.get("name", key),
+        description=data.get("description", ""),
+        category=data.get("category", "general"),
+        default_enabled=data.get("default_enabled", False),
+        is_global=data.get("is_global", False),
+    )
+    db.add(flag)
+    db.commit()
+    db.refresh(flag)
+    return {
+        "id": flag.id,
+        "key": flag.key,
+        "name": flag.name,
+        "description": flag.description,
+        "category": flag.category,
+        "default_enabled": flag.default_enabled,
+        "is_global": flag.is_global,
+    }
+
+
+@router.delete("/{flag_id}")
+def delete_flag(
+    flag_id: str,
+    _user: PlatformUser = Depends(require_platform_role("super_admin")),
+    db: Session = Depends(get_db),
+):
+    """Delete a feature flag and all its tenant overrides."""
+    from app.models.feature_flag import FeatureFlag
+    from app.models.tenant_feature_flag import TenantFeatureFlag
+
+    flag = db.query(FeatureFlag).filter(FeatureFlag.id == flag_id).first()
+    if not flag:
+        raise HTTPException(status_code=404, detail="Flag not found")
+
+    # Remove all tenant overrides first
+    db.query(TenantFeatureFlag).filter(
+        TenantFeatureFlag.flag_id == flag_id
+    ).delete()
+    db.delete(flag)
+    db.commit()
+    return {"detail": "Flag deleted"}
+
+
 @router.put("/{flag_id}/tenants/{tenant_id}")
 def set_tenant_flag(
     flag_id: str,
