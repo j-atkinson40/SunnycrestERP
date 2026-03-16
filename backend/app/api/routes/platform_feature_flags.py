@@ -37,7 +37,7 @@ def list_all_flags(
             if key in override_map:
                 tenant_enabled = override_map[key]
             else:
-                tenant_enabled = flag.enabled_by_default
+                tenant_enabled = flag.default_enabled
             tenants.append({
                 "tenant_id": c.id,
                 "tenant_name": c.name,
@@ -48,7 +48,7 @@ def list_all_flags(
             "id": flag.id,
             "key": flag.key,
             "description": flag.description,
-            "enabled_by_default": flag.enabled_by_default,
+            "enabled_by_default": flag.default_enabled,
             "tenants": tenants,
         })
 
