@@ -55,6 +55,7 @@ import HistoryPage from "@/pages/delivery/history";
 import DeliveryDetailPage from "@/pages/delivery/delivery-detail";
 import RouteDetailPage from "@/pages/delivery/route-detail";
 import CarriersPage from "@/pages/delivery/carriers";
+import FuneralSchedulingPage from "@/pages/delivery/funeral-scheduling";
 import { DriverLayout } from "@/components/layout/driver-layout";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
@@ -293,6 +294,7 @@ export default function App() {
                     <Route path="/delivery/deliveries/:id" element={<DeliveryDetailPage />} />
                     <Route path="/delivery/routes/:id" element={<RouteDetailPage />} />
                     <Route path="/delivery/settings" element={<DeliverySettingsPage />} />
+                    <Route path="/delivery/funeral-scheduling" element={<FuneralSchedulingPage />} />
                   </Route>
                   <Route
                     element={

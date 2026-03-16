@@ -53,6 +53,7 @@ const navigation: NavEntry[] = [
       { label: "Dispatch", href: "/delivery/dispatch", permission: "delivery.view", module: "driver_delivery" },
       { label: "Operations", href: "/delivery/operations", permission: "delivery.view", module: "driver_delivery" },
       { label: "History", href: "/delivery/history", permission: "delivery.view", module: "driver_delivery" },
+      { label: "Vault Scheduling", href: "/delivery/funeral-scheduling", permission: "delivery.view", module: "driver_delivery" },
       { label: "Carriers", href: "/delivery/carriers", permission: "carriers.view", module: "driver_delivery" },
       { label: "Settings", href: "/delivery/settings", permission: "delivery.view", module: "driver_delivery" },
     ],

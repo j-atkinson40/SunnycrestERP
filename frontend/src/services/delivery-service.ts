@@ -15,6 +15,10 @@ import type {
   Driver,
   DriverCreate,
   DriverUpdate,
+  KanbanAssignRequest,
+  KanbanAssignResponse,
+  KanbanConfig,
+  KanbanScheduleResponse,
   PaginatedCarriers,
   PaginatedDeliveries,
   PaginatedDrivers,
@@ -346,6 +350,32 @@ export const deliveryService = {
   async listPresets(): Promise<{ presets: string[] }> {
     const response =
       await apiClient.get<{ presets: string[] }>("/settings/delivery/presets");
+    return response.data;
+  },
+
+  // -----------------------------------------------------------------------
+  // Funeral Kanban Scheduling Extension
+  // -----------------------------------------------------------------------
+
+  async getKanbanSchedule(date: string): Promise<KanbanScheduleResponse> {
+    const response = await apiClient.get<KanbanScheduleResponse>(
+      `/extensions/funeral-kanban/schedule?date=${date}`,
+    );
+    return response.data;
+  },
+
+  async assignKanban(data: KanbanAssignRequest): Promise<KanbanAssignResponse> {
+    const response = await apiClient.post<KanbanAssignResponse>(
+      "/extensions/funeral-kanban/assign",
+      data,
+    );
+    return response.data;
+  },
+
+  async getKanbanConfig(): Promise<KanbanConfig> {
+    const response = await apiClient.get<KanbanConfig>(
+      "/extensions/funeral-kanban/config",
+    );
     return response.data;
   },
 };

@@ -406,3 +406,72 @@ export interface DeliveryStats {
   available_drivers: number;
   available_vehicles: number;
 }
+
+// ---------------------------------------------------------------------------
+// Funeral Kanban
+// ---------------------------------------------------------------------------
+
+export interface KanbanCard {
+  delivery_id: string;
+  family_name: string;
+  cemetery_name: string;
+  funeral_home_name: string;
+  service_time: string;
+  service_time_display: string;
+  vault_type: string;
+  vault_personalization: string;
+  requested_date: string | null;
+  required_window_start: string | null;
+  required_window_end: string | null;
+  hours_until_service: number | null;
+  is_critical: boolean;
+  is_warning: boolean;
+  order_id: string | null;
+  notes: string | null;
+  status: string;
+  delivery_address: string | null;
+  scheduled_sequence?: number;
+}
+
+export interface KanbanDriverLane {
+  driver_id: string;
+  name: string;
+  deliveries: KanbanCard[];
+  delivery_count: number;
+}
+
+export interface KanbanConfig {
+  default_view: string;
+  saturday_default: string;
+  sunday_default: string;
+  show_driver_count_badge: boolean;
+  warn_driver_count: number;
+  card_show_cemetery: boolean;
+  card_show_funeral_home: boolean;
+  card_show_service_time: boolean;
+  card_show_vault_type: boolean;
+  card_show_family_name: boolean;
+  critical_window_hours: number;
+}
+
+export interface KanbanScheduleResponse {
+  date: string;
+  config: KanbanConfig;
+  unscheduled: KanbanCard[];
+  drivers: KanbanDriverLane[];
+}
+
+export interface KanbanAssignRequest {
+  delivery_id: string;
+  driver_id: string | null;
+  date: string;
+  sequence?: number;
+}
+
+export interface KanbanAssignResponse {
+  status: string;
+  delivery_id: string;
+  driver_id?: string;
+  route_id?: string;
+  sequence?: number;
+}
