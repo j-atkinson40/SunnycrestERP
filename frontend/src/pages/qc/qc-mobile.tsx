@@ -4,7 +4,6 @@ import { qcService } from "@/services/qc-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type {
   QCInspection,
-  QCStepResult,
   QCDefectType,
   StepResult,
   DefectSeverity,
