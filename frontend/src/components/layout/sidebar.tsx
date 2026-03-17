@@ -73,6 +73,13 @@ const navigation: NavEntry[] = [
     ],
   },
   {
+    label: "Production",
+    items: [
+      { label: "Production Board", href: "/production", permission: "work_orders.view", module: "work_orders" },
+      { label: "New Pour Event", href: "/production/pour-events/new", permission: "pour_events.create", module: "work_orders" },
+    ],
+  },
+  {
     label: "Inventory",
     items: [
       { label: "Overview", href: "/inventory", permission: "inventory.view", module: "inventory" },

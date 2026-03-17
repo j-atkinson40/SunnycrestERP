@@ -72,6 +72,12 @@ AVAILABLE_MODULES: dict[str, dict] = {
         "default_enabled": False,
         "locked": False,
     },
+    "work_orders": {
+        "label": "Work Orders & Production",
+        "description": "Production work orders, pour events, cure tracking, mix designs, and inventory receiving for manufacturing.",
+        "default_enabled": False,
+        "locked": False,
+    },
 }
 
 

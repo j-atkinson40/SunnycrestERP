@@ -72,6 +72,9 @@ import SafetyLOTOPage from "@/pages/safety/safety-loto";
 import SafetyProgramsPage from "@/pages/safety/safety-programs";
 import SafetyTrainingPage from "@/pages/safety/safety-training";
 import SafetyOSHA300Page from "@/pages/safety/safety-osha300";
+import ProductionBoardPage from "@/pages/production/production-board";
+import PourEventCreatePage from "@/pages/production/pour-event-create";
+import WorkOrderDetailPage from "@/pages/production/work-order-detail";
 import { DriverLayout } from "@/components/layout/driver-layout";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
@@ -348,6 +351,13 @@ export default function App() {
                     <Route path="/safety/chemicals" element={<SafetyChemicalsPage />} />
                     <Route path="/safety/loto" element={<SafetyLOTOPage />} />
                     <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
+                  </Route>
+
+                  {/* Work Orders & Production — requires work_orders module */}
+                  <Route element={<ProtectedRoute requiredPermission="work_orders.view" requiredModule="work_orders" />}>
+                    <Route path="/production" element={<ProductionBoardPage />} />
+                    <Route path="/production/pour-events/new" element={<PourEventCreatePage />} />
+                    <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
                   </Route>
 
                   {/* Delivery & Logistics — requires driver_delivery module */}

@@ -2,6 +2,7 @@ from app.models.api_key import ApiKey
 from app.models.api_key_usage import ApiKeyUsage
 from app.models.audit_log import AuditLog
 from app.models.balance_adjustment import BalanceAdjustment
+from app.models.batch_ticket import BatchTicket
 from app.models.bom import BillOfMaterials, BOMLine
 from app.models.company import Company
 from app.models.company_module import CompanyModule
@@ -9,6 +10,7 @@ from app.models.customer import Customer
 from app.models.customer_contact import CustomerContact
 from app.models.customer_note import CustomerNote
 from app.models.carrier import Carrier
+from app.models.cure_schedule import CureSchedule
 from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
 from app.models.delivery import Delivery
 from app.models.delivery_event import DeliveryEvent
@@ -35,12 +37,14 @@ from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
 from app.models.preset_module import PresetModule
 from app.models.invoice import Invoice, InvoiceLine
+from app.models.mix_design import MixDesign
 from app.models.module_definition import ModuleDefinition
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.notification import Notification
 from app.models.onboarding import OnboardingChecklist, OnboardingTemplate
 from app.models.performance_note import PerformanceNote
+from app.models.pour_event import PourEvent, PourEventWorkOrder
 from app.models.product import Product
 from app.models.project import Project, ProjectMilestone, ProjectTask
 from app.models.qc import (
@@ -78,6 +82,7 @@ from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.sage_export_config import SageExportConfig
 from app.models.sales_order import SalesOrder, SalesOrderLine
+from app.models.stock_replenishment_rule import StockReplenishmentRule
 from app.models.subscription import BillingEvent, Subscription
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.sync_log import SyncLog
@@ -89,6 +94,8 @@ from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
 from app.models.vehicle import Vehicle
 from app.models.vertical_preset import VerticalPreset
+from app.models.work_order import WorkOrder
+from app.models.work_order_product import WorkOrderProduct
 from app.models.vendor import Vendor
 from app.models.vendor_bill import VendorBill
 from app.models.vendor_bill_line import VendorBillLine
@@ -102,6 +109,7 @@ __all__ = [
     "ApiKeyUsage",
     "AuditLog",
     "BalanceAdjustment",
+    "BatchTicket",
     "BillOfMaterials",
     "BOMLine",
     "Company",
@@ -111,6 +119,7 @@ __all__ = [
     "CustomerNote",
     "CustomerPayment",
     "Carrier",
+    "CureSchedule",
     "CustomerPaymentApplication",
     "Delivery",
     "DeliveryEvent",
@@ -139,6 +148,7 @@ __all__ = [
     "ImpersonationSession",
     "Invoice",
     "InvoiceLine",
+    "MixDesign",
     "ModuleDefinition",
     "InventoryItem",
     "InventoryTransaction",
@@ -146,6 +156,8 @@ __all__ = [
     "OnboardingChecklist",
     "OnboardingTemplate",
     "PerformanceNote",
+    "PourEvent",
+    "PourEventWorkOrder",
     "Product",
     "ProductCategory",
     "Project",
@@ -181,6 +193,7 @@ __all__ = [
     "SageExportConfig",
     "SalesOrder",
     "SalesOrderLine",
+    "StockReplenishmentRule",
     "Subscription",
     "SubscriptionPlan",
     "BillingEvent",
@@ -193,6 +206,8 @@ __all__ = [
     "UserPermissionOverride",
     "Vehicle",
     "VerticalPreset",
+    "WorkOrder",
+    "WorkOrderProduct",
     "Vendor",
     "VendorBill",
     "VendorBillLine",

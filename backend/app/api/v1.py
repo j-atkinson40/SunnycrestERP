@@ -55,6 +55,7 @@ from app.api.routes import (
     vendor_payments,
     vendors,
     webhooks,
+    work_orders,
 )
 
 v1_router = APIRouter()
@@ -186,4 +187,7 @@ v1_router.include_router(
 v1_router.include_router(vendors.router, prefix="/vendors", tags=["Vendors"])
 v1_router.include_router(
     webhooks.router, prefix="/webhooks", tags=["Webhooks"]
+)
+v1_router.include_router(
+    work_orders.router, prefix="/work-orders", tags=["Work Orders"]
 )
