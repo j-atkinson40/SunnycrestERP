@@ -197,24 +197,10 @@ def onboard_tenant(
     db.add(company)
     db.flush()
 
-    # Seed legacy company_modules (keeps backward compat)
+    # Seed default roles and legacy company_modules
+    from app.services.role_service import seed_default_roles
+    admin_role, _employee_role = seed_default_roles(db, company.id)
     seed_company_modules(db, company.id)
-
-    # Create admin user
-    from app.models.role import Role
-    admin_role = db.query(Role).filter(
-        Role.company_id == company.id, Role.name == "Admin"
-    ).first()
-
-    # If no admin role, create one
-    if not admin_role:
-        admin_role = Role(
-            company_id=company.id,
-            name="Admin",
-            description="Full access administrator",
-        )
-        db.add(admin_role)
-        db.flush()
 
     admin_user = User(
         email=data.admin_email,
@@ -255,6 +241,11 @@ def onboard_tenant(
                 db.add(CompanyModule(
                     company_id=company.id, module=legacy_module, enabled=True
                 ))
+
+        # Seed vertical-specific data
+        if data.vertical == "funeral_home":
+            from app.services.ftc_compliance_service import seed_ftc_price_list
+            seed_ftc_price_list(db, company.id)
     else:
         # Just enable core modules
         tenant_module_service.apply_preset_to_tenant(
