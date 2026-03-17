@@ -27,8 +27,23 @@ export default function PlatformLoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-    } catch {
-      toast.error("Invalid credentials");
+    } catch (err: unknown) {
+      // Show specific error messages for different failure modes
+      if (err && typeof err === "object" && "response" in err) {
+        const axiosErr = err as { response?: { status?: number; data?: { detail?: string } }; message?: string };
+        if (axiosErr.response?.status === 401) {
+          toast.error("Invalid email or password");
+        } else if (axiosErr.response?.status) {
+          toast.error(`Login failed (${axiosErr.response.status}): ${axiosErr.response.data?.detail || "Unknown error"}`);
+        } else {
+          toast.error("Network error — cannot reach the server");
+        }
+      } else if (err instanceof Error && err.message.includes("Network")) {
+        toast.error("Network error — cannot reach the server");
+      } else {
+        toast.error("Login failed — please try again");
+      }
+      console.error("[Platform Login Error]", err);
     } finally {
       setSubmitting(false);
     }

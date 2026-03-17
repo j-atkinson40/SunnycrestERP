@@ -38,10 +38,19 @@ const processQueue = (error: unknown, token: string | null) => {
   failedQueue = [];
 };
 
+// Auth endpoints that should never trigger token refresh or redirect
+const AUTH_PATHS = ["/auth/login", "/auth/refresh"];
+
 platformClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const requestUrl: string = originalRequest?.url || "";
+
+    // Never intercept auth endpoint errors — let them bubble to callers
+    if (AUTH_PATHS.some((p) => requestUrl.includes(p))) {
+      return Promise.reject(error);
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
@@ -73,7 +82,10 @@ platformClient.interceptors.response.use(
         processQueue(refreshError, null);
         localStorage.removeItem("platform_access_token");
         localStorage.removeItem("platform_refresh_token");
-        window.location.href = "/login";
+        // Only redirect if not already on the login page
+        if (!window.location.pathname.endsWith("/login")) {
+          window.location.href = "/login";
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

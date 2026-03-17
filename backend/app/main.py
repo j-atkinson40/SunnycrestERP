@@ -74,8 +74,12 @@ cors_kwargs = {
     "allow_methods": ["*"],
     "allow_headers": ["*"],
 }
-if settings.CORS_ORIGIN_REGEX:
-    cors_kwargs["allow_origin_regex"] = settings.CORS_ORIGIN_REGEX
+# Use explicit regex if set; otherwise default to Railway pattern in non-dev
+cors_regex = settings.CORS_ORIGIN_REGEX
+if not cors_regex and settings.ENVIRONMENT != "dev":
+    cors_regex = r"https://.*\.up\.railway\.app"
+if cors_regex:
+    cors_kwargs["allow_origin_regex"] = cors_regex
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
 
