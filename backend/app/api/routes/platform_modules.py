@@ -197,10 +197,20 @@ def onboard_tenant(
     db.add(company)
     db.flush()
 
-    # Seed default roles and legacy company_modules
+    # Seed default roles
     from app.services.role_service import seed_default_roles
     admin_role, _employee_role = seed_default_roles(db, company.id)
-    seed_company_modules(db, company.id)
+
+    # Seed legacy company_modules — all disabled initially, then enable per vertical
+    from app.models.company_module import CompanyModule
+    from app.core.modules import AVAILABLE_MODULES
+    for module_key in AVAILABLE_MODULES:
+        db.add(CompanyModule(
+            company_id=company.id,
+            module=module_key,
+            enabled=(module_key == "core"),  # only core enabled by default
+        ))
+    db.flush()
 
     admin_user = User(
         email=data.admin_email,
@@ -214,44 +224,45 @@ def onboard_tenant(
     db.add(admin_user)
     db.flush()
 
-    # Apply vertical preset if specified
+    # Enable modules based on vertical
+    # Each vertical gets only the modules it needs
+    VERTICAL_MODULES = {
+        "funeral_home": ["core", "funeral_home"],
+        "manufacturing": ["core", "products", "inventory", "sales", "purchasing",
+                          "work_orders", "safety_management"],
+    }
+
     result = {"tenant_id": company.id, "slug": company.slug}
-    if data.vertical and data.vertical != "custom":
-        preset_result = tenant_module_service.apply_preset_to_tenant(
-            db, company.id, data.vertical, actor_id=user.id
-        )
-        result["modules_enabled"] = preset_result["modules_enabled"]
+    modules_to_enable = VERTICAL_MODULES.get(
+        data.vertical or "custom",
+        ["core", "products", "inventory", "sales", "purchasing"],  # default/custom
+    )
 
-        # Also enable the vertical's module in legacy company_modules table
-        # so require_module() checks pass
-        from app.models.company_module import CompanyModule
-        vertical_module_map = {
-            "funeral_home": "funeral_home",
-            "manufacturing": "work_orders",
-        }
-        legacy_module = vertical_module_map.get(data.vertical)
-        if legacy_module:
-            legacy_rec = db.query(CompanyModule).filter(
-                CompanyModule.company_id == company.id,
-                CompanyModule.module == legacy_module,
-            ).first()
-            if legacy_rec:
-                legacy_rec.enabled = True
-            else:
-                db.add(CompanyModule(
-                    company_id=company.id, module=legacy_module, enabled=True
-                ))
+    for mod_key in modules_to_enable:
+        rec = db.query(CompanyModule).filter(
+            CompanyModule.company_id == company.id,
+            CompanyModule.module == mod_key,
+        ).first()
+        if rec:
+            rec.enabled = True
+        else:
+            db.add(CompanyModule(
+                company_id=company.id, module=mod_key, enabled=True
+            ))
+    result["modules_enabled"] = len(modules_to_enable)
 
-        # Seed vertical-specific data
-        if data.vertical == "funeral_home":
-            from app.services.ftc_compliance_service import seed_ftc_price_list
-            seed_ftc_price_list(db, company.id)
-    else:
-        # Just enable core modules
+    # Try applying the new-style preset too (for TenantModuleConfig)
+    try:
         tenant_module_service.apply_preset_to_tenant(
-            db, company.id, "custom", actor_id=user.id
+            db, company.id, data.vertical or "custom", actor_id=user.id
         )
-        result["modules_enabled"] = 4  # core modules
+    except Exception:
+        pass  # Non-fatal if preset not seeded yet
+
+    # Seed vertical-specific data
+    if data.vertical == "funeral_home":
+        from app.services.ftc_compliance_service import seed_ftc_price_list
+        seed_ftc_price_list(db, company.id)
 
     db.commit()
     return result
