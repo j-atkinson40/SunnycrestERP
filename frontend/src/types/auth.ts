@@ -8,6 +8,7 @@ export interface User {
   role_slug: string;
   permissions: string[];
   enabled_modules: string[];
+  enabled_extensions: string[];
   is_active: boolean;
   company_id: string;
   created_at: string;

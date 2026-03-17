@@ -18,6 +18,7 @@ import ImpersonationLogPage from "@/pages/platform/impersonation-log";
 import PlatformUsersPage from "@/pages/platform/platform-users";
 import TenantOnboardingPage from "@/pages/platform/tenant-onboarding";
 import TenantModulesPage from "@/pages/platform/tenant-modules";
+import ExtensionDemandPage from "@/pages/platform/extension-demand";
 
 export default function PlatformApp() {
   return (
@@ -41,6 +42,10 @@ export default function PlatformApp() {
             <Route
               path="/tenants/:tenantId/modules"
               element={<TenantModulesPage />}
+            />
+            <Route
+              path="/extensions/demand"
+              element={<ExtensionDemandPage />}
             />
             <Route
               path="/feature-flags"

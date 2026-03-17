@@ -19,6 +19,7 @@ const navigation: NavItem[] = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Tenants", href: "/tenants" },
   { label: "Onboard Tenant", href: "/tenants/new", roles: ["super_admin"] },
+  { label: "Extension Demand", href: "/extensions/demand", roles: ["super_admin"] },
   { label: "Feature Flags", href: "/feature-flags", roles: ["super_admin"] },
   { label: "System Health", href: "/system" },
   { label: "Impersonation Log", href: "/impersonation", roles: ["super_admin"] },

@@ -28,6 +28,7 @@ from app.api.routes import (
     driver_mobile,
     employee_profiles,
     equipment,
+    extensions,
     feature_flags,
     funeral_kanban,
     hierarchy,
@@ -110,6 +111,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     equipment.router, prefix="/equipment", tags=["Equipment"]
+)
+v1_router.include_router(
+    extensions.router, prefix="/extensions", tags=["Extension Catalog"]
 )
 v1_router.include_router(
     feature_flags.router, prefix="/feature-flags", tags=["Feature Flags"]

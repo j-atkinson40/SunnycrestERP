@@ -22,7 +22,9 @@ from app.models.driver import Driver
 from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
 from app.models.equipment import Equipment
+from app.models.extension_activity_log import ExtensionActivityLog
 from app.models.extension_definition import ExtensionDefinition
+from app.models.extension_notify_request import ExtensionNotifyRequest
 from app.models.feature_flag import FeatureFlag
 from app.models.impersonation_session import ImpersonationSession
 from app.models.job_queue import Job
@@ -122,7 +124,9 @@ __all__ = [
     "Document",
     "EmployeeProfile",
     "Equipment",
+    "ExtensionActivityLog",
     "ExtensionDefinition",
+    "ExtensionNotifyRequest",
     "FeatureFlag",
     "Job",
     "FeeRateConfig",

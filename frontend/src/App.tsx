@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/auth-context";
+import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
@@ -77,6 +78,8 @@ import DriverRoutePage from "@/pages/driver/route";
 import StopDetailPage from "@/pages/driver/stop-detail";
 import MileagePage from "@/pages/driver/mileage";
 import CarrierDeliveriesPage from "@/pages/carrier/deliveries";
+import ExtensionCatalogPage from "@/pages/extensions/extension-catalog";
+import ExtensionInstalledPage from "@/pages/extensions/extension-installed";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -100,6 +103,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
       <FeatureFlagProvider>
+      <ExtensionProvider>
         <ImpersonationBanner />
         <Routes>
           {slug ? (
@@ -368,6 +372,10 @@ export default function App() {
                     <Route path="/delivery/carriers" element={<CarriersPage />} />
                   </Route>
 
+                  {/* Extension Catalog — any authenticated user */}
+                  <Route path="/extensions" element={<ExtensionCatalogPage />} />
+                  <Route path="/extensions/installed" element={<ExtensionInstalledPage />} />
+
                   {/* Notifications — any authenticated user */}
                   <Route
                     path="/notifications"
@@ -482,6 +490,7 @@ export default function App() {
           )}
         </Routes>
         <Toaster />
+      </ExtensionProvider>
       </FeatureFlagProvider>
       </AuthProvider>
     </BrowserRouter>

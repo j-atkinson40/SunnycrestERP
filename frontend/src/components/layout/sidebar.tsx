@@ -83,6 +83,7 @@ const navigation: NavEntry[] = [
       { label: "Quality Control", href: "/qc", permission: "qc.view", module: "inventory" },
     ],
   },
+  { label: "Extensions", href: "/extensions" },
   {
     label: "Administration",
     items: [
