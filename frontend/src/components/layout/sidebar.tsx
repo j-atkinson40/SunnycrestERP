@@ -61,10 +61,10 @@ const navigation: NavEntry[] = [
   {
     label: "Funeral Home",
     items: [
-      { label: "Dashboard", href: "/funeral-home/dashboard", permission: "funeral_home.view", module: "funeral_home" },
-      { label: "Cases", href: "/cases", permission: "funeral_home.view", module: "funeral_home" },
-      { label: "Price List (GPL)", href: "/funeral-home/price-list", permission: "funeral_home.view", module: "funeral_home" },
-      { label: "FTC Compliance", href: "/funeral-home/compliance", permission: "funeral_home.view", module: "funeral_home" },
+      { label: "Dashboard", href: "/funeral-home/dashboard", permission: "fh_cases.view", module: "funeral_home" },
+      { label: "Cases", href: "/cases", permission: "fh_cases.view", module: "funeral_home" },
+      { label: "Price List (GPL)", href: "/funeral-home/price-list", permission: "fh_price_list.view", module: "funeral_home" },
+      { label: "FTC Compliance", href: "/funeral-home/compliance", permission: "fh_compliance.view", module: "funeral_home" },
     ],
   },
   { label: "Projects", href: "/projects", permission: "projects.view", module: "project_management" },

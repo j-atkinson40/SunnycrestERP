@@ -392,7 +392,7 @@ export default function App() {
                   {/* Funeral Home — requires funeral_home module */}
                   <Route
                     element={
-                      <ProtectedRoute requiredPermission="funeral_home.view" requiredModule="funeral_home" />
+                      <ProtectedRoute requiredPermission="fh_cases.view" requiredModule="funeral_home" />
                     }
                   >
                     <Route path="/cases" element={<FHCaseListPage />} />
