@@ -1,8 +1,12 @@
 #!/bin/bash
-set -e
 
 echo "Running database migrations..."
-alembic upgrade head
+if alembic upgrade head; then
+    echo "Migrations completed successfully."
+else
+    echo "WARNING: Migration failed — server will start anyway."
+    echo "Check migration errors and resolve manually."
+fi
 
 echo "Starting server..."
-uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
