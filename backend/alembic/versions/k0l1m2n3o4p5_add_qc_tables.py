@@ -357,7 +357,16 @@ def upgrade() -> None:
         sa.Column("qc_status", sa.String(30), nullable=True),
     )
 
-    # -- Seed defect types --------------------------------------------------
+    # -- Seed data (only if the default company exists in this environment) ---
+    conn = op.get_bind()
+    company_exists = conn.execute(
+        sa.text("SELECT 1 FROM companies WHERE id = :cid"),
+        {"cid": DEFAULT_COMPANY_ID},
+    ).fetchone()
+
+    if not company_exists:
+        return  # Skip seed data — company not present (e.g. fresh production DB)
+
     defect_types_table = sa.table(
         "qc_defect_types",
         sa.column("id", sa.String),
