@@ -72,6 +72,12 @@ AVAILABLE_MODULES: dict[str, dict] = {
         "default_enabled": False,
         "locked": False,
     },
+    "funeral_home": {
+        "label": "Funeral Home Management",
+        "description": "Complete funeral home operations from first call through final invoice — case management, FTC compliance, vault ordering, invoicing, obituary builder, and family portal.",
+        "default_enabled": False,
+        "locked": False,
+    },
     "work_orders": {
         "label": "Work Orders & Production",
         "description": "Production work orders, pour events, cure tracking, mix designs, and inventory receiving for manufacturing.",

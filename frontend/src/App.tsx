@@ -83,6 +83,13 @@ import MileagePage from "@/pages/driver/mileage";
 import CarrierDeliveriesPage from "@/pages/carrier/deliveries";
 import ExtensionCatalogPage from "@/pages/extensions/extension-catalog";
 import ExtensionInstalledPage from "@/pages/extensions/extension-installed";
+import FHCaseListPage from "@/pages/funeral-home/case-list";
+import FHFirstCallPage from "@/pages/funeral-home/first-call";
+import FHCaseDetailPage from "@/pages/funeral-home/case-detail";
+import FHDashboardPage from "@/pages/funeral-home/dashboard";
+import FHCompliancePage from "@/pages/funeral-home/ftc-compliance";
+import FHPriceListPage from "@/pages/funeral-home/price-list";
+import FHPortalPage from "@/pages/funeral-home/portal";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -382,6 +389,20 @@ export default function App() {
                     <Route path="/delivery/carriers" element={<CarriersPage />} />
                   </Route>
 
+                  {/* Funeral Home — requires funeral_home module */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="funeral_home.view" requiredModule="funeral_home" />
+                    }
+                  >
+                    <Route path="/cases" element={<FHCaseListPage />} />
+                    <Route path="/cases/new" element={<FHFirstCallPage />} />
+                    <Route path="/cases/:id" element={<FHCaseDetailPage />} />
+                    <Route path="/funeral-home/dashboard" element={<FHDashboardPage />} />
+                    <Route path="/funeral-home/compliance" element={<FHCompliancePage />} />
+                    <Route path="/funeral-home/price-list" element={<FHPriceListPage />} />
+                  </Route>
+
                   {/* Extension Catalog — any authenticated user */}
                   <Route path="/extensions" element={<ExtensionCatalogPage />} />
                   <Route path="/extensions/installed" element={<ExtensionInstalledPage />} />
@@ -478,6 +499,9 @@ export default function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/carrier/deliveries" element={<CarrierDeliveriesPage />} />
               </Route>
+
+              {/* Family portal — no auth required, standalone page */}
+              <Route path="/portal/:token" element={<FHPortalPage />} />
 
               {/* Platform admin entry (for non-subdomain setups) */}
               <Route path="/platform-admin" element={<PlatformAdminEntry />} />

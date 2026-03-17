@@ -28,6 +28,18 @@ from app.models.extension_activity_log import ExtensionActivityLog
 from app.models.extension_definition import ExtensionDefinition
 from app.models.extension_notify_request import ExtensionNotifyRequest
 from app.models.feature_flag import FeatureFlag
+from app.models.fh_case import FHCase
+from app.models.fh_case_activity import FHCaseActivity
+from app.models.fh_case_contact import FHCaseContact
+from app.models.fh_document import FHDocument
+from app.models.fh_invoice import FHInvoice
+from app.models.fh_manufacturer_relationship import FHManufacturerRelationship
+from app.models.fh_obituary import FHObituary
+from app.models.fh_payment import FHPayment
+from app.models.fh_portal_session import FHPortalSession
+from app.models.fh_price_list import FHPriceListItem, FHPriceListVersion
+from app.models.fh_service import FHService
+from app.models.fh_vault_order import FHVaultOrder
 from app.models.impersonation_session import ImpersonationSession
 from app.models.job_queue import Job
 from app.models.flag_audit_log import FlagAuditLog
@@ -137,6 +149,19 @@ __all__ = [
     "ExtensionDefinition",
     "ExtensionNotifyRequest",
     "FeatureFlag",
+    "FHCase",
+    "FHCaseActivity",
+    "FHCaseContact",
+    "FHDocument",
+    "FHInvoice",
+    "FHManufacturerRelationship",
+    "FHObituary",
+    "FHPayment",
+    "FHPortalSession",
+    "FHPriceListItem",
+    "FHPriceListVersion",
+    "FHService",
+    "FHVaultOrder",
     "Job",
     "FeeRateConfig",
     "FlagAuditLog",

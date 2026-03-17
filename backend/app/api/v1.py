@@ -17,6 +17,7 @@ from app.api.routes import (
     billing,
     bom,
     carrier_portal,
+    cases,
     companies,
     customers,
     deliveries,
@@ -30,6 +31,9 @@ from app.api.routes import (
     equipment,
     extensions,
     feature_flags,
+    fh_portal,
+    fh_price_list,
+    ftc_compliance,
     funeral_kanban,
     hierarchy,
     inventory,
@@ -79,6 +83,9 @@ v1_router.include_router(
     carrier_portal.router, prefix="/carrier", tags=["Carrier Portal"]
 )
 v1_router.include_router(
+    cases.router, prefix="/cases", tags=["Funeral Home Cases"]
+)
+v1_router.include_router(
     companies.router, prefix="/companies", tags=["Company Management"]
 )
 v1_router.include_router(
@@ -118,6 +125,15 @@ v1_router.include_router(
 )
 v1_router.include_router(
     feature_flags.router, prefix="/feature-flags", tags=["Feature Flags"]
+)
+v1_router.include_router(
+    fh_portal.router, prefix="/portal/family", tags=["Family Portal"]
+)
+v1_router.include_router(
+    fh_price_list.router, prefix="/price-list", tags=["Funeral Home Price List"]
+)
+v1_router.include_router(
+    ftc_compliance.router, prefix="/ftc", tags=["FTC Compliance"]
 )
 v1_router.include_router(
     funeral_kanban.router, prefix="/extensions/funeral-kanban", tags=["Funeral Kanban"]
