@@ -65,6 +65,7 @@ const navigation: NavEntry[] = [
       { label: "Production Entry", href: "/inventory/production", permission: "inventory.create", module: "inventory" },
       { label: "Write-offs", href: "/inventory/write-offs", permission: "inventory.view", module: "inventory" },
       { label: "Sage Export", href: "/inventory/sage-exports", permission: "inventory.view", module: "inventory" },
+      { label: "Bill of Materials", href: "/bom", permission: "inventory.view", module: "inventory" },
     ],
   },
   {

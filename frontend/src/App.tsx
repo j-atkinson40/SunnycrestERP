@@ -56,6 +56,8 @@ import DeliveryDetailPage from "@/pages/delivery/delivery-detail";
 import RouteDetailPage from "@/pages/delivery/route-detail";
 import CarriersPage from "@/pages/delivery/carriers";
 import FuneralSchedulingPage from "@/pages/delivery/funeral-scheduling";
+import BOMListPage from "@/pages/bom/bom-list";
+import BOMDetailPage from "@/pages/bom/bom-detail";
 import { DriverLayout } from "@/components/layout/driver-layout";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
@@ -280,6 +282,16 @@ export default function App() {
                       path="/inventory/:productId"
                       element={<InventoryDetailPage />}
                     />
+                  </Route>
+
+                  {/* Bill of Materials — requires inventory module + inventory.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="inventory.view" requiredModule="inventory" />
+                    }
+                  >
+                    <Route path="/bom" element={<BOMListPage />} />
+                    <Route path="/bom/:bomId" element={<BOMDetailPage />} />
                   </Route>
 
                   {/* Delivery & Logistics — requires driver_delivery module */}

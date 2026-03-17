@@ -2,6 +2,7 @@ from app.models.api_key import ApiKey
 from app.models.api_key_usage import ApiKeyUsage
 from app.models.audit_log import AuditLog
 from app.models.balance_adjustment import BalanceAdjustment
+from app.models.bom import BillOfMaterials, BOMLine
 from app.models.company import Company
 from app.models.company_module import CompanyModule
 from app.models.customer import Customer
@@ -72,6 +73,8 @@ __all__ = [
     "ApiKeyUsage",
     "AuditLog",
     "BalanceAdjustment",
+    "BillOfMaterials",
+    "BOMLine",
     "Company",
     "CompanyModule",
     "Customer",
