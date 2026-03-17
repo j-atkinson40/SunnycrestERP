@@ -21,6 +21,9 @@ class Company(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Vertical / preset type
+    vertical: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # Address
     address_street: Mapped[str | None] = mapped_column(String(255), nullable=True)
     address_city: Mapped[str | None] = mapped_column(String(100), nullable=True)

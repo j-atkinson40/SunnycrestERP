@@ -172,7 +172,7 @@ def onboard_tenant(
 
     This is the single entry point for tenant onboarding from the platform admin.
     """
-    from app.core.security import get_password_hash
+    from app.core.security import hash_password as get_password_hash
     from app.models.company import Company
     from app.models.user import User
     from app.services.module_service import seed_company_modules
@@ -235,6 +235,26 @@ def onboard_tenant(
             db, company.id, data.vertical, actor_id=user.id
         )
         result["modules_enabled"] = preset_result["modules_enabled"]
+
+        # Also enable the vertical's module in legacy company_modules table
+        # so require_module() checks pass
+        from app.models.company_module import CompanyModule
+        vertical_module_map = {
+            "funeral_home": "funeral_home",
+            "manufacturing": "work_orders",
+        }
+        legacy_module = vertical_module_map.get(data.vertical)
+        if legacy_module:
+            legacy_rec = db.query(CompanyModule).filter(
+                CompanyModule.company_id == company.id,
+                CompanyModule.module == legacy_module,
+            ).first()
+            if legacy_rec:
+                legacy_rec.enabled = True
+            else:
+                db.add(CompanyModule(
+                    company_id=company.id, module=legacy_module, enabled=True
+                ))
     else:
         # Just enable core modules
         tenant_module_service.apply_preset_to_tenant(
