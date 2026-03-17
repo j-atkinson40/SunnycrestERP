@@ -76,11 +76,20 @@ def get_or_create_initial_admin(
     first_name: str = "Platform",
     last_name: str = "Admin",
 ) -> PlatformUser:
-    """Idempotent seed — creates the initial super admin if it doesn't exist."""
+    """Idempotent seed — creates or updates the initial super admin.
+
+    If the user already exists but the password doesn't match the env-var
+    value, the hash is updated so the configured password always works.
+    """
     existing = (
         db.query(PlatformUser).filter(PlatformUser.email == email).first()
     )
     if existing:
+        # Ensure the password from env vars always works
+        if not verify_password(password, existing.hashed_password):
+            existing.hashed_password = hash_password(password)
+            db.commit()
+            logger.info("Updated platform admin password for: %s", email)
         return existing
 
     admin = PlatformUser(
