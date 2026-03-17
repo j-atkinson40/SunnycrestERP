@@ -55,6 +55,14 @@ from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
 from app.models.notification import Notification
 from app.models.onboarding import OnboardingChecklist, OnboardingTemplate
+from app.models.onboarding_checklist import TenantOnboardingChecklist
+from app.models.onboarding_checklist_item import OnboardingChecklistItem
+from app.models.onboarding_data_import import OnboardingDataImport
+from app.models.onboarding_help_dismissal import OnboardingHelpDismissal
+from app.models.onboarding_integration_setup import OnboardingIntegrationSetup
+from app.models.onboarding_scenario import OnboardingScenario
+from app.models.onboarding_scenario_step import OnboardingScenarioStep
+from app.models.product_catalog_template import ProductCatalogTemplate
 from app.models.performance_note import PerformanceNote
 from app.models.pour_event import PourEvent, PourEventWorkOrder
 from app.models.product import Product
@@ -179,11 +187,19 @@ __all__ = [
     "InventoryTransaction",
     "Notification",
     "OnboardingChecklist",
+    "OnboardingChecklistItem",
+    "OnboardingDataImport",
+    "OnboardingHelpDismissal",
+    "OnboardingIntegrationSetup",
+    "OnboardingScenario",
+    "OnboardingScenarioStep",
     "OnboardingTemplate",
+    "TenantOnboardingChecklist",
     "PerformanceNote",
     "PourEvent",
     "PourEventWorkOrder",
     "Product",
+    "ProductCatalogTemplate",
     "ProductCategory",
     "Project",
     "ProjectMilestone",

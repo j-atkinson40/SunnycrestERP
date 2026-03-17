@@ -54,6 +54,8 @@ from app.api.routes import (
     sales,
     super_admin,
     sync_logs,
+    tenant_onboarding,
+    tenant_onboarding_admin,
     users,
     vendor_bills,
     vendor_payments,
@@ -192,6 +194,16 @@ v1_router.include_router(
 )
 v1_router.include_router(
     sync_logs.router, prefix="/sync-logs", tags=["Sync Logs"]
+)
+v1_router.include_router(
+    tenant_onboarding.router,
+    prefix="/tenant-onboarding",
+    tags=["Tenant Onboarding"],
+)
+v1_router.include_router(
+    tenant_onboarding_admin.router,
+    prefix="/admin/tenant-onboarding",
+    tags=["Tenant Onboarding Admin"],
 )
 v1_router.include_router(users.router, prefix="/users", tags=["User Management"])
 v1_router.include_router(

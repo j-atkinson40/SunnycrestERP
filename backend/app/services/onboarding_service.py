@@ -1,18 +1,35 @@
+"""Onboarding service — legacy employee onboarding + tenant onboarding."""
+
 import json
+import logging
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy import func as sa_func
+from sqlalchemy.orm import Session, joinedload
 
-from app.models.onboarding import OnboardingChecklist, OnboardingTemplate
+from app.models.onboarding import OnboardingChecklist as LegacyOnboardingChecklist
+from app.models.onboarding import OnboardingTemplate
+from app.models.onboarding_checklist import TenantOnboardingChecklist as OnboardingChecklist
+from app.models.onboarding_checklist_item import OnboardingChecklistItem
+from app.models.onboarding_data_import import OnboardingDataImport
+from app.models.onboarding_help_dismissal import OnboardingHelpDismissal
+from app.models.onboarding_integration_setup import OnboardingIntegrationSetup
+from app.models.onboarding_scenario import OnboardingScenario
+from app.models.onboarding_scenario_step import OnboardingScenarioStep
+from app.models.product import Product
+from app.models.product_catalog_template import ProductCatalogTemplate
 from app.schemas.onboarding import (
     OnboardingTemplateCreate,
     OnboardingTemplateUpdate,
 )
 
+logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Templates
-# ---------------------------------------------------------------------------
+
+# ===================================================================
+# Legacy employee-onboarding (unchanged)
+# ===================================================================
 
 
 def get_templates(
@@ -77,35 +94,29 @@ def update_template(
     return tmpl
 
 
-# ---------------------------------------------------------------------------
-# Checklists
-# ---------------------------------------------------------------------------
-
-
 def get_checklists_for_user(
     db: Session, user_id: str, company_id: str
-) -> list[OnboardingChecklist]:
+) -> list[LegacyOnboardingChecklist]:
     return (
-        db.query(OnboardingChecklist)
+        db.query(LegacyOnboardingChecklist)
         .filter(
-            OnboardingChecklist.user_id == user_id,
-            OnboardingChecklist.company_id == company_id,
+            LegacyOnboardingChecklist.user_id == user_id,
+            LegacyOnboardingChecklist.company_id == company_id,
         )
-        .order_by(OnboardingChecklist.created_at.desc())
+        .order_by(LegacyOnboardingChecklist.created_at.desc())
         .all()
     )
 
 
 def assign_checklist(
     db: Session, user_id: str, template_id: str, company_id: str
-) -> OnboardingChecklist:
+) -> LegacyOnboardingChecklist:
     tmpl = get_template(db, template_id, company_id)
     template_items = json.loads(tmpl.items)
-    # Create items with completed=False
     checklist_items = [
         {"label": item, "completed": False} for item in template_items
     ]
-    checklist = OnboardingChecklist(
+    checklist = LegacyOnboardingChecklist(
         company_id=company_id,
         user_id=user_id,
         template_id=template_id,
@@ -123,12 +134,12 @@ def update_checklist_item(
     item_index: int,
     completed: bool,
     company_id: str,
-) -> OnboardingChecklist:
+) -> LegacyOnboardingChecklist:
     cl = (
-        db.query(OnboardingChecklist)
+        db.query(LegacyOnboardingChecklist)
         .filter(
-            OnboardingChecklist.id == checklist_id,
-            OnboardingChecklist.company_id == company_id,
+            LegacyOnboardingChecklist.id == checklist_id,
+            LegacyOnboardingChecklist.company_id == company_id,
         )
         .first()
     )
@@ -148,3 +159,1476 @@ def update_checklist_item(
     db.commit()
     db.refresh(cl)
     return cl
+
+
+# ===================================================================
+# Tenant Onboarding — Checklist item & scenario definitions
+# ===================================================================
+
+MANUFACTURING_CHECKLIST_ITEMS = [
+    # MUST COMPLETE
+    {
+        "item_key": "add_products",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Add your products",
+        "description": (
+            "Your product catalog is the foundation of everything — orders, "
+            "invoices, and inventory all start here."
+        ),
+        "estimated_minutes": 20,
+        "action_type": "navigate",
+        "action_target": "/products/new",
+        "sort_order": 1,
+    },
+    {
+        "item_key": "add_first_customer",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Add your first customer",
+        "description": (
+            "Add the customers you deliver to — funeral homes, contractors, "
+            "or anyone you bill."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/customers/new",
+        "sort_order": 2,
+    },
+    {
+        "item_key": "add_employees",
+        "tier": "must_complete",
+        "category": "team",
+        "title": "Add your team",
+        "description": (
+            "Add the people who work here so you can assign deliveries, "
+            "track QC inspections, and manage access."
+        ),
+        "estimated_minutes": 15,
+        "action_type": "navigate",
+        "action_target": "/admin/users",
+        "sort_order": 3,
+    },
+    {
+        "item_key": "configure_delivery_zones",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Set your delivery area",
+        "description": (
+            "Define where you deliver so the scheduling system knows your coverage."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/delivery/settings",
+        "sort_order": 4,
+    },
+    {
+        "item_key": "connect_accounting",
+        "tier": "must_complete",
+        "category": "integration",
+        "title": "Connect your accounting software",
+        "description": (
+            "Connect QuickBooks or set up Sage export so invoices flow to "
+            "your books automatically."
+        ),
+        "estimated_minutes": 30,
+        "action_type": "modal",
+        "action_target": "integration_setup_modal",
+        "sort_order": 5,
+    },
+    # SHOULD COMPLETE
+    {
+        "item_key": "run_vault_scenario",
+        "tier": "should_complete",
+        "category": "workflow",
+        "title": "Walk through a vault order (5 min)",
+        "description": (
+            "See exactly what happens when a funeral home calls to order a "
+            "vault — from order to delivery."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/scenarios/vault_order_walkthrough",
+        "sort_order": 6,
+    },
+    {
+        "item_key": "setup_sms_confirmation",
+        "tier": "should_complete",
+        "category": "integration",
+        "title": "Set up driver SMS confirmation",
+        "description": (
+            "Your drivers confirm pickups and deliveries by texting a keyword "
+            "— no app required."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/delivery/settings",
+        "sort_order": 7,
+    },
+    {
+        "item_key": "run_work_order_scenario",
+        "tier": "should_complete",
+        "category": "workflow",
+        "title": "Walk through production scheduling (5 min)",
+        "description": (
+            "See how a work order flows from sales order through pour, cure, "
+            "QC, and into inventory."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/scenarios/work_order_walkthrough",
+        "sort_order": 8,
+    },
+    {
+        "item_key": "set_inventory_minimums",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Set stock minimums",
+        "description": (
+            "Tell the system how much of each product you want to keep on "
+            "hand — it'll alert you when you're running low."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/inventory",
+        "sort_order": 9,
+    },
+    {
+        "item_key": "invite_team",
+        "tier": "should_complete",
+        "category": "team",
+        "title": "Invite your team to log in",
+        "description": (
+            "Send login invitations to your dispatcher, foreman, and office staff."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/admin/users",
+        "sort_order": 10,
+    },
+    # OPTIONAL
+    {
+        "item_key": "setup_safety",
+        "tier": "optional",
+        "category": "explore",
+        "title": "Set up safety management",
+        "description": (
+            "Get your OSHA records, inspection checklists, and safety programs "
+            "into the system."
+        ),
+        "estimated_minutes": 30,
+        "action_type": "navigate",
+        "action_target": "/safety",
+        "sort_order": 11,
+    },
+    {
+        "item_key": "explore_extensions",
+        "tier": "optional",
+        "category": "explore",
+        "title": "Browse the extension catalog",
+        "description": "See additional capabilities you can add to your workspace.",
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/extensions",
+        "sort_order": 12,
+    },
+    {
+        "item_key": "run_month_end_scenario",
+        "tier": "optional",
+        "category": "workflow",
+        "title": "Walk through month-end reporting (5 min)",
+        "description": (
+            "See how to close out a month — sync review, outstanding invoices, "
+            "and production summary."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/scenarios/month_end_walkthrough",
+        "sort_order": 13,
+    },
+    {
+        "item_key": "customize_invoice_template",
+        "tier": "optional",
+        "category": "data_setup",
+        "title": "Customize your invoice",
+        "description": (
+            "Add your logo and adjust the layout of invoices sent to customers."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/admin/settings",
+        "sort_order": 14,
+    },
+]
+
+FUNERAL_HOME_CHECKLIST_ITEMS = [
+    # MUST COMPLETE
+    {
+        "item_key": "add_price_list",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Set your service prices",
+        "description": (
+            "Your price list is the foundation of FTC-compliant invoicing — "
+            "every service and merchandise item needs a price."
+        ),
+        "estimated_minutes": 20,
+        "action_type": "navigate",
+        "action_target": "/funeral-home/price-list",
+        "sort_order": 1,
+    },
+    {
+        "item_key": "ftc_compliance_review",
+        "tier": "must_complete",
+        "category": "workflow",
+        "title": "Review FTC compliance requirements",
+        "description": (
+            "Review your General Price List for FTC Funeral Rule compliance "
+            "and generate your GPL document."
+        ),
+        "estimated_minutes": 15,
+        "action_type": "navigate",
+        "action_target": "/funeral-home/compliance",
+        "sort_order": 2,
+    },
+    {
+        "item_key": "add_first_director",
+        "tier": "must_complete",
+        "category": "team",
+        "title": "Add your funeral directors",
+        "description": (
+            "Add your directors so they can be assigned to cases and manage "
+            "arrangements."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/admin/users",
+        "sort_order": 3,
+    },
+    {
+        "item_key": "connect_accounting",
+        "tier": "must_complete",
+        "category": "integration",
+        "title": "Connect your accounting software",
+        "description": (
+            "Connect QuickBooks or set up Sage export so invoices flow to "
+            "your books automatically."
+        ),
+        "estimated_minutes": 30,
+        "action_type": "modal",
+        "action_target": "integration_setup_modal",
+        "sort_order": 4,
+    },
+    {
+        "item_key": "link_vault_supplier",
+        "tier": "must_complete",
+        "category": "integration",
+        "title": "Connect your vault supplier",
+        "description": (
+            "Link to your vault manufacturer so you can order directly "
+            "through the platform."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/admin/settings",
+        "sort_order": 5,
+    },
+    # SHOULD COMPLETE
+    {
+        "item_key": "run_case_scenario",
+        "tier": "should_complete",
+        "category": "workflow",
+        "title": "Walk through opening a case",
+        "description": (
+            "See the full workflow from first call through arrangement conference."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/scenarios/case_walkthrough",
+        "sort_order": 6,
+    },
+    {
+        "item_key": "run_vault_order_scenario",
+        "tier": "should_complete",
+        "category": "workflow",
+        "title": "Walk through ordering a vault",
+        "description": (
+            "See how to place a vault order with your manufacturer through "
+            "the platform."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/scenarios/fh_vault_order_walkthrough",
+        "sort_order": 7,
+    },
+    {
+        "item_key": "customize_gpl",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Finalize your General Price List",
+        "description": (
+            "Review and finalize your GPL document for printing and distribution."
+        ),
+        "estimated_minutes": 15,
+        "action_type": "navigate",
+        "action_target": "/funeral-home/price-list",
+        "sort_order": 8,
+    },
+    {
+        "item_key": "invite_directors",
+        "tier": "should_complete",
+        "category": "team",
+        "title": "Invite your team to log in",
+        "description": (
+            "Send login invitations to your directors and office staff."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/admin/users",
+        "sort_order": 9,
+    },
+    {
+        "item_key": "setup_obituary_style",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Set your obituary preferences",
+        "description": (
+            "Configure your preferred obituary style and tone for "
+            "AI-assisted drafting."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/admin/settings",
+        "sort_order": 10,
+    },
+    # OPTIONAL
+    {
+        "item_key": "explore_extensions",
+        "tier": "optional",
+        "category": "explore",
+        "title": "Browse the extension catalog",
+        "description": (
+            "See additional capabilities you can add to your funeral home."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/extensions",
+        "sort_order": 11,
+    },
+    {
+        "item_key": "customize_invoice_template",
+        "tier": "optional",
+        "category": "data_setup",
+        "title": "Customize your invoice",
+        "description": (
+            "Add your logo and adjust the layout of statement of goods and services."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/admin/settings",
+        "sort_order": 12,
+    },
+    {
+        "item_key": "setup_family_portal_branding",
+        "tier": "optional",
+        "category": "data_setup",
+        "title": "Set up family portal branding",
+        "description": (
+            "Customize the look and feel of the family-facing portal."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/admin/settings",
+        "sort_order": 13,
+    },
+]
+
+# Map preset names to their item lists
+_PRESET_ITEMS: dict[str, list[dict]] = {
+    "manufacturing": MANUFACTURING_CHECKLIST_ITEMS,
+    "funeral_home": FUNERAL_HOME_CHECKLIST_ITEMS,
+}
+
+
+# ---------------------------------------------------------------------------
+# Scenario definitions
+# ---------------------------------------------------------------------------
+
+MANUFACTURING_SCENARIOS = [
+    {
+        "scenario_key": "vault_order_walkthrough",
+        "title": "Vault Order Walkthrough",
+        "description": (
+            "Walk through the full lifecycle of a vault order — from the "
+            "funeral home's call to delivery confirmation."
+        ),
+        "estimated_minutes": 5,
+        "steps": [
+            {
+                "step_number": 1,
+                "title": "Receive the order call",
+                "instruction": (
+                    "A funeral home calls to order a vault. Click 'New Order' "
+                    "to start entering the details."
+                ),
+                "target_route": "/orders/new",
+                "target_element": "button[data-id='new-order']",
+                "completion_trigger": "navigate",
+                "hint_text": "Look for the 'New Order' button in the top right.",
+            },
+            {
+                "step_number": 2,
+                "title": "Select the customer",
+                "instruction": (
+                    "Search for the funeral home by name and select them as "
+                    "the customer for this order."
+                ),
+                "target_route": "/orders/new",
+                "target_element": "input[data-id='customer-search']",
+                "completion_trigger": "field_filled",
+                "hint_text": "Start typing the funeral home name to see suggestions.",
+            },
+            {
+                "step_number": 3,
+                "title": "Add products to the order",
+                "instruction": (
+                    "Add a vault (and any accessories like liners) to the order."
+                ),
+                "target_route": "/orders/new",
+                "target_element": "button[data-id='add-line-item']",
+                "completion_trigger": "field_filled",
+                "hint_text": "Click 'Add Item' and search for the vault model.",
+            },
+            {
+                "step_number": 4,
+                "title": "Set the delivery details",
+                "instruction": (
+                    "Enter the cemetery name, delivery date, and any special "
+                    "instructions (e.g., graveside setup time)."
+                ),
+                "target_route": "/orders/new",
+                "target_element": "input[data-id='delivery-address']",
+                "completion_trigger": "field_filled",
+                "hint_text": "The delivery section is below the order items.",
+            },
+            {
+                "step_number": 5,
+                "title": "Submit the order",
+                "instruction": (
+                    "Review the order total and click 'Place Order' to confirm."
+                ),
+                "target_route": "/orders/new",
+                "target_element": "button[data-id='submit-order']",
+                "completion_trigger": "click",
+                "hint_text": "Check the total before submitting.",
+            },
+            {
+                "step_number": 6,
+                "title": "See the delivery created",
+                "instruction": (
+                    "The system automatically creates a delivery. Click to "
+                    "view it on the dispatch board."
+                ),
+                "target_route": "/delivery",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "The delivery appears on the dispatch board for the requested date.",
+            },
+            {
+                "step_number": 7,
+                "title": "Confirm delivery completion",
+                "instruction": (
+                    "After the driver delivers, they confirm via SMS or the "
+                    "app. See the proof-of-delivery photos here."
+                ),
+                "target_route": "/delivery",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "Completed deliveries show photos and a signature.",
+            },
+        ],
+    },
+    {
+        "scenario_key": "work_order_walkthrough",
+        "title": "Production Scheduling Walkthrough",
+        "description": (
+            "See how a work order flows from sales order through pour, "
+            "cure, QC, and into inventory."
+        ),
+        "estimated_minutes": 5,
+        "steps": [
+            {
+                "step_number": 1,
+                "title": "View the production queue",
+                "instruction": (
+                    "Open the production schedule to see pending work orders."
+                ),
+                "target_route": "/production",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "The production queue shows orders grouped by status.",
+            },
+            {
+                "step_number": 2,
+                "title": "Start a work order",
+                "instruction": (
+                    "Select a pending work order and click 'Start Production' "
+                    "to move it to the pour stage."
+                ),
+                "target_route": "/production",
+                "target_element": "button[data-id='start-production']",
+                "completion_trigger": "click",
+                "hint_text": "Click on a work order row to expand it.",
+            },
+            {
+                "step_number": 3,
+                "title": "Record the pour",
+                "instruction": (
+                    "Enter the pour details — concrete mix, batch number, "
+                    "and operator."
+                ),
+                "target_route": "/production",
+                "target_element": None,
+                "completion_trigger": "field_filled",
+                "hint_text": "The pour form tracks mix design and batch for traceability.",
+            },
+            {
+                "step_number": 4,
+                "title": "Mark curing complete",
+                "instruction": (
+                    "After the curing period, mark the work order as cured."
+                ),
+                "target_route": "/production",
+                "target_element": None,
+                "completion_trigger": "click",
+                "hint_text": "Curing time varies by product — the system tracks the minimum.",
+            },
+            {
+                "step_number": 5,
+                "title": "Complete QC inspection",
+                "instruction": (
+                    "Run through the QC checklist — dimensions, finish, "
+                    "and structural checks."
+                ),
+                "target_route": "/production",
+                "target_element": None,
+                "completion_trigger": "click",
+                "hint_text": "QC checklists are configured per product type.",
+            },
+            {
+                "step_number": 6,
+                "title": "Move to inventory",
+                "instruction": (
+                    "The finished product moves into inventory and is available "
+                    "for delivery scheduling."
+                ),
+                "target_route": "/inventory",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "Inventory levels update automatically after QC passes.",
+            },
+        ],
+    },
+    {
+        "scenario_key": "month_end_walkthrough",
+        "title": "Month-End Reporting Walkthrough",
+        "description": (
+            "See how to close out a month — sync review, outstanding invoices, "
+            "and production summary."
+        ),
+        "estimated_minutes": 5,
+        "steps": [
+            {
+                "step_number": 1,
+                "title": "Review sync status",
+                "instruction": (
+                    "Check the sync dashboard to make sure all transactions "
+                    "exported to your accounting software."
+                ),
+                "target_route": "/admin/sync",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "Red items need attention before closing the month.",
+            },
+            {
+                "step_number": 2,
+                "title": "Review outstanding invoices",
+                "instruction": (
+                    "Open the AR aging report to see who still owes you money."
+                ),
+                "target_route": "/reports/ar-aging",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "Filter by 30/60/90 days to prioritize follow-ups.",
+            },
+            {
+                "step_number": 3,
+                "title": "Review production summary",
+                "instruction": (
+                    "Check the production report for the month — units poured, "
+                    "QC pass rate, and inventory levels."
+                ),
+                "target_route": "/reports/production",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "Compare this month to last month to spot trends.",
+            },
+            {
+                "step_number": 4,
+                "title": "Export month-end package",
+                "instruction": (
+                    "Generate the month-end export package for your accountant."
+                ),
+                "target_route": "/reports/export",
+                "target_element": "button[data-id='export-month-end']",
+                "completion_trigger": "click",
+                "hint_text": "The package includes all transactions, adjustments, and summaries.",
+            },
+        ],
+    },
+]
+
+FUNERAL_HOME_SCENARIOS = [
+    {
+        "scenario_key": "case_walkthrough",
+        "title": "Opening a Case Walkthrough",
+        "description": (
+            "See the full workflow from first call through arrangement conference."
+        ),
+        "estimated_minutes": 5,
+        "steps": [
+            {
+                "step_number": 1,
+                "title": "Receive the first call",
+                "instruction": (
+                    "A family calls to report a death. Click 'New Case' to "
+                    "start the intake process."
+                ),
+                "target_route": "/funeral-home/cases/new",
+                "target_element": "button[data-id='new-case']",
+                "completion_trigger": "navigate",
+                "hint_text": "The first call form captures essential information quickly.",
+            },
+            {
+                "step_number": 2,
+                "title": "Add family contacts",
+                "instruction": (
+                    "Add the next-of-kin and any other family contacts "
+                    "for this case."
+                ),
+                "target_route": "/funeral-home/cases",
+                "target_element": None,
+                "completion_trigger": "field_filled",
+                "hint_text": "You can add multiple contacts with different roles.",
+            },
+            {
+                "step_number": 3,
+                "title": "Select services",
+                "instruction": (
+                    "Choose the services the family has selected from your "
+                    "General Price List."
+                ),
+                "target_route": "/funeral-home/cases",
+                "target_element": None,
+                "completion_trigger": "field_filled",
+                "hint_text": "Services pull pricing from your GPL automatically.",
+            },
+            {
+                "step_number": 4,
+                "title": "Create the arrangement",
+                "instruction": (
+                    "Finalize the arrangement details — dates, times, and "
+                    "locations for services."
+                ),
+                "target_route": "/funeral-home/cases",
+                "target_element": None,
+                "completion_trigger": "click",
+                "hint_text": "The arrangement summary becomes the basis for the invoice.",
+            },
+            {
+                "step_number": 5,
+                "title": "Review and confirm",
+                "instruction": (
+                    "Review the complete case file — contacts, services, "
+                    "timeline, and estimated cost."
+                ),
+                "target_route": "/funeral-home/cases",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "You can print the arrangement summary for the family.",
+            },
+        ],
+    },
+    {
+        "scenario_key": "fh_vault_order_walkthrough",
+        "title": "Ordering a Vault Walkthrough",
+        "description": (
+            "See how to place a vault order with your manufacturer through "
+            "the platform."
+        ),
+        "estimated_minutes": 5,
+        "steps": [
+            {
+                "step_number": 1,
+                "title": "Find your manufacturer",
+                "instruction": (
+                    "Open the vault ordering page and confirm your connected "
+                    "vault supplier."
+                ),
+                "target_route": "/funeral-home/vault-orders/new",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": "Your manufacturer was linked during setup.",
+            },
+            {
+                "step_number": 2,
+                "title": "Select a vault",
+                "instruction": (
+                    "Browse your manufacturer's catalog and select the vault "
+                    "model the family chose."
+                ),
+                "target_route": "/funeral-home/vault-orders/new",
+                "target_element": None,
+                "completion_trigger": "field_filled",
+                "hint_text": "You can filter by size, material, and price range.",
+            },
+            {
+                "step_number": 3,
+                "title": "Place the order",
+                "instruction": (
+                    "Confirm the delivery date, cemetery, and any "
+                    "customizations, then submit."
+                ),
+                "target_route": "/funeral-home/vault-orders/new",
+                "target_element": "button[data-id='submit-vault-order']",
+                "completion_trigger": "click",
+                "hint_text": "The order goes directly to the manufacturer's dispatch system.",
+            },
+            {
+                "step_number": 4,
+                "title": "Track delivery status",
+                "instruction": (
+                    "See the real-time status of your vault delivery — "
+                    "from manufacturing through setup at the cemetery."
+                ),
+                "target_route": "/funeral-home/vault-orders",
+                "target_element": None,
+                "completion_trigger": "navigate",
+                "hint_text": (
+                    "You'll receive notifications as the delivery progresses."
+                ),
+            },
+        ],
+    },
+]
+
+_PRESET_SCENARIOS: dict[str, list[dict]] = {
+    "manufacturing": MANUFACTURING_SCENARIOS,
+    "funeral_home": FUNERAL_HOME_SCENARIOS,
+}
+
+
+# ===================================================================
+# Tenant Onboarding — Core service functions
+# ===================================================================
+
+
+def initialize_checklist(
+    db: Session, tenant_id: str, preset: str
+) -> OnboardingChecklist:
+    """Called when a tenant is created. Generates checklist items + scenarios.
+
+    Idempotent — if a checklist already exists for the tenant it is returned
+    without modification.
+    """
+    existing = (
+        db.query(OnboardingChecklist)
+        .filter(OnboardingChecklist.tenant_id == tenant_id)
+        .first()
+    )
+    if existing:
+        return existing
+
+    # --- Create checklist record ---
+    checklist = OnboardingChecklist(
+        tenant_id=tenant_id,
+        preset=preset,
+        status="not_started",
+        must_complete_percent=0,
+        overall_percent=0,
+    )
+    db.add(checklist)
+    db.flush()  # get checklist.id
+
+    # --- Create checklist items ---
+    items_def = _PRESET_ITEMS.get(preset, MANUFACTURING_CHECKLIST_ITEMS)
+    for item_def in items_def:
+        item = OnboardingChecklistItem(
+            tenant_id=tenant_id,
+            checklist_id=checklist.id,
+            item_key=item_def["item_key"],
+            tier=item_def["tier"],
+            category=item_def["category"],
+            title=item_def["title"],
+            description=item_def.get("description"),
+            estimated_minutes=item_def.get("estimated_minutes", 0),
+            action_type=item_def["action_type"],
+            action_target=item_def.get("action_target"),
+            sort_order=item_def.get("sort_order", 0),
+        )
+        db.add(item)
+
+    # --- Create scenarios + steps ---
+    scenarios_def = _PRESET_SCENARIOS.get(preset, MANUFACTURING_SCENARIOS)
+    for scenario_def in scenarios_def:
+        steps_def = scenario_def.get("steps", [])
+        scenario = OnboardingScenario(
+            tenant_id=tenant_id,
+            scenario_key=scenario_def["scenario_key"],
+            preset=preset,
+            title=scenario_def["title"],
+            description=scenario_def.get("description"),
+            estimated_minutes=scenario_def.get("estimated_minutes", 0),
+            step_count=len(steps_def),
+            status="not_started",
+            current_step=0,
+        )
+        db.add(scenario)
+        db.flush()  # get scenario.id
+
+        for step_def in steps_def:
+            step = OnboardingScenarioStep(
+                scenario_id=scenario.id,
+                tenant_id=tenant_id,
+                step_number=step_def["step_number"],
+                title=step_def["title"],
+                instruction=step_def["instruction"],
+                target_route=step_def.get("target_route"),
+                target_element=step_def.get("target_element"),
+                completion_trigger=step_def.get("completion_trigger"),
+                hint_text=step_def.get("hint_text"),
+            )
+            db.add(step)
+
+    db.commit()
+    db.refresh(checklist)
+    return checklist
+
+
+def check_completion(
+    db: Session, tenant_id: str, item_key: str
+) -> bool:
+    """Check if a checklist item's completion trigger is met.
+
+    Idempotent — if already complete, returns False (not newly completed).
+    MUST NOT raise exceptions; logs and returns False on error.
+    """
+    try:
+        item = (
+            db.query(OnboardingChecklistItem)
+            .filter(
+                OnboardingChecklistItem.tenant_id == tenant_id,
+                OnboardingChecklistItem.item_key == item_key,
+            )
+            .first()
+        )
+        if not item:
+            return False
+        if item.status == "completed":
+            return False
+
+        item.status = "completed"
+        item.completed_at = datetime.now(UTC)
+        db.flush()
+
+        recalculate_progress(db, tenant_id)
+
+        # If must_complete just hit 100%, offer check-in call
+        checklist = (
+            db.query(OnboardingChecklist)
+            .filter(OnboardingChecklist.tenant_id == tenant_id)
+            .first()
+        )
+        if (
+            checklist
+            and checklist.must_complete_percent == 100
+            and checklist.check_in_call_offered_at is None
+        ):
+            checklist.check_in_call_offered_at = datetime.now(UTC)
+
+        db.commit()
+        return True
+    except Exception:
+        logger.exception(
+            "check_completion failed for tenant=%s item_key=%s",
+            tenant_id,
+            item_key,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
+
+
+def recalculate_progress(db: Session, tenant_id: str) -> None:
+    """Recalculate must_complete_percent, overall_percent, and checklist status."""
+    checklist = (
+        db.query(OnboardingChecklist)
+        .filter(OnboardingChecklist.tenant_id == tenant_id)
+        .first()
+    )
+    if not checklist:
+        return
+
+    items = (
+        db.query(OnboardingChecklistItem)
+        .filter(OnboardingChecklistItem.checklist_id == checklist.id)
+        .all()
+    )
+
+    # Must-complete progress
+    must_items = [i for i in items if i.tier == "must_complete"]
+    must_done = [i for i in must_items if i.status == "completed"]
+    if must_items:
+        checklist.must_complete_percent = int(
+            len(must_done) / len(must_items) * 100
+        )
+    else:
+        checklist.must_complete_percent = 100
+
+    # Overall progress (skip "skipped" items from denominator)
+    active_items = [i for i in items if i.status != "skipped"]
+    completed_items = [i for i in active_items if i.status == "completed"]
+    if active_items:
+        checklist.overall_percent = int(
+            len(completed_items) / len(active_items) * 100
+        )
+    else:
+        checklist.overall_percent = 100
+
+    # Status
+    any_started = any(
+        i.status in ("completed", "in_progress") for i in items
+    )
+    all_must_done = checklist.must_complete_percent == 100
+    all_done = checklist.overall_percent == 100
+
+    if all_done:
+        checklist.status = "fully_complete"
+    elif all_must_done:
+        checklist.status = "must_complete_done"
+    elif any_started:
+        checklist.status = "in_progress"
+    else:
+        checklist.status = "not_started"
+
+    db.flush()
+
+
+def get_checklist(db: Session, tenant_id: str) -> OnboardingChecklist | None:
+    """Return the full checklist with items, sorted by tier then sort_order."""
+    checklist = (
+        db.query(OnboardingChecklist)
+        .options(joinedload(OnboardingChecklist.items))
+        .filter(OnboardingChecklist.tenant_id == tenant_id)
+        .first()
+    )
+    if checklist and checklist.items:
+        tier_order = {"must_complete": 0, "should_complete": 1, "optional": 2}
+        checklist.items.sort(
+            key=lambda i: (tier_order.get(i.tier, 99), i.sort_order)
+        )
+    return checklist
+
+
+def skip_item(db: Session, tenant_id: str, item_key: str) -> None:
+    """Mark a checklist item as skipped."""
+    item = (
+        db.query(OnboardingChecklistItem)
+        .filter(
+            OnboardingChecklistItem.tenant_id == tenant_id,
+            OnboardingChecklistItem.item_key == item_key,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checklist item '{item_key}' not found",
+        )
+    item.status = "skipped"
+    recalculate_progress(db, tenant_id)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Scenarios
+# ---------------------------------------------------------------------------
+
+
+def get_scenarios(
+    db: Session, tenant_id: str
+) -> list[OnboardingScenario]:
+    """Return all scenarios for tenant with steps."""
+    return (
+        db.query(OnboardingScenario)
+        .options(joinedload(OnboardingScenario.steps))
+        .filter(OnboardingScenario.tenant_id == tenant_id)
+        .order_by(OnboardingScenario.scenario_key)
+        .all()
+    )
+
+
+def start_scenario(
+    db: Session, tenant_id: str, scenario_key: str
+) -> OnboardingScenario:
+    """Mark scenario as in_progress, set started_at and current_step=1."""
+    scenario = (
+        db.query(OnboardingScenario)
+        .options(joinedload(OnboardingScenario.steps))
+        .filter(
+            OnboardingScenario.tenant_id == tenant_id,
+            OnboardingScenario.scenario_key == scenario_key,
+        )
+        .first()
+    )
+    if not scenario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scenario '{scenario_key}' not found",
+        )
+    if scenario.status == "not_started":
+        scenario.status = "in_progress"
+        scenario.started_at = datetime.now(UTC)
+        scenario.current_step = 1
+        db.commit()
+        db.refresh(scenario)
+    return scenario
+
+
+def advance_scenario(
+    db: Session, tenant_id: str, scenario_key: str, step_number: int
+) -> OnboardingScenario:
+    """Advance scenario to next step. If last step, mark completed."""
+    scenario = (
+        db.query(OnboardingScenario)
+        .options(joinedload(OnboardingScenario.steps))
+        .filter(
+            OnboardingScenario.tenant_id == tenant_id,
+            OnboardingScenario.scenario_key == scenario_key,
+        )
+        .first()
+    )
+    if not scenario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scenario '{scenario_key}' not found",
+        )
+
+    if step_number >= scenario.step_count:
+        # Last step — mark completed
+        scenario.status = "completed"
+        scenario.completed_at = datetime.now(UTC)
+        scenario.current_step = scenario.step_count
+    else:
+        scenario.current_step = step_number + 1
+
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+
+# ---------------------------------------------------------------------------
+# Product Catalog Templates
+# ---------------------------------------------------------------------------
+
+
+def get_product_templates(
+    db: Session,
+    preset: str | None = None,
+    category: str | None = None,
+) -> list[ProductCatalogTemplate]:
+    """Get product catalog templates, optionally filtered."""
+    query = db.query(ProductCatalogTemplate)
+    if preset:
+        query = query.filter(ProductCatalogTemplate.preset == preset)
+    if category:
+        query = query.filter(ProductCatalogTemplate.category == category)
+    return query.order_by(ProductCatalogTemplate.sort_order).all()
+
+
+def import_product_templates(
+    db: Session, tenant_id: str, items: list
+) -> int:
+    """Import selected product templates as real products for the tenant.
+
+    Each item should have: template_id, optional price, optional sku.
+    Returns the count of products created.
+    """
+    count = 0
+    for item in items:
+        template_id = item.template_id if hasattr(item, "template_id") else item.get("template_id")
+        price = item.price if hasattr(item, "price") else item.get("price")
+        sku = item.sku if hasattr(item, "sku") else item.get("sku")
+
+        template = db.query(ProductCatalogTemplate).get(template_id)
+        if not template:
+            continue
+
+        product = Product(
+            company_id=tenant_id,
+            name=template.product_name,
+            description=template.product_description,
+            sku=sku or (template.sku_prefix if template.sku_prefix else None),
+            price=price,
+            unit_of_measure=template.default_unit,
+            is_active=True,
+        )
+        db.add(product)
+        count += 1
+
+    if count:
+        db.commit()
+    return count
+
+
+# ---------------------------------------------------------------------------
+# Data Imports
+# ---------------------------------------------------------------------------
+
+
+def create_data_import(
+    db: Session, tenant_id: str, import_type: str, source_format: str
+) -> OnboardingDataImport:
+    """Create a new data import session."""
+    di = OnboardingDataImport(
+        tenant_id=tenant_id,
+        import_type=import_type,
+        source_format=source_format,
+        status="not_started",
+    )
+    db.add(di)
+    db.commit()
+    db.refresh(di)
+    return di
+
+
+def update_data_import(
+    db: Session, import_id: str, **kwargs
+) -> OnboardingDataImport:
+    """Update import session with field mapping, status, etc."""
+    di = db.query(OnboardingDataImport).get(import_id)
+    if not di:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Data import not found",
+        )
+    for key, value in kwargs.items():
+        if key == "field_mapping" and isinstance(value, dict):
+            setattr(di, key, json.dumps(value))
+        elif hasattr(di, key):
+            setattr(di, key, value)
+    db.commit()
+    db.refresh(di)
+    return di
+
+
+# ---------------------------------------------------------------------------
+# Help Dismissals
+# ---------------------------------------------------------------------------
+
+
+def dismiss_help(
+    db: Session, tenant_id: str, employee_id: str, help_key: str
+) -> None:
+    """Record that a user dismissed a help tooltip/panel."""
+    existing = (
+        db.query(OnboardingHelpDismissal)
+        .filter(
+            OnboardingHelpDismissal.tenant_id == tenant_id,
+            OnboardingHelpDismissal.employee_id == employee_id,
+            OnboardingHelpDismissal.help_key == help_key,
+        )
+        .first()
+    )
+    if existing:
+        return
+    dismissal = OnboardingHelpDismissal(
+        tenant_id=tenant_id,
+        employee_id=employee_id,
+        help_key=help_key,
+    )
+    db.add(dismissal)
+    db.commit()
+
+
+def get_dismissed_help(
+    db: Session, tenant_id: str, employee_id: str
+) -> list[str]:
+    """Get list of dismissed help keys for a user."""
+    rows = (
+        db.query(OnboardingHelpDismissal.help_key)
+        .filter(
+            OnboardingHelpDismissal.tenant_id == tenant_id,
+            OnboardingHelpDismissal.employee_id == employee_id,
+        )
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Check-in Call
+# ---------------------------------------------------------------------------
+
+
+def schedule_check_in_call(
+    db: Session, tenant_id: str, scheduled: bool
+) -> None:
+    """Record check-in call scheduling decision."""
+    checklist = (
+        db.query(OnboardingChecklist)
+        .filter(OnboardingChecklist.tenant_id == tenant_id)
+        .first()
+    )
+    if not checklist:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Onboarding checklist not found for tenant",
+        )
+    checklist.check_in_call_scheduled = scheduled
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# White Glove Import
+# ---------------------------------------------------------------------------
+
+
+def request_white_glove_import(
+    db: Session,
+    tenant_id: str,
+    import_type: str,
+    description: str,
+    contact_email: str,
+    file_url: str | None = None,
+) -> OnboardingDataImport:
+    """Create a white-glove import request."""
+    di = OnboardingDataImport(
+        tenant_id=tenant_id,
+        import_type=import_type,
+        source_format="white_glove",
+        status="pending_review",
+        file_url=file_url,
+    )
+    db.add(di)
+    db.flush()
+
+    # Mark checklist as having a white-glove request
+    checklist = (
+        db.query(OnboardingChecklist)
+        .filter(OnboardingChecklist.tenant_id == tenant_id)
+        .first()
+    )
+    if checklist:
+        checklist.white_glove_import_requested = True
+
+    db.commit()
+    db.refresh(di)
+    return di
+
+
+# ---------------------------------------------------------------------------
+# Onboarding Analytics (platform admin)
+# ---------------------------------------------------------------------------
+
+
+def get_onboarding_analytics(db: Session) -> dict:
+    """Platform-wide onboarding analytics for admin dashboard."""
+    now = datetime.now(UTC)
+    seven_days_ago = now - timedelta(days=7)
+
+    # Total checklists
+    total_checklists = (
+        db.query(sa_func.count(OnboardingChecklist.id)).scalar() or 0
+    )
+
+    # Average time from checklist creation to first completed item (proxy for "first order")
+    avg_hours = None
+    if total_checklists > 0:
+        first_completions = (
+            db.query(
+                OnboardingChecklistItem.tenant_id,
+                sa_func.min(OnboardingChecklistItem.completed_at).label("first_done"),
+            )
+            .filter(OnboardingChecklistItem.status == "completed")
+            .group_by(OnboardingChecklistItem.tenant_id)
+            .subquery()
+        )
+        avg_result = (
+            db.query(
+                sa_func.avg(
+                    sa_func.extract(
+                        "epoch",
+                        first_completions.c.first_done
+                        - OnboardingChecklist.created_at,
+                    )
+                )
+            )
+            .join(
+                first_completions,
+                OnboardingChecklist.tenant_id == first_completions.c.tenant_id,
+            )
+            .scalar()
+        )
+        if avg_result is not None:
+            avg_hours = round(float(avg_result) / 3600, 1)
+
+    # % of tenants with must_complete 100% within 7 days
+    recent_total = (
+        db.query(sa_func.count(OnboardingChecklist.id))
+        .filter(OnboardingChecklist.created_at >= seven_days_ago)
+        .scalar()
+        or 0
+    )
+    recent_complete = (
+        db.query(sa_func.count(OnboardingChecklist.id))
+        .filter(
+            OnboardingChecklist.created_at >= seven_days_ago,
+            OnboardingChecklist.must_complete_percent == 100,
+        )
+        .scalar()
+        or 0
+    )
+    must_complete_rate_7d = (
+        round(recent_complete / recent_total * 100, 1)
+        if recent_total > 0
+        else 0.0
+    )
+
+    # Most-skipped / stuck checklist items (drop-off)
+    drop_off_query = (
+        db.query(
+            OnboardingChecklistItem.item_key,
+            OnboardingChecklistItem.title,
+            sa_func.count(OnboardingChecklistItem.id).label("total"),
+        )
+        .group_by(
+            OnboardingChecklistItem.item_key,
+            OnboardingChecklistItem.title,
+        )
+        .all()
+    )
+    completed_counts = dict(
+        db.query(
+            OnboardingChecklistItem.item_key,
+            sa_func.count(OnboardingChecklistItem.id),
+        )
+        .filter(OnboardingChecklistItem.status == "completed")
+        .group_by(OnboardingChecklistItem.item_key)
+        .all()
+    )
+    checklist_drop_off = [
+        {
+            "item_key": row.item_key,
+            "title": row.title,
+            "total": row.total,
+            "completed": completed_counts.get(row.item_key, 0),
+            "completion_rate": round(
+                completed_counts.get(row.item_key, 0) / row.total * 100, 1
+            )
+            if row.total > 0
+            else 0.0,
+        }
+        for row in drop_off_query
+    ]
+    checklist_drop_off.sort(key=lambda x: x["completion_rate"])
+
+    # Integration adoption
+    integration_rows = (
+        db.query(
+            OnboardingIntegrationSetup.integration_type,
+            sa_func.count(OnboardingIntegrationSetup.id),
+        )
+        .group_by(OnboardingIntegrationSetup.integration_type)
+        .all()
+    )
+    integration_adoption = {row[0]: row[1] for row in integration_rows}
+
+    # Scenario completion rates
+    scenario_total = (
+        db.query(
+            OnboardingScenario.scenario_key,
+            sa_func.count(OnboardingScenario.id).label("total"),
+        )
+        .group_by(OnboardingScenario.scenario_key)
+        .all()
+    )
+    scenario_completed = dict(
+        db.query(
+            OnboardingScenario.scenario_key,
+            sa_func.count(OnboardingScenario.id),
+        )
+        .filter(OnboardingScenario.status == "completed")
+        .group_by(OnboardingScenario.scenario_key)
+        .all()
+    )
+    scenario_completion = {
+        row.scenario_key: {
+            "total": row.total,
+            "completed": scenario_completed.get(row.scenario_key, 0),
+        }
+        for row in scenario_total
+    }
+
+    # White glove request stats
+    wg_total = (
+        db.query(sa_func.count(OnboardingDataImport.id))
+        .filter(OnboardingDataImport.source_format == "white_glove")
+        .scalar()
+        or 0
+    )
+    wg_completed = (
+        db.query(sa_func.count(OnboardingDataImport.id))
+        .filter(
+            OnboardingDataImport.source_format == "white_glove",
+            OnboardingDataImport.status == "completed",
+        )
+        .scalar()
+        or 0
+    )
+    white_glove_requests = {
+        "total": wg_total,
+        "completed": wg_completed,
+    }
+
+    # Check-in call acceptance rate
+    offered = (
+        db.query(sa_func.count(OnboardingChecklist.id))
+        .filter(OnboardingChecklist.check_in_call_offered_at.isnot(None))
+        .scalar()
+        or 0
+    )
+    accepted = (
+        db.query(sa_func.count(OnboardingChecklist.id))
+        .filter(
+            OnboardingChecklist.check_in_call_offered_at.isnot(None),
+            OnboardingChecklist.check_in_call_scheduled == True,  # noqa: E712
+        )
+        .scalar()
+        or 0
+    )
+    check_in_call_rate = (
+        round(accepted / offered * 100, 1) if offered > 0 else 0.0
+    )
+
+    return {
+        "avg_time_to_first_order_hours": avg_hours,
+        "must_complete_rate_7d": must_complete_rate_7d,
+        "checklist_drop_off": checklist_drop_off,
+        "integration_adoption": integration_adoption,
+        "scenario_completion": scenario_completion,
+        "white_glove_requests": white_glove_requests,
+        "check_in_call_rate": check_in_call_rate,
+    }

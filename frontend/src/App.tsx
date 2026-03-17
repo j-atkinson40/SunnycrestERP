@@ -90,6 +90,12 @@ import FHDashboardPage from "@/pages/funeral-home/dashboard";
 import FHCompliancePage from "@/pages/funeral-home/ftc-compliance";
 import FHPriceListPage from "@/pages/funeral-home/price-list";
 import FHPortalPage from "@/pages/funeral-home/portal";
+import OnboardingHub from "@/pages/onboarding/onboarding-hub";
+import IntegrationSetupPage from "@/pages/onboarding/integration-setup";
+import OnboardingAnalyticsPage from "@/pages/onboarding/onboarding-analytics";
+import ProductLibraryPage from "@/pages/onboarding/product-library";
+import ImportWizardPage from "@/pages/onboarding/import-wizard";
+import ScenarioPlayerPage from "@/pages/onboarding/scenario-player";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -403,6 +409,13 @@ export default function App() {
                     <Route path="/funeral-home/price-list" element={<FHPriceListPage />} />
                   </Route>
 
+                  {/* Onboarding — any authenticated user */}
+                  <Route path="/onboarding" element={<OnboardingHub />} />
+                  <Route path="/onboarding/integrations/:type" element={<IntegrationSetupPage />} />
+                  <Route path="/onboarding/product-library" element={<ProductLibraryPage />} />
+                  <Route path="/onboarding/import/:type" element={<ImportWizardPage />} />
+                  <Route path="/onboarding/scenarios/:scenarioKey" element={<ScenarioPlayerPage />} />
+
                   {/* Extension Catalog — any authenticated user */}
                   <Route path="/extensions" element={<ExtensionCatalogPage />} />
                   <Route path="/extensions/installed" element={<ExtensionInstalledPage />} />
@@ -479,6 +492,16 @@ export default function App() {
                     <Route
                       path="/admin/modules"
                       element={<ModulesPage />}
+                    />
+                  </Route>
+
+                  {/* Onboarding analytics — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route
+                      path="/admin/onboarding/analytics"
+                      element={<OnboardingAnalyticsPage />}
                     />
                   </Route>
 

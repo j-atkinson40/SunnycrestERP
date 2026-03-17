@@ -5,7 +5,7 @@ from app.api.deps import require_permission
 from app.database import get_db
 from app.models.user import User
 from app.schemas.onboarding import (
-    ChecklistItemUpdate,
+    LegacyChecklistItemUpdate,
     OnboardingChecklistAssign,
     OnboardingChecklistResponse,
     OnboardingTemplateCreate,
@@ -105,7 +105,7 @@ def assign_cl(
 )
 def update_item(
     checklist_id: str,
-    data: ChecklistItemUpdate,
+    data: LegacyChecklistItemUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("employees.edit")),
 ):

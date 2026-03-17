@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
+import { OnboardingSidebarWidget } from "@/components/onboarding/sidebar-widget";
 
 interface NavItem {
   label: string;
@@ -228,6 +229,7 @@ export function Sidebar() {
           })}
         </div>
       </nav>
+      <OnboardingSidebarWidget />
     </aside>
   );
 }
