@@ -40,6 +40,7 @@ from app.models.notification import Notification
 from app.models.onboarding import OnboardingChecklist, OnboardingTemplate
 from app.models.performance_note import PerformanceNote
 from app.models.product import Product
+from app.models.project import Project, ProjectMilestone, ProjectTask
 from app.models.product_category import ProductCategory
 from app.models.product_price_tier import ProductPriceTier
 from app.models.quote import Quote, QuoteLine
@@ -117,6 +118,9 @@ __all__ = [
     "PerformanceNote",
     "Product",
     "ProductCategory",
+    "Project",
+    "ProjectMilestone",
+    "ProjectTask",
     "ProductPriceTier",
     "Quote",
     "QuoteLine",

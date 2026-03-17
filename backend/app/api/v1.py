@@ -40,6 +40,7 @@ from app.api.routes import (
     performance_notes,
     platform_fees,
     products,
+    projects,
     purchase_orders,
     roles,
     sage_exports,
@@ -143,6 +144,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     products.router, prefix="/products", tags=["Products"]
+)
+v1_router.include_router(
+    projects.router, prefix="/projects", tags=["Project Management"]
 )
 v1_router.include_router(
     purchase_orders.router, prefix="/purchase-orders", tags=["Purchase Orders"]

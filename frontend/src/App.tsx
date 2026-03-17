@@ -58,6 +58,8 @@ import CarriersPage from "@/pages/delivery/carriers";
 import FuneralSchedulingPage from "@/pages/delivery/funeral-scheduling";
 import BOMListPage from "@/pages/bom/bom-list";
 import BOMDetailPage from "@/pages/bom/bom-detail";
+import ProjectListPage from "@/pages/projects/project-list";
+import ProjectDetailPage from "@/pages/projects/project-detail";
 import { DriverLayout } from "@/components/layout/driver-layout";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
@@ -292,6 +294,16 @@ export default function App() {
                   >
                     <Route path="/bom" element={<BOMListPage />} />
                     <Route path="/bom/:bomId" element={<BOMDetailPage />} />
+                  </Route>
+
+                  {/* Project Management — requires project_management module */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="projects.view" requiredModule="project_management" />
+                    }
+                  >
+                    <Route path="/projects" element={<ProjectListPage />} />
+                    <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
                   </Route>
 
                   {/* Delivery & Logistics — requires driver_delivery module */}

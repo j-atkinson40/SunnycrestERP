@@ -58,6 +58,7 @@ const navigation: NavEntry[] = [
       { label: "Settings", href: "/delivery/settings", permission: "delivery.view", module: "driver_delivery" },
     ],
   },
+  { label: "Projects", href: "/projects", permission: "projects.view", module: "project_management" },
   {
     label: "Inventory",
     items: [
