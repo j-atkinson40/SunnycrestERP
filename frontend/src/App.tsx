@@ -60,6 +60,9 @@ import BOMListPage from "@/pages/bom/bom-list";
 import BOMDetailPage from "@/pages/bom/bom-detail";
 import ProjectListPage from "@/pages/projects/project-list";
 import ProjectDetailPage from "@/pages/projects/project-detail";
+import QCMobilePage from "@/pages/qc/qc-mobile";
+import QCDashboardPage from "@/pages/qc/qc-dashboard";
+import QCInspectionDetailPage from "@/pages/qc/qc-inspection-detail";
 import { DriverLayout } from "@/components/layout/driver-layout";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
@@ -304,6 +307,17 @@ export default function App() {
                   >
                     <Route path="/projects" element={<ProjectListPage />} />
                     <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+                  </Route>
+
+                  {/* Quality Control — requires inventory module + qc.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="qc.view" requiredModule="inventory" />
+                    }
+                  >
+                    <Route path="/qc" element={<QCDashboardPage />} />
+                    <Route path="/qc/inspections/:inspectionId" element={<QCInspectionDetailPage />} />
+                    <Route path="/qc/mobile/:inspectionId" element={<QCMobilePage />} />
                   </Route>
 
                   {/* Delivery & Logistics — requires driver_delivery module */}

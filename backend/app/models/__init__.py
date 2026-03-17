@@ -41,6 +41,16 @@ from app.models.onboarding import OnboardingChecklist, OnboardingTemplate
 from app.models.performance_note import PerformanceNote
 from app.models.product import Product
 from app.models.project import Project, ProjectMilestone, ProjectTask
+from app.models.qc import (
+    QCDefectType,
+    QCDisposition,
+    QCInspection,
+    QCInspectionStep,
+    QCInspectionTemplate,
+    QCMedia,
+    QCReworkRecord,
+    QCStepResult,
+)
 from app.models.product_category import ProductCategory
 from app.models.product_price_tier import ProductPriceTier
 from app.models.quote import Quote, QuoteLine
@@ -121,6 +131,14 @@ __all__ = [
     "Project",
     "ProjectMilestone",
     "ProjectTask",
+    "QCDefectType",
+    "QCDisposition",
+    "QCInspection",
+    "QCInspectionStep",
+    "QCInspectionTemplate",
+    "QCMedia",
+    "QCReworkRecord",
+    "QCStepResult",
     "ProductPriceTier",
     "Quote",
     "QuoteLine",

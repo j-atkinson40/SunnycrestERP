@@ -41,6 +41,7 @@ PERMISSIONS: dict[str, list[str]] = {
     "vehicles": ["view", "create", "edit", "delete"],
     "routes": ["view", "create", "edit", "delete", "dispatch"],
     "carriers": ["view", "create", "edit", "delete"],
+    "qc": ["view", "create", "edit", "delete"],
 }
 
 

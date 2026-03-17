@@ -42,6 +42,7 @@ from app.api.routes import (
     products,
     projects,
     purchase_orders,
+    qc,
     roles,
     sage_exports,
     sales,
@@ -150,6 +151,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     purchase_orders.router, prefix="/purchase-orders", tags=["Purchase Orders"]
+)
+v1_router.include_router(
+    qc.router, prefix="/qc", tags=["Quality Control"]
 )
 v1_router.include_router(roles.router, prefix="/roles", tags=["Role Management"])
 v1_router.include_router(
