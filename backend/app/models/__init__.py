@@ -51,6 +51,22 @@ from app.models.qc import (
     QCReworkRecord,
     QCStepResult,
 )
+from app.models.safety_alert import SafetyAlert
+from app.models.safety_chemical import SafetyChemical
+from app.models.safety_incident import SafetyIncident
+from app.models.safety_inspection import (
+    SafetyInspection,
+    SafetyInspectionItem,
+    SafetyInspectionResult,
+    SafetyInspectionTemplate,
+)
+from app.models.safety_loto import SafetyLotoProcedure
+from app.models.safety_program import SafetyProgram
+from app.models.safety_training import (
+    EmployeeTrainingRecord,
+    SafetyTrainingEvent,
+    SafetyTrainingRequirement,
+)
 from app.models.product_category import ProductCategory
 from app.models.product_price_tier import ProductPriceTier
 from app.models.quote import Quote, QuoteLine
@@ -139,6 +155,18 @@ __all__ = [
     "QCMedia",
     "QCReworkRecord",
     "QCStepResult",
+    "SafetyAlert",
+    "SafetyChemical",
+    "SafetyIncident",
+    "SafetyInspection",
+    "SafetyInspectionItem",
+    "SafetyInspectionResult",
+    "SafetyInspectionTemplate",
+    "SafetyLotoProcedure",
+    "SafetyProgram",
+    "SafetyTrainingEvent",
+    "SafetyTrainingRequirement",
+    "EmployeeTrainingRecord",
     "ProductPriceTier",
     "Quote",
     "QuoteLine",

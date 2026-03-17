@@ -63,6 +63,14 @@ import ProjectDetailPage from "@/pages/projects/project-detail";
 import QCMobilePage from "@/pages/qc/qc-mobile";
 import QCDashboardPage from "@/pages/qc/qc-dashboard";
 import QCInspectionDetailPage from "@/pages/qc/qc-inspection-detail";
+import SafetyDashboardPage from "@/pages/safety/safety-dashboard";
+import SafetyInspectPage from "@/pages/safety/safety-inspect";
+import SafetyIncidentPage from "@/pages/safety/safety-incidents";
+import SafetyChemicalsPage from "@/pages/safety/safety-chemicals";
+import SafetyLOTOPage from "@/pages/safety/safety-loto";
+import SafetyProgramsPage from "@/pages/safety/safety-programs";
+import SafetyTrainingPage from "@/pages/safety/safety-training";
+import SafetyOSHA300Page from "@/pages/safety/safety-osha300";
 import { DriverLayout } from "@/components/layout/driver-layout";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
@@ -318,6 +326,24 @@ export default function App() {
                     <Route path="/qc" element={<QCDashboardPage />} />
                     <Route path="/qc/inspections/:inspectionId" element={<QCInspectionDetailPage />} />
                     <Route path="/qc/mobile/:inspectionId" element={<QCMobilePage />} />
+                  </Route>
+
+                  {/* Safety Management — requires safety_management module */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="safety.view" requiredModule="safety_management" />
+                    }
+                  >
+                    <Route path="/safety" element={<SafetyDashboardPage />} />
+                    <Route path="/safety/programs" element={<SafetyProgramsPage />} />
+                    <Route path="/safety/training" element={<SafetyTrainingPage />} />
+                    <Route path="/safety/inspections/new" element={<SafetyInspectPage />} />
+                    <Route path="/safety/inspect/:inspectionId" element={<SafetyInspectPage />} />
+                    <Route path="/safety/incidents" element={<SafetyIncidentPage />} />
+                    <Route path="/safety/incidents/new" element={<SafetyIncidentPage />} />
+                    <Route path="/safety/chemicals" element={<SafetyChemicalsPage />} />
+                    <Route path="/safety/loto" element={<SafetyLOTOPage />} />
+                    <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
                   </Route>
 
                   {/* Delivery & Logistics — requires driver_delivery module */}

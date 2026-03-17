@@ -66,6 +66,12 @@ AVAILABLE_MODULES: dict[str, dict] = {
         "default_enabled": False,
         "locked": False,
     },
+    "safety_management": {
+        "label": "Safety Management",
+        "description": "OSHA compliance, training records, equipment inspections, incident reporting, SDS management, and audit preparation.",
+        "default_enabled": False,
+        "locked": False,
+    },
 }
 
 

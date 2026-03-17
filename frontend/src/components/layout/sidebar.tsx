@@ -60,6 +60,19 @@ const navigation: NavEntry[] = [
   },
   { label: "Projects", href: "/projects", permission: "projects.view", module: "project_management" },
   {
+    label: "Safety",
+    items: [
+      { label: "Dashboard", href: "/safety", permission: "safety.view", module: "safety_management" },
+      { label: "Programs", href: "/safety/programs", permission: "safety.view", module: "safety_management" },
+      { label: "Training", href: "/safety/training", permission: "safety.view", module: "safety_management" },
+      { label: "Inspections", href: "/safety/inspections/new", permission: "safety.view", module: "safety_management" },
+      { label: "Incidents", href: "/safety/incidents", permission: "safety.view", module: "safety_management" },
+      { label: "SDS / Chemicals", href: "/safety/chemicals", permission: "safety.view", module: "safety_management" },
+      { label: "LOTO Procedures", href: "/safety/loto", permission: "safety.view", module: "safety_management" },
+      { label: "OSHA 300 Log", href: "/safety/osha-300", permission: "safety.view", module: "safety_management" },
+    ],
+  },
+  {
     label: "Inventory",
     items: [
       { label: "Overview", href: "/inventory", permission: "inventory.view", module: "inventory" },
