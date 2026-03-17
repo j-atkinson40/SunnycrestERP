@@ -44,6 +44,9 @@ class CustomerPayment(Base):
     sage_payment_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )
+    qbo_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
+    )
 
     # Audit
     created_by: Mapped[str | None] = mapped_column(

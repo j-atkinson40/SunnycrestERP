@@ -63,6 +63,9 @@ class VendorBill(Base):
     # --- Other ---
     payment_terms: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qbo_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
+    )
     approved_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )

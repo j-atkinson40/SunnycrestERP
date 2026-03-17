@@ -40,6 +40,9 @@ class VendorPayment(Base):
         String(100), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qbo_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
+    )
 
     # --- Audit trail ---
     created_by: Mapped[str | None] = mapped_column(
