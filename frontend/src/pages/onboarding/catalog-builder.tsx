@@ -315,46 +315,86 @@ export default function CatalogBuilder() {
 
   useEffect(() => {
     intelligenceService.getIntelligence().then((intel) => {
-      if (!intel || !intel.analysis_result) return;
+      if (!intel || intel.scrape_status !== "completed") return;
 
-      const acceptedVaults = intel.suggestions.filter(
-        (s) => s.suggestion_type === "vault_line" && s.status === "accepted",
+      const preselectedNames = new Set<string>();
+
+      // Strategy 1: Use suggestions (accepted or pending)
+      const vaultSuggestions = intel.suggestions.filter(
+        (s) => s.suggestion_type === "vault_line" && s.status !== "dismissed",
       );
 
-      if (acceptedVaults.length > 0) {
+      if (vaultSuggestions.length > 0) {
         setUseWilbert(true);
         setSellBurialVaults(true);
 
-        const preselectedNames = new Set<string>();
-
         setWilbertLines((prev) =>
           prev.map((line) => {
-            const match = acceptedVaults.find(
-              (s) =>
-                s.suggestion_key
-                  .replace("vault_line_", "")
-                  .replaceAll("_", " ")
-                  .toLowerCase() === line.name.toLowerCase(),
-            );
+            const lineLower = line.name.toLowerCase();
+            const match = vaultSuggestions.find((s) => {
+              const keyNorm = s.suggestion_key.replace("vault_line_", "").replaceAll("_", " ").toLowerCase();
+              const labelNorm = s.suggestion_label.toLowerCase();
+              return lineLower === keyNorm || lineLower === labelNorm || lineLower.includes(keyNorm) || keyNorm.includes(lineLower);
+            });
             if (match) {
               preselectedNames.add(line.name);
-              return {
-                ...line,
-                selected: match.confidence >= 0.85,
-              };
+              return { ...line, selected: match.confidence >= 0.85 };
             }
             return line;
           }),
         );
-
-        setWebsitePreselected(preselectedNames);
       }
 
-      // Pre-enable urns if detected
-      const urnSuggestion = intel.suggestions.find(
-        (s) => s.suggestion_key === "urns" && s.status === "accepted",
+      // Strategy 2: Also check raw analysis_result for vault lines
+      const analysis = intel.analysis_result;
+      if (analysis?.vault_lines && Array.isArray(analysis.vault_lines)) {
+        const detectedVaults = analysis.vault_lines.filter(
+          (v: { name: string; confidence: number }) => v.confidence >= 0.70,
+        );
+        if (detectedVaults.length > 0 && !vaultSuggestions.length) {
+          setUseWilbert(true);
+          setSellBurialVaults(true);
+          setWilbertLines((prev) =>
+            prev.map((line) => {
+              const lineLower = line.name.toLowerCase();
+              const match = detectedVaults.find((v: { name: string; confidence: number }) =>
+                lineLower.includes(v.name.toLowerCase()) || v.name.toLowerCase().includes(lineLower),
+              );
+              if (match) {
+                preselectedNames.add(line.name);
+                return { ...line, selected: match.confidence >= 0.85 };
+              }
+              return line;
+            }),
+          );
+        }
+      }
+
+      // Check for product lines in suggestions and analysis
+      const productSuggestions = intel.suggestions.filter(
+        (s) => s.suggestion_type === "product_line" && s.status !== "dismissed",
       );
-      if (urnSuggestion) setSellUrns(true);
+      for (const s of productSuggestions) {
+        preselectedNames.add(s.suggestion_key);
+      }
+
+      // Pre-enable urns
+      const hasUrns = intel.suggestions.some(
+        (s) => (s.suggestion_key === "urns" || s.suggestion_key.startsWith("urn_")) && s.status !== "dismissed",
+      ) || (analysis?.urn_categories && Array.isArray(analysis.urn_categories) && analysis.urn_categories.some(
+        (u: { confidence: number }) => u.confidence >= 0.70,
+      ));
+      if (hasUrns) setSellUrns(true);
+
+      // Pre-enable urn vaults
+      const hasUrnVaults = intel.suggestions.some(
+        (s) => s.suggestion_key === "urn_vaults" && s.status !== "dismissed",
+      ) || (analysis?.product_lines && Array.isArray(analysis.product_lines) && analysis.product_lines.some(
+        (p: { name: string; confidence: number }) => p.name.toLowerCase().includes("urn vault") && p.confidence >= 0.70,
+      ));
+      if (hasUrnVaults) setSellUrnVaults(true);
+
+      setWebsitePreselected(preselectedNames);
     }).catch(() => {});
   }, []);
 
