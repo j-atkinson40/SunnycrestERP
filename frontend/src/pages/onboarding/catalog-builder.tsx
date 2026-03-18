@@ -87,9 +87,7 @@ const WILBERT_LINES: VaultLine[] = [
   { name: "Monarch", prefix: "MRC" },
   { name: "Graveliner", prefix: "GVL" },
   { name: "Graveliner (Social Service)", prefix: "GSS" },
-  { name: 'Loved & Cherished 19"', prefix: "LC19" },
-  { name: 'Loved & Cherished 24"', prefix: "LC24" },
-  { name: 'Loved & Cherished 31"', prefix: "LC31" },
+  { name: "Loved & Cherished", prefix: "LC" },
 ].map(({ name, prefix }) => ({
   name,
   selected: false,
@@ -109,6 +107,11 @@ const VAULT_LINE_SUB_VARIANTS: Record<string, SubVariant[]> = {
     { label: "White", enabled: true, skuSuffix: "WHT" },
     { label: "Gold", enabled: true, skuSuffix: "GLD" },
   ],
+  "Loved & Cherished": [
+    { label: '19"', enabled: true, skuSuffix: "19" },
+    { label: '24"', enabled: true, skuSuffix: "24" },
+    { label: '31"', enabled: true, skuSuffix: "31" },
+  ],
 };
 
 const URN_VAULT_ITEMS: SimpleProduct[] = [
@@ -123,15 +126,6 @@ const URN_VAULT_ITEMS: SimpleProduct[] = [
     subVariants: [
       { label: "Cream & Gold", enabled: true, skuSuffix: "CG" },
       { label: "White & Silver", enabled: true, skuSuffix: "WS" },
-    ],
-  },
-  {
-    name: "Tribute",
-    selected: false,
-    price: "",
-    subVariants: [
-      { label: "Gray", enabled: true, skuSuffix: "GRY" },
-      { label: "White", enabled: true, skuSuffix: "WHT" },
     ],
   },
   {
