@@ -267,5 +267,16 @@ def onboard_tenant(
         from app.services.ftc_compliance_service import seed_ftc_price_list
         seed_ftc_price_list(db, company.id)
 
+    # Initialize onboarding checklist
+    try:
+        from app.services.onboarding_service import initialize_checklist
+        preset = data.vertical or "manufacturing"
+        initialize_checklist(db, company.id, preset)
+        result["onboarding_initialized"] = True
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to initialize onboarding: {e}")
+        result["onboarding_initialized"] = False
+
     db.commit()
     return result

@@ -13,12 +13,12 @@ import type {
 // --- Checklist ---
 
 export async function getChecklist(): Promise<OnboardingChecklist> {
-  const { data } = await apiClient.get("/onboarding/checklist");
+  const { data } = await apiClient.get("/tenant-onboarding/checklist");
   return data;
 }
 
 export async function initializeChecklist(): Promise<OnboardingChecklist> {
-  const { data } = await apiClient.post("/onboarding/checklist/initialize");
+  const { data } = await apiClient.post("/tenant-onboarding/checklist/initialize");
   return data;
 }
 
@@ -26,7 +26,7 @@ export async function updateChecklistItem(
   itemKey: string,
   update: { status?: string; skipped?: boolean }
 ): Promise<void> {
-  await apiClient.patch(`/onboarding/checklist/items/${itemKey}`, update);
+  await apiClient.patch(`/tenant-onboarding/checklist/items/${itemKey}`, update);
 }
 
 export async function completeChecklistItem(itemKey: string): Promise<void> {
@@ -36,7 +36,7 @@ export async function completeChecklistItem(itemKey: string): Promise<void> {
 // --- Scenarios ---
 
 export async function getScenarios(): Promise<OnboardingScenario[]> {
-  const { data } = await apiClient.get("/onboarding/scenarios");
+  const { data } = await apiClient.get("/tenant-onboarding/scenarios");
   return data;
 }
 
@@ -68,7 +68,7 @@ export async function getProductLibrary(params?: {
   preset?: string;
   category?: string;
 }): Promise<ProductTemplate[]> {
-  const { data } = await apiClient.get("/onboarding/product-library", { params });
+  const { data } = await apiClient.get("/tenant-onboarding/product-library", { params });
   return data;
 }
 
@@ -76,7 +76,7 @@ export async function importProductTemplates(
   templateIds: string[],
   products: ProductImportItem[]
 ): Promise<{ imported_count: number }> {
-  const { data } = await apiClient.post("/onboarding/product-library/import", {
+  const { data } = await apiClient.post("/tenant-onboarding/product-library/import", {
     template_ids: templateIds,
     products,
   });
@@ -89,7 +89,7 @@ export async function createDataImport(
   importType: string,
   sourceFormat: string
 ): Promise<DataImport> {
-  const { data } = await apiClient.post("/onboarding/imports", {
+  const { data } = await apiClient.post("/tenant-onboarding/imports", {
     import_type: importType,
     source_format: sourceFormat,
   });
@@ -97,7 +97,7 @@ export async function createDataImport(
 }
 
 export async function listDataImports(): Promise<DataImport[]> {
-  const { data } = await apiClient.get("/onboarding/imports");
+  const { data } = await apiClient.get("/tenant-onboarding/imports");
   return data;
 }
 
@@ -129,21 +129,21 @@ export async function requestWhiteGlove(request: {
   description: string;
   contact_email: string;
 }): Promise<DataImport> {
-  const { data } = await apiClient.post("/onboarding/imports/white-glove", request);
+  const { data } = await apiClient.post("/tenant-onboarding/imports/white-glove", request);
   return data;
 }
 
 // --- Integration Setup ---
 
 export async function listIntegrations(): Promise<IntegrationSetup[]> {
-  const { data } = await apiClient.get("/onboarding/integrations");
+  const { data } = await apiClient.get("/tenant-onboarding/integrations");
   return data;
 }
 
 export async function createIntegration(
   integrationType: string
 ): Promise<IntegrationSetup> {
-  const { data } = await apiClient.post("/onboarding/integrations", {
+  const { data } = await apiClient.post("/tenant-onboarding/integrations", {
     integration_type: integrationType,
   });
   return data;
@@ -163,29 +163,29 @@ export async function updateIntegration(
 // --- Help ---
 
 export async function dismissHelp(helpKey: string): Promise<void> {
-  await apiClient.post("/onboarding/help/dismiss", { help_key: helpKey });
+  await apiClient.post("/tenant-onboarding/help/dismiss", { help_key: helpKey });
 }
 
 export async function getDismissedHelp(): Promise<string[]> {
-  const { data } = await apiClient.get("/onboarding/help/dismissed");
+  const { data } = await apiClient.get("/tenant-onboarding/help/dismissed");
   return data;
 }
 
 // --- Check-in Call ---
 
 export async function scheduleCheckInCall(scheduled: boolean): Promise<void> {
-  await apiClient.post("/onboarding/check-in-call", { scheduled });
+  await apiClient.post("/tenant-onboarding/check-in-call", { scheduled });
 }
 
 // --- Admin Analytics ---
 
 export async function getOnboardingAnalytics(): Promise<OnboardingAnalytics> {
-  const { data } = await apiClient.get("/admin/onboarding/analytics");
+  const { data } = await apiClient.get("/admin/tenant-onboarding/analytics");
   return data;
 }
 
 export async function listWhiteGloveImports(status?: string): Promise<DataImport[]> {
-  const { data } = await apiClient.get("/admin/onboarding/imports", {
+  const { data } = await apiClient.get("/admin/tenant-onboarding/imports", {
     params: status ? { status } : undefined,
   });
   return data;
