@@ -321,7 +321,8 @@ export default function CatalogBuilder() {
       if (intel) {
         const vl = intel.analysis_result?.vault_lines;
         const vlPreview = vl ? (Array.isArray(vl) ? JSON.stringify(vl.slice(0,3)) : JSON.stringify(Object.keys(vl).slice(0,5))) : 'none';
-        setDebugIntel(`Status: ${intel.scrape_status}, Suggestions: ${intel.suggestions?.length ?? 0}, Analysis: ${intel.analysis_result ? 'yes' : 'no'}, VaultLines: ${vlPreview}`);
+        const errMsg = (intel as Record<string, unknown>).error_message ?? 'none';
+        setDebugIntel(`Status: ${intel.scrape_status}, Error: ${errMsg}, Suggestions: ${intel.suggestions?.length ?? 0}, Analysis: ${intel.analysis_result ? 'yes' : 'no'}, VaultLines: ${vlPreview}`);
       } else {
         setDebugIntel("No intelligence data returned (null)");
       }
