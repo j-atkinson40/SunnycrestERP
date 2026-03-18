@@ -175,42 +175,57 @@ def delete_tenant(
 
     tenant_name = company.name
 
-    # Discover all tables with FK references to companies and delete in order.
-    # Using raw SQL with CASCADE-aware deletion.
-    fk_rows = db.execute(text("""
-        SELECT tc.table_name, kcu.column_name
-        FROM information_schema.table_constraints tc
-        JOIN information_schema.key_column_usage kcu
-            ON tc.constraint_name = kcu.constraint_name
-            AND tc.table_schema = kcu.table_schema
-        JOIN information_schema.constraint_column_usage ccu
-            ON tc.constraint_name = ccu.constraint_name
-            AND tc.table_schema = ccu.table_schema
-        WHERE tc.constraint_type = 'FOREIGN KEY'
-          AND ccu.table_name = 'companies'
-          AND ccu.column_name = 'id'
-        ORDER BY tc.table_name
-    """)).fetchall()
+    # Use a raw connection to defer all FK constraints, delete everything,
+    # then re-enable constraints — all in one transaction.
+    connection = db.get_bind().connect()
+    try:
+        trans = connection.begin()
 
-    # Delete from all referencing tables first
-    deleted_counts: dict[str, int] = {}
-    for table_name, col_name in fk_rows:
-        if table_name == "companies":
-            continue  # self-ref, handle last
-        try:
-            result = db.execute(
+        # Defer all FK constraints for this transaction
+        connection.execute(text("SET CONSTRAINTS ALL DEFERRED"))
+
+        # Discover all tables with FK references to companies
+        fk_rows = connection.execute(text("""
+            SELECT DISTINCT tc.table_name, kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage ccu
+                ON tc.constraint_name = ccu.constraint_name
+                AND tc.table_schema = ccu.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_name = 'companies'
+              AND ccu.column_name = 'id'
+            ORDER BY tc.table_name
+        """)).fetchall()
+
+        deleted_counts: dict[str, int] = {}
+        for table_name, col_name in fk_rows:
+            if table_name == "companies":
+                continue
+            result = connection.execute(
                 text(f'DELETE FROM "{table_name}" WHERE "{col_name}" = :tid'),
                 {"tid": tenant_id},
             )
             if result.rowcount > 0:
                 deleted_counts[table_name] = result.rowcount
-        except Exception:
-            # Some tables may have their own FK deps that were already cleaned
-            db.rollback()
 
-    # Delete the company record itself
-    db.execute(text("DELETE FROM companies WHERE id = :tid"), {"tid": tenant_id})
-    db.commit()
+        # Delete the company itself
+        connection.execute(
+            text("DELETE FROM companies WHERE id = :tid"),
+            {"tid": tenant_id},
+        )
+
+        trans.commit()
+    except Exception as e:
+        trans.rollback()
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+    finally:
+        connection.close()
+
+    # Expire SQLAlchemy session cache so it doesn't hold stale refs
+    db.expire_all()
 
     return {
         "detail": f'Tenant "{tenant_name}" permanently deleted',
