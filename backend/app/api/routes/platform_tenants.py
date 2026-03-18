@@ -190,6 +190,9 @@ def delete_tenant(
 
     # Group 1: Leaf tables (no other tenant table references these)
     LEAF_TABLES = [
+        # Website intelligence
+        ("website_intelligence_suggestions", "tenant_id"),
+        ("tenant_website_intelligence", "tenant_id"),
         # Onboarding
         ("onboarding_help_dismissals", "tenant_id"),
         ("onboarding_scenario_steps", "tenant_id"),
