@@ -229,8 +229,11 @@ export default function AdminTenantDetail() {
       await deleteTenant(tenantId);
       toast.success(`Tenant "${tenant.name}" permanently deleted`);
       navigate("/tenants");
-    } catch {
-      toast.error("Failed to delete tenant");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      const detail = axiosErr?.response?.data?.detail || "Unknown error";
+      toast.error(`Failed to delete tenant: ${detail}`);
+      console.error("Delete tenant error:", err);
     }
   }
 

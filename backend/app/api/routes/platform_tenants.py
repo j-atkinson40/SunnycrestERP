@@ -169,17 +169,22 @@ def delete_tenant(
 
     from app.models.company import Company
 
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Use the ORM session to verify the tenant exists, then close it
+    # so it doesn't interfere with raw SQL operations.
     company = db.query(Company).filter(Company.id == tenant_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     tenant_name = company.name
+    db.expunge(company)  # detach from session
 
-    # Multi-pass deletion: keep trying to delete from referencing tables
-    # until nothing is left. Each pass deletes what it can; FK violations
-    # are expected and skipped via savepoints. After enough passes all
-    # child records are gone and the company can be deleted.
-    connection = db.get_bind().connect()
+    # Use a fresh raw connection for the delete operation
+    engine = db.get_bind()
+    connection = engine.connect()
+    deleted_counts: dict[str, int] = {}
     try:
         trans = connection.begin()
 
@@ -203,10 +208,13 @@ def delete_tenant(
             (t, c) for t, c in fk_rows if t != "companies"
         ]
 
-        deleted_counts: dict[str, int] = {}
+        logger.info(
+            "Deleting tenant %s (%s) — %d referencing tables found",
+            tenant_id, tenant_name, len(tables_to_clean),
+        )
 
-        # Run multiple passes — each pass deletes whatever isn't blocked
-        for _pass in range(5):
+        # Run multiple passes — each pass deletes whatever isn't blocked by FKs
+        for pass_num in range(10):
             progress = False
             for table_name, col_name in tables_to_clean:
                 sp = connection.begin_nested()  # SAVEPOINT
@@ -221,9 +229,14 @@ def delete_tenant(
                             deleted_counts.get(table_name, 0) + result.rowcount
                         )
                         progress = True
+                        logger.info(
+                            "  Pass %d: deleted %d from %s",
+                            pass_num + 1, result.rowcount, table_name,
+                        )
                 except Exception:
                     sp.rollback()
             if not progress:
+                logger.info("  Pass %d: no progress — done cleaning", pass_num + 1)
                 break
 
         # Delete the company itself
@@ -233,10 +246,16 @@ def delete_tenant(
         )
 
         trans.commit()
+        logger.info("Tenant %s deleted successfully", tenant_id)
     except Exception as e:
-        trans.rollback()
+        logger.exception("Failed to delete tenant %s", tenant_id)
+        try:
+            trans.rollback()
+        except Exception:
+            pass
         raise HTTPException(
-            status_code=500, detail=f"Delete failed: {str(e)}"
+            status_code=500,
+            detail=f"Delete failed: {type(e).__name__}: {str(e)[:500]}",
         )
     finally:
         connection.close()
