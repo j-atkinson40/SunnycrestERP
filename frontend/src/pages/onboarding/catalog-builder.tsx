@@ -25,11 +25,18 @@ interface VaultLine {
   variants: VaultVariant[];
 }
 
+interface SubVariant {
+  label: string;
+  enabled: boolean;
+  skuSuffix: string;
+}
+
 interface SimpleProduct {
   name: string;
   selected: boolean;
   price: string;
   category?: string;
+  subVariants?: SubVariant[];
 }
 
 interface RentalItem {
@@ -72,10 +79,8 @@ const WILBERT_LINES: VaultLine[] = [
   { name: "Stainless Steel Triune", prefix: "SST" },
   { name: "Cameo Rose Triune", prefix: "CRT" },
   { name: "Veteran Triune", prefix: "VTR" },
-  { name: "White Tribute", prefix: "WTR" },
-  { name: "Gray Tribute", prefix: "GTR" },
-  { name: "White Venetian", prefix: "WVN" },
-  { name: "Gold Venetian", prefix: "GVN" },
+  { name: "Tribute", prefix: "TRB" },
+  { name: "Venetian", prefix: "VEN" },
   { name: "Continental", prefix: "CON" },
   { name: "Salute", prefix: "SAL" },
   { name: "Monticello", prefix: "MON" },
@@ -94,15 +99,50 @@ const WILBERT_LINES: VaultLine[] = [
   variants: defaultVariants(),
 }));
 
+// Color/style sub-variants for vault lines that come in multiple options
+const VAULT_LINE_SUB_VARIANTS: Record<string, SubVariant[]> = {
+  "Tribute": [
+    { label: "White", enabled: true, skuSuffix: "WHT" },
+    { label: "Gray", enabled: true, skuSuffix: "GRY" },
+  ],
+  "Venetian": [
+    { label: "White", enabled: true, skuSuffix: "WHT" },
+    { label: "Gold", enabled: true, skuSuffix: "GLD" },
+  ],
+};
+
 const URN_VAULT_ITEMS: SimpleProduct[] = [
   { name: "Bronze Triune", selected: false, price: "" },
   { name: "Copper Triune", selected: false, price: "" },
   { name: "Stainless Steel Triune", selected: false, price: "" },
   { name: "Cameo Rose Triune", selected: false, price: "" },
-  { name: "Universal (Cream & Gold or White & Silver)", selected: false, price: "" },
-  { name: "Gray Tribute", selected: false, price: "" },
-  { name: "White Venetian", selected: false, price: "" },
-  { name: "Gold Venetian", selected: false, price: "" },
+  {
+    name: "Universal",
+    selected: false,
+    price: "",
+    subVariants: [
+      { label: "Cream & Gold", enabled: true, skuSuffix: "CG" },
+      { label: "White & Silver", enabled: true, skuSuffix: "WS" },
+    ],
+  },
+  {
+    name: "Tribute",
+    selected: false,
+    price: "",
+    subVariants: [
+      { label: "Gray", enabled: true, skuSuffix: "GRY" },
+      { label: "White", enabled: true, skuSuffix: "WHT" },
+    ],
+  },
+  {
+    name: "Venetian",
+    selected: false,
+    price: "",
+    subVariants: [
+      { label: "White", enabled: true, skuSuffix: "WHT" },
+      { label: "Gold", enabled: true, skuSuffix: "GLD" },
+    ],
+  },
   { name: "Salute", selected: false, price: "" },
   { name: "Monticello", selected: false, price: "" },
   { name: "Graveliner", selected: false, price: "" },
@@ -161,6 +201,44 @@ function PriceInput({
   );
 }
 
+// ── Sub-variant toggles ─────────────────────────────────────────
+
+function SubVariantToggles({
+  variants,
+  onChange,
+}: {
+  variants: SubVariant[];
+  onChange: (updated: SubVariant[]) => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2 pl-7">
+      <span className="text-xs text-muted-foreground self-center mr-1">Variants:</span>
+      {variants.map((sv, i) => (
+        <button
+          key={sv.label}
+          type="button"
+          onClick={() => {
+            const next = [...variants];
+            next[i] = { ...next[i], enabled: !next[i].enabled };
+            onChange(next);
+          }}
+          className={cn(
+            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+            sv.enabled
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-muted text-muted-foreground line-through opacity-50",
+          )}
+        >
+          {sv.label}
+        </button>
+      ))}
+      <span className="text-[10px] text-muted-foreground self-center">
+        ({variants.filter((v) => v.enabled).length} SKU{variants.filter((v) => v.enabled).length !== 1 ? "s" : ""})
+      </span>
+    </div>
+  );
+}
+
 // ── Progress bar ──────────────────────────────────────────────────
 
 function ProgressBar({ current, total }: { current: number; total: number }) {
@@ -204,6 +282,9 @@ export default function CatalogBuilder() {
   const [useWilbert, setUseWilbert] = useState(false);
   const [useOwnLines, setUseOwnLines] = useState(false);
   const [wilbertLines, setWilbertLines] = useState<VaultLine[]>(WILBERT_LINES);
+  const [vaultSubVariants, setVaultSubVariants] = useState<Record<string, SubVariant[]>>(
+    () => JSON.parse(JSON.stringify(VAULT_LINE_SUB_VARIANTS)),
+  );
   const [ownLines, setOwnLines] = useState<VaultLine[]>([]);
 
   // Step 1 - Urn Vaults
@@ -501,7 +582,17 @@ export default function CatalogBuilder() {
         </div>
 
         {line.selected && (
-          <div className="mt-3 space-y-3 pl-7">
+          <div className="mt-3 space-y-3">
+            {/* Color/style sub-variants */}
+            {vaultSubVariants[line.name] && (
+              <SubVariantToggles
+                variants={vaultSubVariants[line.name]}
+                onChange={(updated) =>
+                  setVaultSubVariants((prev) => ({ ...prev, [line.name]: updated }))
+                }
+              />
+            )}
+            <div className="space-y-3 pl-7">
             {removable && (
               <div className="flex items-center gap-2">
                 <Label className="text-xs text-muted-foreground w-24">SKU Prefix</Label>
@@ -544,6 +635,7 @@ export default function CatalogBuilder() {
                 </div>
               </div>
             )}
+            </div>
           </div>
         )}
       </div>
@@ -723,52 +815,66 @@ export default function CatalogBuilder() {
             <div className="space-y-3">
               {urnVaults.map((item, idx) => (
                 <div
-                  key={item.name}
+                  key={`${item.name}-${idx}`}
                   className={cn(
-                    "flex items-center gap-4 rounded-lg border p-3 transition-colors",
+                    "rounded-lg border p-3 transition-colors",
                     item.selected ? "border-primary/30 bg-primary/5" : "border-border",
                   )}
                 >
-                  <input
-                    type="checkbox"
-                    checked={item.selected}
-                    onChange={(e) => {
-                      setUrnVaults((prev) => {
-                        const next = [...prev];
-                        next[idx] = { ...next[idx], selected: e.target.checked };
-                        return next;
-                      });
-                    }}
-                    className="h-4 w-4 rounded accent-primary"
-                  />
-                  {item.name ? (
-                    <span className="flex-1 font-medium text-sm">{item.name}</span>
-                  ) : (
-                    <Input
-                      value={item.name}
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="checkbox"
+                      checked={item.selected}
                       onChange={(e) => {
                         setUrnVaults((prev) => {
                           const next = [...prev];
-                          next[idx] = { ...next[idx], name: e.target.value };
+                          next[idx] = { ...next[idx], selected: e.target.checked };
                           return next;
                         });
                       }}
-                      placeholder="Custom urn vault name"
-                      className="flex-1 max-w-48"
-                      autoFocus
+                      className="h-4 w-4 rounded accent-primary"
                     />
-                  )}
-                  {item.selected && (
-                    <PriceInput
-                      value={item.price}
-                      onChange={(val) => {
+                    {item.name ? (
+                      <span className="flex-1 font-medium text-sm">{item.name}</span>
+                    ) : (
+                      <Input
+                        value={item.name}
+                        onChange={(e) => {
+                          setUrnVaults((prev) => {
+                            const next = [...prev];
+                            next[idx] = { ...next[idx], name: e.target.value };
+                            return next;
+                          });
+                        }}
+                        placeholder="Custom urn vault name"
+                        className="flex-1 max-w-48"
+                        autoFocus
+                      />
+                    )}
+                    {item.selected && (
+                      <PriceInput
+                        value={item.price}
+                        onChange={(val) => {
+                          setUrnVaults((prev) => {
+                            const next = [...prev];
+                            next[idx] = { ...next[idx], price: val };
+                            return next;
+                          });
+                        }}
+                        className="w-32"
+                      />
+                    )}
+                  </div>
+                  {item.selected && item.subVariants && (
+                    <SubVariantToggles
+                      variants={item.subVariants}
+                      onChange={(updated) => {
                         setUrnVaults((prev) => {
                           const next = [...prev];
-                          next[idx] = { ...next[idx], price: val };
+                          next[idx] = { ...next[idx], subVariants: updated };
                           return next;
                         });
                       }}
-                      className="w-32"
                     />
                   )}
                 </div>
