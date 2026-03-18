@@ -10,6 +10,7 @@ from app.api.deps import get_current_user, require_module, require_permission
 from app.database import get_db
 from app.models.user import User
 from app.schemas.fh_case import CremationStatusUpdate
+from app.schemas.first_call import FirstCallExtractionRequest
 from app.services import case_service
 from app.services import fh_invoice_service
 from app.services import obituary_service
@@ -238,6 +239,26 @@ def get_case_board(
 ):
     """Get kanban board view of active cases."""
     return case_service.get_case_board(db, current_user.company_id)
+
+
+# ---------------------------------------------------------------------------
+# First Call AI extraction (literal path — before /cases/{case_id})
+# ---------------------------------------------------------------------------
+
+
+@router.post("/extract-first-call")
+def extract_first_call_endpoint(
+    data: FirstCallExtractionRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Extract structured first call data from natural language text."""
+    from app.services.first_call_extraction_service import extract_first_call
+
+    try:
+        result = extract_first_call(data.text, data.existing_values)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
