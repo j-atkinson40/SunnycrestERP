@@ -160,38 +160,48 @@ def get_extension_suggestions(
 
 @router.get("/website-intelligence/debug-network")
 def debug_network():
-    """Temporary endpoint to test outbound HTTP from Railway."""
-    import requests
+    """Temporary endpoint: run the FULL intelligence pipeline synchronously."""
     import traceback
     results = {}
 
-    # Test 1: Google (should always work)
+    # Test 1: Scrape
     try:
-        r = requests.get("https://www.google.com", timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        results["google"] = f"OK: {r.status_code}"
+        from app.services.website_scraper_service import scrape_website
+        scrape_result = scrape_website("https://www.sunnycrest.com")
+        results["scrape"] = f"OK: {len(scrape_result['pages_scraped'])} pages, {len(scrape_result['raw_content'])} chars"
+        results["scrape_preview"] = scrape_result["raw_content"][:500]
     except Exception as e:
-        root = e
-        while root.__cause__ or root.__context__:
-            root = root.__cause__ or root.__context__
-        results["google"] = f"FAILED: {type(root).__name__}: {root}"
+        results["scrape"] = f"FAILED: {type(e).__name__}: {e}"
+        results["scrape_traceback"] = traceback.format_exc()[-500:]
+        return results
 
-    # Test 2: The actual target site
+    # Test 2: Analyze
     try:
-        r = requests.get("https://www.sunnycrest.com", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        results["sunnycrest"] = f"OK: {r.status_code}, {len(r.text)} bytes"
+        from app.services.website_analysis_service import analyze_website_content
+        analysis = analyze_website_content(scrape_result["raw_content"])
+        results["analyze"] = f"OK: {analysis['input_tokens']} in / {analysis['output_tokens']} out tokens"
+        results["analysis_keys"] = list(analysis["analysis"].keys()) if isinstance(analysis["analysis"], dict) else str(type(analysis["analysis"]))
+        # Show vault lines
+        a = analysis["analysis"]
+        results["vault_lines"] = a.get("vault_lines", "not found")
+        results["product_lines"] = a.get("product_lines", "not found")
+        results["summary"] = a.get("summary", "not found")
     except Exception as e:
-        root = e
-        while root.__cause__ or root.__context__:
-            root = root.__cause__ or root.__context__
-        results["sunnycrest"] = f"FAILED: {type(root).__name__}: {root}"
+        results["analyze"] = f"FAILED: {type(e).__name__}: {e}"
+        results["analyze_traceback"] = traceback.format_exc()[-500:]
+        return results
 
-    # Test 3: DNS resolution
+    # Test 3: DB write test
     try:
-        import socket
-        ip = socket.gethostbyname("www.sunnycrest.com")
-        results["dns"] = f"OK: www.sunnycrest.com -> {ip}"
+        from app.database import SessionLocal
+        from app.models.website_intelligence import TenantWebsiteIntelligence
+        db = SessionLocal()
+        # Just test we can query the table
+        count = db.query(TenantWebsiteIntelligence).count()
+        db.close()
+        results["db_table"] = f"OK: {count} records in tenant_website_intelligence"
     except Exception as e:
-        results["dns"] = f"FAILED: {type(e).__name__}: {e}"
+        results["db_table"] = f"FAILED: {type(e).__name__}: {e}"
 
     return results
 
