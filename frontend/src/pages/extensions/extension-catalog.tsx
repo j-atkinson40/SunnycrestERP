@@ -473,7 +473,30 @@ function ExtensionCard({
 
 // ── Main catalog page ──
 
+// Going Deeper fallback data for manufacturing vertical
+const GOING_DEEPER_FALLBACKS = [
+  {
+    key: "work_orders",
+    name: "Work Orders & Production Scheduling",
+    tagline:
+      "Create work orders, schedule production runs, and track labor allocation across your plant floor.",
+  },
+  {
+    key: "pour_events_batch_tickets",
+    name: "Pour Events, Batch Tickets & Cure Tracking",
+    tagline:
+      "Log every pour with batch traceability, track cure times, and generate batch certificates automatically.",
+  },
+  {
+    key: "full_qc_module",
+    name: "Full QC Module",
+    tagline:
+      "Define inspection checklists, record test results per batch, and enforce hold/release workflows before shipment.",
+  },
+];
+
 export default function ExtensionCatalogPage() {
+  const { company } = useAuth();
   const [extensions, setExtensions] = useState<ExtensionCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -655,6 +678,69 @@ export default function ExtensionCatalogPage() {
               ))}
             </div>
           )}
+
+          {/* Going Deeper section — manufacturing vertical only */}
+          {company?.vertical === "manufacturing" && (() => {
+            // Build list from catalog data or fallbacks
+            const goingDeeperExtensions = GOING_DEEPER_FALLBACKS.map((fb) => {
+              const catalogExt = extensions.find((e) => e.extension_key === fb.key);
+              return {
+                key: fb.key,
+                name: catalogExt?.name ?? fb.name,
+                tagline: catalogExt?.tagline ?? fb.tagline,
+                status: catalogExt?.status ?? "coming_soon",
+                installed: catalogExt?.installed ?? false,
+                installStatus: catalogExt?.install_status ?? null,
+                extensionKey: catalogExt?.extension_key ?? fb.key,
+              };
+            });
+
+            return (
+              <section className="mt-12">
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold text-gray-900">Going Deeper</h2>
+                  <p className="mt-2 text-sm text-gray-600">
+                    The core platform handles the business side of your operation. These
+                    extensions add production planning depth for operations that want more
+                    granularity. They're not required — many customers run successfully
+                    without them.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {goingDeeperExtensions.map((ext) => (
+                    <button
+                      key={ext.key}
+                      onClick={() => setSelectedKey(ext.extensionKey)}
+                      className="relative text-left rounded-lg border border-gray-200 p-5 transition-all hover:shadow-md hover:-translate-y-0.5"
+                    >
+                      <span className="absolute top-3 right-3 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                        Advanced
+                      </span>
+                      {ext.installed && ext.installStatus === "active" && (
+                        <span className="absolute top-3 right-24 flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          Installed
+                        </span>
+                      )}
+                      <h3 className="font-medium text-gray-900 pr-20">{ext.name}</h3>
+                      <p className="mt-1 text-sm text-gray-500">{ext.tagline}</p>
+                      {ext.status === "coming_soon" && (
+                        <span className="mt-3 inline-block text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                          Coming Soon
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
         </div>
       </div>
 

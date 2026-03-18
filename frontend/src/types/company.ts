@@ -16,6 +16,7 @@ export interface Company {
   payment_terms_options: string | null;
   email_from_name: string | null;
   email_from_address: string | null;
+  vertical: string | null;
   created_at: string;
 }
 

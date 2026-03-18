@@ -90,6 +90,9 @@ import FHDashboardPage from "@/pages/funeral-home/dashboard";
 import FHCompliancePage from "@/pages/funeral-home/ftc-compliance";
 import FHPriceListPage from "@/pages/funeral-home/price-list";
 import FHPortalPage from "@/pages/funeral-home/portal";
+import ProductionLog from "@/pages/production-log/production-log";
+import ProductionLogSummary from "@/pages/production-log/production-log-summary";
+import MobileProductionLog from "@/pages/production-log/mobile-production-log";
 import OnboardingHub from "@/pages/onboarding/onboarding-hub";
 import IntegrationSetupPage from "@/pages/onboarding/integration-setup";
 import OnboardingAnalyticsPage from "@/pages/onboarding/onboarding-analytics";
@@ -366,6 +369,16 @@ export default function App() {
                     <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
                   </Route>
 
+                  {/* Production Log — requires daily_production_log module */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="production_log.view" requiredModule="daily_production_log" />
+                    }
+                  >
+                    <Route path="/production-log" element={<ProductionLog />} />
+                    <Route path="/production-log/summary" element={<ProductionLogSummary />} />
+                  </Route>
+
                   {/* Work Orders & Production — requires work_orders module */}
                   <Route element={<ProtectedRoute requiredPermission="work_orders.view" requiredModule="work_orders" />}>
                     <Route path="/production" element={<ProductionBoardPage />} />
@@ -521,6 +534,11 @@ export default function App() {
               {/* Carrier portal — authenticated, minimal UI */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/carrier/deliveries" element={<CarrierDeliveriesPage />} />
+              </Route>
+
+              {/* Mobile production log — standalone, no sidebar */}
+              <Route element={<ProtectedRoute />}>
+                <Route path="/m/production-log" element={<MobileProductionLog />} />
               </Route>
 
               {/* Family portal — no auth required, standalone page */}

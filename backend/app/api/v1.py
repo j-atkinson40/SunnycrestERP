@@ -44,6 +44,7 @@ from app.api.routes import (
     onboarding,
     performance_notes,
     platform_fees,
+    production_log,
     products,
     projects,
     purchase_orders,
@@ -166,6 +167,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     platform_fees.router, prefix="/platform-fees", tags=["Platform Fees"]
+)
+v1_router.include_router(
+    production_log.router, prefix="/production", tags=["Production Log"]
 )
 v1_router.include_router(
     products.router, prefix="/products", tags=["Products"]

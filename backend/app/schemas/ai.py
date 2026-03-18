@@ -79,3 +79,22 @@ class AIAPParseResponse(BaseModel):
     success: bool
     result: AIAPParsedResult | None = None
     error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Manufacturing AI command schemas
+# ---------------------------------------------------------------------------
+
+
+class AIManufacturingCommandRequest(BaseModel):
+    prompt: str = Field(
+        ..., min_length=1, description="Natural language manufacturing command"
+    )
+
+
+class AIManufacturingCommandResponse(BaseModel):
+    success: bool
+    intent: str | None = None
+    data: dict | None = None
+    message: str | None = None
+    error: str | None = None

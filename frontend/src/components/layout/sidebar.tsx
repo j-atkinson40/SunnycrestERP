@@ -100,6 +100,7 @@ const navigation: NavEntry[] = [
       { label: "Quality Control", href: "/qc", permission: "qc.view", module: "inventory" },
     ],
   },
+  { label: "Production Log", href: "/production-log", permission: "production_log.view", module: "daily_production_log" },
   { label: "Extensions", href: "/extensions" },
   {
     label: "Administration",

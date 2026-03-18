@@ -50,6 +50,7 @@ PERMISSIONS: dict[str, list[str]] = {
     "fh_invoices": ["view", "create", "edit", "void"],
     "fh_compliance": ["view"],
     "fh_portal": ["manage"],
+    "production_log": ["view", "create", "edit", "delete"],
     "work_orders": ["view", "create", "edit", "delete"],
     "pour_events": ["view", "create", "edit"],
     "mix_designs": ["view", "create", "edit", "delete"],

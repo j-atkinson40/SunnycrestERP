@@ -228,8 +228,8 @@ def onboard_tenant(
     # Each vertical gets only the modules it needs
     VERTICAL_MODULES = {
         "funeral_home": ["core", "funeral_home"],
-        "manufacturing": ["core", "products", "inventory", "sales", "purchasing",
-                          "work_orders", "safety_management"],
+        "manufacturing": ["core", "sales", "purchasing", "inventory", "daily_production_log",
+                          "driver_delivery", "safety_management"],
     }
 
     result = {"tenant_id": company.id, "slug": company.slug}

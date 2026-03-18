@@ -1,9 +1,16 @@
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ManufacturingDashboard } from "@/components/dashboard/manufacturing-dashboard";
 
 export default function Dashboard() {
-  const { user, hasPermission } = useAuth();
+  const { user, company, hasPermission } = useAuth();
 
+  // Manufacturing vertical gets a dedicated dashboard
+  if (company?.vertical === "manufacturing") {
+    return <ManufacturingDashboard />;
+  }
+
+  // Default generic dashboard
   return (
     <div className="space-y-6">
       <div>

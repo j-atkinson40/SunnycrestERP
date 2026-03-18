@@ -62,6 +62,8 @@ from app.models.onboarding_help_dismissal import OnboardingHelpDismissal
 from app.models.onboarding_integration_setup import OnboardingIntegrationSetup
 from app.models.onboarding_scenario import OnboardingScenario
 from app.models.onboarding_scenario_step import OnboardingScenarioStep
+from app.models.production_log_entry import ProductionLogEntry
+from app.models.production_log_summary import ProductionLogSummary
 from app.models.product_catalog_template import ProductCatalogTemplate
 from app.models.performance_note import PerformanceNote
 from app.models.pour_event import PourEvent, PourEventWorkOrder
@@ -199,6 +201,8 @@ __all__ = [
     "PourEvent",
     "PourEventWorkOrder",
     "Product",
+    "ProductionLogEntry",
+    "ProductionLogSummary",
     "ProductCatalogTemplate",
     "ProductCategory",
     "Project",

@@ -266,17 +266,17 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "sort_order": 7,
     },
     {
-        "item_key": "run_work_order_scenario",
+        "item_key": "run_production_log_scenario",
         "tier": "should_complete",
         "category": "workflow",
-        "title": "Walk through production scheduling (5 min)",
+        "title": "Log your first day of production (2 min)",
         "description": (
-            "See how a work order flows from sales order through pour, cure, "
-            "QC, and into inventory."
+            "See how to record what you made today and watch inventory "
+            "update automatically."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 2,
         "action_type": "navigate",
-        "action_target": "/onboarding/scenarios/work_order_walkthrough",
+        "action_target": "/onboarding/scenarios/production_log_walkthrough",
         "sort_order": 8,
     },
     {
@@ -649,83 +649,51 @@ MANUFACTURING_SCENARIOS = [
         ],
     },
     {
-        "scenario_key": "work_order_walkthrough",
-        "title": "Production Scheduling Walkthrough",
+        "scenario_key": "production_log_walkthrough",
+        "title": "Daily Production Log Walkthrough",
         "description": (
-            "See how a work order flows from sales order through pour, "
-            "cure, QC, and into inventory."
+            "See how to record what you produced today and watch "
+            "inventory update automatically."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 2,
         "steps": [
             {
                 "step_number": 1,
-                "title": "View the production queue",
+                "title": "Open the production log",
                 "instruction": (
-                    "Open the production schedule to see pending work orders."
+                    "This is where you record what you produced today. "
+                    "It's simple — just pick a product and enter the quantity."
                 ),
-                "target_route": "/production",
+                "target_route": "/production-log",
                 "target_element": None,
                 "completion_trigger": "navigate",
-                "hint_text": "The production queue shows orders grouped by status.",
+                "hint_text": "The production log is your daily record of what was made.",
             },
             {
                 "step_number": 2,
-                "title": "Start a work order",
+                "title": "Log a product",
                 "instruction": (
-                    "Select a pending work order and click 'Start Production' "
-                    "to move it to the pour stage."
+                    "Select a product from the dropdown, enter how many you "
+                    "produced, and click 'Log Production'. Watch the inventory "
+                    "count update automatically."
                 ),
-                "target_route": "/production",
-                "target_element": "button[data-id='start-production']",
-                "completion_trigger": "click",
-                "hint_text": "Click on a work order row to expand it.",
+                "target_route": "/production-log",
+                "target_element": None,
+                "completion_trigger": "field_filled",
+                "hint_text": "Pick any product and enter a quantity to see it in action.",
             },
             {
                 "step_number": 3,
-                "title": "Record the pour",
+                "title": "That's it — production logged",
                 "instruction": (
-                    "Enter the pour details — concrete mix, batch number, "
-                    "and operator."
+                    "Every entry updates your inventory automatically. At month "
+                    "end, the production summary feeds your NPCA audit records. "
+                    "No work orders needed."
                 ),
-                "target_route": "/production",
-                "target_element": None,
-                "completion_trigger": "field_filled",
-                "hint_text": "The pour form tracks mix design and batch for traceability.",
-            },
-            {
-                "step_number": 4,
-                "title": "Mark curing complete",
-                "instruction": (
-                    "After the curing period, mark the work order as cured."
-                ),
-                "target_route": "/production",
-                "target_element": None,
-                "completion_trigger": "click",
-                "hint_text": "Curing time varies by product — the system tracks the minimum.",
-            },
-            {
-                "step_number": 5,
-                "title": "Complete QC inspection",
-                "instruction": (
-                    "Run through the QC checklist — dimensions, finish, "
-                    "and structural checks."
-                ),
-                "target_route": "/production",
-                "target_element": None,
-                "completion_trigger": "click",
-                "hint_text": "QC checklists are configured per product type.",
-            },
-            {
-                "step_number": 6,
-                "title": "Move to inventory",
-                "instruction": (
-                    "The finished product moves into inventory and is available "
-                    "for delivery scheduling."
-                ),
-                "target_route": "/inventory",
+                "target_route": "/production-log",
                 "target_element": None,
                 "completion_trigger": "navigate",
-                "hint_text": "Inventory levels update automatically after QC passes.",
+                "hint_text": "You can always come back and edit or add more entries.",
             },
         ],
     },

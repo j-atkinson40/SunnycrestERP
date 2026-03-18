@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_module, require_permission
 from app.database import get_db
+from app.models.customer import Customer
 from app.models.product import Product
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -13,10 +14,13 @@ from app.schemas.ai import (
     AIInventoryParseRequest,
     AIInventoryParseResponse,
     AIInventoryParsedCommand,
+    AIManufacturingCommandRequest,
+    AIManufacturingCommandResponse,
     AIPromptRequest,
     AIPromptResponse,
 )
 from app.services.ai_service import call_anthropic, parse_ap_command, parse_inventory_command
+from app.services.ai_manufacturing_intents import parse_manufacturing_command
 
 router = APIRouter()
 
@@ -100,3 +104,75 @@ def parse_ap(
     result = parse_ap_command(request.user_input, catalog)
     parsed = AIAPParsedResult(**result)
     return AIAPParseResponse(success=True, result=parsed)
+
+
+@router.post("/command", response_model=AIManufacturingCommandResponse)
+def ai_manufacturing_command(
+    request: AIManufacturingCommandRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Parse a natural-language manufacturing command into a structured intent.
+
+    This is the primary AI command-bar endpoint for manufacturing tenants.
+    It classifies the user's prompt into one of the supported intents
+    (log_production, check_inventory, create_order, record_payment,
+    log_training, log_incident) and returns structured data for the
+    frontend to render a confirmation card or inline result.
+    """
+    # Build product catalog for the user's company
+    products = (
+        db.query(Product)
+        .filter(
+            Product.company_id == current_user.company_id,
+            Product.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+    product_catalog = [
+        {"id": str(p.id), "name": p.name, "sku": p.sku}
+        for p in products
+    ]
+
+    # Build customer catalog
+    customers = (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == current_user.company_id,
+            Customer.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+    customer_catalog = [
+        {"id": str(c.id), "name": c.name}
+        for c in customers
+    ]
+
+    # Build employee names list
+    employee_users = (
+        db.query(User)
+        .filter(
+            User.company_id == current_user.company_id,
+            User.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+    employee_names = [u.first_name for u in employee_users if u.first_name]
+
+    result = parse_manufacturing_command(
+        user_input=request.prompt,
+        product_catalog=product_catalog,
+        customer_catalog=customer_catalog,
+        employee_names=employee_names,
+    )
+
+    intent = result.get("intent", "unknown")
+    message = result.get("message", "")
+
+    return AIManufacturingCommandResponse(
+        success=True,
+        intent=intent,
+        data=result,
+        message=message,
+    )

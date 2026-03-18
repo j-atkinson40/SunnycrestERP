@@ -84,6 +84,12 @@ AVAILABLE_MODULES: dict[str, dict] = {
         "default_enabled": False,
         "locked": False,
     },
+    "daily_production_log": {
+        "label": "Daily Production Log",
+        "description": "Simple daily production tracking — log what was produced, update inventory automatically.",
+        "default_enabled": False,
+        "locked": False,
+    },
 }
 
 
