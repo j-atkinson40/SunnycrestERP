@@ -8,6 +8,7 @@ export function OnboardingSidebarWidget() {
   const [completedCount, setCompletedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+  const [noChecklist, setNoChecklist] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -45,8 +46,8 @@ export function OnboardingSidebarWidget() {
         }
       })
       .catch(() => {
-        // Silently fail — widget is non-critical
-        if (mounted) setDismissed(true);
+        // Checklist doesn't exist yet — show "Start Setup" instead of hiding
+        if (mounted) setNoChecklist(true);
       });
 
     return () => {
@@ -54,7 +55,30 @@ export function OnboardingSidebarWidget() {
     };
   }, []);
 
-  if (dismissed || mustCompletePercent === null) return null;
+  if (dismissed) return null;
+
+  // No checklist yet — show a "Start Setup" prompt
+  if (noChecklist) {
+    return (
+      <div className="border-t border-sidebar-accent px-4 py-3">
+        <Link
+          to="/onboarding"
+          className="block rounded-lg p-2 transition-colors hover:bg-sidebar-accent"
+        >
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-sidebar-foreground/80">
+              Get started
+            </span>
+            <p className="text-[11px] text-sidebar-foreground/50">
+              Set up your account &rarr;
+            </p>
+          </div>
+        </Link>
+      </div>
+    );
+  }
+
+  if (mustCompletePercent === null) return null;
 
   const isComplete = mustCompletePercent === 100;
 
