@@ -400,21 +400,102 @@ def delete_tenant(
                 except Exception:
                     sp.rollback()
 
-        # Phase 3: Delete permission_overrides, users, roles
-        for tbl in ["permission_overrides", "users", "roles"]:
-            sp = connection.begin_nested()
-            try:
+        # Phase 3: Try to delete users — if it fails, report exactly why
+        # First attempt
+        sp = connection.begin_nested()
+        try:
+            result = connection.execute(
+                text("DELETE FROM permission_overrides WHERE company_id = :tid"),
+                {"tid": tenant_id},
+            )
+            sp.commit()
+        except Exception:
+            sp.rollback()
+
+        sp = connection.begin_nested()
+        try:
+            result = connection.execute(
+                text("DELETE FROM users WHERE company_id = :tid"),
+                {"tid": tenant_id},
+            )
+            sp.commit()
+            deleted_counts["users"] = result.rowcount
+            logger.info("Deleted %d users", result.rowcount)
+        except Exception as users_err:
+            sp.rollback()
+            # Users delete failed — find out what still references them
+            logger.warning("Users delete failed: %s", str(users_err)[:300])
+
+            # Try to find what's blocking: check all FK refs to users
+            blocking_info = []
+            if user_ids:
+                for ref_tbl, ref_col in [
+                    ("users", "created_by"), ("users", "modified_by"),
+                    ("audit_logs", "user_id"), ("roles", "created_by"),
+                    ("fh_cases", "assigned_director_id"),
+                    ("fh_case_activities", "user_id"),
+                    ("impersonation_sessions", "impersonated_user_id"),
+                    ("impersonation_sessions", "platform_user_id"),
+                ]:
+                    sp2 = connection.begin_nested()
+                    try:
+                        cnt = connection.execute(
+                            text(f'SELECT count(*) FROM "{ref_tbl}" WHERE "{ref_col}" = ANY(:ids)'),
+                            {"ids": user_ids},
+                        ).scalar()
+                        sp2.commit()
+                        if cnt and cnt > 0:
+                            blocking_info.append(f"{ref_tbl}.{ref_col}={cnt}")
+                    except Exception:
+                        sp2.rollback()
+
+            if blocking_info:
+                logger.warning("Blocking refs: %s", ", ".join(blocking_info))
+
+            # Force-null ALL nullable FK columns that reference any of these user IDs
+            # by querying information_schema for ALL columns in ALL tables
+            if user_ids:
+                all_cols = connection.execute(text("""
+                    SELECT table_name, column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND data_type IN ('character varying', 'text', 'uuid')
+                    AND is_nullable = 'YES'
+                """)).fetchall()
+
+                for tbl, col in all_cols:
+                    if col in ("id", "tenant_id", "company_id", "slug", "email", "name"):
+                        continue
+                    sp2 = connection.begin_nested()
+                    try:
+                        connection.execute(
+                            text(f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = ANY(:ids)'),
+                            {"ids": user_ids},
+                        )
+                        sp2.commit()
+                    except Exception:
+                        sp2.rollback()
+
+                # Retry users delete
                 result = connection.execute(
-                    text(f'DELETE FROM "{tbl}" WHERE company_id = :tid'),
+                    text("DELETE FROM users WHERE company_id = :tid"),
                     {"tid": tenant_id},
                 )
-                sp.commit()
-                if result.rowcount > 0:
-                    deleted_counts[tbl] = result.rowcount
-                    logger.info("Deleted %d from %s", result.rowcount, tbl)
-            except Exception as e:
-                sp.rollback()
-                logger.warning("Failed to delete from %s: %s", tbl, str(e)[:200])
+                deleted_counts["users"] = result.rowcount
+                logger.info("Deleted %d users on retry", result.rowcount)
+
+        # Delete roles
+        sp = connection.begin_nested()
+        try:
+            result = connection.execute(
+                text("DELETE FROM roles WHERE company_id = :tid"),
+                {"tid": tenant_id},
+            )
+            sp.commit()
+            if result.rowcount > 0:
+                deleted_counts["roles"] = result.rowcount
+        except Exception:
+            sp.rollback()
 
         # Phase 4: Delete the company itself
         connection.execute(
