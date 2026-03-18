@@ -150,6 +150,7 @@ export interface OnboardTenantRequest {
   admin_password: string;
   admin_first_name: string;
   admin_last_name: string;
+  initial_settings?: Record<string, unknown>;
 }
 
 export interface OnboardTenantResponse {

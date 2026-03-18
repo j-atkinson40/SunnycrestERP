@@ -37,6 +37,7 @@ class CreateTenantRequest(BaseModel):
     admin_password: str
     admin_first_name: str = "Admin"
     admin_last_name: str = "User"
+    initial_settings: dict | None = None  # e.g. {"spring_burials_enabled": true}
 
 
 # ---------------------------------------------------------------------------
@@ -188,11 +189,13 @@ def onboard_tenant(
         raise HTTPException(status_code=409, detail=f"Email '{data.admin_email}' already in use")
 
     # Create company
+    import json as _json
     company = Company(
         name=data.name,
         slug=data.slug,
         vertical=data.vertical,
         is_active=True,
+        settings_json=_json.dumps(data.initial_settings) if data.initial_settings else None,
     )
     db.add(company)
     db.flush()

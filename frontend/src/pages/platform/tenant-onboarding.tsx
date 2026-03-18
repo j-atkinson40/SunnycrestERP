@@ -16,7 +16,10 @@ import {
   CheckCircle2,
   Puzzle,
   ArrowRight,
+  Snowflake,
+  Sun,
 } from "lucide-react";
+import { CardContent } from "@/components/ui/card";
 
 // ── Preset visual config ─────────────────────────────────────────────────────
 
@@ -63,7 +66,12 @@ function slugify(text: string): string {
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
-const STEPS = ["Company Details", "Choose Vertical", "Confirm & Create"];
+function getSteps(preset: string | null): string[] {
+  if (preset === "manufacturing") {
+    return ["Company Details", "Choose Vertical", "Configure", "Confirm & Create"];
+  }
+  return ["Company Details", "Choose Vertical", "Confirm & Create"];
+}
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -87,6 +95,15 @@ export default function TenantOnboardingPage() {
 
   // Step 2: Vertical
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+
+  // Step 2.5: Manufacturing configuration
+  const [springBurials, setSpringBurials] = useState<boolean | null>(null);
+
+  const STEPS = getSteps(selectedPreset);
+  const isManufacturing = selectedPreset === "manufacturing";
+  // The "configure" step is step 2 for manufacturing, confirm is step 3
+  // For non-manufacturing, confirm is step 2
+  const confirmStep = isManufacturing ? 3 : 2;
 
   const fetchData = useCallback(async () => {
     try {
@@ -121,12 +138,22 @@ export default function TenantOnboardingPage() {
       );
     }
     if (step === 1) return selectedPreset !== null;
+    // Manufacturing config step — must answer spring burial question
+    if (step === 2 && isManufacturing) return springBurials !== null;
     return true;
   }
 
   async function handleSubmit() {
     setSubmitting(true);
     try {
+      // Build initial settings from configuration questions
+      const initialSettings: Record<string, unknown> = {
+        onboarding_questions_completed: true,
+      };
+      if (isManufacturing) {
+        initialSettings.spring_burials_enabled = springBurials === true;
+      }
+
       const result = await onboardTenant({
         name: form.name,
         slug: form.slug,
@@ -135,6 +162,7 @@ export default function TenantOnboardingPage() {
         admin_password: form.admin_password,
         admin_first_name: form.admin_first_name,
         admin_last_name: form.admin_last_name,
+        initial_settings: initialSettings,
       });
 
       // No manual module selection — the backend onboardTenant endpoint
@@ -347,8 +375,67 @@ export default function TenantOnboardingPage() {
         </div>
       )}
 
-      {/* ── Step 3: Confirm & Create ── */}
-      {step === 2 && activePreset && presetColor && (
+      {/* ── Step 2.5: Manufacturing Configuration ── */}
+      {step === 2 && isManufacturing && (
+        <div className="space-y-6">
+          <h2 className="text-lg font-semibold">Configure Manufacturing</h2>
+          <div>
+            <h3 className="mb-2 text-base font-medium">
+              Do you manage spring burials?
+            </h3>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Some cemeteries close in winter — vault orders are held until
+              spring when the cemetery opens.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${
+                  springBurials === true
+                    ? "ring-2 ring-blue-500 bg-blue-50"
+                    : "hover:border-gray-300"
+                }`}
+                onClick={() => setSpringBurials(true)}
+              >
+                <CardContent className="flex flex-col items-center gap-3 pt-6 pb-4 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+                    <Snowflake className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">Yes, we have spring burials</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Some of our cemeteries close in winter — we hold vaults
+                      for spring delivery
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${
+                  springBurials === false
+                    ? "ring-2 ring-green-500 bg-green-50"
+                    : "hover:border-gray-300"
+                }`}
+                onClick={() => setSpringBurials(false)}
+              >
+                <CardContent className="flex flex-col items-center gap-3 pt-6 pb-4 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                    <Sun className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">No spring burials</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Our cemeteries stay open year-round
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirm & Create ── */}
+      {step === confirmStep && activePreset && presetColor && (
         <div className="space-y-6">
           {/* Tenant summary */}
           <Card className="p-6">
