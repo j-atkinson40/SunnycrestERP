@@ -116,13 +116,39 @@ export default function AdminDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [h, t] = await Promise.all([
+      const results = await Promise.allSettled([
         getSystemHealth(),
         listTenants({ limit: 500 }),
       ]);
-      setHealth(h);
-      setTenants(t.items);
-    } catch {
+
+      if (results[0].status === "fulfilled") {
+        setHealth(results[0].value);
+      } else {
+        console.error("Failed to load system health:", results[0].reason);
+        // Provide fallback health data so page still renders
+        setHealth({
+          total_tenants: 0,
+          active_tenants: 0,
+          total_users: 0,
+          active_users: 0,
+          total_jobs_24h: 0,
+          failed_jobs_24h: 0,
+          redis_connected: false,
+          db_connected: false,
+        });
+      }
+
+      if (results[1].status === "fulfilled") {
+        setTenants(results[1].value.items);
+      } else {
+        console.error("Failed to load tenants:", results[1].reason);
+      }
+
+      if (results[0].status === "rejected" && results[1].status === "rejected") {
+        toast.error("Failed to load dashboard data — check console for details");
+      }
+    } catch (err) {
+      console.error("Dashboard load error:", err);
       toast.error("Failed to load dashboard data");
     } finally {
       setLoading(false);
