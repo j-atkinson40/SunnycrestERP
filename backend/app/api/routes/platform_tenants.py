@@ -189,19 +189,18 @@ def delete_tenant(
         trans = connection.begin()
 
         # Discover all tables with FK references to companies
+        # Use pg_constraint (reliable) instead of information_schema (misses some FKs)
         fk_rows = connection.execute(text("""
-            SELECT DISTINCT tc.table_name, kcu.column_name
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON tc.constraint_name = ccu.constraint_name
-                AND tc.table_schema = ccu.table_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-              AND ccu.table_name = 'companies'
-              AND ccu.column_name = 'id'
-            ORDER BY tc.table_name
+            SELECT DISTINCT
+                src.relname AS source_table,
+                a.attname AS source_column
+            FROM pg_constraint c
+            JOIN pg_class src ON c.conrelid = src.oid
+            JOIN pg_class tgt ON c.confrelid = tgt.oid
+            JOIN pg_attribute a ON a.attrelid = src.oid AND a.attnum = ANY(c.conkey)
+            WHERE c.contype = 'f'
+              AND tgt.relname = 'companies'
+            ORDER BY src.relname
         """)).fetchall()
 
         tables_to_clean = [
