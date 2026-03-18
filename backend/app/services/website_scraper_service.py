@@ -1,11 +1,10 @@
 """Website scraper — fetches and extracts text content from tenant websites."""
 
-import json
 import logging
 import re
 from urllib.parse import urljoin, urlparse
 
-import httpx
+import requests
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
@@ -14,8 +13,15 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
+HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate",
+    "Connection": "keep-alive",
+}
 MAX_CONTENT_LENGTH = 50_000
-TIMEOUT = 30.0
+TIMEOUT = 30
 
 # Navigation link patterns that indicate useful pages
 NAV_PATTERNS = re.compile(
@@ -78,31 +84,34 @@ def scrape_website(url: str, max_pages: int = 5) -> dict:
     pages_scraped: list[str] = []
     all_text_parts: list[str] = []
 
-    try:
-        with httpx.Client(
-            timeout=TIMEOUT,
-            follow_redirects=True,
-            verify=True,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-            },
-        ) as client:
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    # Try with SSL verification first, then without
+    for verify_ssl in [True, False]:
+        if not verify_ssl:
+            logger.info(f"Retrying {url} with SSL verification disabled")
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        try:
             # 1. Fetch homepage
-            resp = client.get(url)
+            logger.info(f"Fetching homepage: {url} (verify={verify_ssl})")
+            resp = session.get(url, timeout=TIMEOUT, verify=verify_ssl)
             resp.raise_for_status()
             homepage_html = resp.text
             pages_scraped.append(url)
             all_text_parts.append(f"=== PAGE: {url} ===\n{_extract_text(homepage_html)}")
+            logger.info(f"Homepage fetched: {len(resp.text)} bytes, status {resp.status_code}")
 
             # 2. Find nav links to scrape
             nav_links = _find_nav_links(homepage_html, url)
+            logger.info(f"Found {len(nav_links)} nav links to scrape")
 
             # 3. Scrape additional pages
             for link in nav_links[:max_pages]:
                 try:
-                    resp = client.get(link)
+                    resp = session.get(link, timeout=TIMEOUT, verify=verify_ssl)
                     resp.raise_for_status()
                     pages_scraped.append(link)
                     all_text_parts.append(
@@ -112,42 +121,37 @@ def scrape_website(url: str, max_pages: int = 5) -> dict:
                     logger.debug(f"Failed to scrape {link}: {e}")
                     continue
 
-    except (httpx.HTTPStatusError, httpx.RequestError) as e:
-        logger.warning(f"First scrape attempt failed for {url}: {e}. Retrying with relaxed SSL...")
-        # Retry with SSL verification disabled (some sites have cert issues from datacenter IPs)
-        try:
-            with httpx.Client(
-                timeout=TIMEOUT,
-                follow_redirects=True,
-                verify=False,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5",
-                },
-            ) as client:
-                resp = client.get(url)
-                resp.raise_for_status()
-                homepage_html = resp.text
-                pages_scraped.append(url)
-                all_text_parts.append(f"=== PAGE: {url} ===\n{_extract_text(homepage_html)}")
-                nav_links = _find_nav_links(homepage_html, url)
-                for link in nav_links[:max_pages]:
-                    try:
-                        resp = client.get(link)
-                        resp.raise_for_status()
-                        pages_scraped.append(link)
-                        all_text_parts.append(f"=== PAGE: {link} ===\n{_extract_text(resp.text)}")
-                    except Exception:
-                        continue
-        except Exception as retry_err:
-            logger.error(f"Retry also failed for {url}: {retry_err}")
+            # Success — break out of retry loop
+            break
+
+        except requests.exceptions.SSLError as e:
+            if verify_ssl:
+                logger.warning(f"SSL error for {url}: {e}. Will retry without verification.")
+                pages_scraped.clear()
+                all_text_parts.clear()
+                continue
+            else:
+                logger.error(f"SSL error even without verification for {url}: {e}")
+                raise
+        except requests.exceptions.ConnectionError as e:
+            if verify_ssl:
+                logger.warning(f"Connection error for {url}: {e}. Will retry without SSL verification.")
+                pages_scraped.clear()
+                all_text_parts.clear()
+                continue
+            else:
+                logger.error(f"Connection error on retry for {url}: {e}")
+                raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request error scraping {url}: {e}")
             raise
 
     # Combine all text, truncate to limit
     combined = "\n\n".join(all_text_parts)
     if len(combined) > MAX_CONTENT_LENGTH:
         combined = combined[:MAX_CONTENT_LENGTH]
+
+    logger.info(f"Scrape complete: {len(pages_scraped)} pages, {len(combined)} chars of content")
 
     return {
         "raw_content": combined,
