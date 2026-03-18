@@ -16,11 +16,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
-    inspector = sa_inspect(conn)
-    columns = [c["name"] for c in inspector.get_columns("companies")]
-    if "vertical" not in columns:
-        op.add_column("companies", sa.Column("vertical", sa.String(50), nullable=True))
+    op.execute(
+        "ALTER TABLE companies ADD COLUMN IF NOT EXISTS vertical VARCHAR(50)"
+    )
 
 
 def downgrade() -> None:
