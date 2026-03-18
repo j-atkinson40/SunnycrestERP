@@ -94,6 +94,7 @@ import FHPortalPage from "@/pages/funeral-home/portal";
 import ProductionLog from "@/pages/production-log/production-log";
 import ProductionLogSummary from "@/pages/production-log/production-log-summary";
 import MobileProductionLog from "@/pages/production-log/mobile-production-log";
+import SpringBurialList from "@/pages/spring-burials/spring-burial-list";
 import OnboardingHub from "@/pages/onboarding/onboarding-hub";
 import IntegrationSetupPage from "@/pages/onboarding/integration-setup";
 import OnboardingAnalyticsPage from "@/pages/onboarding/onboarding-analytics";
@@ -378,6 +379,7 @@ export default function App() {
                   >
                     <Route path="/production-log" element={<ProductionLog />} />
                     <Route path="/production-log/summary" element={<ProductionLogSummary />} />
+                    <Route path="/spring-burials" element={<SpringBurialList />} />
                   </Route>
 
                   {/* Work Orders & Production — requires work_orders module */}

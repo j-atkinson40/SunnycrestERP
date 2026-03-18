@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -67,6 +68,18 @@ class SalesOrder(Base):
     )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Spring burial
+    is_spring_burial: Mapped[bool] = mapped_column(Boolean, default=False)
+    spring_burial_added_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    spring_burial_added_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    spring_burial_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    spring_burial_scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    spring_burial_scheduled_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     # Audit
     created_by: Mapped[str | None] = mapped_column(

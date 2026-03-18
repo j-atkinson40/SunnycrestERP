@@ -101,6 +101,11 @@ function getManufacturingNav(
       permission: "production_log.view",
       requiresModule: "daily_production_log",
     },
+    {
+      label: "Spring Burials",
+      href: "/spring-burials",
+      icon: "Snowflake",
+    },
   ];
 
   // Extension-added items

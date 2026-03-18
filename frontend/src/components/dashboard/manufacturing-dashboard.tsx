@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SpringBurialWidget } from "@/components/dashboard/spring-burial-widget";
 import apiClient from "@/lib/api-client";
 
 // ── Types ──
@@ -504,6 +505,9 @@ export function ManufacturingDashboard() {
               </CardContent>
             </Card>
           )}
+
+          {/* Spring Burial Widget */}
+          <SpringBurialWidget />
 
           {/* Compliance Widget */}
           <Card>

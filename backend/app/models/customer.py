@@ -95,6 +95,12 @@ class Customer(Base):
     tax_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # --- Seasonal / Spring burial ---
+    typical_opening_date: Mapped[str | None] = mapped_column(String(5), nullable=True)  # MM-DD
+    winter_closure_start: Mapped[str | None] = mapped_column(String(5), nullable=True)  # MM-DD
+    is_seasonal: Mapped[bool] = mapped_column(Boolean, default=False)
+    opening_date_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 

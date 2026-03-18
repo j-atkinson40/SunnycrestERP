@@ -45,6 +45,7 @@ from app.api.routes import (
     performance_notes,
     platform_fees,
     production_log,
+    spring_burials,
     products,
     projects,
     purchase_orders,
@@ -170,6 +171,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     production_log.router, prefix="/production", tags=["Production Log"]
+)
+v1_router.include_router(
+    spring_burials.router, tags=["Spring Burials"]
 )
 v1_router.include_router(
     products.router, prefix="/products", tags=["Products"]
