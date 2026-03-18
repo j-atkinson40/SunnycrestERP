@@ -362,9 +362,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
 ]
 
 FUNERAL_HOME_CHECKLIST_ITEMS = [
-    # MUST COMPLETE
+    # ── MUST COMPLETE (5 items) ──
     {
-        "item_key": "add_price_list",
+        "item_key": "setup_price_list",
         "tier": "must_complete",
         "category": "data_setup",
         "title": "Set your service prices",
@@ -378,7 +378,7 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "sort_order": 1,
     },
     {
-        "item_key": "ftc_compliance_review",
+        "item_key": "review_ftc_compliance",
         "tier": "must_complete",
         "category": "workflow",
         "title": "Review FTC compliance requirements",
@@ -392,7 +392,21 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "sort_order": 2,
     },
     {
-        "item_key": "add_first_director",
+        "item_key": "link_vault_supplier",
+        "tier": "must_complete",
+        "category": "integration",
+        "title": "Connect your vault supplier",
+        "description": (
+            "Link to your vault manufacturer so you can order directly "
+            "through the platform."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/admin/settings",
+        "sort_order": 3,
+    },
+    {
+        "item_key": "add_directors",
         "tier": "must_complete",
         "category": "team",
         "title": "Add your funeral directors",
@@ -403,7 +417,7 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/admin/users",
-        "sort_order": 3,
+        "sort_order": 4,
     },
     {
         "item_key": "connect_accounting",
@@ -417,34 +431,20 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "estimated_minutes": 30,
         "action_type": "modal",
         "action_target": "integration_setup_modal",
-        "sort_order": 4,
-    },
-    {
-        "item_key": "link_vault_supplier",
-        "tier": "must_complete",
-        "category": "integration",
-        "title": "Connect your vault supplier",
-        "description": (
-            "Link to your vault manufacturer so you can order directly "
-            "through the platform."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/admin/settings",
         "sort_order": 5,
     },
-    # SHOULD COMPLETE
+    # ── SHOULD COMPLETE (4 items) ──
     {
-        "item_key": "run_case_scenario",
+        "item_key": "run_first_call_scenario",
         "tier": "should_complete",
         "category": "workflow",
-        "title": "Walk through opening a case",
+        "title": "Walk through a first call",
         "description": (
-            "See the full workflow from first call through arrangement conference."
+            "See the full workflow from first call through opening a case."
         ),
         "estimated_minutes": 5,
         "action_type": "navigate",
-        "action_target": "/onboarding/scenarios/case_walkthrough",
+        "action_target": "/onboarding/scenarios/first_call_walkthrough",
         "sort_order": 6,
     },
     {
@@ -462,20 +462,20 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "sort_order": 7,
     },
     {
-        "item_key": "customize_gpl",
+        "item_key": "send_test_portal",
         "tier": "should_complete",
-        "category": "data_setup",
-        "title": "Finalize your General Price List",
+        "category": "workflow",
+        "title": "Send a test family portal invite",
         "description": (
-            "Review and finalize your GPL document for printing and distribution."
+            "See what the family portal looks like by sending yourself a test invite."
         ),
-        "estimated_minutes": 15,
+        "estimated_minutes": 5,
         "action_type": "navigate",
-        "action_target": "/funeral-home/price-list",
+        "action_target": "/funeral-home/cases",
         "sort_order": 8,
     },
     {
-        "item_key": "invite_directors",
+        "item_key": "invite_staff",
         "tier": "should_complete",
         "category": "team",
         "title": "Invite your team to log in",
@@ -487,21 +487,7 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "action_target": "/admin/users",
         "sort_order": 9,
     },
-    {
-        "item_key": "setup_obituary_style",
-        "tier": "should_complete",
-        "category": "data_setup",
-        "title": "Set your obituary preferences",
-        "description": (
-            "Configure your preferred obituary style and tone for "
-            "AI-assisted drafting."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/admin/settings",
-        "sort_order": 10,
-    },
-    # OPTIONAL
+    # ── OPTIONAL (3 items) ──
     {
         "item_key": "explore_extensions",
         "tier": "optional",
@@ -513,7 +499,7 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/extensions",
-        "sort_order": 11,
+        "sort_order": 10,
     },
     {
         "item_key": "customize_invoice_template",
@@ -526,20 +512,21 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/admin/settings",
-        "sort_order": 12,
+        "sort_order": 11,
     },
     {
-        "item_key": "setup_family_portal_branding",
+        "item_key": "setup_cremation_preferences",
         "tier": "optional",
         "category": "data_setup",
-        "title": "Set up family portal branding",
+        "title": "Set up cremation preferences",
         "description": (
-            "Customize the look and feel of the family-facing portal."
+            "Configure default cremation providers, authorization templates, "
+            "and remains disposition options."
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/admin/settings",
-        "sort_order": 13,
+        "sort_order": 12,
     },
 ]
 
@@ -758,72 +745,49 @@ MANUFACTURING_SCENARIOS = [
 
 FUNERAL_HOME_SCENARIOS = [
     {
-        "scenario_key": "case_walkthrough",
-        "title": "Opening a Case Walkthrough",
+        "scenario_key": "first_call_walkthrough",
+        "title": "First Call Walkthrough",
         "description": (
-            "See the full workflow from first call through arrangement conference."
+            "See how to take a first call and open a new case in the system."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 3,
         "steps": [
             {
                 "step_number": 1,
-                "title": "Receive the first call",
+                "title": "Type the first call details",
                 "instruction": (
-                    "A family calls to report a death. Click 'New Case' to "
-                    "start the intake process."
+                    "A family calls to report a death. Type the deceased's "
+                    "name, date of death, and the caller's contact information."
                 ),
                 "target_route": "/funeral-home/cases/new",
-                "target_element": "button[data-id='new-case']",
-                "completion_trigger": "navigate",
-                "hint_text": "The first call form captures essential information quickly.",
+                "target_element": "input[data-id='deceased-first-name']",
+                "completion_trigger": "field_filled",
+                "hint_text": "Fill in the basic information from the first call.",
             },
             {
                 "step_number": 2,
-                "title": "Add family contacts",
+                "title": "Review the case card",
                 "instruction": (
-                    "Add the next-of-kin and any other family contacts "
-                    "for this case."
+                    "Review the case summary card with the information you "
+                    "entered. Confirm the details are correct."
                 ),
-                "target_route": "/funeral-home/cases",
+                "target_route": "/funeral-home/cases/new",
                 "target_element": None,
-                "completion_trigger": "field_filled",
-                "hint_text": "You can add multiple contacts with different roles.",
+                "completion_trigger": "navigate",
+                "hint_text": "The case card shows a summary before you save.",
             },
             {
                 "step_number": 3,
-                "title": "Select services",
+                "title": "Open the case",
                 "instruction": (
-                    "Choose the services the family has selected from your "
-                    "General Price List."
+                    "Click 'Create Case' to open the case. You'll land on "
+                    "the full case record where you can add services, contacts, "
+                    "and more."
                 ),
-                "target_route": "/funeral-home/cases",
-                "target_element": None,
-                "completion_trigger": "field_filled",
-                "hint_text": "Services pull pricing from your GPL automatically.",
-            },
-            {
-                "step_number": 4,
-                "title": "Create the arrangement",
-                "instruction": (
-                    "Finalize the arrangement details — dates, times, and "
-                    "locations for services."
-                ),
-                "target_route": "/funeral-home/cases",
-                "target_element": None,
+                "target_route": "/funeral-home/cases/new",
+                "target_element": "button[data-id='create-case']",
                 "completion_trigger": "click",
-                "hint_text": "The arrangement summary becomes the basis for the invoice.",
-            },
-            {
-                "step_number": 5,
-                "title": "Review and confirm",
-                "instruction": (
-                    "Review the complete case file — contacts, services, "
-                    "timeline, and estimated cost."
-                ),
-                "target_route": "/funeral-home/cases",
-                "target_element": None,
-                "completion_trigger": "navigate",
-                "hint_text": "You can print the arrangement summary for the family.",
+                "hint_text": "The case is now open and ready for arrangements.",
             },
         ],
     },
@@ -834,14 +798,14 @@ FUNERAL_HOME_SCENARIOS = [
             "See how to place a vault order with your manufacturer through "
             "the platform."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 3,
         "steps": [
             {
                 "step_number": 1,
-                "title": "Find your manufacturer",
+                "title": "Browse the vault catalog",
                 "instruction": (
-                    "Open the vault ordering page and confirm your connected "
-                    "vault supplier."
+                    "Open the vault ordering page and browse your manufacturer's "
+                    "catalog. Filter by size, material, and price range."
                 ),
                 "target_route": "/funeral-home/vault-orders/new",
                 "target_element": None,
@@ -850,41 +814,27 @@ FUNERAL_HOME_SCENARIOS = [
             },
             {
                 "step_number": 2,
-                "title": "Select a vault",
+                "title": "Select a vault and set delivery details",
                 "instruction": (
-                    "Browse your manufacturer's catalog and select the vault "
-                    "model the family chose."
+                    "Choose the vault model, enter the delivery date, cemetery, "
+                    "and any special instructions."
                 ),
                 "target_route": "/funeral-home/vault-orders/new",
                 "target_element": None,
                 "completion_trigger": "field_filled",
-                "hint_text": "You can filter by size, material, and price range.",
+                "hint_text": "Delivery details are sent directly to the manufacturer.",
             },
             {
                 "step_number": 3,
-                "title": "Place the order",
+                "title": "Submit the order",
                 "instruction": (
-                    "Confirm the delivery date, cemetery, and any "
-                    "customizations, then submit."
+                    "Review and submit the vault order. The manufacturer receives "
+                    "it instantly and you can track delivery status in real time."
                 ),
                 "target_route": "/funeral-home/vault-orders/new",
                 "target_element": "button[data-id='submit-vault-order']",
                 "completion_trigger": "click",
                 "hint_text": "The order goes directly to the manufacturer's dispatch system.",
-            },
-            {
-                "step_number": 4,
-                "title": "Track delivery status",
-                "instruction": (
-                    "See the real-time status of your vault delivery — "
-                    "from manufacturing through setup at the cemetery."
-                ),
-                "target_route": "/funeral-home/vault-orders",
-                "target_element": None,
-                "completion_trigger": "navigate",
-                "hint_text": (
-                    "You'll receive notifications as the delivery progresses."
-                ),
             },
         ],
     },

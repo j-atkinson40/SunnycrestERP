@@ -16,6 +16,7 @@ import type {
   FTCComplianceReport,
   FHPortalData,
   FHDirector,
+  CremationStatus,
 } from "@/types/funeral-home";
 
 export const funeralHomeService = {
@@ -59,6 +60,10 @@ export const funeralHomeService = {
   async getCaseActivity(id: string, params?: Record<string, string>): Promise<{ items: FHCaseActivity[]; total: number }> {
     const { data } = await apiClient.get(`/funeral-home/cases/${id}/activity`, { params });
     return data;
+  },
+
+  async updateCremationStatus(caseId: string, payload: Partial<CremationStatus>): Promise<void> {
+    await apiClient.patch(`/funeral-home/cases/${caseId}/cremation`, payload);
   },
 
   // ── Contacts ────────────────────────────────────────────────

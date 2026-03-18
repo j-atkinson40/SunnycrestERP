@@ -360,8 +360,12 @@ function getFuneralHomeNav(
       { label: "Invoices", href: "/invoices", icon: "Receipt" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
-    commandBarPlaceholder: "Open a case, order vault, record payment...",
-    quickPrompts: ["First call", "Order vault", "Record payment"],
+    commandBarPlaceholder: "First call, order vault, record payment...",
+    quickPrompts: [
+      "First call from the Johnson family...",
+      "Order vault for the Johnson case",
+      "Record payment from the Johnson family",
+    ],
     presetLabel: PRESET_LABELS.funeral_home,
     presetAccent: PRESET_ACCENTS.funeral_home,
   };

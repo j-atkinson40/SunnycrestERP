@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { funeralHomeService } from "@/services/funeral-home-service";
+import { CremationTab } from "@/components/funeral-home/cremation-tab";
 import type {
   FHCase,
   FHCaseStatus,
@@ -43,6 +44,7 @@ type Tab =
   | "deceased"
   | "contacts"
   | "services"
+  | "cremation"
   | "vault"
   | "obituary"
   | "documents"
@@ -54,6 +56,7 @@ const TAB_LABELS: Record<Tab, string> = {
   deceased: "Deceased",
   contacts: "Contacts",
   services: "Services",
+  cremation: "Cremation",
   vault: "Vault Order",
   obituary: "Obituary",
   documents: "Documents",
@@ -61,7 +64,7 @@ const TAB_LABELS: Record<Tab, string> = {
   activity: "Activity",
 };
 
-const ALL_TABS: Tab[] = [
+const BASE_TABS: Tab[] = [
   "overview",
   "deceased",
   "contacts",
@@ -72,6 +75,17 @@ const ALL_TABS: Tab[] = [
   "invoice",
   "activity",
 ];
+
+function getTabsForCase(c: FHCase | null): Tab[] {
+  if (!c) return BASE_TABS;
+  const isCremation = c.disposition_type === "cremation" || c.disposition_type === "direct_cremation";
+  if (!isCremation) return BASE_TABS;
+  // Insert cremation tab after services
+  const tabs = [...BASE_TABS];
+  const servicesIdx = tabs.indexOf("services");
+  tabs.splice(servicesIdx + 1, 0, "cremation");
+  return tabs;
+}
 
 // ── Status Timeline ───────────────────────────────────────────
 
@@ -1545,7 +1559,7 @@ export default function CaseDetailPage() {
       {/* Tabs */}
       <div className="border-b">
         <div className="flex gap-1 overflow-x-auto -mb-px">
-          {ALL_TABS.map((t) => (
+          {getTabsForCase(c).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -1567,6 +1581,7 @@ export default function CaseDetailPage() {
       {tab === "deceased" && <DeceasedTab c={c} onSave={handleUpdateCase} />}
       {tab === "contacts" && <ContactsTab caseId={c.id} />}
       {tab === "services" && <ServicesTab caseId={c.id} />}
+      {tab === "cremation" && <CremationTab caseData={c} onUpdate={fetchCase} />}
       {tab === "vault" && <VaultTab caseId={c.id} existingOrder={c.vault_order} />}
       {tab === "obituary" && <ObituaryTab caseId={c.id} existing={c.obituary} />}
       {tab === "documents" && <DocumentsTab caseId={c.id} />}

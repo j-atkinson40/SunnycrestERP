@@ -7,10 +7,13 @@ from app.models.customer import Customer
 from app.models.product import Product
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.models.company import Company
 from app.schemas.ai import (
     AIAPParseRequest,
     AIAPParseResponse,
     AIAPParsedResult,
+    AIFuneralHomeCommandRequest,
+    AIFuneralHomeCommandResponse,
     AIInventoryParseRequest,
     AIInventoryParseResponse,
     AIInventoryParsedCommand,
@@ -21,6 +24,10 @@ from app.schemas.ai import (
 )
 from app.services.ai_service import call_anthropic, parse_ap_command, parse_inventory_command
 from app.services.ai_manufacturing_intents import parse_manufacturing_command
+from app.services.ai_funeral_home_intents import (
+    classify_funeral_home_intent,
+    dispatch_funeral_home_intent,
+)
 
 router = APIRouter()
 
@@ -175,4 +182,63 @@ def ai_manufacturing_command(
         intent=intent,
         data=result,
         message=message,
+    )
+
+
+@router.post("/fh-command", response_model=AIFuneralHomeCommandResponse)
+def ai_funeral_home_command(
+    request: AIFuneralHomeCommandRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Parse a natural-language funeral home command into a structured intent.
+
+    This is the primary AI command-bar endpoint for funeral home tenants.
+    It classifies the user's prompt into one of the supported intents
+    (open_case, update_case_status, order_vault, record_payment,
+    send_family_portal, update_service_details, check_case_status,
+    cremation_auth_signed, cremation_scheduled, cremation_complete,
+    remains_released) and returns structured data for the frontend
+    to render a confirmation card or inline result.
+    """
+    # Verify this tenant is a funeral home
+    company = (
+        db.query(Company)
+        .filter(Company.id == current_user.company_id)
+        .first()
+    )
+    tenant_vertical = company.vertical if company else None
+
+    if tenant_vertical != "funeral_home":
+        return AIFuneralHomeCommandResponse(
+            success=False,
+            error="This endpoint is only available for funeral home tenants.",
+        )
+
+    # Try keyword-based classification first (fast, no API call)
+    intent = classify_funeral_home_intent(request.prompt)
+
+    if intent:
+        result = dispatch_funeral_home_intent(
+            intent_key=intent["key"],
+            prompt=request.prompt,
+            tenant_id=str(current_user.company_id),
+            user_id=str(current_user.id),
+        )
+        return AIFuneralHomeCommandResponse(
+            success=True,
+            intent=result.get("intent", "unknown"),
+            data=result.get("extracted"),
+            message=result.get("message", ""),
+            action_type=result.get("action_type", "confirm"),
+            uncertain_fields=result.get("uncertain_fields"),
+        )
+
+    # No keyword match — fall through to generic AI prompt
+    return AIFuneralHomeCommandResponse(
+        success=True,
+        intent="unknown",
+        message="I'm not sure what you'd like to do. Try something like: 'First call from the Johnson family'",
+        action_type="inline",
     )

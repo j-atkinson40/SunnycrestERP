@@ -1,10 +1,27 @@
-import { ClipboardList, ShoppingCart, Truck, AlertTriangle } from "lucide-react";
+import {
+  ClipboardList,
+  ShoppingCart,
+  Truck,
+  AlertTriangle,
+  Phone,
+  Package,
+  DollarSign,
+  Send,
+} from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 interface QuickActionsProps {
   onAction?: (prompt: string) => void;
 }
 
-const actions = [
+interface ActionDef {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  prompt: string;
+  color: string;
+}
+
+const MANUFACTURING_ACTIONS: ActionDef[] = [
   {
     icon: ClipboardList,
     label: "Log Production",
@@ -31,7 +48,41 @@ const actions = [
   },
 ];
 
+const FUNERAL_HOME_ACTIONS: ActionDef[] = [
+  {
+    icon: Phone,
+    label: "First Call",
+    prompt: "first call from ",
+    color: "text-stone-600 bg-stone-50 hover:bg-stone-100",
+  },
+  {
+    icon: Package,
+    label: "Order Vault",
+    prompt: "order vault for ",
+    color: "text-blue-600 bg-blue-50 hover:bg-blue-100",
+  },
+  {
+    icon: DollarSign,
+    label: "Record Payment",
+    prompt: "received payment from ",
+    color: "text-green-600 bg-green-50 hover:bg-green-100",
+  },
+  {
+    icon: Send,
+    label: "Send Portal",
+    prompt: "send portal to ",
+    color: "text-purple-600 bg-purple-50 hover:bg-purple-100",
+  },
+];
+
 export function QuickActions({ onAction }: QuickActionsProps) {
+  const { company } = useAuth();
+
+  const actions =
+    company?.vertical === "funeral_home"
+      ? FUNERAL_HOME_ACTIONS
+      : MANUFACTURING_ACTIONS;
+
   return (
     <div className="flex gap-3">
       {actions.map((action) => (

@@ -69,6 +69,18 @@ class FHCase(Base):
     referred_by = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
 
+    # Cremation tracking
+    cremation_authorization_status = Column(String(20), nullable=True)
+    cremation_authorization_signed_at = Column(DateTime(timezone=True), nullable=True)
+    cremation_authorization_signed_by = Column(String(255), nullable=True)
+    cremation_scheduled_date = Column(Date, nullable=True)
+    cremation_completed_date = Column(Date, nullable=True)
+    remains_disposition = Column(String(30), nullable=True)
+    remains_released_at = Column(DateTime(timezone=True), nullable=True)
+    remains_released_to = Column(Text, nullable=True)
+    cremation_provider = Column(Text, nullable=True)
+    cremation_provider_case_number = Column(String(100), nullable=True)
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=True)

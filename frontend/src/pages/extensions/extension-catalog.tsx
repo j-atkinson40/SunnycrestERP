@@ -135,7 +135,7 @@ function getSectionsForVertical(vertical: Vertical): SectionDef[] {
         {
           key: "grow",
           title: "Grow Your Services",
-          description: "Add revenue opportunities when you're ready.",
+          description: "The core platform handles every case from first call to closed invoice. These extensions add revenue opportunities and service depth when you're ready.",
           filter: (ext) =>
             FH_GROW.has(ext.extension_key) && !ext.installed && ext.status !== "coming_soon",
         },

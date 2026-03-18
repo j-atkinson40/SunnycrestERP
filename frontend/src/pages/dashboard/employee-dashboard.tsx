@@ -1,6 +1,7 @@
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ManufacturingDashboard } from "@/components/dashboard/manufacturing-dashboard";
+import { FuneralHomeDashboard } from "@/components/dashboard/funeral-home-dashboard";
 
 export default function Dashboard() {
   const { user, company, hasPermission } = useAuth();
@@ -8,6 +9,11 @@ export default function Dashboard() {
   // Manufacturing vertical gets a dedicated dashboard
   if (company?.vertical === "manufacturing") {
     return <ManufacturingDashboard />;
+  }
+
+  // Funeral home vertical gets a dedicated dashboard
+  if (company?.vertical === "funeral_home") {
+    return <FuneralHomeDashboard />;
   }
 
   // Default generic dashboard

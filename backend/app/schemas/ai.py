@@ -98,3 +98,24 @@ class AIManufacturingCommandResponse(BaseModel):
     data: dict | None = None
     message: str | None = None
     error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Funeral Home AI command schemas
+# ---------------------------------------------------------------------------
+
+
+class AIFuneralHomeCommandRequest(BaseModel):
+    prompt: str = Field(
+        ..., min_length=1, description="Natural language funeral home command"
+    )
+
+
+class AIFuneralHomeCommandResponse(BaseModel):
+    success: bool
+    intent: str | None = None
+    data: dict | None = None
+    message: str | None = None
+    action_type: str | None = None  # "confirm" or "inline"
+    uncertain_fields: list[str] | None = None
+    error: str | None = None

@@ -1,3 +1,21 @@
+// ── Cremation ────────────────────────────────────────────────
+
+export type CremationAuthStatus = 'not_applicable' | 'pending' | 'signed' | 'received';
+export type RemainsDisposition = 'family_pickup' | 'delivery' | 'interment' | 'scattering' | 'pending';
+
+export interface CremationStatus {
+  cremation_authorization_status: CremationAuthStatus | null;
+  cremation_authorization_signed_at: string | null;
+  cremation_authorization_signed_by: string | null;
+  cremation_scheduled_date: string | null;
+  cremation_completed_date: string | null;
+  remains_disposition: RemainsDisposition | null;
+  remains_released_at: string | null;
+  remains_released_to: string | null;
+  cremation_provider: string | null;
+  cremation_provider_case_number: string | null;
+}
+
 // ── Case ──────────────────────────────────────────────────────
 
 export interface FHCase {
@@ -45,6 +63,17 @@ export interface FHCase {
   obituary?: FHObituary;
   invoice?: FHInvoice;
   days_since_opened?: number;
+  // Cremation fields
+  cremation_authorization_status?: CremationAuthStatus | null;
+  cremation_authorization_signed_at?: string | null;
+  cremation_authorization_signed_by?: string | null;
+  cremation_scheduled_date?: string | null;
+  cremation_completed_date?: string | null;
+  remains_disposition?: RemainsDisposition | null;
+  remains_released_at?: string | null;
+  remains_released_to?: string | null;
+  cremation_provider?: string | null;
+  cremation_provider_case_number?: string | null;
 }
 
 export type FHCaseStatus =
@@ -332,7 +361,7 @@ export interface FHVaultProduct {
 // ── Portal Data ───────────────────────────────────────────────
 
 export interface FHPortalData {
-  deceased: { first_name: string; last_name: string; date_of_death: string };
+  deceased: { first_name: string; last_name: string; date_of_death: string; photo_url?: string; date_of_birth?: string };
   service?: { date?: string; time?: string; location?: string; type?: string };
   visitation?: { date?: string; start_time?: string; end_time?: string; location?: string };
   obituary?: { content?: string; status: string; can_approve: boolean };
@@ -340,6 +369,12 @@ export interface FHPortalData {
   invoice?: { total_amount: number; amount_paid: number; balance_due: number };
   documents: FHDocument[];
   funeral_home: { name: string };
+  // Cremation timeline (present only for cremation cases)
+  cremation?: CremationStatus;
+  // Optional extension-driven sections
+  flowers?: { provider_url: string; message?: string };
+  livestream_url?: string;
+  merchandise?: { items: { id: string; name: string; price: number; image_url?: string }[] };
 }
 
 // ── FTC Compliance ────────────────────────────────────────────
@@ -370,6 +405,7 @@ export interface FHDashboardData {
     obituary_pending: FHCase[];
     invoice_not_sent: FHCase[];
     outstanding_balance: FHCase[];
+    awaiting_cremation_auth: FHCase[];
   };
   today_schedule: { services: FHCase[]; visitations: FHCase[]; deliveries: FHVaultOrder[] };
   recent_activity: FHCaseActivity[];

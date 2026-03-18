@@ -1,11 +1,133 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import type { FHPortalData } from "@/types/funeral-home";
+import { cn } from "@/lib/utils";
+import { Check, Clock, Circle, ExternalLink } from "lucide-react";
+import type { FHPortalData, CremationStatus, CremationAuthStatus } from "@/types/funeral-home";
 import { funeralHomeService } from "@/services/funeral-home-service";
 
-const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString() : "");
+const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString() : "");
+const fmtDateTime = (d?: string | null) => (d ? new Date(d).toLocaleString() : "");
 const currency = (n: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+
+// ── Portal Cremation Timeline (read-only) ──
+
+const AUTH_LABELS: Record<CremationAuthStatus, string> = {
+  not_applicable: "N/A",
+  pending: "Pending",
+  signed: "Signed",
+  received: "Received",
+};
+
+const DISPOSITION_LABELS: Record<string, string> = {
+  family_pickup: "Family Pickup",
+  delivery: "Delivery",
+  interment: "Interment",
+  scattering: "Scattering",
+  pending: "Pending",
+};
+
+type StepStatus = "complete" | "current" | "future";
+
+interface Step {
+  title: string;
+  status: StepStatus;
+  detail?: string;
+}
+
+function getCremationSteps(c: CremationStatus): Step[] {
+  const authDone = c.cremation_authorization_status === "signed" || c.cremation_authorization_status === "received";
+  const scheduled = !!c.cremation_scheduled_date;
+  const completed = !!c.cremation_completed_date;
+  const dispositionSet = !!c.remains_disposition && c.remains_disposition !== "pending";
+  const released = !!c.remains_released_at;
+
+  return [
+    {
+      title: "Authorization",
+      status: authDone ? "complete" : "current",
+      detail: authDone
+        ? `${AUTH_LABELS[c.cremation_authorization_status!]} on ${fmtDateTime(c.cremation_authorization_signed_at)}`
+        : "Awaiting authorization",
+    },
+    {
+      title: "Scheduled",
+      status: !authDone ? "future" : scheduled ? "complete" : "current",
+      detail: scheduled ? `Scheduled for ${fmtDate(c.cremation_scheduled_date)}` : "Not yet scheduled",
+    },
+    {
+      title: "Cremation Complete",
+      status: !scheduled ? "future" : completed ? "complete" : "current",
+      detail: completed ? `Completed ${fmtDate(c.cremation_completed_date)}` : "In progress",
+    },
+    {
+      title: "Remains Processing",
+      status: !completed ? "future" : dispositionSet ? "complete" : "current",
+      detail: dispositionSet && c.remains_disposition ? DISPOSITION_LABELS[c.remains_disposition] : undefined,
+    },
+    {
+      title: "Released",
+      status: !dispositionSet ? "future" : released ? "complete" : "current",
+      detail: released
+        ? `Released to ${c.remains_released_to ?? "family"} on ${fmtDateTime(c.remains_released_at)}`
+        : undefined,
+    },
+  ];
+}
+
+function CremationTimeline({ cremation }: { cremation: CremationStatus }) {
+  const steps = getCremationSteps(cremation);
+
+  return (
+    <div className="space-y-0">
+      {steps.map((step, i) => (
+        <div key={step.title} className="flex gap-3">
+          {/* Icon + Connector */}
+          <div className="flex flex-col items-center">
+            <div
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-full",
+                step.status === "complete" && "bg-green-600 text-white",
+                step.status === "current" && "bg-amber-500 text-white",
+                step.status === "future" && "bg-gray-200 text-gray-400",
+              )}
+            >
+              {step.status === "complete" ? (
+                <Check className="h-4 w-4" />
+              ) : step.status === "current" ? (
+                <Clock className="h-4 w-4" />
+              ) : (
+                <Circle className="h-4 w-4" />
+              )}
+            </div>
+            {i < steps.length - 1 && (
+              <div
+                className={cn(
+                  "w-0.5 flex-1 min-h-6",
+                  step.status === "complete" ? "bg-green-300" : "bg-gray-200",
+                )}
+              />
+            )}
+          </div>
+          {/* Content */}
+          <div className="pb-4">
+            <p className={cn(
+              "text-sm font-medium",
+              step.status === "future" ? "text-stone-400" : "text-stone-700",
+            )}>
+              {step.title}
+            </p>
+            {step.detail && (
+              <p className="text-xs text-stone-500 mt-0.5">{step.detail}</p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Main Portal Page ──
 
 export default function FamilyPortalPage() {
   const { token } = useParams<{ token: string }>();
@@ -31,7 +153,6 @@ export default function FamilyPortalPage() {
     if (!token) return;
     try {
       await funeralHomeService.approveObituary(token, approvalNotes || undefined);
-      // Reload
       const updated = await funeralHomeService.getPortalData(token);
       setData(updated);
     } catch {
@@ -101,15 +222,23 @@ export default function FamilyPortalPage() {
       <main className="mx-auto max-w-2xl px-6 py-8 space-y-8">
         {/* Deceased */}
         <section className="text-center">
+          {data.deceased.photo_url && (
+            <img
+              src={data.deceased.photo_url}
+              alt={`${data.deceased.first_name} ${data.deceased.last_name}`}
+              className="mx-auto mb-4 h-24 w-24 rounded-full object-cover border-2 border-stone-200"
+            />
+          )}
           <h2 className="text-2xl font-semibold text-stone-900">
             {data.deceased.first_name} {data.deceased.last_name}
           </h2>
           <p className="mt-1 text-stone-500">
+            {data.deceased.date_of_birth && `${fmtDate(data.deceased.date_of_birth)} \u2013 `}
             {fmtDate(data.deceased.date_of_death)}
           </p>
         </section>
 
-        {/* Service */}
+        {/* Service Details */}
         {data.service && (data.service.date || data.service.location) && (
           <section className="rounded-xl bg-white border border-stone-200 p-6">
             <h3 className="text-sm font-semibold text-stone-500 uppercase tracking-wider mb-4">
@@ -161,7 +290,17 @@ export default function FamilyPortalPage() {
           </section>
         )}
 
-        {/* Obituary */}
+        {/* Cremation Status Timeline (read-only) */}
+        {data.cremation && (
+          <section className="rounded-xl bg-white border border-stone-200 p-6">
+            <h3 className="text-sm font-semibold text-stone-500 uppercase tracking-wider mb-4">
+              Cremation Status
+            </h3>
+            <CremationTimeline cremation={data.cremation} />
+          </section>
+        )}
+
+        {/* Obituary — always shown if present */}
         {data.obituary && (
           <section className="rounded-xl bg-white border border-stone-200 p-6">
             <h3 className="text-sm font-semibold text-stone-500 uppercase tracking-wider mb-4">
@@ -237,6 +376,69 @@ export default function FamilyPortalPage() {
             <p className="text-stone-700">
               <span className="font-medium">Status:</span> {data.vault_status.label}
             </p>
+          </section>
+        )}
+
+        {/* Livestream — extension-driven, only if present */}
+        {data.livestream_url && (
+          <section className="rounded-xl bg-white border border-stone-200 p-6">
+            <h3 className="text-sm font-semibold text-stone-500 uppercase tracking-wider mb-4">
+              Livestream
+            </h3>
+            <a
+              href={data.livestream_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-stone-800 px-6 py-3 text-white font-medium hover:bg-stone-900 transition-colors"
+            >
+              Watch Livestream
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </section>
+        )}
+
+        {/* Flowers — extension-driven, only if present */}
+        {data.flowers && (
+          <section className="rounded-xl bg-white border border-stone-200 p-6">
+            <h3 className="text-sm font-semibold text-stone-500 uppercase tracking-wider mb-4">
+              Send Flowers
+            </h3>
+            {data.flowers.message && (
+              <p className="text-sm text-stone-600 mb-3">{data.flowers.message}</p>
+            )}
+            <a
+              href={data.flowers.provider_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-stone-300 px-6 py-3 font-medium text-stone-700 hover:bg-stone-50 transition-colors"
+            >
+              Order Flowers
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </section>
+        )}
+
+        {/* Merchandise — extension-driven, only if present */}
+        {data.merchandise && data.merchandise.items.length > 0 && (
+          <section className="rounded-xl bg-white border border-stone-200 p-6">
+            <h3 className="text-sm font-semibold text-stone-500 uppercase tracking-wider mb-4">
+              Memorial Merchandise
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {data.merchandise.items.map((item) => (
+                <div key={item.id} className="rounded-lg border border-stone-200 p-3">
+                  {item.image_url && (
+                    <img
+                      src={item.image_url}
+                      alt={item.name}
+                      className="w-full h-32 object-cover rounded mb-2"
+                    />
+                  )}
+                  <p className="text-sm font-medium text-stone-700">{item.name}</p>
+                  <p className="text-sm text-stone-500">{currency(item.price)}</p>
+                </div>
+              ))}
+            </div>
           </section>
         )}
 

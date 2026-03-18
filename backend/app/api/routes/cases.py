@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_module, require_permission
 from app.database import get_db
 from app.models.user import User
+from app.schemas.fh_case import CremationStatusUpdate
 from app.services import case_service
 from app.services import fh_invoice_service
 from app.services import obituary_service
@@ -335,6 +336,36 @@ def update_case_status(
     if not result:
         raise HTTPException(status_code=404, detail="Case not found")
     return result
+
+
+@router.patch("/{case_id}/cremation")
+def update_cremation_status(
+    case_id: str,
+    data: CremationStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("fh_cases.edit")),
+):
+    """Update cremation tracking fields on a case."""
+    case = case_service.get_case(db, current_user.company_id, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    updates = data.model_dump(exclude_none=True)
+    for key, value in updates.items():
+        setattr(case, key, value)
+    # Convert date objects to strings for JSON-safe metadata
+    meta = {k: v.isoformat() if isinstance(v, date) else v for k, v in updates.items()}
+    case_service.log_activity(
+        db,
+        current_user.company_id,
+        case_id,
+        activity_type="cremation_updated",
+        description=f"Cremation details updated: {', '.join(updates.keys())}",
+        performed_by=current_user.id,
+        metadata=meta,
+    )
+    db.commit()
+    db.refresh(case)
+    return case
 
 
 @router.get("/{case_id}/activity")
