@@ -60,6 +60,11 @@ export async function updateTenant(tenantId: string, payload: Record<string, unk
   return data;
 }
 
+export async function deleteTenant(tenantId: string) {
+  const { data } = await platformClient.delete(`/tenants/${tenantId}`);
+  return data;
+}
+
 export async function getPlatformDashboard() {
   const { data } = await platformClient.get("/tenants/dashboard");
   return data;

@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import {
   getTenant,
   impersonateTenant,
   updateTenant,
+  deleteTenant,
   getTenantModules,
   setTenantModule,
   listModuleDefinitionsFlat,
@@ -120,10 +121,12 @@ function getPlaceholderChecklist(tenant: TenantDetail): ChecklistItem[] {
 
 export default function AdminTenantDetail() {
   const { tenantId } = useParams<{ tenantId: string }>();
+  const navigate = useNavigate();
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
 
   // Modules tab state
   const [tenantModules, setTenantModules] = useState<TenantModuleConfig[]>([]);
@@ -213,6 +216,21 @@ export default function AdminTenantDetail() {
       toast.success("Tenant activated");
     } catch {
       toast.error("Failed to activate tenant");
+    }
+  }
+
+  async function handleDelete() {
+    if (!tenant || !tenantId) return;
+    if (deleteConfirm !== tenant.name) {
+      toast.error("Type the tenant name exactly to confirm deletion");
+      return;
+    }
+    try {
+      await deleteTenant(tenantId);
+      toast.success(`Tenant "${tenant.name}" permanently deleted`);
+      navigate("/tenants");
+    } catch {
+      toast.error("Failed to delete tenant");
     }
   }
 
@@ -433,6 +451,9 @@ export default function AdminTenantDetail() {
           tenant={tenant}
           onSuspend={handleSuspend}
           onActivate={handleActivate}
+          onDelete={handleDelete}
+          deleteConfirm={deleteConfirm}
+          onDeleteConfirmChange={setDeleteConfirm}
         />
       )}
     </div>
@@ -940,10 +961,16 @@ function SettingsTab({
   tenant,
   onSuspend,
   onActivate,
+  onDelete,
+  deleteConfirm,
+  onDeleteConfirmChange,
 }: {
   tenant: TenantDetail;
   onSuspend: () => void;
   onActivate: () => void;
+  onDelete: () => void;
+  deleteConfirm: string;
+  onDeleteConfirmChange: (v: string) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -1024,17 +1051,32 @@ function SettingsTab({
               )}
             </div>
             <hr />
-            <div className="flex items-center justify-between">
-              <div>
+            <div>
+              <div className="mb-3">
                 <p className="text-sm font-medium">Delete Tenant</p>
                 <p className="text-xs text-muted-foreground">
-                  Permanently remove this tenant and all associated data.
+                  Permanently remove this tenant and all associated data. This
+                  action cannot be undone.
                 </p>
               </div>
-              <Button variant="destructive" size="sm" disabled>
-                <Trash2 className="mr-1.5 h-3 w-3" />
-                Delete
-              </Button>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={deleteConfirm}
+                  onChange={(e) => onDeleteConfirmChange(e.target.value)}
+                  placeholder={`Type "${tenant.name}" to confirm`}
+                  className="w-64 rounded-md border border-red-200 px-3 py-1.5 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+                />
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={deleteConfirm !== tenant.name}
+                  onClick={onDelete}
+                >
+                  <Trash2 className="mr-1.5 h-3 w-3" />
+                  Permanently Delete
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
