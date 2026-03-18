@@ -181,62 +181,178 @@ def delete_tenant(
     tenant_name = company.name
     db.expunge(company)  # detach from session
 
-    # Use a fresh raw connection for the delete operation
+    # Delete all tenant data using explicit table list in dependency order.
+    # This is more reliable than dynamic FK discovery which can miss tables
+    # due to permission or schema visibility issues on managed PostgreSQL.
+    #
+    # Tables are listed leaf-first (no other table depends on them) to avoid
+    # FK violations. Multiple groups handle the ordering.
+
+    # Group 1: Leaf tables (no other tenant table references these)
+    LEAF_TABLES = [
+        # Onboarding
+        ("onboarding_help_dismissals", "tenant_id"),
+        ("onboarding_scenario_steps", "tenant_id"),
+        ("onboarding_checklist_items", "tenant_id"),
+        ("onboarding_scenarios", "tenant_id"),
+        ("tenant_onboarding_checklists", "tenant_id"),
+        ("onboarding_data_imports", "tenant_id"),
+        ("onboarding_integration_setups", "tenant_id"),
+        # Production log
+        ("production_log_entries", "tenant_id"),
+        ("production_log_summaries", "tenant_id"),
+        # Funeral home (leaf first)
+        ("fh_portal_sessions", "company_id"),
+        ("fh_case_activities", "company_id"),
+        ("fh_documents", "company_id"),
+        ("fh_payments", "company_id"),
+        ("fh_invoices", "company_id"),
+        ("fh_obituaries", "company_id"),
+        ("fh_vault_orders", "company_id"),
+        ("fh_services", "company_id"),
+        ("fh_case_contacts", "company_id"),
+        ("fh_cases", "company_id"),
+        ("fh_price_list_versions", "company_id"),
+        ("fh_price_list", "company_id"),
+        ("fh_manufacturer_relationships", "funeral_home_tenant_id"),
+        ("fh_manufacturer_relationships", "manufacturer_tenant_id"),
+        # Extensions & flags
+        ("extension_activity_log", "tenant_id"),
+        ("extension_notify_requests", "tenant_id"),
+        ("tenant_extensions", "tenant_id"),
+        ("tenant_feature_flags", "tenant_id"),
+        ("flag_audit_logs", "tenant_id"),
+        ("tenant_module_configs", "tenant_id"),
+        # Audit & notifications
+        ("audit_logs", "company_id"),
+        ("notifications", "company_id"),
+        ("tenant_notifications", "company_id"),
+        ("tenant_notifications", "source_tenant_id"),
+        ("impersonation_sessions", "tenant_id"),
+        ("sync_logs", "company_id"),
+        ("api_keys", "company_id"),
+        # Jobs
+        ("jobs", "company_id"),
+        # Safety (leaf tables first)
+        ("safety_inspection_results", "company_id"),
+        ("safety_inspection_items", "company_id"),
+        ("safety_inspections", "company_id"),
+        ("safety_inspection_templates", "company_id"),
+        ("safety_incidents", "company_id"),
+        ("safety_alerts", "company_id"),
+        ("safety_chemicals", "company_id"),
+        ("safety_loto_procedures", "company_id"),
+        ("employee_training_records", "company_id"),
+        ("safety_training_events", "company_id"),
+        ("safety_training_requirements", "company_id"),
+        ("safety_programs", "company_id"),
+        # QC
+        ("qc_step_results", "company_id"),
+        ("qc_media", "company_id"),
+        ("qc_rework_records", "company_id"),
+        ("qc_dispositions", "company_id"),
+        ("qc_inspections", "company_id"),
+        ("qc_inspection_steps", "company_id"),
+        ("qc_inspection_templates", "company_id"),
+        ("qc_defect_types", "company_id"),
+        # Production
+        ("batch_tickets", "company_id"),
+        ("pour_event_work_orders", "company_id"),
+        ("pour_events", "company_id"),
+        ("mix_designs", "company_id"),
+        ("cure_schedules", "company_id"),
+        ("work_order_products", "company_id"),
+        ("work_orders", "company_id"),
+        ("bill_of_materials", "company_id"),
+        # Delivery
+        ("delivery_media", "company_id"),
+        ("delivery_events", "company_id"),
+        ("delivery_stops", "company_id"),
+        ("deliveries", "company_id"),
+        ("delivery_routes", "company_id"),
+        ("delivery_settings", "company_id"),
+        ("delivery_zones", "company_id"),
+        ("delivery_type_definitions", "company_id"),
+        ("drivers", "company_id"),
+        ("vehicles", "company_id"),
+        ("carriers", "company_id"),
+        # Finance
+        ("vendor_payments", "company_id"),
+        ("vendor_bill_lines", "company_id"),
+        ("vendor_bills", "company_id"),
+        ("vendor_contacts", "company_id"),
+        ("vendor_notes", "company_id"),
+        ("vendors", "company_id"),
+        ("customer_payments", "company_id"),
+        ("balance_adjustments", "company_id"),
+        ("invoice_lines", "company_id"),
+        ("invoices", "company_id"),
+        ("sales_orders", "company_id"),
+        ("quotes", "company_id"),
+        ("purchase_orders", "company_id"),
+        ("customer_contacts", "company_id"),
+        ("customer_notes", "company_id"),
+        ("customers", "company_id"),
+        # Inventory
+        ("inventory_transactions", "company_id"),
+        ("inventory_items", "company_id"),
+        ("stock_replenishment_rules", "company_id"),
+        # Products
+        ("product_price_tiers", "company_id"),
+        ("products", "company_id"),
+        ("product_categories", "company_id"),
+        # Network
+        ("network_transactions", "source_company_id"),
+        ("network_transactions", "target_company_id"),
+        ("network_relationships", "requesting_company_id"),
+        ("network_relationships", "target_company_id"),
+        # HR
+        ("onboarding_checklists", "company_id"),
+        ("onboarding_templates", "company_id"),
+        ("performance_notes", "company_id"),
+        ("documents", "company_id"),
+        ("equipment", "company_id"),
+        ("departments", "company_id"),
+        # Projects
+        ("projects", "company_id"),
+        # Config
+        ("sage_export_configs", "company_id"),
+        ("billing_events", "company_id"),
+        ("subscriptions", "company_id"),
+        ("company_modules", "company_id"),
+    ]
+
+    # Group 2: Tables with inter-dependencies (need users gone before roles)
+    AUTH_TABLES = [
+        ("permission_overrides", "company_id"),
+        ("users", "company_id"),
+        ("roles", "company_id"),
+    ]
+
     engine = db.get_bind()
     connection = engine.connect()
     deleted_counts: dict[str, int] = {}
     try:
         trans = connection.begin()
 
-        # Discover all tables with FK references to companies
-        # Use pg_constraint (reliable) instead of information_schema (misses some FKs)
-        fk_rows = connection.execute(text("""
-            SELECT DISTINCT
-                src.relname AS source_table,
-                a.attname AS source_column
-            FROM pg_constraint c
-            JOIN pg_class src ON c.conrelid = src.oid
-            JOIN pg_class tgt ON c.confrelid = tgt.oid
-            JOIN pg_attribute a ON a.attrelid = src.oid AND a.attnum = ANY(c.conkey)
-            WHERE c.contype = 'f'
-              AND tgt.relname = 'companies'
-            ORDER BY src.relname
-        """)).fetchall()
+        all_tables = LEAF_TABLES + AUTH_TABLES
 
-        tables_to_clean = [
-            (t, c) for t, c in fk_rows if t != "companies"
-        ]
-
-        logger.info(
-            "Deleting tenant %s (%s) — %d referencing tables found",
-            tenant_id, tenant_name, len(tables_to_clean),
-        )
-
-        # Run multiple passes — each pass deletes whatever isn't blocked by FKs
-        for pass_num in range(10):
-            progress = False
-            for table_name, col_name in tables_to_clean:
-                sp = connection.begin_nested()  # SAVEPOINT
-                try:
-                    result = connection.execute(
-                        text(f'DELETE FROM "{table_name}" WHERE "{col_name}" = :tid'),
-                        {"tid": tenant_id},
+        for table_name, col_name in all_tables:
+            sp = connection.begin_nested()
+            try:
+                result = connection.execute(
+                    text(f'DELETE FROM "{table_name}" WHERE "{col_name}" = :tid'),
+                    {"tid": tenant_id},
+                )
+                sp.commit()
+                if result.rowcount > 0:
+                    deleted_counts[table_name] = (
+                        deleted_counts.get(table_name, 0) + result.rowcount
                     )
-                    sp.commit()
-                    if result.rowcount > 0:
-                        deleted_counts[table_name] = (
-                            deleted_counts.get(table_name, 0) + result.rowcount
-                        )
-                        progress = True
-                        logger.info(
-                            "  Pass %d: deleted %d from %s",
-                            pass_num + 1, result.rowcount, table_name,
-                        )
-                except Exception:
-                    sp.rollback()
-            if not progress:
-                logger.info("  Pass %d: no progress — done cleaning", pass_num + 1)
-                break
+                    logger.info("Deleted %d from %s", result.rowcount, table_name)
+            except Exception as e:
+                sp.rollback()
+                logger.debug("Skipped %s.%s: %s", table_name, col_name, str(e)[:100])
 
         # Delete the company itself
         connection.execute(
@@ -245,7 +361,7 @@ def delete_tenant(
         )
 
         trans.commit()
-        logger.info("Tenant %s deleted successfully", tenant_id)
+        logger.info("Tenant %s (%s) deleted successfully", tenant_id, tenant_name)
     except Exception as e:
         logger.exception("Failed to delete tenant %s", tenant_id)
         try:
@@ -259,7 +375,6 @@ def delete_tenant(
     finally:
         connection.close()
 
-    # Expire SQLAlchemy session cache
     db.expire_all()
 
     return {
