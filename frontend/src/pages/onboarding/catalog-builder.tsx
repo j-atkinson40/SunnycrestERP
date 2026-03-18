@@ -66,30 +66,46 @@ function defaultVariants(base?: string): VaultVariant[] {
 }
 
 const WILBERT_LINES: VaultLine[] = [
-  "Monticello",
-  "Venetian",
-  "Triune",
-  "Testimonial",
-  "Bronze",
-  "Copper",
-  "Stainless",
-  "Veteran",
-  "Infant",
-  "Oversize",
-].map((name) => ({
+  { name: "Wilbert Bronze", prefix: "WBR" },
+  { name: "Bronze Triune", prefix: "BTR" },
+  { name: "Copper Triune", prefix: "CTR" },
+  { name: "Stainless Steel Triune", prefix: "SST" },
+  { name: "Cameo Rose Triune", prefix: "CRT" },
+  { name: "Veteran Triune", prefix: "VTR" },
+  { name: "White Tribute", prefix: "WTR" },
+  { name: "Gray Tribute", prefix: "GTR" },
+  { name: "White Venetian", prefix: "WVN" },
+  { name: "Gold Venetian", prefix: "GVN" },
+  { name: "Continental", prefix: "CON" },
+  { name: "Salute", prefix: "SAL" },
+  { name: "Monticello", prefix: "MON" },
+  { name: "Monarch", prefix: "MRC" },
+  { name: "Graveliner", prefix: "GVL" },
+  { name: "Graveliner (Social Service)", prefix: "GSS" },
+  { name: 'Loved & Cherished 19"', prefix: "LC19" },
+  { name: 'Loved & Cherished 24"', prefix: "LC24" },
+  { name: 'Loved & Cherished 31"', prefix: "LC31" },
+].map(({ name, prefix }) => ({
   name,
   selected: false,
-  description: `Wilbert ${name} vault line`,
-  skuPrefix: name.substring(0, 3).toUpperCase(),
+  description: `Wilbert ${name}`,
+  skuPrefix: prefix,
   basePrice: "",
   variants: defaultVariants(),
 }));
 
 const URN_VAULT_ITEMS: SimpleProduct[] = [
-  { name: "Standard Concrete", selected: false, price: "" },
-  { name: "Wilbert Urn Vault", selected: false, price: "" },
-  { name: "Double Urn Vault", selected: false, price: "" },
-  { name: "Infant Urn Vault", selected: false, price: "" },
+  { name: "Bronze Triune", selected: false, price: "" },
+  { name: "Copper Triune", selected: false, price: "" },
+  { name: "Stainless Steel Triune", selected: false, price: "" },
+  { name: "Cameo Rose Triune", selected: false, price: "" },
+  { name: "Universal (Cream & Gold or White & Silver)", selected: false, price: "" },
+  { name: "Gray Tribute", selected: false, price: "" },
+  { name: "White Venetian", selected: false, price: "" },
+  { name: "Gold Venetian", selected: false, price: "" },
+  { name: "Salute", selected: false, price: "" },
+  { name: "Monticello", selected: false, price: "" },
+  { name: "Graveliner", selected: false, price: "" },
 ];
 
 const URN_ITEMS: SimpleProduct[] = [
@@ -112,11 +128,7 @@ const RENTAL_ITEMS: RentalItem[] = [
   { name: "Cremation Table", selected: false, price: "", rentalUnit: "per service" },
 ];
 
-const SOLD_ITEMS: SimpleProduct[] = [
-  { name: "Burial Straps", selected: false, price: "" },
-  { name: "Vault Covers", selected: false, price: "" },
-  { name: "Memorial Markers", selected: false, price: "" },
-];
+const SOLD_ITEMS: SimpleProduct[] = [];
 
 // ── Price input component ─────────────────────────────────────────
 
@@ -210,7 +222,7 @@ export default function CatalogBuilder() {
     pricePerSet: "",
     chairsPerSet: "4",
   });
-  const [soldItems, setSoldItems] = useState<SimpleProduct[]>(SOLD_ITEMS);
+  const [soldItems] = useState<SimpleProduct[]>(SOLD_ITEMS);
 
   // ── Vault line helpers ────────────────────────────────────────
 
@@ -918,7 +930,7 @@ export default function CatalogBuilder() {
                         setChairs((prev) => ({ ...prev, enabled: checked }))
                       }
                     />
-                    <span className="text-sm font-medium">We rent chairs</span>
+                    <span className="text-sm font-medium">Chairs</span>
                   </div>
                   {chairs.enabled && (
                     <div className="mt-3 flex flex-wrap gap-4 pl-2">
@@ -956,52 +968,7 @@ export default function CatalogBuilder() {
                 </div>
               </div>
 
-              {/* Sold items */}
-              <div>
-                <h3 className="mb-2 text-sm font-medium text-muted-foreground">
-                  Sold Items
-                </h3>
-                <div className="space-y-2">
-                  {soldItems.map((item, idx) => (
-                    <div
-                      key={item.name}
-                      className={cn(
-                        "flex items-center gap-4 rounded-lg border p-3 transition-colors",
-                        item.selected
-                          ? "border-primary/30 bg-primary/5"
-                          : "border-border",
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={item.selected}
-                        onChange={(e) => {
-                          setSoldItems((prev) => {
-                            const next = [...prev];
-                            next[idx] = { ...next[idx], selected: e.target.checked };
-                            return next;
-                          });
-                        }}
-                        className="h-4 w-4 rounded accent-primary"
-                      />
-                      <span className="flex-1 text-sm font-medium">{item.name}</span>
-                      {item.selected && (
-                        <PriceInput
-                          value={item.price}
-                          onChange={(val) => {
-                            setSoldItems((prev) => {
-                              const next = [...prev];
-                              next[idx] = { ...next[idx], price: val };
-                              return next;
-                            });
-                          }}
-                          className="w-32"
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* Sold items removed per user request */}
             </div>
           )}
         </CardContent>
