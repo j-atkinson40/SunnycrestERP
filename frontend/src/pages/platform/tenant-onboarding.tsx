@@ -90,6 +90,7 @@ export default function TenantOnboardingPage() {
     admin_password: "",
     admin_first_name: "Admin",
     admin_last_name: "User",
+    website_url: "",
   });
   const [slugManual, setSlugManual] = useState(false);
 
@@ -163,6 +164,7 @@ export default function TenantOnboardingPage() {
         admin_first_name: form.admin_first_name,
         admin_last_name: form.admin_last_name,
         initial_settings: initialSettings,
+        website_url: form.website_url || undefined,
       });
 
       // No manual module selection — the backend onboardTenant endpoint
@@ -323,6 +325,24 @@ export default function TenantOnboardingPage() {
                 }
                 className="w-full rounded-md border px-3 py-2 text-sm"
               />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-sm font-medium">
+                Company Website (optional)
+              </label>
+              <input
+                type="url"
+                value={form.website_url}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, website_url: e.target.value }))
+                }
+                placeholder="https://www.example.com"
+                className="w-full rounded-md border px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                We'll scan their website to suggest products and certifications
+                during onboarding
+              </p>
             </div>
           </div>
         </Card>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,9 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import { Globe } from "lucide-react";
 import * as onboardingService from "@/services/onboarding-service";
+import * as intelligenceService from "@/services/website-intelligence-service";
 import type {
   OnboardingChecklist,
   ChecklistItem,
@@ -17,6 +19,7 @@ import type {
   ChecklistItemStatus,
   OnboardingScenario,
 } from "@/types/onboarding";
+import type { WebsiteIntelligence } from "@/types/website-intelligence";
 import { TIER_LABELS, TIER_COLORS, ITEM_STATUS_LABELS } from "@/types/onboarding";
 import { CheckInCallModal } from "@/components/onboarding/check-in-call-modal";
 import { SetupQuestions } from "@/components/onboarding/setup-questions";
@@ -528,6 +531,8 @@ export default function OnboardingHub() {
   const [showCallModal, setShowCallModal] = useState(false);
   const [showSetupQuestions, setShowSetupQuestions] = useState(false);
   const [questionsChecked, setQuestionsChecked] = useState(false);
+  const [websiteIntelligence, setWebsiteIntelligence] =
+    useState<WebsiteIntelligence | null>(null);
 
   // ── Fetch data ──────────────────────────────────────────────
 
@@ -544,10 +549,13 @@ export default function OnboardingHub() {
       }
       setQuestionsChecked(true);
 
-      const [checklistResp, scenariosResp] = await Promise.all([
+      const [checklistResp, scenariosResp, intelResp] = await Promise.all([
         onboardingService.getChecklist().catch(() => null),
         onboardingService.getScenarios().catch(() => []),
+        intelligenceService.getIntelligence().catch(() => null),
       ]);
+
+      setWebsiteIntelligence(intelResp);
 
       if (checklistResp) {
         setChecklist(checklistResp);
@@ -750,6 +758,28 @@ export default function OnboardingHub() {
           checklist.
         </p>
       </div>
+
+      {/* ── Website Intelligence Banner ──────────────────────── */}
+      {websiteIntelligence &&
+        !websiteIntelligence.applied_to_onboarding &&
+        websiteIntelligence.scrape_status === "completed" && (
+          <Link
+            to="/onboarding/website-review"
+            className="block rounded-xl border-2 border-teal-200 bg-teal-50 p-5"
+          >
+            <div className="flex items-center gap-4">
+              <Globe className="h-8 w-8 text-teal-600" />
+              <div>
+                <h3 className="font-semibold text-teal-900">
+                  We scanned your website
+                </h3>
+                <p className="text-sm text-teal-700">
+                  Review what we found before starting setup &rarr;
+                </p>
+              </div>
+            </div>
+          </Link>
+        )}
 
       {/* ── Progress Section ──────────────────────────────────── */}
       <Card>

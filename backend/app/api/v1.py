@@ -65,6 +65,7 @@ from app.api.routes import (
     vendor_payments,
     vendors,
     webhooks,
+    website_intelligence,
     work_orders,
 )
 
@@ -229,6 +230,9 @@ v1_router.include_router(
     vendor_payments.router, prefix="/vendor-payments", tags=["Vendor Payments"]
 )
 v1_router.include_router(vendors.router, prefix="/vendors", tags=["Vendors"])
+v1_router.include_router(
+    website_intelligence.router, tags=["Website Intelligence"]
+)
 v1_router.include_router(
     webhooks.router, prefix="/webhooks", tags=["Webhooks"]
 )

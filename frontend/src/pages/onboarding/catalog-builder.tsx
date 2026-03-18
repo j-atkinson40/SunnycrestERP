@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -7,7 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Globe } from "lucide-react";
 import apiClient from "@/lib/api-client";
+import * as intelligenceService from "@/services/website-intelligence-service";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -306,6 +308,56 @@ export default function CatalogBuilder() {
   });
   const [soldItems] = useState<SimpleProduct[]>(SOLD_ITEMS);
 
+  // Website intelligence pre-selections
+  const [websitePreselected, setWebsitePreselected] = useState<Set<string>>(
+    new Set(),
+  );
+
+  useEffect(() => {
+    intelligenceService.getIntelligence().then((intel) => {
+      if (!intel || !intel.analysis_result) return;
+
+      const acceptedVaults = intel.suggestions.filter(
+        (s) => s.suggestion_type === "vault_line" && s.status === "accepted",
+      );
+
+      if (acceptedVaults.length > 0) {
+        setUseWilbert(true);
+        setSellBurialVaults(true);
+
+        const preselectedNames = new Set<string>();
+
+        setWilbertLines((prev) =>
+          prev.map((line) => {
+            const match = acceptedVaults.find(
+              (s) =>
+                s.suggestion_key
+                  .replace("vault_line_", "")
+                  .replaceAll("_", " ")
+                  .toLowerCase() === line.name.toLowerCase(),
+            );
+            if (match) {
+              preselectedNames.add(line.name);
+              return {
+                ...line,
+                selected: match.confidence >= 0.85,
+              };
+            }
+            return line;
+          }),
+        );
+
+        setWebsitePreselected(preselectedNames);
+      }
+
+      // Pre-enable urns if detected
+      const urnSuggestion = intel.suggestions.find(
+        (s) => s.suggestion_key === "urns" && s.status === "accepted",
+      );
+      if (urnSuggestion) setSellUrns(true);
+    }).catch(() => {});
+  }, []);
+
   // ── Vault line helpers ────────────────────────────────────────
 
   const updateWilbertLine = useCallback(
@@ -568,7 +620,14 @@ export default function CatalogBuilder() {
               className="max-w-48"
             />
           ) : (
-            <span className="font-medium">{line.name}</span>
+            <>
+              <span className="font-medium">{line.name}</span>
+              {line.selected && websitePreselected.has(line.name) && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700">
+                  <Globe className="h-3 w-3" /> Found on your website
+                </span>
+              )}
+            </>
           )}
           {removable && (
             <Button

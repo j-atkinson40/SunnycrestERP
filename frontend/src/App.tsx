@@ -102,6 +102,7 @@ import ProductLibraryPage from "@/pages/onboarding/product-library";
 import ImportWizardPage from "@/pages/onboarding/import-wizard";
 import ScenarioPlayerPage from "@/pages/onboarding/scenario-player";
 import CatalogBuilder from "@/pages/onboarding/catalog-builder";
+import WebsiteSuggestionsReview from "@/pages/onboarding/website-suggestions-review";
 import UrnCatalogPage from "@/pages/products/urn-catalog";
 import UrnImportWizard from "@/pages/products/urn-import-wizard";
 import Unauthorized from "@/pages/unauthorized";
@@ -442,6 +443,7 @@ export default function App() {
                   <Route path="/onboarding/product-library" element={<ProductLibraryPage />} />
                   <Route path="/onboarding/import/:type" element={<ImportWizardPage />} />
                   <Route path="/onboarding/scenarios/:scenarioKey" element={<ScenarioPlayerPage />} />
+                  <Route path="/onboarding/website-review" element={<WebsiteSuggestionsReview />} />
                   <Route path="/onboarding/catalog-builder" element={<CatalogBuilder />} />
 
                   {/* Extension Catalog — any authenticated user */}

@@ -151,6 +151,7 @@ export interface OnboardTenantRequest {
   admin_first_name: string;
   admin_last_name: string;
   initial_settings?: Record<string, unknown>;
+  website_url?: string;
 }
 
 export interface OnboardTenantResponse {

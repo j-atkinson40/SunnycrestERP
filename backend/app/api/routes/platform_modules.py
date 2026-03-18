@@ -38,6 +38,7 @@ class CreateTenantRequest(BaseModel):
     admin_first_name: str = "Admin"
     admin_last_name: str = "User"
     initial_settings: dict | None = None  # e.g. {"spring_burials_enabled": true}
+    website_url: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -278,5 +279,51 @@ def onboard_tenant(
         logging.getLogger(__name__).warning(f"Failed to initialize onboarding: {e}")
         result["onboarding_initialized"] = False
 
+    # Kick off website intelligence if URL provided
+    if data.website_url:
+        try:
+            from app.models.website_intelligence import TenantWebsiteIntelligence
+
+            intel = TenantWebsiteIntelligence(
+                tenant_id=company.id,
+                website_url=data.website_url,
+                scrape_status="pending",
+            )
+            db.add(intel)
+            db.flush()
+            result["website_intelligence"] = "pending"
+        except Exception as e:
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                f"Failed to create website intelligence record: {e}"
+            )
+
     db.commit()
+
+    # Start background scrape after commit (needs committed tenant_id)
+    if data.website_url:
+        try:
+            import threading
+
+            def _run_scrape_background(tid: str, url: str):
+                from app.services.website_intelligence_job import (
+                    run_website_intelligence,
+                )
+
+                run_website_intelligence(None, tid, url)
+
+            thread = threading.Thread(
+                target=_run_scrape_background,
+                args=(company.id, data.website_url),
+                daemon=True,
+            )
+            thread.start()
+        except Exception as e:
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                f"Failed to start website intelligence: {e}"
+            )
+
     return result
