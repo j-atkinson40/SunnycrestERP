@@ -98,6 +98,12 @@ function getManufacturingNav(
       permission: "inventory.view",
     },
     {
+      label: "Urns",
+      href: "/products/urns",
+      icon: "Gem",
+      permission: "products.view",
+    },
+    {
       label: "Production Log",
       href: "/production-log",
       icon: "Factory",

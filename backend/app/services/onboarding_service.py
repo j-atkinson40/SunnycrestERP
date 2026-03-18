@@ -359,6 +359,20 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/admin/settings",
         "sort_order": 14,
     },
+    {
+        "item_key": "complete_urn_catalog",
+        "tier": "optional",
+        "category": "data_setup",
+        "title": "Import your full Wilbert urn catalog",
+        "description": (
+            "Upload your Wilbert price list to add your complete urn "
+            "selection beyond the starter set."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/products/urns",
+        "sort_order": 15,
+    },
 ]
 
 FUNERAL_HOME_CHECKLIST_ITEMS = [

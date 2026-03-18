@@ -49,6 +49,11 @@ class Product(Base):
     product_line: Mapped[str | None] = mapped_column(String(100), nullable=True)  # e.g. "Monticello"
     variant_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # e.g. "STD-1P"
 
+    # Urn catalog / Wilbert import fields
+    wilbert_sku: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    wholesale_cost: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    markup_percent: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )

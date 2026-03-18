@@ -143,16 +143,23 @@ const URN_VAULT_ITEMS: SimpleProduct[] = [
 ];
 
 const URN_ITEMS: SimpleProduct[] = [
-  { name: "Standard Concrete Urn", selected: false, price: "", category: "Concrete/Granite" },
-  { name: "Granite Urn", selected: false, price: "", category: "Concrete/Granite" },
-  { name: "Cultured Granite Urn", selected: false, price: "", category: "Concrete/Granite" },
-  { name: "Wilbert Bronze Urn", selected: false, price: "", category: "Wilbert Urns" },
-  { name: "Wilbert Copper Urn", selected: false, price: "", category: "Wilbert Urns" },
-  { name: "Wilbert Stainless Urn", selected: false, price: "", category: "Wilbert Urns" },
-  { name: "Heritage Urn", selected: false, price: "", category: "Wilbert Urns" },
-  { name: "Biodegradable Shell Urn", selected: false, price: "", category: "Biodegradable" },
-  { name: "Biodegradable Paper Urn", selected: false, price: "", category: "Biodegradable" },
-  { name: "Biodegradable Bamboo Urn", selected: false, price: "", category: "Biodegradable" },
+  // Cultured Marble — highest volume, shown first
+  { name: "Cultured Marble Urn — Classic White", selected: false, price: "", category: "Cultured Marble" },
+  { name: "Cultured Marble Urn — Onyx", selected: false, price: "", category: "Cultured Marble" },
+  { name: "Cultured Marble Urn — Rose", selected: false, price: "", category: "Cultured Marble" },
+  { name: "Cultured Marble Urn — Blue", selected: false, price: "", category: "Cultured Marble" },
+  { name: "Cultured Marble Urn — Green", selected: false, price: "", category: "Cultured Marble" },
+  // Companion
+  { name: "Cultured Marble Companion Urn — Classic White", selected: false, price: "", category: "Companion" },
+  { name: "Cultured Marble Companion Urn — Onyx", selected: false, price: "", category: "Companion" },
+  { name: "Cultured Marble Companion Urn — Rose", selected: false, price: "", category: "Companion" },
+  // Other Common
+  { name: "Standard Metal Urn — Brushed Pewter", selected: false, price: "", category: "Other Common" },
+  { name: "Standard Metal Urn — Midnight Blue", selected: false, price: "", category: "Other Common" },
+  { name: "Wood Urn — Walnut", selected: false, price: "", category: "Other Common" },
+  { name: "Biodegradable Urn — Natural", selected: false, price: "", category: "Other Common" },
+  { name: "Keepsake Urn Set", selected: false, price: "", category: "Other Common" },
+  { name: "Infant Urn — White Marble", selected: false, price: "", category: "Other Common" },
 ];
 
 const RENTAL_ITEMS: RentalItem[] = [
@@ -887,6 +894,15 @@ export default function CatalogBuilder() {
 
   function renderUrns() {
     const categories = [...new Set(urns.map((u) => u.category || "Custom"))];
+
+    const selectAllCulturedMarble = () => {
+      setUrns((prev) =>
+        prev.map((u) =>
+          u.category === "Cultured Marble" ? { ...u, selected: true } : u,
+        ),
+      );
+    };
+
     return (
       <Card>
         <CardHeader>
@@ -905,6 +921,22 @@ export default function CatalogBuilder() {
             </p>
           ) : (
             <div className="space-y-6">
+              <p className="text-sm text-muted-foreground">
+                We've included the most commonly sold urns to get you started. You can add your full catalog after setup.
+              </p>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selectAllCulturedMarble}
+              >
+                Select All Cultured Marble
+              </Button>
+
+              <p className="text-xs text-muted-foreground">
+                Enter your selling prices. Reference your Wilbert price list for wholesale costs.
+              </p>
+
               {categories.map((cat) => (
                 <div key={cat}>
                   <h3 className="mb-2 text-sm font-medium text-muted-foreground">
@@ -975,6 +1007,16 @@ export default function CatalogBuilder() {
               <Button variant="outline" size="sm" onClick={addCustomUrn}>
                 + Add custom product
               </Button>
+
+              <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <h4 className="font-medium text-blue-900">Have more urns to add?</h4>
+                <p className="mt-1 text-sm text-blue-700">
+                  Import your complete Wilbert urn catalog after setup using your Wilbert price list Excel file.
+                </p>
+                <p className="mt-1 text-sm text-blue-600">
+                  You'll find the Urn Catalog Manager in Products &rarr; Urns after onboarding.
+                </p>
+              </div>
             </div>
           )}
         </CardContent>

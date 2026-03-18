@@ -102,6 +102,8 @@ import ProductLibraryPage from "@/pages/onboarding/product-library";
 import ImportWizardPage from "@/pages/onboarding/import-wizard";
 import ScenarioPlayerPage from "@/pages/onboarding/scenario-player";
 import CatalogBuilder from "@/pages/onboarding/catalog-builder";
+import UrnCatalogPage from "@/pages/products/urn-catalog";
+import UrnImportWizard from "@/pages/products/urn-import-wizard";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -184,6 +186,14 @@ export default function App() {
                     <Route
                       path="/products/:productId"
                       element={<ProductDetailPage />}
+                    />
+                    <Route
+                      path="/products/urns"
+                      element={<UrnCatalogPage />}
+                    />
+                    <Route
+                      path="/products/urns/import"
+                      element={<UrnImportWizard />}
                     />
                   </Route>
 

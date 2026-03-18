@@ -47,6 +47,7 @@ from app.api.routes import (
     production_log,
     catalog_builder,
     spring_burials,
+    urn_catalog,
     products,
     projects,
     purchase_orders,
@@ -181,6 +182,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     products.router, prefix="/products", tags=["Products"]
+)
+v1_router.include_router(
+    urn_catalog.router, prefix="/products", tags=["Urn Catalog"]
 )
 v1_router.include_router(
     projects.router, prefix="/projects", tags=["Project Management"]
