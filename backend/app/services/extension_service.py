@@ -1479,7 +1479,12 @@ EXTENSION_CATALOG = [
 
 def seed_extensions(db: Session) -> int:
     """Seed extension catalog. Idempotent — updates existing, creates new."""
-    existing = {r.extension_key: r for r in db.query(ExtensionDefinition).all()}
+    try:
+        existing = {r.extension_key: r for r in db.query(ExtensionDefinition).all()}
+    except Exception:
+        # Table or column may not exist yet (migration pending) — skip seeding
+        db.rollback()
+        return 0
 
     count = 0
     for ext_data in EXTENSION_CATALOG:
