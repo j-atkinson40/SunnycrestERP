@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -57,6 +58,9 @@ class Company(Base):
         Text, nullable=True
     )  # JSON blob for provider-specific settings (OAuth tokens, mappings, etc.)
 
+    # Tenant-specific settings (JSON blob — spring_burials_enabled, etc.)
+    settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Organizational Hierarchy
     parent_company_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("companies.id"), nullable=True, index=True
@@ -83,6 +87,20 @@ class Company(Base):
     modified_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", use_alter=True), nullable=True
     )
+
+    @property
+    def settings(self) -> dict:
+        if not self.settings_json:
+            return {}
+        return json.loads(self.settings_json)
+
+    def get_setting(self, key: str, default=None):
+        return self.settings.get(key, default)
+
+    def set_setting(self, key: str, value):
+        s = self.settings
+        s[key] = value
+        self.settings_json = json.dumps(s)
 
     users = relationship("User", back_populates="company", foreign_keys="[User.company_id]")
     roles = relationship("Role", back_populates="company", cascade="all, delete-orphan")

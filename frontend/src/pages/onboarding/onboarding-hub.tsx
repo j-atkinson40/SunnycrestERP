@@ -19,6 +19,8 @@ import type {
 } from "@/types/onboarding";
 import { TIER_LABELS, TIER_COLORS, ITEM_STATUS_LABELS } from "@/types/onboarding";
 import { CheckInCallModal } from "@/components/onboarding/check-in-call-modal";
+import { SetupQuestions } from "@/components/onboarding/setup-questions";
+import apiClient from "@/lib/api-client";
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -524,11 +526,24 @@ export default function OnboardingHub() {
     new Set(["must_complete", "should_complete"]),
   );
   const [showCallModal, setShowCallModal] = useState(false);
+  const [showSetupQuestions, setShowSetupQuestions] = useState(false);
+  const [questionsChecked, setQuestionsChecked] = useState(false);
 
   // ── Fetch data ──────────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
     try {
+      // Check if setup questions have been completed
+      try {
+        const { data: tenantSettings } = await apiClient.get("/company/tenant-settings");
+        if (!tenantSettings?.onboarding_questions_completed && company?.vertical === "manufacturing") {
+          setShowSetupQuestions(true);
+        }
+      } catch {
+        // Settings endpoint may not exist yet — skip questions
+      }
+      setQuestionsChecked(true);
+
       const [checklistResp, scenariosResp] = await Promise.all([
         onboardingService.getChecklist().catch(() => null),
         onboardingService.getScenarios().catch(() => []),
@@ -548,7 +563,7 @@ export default function OnboardingHub() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [company?.vertical]);
 
   useEffect(() => {
     fetchData();
@@ -692,6 +707,20 @@ export default function OnboardingHub() {
       <div className="flex h-64 items-center justify-center">
         <p className="text-muted-foreground">Loading your setup checklist...</p>
       </div>
+    );
+  }
+
+  // Show setup questions before the checklist (manufacturing only)
+  if (questionsChecked && showSetupQuestions) {
+    return (
+      <SetupQuestions
+        vertical={company?.vertical || ""}
+        onComplete={() => {
+          setShowSetupQuestions(false);
+          // Refresh checklist in case new items were added
+          fetchData();
+        }}
+      />
     );
   }
 

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_permission
@@ -49,3 +50,57 @@ def update_company_settings(
         db, current_user.company_id, data, actor_id=current_user.id
     )
     return CompanyResponse.model_validate(company)
+
+
+class TenantSettingUpdate(BaseModel):
+    key: str
+    value: object  # bool, str, int, etc.
+
+
+@router.get("/tenant-settings")
+def get_tenant_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("company.view")),
+):
+    """Get all tenant-specific settings (spring_burials_enabled, etc.)."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    return company.settings if company else {}
+
+
+@router.put("/tenant-settings")
+def update_tenant_setting(
+    data: TenantSettingUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("company.edit")),
+):
+    """Set a tenant-specific setting."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        return {"error": "Company not found"}
+
+    company.set_setting(data.key, data.value)
+    db.commit()
+    return company.settings
+
+
+@router.post("/tenant-settings/bulk")
+def update_tenant_settings_bulk(
+    settings: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("company.edit")),
+):
+    """Set multiple tenant settings at once."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        return {"error": "Company not found"}
+
+    for key, value in settings.items():
+        company.set_setting(key, value)
+    db.commit()
+    return company.settings
