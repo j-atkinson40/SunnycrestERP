@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -39,6 +39,15 @@ class Product(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+    # Catalog builder fields
+    pricing_type: Mapped[str] = mapped_column(String(20), default="sale")  # sale, rental
+    rental_unit: Mapped[str | None] = mapped_column(String(30), nullable=True)  # service, set, day
+    default_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(30), default="manual")  # manual, catalog_builder, csv_import
+    is_inventory_tracked: Mapped[bool] = mapped_column(Boolean, default=True)
+    product_line: Mapped[str | None] = mapped_column(String(100), nullable=True)  # e.g. "Monticello"
+    variant_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # e.g. "STD-1P"
 
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True

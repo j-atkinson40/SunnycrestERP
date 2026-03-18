@@ -101,6 +101,7 @@ import OnboardingAnalyticsPage from "@/pages/onboarding/onboarding-analytics";
 import ProductLibraryPage from "@/pages/onboarding/product-library";
 import ImportWizardPage from "@/pages/onboarding/import-wizard";
 import ScenarioPlayerPage from "@/pages/onboarding/scenario-player";
+import CatalogBuilder from "@/pages/onboarding/catalog-builder";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -431,6 +432,7 @@ export default function App() {
                   <Route path="/onboarding/product-library" element={<ProductLibraryPage />} />
                   <Route path="/onboarding/import/:type" element={<ImportWizardPage />} />
                   <Route path="/onboarding/scenarios/:scenarioKey" element={<ScenarioPlayerPage />} />
+                  <Route path="/onboarding/catalog-builder" element={<CatalogBuilder />} />
 
                   {/* Extension Catalog — any authenticated user */}
                   <Route path="/extensions" element={<ExtensionCatalogPage />} />

@@ -171,14 +171,14 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "item_key": "add_products",
         "tier": "must_complete",
         "category": "data_setup",
-        "title": "Add your products",
+        "title": "Set up your product catalog",
         "description": (
-            "Your product catalog is the foundation of everything — orders, "
-            "invoices, and inventory all start here."
+            "Tell us which vault lines and equipment you carry — "
+            "we'll build your catalog automatically."
         ),
-        "estimated_minutes": 20,
+        "estimated_minutes": 15,
         "action_type": "navigate",
-        "action_target": "/products/new",
+        "action_target": "/onboarding/catalog-builder",
         "sort_order": 1,
     },
     {

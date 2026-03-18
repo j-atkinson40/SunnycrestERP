@@ -65,6 +65,7 @@ from app.models.onboarding_scenario_step import OnboardingScenarioStep
 from app.models.production_log_entry import ProductionLogEntry
 from app.models.production_log_summary import ProductionLogSummary
 from app.models.product_catalog_template import ProductCatalogTemplate
+from app.models.product_substitution_rule import ProductSubstitutionRule
 from app.models.performance_note import PerformanceNote
 from app.models.pour_event import PourEvent, PourEventWorkOrder
 from app.models.product import Product
