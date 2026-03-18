@@ -43,12 +43,14 @@ export function getNavigation(
   vertical: string | null,
   enabledModules: Set<string>,
   permissions: Set<string>,
+  tenantSettings?: Record<string, unknown>,
 ): NavigationConfig {
   const preset = vertical || "manufacturing";
+  const settings = tenantSettings || {};
 
   switch (preset) {
     case "manufacturing":
-      return getManufacturingNav(enabledModules, permissions);
+      return getManufacturingNav(enabledModules, permissions, settings);
     case "funeral_home":
       return getFuneralHomeNav(enabledModules, permissions);
     case "cemetery":
@@ -63,6 +65,7 @@ export function getNavigation(
 function getManufacturingNav(
   modules: Set<string>,
   perms: Set<string>,
+  settings: Record<string, unknown> = {},
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
@@ -101,12 +104,16 @@ function getManufacturingNav(
       permission: "production_log.view",
       requiresModule: "daily_production_log",
     },
-    {
+  ];
+
+  // Spring Burials — only if enabled in tenant settings
+  if (settings.spring_burials_enabled) {
+    opsItems.push({
       label: "Spring Burials",
       href: "/spring-burials",
       icon: "Snowflake",
-    },
-  ];
+    });
+  }
 
   // Extension-added items
   if (modules.has("work_orders")) {

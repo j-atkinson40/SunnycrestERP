@@ -17,7 +17,18 @@ export interface Company {
   email_from_name: string | null;
   email_from_address: string | null;
   vertical: string | null;
+  settings_json: string | null;
   created_at: string;
+}
+
+/** Parse the settings_json blob into a typed object. */
+export function parseTenantSettings(company: Company | null): Record<string, unknown> {
+  if (!company?.settings_json) return {};
+  try {
+    return JSON.parse(company.settings_json);
+  } catch {
+    return {};
+  }
 }
 
 export interface CompanyUpdate {

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { parseTenantSettings } from "@/types/company";
 import {
   getNavigation,
   type NavigationConfig,
@@ -9,6 +10,7 @@ interface PresetThemeContextValue {
   navigation: NavigationConfig;
   presetAccent: string;
   presetLabel: string;
+  tenantSettings: Record<string, unknown>;
 }
 
 const PresetThemeContext = createContext<PresetThemeContextValue | null>(null);
@@ -20,13 +22,19 @@ export function PresetThemeProvider({
 }) {
   const { company, enabledModules, permissions } = useAuth();
 
+  const tenantSettings = useMemo(
+    () => parseTenantSettings(company),
+    [company?.settings_json],
+  );
+
   const navigation = useMemo(() => {
     return getNavigation(
       company?.vertical ?? null,
       enabledModules ?? new Set(),
       permissions ?? new Set(),
+      tenantSettings,
     );
-  }, [company?.vertical, enabledModules, permissions]);
+  }, [company?.vertical, enabledModules, permissions, tenantSettings]);
 
   // Set CSS custom property on root
   useEffect(() => {
@@ -46,6 +54,7 @@ export function PresetThemeProvider({
         navigation,
         presetAccent: navigation.presetAccent,
         presetLabel: navigation.presetLabel,
+        tenantSettings,
       }}
     >
       {children}

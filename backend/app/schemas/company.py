@@ -63,6 +63,7 @@ class CompanyResponse(BaseModel):
     name: str
     slug: str
     is_active: bool
+    vertical: str | None = None
     address_street: str | None = None
     address_city: str | None = None
     address_state: str | None = None
@@ -76,6 +77,7 @@ class CompanyResponse(BaseModel):
     payment_terms_options: str | None = None
     email_from_name: str | None = None
     email_from_address: str | None = None
+    settings_json: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
