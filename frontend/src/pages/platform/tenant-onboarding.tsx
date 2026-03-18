@@ -1,33 +1,57 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  listModuleDefinitionsFlat,
   listVerticalPresets,
   onboardTenant,
-  bulkSetTenantModules,
 } from "@/services/platform-service";
-import type {
-  ModuleDefinition,
-  VerticalPreset,
-} from "@/types/platform";
+import type { VerticalPreset } from "@/types/platform";
+import {
+  Factory,
+  Heart,
+  TreePine,
+  Flame,
+  CheckCircle2,
+  Puzzle,
+  ArrowRight,
+} from "lucide-react";
 
-const STEPS = ["Company Details", "Choose Vertical", "Review Modules", "Summary"];
+// ── Preset visual config ─────────────────────────────────────────────────────
 
-const CATEGORY_LABELS: Record<string, string> = {
-  core: "Core (Always Enabled)",
-  business: "Business",
-  operations: "Operations",
-  manufacturing: "Manufacturing",
-  funeral: "Funeral Home",
-  cemetery: "Cemetery",
-  crematory: "Crematory",
-  addon: "Add-ons",
+const PRESET_ICONS: Record<string, typeof Factory> = {
+  manufacturing: Factory,
+  funeral_home: Heart,
+  cemetery: TreePine,
+  crematory: Flame,
 };
 
-const CATEGORY_ORDER = ["core", "business", "operations", "manufacturing", "funeral", "cemetery", "crematory", "addon"];
+const PRESET_COLORS: Record<string, { ring: string; bg: string; text: string }> = {
+  manufacturing: { ring: "ring-slate-500", bg: "bg-slate-50", text: "text-slate-700" },
+  funeral_home: { ring: "ring-stone-500", bg: "bg-stone-50", text: "text-stone-700" },
+  cemetery: { ring: "ring-green-700", bg: "bg-green-50", text: "text-green-800" },
+  crematory: { ring: "ring-red-800", bg: "bg-red-50", text: "text-red-900" },
+};
+
+/**
+ * Human-readable module labels for the preset confirmation screen.
+ * These map the module keys from the preset configuration to
+ * business-language names that an admin understands.
+ */
+const MODULE_LABELS: Record<string, string> = {
+  core: "Core Platform",
+  sales: "Orders & Invoicing",
+  purchasing: "Purchasing",
+  inventory: "Basic Inventory",
+  daily_production_log: "Daily Production Log",
+  driver_delivery: "Delivery Scheduling",
+  safety_management: "Safety & OSHA",
+  customers: "Customers & Contacts",
+  funeral_home: "Case Management, FTC Compliance, Vault Ordering, Family Portal & Invoicing",
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function slugify(text: string): string {
   return text
@@ -37,10 +61,15 @@ function slugify(text: string): string {
     .slice(0, 50);
 }
 
+// ── Steps ────────────────────────────────────────────────────────────────────
+
+const STEPS = ["Company Details", "Choose Vertical", "Confirm & Create"];
+
+// ── Component ────────────────────────────────────────────────────────────────
+
 export default function TenantOnboardingPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
-  const [modules, setModules] = useState<ModuleDefinition[]>([]);
   const [presets, setPresets] = useState<VerticalPreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -59,31 +88,12 @@ export default function TenantOnboardingPage() {
   // Step 2: Vertical
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
-  // Step 3: Module selection
-  const [enabledKeys, setEnabledKeys] = useState<Set<string>>(new Set());
-
-  const coreKeys = useMemo(
-    () => new Set(modules.filter((m) => m.is_core).map((m) => m.key)),
-    [modules]
-  );
-
-  const moduleMap = useMemo(
-    () => Object.fromEntries(modules.map((m) => [m.key, m])),
-    [modules]
-  );
-
   const fetchData = useCallback(async () => {
     try {
-      const [mods, pres] = await Promise.all([
-        listModuleDefinitionsFlat(),
-        listVerticalPresets(),
-      ]);
-      setModules(mods);
+      const pres = await listVerticalPresets();
       setPresets(pres);
-      // Initialize with core keys
-      setEnabledKeys(new Set(mods.filter((m) => m.is_core).map((m) => m.key)));
     } catch {
-      toast.error("Failed to load module data");
+      toast.error("Failed to load preset data");
     } finally {
       setLoading(false);
     }
@@ -93,7 +103,6 @@ export default function TenantOnboardingPage() {
     fetchData();
   }, [fetchData]);
 
-  // Auto-slug from name
   function handleNameChange(name: string) {
     setForm((f) => ({
       ...f,
@@ -102,54 +111,6 @@ export default function TenantOnboardingPage() {
     }));
   }
 
-  // When preset is selected, update enabled modules
-  function handleSelectPreset(presetKey: string) {
-    setSelectedPreset(presetKey);
-    const preset = presets.find((p) => p.key === presetKey);
-    if (preset) {
-      const newKeys = new Set([
-        ...Array.from(coreKeys),
-        ...preset.module_keys,
-      ]);
-      setEnabledKeys(newKeys);
-    } else {
-      setEnabledKeys(new Set(coreKeys));
-    }
-  }
-
-  // Toggle a module
-  function handleToggleModule(key: string) {
-    if (coreKeys.has(key)) return;
-
-    setEnabledKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        // Disabling — check dependents
-        const dependents = modules.filter(
-          (m) => next.has(m.key) && m.dependencies.includes(key)
-        );
-        if (dependents.length > 0) {
-          toast.error(
-            `Cannot disable: ${dependents.map((d) => d.name).join(", ")} depend on it`
-          );
-          return prev;
-        }
-        next.delete(key);
-      } else {
-        // Enabling — auto-enable dependencies
-        const mod = moduleMap[key];
-        if (mod) {
-          for (const dep of mod.dependencies) {
-            next.add(dep);
-          }
-        }
-        next.add(key);
-      }
-      return next;
-    });
-  }
-
-  // Validation
   function canProceed(): boolean {
     if (step === 0) {
       return !!(
@@ -176,20 +137,14 @@ export default function TenantOnboardingPage() {
         admin_last_name: form.admin_last_name,
       });
 
-      // Apply custom module selection
-      const nonCoreEnabled = Array.from(enabledKeys).filter(
-        (k) => !coreKeys.has(k)
-      );
-      if (nonCoreEnabled.length > 0) {
-        await bulkSetTenantModules(result.tenant_id, Array.from(enabledKeys));
-      }
+      // No manual module selection — the backend onboardTenant endpoint
+      // reads the preset configuration and activates the correct modules.
 
       toast.success(`Tenant "${form.name}" created successfully!`);
       navigate(`/tenants/${result.tenant_id}`);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Failed to create tenant";
-      // Try to extract detail from axios error
       const axiosErr = err as { response?: { data?: { detail?: string } } };
       toast.error(axiosErr.response?.data?.detail || message);
     } finally {
@@ -197,29 +152,29 @@ export default function TenantOnboardingPage() {
     }
   }
 
-  // Group modules by category
-  const groupedModules = useMemo(() => {
-    const groups: Record<string, ModuleDefinition[]> = {};
-    for (const cat of CATEGORY_ORDER) {
-      const items = modules.filter((m) => m.category === cat);
-      if (items.length > 0) groups[cat] = items;
-    }
-    return groups;
-  }, [modules]);
-
-  const enabledCount = enabledKeys.size;
-  const totalCount = modules.length;
+  const activePreset = presets.find((p) => p.key === selectedPreset);
+  const presetColor = selectedPreset
+    ? PRESET_COLORS[selectedPreset] || PRESET_COLORS.manufacturing
+    : null;
+  const PresetIcon = selectedPreset
+    ? PRESET_ICONS[selectedPreset] || Factory
+    : Factory;
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading module configuration...</p>;
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
+      </div>
+    );
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Onboard New Tenant</h1>
+        <h1 className="text-2xl font-bold">Create New Tenant</h1>
         <p className="text-muted-foreground">
-          Set up a new tenant with their business vertical and module configuration.
+          Set up a new tenant — modules are configured automatically from the
+          selected preset.
         </p>
       </div>
 
@@ -252,7 +207,7 @@ export default function TenantOnboardingPage() {
         ))}
       </div>
 
-      {/* Step 1: Company Details */}
+      {/* ── Step 1: Company Details ── */}
       {step === 0 && (
         <Card className="p-6">
           <h2 className="mb-4 text-lg font-semibold">Company Details</h2>
@@ -265,13 +220,13 @@ export default function TenantOnboardingPage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="Acme Corp"
+                placeholder="Acme Vault Co."
                 className="w-full rounded-md border px-3 py-2 text-sm"
               />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">
-                Slug <span className="text-red-500">*</span>
+                Subdomain <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -280,11 +235,11 @@ export default function TenantOnboardingPage() {
                   setSlugManual(true);
                   setForm((f) => ({ ...f, slug: e.target.value }));
                 }}
-                placeholder="acme-corp"
+                placeholder="acme-vault"
                 className="w-full rounded-md border px-3 py-2 text-sm font-mono"
               />
               <p className="mt-1 text-xs text-gray-500">
-                Used in URLs: {form.slug || "..."}.yourapp.com
+                {form.slug || "..."}.yourplatform.com
               </p>
             </div>
             <div>
@@ -345,123 +300,59 @@ export default function TenantOnboardingPage() {
         </Card>
       )}
 
-      {/* Step 2: Choose Vertical */}
+      {/* ── Step 2: Choose Vertical ── */}
       {step === 1 && (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Choose Business Vertical</h2>
           <p className="text-sm text-gray-500">
-            Select a preset to pre-configure modules for this tenant&apos;s industry.
+            The preset determines which modules are active and how the platform
+            is configured. The tenant can enable additional extensions during
+            onboarding.
           </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {presets.map((preset) => (
-              <Card
-                key={preset.key}
-                className={`cursor-pointer p-4 transition-all hover:shadow-md ${
-                  selectedPreset === preset.key
-                    ? "ring-2 ring-indigo-500 bg-indigo-50"
-                    : "hover:border-gray-300"
-                }`}
-                onClick={() => handleSelectPreset(preset.key)}
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="font-semibold">{preset.name}</h3>
-                  {selectedPreset === preset.key && (
-                    <Badge className="bg-indigo-600 text-white">Selected</Badge>
-                  )}
-                </div>
-                <p className="mb-3 text-sm text-gray-500">
-                  {preset.description}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {preset.module_keys.length > 0
-                    ? `${preset.module_keys.length} modules included`
-                    : "Start from scratch"}
-                </p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Review Modules */}
-      {step === 2 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Review Modules</h2>
-              <p className="text-sm text-gray-500">
-                {enabledCount} of {totalCount} modules enabled. Toggle modules
-                on/off as needed.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-6">
-            {CATEGORY_ORDER.map((cat) => {
-              const items = groupedModules[cat];
-              if (!items) return null;
+          <div className="grid gap-4 sm:grid-cols-2">
+            {presets.map((preset) => {
+              const colors = PRESET_COLORS[preset.key] || PRESET_COLORS.manufacturing;
+              const Icon = PRESET_ICONS[preset.key] || Factory;
+              const isSelected = selectedPreset === preset.key;
               return (
-                <div key={cat}>
-                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-500">
-                    {CATEGORY_LABELS[cat] || cat}
-                  </h3>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {items.map((m) => {
-                      const isEnabled = enabledKeys.has(m.key);
-                      const isCore = m.is_core;
-                      return (
-                        <label
-                          key={m.key}
-                          className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
-                            isEnabled
-                              ? "border-indigo-200 bg-indigo-50/50"
-                              : "border-gray-200 bg-white"
-                          } ${isCore ? "opacity-75" : "hover:border-indigo-300"}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isEnabled}
-                            onChange={() => handleToggleModule(m.key)}
-                            disabled={isCore}
-                            className="mt-0.5 rounded"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium">
-                                {m.name}
-                              </span>
-                              {isCore && (
-                                <Badge variant="secondary" className="text-[10px]">
-                                  Core
-                                </Badge>
-                              )}
-                            </div>
-                            {m.description && (
-                              <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">
-                                {m.description}
-                              </p>
-                            )}
-                            {m.dependencies.length > 0 && (
-                              <p className="mt-1 text-[10px] text-gray-400">
-                                Requires: {m.dependencies.join(", ")}
-                              </p>
-                            )}
-                          </div>
-                        </label>
-                      );
-                    })}
+                <Card
+                  key={preset.key}
+                  className={`cursor-pointer p-5 transition-all hover:shadow-md ${
+                    isSelected
+                      ? `ring-2 ${colors.ring} ${colors.bg}`
+                      : "hover:border-gray-300"
+                  }`}
+                  onClick={() => setSelectedPreset(preset.key)}
+                >
+                  <div className="mb-3 flex items-center gap-3">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${colors.bg}`}
+                    >
+                      <Icon className={`h-5 w-5 ${colors.text}`} />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">{preset.name}</h3>
+                      {isSelected && (
+                        <Badge className="mt-0.5 bg-indigo-600 text-white text-[10px]">
+                          Selected
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
+                  <p className="text-sm text-gray-500">{preset.description}</p>
+                </Card>
               );
             })}
           </div>
         </div>
       )}
 
-      {/* Step 4: Summary */}
-      {step === 3 && (
-        <Card className="p-6">
-          <h2 className="mb-4 text-lg font-semibold">Review & Create</h2>
-          <div className="space-y-4">
+      {/* ── Step 3: Confirm & Create ── */}
+      {step === 2 && activePreset && presetColor && (
+        <div className="space-y-6">
+          {/* Tenant summary */}
+          <Card className="p-6">
+            <h2 className="mb-4 text-lg font-semibold">Review & Create</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-sm font-medium text-gray-500">Company</p>
@@ -470,9 +361,12 @@ export default function TenantOnboardingPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Vertical</p>
-                <p className="text-lg font-semibold">
-                  {presets.find((p) => p.key === selectedPreset)?.name || "Custom"}
-                </p>
+                <div className="mt-1 flex items-center gap-2">
+                  <PresetIcon className={`h-4 w-4 ${presetColor.text}`} />
+                  <span className="text-lg font-semibold">
+                    {activePreset.name}
+                  </span>
+                </div>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Admin User</p>
@@ -481,42 +375,59 @@ export default function TenantOnboardingPage() {
                 </p>
                 <p className="text-sm text-gray-500">{form.admin_email}</p>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Modules</p>
-                <p className="text-lg font-semibold">
-                  {enabledCount} enabled
-                </p>
-                <p className="text-sm text-gray-500">of {totalCount} available</p>
-              </div>
+            </div>
+          </Card>
+
+          {/* Preset confirmation — what's included */}
+          <Card className={`p-6 border-l-4 ${presetColor.ring.replace("ring-", "border-l-")}`}>
+            <h3 className="mb-1 text-base font-semibold">
+              Here&apos;s what&apos;s included in the {activePreset.name} plan
+            </h3>
+            <p className="mb-4 text-sm text-gray-500">
+              These modules are activated automatically based on the preset. The
+              tenant can enable additional extensions during onboarding.
+            </p>
+
+            {/* Included by default */}
+            <div className="mb-6">
+              <h4 className="mb-2 text-sm font-medium text-gray-700">
+                Included by default
+              </h4>
+              <ul className="space-y-2">
+                {activePreset.module_keys.map((key) => (
+                  <li key={key} className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    <span className="text-sm">
+                      {MODULE_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            <div>
-              <p className="mb-2 text-sm font-medium text-gray-500">
-                Enabled Modules
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {Array.from(enabledKeys)
-                  .sort()
-                  .map((key) => {
-                    const mod = moduleMap[key];
-                    return (
-                      <Badge
-                        key={key}
-                        variant={mod?.is_core ? "secondary" : "default"}
-                        className={
-                          mod?.is_core
-                            ? ""
-                            : "bg-indigo-100 text-indigo-800"
-                        }
-                      >
-                        {mod?.name || key}
-                      </Badge>
-                    );
-                  })}
+            {/* Available as extensions */}
+            <div className="rounded-lg bg-gray-50 p-4">
+              <div className="flex items-start gap-2">
+                <Puzzle className="mt-0.5 h-4 w-4 text-gray-400 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700">
+                    Available as extensions
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Additional capabilities are available in the Extension
+                    Catalog after setup — including{" "}
+                    {selectedPreset === "manufacturing"
+                      ? "production planning, product line quoting, and advanced reporting"
+                      : selectedPreset === "funeral_home"
+                        ? "AI obituary builder, pre-need contracts, and cremation workflow"
+                        : "additional operational tools and integrations"}
+                    .
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       )}
 
       {/* Navigation buttons */}
@@ -528,7 +439,7 @@ export default function TenantOnboardingPage() {
         >
           Back
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500">
             Step {step + 1} of {STEPS.length}
           </span>
@@ -536,15 +447,16 @@ export default function TenantOnboardingPage() {
             <button
               onClick={() => setStep((s) => s + 1)}
               disabled={!canProceed()}
-              className="rounded-md bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-md bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
             >
               Next
+              <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="rounded-md bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+              className="rounded-md bg-green-600 px-8 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
             >
               {submitting ? "Creating..." : "Create Tenant"}
             </button>
