@@ -28,7 +28,7 @@ export function SetupQuestions({ vertical, onComplete }: SetupQuestionsProps) {
   async function handleContinue() {
     setSaving(true);
     try {
-      await apiClient.post("/company/tenant-settings/bulk", {
+      await apiClient.post("/companies/tenant-settings/bulk", {
         spring_burials_enabled: springBurials === true,
         onboarding_questions_completed: true,
       });

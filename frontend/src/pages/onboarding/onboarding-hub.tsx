@@ -535,7 +535,7 @@ export default function OnboardingHub() {
     try {
       // Check if setup questions have been completed
       try {
-        const { data: tenantSettings } = await apiClient.get("/company/tenant-settings");
+        const { data: tenantSettings } = await apiClient.get("/companies/tenant-settings");
         if (!tenantSettings?.onboarding_questions_completed && company?.vertical === "manufacturing") {
           setShowSetupQuestions(true);
         }
