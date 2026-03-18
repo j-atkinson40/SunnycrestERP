@@ -10,7 +10,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-ANALYSIS_MODEL = "claude-haiku-4-5-20241022"
+ANALYSIS_MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 2048
 # ~15000 tokens ≈ 60000 chars
 MAX_CONTENT_CHARS = 60_000

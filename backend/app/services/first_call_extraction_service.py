@@ -9,7 +9,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_MODEL = "claude-haiku-4-5-20241022"
+EXTRACTION_MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 1024
 
 SYSTEM_PROMPT = """You are extracting first call information for a funeral home intake form.
