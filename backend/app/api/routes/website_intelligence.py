@@ -154,6 +154,49 @@ def get_extension_suggestions(
 
 
 # ---------------------------------------------------------------------------
+# Network diagnostic (temporary)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/website-intelligence/debug-network")
+def debug_network():
+    """Temporary endpoint to test outbound HTTP from Railway."""
+    import requests
+    import traceback
+    results = {}
+
+    # Test 1: Google (should always work)
+    try:
+        r = requests.get("https://www.google.com", timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        results["google"] = f"OK: {r.status_code}"
+    except Exception as e:
+        root = e
+        while root.__cause__ or root.__context__:
+            root = root.__cause__ or root.__context__
+        results["google"] = f"FAILED: {type(root).__name__}: {root}"
+
+    # Test 2: The actual target site
+    try:
+        r = requests.get("https://www.sunnycrest.com", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        results["sunnycrest"] = f"OK: {r.status_code}, {len(r.text)} bytes"
+    except Exception as e:
+        root = e
+        while root.__cause__ or root.__context__:
+            root = root.__cause__ or root.__context__
+        results["sunnycrest"] = f"FAILED: {type(root).__name__}: {root}"
+
+    # Test 3: DNS resolution
+    try:
+        import socket
+        ip = socket.gethostbyname("www.sunnycrest.com")
+        results["dns"] = f"OK: www.sunnycrest.com -> {ip}"
+    except Exception as e:
+        results["dns"] = f"FAILED: {type(e).__name__}: {e}"
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Admin routes (platform admin only)
 # ---------------------------------------------------------------------------
 
