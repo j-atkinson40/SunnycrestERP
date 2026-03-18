@@ -400,6 +400,37 @@ def delete_tenant(
                 except Exception:
                     sp.rollback()
 
+        # Phase 2b: Delete tables that reference users.id (not company_id)
+        # These must be deleted BEFORE users
+        if user_ids:
+            USER_FK_TABLES = [
+                ("employee_profiles", "user_id"),
+                ("employee_profiles", "created_by"),
+                ("employee_profiles", "modified_by"),
+                ("drivers", "employee_id"),
+                ("onboarding_checklists", "user_id"),
+                ("performance_notes", "user_id"),
+                ("performance_notes", "author_id"),
+                ("project_tasks", "assigned_to"),
+                ("project_tasks", "created_by"),
+                ("notifications", "user_id"),
+                ("notifications", "actor_id"),
+                ("user_permission_overrides", "user_id"),
+                ("platform_fees", "waived_by"),
+                ("fh_case_activity", "performed_by"),
+                ("impersonation_sessions", "impersonated_user_id"),
+            ]
+            for tbl, col in USER_FK_TABLES:
+                sp = connection.begin_nested()
+                try:
+                    connection.execute(
+                        text(f'DELETE FROM "{tbl}" WHERE "{col}" = ANY(:ids)'),
+                        {"ids": user_ids},
+                    )
+                    sp.commit()
+                except Exception:
+                    sp.rollback()
+
         # Phase 3: Try to delete users — if it fails, report exactly why
         # First attempt
         sp = connection.begin_nested()
