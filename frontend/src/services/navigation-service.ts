@@ -74,7 +74,7 @@ function getManufacturingNav(
     { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
     {
       label: "Orders",
-      href: "/orders",
+      href: "/ar/orders",
       icon: "ClipboardList",
       permission: "orders.view",
     },
@@ -86,7 +86,7 @@ function getManufacturingNav(
     },
     {
       label: "Delivery Schedule",
-      href: "/delivery",
+      href: "/delivery/dispatch",
       icon: "Truck",
       permission: "deliveries.view",
       requiresModule: "driver_delivery",
@@ -169,7 +169,7 @@ function getManufacturingNav(
     [
       {
         label: "Invoices",
-        href: "/invoices",
+        href: "/ar/invoices",
         icon: "Receipt",
         permission: "invoices.view",
       },
@@ -212,13 +212,13 @@ function getManufacturingNav(
         },
         {
           label: "Integrations",
-          href: "/admin/settings/integrations",
+          href: "/admin/accounting",
           icon: "Plug",
         },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
         {
           label: "Notifications",
-          href: "/admin/settings/notifications",
+          href: "/notifications",
           icon: "Bell",
         },
       ],
@@ -230,8 +230,8 @@ function getManufacturingNav(
   return {
     sections,
     mobileTabs: [
-      { label: "Orders", href: "/orders", icon: "ClipboardList" },
-      { label: "Schedule", href: "/delivery", icon: "Truck" },
+      { label: "Orders", href: "/ar/orders", icon: "ClipboardList" },
+      { label: "Schedule", href: "/delivery/dispatch", icon: "Truck" },
       { label: "Inventory", href: "/inventory", icon: "Package" },
       { label: "Production", href: "/production-log", icon: "Factory" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
@@ -254,13 +254,13 @@ function getFuneralHomeNav(
     { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
     {
       label: "Active Cases",
-      href: "/funeral-home/cases",
+      href: "/cases",
       icon: "FolderOpen",
       permission: "fh_cases.view",
     },
     {
       label: "New Case",
-      href: "/funeral-home/first-call",
+      href: "/cases/new",
       icon: "Plus",
       permission: "fh_cases.create",
     },
@@ -299,7 +299,7 @@ function getFuneralHomeNav(
     [
       {
         label: "Invoices",
-        href: "/invoices",
+        href: "/ar/invoices",
         icon: "Receipt",
         permission: "fh_invoices.view",
       },
@@ -348,13 +348,13 @@ function getFuneralHomeNav(
         },
         {
           label: "Integrations",
-          href: "/admin/settings/integrations",
+          href: "/admin/accounting",
           icon: "Plug",
         },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
         {
           label: "Notifications",
-          href: "/admin/settings/notifications",
+          href: "/notifications",
           icon: "Bell",
         },
       ],
@@ -366,8 +366,8 @@ function getFuneralHomeNav(
   return {
     sections,
     mobileTabs: [
-      { label: "Cases", href: "/funeral-home/cases", icon: "FolderOpen" },
-      { label: "New Case", href: "/funeral-home/first-call", icon: "Plus" },
+      { label: "Cases", href: "/cases", icon: "FolderOpen" },
+      { label: "New Case", href: "/cases/new", icon: "Plus" },
       { label: "FTC", href: "/funeral-home/compliance", icon: "Scale" },
       { label: "Invoices", href: "/invoices", icon: "Receipt" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
