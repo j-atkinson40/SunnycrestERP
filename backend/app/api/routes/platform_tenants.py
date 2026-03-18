@@ -322,12 +322,9 @@ def delete_tenant(
         ("company_modules", "company_id"),
     ]
 
-    # Group 2: Tables with inter-dependencies (need users gone before roles)
-    AUTH_TABLES = [
-        ("permission_overrides", "company_id"),
-        ("users", "company_id"),
-        ("roles", "company_id"),
-    ]
+    # Group 2: Auth tables — special handling needed
+    # users has self-referential FKs (created_by, modified_by → users.id)
+    # and many tables have created_by/modified_by → users.id FKs
 
     engine = db.get_bind()
     connection = engine.connect()
@@ -335,9 +332,8 @@ def delete_tenant(
     try:
         trans = connection.begin()
 
-        all_tables = LEAF_TABLES + AUTH_TABLES
-
-        for table_name, col_name in all_tables:
+        # Phase 1: Delete all leaf tables
+        for table_name, col_name in LEAF_TABLES:
             sp = connection.begin_nested()
             try:
                 result = connection.execute(
@@ -354,7 +350,73 @@ def delete_tenant(
                 sp.rollback()
                 logger.debug("Skipped %s.%s: %s", table_name, col_name, str(e)[:100])
 
-        # Delete the company itself
+        # Phase 2: Get user IDs for this tenant, then null out all
+        # created_by / modified_by / entered_by / completed_by references
+        user_ids = [
+            r[0] for r in connection.execute(
+                text("SELECT id FROM users WHERE company_id = :tid"),
+                {"tid": tenant_id},
+            ).fetchall()
+        ]
+
+        if user_ids:
+            # Null out all columns across the DB that reference these user IDs.
+            # Uses a hardcoded list of common FK column names that point to users.
+            USER_REF_COLUMNS = [
+                "created_by", "modified_by", "updated_by", "entered_by",
+                "completed_by", "assigned_to", "assigned_director_id",
+                "approved_by", "reviewed_by", "performed_by",
+                "signed_by_user_id", "reported_by",
+            ]
+
+            # Get all tables in the schema
+            all_tbl_rows = connection.execute(text("""
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND column_name = ANY(:cols)
+            """), {"cols": USER_REF_COLUMNS}).fetchall()
+
+            for tbl, col in all_tbl_rows:
+                sp = connection.begin_nested()
+                try:
+                    connection.execute(
+                        text(f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = ANY(:ids)'),
+                        {"ids": user_ids},
+                    )
+                    sp.commit()
+                except Exception:
+                    sp.rollback()
+
+            # Also null out self-referential FKs on users table itself
+            for col in ["created_by", "modified_by"]:
+                sp = connection.begin_nested()
+                try:
+                    connection.execute(
+                        text(f'UPDATE users SET "{col}" = NULL WHERE company_id = :tid'),
+                        {"tid": tenant_id},
+                    )
+                    sp.commit()
+                except Exception:
+                    sp.rollback()
+
+        # Phase 3: Delete permission_overrides, users, roles
+        for tbl in ["permission_overrides", "users", "roles"]:
+            sp = connection.begin_nested()
+            try:
+                result = connection.execute(
+                    text(f'DELETE FROM "{tbl}" WHERE company_id = :tid'),
+                    {"tid": tenant_id},
+                )
+                sp.commit()
+                if result.rowcount > 0:
+                    deleted_counts[tbl] = result.rowcount
+                    logger.info("Deleted %d from %s", result.rowcount, tbl)
+            except Exception as e:
+                sp.rollback()
+                logger.warning("Failed to delete from %s: %s", tbl, str(e)[:200])
+
+        # Phase 4: Delete the company itself
         connection.execute(
             text("DELETE FROM companies WHERE id = :tid"),
             {"tid": tenant_id},
