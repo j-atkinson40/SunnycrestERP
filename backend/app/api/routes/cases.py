@@ -252,13 +252,23 @@ def extract_first_call_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     """Extract structured first call data from natural language text."""
-    from app.services.first_call_extraction_service import extract_first_call
+    import logging
+    import traceback
+    logger = logging.getLogger("first_call_extraction")
 
     try:
+        from app.services.first_call_extraction_service import extract_first_call
         result = extract_first_call(data.text, data.existing_values)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+        # Capture full error chain
+        root = e
+        while root.__cause__ or root.__context__:
+            root = root.__cause__ or root.__context__
+        detail = f"{type(e).__name__}: {e} | Root: {type(root).__name__}: {root}"
+        logger.error(f"First call extraction failed: {detail}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=detail)
 
 
 # ---------------------------------------------------------------------------
