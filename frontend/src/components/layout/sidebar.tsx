@@ -1,236 +1,354 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import {
+  Award,
+  Bell,
+  Building2,
+  Calendar,
+  ChevronRight,
+  ClipboardList,
+  Factory,
+  FileText,
+  FolderOpen,
+  Kanban,
+  LayoutDashboard,
+  Link as LinkIcon,
+  ListOrdered,
+  Map,
+  MapPin,
+  MoreHorizontal,
+  Package,
+  Plug,
+  Plus,
+  Puzzle,
+  Receipt,
+  Scale,
+  ShieldCheck,
+  Sparkles,
+  Truck,
+  UserCircle,
+  Users,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { usePresetTheme } from "@/contexts/preset-theme-context";
 import { cn } from "@/lib/utils";
 import { OnboardingSidebarWidget } from "@/components/onboarding/sidebar-widget";
+import type { NavItem, NavSection } from "@/services/navigation-service";
 
-interface NavItem {
-  label: string;
-  href: string;
-  permission?: string;
-  module?: string;
-  adminOnly?: boolean;
+// ---- Icon lookup ----
+const ICON_MAP: Record<string, LucideIcon> = {
+  Award,
+  Bell,
+  Building2,
+  Calendar,
+  ClipboardList,
+  Factory,
+  FileText,
+  FolderOpen,
+  Kanban,
+  LayoutDashboard,
+  Link: LinkIcon,
+  ListOrdered,
+  Map,
+  MapPin,
+  MoreHorizontal,
+  Package,
+  Plug,
+  Plus,
+  Puzzle,
+  Receipt,
+  Scale,
+  ShieldCheck,
+  Truck,
+  UserCircle,
+  Users,
+  Wrench,
+};
+
+function resolveIcon(name: string): LucideIcon | null {
+  return ICON_MAP[name] ?? null;
 }
 
-interface NavGroup {
-  label: string;
-  items: NavItem[];
+// ---- Collapsed sections persistence ----
+const STORAGE_KEY = "sidebar-collapsed";
+
+function loadCollapsed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {
+    // ignore
+  }
+  return new Set();
 }
 
-type NavEntry = NavItem | NavGroup;
-
-function isGroup(entry: NavEntry): entry is NavGroup {
-  return "items" in entry;
+function saveCollapsed(collapsed: Set<string>) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([...collapsed]));
 }
 
-const navigation: NavEntry[] = [
-  { label: "Dashboard", href: "/dashboard", permission: "dashboard.view" },
-  { label: "My Profile", href: "/profile" },
-  { label: "Products", href: "/products", permission: "products.view", module: "products" },
-  {
-    label: "Sales & AR",
-    items: [
-      { label: "Customers", href: "/customers", permission: "customers.view", module: "sales" },
-      { label: "Quotes", href: "/ar/quotes", permission: "ar.view", module: "sales" },
-      { label: "Sales Orders", href: "/ar/orders", permission: "ar.view", module: "sales" },
-      { label: "Invoices", href: "/ar/invoices", permission: "ar.view", module: "sales" },
-      { label: "Payments", href: "/ar/payments", permission: "ar.view", module: "sales" },
-      { label: "AR Aging", href: "/ar/aging", permission: "ar.view", module: "sales" },
-    ],
-  },
-  {
-    label: "Purchasing & AP",
-    items: [
-      { label: "Vendors", href: "/vendors", permission: "vendors.view", module: "purchasing" },
-      { label: "Purchase Orders", href: "/ap/purchase-orders", permission: "ap.view", module: "purchasing" },
-      { label: "Bills", href: "/ap/bills", permission: "ap.view", module: "purchasing" },
-      { label: "Payments", href: "/ap/payments", permission: "ap.view", module: "purchasing" },
-      { label: "AP Aging", href: "/ap/aging", permission: "ap.view", module: "purchasing" },
-    ],
-  },
-  {
-    label: "Delivery & Logistics",
-    items: [
-      { label: "Dispatch", href: "/delivery/dispatch", permission: "delivery.view", module: "driver_delivery" },
-      { label: "Operations", href: "/delivery/operations", permission: "delivery.view", module: "driver_delivery" },
-      { label: "History", href: "/delivery/history", permission: "delivery.view", module: "driver_delivery" },
-      { label: "Vault Scheduling", href: "/delivery/funeral-scheduling", permission: "delivery.view", module: "driver_delivery" },
-      { label: "Carriers", href: "/delivery/carriers", permission: "carriers.view", module: "driver_delivery" },
-      { label: "Settings", href: "/delivery/settings", permission: "delivery.view", module: "driver_delivery" },
-    ],
-  },
-  {
-    label: "Funeral Home",
-    items: [
-      { label: "Dashboard", href: "/funeral-home/dashboard", permission: "fh_cases.view", module: "funeral_home" },
-      { label: "Cases", href: "/cases", permission: "fh_cases.view", module: "funeral_home" },
-      { label: "Price List (GPL)", href: "/funeral-home/price-list", permission: "fh_price_list.view", module: "funeral_home" },
-      { label: "FTC Compliance", href: "/funeral-home/compliance", permission: "fh_compliance.view", module: "funeral_home" },
-    ],
-  },
-  { label: "Projects", href: "/projects", permission: "projects.view", module: "project_management" },
-  {
-    label: "Safety",
-    items: [
-      { label: "Dashboard", href: "/safety", permission: "safety.view", module: "safety_management" },
-      { label: "Programs", href: "/safety/programs", permission: "safety.view", module: "safety_management" },
-      { label: "Training", href: "/safety/training", permission: "safety.view", module: "safety_management" },
-      { label: "Inspections", href: "/safety/inspections/new", permission: "safety.view", module: "safety_management" },
-      { label: "Incidents", href: "/safety/incidents", permission: "safety.view", module: "safety_management" },
-      { label: "SDS / Chemicals", href: "/safety/chemicals", permission: "safety.view", module: "safety_management" },
-      { label: "LOTO Procedures", href: "/safety/loto", permission: "safety.view", module: "safety_management" },
-      { label: "OSHA 300 Log", href: "/safety/osha-300", permission: "safety.view", module: "safety_management" },
-    ],
-  },
-  {
-    label: "Production",
-    items: [
-      { label: "Production Board", href: "/production", permission: "work_orders.view", module: "work_orders" },
-      { label: "New Pour Event", href: "/production/pour-events/new", permission: "pour_events.create", module: "work_orders" },
-    ],
-  },
-  {
-    label: "Inventory",
-    items: [
-      { label: "Overview", href: "/inventory", permission: "inventory.view", module: "inventory" },
-      { label: "Production Entry", href: "/inventory/production", permission: "inventory.create", module: "inventory" },
-      { label: "Write-offs", href: "/inventory/write-offs", permission: "inventory.view", module: "inventory" },
-      { label: "Sage Export", href: "/inventory/sage-exports", permission: "inventory.view", module: "inventory" },
-      { label: "Bill of Materials", href: "/bom", permission: "inventory.view", module: "inventory" },
-      { label: "Quality Control", href: "/qc", permission: "qc.view", module: "inventory" },
-    ],
-  },
-  { label: "Production Log", href: "/production-log", permission: "production_log.view", module: "daily_production_log" },
-  { label: "Extensions", href: "/extensions" },
-  {
-    label: "Administration",
-    items: [
-      { label: "User Management", href: "/admin/users", permission: "users.view" },
-      { label: "Role Management", href: "/admin/roles", permission: "roles.view" },
-      { label: "Company Settings", href: "/admin/settings", permission: "company.view" },
-      { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit.view" },
-      { label: "Modules", href: "/admin/modules", adminOnly: true },
-      { label: "API Keys", href: "/admin/api-keys", adminOnly: true },
-      { label: "Accounting", href: "/admin/accounting", adminOnly: true },
-    ],
-  },
-];
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={cn(
-        "h-4 w-4 shrink-0 transition-transform duration-200",
-        open && "rotate-90",
-      )}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  );
-}
-
+// ---- Sidebar ----
 export function Sidebar() {
-  const { company, hasPermission, hasModule, isAdmin } = useAuth();
+  const { company } = useAuth();
+  const { navigation, presetAccent, presetLabel } = usePresetTheme();
   const location = useLocation();
 
-  const canAccess = (item: NavItem) =>
-    (!item.permission || hasPermission(item.permission)) &&
-    (!item.module || hasModule(item.module)) &&
-    (!item.adminOnly || isAdmin);
+  // Collapsed sections
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    const saved = loadCollapsed();
+    // Also collapse sections that default to collapsed
+    for (const section of navigation.sections) {
+      if (section.defaultCollapsed && !saved.has(section.title)) {
+        saved.add(section.title);
+      }
+    }
+    return saved;
+  });
 
-  const isActive = (href: string) =>
-    location.pathname === href || location.pathname.startsWith(href + "/");
+  const toggleSection = useCallback((title: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      saveCollapsed(next);
+      return next;
+    });
+  }, []);
 
-  // Auto-open groups that contain the active page
-  const initialOpen = new Set<string>();
-  for (const entry of navigation) {
-    if (isGroup(entry)) {
-      for (const item of entry.items) {
-        if (isActive(item.href)) {
-          initialOpen.add(entry.label);
-          break;
+  // Active route detection
+  const isActive = useCallback(
+    (href: string) =>
+      location.pathname === href ||
+      location.pathname.startsWith(href + "/"),
+    [location.pathname],
+  );
+
+  // Auto-expand section containing active route
+  useEffect(() => {
+    for (const section of navigation.sections) {
+      if (section.collapsible) {
+        const hasActive = section.items.some((item) => isActive(item.href));
+        if (hasActive && collapsed.has(section.title)) {
+          setCollapsed((prev) => {
+            const next = new Set(prev);
+            next.delete(section.title);
+            saveCollapsed(next);
+            return next;
+          });
         }
       }
     }
-  }
+    // Run only on location change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
-  const [openGroups, setOpenGroups] = useState<Set<string>>(initialOpen);
+  // AI command bar state
+  const [commandFocused, setCommandFocused] = useState(false);
+  const [commandValue, setCommandValue] = useState("");
+  const commandRef = useRef<HTMLInputElement>(null);
 
-  const toggleGroup = (label: string) => {
-    setOpenGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
-  };
-
-  const linkClass = (href: string) =>
-    cn(
-      "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
-      isActive(href)
-        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-    );
+  const showQuickPrompts = commandFocused && !commandValue;
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r bg-sidebar">
-      <div className="flex h-14 items-center border-b px-6">
-        <Link to="/" className="text-lg font-semibold text-sidebar-foreground">
+    <aside className="hidden md:flex h-full w-64 flex-col border-r bg-sidebar">
+      {/* Company header */}
+      <div className="flex h-14 shrink-0 items-center border-b px-5">
+        <Link
+          to="/"
+          className="truncate text-lg font-semibold text-sidebar-foreground"
+        >
           {company?.name || "ERP Platform"}
         </Link>
       </div>
-      <nav className="flex-1 overflow-y-auto p-4">
-        <div className="space-y-1">
-          {navigation.map((entry) => {
-            if (!isGroup(entry)) {
-              if (!canAccess(entry)) return null;
-              return (
-                <Link key={entry.href} to={entry.href} className={linkClass(entry.href)}>
-                  {entry.label}
-                </Link>
-              );
-            }
 
-            // Filter group items by access
-            const visibleItems = entry.items.filter(canAccess);
-            if (visibleItems.length === 0) return null;
-
-            const open = openGroups.has(entry.label);
-
-            return (
-              <div key={entry.label}>
-                <button
-                  onClick={() => toggleGroup(entry.label)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  )}
-                >
-                  {entry.label}
-                  <ChevronIcon open={open} />
-                </button>
-                {open && (
-                  <div className="ml-3 space-y-1 border-l border-sidebar-accent pl-2">
-                    {visibleItems.map((item) => (
-                      <Link key={item.href} to={item.href} className={linkClass(item.href)}>
-                        {item.label}
-                      </Link>
-                    ))}
-                  </div>
+      {/* AI command bar */}
+      <div className="shrink-0 border-b px-4 py-3">
+        <div className="relative">
+          <Sparkles
+            className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            ref={commandRef}
+            type="text"
+            value={commandValue}
+            onChange={(e) => setCommandValue(e.target.value)}
+            onFocus={() => setCommandFocused(true)}
+            onBlur={() => setTimeout(() => setCommandFocused(false), 150)}
+            placeholder={navigation.commandBarPlaceholder}
+            className={cn(
+              "w-full rounded-md border bg-background py-1.5 pl-9 pr-3 text-sm",
+              "placeholder:text-muted-foreground/60",
+              "focus:outline-none focus:ring-1 focus:ring-ring",
+            )}
+          />
+        </div>
+        {/* Quick prompts */}
+        {showQuickPrompts && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {navigation.quickPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setCommandValue(prompt);
+                  commandRef.current?.focus();
+                }}
+                className={cn(
+                  "rounded-full border px-2.5 py-0.5 text-xs",
+                  "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                  "transition-colors",
                 )}
-              </div>
-            );
-          })}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Navigation sections */}
+      <nav className="flex-1 overflow-y-auto px-3 py-3">
+        <div className="space-y-4">
+          {navigation.sections.map((section) => (
+            <SidebarSection
+              key={section.title}
+              section={section}
+              collapsed={collapsed.has(section.title)}
+              onToggle={() => toggleSection(section.title)}
+              isActive={isActive}
+              presetAccent={presetAccent}
+            />
+          ))}
         </div>
       </nav>
+
+      {/* Onboarding widget */}
       <OnboardingSidebarWidget />
+
+      {/* Preset label */}
+      <div className="shrink-0 border-t px-5 py-2.5">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
+          {presetLabel}
+        </span>
+      </div>
     </aside>
+  );
+}
+
+// ---- Section component ----
+function SidebarSection({
+  section,
+  collapsed,
+  onToggle,
+  isActive,
+  presetAccent,
+}: {
+  section: NavSection;
+  collapsed: boolean;
+  onToggle: () => void;
+  isActive: (href: string) => boolean;
+  presetAccent: string;
+}) {
+  if (section.items.length === 0) return null;
+
+  const isCollapsible = section.collapsible ?? false;
+  const isOpen = !collapsed;
+
+  return (
+    <div>
+      {/* Section header */}
+      {isCollapsible ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className={cn(
+            "flex w-full items-center justify-between rounded-md px-2 py-1",
+            "text-[11px] font-semibold uppercase tracking-wider",
+            "text-muted-foreground/60 hover:text-muted-foreground transition-colors",
+          )}
+        >
+          {section.title}
+          <ChevronRight
+            className={cn(
+              "size-3.5 transition-transform duration-200",
+              isOpen && "rotate-90",
+            )}
+          />
+        </button>
+      ) : (
+        <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+          {section.title}
+        </div>
+      )}
+
+      {/* Items */}
+      {isOpen && (
+        <div className="mt-0.5 space-y-0.5">
+          {section.items.map((item) => (
+            <SidebarItem
+              key={item.href}
+              item={item}
+              active={isActive(item.href)}
+              presetAccent={presetAccent}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Item component ----
+function SidebarItem({
+  item,
+  active,
+  presetAccent,
+}: {
+  item: NavItem;
+  active: boolean;
+  presetAccent: string;
+}) {
+  const Icon = resolveIcon(item.icon);
+
+  // Use inline style for the accent color so it adapts to preset
+  const activeStyle = active
+    ? {
+        borderLeftColor: presetAccent,
+        backgroundColor: `${presetAccent}10`,
+      }
+    : undefined;
+
+  return (
+    <Link
+      to={item.href}
+      className={cn(
+        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+        "border-l-2 border-transparent",
+        active
+          ? "font-medium text-sidebar-foreground"
+          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+      )}
+      style={activeStyle}
+    >
+      {Icon && (
+        <Icon
+          className="size-4 shrink-0"
+          style={active ? { color: presetAccent } : undefined}
+        />
+      )}
+      <span className="truncate">{item.label}</span>
+      {item.badge != null && (
+        <span
+          className={cn(
+            "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-medium",
+            "bg-muted text-muted-foreground",
+          )}
+        >
+          {item.badge}
+        </span>
+      )}
+    </Link>
   );
 }

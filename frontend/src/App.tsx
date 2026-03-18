@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/auth-context";
 import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
+import { PresetThemeProvider } from "@/contexts/preset-theme-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
 import { AppLayout } from "@/components/layout/app-layout";
@@ -134,7 +135,7 @@ export default function App() {
 
               {/* Protected routes */}
               <Route element={<ProtectedRoute />}>
-                <Route element={<AppLayout />}>
+                <Route element={<PresetThemeProvider><AppLayout /></PresetThemeProvider>}>
                   {/* Dashboard — all authenticated users */}
                   <Route
                     element={
