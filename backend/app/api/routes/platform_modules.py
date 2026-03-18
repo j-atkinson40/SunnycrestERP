@@ -305,13 +305,19 @@ def onboard_tenant(
     if data.website_url:
         try:
             import threading
+            import logging as _logging
+            _log = _logging.getLogger("website_intelligence")
 
             def _run_scrape_background(tid: str, url: str):
-                from app.services.website_intelligence_job import (
-                    run_website_intelligence,
-                )
-
-                run_website_intelligence(None, tid, url)
+                _log.info(f"Background scrape starting for tenant {tid}: {url}")
+                try:
+                    from app.services.website_intelligence_job import (
+                        run_website_intelligence,
+                    )
+                    run_website_intelligence(None, tid, url)
+                    _log.info(f"Background scrape completed for tenant {tid}")
+                except Exception as exc:
+                    _log.error(f"Background scrape FAILED for tenant {tid}: {exc}", exc_info=True)
 
             thread = threading.Thread(
                 target=_run_scrape_background,
@@ -319,9 +325,9 @@ def onboard_tenant(
                 daemon=True,
             )
             thread.start()
+            _log.info(f"Background scrape thread started for {company.id}")
         except Exception as e:
             import logging as _logging
-
             _logging.getLogger(__name__).warning(
                 f"Failed to start website intelligence: {e}"
             )
