@@ -308,6 +308,38 @@ def onboard_tenant(
             import logging as _logging
             _log = _logging.getLogger("website_intelligence")
 
+            # Quick network diagnostic (synchronous, fast)
+            try:
+                import requests as _req
+                _log.info(f"Testing connectivity to {data.website_url}...")
+                test_resp = _req.head(
+                    data.website_url,
+                    timeout=10,
+                    allow_redirects=True,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                )
+                _log.info(f"Connectivity OK: {test_resp.status_code} from {test_resp.url}")
+                result["network_test"] = f"OK: {test_resp.status_code}"
+            except Exception as net_err:
+                import traceback
+                root = net_err
+                while root.__cause__ or root.__context__:
+                    root = root.__cause__ or root.__context__
+                detail = f"{type(net_err).__name__}: {net_err} | Root: {type(root).__name__}: {root}"
+                _log.error(f"Connectivity FAILED: {detail}")
+                _log.error(traceback.format_exc())
+                result["network_test"] = f"FAILED: {detail}"
+
+                # Store the detailed error directly on the intelligence record
+                from app.models.website_intelligence import TenantWebsiteIntelligence
+                intel_rec = db.query(TenantWebsiteIntelligence).filter(
+                    TenantWebsiteIntelligence.tenant_id == company.id
+                ).first()
+                if intel_rec:
+                    intel_rec.scrape_status = "failed"
+                    intel_rec.error_message = detail[:2000]
+                    db.commit()
+
             def _run_scrape_background(tid: str, url: str):
                 _log.info(f"Background scrape starting for tenant {tid}: {url}")
                 try:
@@ -317,15 +349,21 @@ def onboard_tenant(
                     run_website_intelligence(None, tid, url)
                     _log.info(f"Background scrape completed for tenant {tid}")
                 except Exception as exc:
-                    _log.error(f"Background scrape FAILED for tenant {tid}: {exc}", exc_info=True)
+                    import traceback as _tb
+                    _log.error(f"Background scrape FAILED for tenant {tid}: {exc}")
+                    _log.error(_tb.format_exc())
 
-            thread = threading.Thread(
-                target=_run_scrape_background,
-                args=(company.id, data.website_url),
-                daemon=True,
-            )
-            thread.start()
-            _log.info(f"Background scrape thread started for {company.id}")
+            # Only start background scrape if network test passed
+            if "OK" in result.get("network_test", ""):
+                thread = threading.Thread(
+                    target=_run_scrape_background,
+                    args=(company.id, data.website_url),
+                    daemon=True,
+                )
+                thread.start()
+                _log.info(f"Background scrape thread started for {company.id}")
+            else:
+                _log.warning("Skipping background scrape — network test failed")
         except Exception as e:
             import logging as _logging
             _logging.getLogger(__name__).warning(
