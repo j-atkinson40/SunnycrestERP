@@ -175,14 +175,13 @@ def delete_tenant(
 
     tenant_name = company.name
 
-    # Use a raw connection to defer all FK constraints, delete everything,
-    # then re-enable constraints — all in one transaction.
+    # Multi-pass deletion: keep trying to delete from referencing tables
+    # until nothing is left. Each pass deletes what it can; FK violations
+    # are expected and skipped via savepoints. After enough passes all
+    # child records are gone and the company can be deleted.
     connection = db.get_bind().connect()
     try:
         trans = connection.begin()
-
-        # Defer all FK constraints for this transaction
-        connection.execute(text("SET CONSTRAINTS ALL DEFERRED"))
 
         # Discover all tables with FK references to companies
         fk_rows = connection.execute(text("""
@@ -200,16 +199,32 @@ def delete_tenant(
             ORDER BY tc.table_name
         """)).fetchall()
 
+        tables_to_clean = [
+            (t, c) for t, c in fk_rows if t != "companies"
+        ]
+
         deleted_counts: dict[str, int] = {}
-        for table_name, col_name in fk_rows:
-            if table_name == "companies":
-                continue
-            result = connection.execute(
-                text(f'DELETE FROM "{table_name}" WHERE "{col_name}" = :tid'),
-                {"tid": tenant_id},
-            )
-            if result.rowcount > 0:
-                deleted_counts[table_name] = result.rowcount
+
+        # Run multiple passes — each pass deletes whatever isn't blocked
+        for _pass in range(5):
+            progress = False
+            for table_name, col_name in tables_to_clean:
+                sp = connection.begin_nested()  # SAVEPOINT
+                try:
+                    result = connection.execute(
+                        text(f'DELETE FROM "{table_name}" WHERE "{col_name}" = :tid'),
+                        {"tid": tenant_id},
+                    )
+                    sp.commit()
+                    if result.rowcount > 0:
+                        deleted_counts[table_name] = (
+                            deleted_counts.get(table_name, 0) + result.rowcount
+                        )
+                        progress = True
+                except Exception:
+                    sp.rollback()
+            if not progress:
+                break
 
         # Delete the company itself
         connection.execute(
@@ -220,11 +235,13 @@ def delete_tenant(
         trans.commit()
     except Exception as e:
         trans.rollback()
-        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Delete failed: {str(e)}"
+        )
     finally:
         connection.close()
 
-    # Expire SQLAlchemy session cache so it doesn't hold stale refs
+    # Expire SQLAlchemy session cache
     db.expire_all()
 
     return {
