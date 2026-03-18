@@ -7,6 +7,7 @@ Create Date: 2026-03-17
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect as sa_inspect
 
 revision = "y2z3a4b5c6d7"
 down_revision = "x1y2z3a4b5c6"
@@ -90,10 +91,14 @@ def upgrade() -> None:
     )
 
     # -- Add group column to extension_definitions --
-    op.add_column(
-        "extension_definitions",
-        sa.Column("group", sa.String(60), nullable=True),
-    )
+    conn = op.get_bind()
+    inspector = sa_inspect(conn)
+    ext_columns = [c["name"] for c in inspector.get_columns("extension_definitions")]
+    if "group" not in ext_columns:
+        op.add_column(
+            "extension_definitions",
+            sa.Column("group", sa.String(60), nullable=True),
+        )
 
 
 def downgrade() -> None:
