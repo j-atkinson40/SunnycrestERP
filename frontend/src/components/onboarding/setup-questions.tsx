@@ -15,15 +15,8 @@ interface SetupQuestionsProps {
   onComplete: () => void;
 }
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
 export function SetupQuestions({ vertical, onComplete }: SetupQuestionsProps) {
   const [springBurials, setSpringBurials] = useState<boolean | null>(null);
-  const [seasonStart, setSeasonStart] = useState("11"); // November
-  const [seasonEnd, setSeasonEnd] = useState("05"); // May
   const [saving, setSaving] = useState(false);
 
   if (vertical !== "manufacturing") {
@@ -35,15 +28,10 @@ export function SetupQuestions({ vertical, onComplete }: SetupQuestionsProps) {
   async function handleContinue() {
     setSaving(true);
     try {
-      const settings: Record<string, unknown> = {
+      await apiClient.post("/company/tenant-settings/bulk", {
         spring_burials_enabled: springBurials === true,
         onboarding_questions_completed: true,
-      };
-      if (springBurials) {
-        settings.spring_burial_season_start = `${seasonStart}-01`;
-        settings.spring_burial_season_end = `${seasonEnd}-01`;
-      }
-      await apiClient.post("/company/tenant-settings/bulk", settings);
+      });
       onComplete();
     } catch {
       toast.error("Failed to save settings");
@@ -115,49 +103,6 @@ export function SetupQuestions({ vertical, onComplete }: SetupQuestionsProps) {
           </Card>
         </div>
       </div>
-
-      {/* Follow-up: Season dates */}
-      {springBurials === true && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-5">
-          <h3 className="mb-3 font-medium">
-            When do your cemeteries typically close and open?
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Cemeteries start closing
-              </label>
-              <select
-                value={seasonStart}
-                onChange={(e) => setSeasonStart(e.target.value)}
-                className="w-full rounded-md border px-3 py-2 text-sm"
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={String(i + 1).padStart(2, "0")}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Cemeteries typically all open by
-              </label>
-              <select
-                value={seasonEnd}
-                onChange={(e) => setSeasonEnd(e.target.value)}
-                className="w-full rounded-md border px-3 py-2 text-sm"
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={String(i + 1).padStart(2, "0")}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Continue button */}
       <div className="flex justify-end">
