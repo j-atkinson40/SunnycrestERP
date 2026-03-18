@@ -303,6 +303,20 @@ export default function CatalogBuilder() {
     ]);
   }, []);
 
+  const addCustomUrnVault = useCallback(() => {
+    setUrnVaults((prev) => [
+      ...prev,
+      { name: "", selected: true, price: "" },
+    ]);
+  }, []);
+
+  const addCustomRental = useCallback(() => {
+    setRentalItems((prev) => [
+      ...prev,
+      { name: "", selected: true, price: "", rentalUnit: "per service" },
+    ]);
+  }, []);
+
   // ── Counting ──────────────────────────────────────────────────
 
   const totalProducts = useMemo(() => {
@@ -649,6 +663,20 @@ export default function CatalogBuilder() {
                 </div>
               )}
 
+              {/* Add custom vault line — uses "Own Lines" system */}
+              {!useOwnLines && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setUseOwnLines(true);
+                    addOwnLine();
+                  }}
+                >
+                  + Add custom product
+                </Button>
+              )}
+
               {/* SKU preview */}
               {skuPreviews.length > 0 && (
                 <div className="rounded-lg border border-dashed border-muted-foreground/30 p-4">
@@ -713,7 +741,23 @@ export default function CatalogBuilder() {
                     }}
                     className="h-4 w-4 rounded accent-primary"
                   />
-                  <span className="flex-1 font-medium text-sm">{item.name}</span>
+                  {item.name ? (
+                    <span className="flex-1 font-medium text-sm">{item.name}</span>
+                  ) : (
+                    <Input
+                      value={item.name}
+                      onChange={(e) => {
+                        setUrnVaults((prev) => {
+                          const next = [...prev];
+                          next[idx] = { ...next[idx], name: e.target.value };
+                          return next;
+                        });
+                      }}
+                      placeholder="Custom urn vault name"
+                      className="flex-1 max-w-48"
+                      autoFocus
+                    />
+                  )}
                   {item.selected && (
                     <PriceInput
                       value={item.price}
@@ -729,6 +773,9 @@ export default function CatalogBuilder() {
                   )}
                 </div>
               ))}
+              <Button variant="outline" size="sm" onClick={addCustomUrnVault}>
+                + Add custom product
+              </Button>
             </div>
           )}
         </CardContent>
@@ -826,7 +873,7 @@ export default function CatalogBuilder() {
                 </div>
               ))}
               <Button variant="outline" size="sm" onClick={addCustomUrn}>
-                + Add custom urn
+                + Add custom product
               </Button>
             </div>
           )}
@@ -866,7 +913,7 @@ export default function CatalogBuilder() {
                 <div className="space-y-2">
                   {rentalItems.map((item, idx) => (
                     <div
-                      key={item.name}
+                      key={`${item.name}-${idx}`}
                       className={cn(
                         "flex items-center gap-4 rounded-lg border p-3 transition-colors",
                         item.selected
@@ -886,7 +933,23 @@ export default function CatalogBuilder() {
                         }}
                         className="h-4 w-4 rounded accent-primary"
                       />
-                      <span className="flex-1 text-sm font-medium">{item.name}</span>
+                      {item.name ? (
+                        <span className="flex-1 text-sm font-medium">{item.name}</span>
+                      ) : (
+                        <Input
+                          value={item.name}
+                          onChange={(e) => {
+                            setRentalItems((prev) => {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], name: e.target.value };
+                              return next;
+                            });
+                          }}
+                          placeholder="Custom equipment name"
+                          className="flex-1 max-w-48"
+                          autoFocus
+                        />
+                      )}
                       {item.selected && (
                         <div className="flex items-center gap-2">
                           <PriceInput
@@ -968,7 +1031,10 @@ export default function CatalogBuilder() {
                 </div>
               </div>
 
-              {/* Sold items removed per user request */}
+              {/* Add custom equipment */}
+              <Button variant="outline" size="sm" onClick={addCustomRental}>
+                + Add custom product
+              </Button>
             </div>
           )}
         </CardContent>
