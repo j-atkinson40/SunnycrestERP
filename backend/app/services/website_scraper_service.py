@@ -10,9 +10,12 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "Mozilla/5.0 (compatible; PlatformBot/1.0; tenant-onboarding)"
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
 MAX_CONTENT_LENGTH = 50_000
-TIMEOUT = 15.0
+TIMEOUT = 30.0
 
 # Navigation link patterns that indicate useful pages
 NAV_PATTERNS = re.compile(
@@ -79,7 +82,12 @@ def scrape_website(url: str, max_pages: int = 5) -> dict:
         with httpx.Client(
             timeout=TIMEOUT,
             follow_redirects=True,
-            headers={"User-Agent": USER_AGENT},
+            verify=True,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+            },
         ) as client:
             # 1. Fetch homepage
             resp = client.get(url)
@@ -104,12 +112,37 @@ def scrape_website(url: str, max_pages: int = 5) -> dict:
                     logger.debug(f"Failed to scrape {link}: {e}")
                     continue
 
-    except httpx.HTTPStatusError as e:
-        logger.warning(f"HTTP error scraping {url}: {e.response.status_code}")
-        raise
-    except httpx.RequestError as e:
-        logger.warning(f"Request error scraping {url}: {e}")
-        raise
+    except (httpx.HTTPStatusError, httpx.RequestError) as e:
+        logger.warning(f"First scrape attempt failed for {url}: {e}. Retrying with relaxed SSL...")
+        # Retry with SSL verification disabled (some sites have cert issues from datacenter IPs)
+        try:
+            with httpx.Client(
+                timeout=TIMEOUT,
+                follow_redirects=True,
+                verify=False,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                },
+            ) as client:
+                resp = client.get(url)
+                resp.raise_for_status()
+                homepage_html = resp.text
+                pages_scraped.append(url)
+                all_text_parts.append(f"=== PAGE: {url} ===\n{_extract_text(homepage_html)}")
+                nav_links = _find_nav_links(homepage_html, url)
+                for link in nav_links[:max_pages]:
+                    try:
+                        resp = client.get(link)
+                        resp.raise_for_status()
+                        pages_scraped.append(link)
+                        all_text_parts.append(f"=== PAGE: {link} ===\n{_extract_text(resp.text)}")
+                    except Exception:
+                        continue
+        except Exception as retry_err:
+            logger.error(f"Retry also failed for {url}: {retry_err}")
+            raise
 
     # Combine all text, truncate to limit
     combined = "\n\n".join(all_text_parts)
