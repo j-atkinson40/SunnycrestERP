@@ -313,8 +313,18 @@ export default function CatalogBuilder() {
     new Set(),
   );
 
+  const [debugIntel, setDebugIntel] = useState<string | null>(null);
+
   useEffect(() => {
     intelligenceService.getIntelligence().then((intel) => {
+      // Debug: show what we got
+      if (intel) {
+        const vl = intel.analysis_result?.vault_lines;
+        const vlPreview = vl ? (Array.isArray(vl) ? JSON.stringify(vl.slice(0,3)) : JSON.stringify(Object.keys(vl).slice(0,5))) : 'none';
+        setDebugIntel(`Status: ${intel.scrape_status}, Suggestions: ${intel.suggestions?.length ?? 0}, Analysis: ${intel.analysis_result ? 'yes' : 'no'}, VaultLines: ${vlPreview}`);
+      } else {
+        setDebugIntel("No intelligence data returned (null)");
+      }
       if (!intel || intel.scrape_status !== "completed") return;
 
       const preselectedNames = new Set<string>();
@@ -1429,6 +1439,12 @@ export default function CatalogBuilder() {
           sell and set your pricing.
         </p>
       </div>
+
+      {debugIntel && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-mono text-amber-900">
+          <strong>Debug:</strong> {debugIntel}
+        </div>
+      )}
 
       <ProgressBar current={currentStep} total={STEP_LABELS.length} />
 
