@@ -40,15 +40,15 @@ const PRESET_COLORS: Record<string, { ring: string; bg: string; text: string }> 
  * business-language names that an admin understands.
  */
 const MODULE_LABELS: Record<string, string> = {
-  core: "Core Platform",
+  ai_command_bar: "AI Command Bar",
+  customers: "Customers & Contacts",
   sales: "Orders & Invoicing",
-  purchasing: "Purchasing",
+  driver_delivery: "Delivery Scheduling",
   inventory: "Basic Inventory",
   daily_production_log: "Daily Production Log",
-  driver_delivery: "Delivery Scheduling",
   safety_management: "Safety & OSHA",
-  customers: "Customers & Contacts",
   funeral_home: "Case Management, FTC Compliance, Vault Ordering, Family Portal & Invoicing",
+  core: "Core Platform",
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

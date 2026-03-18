@@ -468,47 +468,41 @@ def seed_vertical_presets(db: Session) -> int:
         {
             "key": "manufacturing",
             "name": "Manufacturing & Precast",
-            "description": "Full manufacturing ERP with production scheduling, quality control, inventory, and delivery management.",
+            "description": "Core manufacturing operations — orders, delivery, inventory, production logging, safety, and AI-assisted workflows.",
             "icon": "Factory",
             "sort_order": 0,
             "modules": [
-                "products", "inventory", "customers", "sales", "invoicing",
-                "purchasing", "ap", "reporting", "document_mgmt",
-                "hr_time", "driver_delivery", "pos",
-                "production_scheduling", "work_orders", "bom",
-                "quality_control", "batch_tracking", "equipment_maintenance",
-                "mix_designs", "fleet_mgmt",
-                "sage_integration",
+                "ai_command_bar",
+                "customers",
+                "sales",
+                "driver_delivery",
+                "inventory",
+                "daily_production_log",
+                "safety_management",
             ],
         },
         {
             "key": "funeral_home",
             "name": "Funeral Home",
-            "description": "Complete funeral home management from first call through aftercare.",
-            "icon": "BookOpen",
+            "description": "Case management, FTC compliance, vault ordering, family portal, invoicing, and AI-assisted workflows.",
+            "icon": "Heart",
             "sort_order": 1,
             "modules": [
-                "products", "customers", "sales", "invoicing",
-                "purchasing", "ap", "reporting", "document_mgmt",
-                "hr_time", "scheduling", "fleet_mgmt",
-                "case_management", "arrangements", "obituaries",
-                "memorial_services", "cremation_tracking", "preneed",
-                "aftercare", "embalming", "funeral_transport",
+                "ai_command_bar",
+                "funeral_home",
             ],
         },
         {
             "key": "cemetery",
             "name": "Cemetery",
             "description": "Cemetery operations including lot management, interments, and grounds maintenance.",
-            "icon": "Map",
+            "icon": "TreePine",
             "sort_order": 2,
             "modules": [
-                "products", "customers", "sales", "invoicing",
-                "purchasing", "ap", "reporting", "document_mgmt",
-                "hr_time", "scheduling",
-                "lot_management", "interment_records", "deed_management",
-                "memorial_sales", "grounds_maintenance", "endowment_care",
-                "cemetery_mapping",
+                "ai_command_bar",
+                "customers",
+                "sales",
+                "inventory",
             ],
         },
         {
@@ -518,28 +512,33 @@ def seed_vertical_presets(db: Session) -> int:
             "icon": "Flame",
             "sort_order": 3,
             "modules": [
-                "products", "customers", "invoicing",
-                "purchasing", "ap", "reporting", "document_mgmt",
-                "hr_time", "scheduling",
-                "cremation_scheduling", "chain_of_custody", "cremation_auth",
-                "urn_inventory", "regulatory_compliance", "retort_maintenance",
-                "equipment_maintenance",
+                "ai_command_bar",
+                "customers",
+                "sales",
             ],
-        },
-        {
-            "key": "custom",
-            "name": "Custom Setup",
-            "description": "Start with core modules and add exactly what you need.",
-            "icon": "Puzzle",
-            "sort_order": 4,
-            "modules": [],
         },
     ]
 
     count = 0
     for p_data in PRESETS:
-        if p_data["key"] not in existing:
-            module_keys = p_data.pop("modules")
+        module_keys = p_data.pop("modules")
+
+        if p_data["key"] in existing:
+            # Update existing preset — fix description, icon, and rebuild module list
+            preset = db.query(VerticalPreset).filter(VerticalPreset.key == p_data["key"]).first()
+            if preset:
+                preset.name = p_data["name"]
+                preset.description = p_data["description"]
+                preset.icon = p_data["icon"]
+                preset.sort_order = p_data["sort_order"]
+
+                # Clear old preset modules and re-seed correct ones
+                db.query(PresetModule).filter(PresetModule.preset_id == preset.id).delete()
+                for mk in module_keys:
+                    db.add(PresetModule(preset_id=preset.id, module_key=mk))
+                count += 1
+        else:
+            # Create new preset
             preset = VerticalPreset(**p_data)
             db.add(preset)
             db.flush()
@@ -547,6 +546,12 @@ def seed_vertical_presets(db: Session) -> int:
             for mk in module_keys:
                 db.add(PresetModule(preset_id=preset.id, module_key=mk))
             count += 1
+
+    # Remove "custom" preset if it exists — no longer offered
+    custom = db.query(VerticalPreset).filter(VerticalPreset.key == "custom").first()
+    if custom:
+        db.query(PresetModule).filter(PresetModule.preset_id == custom.id).delete()
+        db.delete(custom)
 
     if count:
         db.flush()
