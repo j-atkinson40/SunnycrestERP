@@ -93,7 +93,17 @@ def run_website_intelligence(db_session, tenant_id: str, url: str) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Website intelligence failed for tenant {tenant_id}: {e}")
+        import traceback
+        full_error = f"{type(e).__name__}: {e}"
+        # Include the cause chain
+        cause = e.__cause__ or e.__context__
+        if cause:
+            full_error += f" | Caused by: {type(cause).__name__}: {cause}"
+            cause2 = cause.__cause__ or cause.__context__
+            if cause2:
+                full_error += f" | Root: {type(cause2).__name__}: {cause2}"
+        logger.error(f"Website intelligence failed for tenant {tenant_id}: {full_error}")
+        logger.error(traceback.format_exc())
         try:
             intel = (
                 db.query(TenantWebsiteIntelligence)
@@ -102,7 +112,7 @@ def run_website_intelligence(db_session, tenant_id: str, url: str) -> None:
             )
             if intel:
                 intel.scrape_status = "failed"
-                intel.error_message = str(e)[:2000]
+                intel.error_message = full_error[:2000]
                 intel.scrape_completed_at = datetime.now(timezone.utc)
                 db.commit()
         except Exception:

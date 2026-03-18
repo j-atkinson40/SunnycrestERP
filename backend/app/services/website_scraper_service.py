@@ -134,14 +134,19 @@ def scrape_website(url: str, max_pages: int = 5) -> dict:
                 logger.error(f"SSL error even without verification for {url}: {e}")
                 raise
         except requests.exceptions.ConnectionError as e:
+            # Extract the root cause from the exception chain
+            root = e
+            while root.__cause__ or root.__context__:
+                root = root.__cause__ or root.__context__
+            detail = f"ConnectionError: {e} | Root: {type(root).__name__}: {root}"
             if verify_ssl:
-                logger.warning(f"Connection error for {url}: {e}. Will retry without SSL verification.")
+                logger.warning(f"Connection error for {url}: {detail}. Will retry without SSL.")
                 pages_scraped.clear()
                 all_text_parts.clear()
                 continue
             else:
-                logger.error(f"Connection error on retry for {url}: {e}")
-                raise
+                logger.error(f"Connection error on retry for {url}: {detail}")
+                raise RuntimeError(detail) from e
         except requests.exceptions.RequestException as e:
             logger.error(f"Request error scraping {url}: {e}")
             raise
