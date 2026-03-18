@@ -175,6 +175,22 @@ def debug_network():
         results["scrape_traceback"] = traceback.format_exc()[-500:]
         return results
 
+    # Test 1b: Can we reach api.anthropic.com?
+    try:
+        import requests as _req
+        r = _req.get("https://api.anthropic.com", timeout=10)
+        results["anthropic_network"] = f"OK: {r.status_code}"
+    except Exception as e:
+        root = e
+        while root.__cause__ or root.__context__:
+            root = root.__cause__ or root.__context__
+        results["anthropic_network"] = f"FAILED: {type(root).__name__}: {root}"
+
+    # Test 1c: Check API key
+    from app.config import settings
+    results["api_key_set"] = bool(settings.ANTHROPIC_API_KEY)
+    results["api_key_prefix"] = settings.ANTHROPIC_API_KEY[:10] + "..." if settings.ANTHROPIC_API_KEY else "EMPTY"
+
     # Test 2: Analyze
     try:
         from app.services.website_analysis_service import analyze_website_content
