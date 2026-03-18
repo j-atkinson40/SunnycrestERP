@@ -10,12 +10,15 @@ import {
   AlertTriangle,
   Clock,
   ChevronRight,
+  ArrowRight,
+  Rocket,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SpringBurialWidget } from "@/components/dashboard/spring-burial-widget";
+import * as onboardingService from "@/services/onboarding-service";
 import apiClient from "@/lib/api-client";
 
 // ── Types ──
@@ -183,6 +186,27 @@ export function ManufacturingDashboard() {
   const [upcomingDeliveries, setUpcomingDeliveries] = useState<UpcomingDelivery[]>([]);
   const [complianceAlerts, setComplianceAlerts] = useState<ComplianceAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [onboardingPercent, setOnboardingPercent] = useState<number | null>(null);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(0);
+  const [onboardingTotal, setOnboardingTotal] = useState(0);
+
+  // Fetch onboarding status
+  useEffect(() => {
+    onboardingService
+      .getChecklist()
+      .then((checklist) => {
+        const mustItems = checklist.items.filter((i) => i.tier === "must_complete");
+        const done = mustItems.filter((i) => i.status === "completed").length;
+        setOnboardingPercent(checklist.must_complete_percent);
+        setOnboardingCompleted(done);
+        setOnboardingTotal(mustItems.length);
+      })
+      .catch(() => {
+        // No checklist — show banner anyway
+        setOnboardingPercent(0);
+        setOnboardingTotal(5);
+      });
+  }, []);
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -268,6 +292,53 @@ export function ManufacturingDashboard() {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Onboarding Banner — prominent, shows until setup is complete */}
+      {onboardingPercent !== null && onboardingPercent < 100 && (
+        <Link
+          to="/onboarding"
+          className="block rounded-xl border-2 border-primary/20 bg-gradient-to-r from-primary/5 to-primary/10 p-5 transition-all hover:border-primary/40 hover:shadow-md"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                <Rocket className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {onboardingCompleted === 0
+                    ? "Let's get you set up"
+                    : `${onboardingCompleted} of ${onboardingTotal} setup steps complete`}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {onboardingCompleted === 0
+                    ? "Complete your setup to start using the platform — takes about 15 minutes"
+                    : "Continue where you left off — your team will be ready in no time"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              {onboardingTotal > 0 && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <div className="h-2 w-32 overflow-hidden rounded-full bg-primary/10">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${onboardingPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {onboardingPercent}%
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center gap-1 text-sm font-medium text-primary">
+                Continue setup
+                <ArrowRight className="h-4 w-4" />
+              </div>
+            </div>
+          </div>
+        </Link>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

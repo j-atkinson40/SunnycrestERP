@@ -10,6 +10,8 @@ import {
   ChevronRight,
   ShieldCheck,
   Activity,
+  ArrowRight,
+  Rocket,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -17,6 +19,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { funeralHomeService } from "@/services/funeral-home-service";
+import * as onboardingService from "@/services/onboarding-service";
 import type { FHCase, FHDashboardData } from "@/types/funeral-home";
 
 // ── Helpers ──
@@ -191,6 +194,25 @@ export function FuneralHomeDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState<FHDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [onboardingPercent, setOnboardingPercent] = useState<number | null>(null);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(0);
+  const [onboardingTotal, setOnboardingTotal] = useState(0);
+
+  useEffect(() => {
+    onboardingService
+      .getChecklist()
+      .then((checklist) => {
+        const mustItems = checklist.items.filter((i) => i.tier === "must_complete");
+        const done = mustItems.filter((i) => i.status === "completed").length;
+        setOnboardingPercent(checklist.must_complete_percent);
+        setOnboardingCompleted(done);
+        setOnboardingTotal(mustItems.length);
+      })
+      .catch(() => {
+        setOnboardingPercent(0);
+        setOnboardingTotal(5);
+      });
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -250,6 +272,53 @@ export function FuneralHomeDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Onboarding Banner */}
+      {onboardingPercent !== null && onboardingPercent < 100 && (
+        <Link
+          to="/onboarding"
+          className="block rounded-xl border-2 border-stone-200 bg-gradient-to-r from-stone-50 to-stone-100 p-5 transition-all hover:border-stone-300 hover:shadow-md"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-stone-200">
+                <Rocket className="h-6 w-6 text-stone-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {onboardingCompleted === 0
+                    ? "Let's get you set up"
+                    : `${onboardingCompleted} of ${onboardingTotal} setup steps complete`}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {onboardingCompleted === 0
+                    ? "Complete your setup to start managing cases — takes about 15 minutes"
+                    : "Continue where you left off"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              {onboardingTotal > 0 && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <div className="h-2 w-32 overflow-hidden rounded-full bg-stone-200">
+                    <div
+                      className="h-full rounded-full bg-stone-500 transition-all"
+                      style={{ width: `${onboardingPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {onboardingPercent}%
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center gap-1 text-sm font-medium text-stone-600">
+                Continue setup
+                <ArrowRight className="h-4 w-4" />
+              </div>
+            </div>
+          </div>
+        </Link>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">Dashboard</h1>
