@@ -277,7 +277,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
 
   const confirmSummary = useMemo(() => {
     const included = Object.values(localItems).filter(
-      (i) => i.action === "create_product" || i.action === "create_custom",
+      (i) => i.action === "create_product" || i.action === "create_custom" || i.action === "create_bundle",
     );
     // Group by category-ish extracted from name
     const groups: Record<string, { count: number; min: number; max: number }> =
@@ -309,6 +309,9 @@ export default function PriceListUploadFlow({ onBack }: Props) {
         nameLower.includes("monument")
       ) {
         category = "Memorials";
+      }
+      if (item.action === "create_bundle") {
+        category = "Equipment Bundles";
       }
 
       const price = item.final_price ?? 0;
@@ -723,6 +726,7 @@ interface ReviewRowProps {
 
 function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) {
   const isSkipped = item.action === "skip";
+  const isBundle = item.match_status === "bundle" || item.action === "create_bundle";
 
   const handlePriceChange = useCallback(
     (value: string) => {
@@ -803,7 +807,14 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
   return (
     <tr className={cn(isSkipped && "opacity-50")}>
       <td className="px-4 py-3">
-        <p className="font-medium">{item.extracted_name}</p>
+        <div className="flex items-center gap-2">
+          <p className="font-medium">{item.extracted_name}</p>
+          {isBundle && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700">
+              <Package className="h-3 w-3" /> Bundle
+            </span>
+          )}
+        </div>
         {item.extracted_sku && (
           <p className="text-xs text-muted-foreground">
             SKU: {item.extracted_sku}
@@ -850,19 +861,26 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
         <button
           type="button"
           onClick={() =>
-            onAction(item.id, isSkipped ? "create_product" : "skip")
+            onAction(item.id, isSkipped ? (isBundle ? "create_bundle" : "create_product") : "skip")
           }
           className={cn(
             "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
             isSkipped
               ? "bg-muted text-muted-foreground hover:bg-muted/80"
-              : "bg-green-50 text-green-700 hover:bg-green-100",
+              : isBundle
+                ? "bg-purple-50 text-purple-700 hover:bg-purple-100"
+                : "bg-green-50 text-green-700 hover:bg-green-100",
           )}
         >
           {isSkipped ? (
             <>
               <SkipForward className="h-3 w-3" />
               Skip
+            </>
+          ) : isBundle ? (
+            <>
+              <Package className="h-3 w-3" />
+              Create Bundle
             </>
           ) : (
             <>

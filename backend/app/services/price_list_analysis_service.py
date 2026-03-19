@@ -117,11 +117,17 @@ OVERSIZE VAULT HANDLING:
 - Match oversize vaults to the base vault line template (e.g. Continental Burial Vault) but set match_status to "low_confidence" with reasoning explaining it's an oversize variant, so the manufacturer can confirm.
 - If an oversize vault has no specific dimension (just "OS" or "Oversize"), name it with "Oversize" like "Continental Oversize".
 
-EQUIPMENT BUNDLE DETECTION:
-- Look for equipment packages/bundles like "Full Equipment", "Equipment Package", "Equipment w/o Chairs", "Setup Package"
-- These are typically a single line item at a flat rate that includes multiple pieces of equipment
-- When detected, set match_status to "bundle" and include component hints in reasoning
-- Common bundles: Full Equipment (lowering device + tent + mats + chairs), Equipment Without Chairs (lowering device + tent + mats)
+EQUIPMENT BUNDLE DETECTION (CRITICAL — do NOT mark these as unmatched):
+- Items like "Full Equipment", "Equipment Package", "Equipment w/o Chairs", "Setup Package", "Tent Only", "Equipment Only", "Full Setup" are equipment BUNDLES — flat-rate packages containing multiple pieces of equipment.
+- ALWAYS set match_status to "bundle" for these items. NEVER set them to "unmatched".
+- Set template_id to null, template_name to the bundle name, confidence to 0.90.
+- In reasoning, list the likely components (e.g., "Bundle likely includes: lowering device, tent, grass mats, chairs").
+- Common bundle names and their likely components:
+  * "Full Equipment" / "Full Setup" → lowering device + tent + grass mats + chairs
+  * "Equipment Without Chairs" / "Equipment w/o Chairs" / "Equipment Only" → lowering device + tent + grass mats
+  * "Tent Only" → tent only (still a bundle/package line item)
+  * "Setup Package" → lowering device + tent + grass mats
+- ANY line item in an equipment/setup section that represents a flat-rate package of services should use match_status "bundle".
 """
 
 
@@ -262,7 +268,7 @@ Confidence thresholds:
                 action = "create_product"
             elif status == "bundle":
                 low += 1
-                action = "create_product"
+                action = "create_bundle"
             else:
                 unmatched += 1
                 action = "skip"

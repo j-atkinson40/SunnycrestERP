@@ -29,7 +29,8 @@ export interface PriceListImportItem {
     | "low_confidence"
     | "unmatched"
     | "ignored"
-    | "custom";
+    | "custom"
+    | "bundle";
   matched_template_id: string | null;
   matched_template_name: string | null;
   match_confidence: number | null;
@@ -37,7 +38,7 @@ export interface PriceListImportItem {
   final_product_name: string;
   final_price: number | null;
   final_sku: string | null;
-  action: "create_product" | "skip" | "create_custom";
+  action: "create_product" | "skip" | "create_custom" | "create_bundle";
 }
 
 export interface ReviewData {

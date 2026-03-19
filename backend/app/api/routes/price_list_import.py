@@ -14,6 +14,7 @@ from app.database import SessionLocal, get_db
 from app.models.company import Company
 from app.models.price_list_import import PriceListImport, PriceListImportItem
 from app.models.product import Product
+from app.models.product_bundle import ProductBundle
 from app.models.user import User
 from app.schemas.price_list_import import (
     PriceListConfirmResponse,
@@ -276,12 +277,31 @@ def confirm_import(
     )
 
     created = 0
+    bundles_created = 0
     skipped = 0
     now = datetime.now(timezone.utc)
 
     for item in items:
         if item.action == "skip":
             skipped += 1
+            continue
+
+        if item.action == "create_bundle":
+            # Create as a ProductBundle instead of a Product
+            bundle = ProductBundle(
+                id=str(uuid.uuid4()),
+                company_id=company.id,
+                name=item.final_product_name,
+                sku=item.final_sku,
+                price=item.final_price,
+                is_active=True,
+                source="price_list_import",
+                created_by=current_user.id,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(bundle)
+            bundles_created += 1
             continue
 
         product = Product(
