@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy import inspect as sa_inspect
 
 revision = "a4b5c6d7e8f9"
-down_revision = "z3a4b5c6d7e8"
+down_revision = "b2c3d4e5f6g7"
 branch_labels = None
 depends_on = None
 

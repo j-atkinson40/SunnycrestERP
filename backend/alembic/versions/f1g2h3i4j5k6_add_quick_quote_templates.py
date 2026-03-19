@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect as sa_inspect
 
-revision = "a1b2c3d4e5f6"
+revision = "f1g2h3i4j5k6"
 down_revision = "z3a4b5c6d7e8"
 branch_labels = None
 depends_on = None
