@@ -158,6 +158,51 @@ def get_tenant(
     }
 
 
+@router.get("/debug-tenant/{slug}")
+def debug_tenant_by_slug(
+    slug: str,
+    _user: PlatformUser = Depends(require_platform_role("super_admin")),
+    db: Session = Depends(get_db),
+):
+    """Debug: check what data exists for a given slug."""
+    from sqlalchemy import text
+    conn = db.get_bind().connect()
+    try:
+        # Check companies
+        companies = conn.execute(
+            text("SELECT id, name, slug, is_active FROM companies WHERE slug = :s"),
+            {"s": slug},
+        ).fetchall()
+
+        # Check users with emails containing the slug
+        users = conn.execute(
+            text("SELECT id, email, company_id FROM users WHERE email LIKE :pattern"),
+            {"pattern": f"%{slug.replace('-', '')}%"},
+        ).fetchall()
+
+        # Check all companies
+        all_companies = conn.execute(
+            text("SELECT id, name, slug, is_active FROM companies ORDER BY name"),
+        ).fetchall()
+
+        return {
+            "matching_companies": [
+                {"id": c[0], "name": c[1], "slug": c[2], "is_active": c[3]}
+                for c in companies
+            ],
+            "matching_users": [
+                {"id": u[0], "email": u[1], "company_id": u[2]}
+                for u in users
+            ],
+            "all_companies": [
+                {"id": c[0], "name": c[1], "slug": c[2], "is_active": c[3]}
+                for c in all_companies
+            ],
+        }
+    finally:
+        conn.close()
+
+
 @router.delete("/{tenant_id}")
 def delete_tenant(
     tenant_id: str,
