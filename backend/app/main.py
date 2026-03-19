@@ -145,6 +145,9 @@ def seed_platform_admin():
             from app.services.extension_service import seed_extensions, seed_tenant_extension_defaults
             seed_extensions(db)
             seed_tenant_extension_defaults(db)
+
+            from app.services.catalog_template_seeder import seed_wilbert_templates
+            seed_wilbert_templates(db)
         finally:
             db.close()
 
