@@ -294,26 +294,37 @@ def _do_onboard_tenant(data, user, db):
             ))
     result["modules_enabled"] = len(modules_to_enable)
 
+    # Commit the core tenant data first so the session is clean
+    db.commit()
+
+    # Now do optional setup steps — each in its own try/except with rollback recovery
     # Try applying the new-style preset too (for TenantModuleConfig)
     try:
         tenant_module_service.apply_preset_to_tenant(
             db, company.id, data.vertical or "custom", actor_id=user.id
         )
+        db.commit()
     except Exception:
-        pass  # Non-fatal if preset not seeded yet
+        db.rollback()  # Recover session state
 
     # Seed vertical-specific data
     if data.vertical == "funeral_home":
-        from app.services.ftc_compliance_service import seed_ftc_price_list
-        seed_ftc_price_list(db, company.id)
+        try:
+            from app.services.ftc_compliance_service import seed_ftc_price_list
+            seed_ftc_price_list(db, company.id)
+            db.commit()
+        except Exception:
+            db.rollback()
 
     # Initialize onboarding checklist
     try:
         from app.services.onboarding_service import initialize_checklist
         preset = data.vertical or "manufacturing"
         initialize_checklist(db, company.id, preset)
+        db.commit()
         result["onboarding_initialized"] = True
     except Exception as e:
+        db.rollback()
         import logging
         logging.getLogger(__name__).warning(f"Failed to initialize onboarding: {e}")
         result["onboarding_initialized"] = False
@@ -329,16 +340,15 @@ def _do_onboard_tenant(data, user, db):
                 scrape_status="pending",
             )
             db.add(intel)
-            db.flush()
+            db.commit()
             result["website_intelligence"] = "pending"
         except Exception as e:
+            db.rollback()
             import logging as _logging
 
             _logging.getLogger(__name__).warning(
                 f"Failed to create website intelligence record: {e}"
             )
-
-    db.commit()
 
     # Start background scrape after commit (needs committed tenant_id)
     if data.website_url:
