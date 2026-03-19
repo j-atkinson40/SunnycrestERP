@@ -155,8 +155,8 @@ def generate_suggestions(
         existing_keys = {s.suggestion_key for s in suggestions}
         if key in existing_keys:
             continue
-        # Skip vault-related and NPCA extensions — already covered above
-        if any(skip in key for skip in ["burial", "vault", "urn", "npca", "compliance"]):
+        # Skip extensions already covered above or irrelevant to manufacturing
+        if any(skip in key for skip in ["burial", "vault", "urn", "npca", "compliance", "cremation", "funeral", "ftc"]):
             continue
         s = _create_suggestion(
             db, tenant_id, "extension_recommendation",
