@@ -168,7 +168,11 @@ def get_import_review(
         "custom": [],
     }
     for item in items:
-        bucket = grouped.get(item.match_status, grouped["unmatched"])
+        # Bundle items go into low_confidence tab for review
+        if item.match_status == "bundle":
+            bucket = grouped["low_confidence"]
+        else:
+            bucket = grouped.get(item.match_status, grouped["unmatched"])
         bucket.append(PriceListImportItemResponse.model_validate(item))
 
     return {
