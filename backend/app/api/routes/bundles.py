@@ -33,6 +33,11 @@ class BundleCreate(BaseModel):
     is_active: bool = True
     sort_order: int = 0
     components: list[BundleComponentInput] = []
+    # Conditional pricing
+    has_conditional_pricing: bool = False
+    standalone_price: float | None = None
+    with_vault_price: float | None = None
+    vault_qualifier_categories: list[str] | None = None
 
 
 class BundleUpdate(BaseModel):
@@ -43,6 +48,11 @@ class BundleUpdate(BaseModel):
     is_active: bool | None = None
     sort_order: int | None = None
     components: list[BundleComponentInput] | None = None
+    # Conditional pricing
+    has_conditional_pricing: bool | None = None
+    standalone_price: float | None = None
+    with_vault_price: float | None = None
+    vault_qualifier_categories: list[str] | None = None
 
 
 @router.get("/equipment-items")

@@ -931,7 +931,46 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
         )}
       </td>
       <td className="px-4 py-3 text-right">
-        {tab === "low_confidence" ? (
+        {isBundle && item.has_conditional_pricing ? (
+          <div className="space-y-1.5 text-right">
+            <div className="flex items-center justify-end gap-1.5">
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">w/ vault:</span>
+              <Input
+                type="number"
+                step="0.01"
+                value={item.extracted_price_with_vault ?? ""}
+                onChange={(e) => {
+                  const num = parseFloat(e.target.value);
+                  onUpdate(item.id, { extracted_price_with_vault: isNaN(num) ? null : num } as any);
+                  if (!isNaN(num) && importId) {
+                    importService.updateItem(importId, item.id, { extracted_price_with_vault: num } as any).catch(() => {});
+                  }
+                }}
+                className="h-7 w-24 text-right text-xs"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-1.5">
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">standalone:</span>
+              <Input
+                type="number"
+                step="0.01"
+                value={item.extracted_price_standalone ?? ""}
+                onChange={(e) => {
+                  const num = parseFloat(e.target.value);
+                  onUpdate(item.id, { extracted_price_standalone: isNaN(num) ? null : num } as any);
+                  if (!isNaN(num) && importId) {
+                    importService.updateItem(importId, item.id, { extracted_price_standalone: num } as any).catch(() => {});
+                  }
+                }}
+                className="h-7 w-24 text-right text-xs"
+              />
+            </div>
+            {item.extracted_price_with_vault != null && item.extracted_price_standalone != null &&
+              item.extracted_price_with_vault > item.extracted_price_standalone && (
+              <p className="text-[10px] text-amber-600">Usually vault price is lower</p>
+            )}
+          </div>
+        ) : tab === "low_confidence" ? (
           <Input
             type="number"
             step="0.01"

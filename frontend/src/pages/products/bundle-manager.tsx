@@ -31,6 +31,9 @@ export default function BundleManager() {
   const [formSku, setFormSku] = useState("");
   const [formPrice, setFormPrice] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [formConditionalPricing, setFormConditionalPricing] = useState(false);
+  const [formWithVaultPrice, setFormWithVaultPrice] = useState("");
+  const [formStandalonePrice, setFormStandalonePrice] = useState("");
 
   const loadData = useCallback(async () => {
     try {
@@ -63,6 +66,9 @@ export default function BundleManager() {
     setFormSku("");
     setFormPrice("");
     setSelectedProducts(new Set());
+    setFormConditionalPricing(false);
+    setFormWithVaultPrice("");
+    setFormStandalonePrice("");
     setShowCreate(false);
     setEditingId(null);
   };
@@ -74,6 +80,9 @@ export default function BundleManager() {
     setFormSku(bundle.sku || "");
     setFormPrice(bundle.price?.toString() || "");
     setSelectedProducts(new Set(bundle.components.map((c) => c.product_id)));
+    setFormConditionalPricing(bundle.has_conditional_pricing || false);
+    setFormWithVaultPrice(bundle.with_vault_price?.toString() || "");
+    setFormStandalonePrice(bundle.standalone_price?.toString() || "");
     setShowCreate(true);
   };
 
@@ -91,8 +100,13 @@ export default function BundleManager() {
       name: formName.trim(),
       description: formDescription.trim() || undefined,
       sku: formSku.trim() || undefined,
-      price: formPrice ? parseFloat(formPrice) : undefined,
+      price: formConditionalPricing
+        ? (formStandalonePrice ? parseFloat(formStandalonePrice) : undefined)
+        : (formPrice ? parseFloat(formPrice) : undefined),
       components: [...selectedProducts].map((pid) => ({ product_id: pid, quantity: 1 })),
+      has_conditional_pricing: formConditionalPricing,
+      standalone_price: formConditionalPricing && formStandalonePrice ? parseFloat(formStandalonePrice) : undefined,
+      with_vault_price: formConditionalPricing && formWithVaultPrice ? parseFloat(formWithVaultPrice) : undefined,
     };
 
     try {
@@ -199,32 +213,103 @@ export default function BundleManager() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Bundle Price</Label>
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formPrice}
-                    onChange={(e) => setFormPrice(e.target.value)}
-                    className="pl-8 w-36"
-                    placeholder="0.00"
-                  />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Pricing</Label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pricing_mode"
+                      checked={!formConditionalPricing}
+                      onChange={() => setFormConditionalPricing(false)}
+                      className="accent-primary"
+                    />
+                    Same price regardless of order contents
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pricing_mode"
+                      checked={formConditionalPricing}
+                      onChange={() => setFormConditionalPricing(true)}
+                      className="accent-primary"
+                    />
+                    Different price when ordered with a vault
+                  </label>
                 </div>
-                {savings !== null && savings > 0 && (
-                  <span className="text-sm text-green-600 font-medium">
-                    Saves ${savings.toFixed(2)} vs a la carte
-                  </span>
-                )}
-                {savings !== null && savings < 0 && (
-                  <span className="text-sm text-amber-600 font-medium">
-                    ${Math.abs(savings).toFixed(2)} more than a la carte
-                  </span>
-                )}
               </div>
+
+              {formConditionalPricing ? (
+                <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div className="flex items-center gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs">With vault order</Label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formWithVaultPrice}
+                          onChange={(e) => setFormWithVaultPrice(e.target.value)}
+                          className="pl-8 w-36"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Equipment only</Label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={formStandalonePrice}
+                          onChange={(e) => setFormStandalonePrice(e.target.value)}
+                          className="pl-8 w-36"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Burial vaults and urn vaults qualify for the lower price.
+                  </p>
+                  {formWithVaultPrice && formStandalonePrice &&
+                    parseFloat(formWithVaultPrice) > parseFloat(formStandalonePrice) && (
+                    <p className="text-xs text-amber-600">
+                      Usually the vault order price is lower. Is this correct?
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formPrice}
+                      onChange={(e) => setFormPrice(e.target.value)}
+                      className="pl-8 w-36"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  {savings !== null && savings > 0 && (
+                    <span className="text-sm text-green-600 font-medium">
+                      Saves ${savings.toFixed(2)} vs a la carte
+                    </span>
+                  )}
+                  {savings !== null && savings < 0 && (
+                    <span className="text-sm text-amber-600 font-medium">
+                      ${Math.abs(savings).toFixed(2)} more than a la carte
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Product selector */}
@@ -339,13 +424,32 @@ export default function BundleManager() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="text-right mr-3">
-                      {bundle.price !== null && (
-                        <div className="text-lg font-bold">${bundle.price.toFixed(2)}</div>
-                      )}
-                      {bundle.savings !== null && bundle.savings > 0 && (
-                        <div className="text-xs text-green-600">
-                          Save ${bundle.savings.toFixed(2)}
-                        </div>
+                      {bundle.has_conditional_pricing ? (
+                        <>
+                          {bundle.with_vault_price !== null && (
+                            <div className="text-sm">
+                              <span className="text-muted-foreground text-xs">w/ vault: </span>
+                              <span className="font-bold">${bundle.with_vault_price.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {bundle.standalone_price !== null && (
+                            <div className="text-sm">
+                              <span className="text-muted-foreground text-xs">standalone: </span>
+                              <span className="font-bold">${bundle.standalone_price.toFixed(2)}</span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {bundle.price !== null && (
+                            <div className="text-lg font-bold">${bundle.price.toFixed(2)}</div>
+                          )}
+                          {bundle.savings !== null && bundle.savings > 0 && (
+                            <div className="text-xs text-green-600">
+                              Save ${bundle.savings.toFixed(2)}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => startEdit(bundle)}>

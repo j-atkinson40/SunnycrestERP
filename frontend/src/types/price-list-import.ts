@@ -39,6 +39,12 @@ export interface PriceListImportItem {
   final_price: number | null;
   final_sku: string | null;
   action: "create_product" | "skip" | "create_custom" | "create_bundle";
+  // Conditional pricing
+  extracted_price_with_vault: number | null;
+  extracted_price_standalone: number | null;
+  has_conditional_pricing: boolean;
+  is_bundle_price_variant: boolean;
+  price_variant_type: "standalone" | "with_vault" | null;
 }
 
 export interface ReviewData {

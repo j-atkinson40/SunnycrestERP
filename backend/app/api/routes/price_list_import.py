@@ -216,6 +216,12 @@ def update_import_item(
         item.final_sku = data.final_sku
     if data.matched_template_id is not None:
         item.matched_template_id = data.matched_template_id
+    if data.has_conditional_pricing is not None:
+        item.has_conditional_pricing = data.has_conditional_pricing
+    if data.extracted_price_with_vault is not None:
+        item.extracted_price_with_vault = data.extracted_price_with_vault
+    if data.extracted_price_standalone is not None:
+        item.extracted_price_standalone = data.extracted_price_standalone
 
     item.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -292,18 +298,36 @@ def confirm_import(
 
         if item.action == "create_bundle":
             # Create as a ProductBundle instead of a Product
-            bundle = ProductBundle(
-                id=str(uuid.uuid4()),
-                company_id=company.id,
-                name=item.final_product_name,
-                sku=item.final_sku,
-                price=item.final_price,
-                is_active=True,
-                source="price_list_import",
-                created_by=current_user.id,
-                created_at=now,
-                updated_at=now,
-            )
+            # Determine pricing: conditional or single
+            if item.has_conditional_pricing and item.extracted_price_with_vault and item.extracted_price_standalone:
+                bundle = ProductBundle(
+                    id=str(uuid.uuid4()),
+                    company_id=company.id,
+                    name=item.final_product_name,
+                    sku=item.final_sku,
+                    price=item.extracted_price_standalone,  # backward compat
+                    has_conditional_pricing=True,
+                    standalone_price=item.extracted_price_standalone,
+                    with_vault_price=item.extracted_price_with_vault,
+                    is_active=True,
+                    source="price_list_import",
+                    created_by=current_user.id,
+                    created_at=now,
+                    updated_at=now,
+                )
+            else:
+                bundle = ProductBundle(
+                    id=str(uuid.uuid4()),
+                    company_id=company.id,
+                    name=item.final_product_name,
+                    sku=item.final_sku,
+                    price=item.final_price,
+                    is_active=True,
+                    source="price_list_import",
+                    created_by=current_user.id,
+                    created_at=now,
+                    updated_at=now,
+                )
             db.add(bundle)
             bundles_created += 1
             continue

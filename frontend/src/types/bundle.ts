@@ -22,6 +22,11 @@ export interface ProductBundle {
   component_count: number;
   à_la_carte_total: number;
   savings: number | null;
+  // Conditional pricing
+  has_conditional_pricing: boolean;
+  standalone_price: number | null;
+  with_vault_price: number | null;
+  vault_qualifier_categories: string[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -39,6 +44,10 @@ export interface BundleCreate {
   is_active?: boolean;
   sort_order?: number;
   components: BundleComponentInput[];
+  has_conditional_pricing?: boolean;
+  standalone_price?: number;
+  with_vault_price?: number;
+  vault_qualifier_categories?: string[];
 }
 
 export interface BundleUpdate {
@@ -49,4 +58,8 @@ export interface BundleUpdate {
   is_active?: boolean;
   sort_order?: number;
   components?: BundleComponentInput[];
+  has_conditional_pricing?: boolean;
+  standalone_price?: number;
+  with_vault_price?: number;
+  vault_qualifier_categories?: string[];
 }

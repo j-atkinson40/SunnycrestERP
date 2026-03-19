@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -89,6 +89,26 @@ class PriceListImportItem(Base):
         String(20), nullable=False, default="create_product"
     )
     product_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
+    # Conditional pricing fields
+    extracted_price_with_vault: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    extracted_price_standalone: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    has_conditional_pricing: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    is_bundle_price_variant: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    parent_bundle_import_item_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("price_list_import_items.id"), nullable=True
+    )
+    price_variant_type: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

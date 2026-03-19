@@ -67,6 +67,16 @@ class ChargeLibraryItem(Base):
     invoice_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Conditional pricing (vault order vs standalone)
+    has_conditional_pricing: Mapped[bool] = mapped_column(Boolean, default=False)
+    with_vault_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    standalone_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -173,6 +173,47 @@ EVIDENCE-BASED COMPONENT SUGGESTIONS (for non-compound bundles):
     {"component": "Lowering Device", "evidence": "Found 'Lowering Device — $65' as individual item on price list"}
   ]
 - If NO evidence: set bundle_components_suggested to an empty array [].
+
+CONDITIONAL PRICING — TWO FORMATS:
+
+FORMAT A — TABULAR (two price columns):
+Some price lists present conditional pricing as a table with two price columns. Recognize these column header patterns as conditional pricing indicators:
+  "With Our Product" / "Without Our Product"
+  "With Vault" / "Without Vault"
+  "With Product" / "Without Product"
+  "W/ Product" / "W/O Product"
+  "Vault Order" / "Equipment Only"
+When you detect a table with two price columns matching these patterns:
+- Extract BOTH prices from each row
+- "With Our Product" column = with_vault_price (typically the lower price)
+- "Without Our Product" column = standalone_price (typically the higher price)
+- Set has_conditional_pricing = true
+- Do NOT set price_variant_type — both prices come from one row
+
+Return format for tabular conditional pricing:
+{
+  "raw_text": "Full Equipment  $300  $600",
+  "extracted_name": "Full Equipment",
+  "extracted_price": 300.00,
+  "extracted_price_with_vault": 300.00,
+  "extracted_price_standalone": 600.00,
+  "has_conditional_pricing": true,
+  "match_status": "bundle"
+}
+
+FORMAT B — SEPARATE LINE ITEMS (variant name pairs):
+When you see two items that appear to be the same bundle at different prices with variant name suffixes, recognize them as a conditional pricing pair:
+  "[Bundle Name] with Vault" / "[Bundle Name] Only"
+  "[Bundle Name] w/ Vault" / "[Bundle Name] w/o Vault"
+  "[Bundle Name] — Vault Order" / "[Bundle Name] — Equipment Only"
+The with-vault item has the lower price. The standalone item has the higher price.
+When detected as a pair — mark both items:
+- The with-vault item: set is_bundle_price_variant = true, price_variant_type = "with_vault"
+- The standalone item: set is_bundle_price_variant = true, price_variant_type = "standalone"
+- Set a matching bundle_variant_group on both items (use the base bundle name without the suffix)
+- Post-processing will merge them into a single conditional pricing item.
+
+"With Our Product" and "Without Our Product" are price tier headers — NEVER treat them as product names or match them against product templates.
 """
 
 
@@ -416,6 +457,50 @@ def _fix_urn_vault_items(items: list[dict], templates: list) -> list[dict]:
     return items
 
 
+def _group_bundle_variants(items: list[dict]) -> list[dict]:
+    """Post-process: merge Format B variant pairs into single conditional pricing items.
+
+    Finds items with is_bundle_price_variant=True, groups by bundle_variant_group,
+    merges with_vault and standalone variants into one item with both prices.
+    """
+    variant_groups: dict[str, list[dict]] = {}
+    for item in items:
+        if not item.get("is_bundle_price_variant"):
+            continue
+        key = item.get("bundle_variant_group") or item.get("extracted_name", "")
+        if key not in variant_groups:
+            variant_groups[key] = []
+        variant_groups[key].append(item)
+
+    for group_name, group_items in variant_groups.items():
+        with_vault = None
+        standalone = None
+        for gi in group_items:
+            if gi.get("price_variant_type") == "with_vault":
+                with_vault = gi
+            elif gi.get("price_variant_type") == "standalone":
+                standalone = gi
+
+        if with_vault and standalone:
+            # Merge into the with_vault item
+            with_vault["extracted_price_with_vault"] = with_vault.get("extracted_price")
+            with_vault["extracted_price_standalone"] = standalone.get("extracted_price")
+            with_vault["has_conditional_pricing"] = True
+            with_vault["extracted_name"] = group_name  # Use base name
+            # Mark standalone as absorbed
+            standalone["match_status"] = "absorbed_into_variant"
+            standalone["action"] = "skip"
+            logger.info(
+                "Merged bundle variant pair '%s': vault=$%s, standalone=$%s",
+                group_name,
+                with_vault.get("extracted_price"),
+                standalone.get("extracted_price"),
+            )
+
+    # Filter out absorbed items
+    return [i for i in items if i.get("match_status") != "absorbed_into_variant"]
+
+
 def analyze_price_list(db: Session, import_id: str) -> None:
     """Run Claude analysis on an extracted price list."""
     imp = db.query(PriceListImport).filter(PriceListImport.id == import_id).first()
@@ -474,6 +559,12 @@ For each item in the price list, return:
       "extracted_name": "your interpretation of the product name",
       "extracted_price": 0.00,
       "extracted_sku": "SKU if present or null",
+      "extracted_price_with_vault": null,
+      "extracted_price_standalone": null,
+      "has_conditional_pricing": false,
+      "is_bundle_price_variant": false,
+      "price_variant_type": null,
+      "bundle_variant_group": null,
       "match": {{
         "template_id": "uuid-string or null",
         "template_name": "matched product name",
@@ -530,6 +621,7 @@ Confidence thresholds:
         # Post-process: reclassify misclassified bundle items
         if "items" in parsed:
             parsed["items"] = _reclassify_bundle_items(parsed["items"])
+            parsed["items"] = _group_bundle_variants(parsed["items"])
             parsed["items"] = _fix_urn_vault_items(parsed["items"], templates)
 
         # Store analysis
@@ -600,6 +692,20 @@ Confidence thresholds:
                 ),
                 final_sku=item_data.get("extracted_sku"),
                 action=action,
+                # Conditional pricing
+                extracted_price_with_vault=(
+                    Decimal(str(item_data["extracted_price_with_vault"]))
+                    if item_data.get("extracted_price_with_vault")
+                    else None
+                ),
+                extracted_price_standalone=(
+                    Decimal(str(item_data["extracted_price_standalone"]))
+                    if item_data.get("extracted_price_standalone")
+                    else None
+                ),
+                has_conditional_pricing=bool(item_data.get("has_conditional_pricing", False)),
+                is_bundle_price_variant=bool(item_data.get("is_bundle_price_variant", False)),
+                price_variant_type=item_data.get("price_variant_type"),
             )
             db.add(import_item)
 

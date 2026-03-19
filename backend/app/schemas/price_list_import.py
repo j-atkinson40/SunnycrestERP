@@ -52,6 +52,12 @@ class PriceListImportItemResponse(BaseModel):
     final_sku: str | None = None
     action: str
     product_id: str | None = None
+    # Conditional pricing
+    extracted_price_with_vault: Decimal | None = None
+    extracted_price_standalone: Decimal | None = None
+    has_conditional_pricing: bool = False
+    is_bundle_price_variant: bool = False
+    price_variant_type: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -64,6 +70,10 @@ class PriceListItemUpdate(BaseModel):
     final_price: Decimal | None = None
     final_sku: str | None = None
     matched_template_id: str | None = None
+    # Conditional pricing
+    has_conditional_pricing: bool | None = None
+    extracted_price_with_vault: Decimal | None = None
+    extracted_price_standalone: Decimal | None = None
 
 
 class PriceListConfirmResponse(BaseModel):

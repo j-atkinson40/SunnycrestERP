@@ -1,5 +1,8 @@
+import json
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,10 +22,26 @@ class ProductBundle(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     source: Mapped[str] = mapped_column(String(30), default="manual")
+
+    # Conditional pricing
+    has_conditional_pricing: Mapped[bool] = mapped_column(Boolean, default=False)
+    standalone_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    with_vault_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    vault_qualifier_categories: Mapped[str] = mapped_column(
+        Text, default='["burial_vault","urn_vault"]'
+    )
+
     created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     modified_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    @property
+    def vault_qualifier_list(self) -> list[str]:
+        """Parse vault_qualifier_categories JSON text into a list."""
+        if not self.vault_qualifier_categories:
+            return ["burial_vault", "urn_vault"]
+        return json.loads(self.vault_qualifier_categories)
 
     company = relationship("Company")
     components = relationship("ProductBundleComponent", back_populates="bundle", order_by="ProductBundleComponent.sort_order", cascade="all, delete-orphan")
