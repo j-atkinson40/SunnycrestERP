@@ -181,27 +181,37 @@ def delete_tenant(
     tenant_name = company.name
     db.expunge(company)  # detach from session
 
-    # Use session_replication_role = 'replica' to temporarily disable all
-    # FK trigger checks for this session, then delete the company and all
-    # referencing rows. This is the only reliable approach given 100+ FK
-    # relationships across the schema.
+    # Approach: disable triggers on ALL tables, delete everything, re-enable.
+    # This bypasses FK constraints without needing superuser privileges.
     engine = db.get_bind()
     connection = engine.connect()
+    disabled_tables: list[str] = []
     try:
         trans = connection.begin()
 
-        # Disable FK checks for this session
-        connection.execute(text("SET session_replication_role = 'replica'"))
+        # Get ALL tables in the public schema
+        all_tables = [
+            r[0] for r in connection.execute(text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            )).fetchall()
+        ]
 
-        # Delete all rows referencing this tenant across every table
-        # First: find all tables with company_id or tenant_id columns
+        # Disable triggers (FK checks) on every table
+        for tbl in all_tables:
+            try:
+                connection.execute(text(f'ALTER TABLE "{tbl}" DISABLE TRIGGER ALL'))
+                disabled_tables.append(tbl)
+            except Exception:
+                pass
+
+        # Now delete freely — no FK checks
+        # 1. Find all tables with company_id or tenant_id
         ref_tables = connection.execute(text("""
             SELECT table_name, column_name
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND column_name IN ('company_id', 'tenant_id')
               AND table_name != 'companies'
-            ORDER BY table_name
         """)).fetchall()
 
         deleted_counts: dict[str, int] = {}
@@ -214,9 +224,9 @@ def delete_tenant(
                 if result.rowcount > 0:
                     deleted_counts[tbl] = deleted_counts.get(tbl, 0) + result.rowcount
             except Exception:
-                pass  # Table might not exist on this deployment
+                pass
 
-        # Delete tables with other FK column names to companies
+        # 2. Tables with non-standard FK column names
         for tbl, col in [
             ("fh_manufacturer_relationships", "funeral_home_tenant_id"),
             ("fh_manufacturer_relationships", "manufacturer_tenant_id"),
@@ -236,21 +246,40 @@ def delete_tenant(
             except Exception:
                 pass
 
-        # Delete the company
+        # 3. Delete users and roles (triggers are disabled so FK refs don't matter)
+        try:
+            connection.execute(text("DELETE FROM users WHERE company_id = :tid"), {"tid": tenant_id})
+        except Exception:
+            pass
+        try:
+            connection.execute(text("DELETE FROM roles WHERE company_id = :tid"), {"tid": tenant_id})
+        except Exception:
+            pass
+
+        # 4. Delete the company
         connection.execute(
             text("DELETE FROM companies WHERE id = :tid"),
             {"tid": tenant_id},
         )
 
-        # Re-enable FK checks
-        connection.execute(text("SET session_replication_role = 'origin'"))
+        # Re-enable triggers on all tables
+        for tbl in disabled_tables:
+            try:
+                connection.execute(text(f'ALTER TABLE "{tbl}" ENABLE TRIGGER ALL'))
+            except Exception:
+                pass
 
         trans.commit()
         logger.info("Tenant %s (%s) deleted successfully", tenant_id, tenant_name)
     except Exception as e:
         logger.exception("Failed to delete tenant %s", tenant_id)
+        # Re-enable triggers even on failure
+        for tbl in disabled_tables:
+            try:
+                connection.execute(text(f'ALTER TABLE "{tbl}" ENABLE TRIGGER ALL'))
+            except Exception:
+                pass
         try:
-            connection.execute(text("SET session_replication_role = 'origin'"))
             trans.rollback()
         except Exception:
             pass
