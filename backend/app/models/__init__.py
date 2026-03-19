@@ -13,6 +13,7 @@ from app.models.carrier import Carrier
 from app.models.charge_library_item import ChargeLibraryItem
 from app.models.cure_schedule import CureSchedule
 from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
+from app.models.directory_fetch_log import DirectoryFetchLog
 from app.models.delivery import Delivery
 from app.models.delivery_event import DeliveryEvent
 from app.models.delivery_media import DeliveryMedia
@@ -26,8 +27,10 @@ from app.models.document import Document
 from app.models.employee_profile import EmployeeProfile
 from app.models.equipment import Equipment
 from app.models.extension_activity_log import ExtensionActivityLog
+from app.models.extension_customer_onboarding import ExtensionCustomerOnboarding
 from app.models.extension_definition import ExtensionDefinition
 from app.models.extension_notify_request import ExtensionNotifyRequest
+from app.models.funeral_home_directory import FuneralHomeDirectory
 from app.models.feature_flag import FeatureFlag
 from app.models.fh_case import FHCase
 from app.models.fh_case_activity import FHCaseActivity
@@ -50,6 +53,7 @@ from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
 from app.models.preset_module import PresetModule
 from app.models.invoice import Invoice, InvoiceLine
+from app.models.manufacturer_directory_selection import ManufacturerDirectorySelection
 from app.models.mix_design import MixDesign
 from app.models.module_definition import ModuleDefinition
 from app.models.inventory_item import InventoryItem
@@ -148,6 +152,7 @@ __all__ = [
     "ChargeLibraryItem",
     "CureSchedule",
     "CustomerPaymentApplication",
+    "DirectoryFetchLog",
     "Delivery",
     "DeliveryEvent",
     "DeliveryMedia",
@@ -161,8 +166,10 @@ __all__ = [
     "EmployeeProfile",
     "Equipment",
     "ExtensionActivityLog",
+    "ExtensionCustomerOnboarding",
     "ExtensionDefinition",
     "ExtensionNotifyRequest",
+    "FuneralHomeDirectory",
     "FeatureFlag",
     "FHCase",
     "FHCaseActivity",
@@ -188,6 +195,7 @@ __all__ = [
     "ImpersonationSession",
     "Invoice",
     "InvoiceLine",
+    "ManufacturerDirectorySelection",
     "MixDesign",
     "ModuleDefinition",
     "InventoryItem",

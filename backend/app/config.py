@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # Google Places (optional — only needed for funeral home directory discovery)
+    GOOGLE_PLACES_API_KEY: str = ""
+
     # Branding / identity
     APP_NAME: str = "Sunnycrest ERP"
     SUPPORT_EMAIL: str = "support@sunnycrest.dev"

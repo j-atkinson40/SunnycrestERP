@@ -266,6 +266,19 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "sort_order": 7,
     },
     {
+        "item_key": "setup_funeral_home_customers",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Add your funeral home customers",
+        "description": (
+            "Connect, discover, and add the funeral homes you deliver to."
+        ),
+        "estimated_minutes": 15,
+        "action_type": "navigate",
+        "action_target": "/onboarding/customers/funeral-homes",
+        "sort_order": 8,
+    },
+    {
         "item_key": "setup_sms_confirmation",
         "tier": "should_complete",
         "category": "integration",
@@ -277,7 +290,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/delivery/settings",
-        "sort_order": 8,
+        "sort_order": 9,
     },
     {
         "item_key": "run_production_log_scenario",
@@ -291,7 +304,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 2,
         "action_type": "navigate",
         "action_target": "/onboarding/scenarios/production_log_walkthrough",
-        "sort_order": 9,
+        "sort_order": 10,
     },
     {
         "item_key": "set_inventory_minimums",
@@ -305,7 +318,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/inventory",
-        "sort_order": 10,
+        "sort_order": 11,
     },
     {
         "item_key": "invite_team",
@@ -318,7 +331,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/admin/users",
-        "sort_order": 11,
+        "sort_order": 12,
     },
     # OPTIONAL
     {
@@ -333,7 +346,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 30,
         "action_type": "navigate",
         "action_target": "/safety",
-        "sort_order": 12,
+        "sort_order": 13,
     },
     {
         "item_key": "explore_extensions",
@@ -344,7 +357,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/extensions",
-        "sort_order": 13,
+        "sort_order": 14,
     },
     {
         "item_key": "run_month_end_scenario",
@@ -358,7 +371,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/scenarios/month_end_walkthrough",
-        "sort_order": 14,
+        "sort_order": 15,
     },
     {
         "item_key": "customize_invoice_template",
@@ -371,7 +384,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/admin/settings",
-        "sort_order": 15,
+        "sort_order": 16,
     },
     {
         "item_key": "complete_urn_catalog",
@@ -385,7 +398,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/products/urns",
-        "sort_order": 16,
+        "sort_order": 17,
     },
 ]
 
