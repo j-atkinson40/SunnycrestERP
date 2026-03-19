@@ -123,7 +123,27 @@ Confidence thresholds:
         cleaned = re.sub(r"^```(?:json)?\s*\n?", "", response_text.strip())
         cleaned = re.sub(r"\n?\s*```$", "", cleaned)
 
-        parsed = json.loads(cleaned)
+        # Fix common JSON issues from Claude: trailing commas, single quotes
+        # Remove trailing commas before } or ]
+        cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
+
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError as je:
+            logger.warning("JSON parse failed, attempting repair: %s", str(je)[:200])
+            # Try more aggressive cleanup
+            # Replace single quotes with double quotes (risky but often works)
+            attempt2 = cleaned.replace("'", '"')
+            attempt2 = re.sub(r",\s*([}\]])", r"\1", attempt2)
+            try:
+                parsed = json.loads(attempt2)
+            except json.JSONDecodeError:
+                # Last resort: store raw response and fail gracefully
+                imp.status = "failed"
+                imp.error_message = f"Could not parse Claude response: {str(je)[:300]}"
+                imp.claude_analysis = response_text[:10000]
+                db.commit()
+                return
 
         # Store analysis
         imp.claude_analysis = json.dumps(parsed)
