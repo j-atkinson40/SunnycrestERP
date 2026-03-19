@@ -57,12 +57,14 @@ def upgrade() -> None:
     )
     op.add_column(
         "price_list_import_items",
-        sa.Column(
-            "parent_bundle_import_item_id",
-            sa.String(36),
-            sa.ForeignKey("price_list_import_items.id"),
-            nullable=True,
-        ),
+        sa.Column("parent_bundle_import_item_id", sa.String(36), nullable=True),
+    )
+    op.create_foreign_key(
+        "fk_import_item_parent",
+        "price_list_import_items",
+        "price_list_import_items",
+        ["parent_bundle_import_item_id"],
+        ["id"],
     )
     op.add_column(
         "price_list_import_items",
@@ -92,6 +94,7 @@ def downgrade() -> None:
 
     # price_list_import_items
     op.drop_column("price_list_import_items", "price_variant_type")
+    op.drop_constraint("fk_import_item_parent", "price_list_import_items", type_="foreignkey")
     op.drop_column("price_list_import_items", "parent_bundle_import_item_id")
     op.drop_column("price_list_import_items", "is_bundle_price_variant")
     op.drop_column("price_list_import_items", "has_conditional_pricing")
