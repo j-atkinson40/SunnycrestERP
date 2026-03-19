@@ -32,7 +32,15 @@ export async function getReviewData(
   const { data } = await apiClient.get(
     `/catalog/price-list-import/${importId}/review`,
   );
-  return data;
+  // Normalize: backend returns {import, items: {high_confidence, ...}}
+  // Frontend expects import_info, high_confidence, low_confidence, unmatched at top level
+  return {
+    ...data,
+    import_info: data.import ?? data.import_info,
+    high_confidence: data.items?.high_confidence ?? data.high_confidence ?? [],
+    low_confidence: data.items?.low_confidence ?? data.low_confidence ?? [],
+    unmatched: data.items?.unmatched ?? data.unmatched ?? [],
+  };
 }
 
 export async function updateItem(

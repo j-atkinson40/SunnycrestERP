@@ -41,8 +41,17 @@ export interface PriceListImportItem {
 }
 
 export interface ReviewData {
-  import_info: PriceListImport;
-  high_confidence: PriceListImportItem[];
-  low_confidence: PriceListImportItem[];
-  unmatched: PriceListImportItem[];
+  import: PriceListImport;
+  items: {
+    high_confidence: PriceListImportItem[];
+    low_confidence: PriceListImportItem[];
+    unmatched: PriceListImportItem[];
+    ignored: PriceListImportItem[];
+    custom: PriceListImportItem[];
+  };
+  // Convenience aliases for the component
+  import_info?: PriceListImport;
+  high_confidence?: PriceListImportItem[];
+  low_confidence?: PriceListImportItem[];
+  unmatched?: PriceListImportItem[];
 }

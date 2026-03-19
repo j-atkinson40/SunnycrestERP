@@ -542,7 +542,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
             <p className="mt-1 text-muted-foreground">
               We found{" "}
               <strong>
-                {(reviewData?.import_info.items_extracted ?? 0)}
+                {(reviewData?.import_info?.items_extracted ?? 0)}
               </strong>{" "}
               products in your price list.
             </p>
