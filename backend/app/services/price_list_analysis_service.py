@@ -106,8 +106,10 @@ Common Wilbert product name variations:
 IMPORTANT MATCHING RULES:
 - "Tribute" without a color specification (White or Gray) should be matched to BOTH "White Tribute" and "Gray Tribute" as two separate high_confidence items with the same price. Create TWO items in your output — one matched to White Tribute and one to Gray Tribute.
 - Similarly, "Venetian" without a color should match to BOTH "White Venetian" and "Gold Venetian" as two items.
-- Products labeled as urn vaults should be matched to the Urn Vault category templates, NOT the Burial Vault templates. Use the exact urn vault template name (e.g. "Monticello Urn Vault" not "Monticello (Urn)").
-- If a price list item says just "Veteran" in an urn vault section, match it to "Veteran Urn Vault".
+- Products in an urn vault section of the price list MUST be matched to the Urn Vault category templates, NOT the Burial Vault templates. Use the exact urn vault template name (e.g. "Monticello Urn Vault" not "Monticello Burial Vault").
+- CRITICAL: For items in an urn vault section, ALWAYS include "Urn Vault" in the extracted_name. For example, if the price list has a section labeled "URN VAULTS" and lists "Monticello" under it, the extracted_name MUST be "Monticello Urn Vault", NOT just "Monticello". The section context determines the product type.
+- If a price list item says just "Veteran" in an urn vault section, match it to "Veteran Urn Vault" with extracted_name "Veteran Urn Vault".
+- Similarly, "Venetian" in an urn vault section → extracted_name "Venetian Urn Vault", "Salute" in an urn vault section → extracted_name "Salute Urn Vault", etc.
 
 OVERSIZE VAULT HANDLING:
 - Oversize vaults come in different dimensions (e.g. 31", 33", 34", 36"). Each size is a separate product.
@@ -305,7 +307,7 @@ def _build_bundle_reasoning(match: dict, status: str) -> str | None:
     return reasoning or None
 
 
-_URN_VAULT_INDICATORS = re.compile(
+_URN_INDICATORS = re.compile(
     r"\burn\b|\bUV\b|\burn\s*vlt\b|\burn\s*vault\b",
     re.IGNORECASE,
 )
@@ -313,46 +315,82 @@ _URN_VAULT_INDICATORS = re.compile(
 
 def _fix_urn_vault_items(items: list[dict], templates: list) -> list[dict]:
     """Post-process: ensure urn vault items have 'Urn Vault' in the name and
-    are matched to the correct urn vault template (not burial vault)."""
-    # Build lookup: lowercase base name → urn vault template
-    urn_templates_by_base = {}
+    are matched to the correct urn vault template (not burial vault).
+
+    Three detection strategies:
+    1. extracted_name contains urn indicators (urn, UV, urn vlt)
+    2. Claude set template_name to an urn vault but template_id points to burial vault
+    3. Claude matched to a burial vault template but extracted_name says "Urn Vault"
+    """
+    # Build lookups
+    urn_templates_by_base: dict[str, object] = {}
+    burial_template_ids: set[str] = set()
     for t in templates:
-        name = t.product_name
-        if "urn vault" not in name.lower():
-            continue
-        # "Monticello Urn Vault" → base "monticello"
-        base = name.lower().replace(" urn vault", "").strip()
-        urn_templates_by_base[base] = t
+        name_lower = t.product_name.lower()
+        if "urn vault" in name_lower:
+            base = name_lower.replace(" urn vault", "").strip()
+            urn_templates_by_base[base] = t
+        elif "burial vault" in name_lower:
+            burial_template_ids.add(t.id)
 
     for item in items:
         extracted = item.get("extracted_name", "")
         raw = item.get("raw_text", "")
-        context = f"{extracted} {raw}"
-
-        # Skip if no urn vault indicator in extracted name or raw text
-        if not _URN_VAULT_INDICATORS.search(context):
-            continue
-
         match = item.get("match") or {}
-        current_name = match.get("template_name", "")
+        template_name = match.get("template_name", "")
+        template_id = match.get("template_id")
 
-        # Already correct
-        if "urn vault" in current_name.lower():
+        # template_name already says "Urn Vault" — just fix extracted_name and template_id
+        if template_name and "urn vault" in template_name.lower():
+            if "urn vault" not in extracted.lower():
+                item["extracted_name"] = template_name
+            # Ensure template_id also points to the urn vault template (not burial vault)
+            tpl_base = template_name.lower().replace(" urn vault", "").strip()
+            if tpl_base in urn_templates_by_base:
+                correct_tpl = urn_templates_by_base[tpl_base]
+                if template_id != correct_tpl.id:
+                    logger.info(
+                        "Fixing urn vault template_id: %s → %s for '%s'",
+                        template_id, correct_tpl.id, template_name,
+                    )
+                    match["template_id"] = correct_tpl.id
             continue
 
-        # Strip "Burial Vault" to get the base vault line name
-        base = current_name.lower().replace(" burial vault", "").strip()
+        # Detect: is this supposed to be an urn vault?
+        is_urn = False
 
-        # Also try from extracted_name (Claude may not have matched to any template)
+        # Strategy 1: extracted_name or raw_text has urn indicators
+        context = f"{extracted} {raw}"
+        if _URN_INDICATORS.search(context):
+            is_urn = True
+
+        # Strategy 2: Claude matched to a burial vault template, but the
+        # extracted_name contains "Urn Vault" (Claude got the name right but wrong ID)
+        if not is_urn and "urn vault" in extracted.lower():
+            is_urn = True
+
+        if not is_urn:
+            continue
+
+        # Find the base vault line name
+        # Strip common suffixes to get "monticello", "venetian", etc.
+        base = extracted.lower()
+        for suffix in [" urn vault", " urn vlt", " uv", " burial vault"]:
+            base = base.replace(suffix, "")
+        base = base.strip()
+
+        # Also try from template_name
         if base not in urn_templates_by_base:
-            base = extracted.lower().replace("urn vault", "").replace("urn vlt", "").replace("uv ", "").strip()
+            alt_base = template_name.lower().replace(" burial vault", "").strip()
+            if alt_base in urn_templates_by_base:
+                base = alt_base
 
-        # Find the correct urn vault template
+        # Correct to the urn vault template
         if base in urn_templates_by_base:
             correct_tpl = urn_templates_by_base[base]
             logger.info(
                 "Correcting urn vault: '%s' → '%s' (template %s)",
-                current_name or extracted, correct_tpl.product_name, correct_tpl.id,
+                extracted, correct_tpl.product_name, correct_tpl.id,
             )
             item["match"] = {
                 **(match or {}),
@@ -361,18 +399,19 @@ def _fix_urn_vault_items(items: list[dict], templates: list) -> list[dict]:
                 "reasoning": (match.get("reasoning", "") or "")
                 + " [Corrected: matched to urn vault template]",
             }
+            # Also fix extracted_name to include "Urn Vault"
+            if "urn vault" not in extracted.lower():
+                item["extracted_name"] = correct_tpl.product_name
         else:
-            # No exact template match — at minimum ensure the name says "Urn Vault"
-            if current_name and "vault" in current_name.lower():
-                corrected = current_name.replace("Burial Vault", "Urn Vault")
-            elif current_name:
-                corrected = f"{current_name} Urn Vault"
-            else:
-                corrected = f"{extracted} Urn Vault" if "urn" not in extracted.lower() else extracted
-            logger.info("Appending 'Urn Vault' to name: '%s' → '%s'", current_name or extracted, corrected)
-            if not item.get("match"):
-                item["match"] = {}
-            item["match"]["template_name"] = corrected
+            # No template match — at minimum ensure name says "Urn Vault"
+            if "urn vault" not in extracted.lower():
+                if "burial vault" in extracted.lower():
+                    item["extracted_name"] = extracted.replace("Burial Vault", "Urn Vault").replace("burial vault", "Urn Vault")
+                else:
+                    item["extracted_name"] = f"{extracted} Urn Vault"
+            if template_name and "burial vault" in template_name.lower():
+                item["match"]["template_name"] = template_name.replace("Burial Vault", "Urn Vault")
+            logger.info("Corrected urn vault name: '%s' → '%s'", extracted, item["extracted_name"])
 
     return items
 
