@@ -108,6 +108,7 @@ import ChargeSetupPage from "@/pages/onboarding/charge-setup";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import UrnCatalogPage from "@/pages/products/urn-catalog";
 import UrnImportWizard from "@/pages/products/urn-import-wizard";
+import BundleManager from "@/pages/products/bundle-manager";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -198,6 +199,10 @@ export default function App() {
                     <Route
                       path="/products/urns/import"
                       element={<UrnImportWizard />}
+                    />
+                    <Route
+                      path="settings/catalog/bundles"
+                      element={<BundleManager />}
                     />
                   </Route>
 

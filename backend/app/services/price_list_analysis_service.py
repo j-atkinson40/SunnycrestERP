@@ -116,6 +116,12 @@ OVERSIZE VAULT HANDLING:
 - Do NOT group multiple oversize sizes together. Each size+vault combination is its own product.
 - Match oversize vaults to the base vault line template (e.g. Continental Burial Vault) but set match_status to "low_confidence" with reasoning explaining it's an oversize variant, so the manufacturer can confirm.
 - If an oversize vault has no specific dimension (just "OS" or "Oversize"), name it with "Oversize" like "Continental Oversize".
+
+EQUIPMENT BUNDLE DETECTION:
+- Look for equipment packages/bundles like "Full Equipment", "Equipment Package", "Equipment w/o Chairs", "Setup Package"
+- These are typically a single line item at a flat rate that includes multiple pieces of equipment
+- When detected, set match_status to "bundle" and include component hints in reasoning
+- Common bundles: Full Equipment (lowering device + tent + mats + chairs), Equipment Without Chairs (lowering device + tent + mats)
 """
 
 
@@ -183,7 +189,7 @@ For each item in the price list, return:
         "confidence": 0.95,
         "reasoning": "explanation"
       }},
-      "match_status": "high_confidence|low_confidence|unmatched"
+      "match_status": "high_confidence|low_confidence|unmatched|bundle"
     }}
   ],
   "summary": {{
@@ -252,6 +258,9 @@ Confidence thresholds:
                 high += 1
                 action = "create_product"
             elif status == "low_confidence":
+                low += 1
+                action = "create_product"
+            elif status == "bundle":
                 low += 1
                 action = "create_product"
             else:

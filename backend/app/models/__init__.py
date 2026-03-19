@@ -76,6 +76,7 @@ from app.models.quick_quote_template import QuickQuoteTemplate
 from app.models.performance_note import PerformanceNote
 from app.models.pour_event import PourEvent, PourEventWorkOrder
 from app.models.product import Product
+from app.models.product_bundle import ProductBundle, ProductBundleComponent
 from app.models.project import Project, ProjectMilestone, ProjectTask
 from app.models.qc import (
     QCDefectType,
@@ -215,6 +216,8 @@ __all__ = [
     "PourEvent",
     "PourEventWorkOrder",
     "Product",
+    "ProductBundle",
+    "ProductBundleComponent",
     "ProductionLogEntry",
     "ProductionLogSummary",
     "PriceListImport",

@@ -16,6 +16,7 @@ from app.api.routes import (
     auth,
     billing,
     bom,
+    bundles,
     carrier_portal,
     cases,
     charge_library,
@@ -89,6 +90,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     bom.router, prefix="/bom", tags=["Bill of Materials"]
+)
+v1_router.include_router(
+    bundles.router, prefix="/products", tags=["Product Bundles"]
 )
 v1_router.include_router(
     carrier_portal.router, prefix="/carrier", tags=["Carrier Portal"]

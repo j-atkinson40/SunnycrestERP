@@ -228,6 +228,12 @@ function getManufacturingNav(
           href: "/admin/accounting",
           icon: "Plug",
         },
+        {
+          label: "Equipment Bundles",
+          href: "/settings/catalog/bundles",
+          icon: "Package",
+          permission: "products.view",
+        },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
         {
           label: "Notifications",

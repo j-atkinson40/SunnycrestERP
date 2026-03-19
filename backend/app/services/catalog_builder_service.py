@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.product import Product
+from app.models.product_bundle import ProductBundle, ProductBundleComponent
 from app.models.product_substitution_rule import ProductSubstitutionRule
 
 logger = logging.getLogger(__name__)
@@ -82,10 +83,11 @@ def build_catalog(
         "markup_settings": {"two_piece_pct": 15, "oversize_pct": 20},
     }
 
-    Returns: {"products_created": int, "substitution_rules_created": int}
+    Returns: {"products_created": int, "substitution_rules_created": int, "bundles_created": int}
     """
     products_created = 0
-    created_products: dict[str, str] = {}  # name → product_id mapping
+    bundles_created = 0
+    created_products: dict[str, str] = {}  # name -> product_id mapping
 
     try:
         # ── Burial Vaults ──
@@ -183,6 +185,9 @@ def build_catalog(
             lowering_device_id = None
             cremation_table_id = None
 
+            # equipment_product_map tracks name -> product_id for bundle creation
+            equipment_product_map: dict[str, str] = {}
+
             for item in ce.get("rental_items", []):
                 pid = str(uuid.uuid4())
                 p = Product(
@@ -201,6 +206,7 @@ def build_catalog(
                 )
                 db.add(p)
                 products_created += 1
+                equipment_product_map[item["name"]] = pid
 
                 if "lowering" in item["name"].lower():
                     lowering_device_id = pid
@@ -210,10 +216,12 @@ def build_catalog(
             # Chairs
             chairs = ce.get("chairs", {})
             if chairs.get("enabled"):
+                chair_pid = str(uuid.uuid4())
+                chair_name = f"Graveside Chairs (set of {chairs.get('chairs_per_set', 4)})"
                 p = Product(
-                    id=str(uuid.uuid4()),
+                    id=chair_pid,
                     company_id=tenant_id,
-                    name=f"Graveside Chairs (set of {chairs.get('chairs_per_set', 4)})",
+                    name=chair_name,
                     sku="CHAIR-SET",
                     price=Decimal(str(chairs["price"])),
                     unit_of_measure="set",
@@ -227,11 +235,15 @@ def build_catalog(
                 )
                 db.add(p)
                 products_created += 1
+                equipment_product_map[chair_name] = chair_pid
+                # Also map common short name for bundle references
+                equipment_product_map["Graveside Chairs"] = chair_pid
 
             # Sold items
             for item in ce.get("sold_items", []):
+                sold_pid = str(uuid.uuid4())
                 p = Product(
-                    id=str(uuid.uuid4()),
+                    id=sold_pid,
                     company_id=tenant_id,
                     name=item["name"],
                     sku=_generate_sku(item["name"]),
@@ -245,6 +257,40 @@ def build_catalog(
                 )
                 db.add(p)
                 products_created += 1
+                equipment_product_map[item["name"]] = sold_pid
+
+            # Equipment Bundles
+            for bd in ce.get("bundles", []):
+                components = []
+                for cname in bd.get("component_names", []):
+                    pid = equipment_product_map.get(cname)
+                    if pid:
+                        components.append({"product_id": pid, "quantity": 1})
+                if not components:
+                    continue
+                bundle = ProductBundle(
+                    id=str(uuid.uuid4()),
+                    company_id=tenant_id,
+                    name=bd["name"],
+                    description=bd.get("description"),
+                    sku=bd.get("sku"),
+                    price=Decimal(str(bd["price"])) if bd.get("price") is not None else None,
+                    is_active=True,
+                    sort_order=bundles_created,
+                    source="catalog_builder",
+                    created_by=user_id,
+                )
+                db.add(bundle)
+                for i, comp in enumerate(components):
+                    c = ProductBundleComponent(
+                        id=str(uuid.uuid4()),
+                        bundle_id=bundle.id,
+                        product_id=comp["product_id"],
+                        quantity=comp.get("quantity", 1),
+                        sort_order=i,
+                    )
+                    db.add(c)
+                bundles_created += 1
 
             # Cremation table substitution rule
             sub_rules_created = 0
@@ -267,6 +313,7 @@ def build_catalog(
         return {
             "products_created": products_created,
             "substitution_rules_created": sub_rules_created if ce.get("enabled") else 0,
+            "bundles_created": bundles_created,
         }
 
     except Exception as e:

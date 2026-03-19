@@ -55,6 +55,14 @@ interface ChairConfig {
   chairsPerSet: string;
 }
 
+interface BundleConfig {
+  name: string;
+  enabled: boolean;
+  price: string;
+  componentNames: string[];
+  description: string;
+}
+
 const STEP_LABELS = [
   "Burial Vaults",
   "Urn Vaults",
@@ -318,6 +326,22 @@ export default function CatalogBuilder() {
     chairsPerSet: "4",
   });
   const [soldItems] = useState<SimpleProduct[]>(SOLD_ITEMS);
+  const [equipmentBundles, setEquipmentBundles] = useState<BundleConfig[]>([
+    {
+      name: "Full Equipment",
+      enabled: true,
+      price: "",
+      componentNames: ["Lowering Device", "Cemetery Tent - Single", "Grass Mats", "Chairs"],
+      description: "Lowering device, single tent, grass mats, and chairs",
+    },
+    {
+      name: "Equipment Without Chairs",
+      enabled: false,
+      price: "",
+      componentNames: ["Lowering Device", "Cemetery Tent - Single", "Grass Mats"],
+      description: "Lowering device, single tent, and grass mats",
+    },
+  ]);
 
   // Website intelligence pre-selections
   const [websitePreselected, setWebsitePreselected] = useState<Set<string>>(
@@ -531,12 +555,13 @@ export default function CatalogBuilder() {
       count += rentalItems.filter((r) => r.selected && r.price).length;
       if (chairs.enabled && chairs.pricePerSet) count += 1;
       count += soldItems.filter((s) => s.selected && s.price).length;
+      count += equipmentBundles.filter((b) => b.enabled && b.price).length;
     }
     return count;
   }, [
     sellBurialVaults, useWilbert, useOwnLines, wilbertLines, ownLines,
     sellUrnVaults, urnVaults, sellUrns, urns,
-    provideEquipment, rentalItems, chairs, soldItems,
+    provideEquipment, rentalItems, chairs, soldItems, equipmentBundles,
   ]);
 
   // ── SKU preview ───────────────────────────────────────────────
@@ -634,6 +659,15 @@ export default function CatalogBuilder() {
             chairs_per_set: parseInt(chairs.chairsPerSet) || 4,
           };
         }
+        const enabledBundles = equipmentBundles
+          .filter((b) => b.enabled && b.price)
+          .map((b) => ({
+            name: b.name,
+            price: parseFloat(b.price),
+            component_names: b.componentNames,
+            description: b.description,
+          }));
+        if (enabledBundles.length) equipment.bundles = enabledBundles;
         if (Object.keys(equipment).length) payload.cemetery_equipment = equipment;
       }
 
@@ -1294,6 +1328,66 @@ export default function CatalogBuilder() {
                 </div>
               </div>
 
+              {/* Equipment Bundles */}
+              <div>
+                <h3 className="mb-2 text-sm font-medium text-muted-foreground">
+                  Equipment Bundles
+                </h3>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Offer flat-rate packages that combine multiple equipment items. Customers can still choose individual items a la carte.
+                </p>
+                <div className="space-y-3">
+                  {equipmentBundles.map((bundle, idx) => (
+                    <div
+                      key={bundle.name}
+                      className={cn(
+                        "rounded-lg border p-4 transition-colors",
+                        bundle.enabled ? "border-primary/30 bg-primary/5" : "border-border",
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={bundle.enabled}
+                          onChange={(e) => {
+                            setEquipmentBundles((prev) => {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], enabled: e.target.checked };
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 rounded accent-primary"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-sm">{bundle.name}</span>
+                          <p className="text-xs text-muted-foreground">{bundle.description}</p>
+                        </div>
+                        {bundle.enabled && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">$</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={bundle.price}
+                              onChange={(e) => {
+                                setEquipmentBundles((prev) => {
+                                  const next = [...prev];
+                                  next[idx] = { ...next[idx], price: e.target.value };
+                                  return next;
+                                });
+                              }}
+                              placeholder="Bundle price"
+                              className="w-28"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Add custom equipment */}
               <Button variant="outline" size="sm" onClick={addCustomRental}>
                 + Add custom product
@@ -1369,6 +1463,13 @@ export default function CatalogBuilder() {
           name: s.name,
           price: `$${parseFloat(s.price).toFixed(2)}`,
           detail: "Sold",
+        });
+      }
+      for (const b of equipmentBundles.filter((b) => b.enabled && b.price)) {
+        items.push({
+          name: `Bundle: ${b.name}`,
+          price: `$${parseFloat(b.price).toFixed(2)}`,
+          detail: `Bundle — ${b.description}`,
         });
       }
       if (items.length) sections.push({ title: "Cemetery Equipment", items });
