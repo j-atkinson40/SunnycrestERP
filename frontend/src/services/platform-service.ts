@@ -62,8 +62,10 @@ export async function updateTenant(tenantId: string, payload: Record<string, unk
 
 export async function deleteTenant(tenantId: string) {
   // Use the debug-delete endpoint which is proven to work on Railway.
-  // The regular DELETE endpoint hits 500 due to unknown server issue.
-  const { data } = await platformClient.post(`/tenants/debug-delete/${tenantId}`);
+  // Longer timeout because it iterates through ~107 tables.
+  const { data } = await platformClient.post(`/tenants/debug-delete/${tenantId}`, {}, {
+    timeout: 60000, // 60 seconds
+  });
   return data;
 }
 
