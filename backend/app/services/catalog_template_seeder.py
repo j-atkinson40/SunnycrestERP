@@ -45,6 +45,7 @@ WILBERT_URN_VAULTS = [
     ("White Venetian Urn Vault", "UV-WVEN", "White Venetian urn vault"),
     ("Gold Venetian Urn Vault", "UV-GVEN", "Gold Venetian urn vault"),
     ("Salute Urn Vault", "UV-SAL", "Salute urn vault"),
+    ("Veteran Urn Vault", "UV-VET", "Veteran military tribute urn vault"),
     ("Monticello Urn Vault", "UV-MON", "Monticello urn vault"),
     ("Graveliner Urn Vault", "UV-GL", "Graveliner urn vault"),
 ]

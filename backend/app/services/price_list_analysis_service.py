@@ -102,6 +102,12 @@ Common Wilbert product name variations:
 - Urn Vault: UV, Urn Vlt
 - Wilbert Bronze: WBR, Bronze
 - Monarch: MRC
+
+IMPORTANT MATCHING RULES:
+- "Tribute" without a color specification (White or Gray) should be matched to BOTH "White Tribute" and "Gray Tribute" as two separate high_confidence items with the same price. Create TWO items in your output — one matched to White Tribute and one to Gray Tribute.
+- Similarly, "Venetian" without a color should match to BOTH "White Venetian" and "Gold Venetian" as two items.
+- Products labeled as urn vaults should be matched to the Urn Vault category templates, NOT the Burial Vault templates. Use the exact urn vault template name (e.g. "Monticello Urn Vault" not "Monticello (Urn)").
+- If a price list item says just "Veteran" in an urn vault section, match it to "Veteran Urn Vault".
 """
 
 
