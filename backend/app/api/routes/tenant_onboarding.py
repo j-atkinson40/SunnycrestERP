@@ -29,6 +29,27 @@ from app.schemas.tenant_onboarding import (
 router = APIRouter()
 
 
+@router.get("/debug-init")
+def debug_init_checklist(
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    """Debug: try to initialize checklist and return any errors as 200."""
+    import traceback
+    try:
+        preset = getattr(company, "vertical", None) or "manufacturing"
+        result = tenant_onboarding_service.initialize_checklist(db, company.id, preset)
+        return {"status": "ok", "preset": preset, "checklist_id": getattr(result, "id", None)}
+    except Exception as e:
+        db.rollback()
+        return {
+            "status": "error",
+            "error": f"{type(e).__name__}: {str(e)[:500]}",
+            "traceback": traceback.format_exc()[-1500:],
+        }
+
+
 # ---------------------------------------------------------------------------
 # Checklist
 # ---------------------------------------------------------------------------
