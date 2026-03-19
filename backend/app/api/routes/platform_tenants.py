@@ -300,29 +300,21 @@ def delete_tenant(
     _user: PlatformUser = Depends(require_platform_role("super_admin")),
     db: Session = Depends(get_db),
 ):
-    """Permanently delete a tenant and ALL associated data. This is irreversible."""
-    from sqlalchemy import text
-
+    """Permanently delete a tenant and ALL associated data. Uses the same
+    logic as the debug-delete endpoint which is proven to work on Railway."""
+    from sqlalchemy import text as sa_text
     from app.models.company import Company
-
     import logging
     logger = logging.getLogger(__name__)
 
-    # Use the ORM session to verify the tenant exists, then close it
-    # so it doesn't interfere with raw SQL operations.
     company = db.query(Company).filter(Company.id == tenant_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     tenant_name = company.name
-    db.expunge(company)  # detach from session
+    db.expunge(company)
 
-    # Use the ORM session directly with savepoints for each delete.
-    # This avoids raw connection issues and works on managed PostgreSQL.
     try:
-        from sqlalchemy import text as sa_text
-
-        # Helper: run a statement in a savepoint
         def safe_run(stmt_str, params=None):
             nested = db.begin_nested()
             try:
@@ -331,35 +323,21 @@ def delete_tenant(
             except Exception:
                 nested.rollback()
 
-        # Get user IDs for this tenant
-        user_rows = db.execute(
-            sa_text("SELECT id FROM users WHERE company_id = :tid"),
-            {"tid": tenant_id},
-        ).fetchall()
-        user_ids = [r[0] for r in user_rows]
+        user_ids = [r[0] for r in db.execute(sa_text("SELECT id FROM users WHERE company_id = :tid"), {"tid": tenant_id}).fetchall()]
+        role_ids = [r[0] for r in db.execute(sa_text("SELECT id FROM roles WHERE company_id = :tid"), {"tid": tenant_id}).fetchall()]
 
-        # Get role IDs for this tenant
-        role_rows = db.execute(
-            sa_text("SELECT id FROM roles WHERE company_id = :tid"),
-            {"tid": tenant_id},
-        ).fetchall()
-        role_ids = [r[0] for r in role_rows]
-
-        # Discover all tables with company_id or tenant_id columns
         ref_cols = db.execute(sa_text("""
-            SELECT table_name, column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND column_name IN ('company_id', 'tenant_id')
-              AND table_name != 'companies'
+            SELECT table_name, column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND column_name IN ('company_id', 'tenant_id')
+            AND table_name != 'companies'
         """)).fetchall()
 
-        # Pass 1: Delete company-ref rows (3 rounds)
+        # Delete company refs (3 rounds)
         for _ in range(3):
             for tbl, col in ref_cols:
                 safe_run(f'DELETE FROM "{tbl}" WHERE "{col}" = :tid', {"tid": tenant_id})
 
-        # Pass 2: Handle non-standard FK columns to companies
+        # Non-standard FK columns
         for tbl, col in [
             ("fh_manufacturer_relationships", "funeral_home_tenant_id"),
             ("fh_manufacturer_relationships", "manufacturer_tenant_id"),
@@ -372,79 +350,37 @@ def delete_tenant(
         ]:
             safe_run(f'DELETE FROM "{tbl}" WHERE "{col}" = :tid', {"tid": tenant_id})
 
-        # Pass 3: Clean up user references one at a time
+        # Clean user refs
         for uid in user_ids:
-            # Null out all nullable refs to this user across all tables
-            nullable_cols = db.execute(sa_text("""
-                SELECT c.table_name, c.column_name
-                FROM information_schema.columns c
-                WHERE c.table_schema = 'public'
-                  AND c.is_nullable = 'YES'
-                  AND c.data_type IN ('character varying', 'text', 'uuid')
-                  AND c.column_name IN (
-                    'created_by', 'modified_by', 'updated_by', 'entered_by',
-                    'completed_by', 'assigned_to', 'assigned_director_id',
-                    'approved_by', 'reviewed_by', 'performed_by', 'reported_by',
-                    'uploaded_by', 'inspector_id', 'author_id', 'user_id',
-                    'actor_id', 'employee_id', 'involved_employee_id',
-                    'impersonated_user_id', 'waived_by', 'decided_by',
-                    'rework_completed_by', 'acknowledged_by',
-                    'corrective_action_completed_by', 'investigated_by',
-                    'spring_burial_added_by', 'spring_burial_scheduled_by'
-                  )
-            """)).fetchall()
+            safe_run("UPDATE users SET created_by = NULL, modified_by = NULL WHERE id = :uid", {"uid": uid})
+            for tbl in ["employee_profiles", "user_permission_overrides"]:
+                safe_run(f'DELETE FROM "{tbl}" WHERE user_id = :uid', {"uid": uid})
 
-            for tbl, col in nullable_cols:
-                safe_run(
-                    f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = :uid',
-                    {"uid": uid},
-                )
-
-            # Delete non-nullable refs (employee_profiles etc.)
-            for tbl, col in [
-                ("employee_profiles", "user_id"),
-                ("user_permission_overrides", "user_id"),
-            ]:
-                safe_run(f'DELETE FROM "{tbl}" WHERE "{col}" = :uid', {"uid": uid})
-
-        # Pass 4: Clean up role references
+        # Clean role refs
         for rid in role_ids:
             safe_run('UPDATE users SET role_id = NULL WHERE role_id = :rid', {"rid": rid})
 
-        # Pass 5: Null self-refs on users then delete
-        safe_run(
-            'UPDATE users SET created_by = NULL, modified_by = NULL WHERE company_id = :tid',
-            {"tid": tenant_id},
-        )
+        # Delete users and roles
         safe_run('DELETE FROM users WHERE company_id = :tid', {"tid": tenant_id})
-
-        # Pass 6: Delete roles
         safe_run('DELETE FROM roles WHERE company_id = :tid', {"tid": tenant_id})
 
-        # Pass 7: Final cleanup pass on company refs
+        # Final company ref cleanup
         for tbl, col in ref_cols:
             safe_run(f'DELETE FROM "{tbl}" WHERE "{col}" = :tid', {"tid": tenant_id})
 
-        # Pass 8: Companies self-refs
-        safe_run(
-            'UPDATE companies SET parent_company_id = NULL, created_by = NULL, modified_by = NULL WHERE id = :tid',
-            {"tid": tenant_id},
-        )
+        # Self refs
+        safe_run('UPDATE companies SET parent_company_id = NULL, created_by = NULL, modified_by = NULL WHERE id = :tid', {"tid": tenant_id})
 
-        # Final: Delete company
-        db.execute(
-            sa_text("DELETE FROM companies WHERE id = :tid"),
-            {"tid": tenant_id},
-        )
+        # Delete company
+        db.execute(sa_text("DELETE FROM companies WHERE id = :tid"), {"tid": tenant_id})
         db.commit()
-        logger.info("Tenant %s (%s) deleted successfully", tenant_id, tenant_name)
+        logger.info("Tenant %s (%s) deleted", tenant_id, tenant_name)
     except Exception as e:
-        logger.exception("Failed to delete tenant %s", tenant_id)
+        logger.exception("Delete tenant failed: %s", tenant_id)
         db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Delete failed: {type(e).__name__}: {str(e)[:500]}",
-        )
+        raise HTTPException(status_code=500, detail=f"Delete failed: {type(e).__name__}: {str(e)[:500]}")
+
+    return {"detail": f'Tenant "{tenant_name}" permanently deleted'}
 
     return {
         "detail": f'Tenant "{tenant_name}" permanently deleted',
