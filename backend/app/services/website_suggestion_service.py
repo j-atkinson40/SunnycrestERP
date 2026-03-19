@@ -85,11 +85,17 @@ def generate_suggestions(
         "redi_rock": "Enable Redi-Rock Retaining Walls",
         "redi-rock": "Enable Redi-Rock Retaining Walls",
         "redi-rock_retaining_walls": "Enable Redi-Rock Retaining Walls",
+        "retaining_wall": "Enable Redi-Rock Retaining Walls",
+        "retaining wall": "Enable Redi-Rock Retaining Walls",
         "rosetta": "Enable Rosetta Hardscapes",
         "rosetta_hardscapes": "Enable Rosetta Hardscapes",
+        "hardscape": "Enable Rosetta Hardscapes",
         "wastewater": "Enable Wastewater Treatment Products",
         "wastewater_treatment": "Enable Wastewater Treatment Products",
         "septic": "Enable Wastewater Treatment Products",
+        "septic_tank": "Enable Wastewater Treatment Products",
+        "grease_trap": "Enable Wastewater Treatment Products",
+        "distribution_box": "Enable Wastewater Treatment Products",
     }
 
     for item in analysis_result.get("product_lines", []):
@@ -101,29 +107,31 @@ def generate_suggestions(
         if key in SKIP_PRODUCT_LINES:
             continue
         # Map to extension recommendations if applicable
+        # Label → canonical extension key mapping
+        LABEL_TO_KEY = {
+            "Enable Redi-Rock Retaining Walls": "redi_rock",
+            "Enable Rosetta Hardscapes": "rosetta_hardscapes",
+            "Enable Wastewater Treatment Products": "wastewater_treatment",
+        }
         ext_label = None
         ext_key = None
         for match_key, label in SUGGEST_EXTENSIONS.items():
             if match_key in key:
                 ext_label = label
-                ext_key = match_key.replace("-", "_").split("_")[0]  # normalize to redi_rock, rosetta, wastewater
+                ext_key = LABEL_TO_KEY.get(label, match_key)
                 break
-        if ext_label:
-            # Normalize extension keys
-            if "redi" in ext_key:
-                ext_key = "redi_rock"
-            elif "rosetta" in ext_key:
-                ext_key = "rosetta_hardscapes"
-            elif "waste" in ext_key or "septic" in ext_key:
-                ext_key = "wastewater_treatment"
-            s = _create_suggestion(
-                db, tenant_id, "extension_recommendation",
-                key=ext_key,
-                label=ext_label,
-                confidence=conf,
-                evidence=item.get("evidence"),
-            )
-            suggestions.append(s)
+        if ext_label and ext_key:
+            # Deduplicate — don't create the same extension suggestion twice
+            existing_keys = {s.suggestion_key for s in suggestions}
+            if ext_key not in existing_keys:
+                s = _create_suggestion(
+                    db, tenant_id, "extension_recommendation",
+                    key=ext_key,
+                    label=ext_label,
+                    confidence=conf,
+                    evidence=item.get("evidence"),
+                )
+                suggestions.append(s)
 
     # DO NOT generate vault line suggestions — all specific vault lines
     # are handled by the catalog builder, not the review screen
