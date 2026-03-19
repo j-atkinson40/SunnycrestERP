@@ -5,7 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Package, Plus, Pencil, Trash2, DollarSign, Check } from "lucide-react";
+import {
+  Package,
+  Plus,
+  Pencil,
+  Trash2,
+  DollarSign,
+  Check,
+  FlaskConical,
+  BadgeCheck,
+  MinusCircle,
+} from "lucide-react";
 import * as bundleService from "@/services/bundle-service";
 import apiClient from "@/lib/api-client";
 import type { ProductBundle, BundleCreate } from "@/types/bundle";
@@ -16,6 +26,81 @@ interface EquipmentProduct {
   sku: string | null;
   price: number | null;
   pricing_type: string;
+}
+
+// ---------------------------------------------------------------------------
+// PricingSimulator — inline simulator for conditional pricing bundles
+// ---------------------------------------------------------------------------
+function PricingSimulator({ bundle }: { bundle: ProductBundle }) {
+  const [hasVault, setHasVault] = useState(true);
+
+  if (!bundle.has_conditional_pricing) return null;
+
+  const activePrice = hasVault
+    ? bundle.with_vault_price
+    : bundle.standalone_price;
+  const inactivePrice = hasVault
+    ? bundle.standalone_price
+    : bundle.with_vault_price;
+  const savings =
+    bundle.standalone_price !== null && bundle.with_vault_price !== null
+      ? bundle.standalone_price - bundle.with_vault_price
+      : null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 space-y-2">
+      <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+        <FlaskConical className="h-3.5 w-3.5" />
+        Pricing Simulator
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setHasVault(true)}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            hasVault
+              ? "bg-green-100 text-green-800 ring-1 ring-green-300"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200",
+          )}
+        >
+          <BadgeCheck className="h-3.5 w-3.5" />
+          With Vault
+        </button>
+        <button
+          type="button"
+          onClick={() => setHasVault(false)}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            !hasVault
+              ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200",
+          )}
+        >
+          <MinusCircle className="h-3.5 w-3.5" />
+          Equipment Only
+        </button>
+      </div>
+      <div className="flex items-center gap-4">
+        <div>
+          <span className="text-xs text-muted-foreground">Resolved price:</span>
+          <span className="ml-1.5 text-lg font-bold">
+            ${activePrice?.toFixed(2) ?? "—"}
+          </span>
+        </div>
+        {savings !== null && savings > 0 && hasVault && (
+          <span className="text-xs text-green-600 font-medium">
+            Saves ${savings.toFixed(2)} vs standalone
+          </span>
+        )}
+        {inactivePrice !== null && (
+          <span className="text-xs text-muted-foreground">
+            ({hasVault ? "standalone" : "w/ vault"}: ${inactivePrice.toFixed(2)})
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function BundleManager() {
@@ -492,6 +577,9 @@ export default function BundleManager() {
                     </div>
                   )}
                 </div>
+
+                {/* Pricing Simulator for conditional pricing bundles */}
+                <PricingSimulator bundle={bundle} />
               </CardContent>
             </Card>
           ))}

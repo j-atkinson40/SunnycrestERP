@@ -42,3 +42,38 @@ export async function createEquipmentItem(name: string, pricingType = "rental"):
   const { data } = await apiClient.post("/products/equipment-items", { name, pricing_type: pricingType });
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Bundle price resolution
+// ---------------------------------------------------------------------------
+
+export interface ResolvePriceLineItem {
+  product_id?: string;
+  product_name?: string;
+  bundle_id?: string;
+}
+
+export interface ResolvedBundlePrice {
+  bundle_id: string;
+  bundle_name: string;
+  price: number;
+  tier: "with_vault" | "standalone";
+  qualifying_product: string | null;
+  with_vault_price: number | null;
+  standalone_price: number | null;
+  has_conditional_pricing: boolean;
+}
+
+/**
+ * Resolve conditional bundle prices based on order line item composition.
+ * Pass all line items from the current order/template and get back resolved
+ * prices for any bundles found.
+ */
+export async function resolveBundlePrices(
+  lineItems: ResolvePriceLineItem[],
+): Promise<ResolvedBundlePrice[]> {
+  const { data } = await apiClient.post("/products/bundles/resolve-prices", {
+    line_items: lineItems,
+  });
+  return data;
+}

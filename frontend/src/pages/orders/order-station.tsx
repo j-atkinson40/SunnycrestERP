@@ -7,6 +7,10 @@ import {
   convertQuoteToOrder,
   updateQuoteStatus,
 } from "@/services/order-station-service";
+import {
+  resolveBundlePrices,
+  type ResolvedBundlePrice,
+} from "@/services/bundle-service";
 import type {
   QuickQuoteTemplate,
   OrderStationActivity,
@@ -36,6 +40,7 @@ import {
   DollarSign,
   Snowflake,
   RefreshCw,
+  BadgeCheck,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -155,6 +160,12 @@ function OrderSlideOver({
 }) {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [resolvedPrices, setResolvedPrices] = useState<ResolvedBundlePrice[]>(
+    [],
+  );
+  const [pricesAnimating, setPricesAnimating] = useState<Set<string>>(
+    new Set(),
+  );
   const panelRef = useRef<HTMLDivElement>(null);
 
   const width = template.slide_over_width || 480;
@@ -169,6 +180,39 @@ function OrderSlideOver({
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
+
+  // Resolve bundle prices when slide-over opens
+  useEffect(() => {
+    if (!template.line_items || template.line_items.length === 0) return;
+
+    const lineItems = template.line_items.map((li) => ({
+      product_id: li.product_id,
+      product_name: li.product_name,
+    }));
+
+    resolveBundlePrices(lineItems)
+      .then((prices) => {
+        setResolvedPrices(prices);
+        // Animate price changes
+        const animIds = new Set(prices.filter((p) => p.has_conditional_pricing).map((p) => p.bundle_name));
+        if (animIds.size > 0) {
+          setPricesAnimating(animIds);
+          setTimeout(() => setPricesAnimating(new Set()), 1500);
+        }
+      })
+      .catch(() => {
+        // Non-critical — fall back to template prices
+      });
+  }, [template.line_items]);
+
+  // Build a lookup: product_name → resolved price info
+  const resolvedPriceMap = useMemo(() => {
+    const map = new Map<string, ResolvedBundlePrice>();
+    for (const rp of resolvedPrices) {
+      map.set(rp.bundle_name, rp);
+    }
+    return map;
+  }, [resolvedPrices]);
 
   function setField(name: string, value: string) {
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -436,19 +480,76 @@ function OrderSlideOver({
                 Line Items
               </Label>
               <div className="mt-2 border rounded-md divide-y">
-                {template.line_items.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between px-3 py-2 text-sm"
-                  >
-                    <span className="text-gray-700">{item.product_name}</span>
-                    <span className="text-gray-500">
-                      {item.quantity} &times; $
-                      {item.unit_price.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
+                {template.line_items.map((item, idx) => {
+                  const resolved = resolvedPriceMap.get(item.product_name);
+                  const displayPrice = resolved
+                    ? resolved.price
+                    : item.unit_price;
+                  const isAnimating = pricesAnimating.has(item.product_name);
+                  const priceChanged =
+                    resolved &&
+                    resolved.has_conditional_pricing &&
+                    resolved.price !== item.unit_price;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-center justify-between px-3 py-2 text-sm transition-colors duration-500 ${
+                        isAnimating ? "bg-green-50" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-gray-700 truncate">
+                          {item.product_name}
+                        </span>
+                        {resolved?.has_conditional_pricing && (
+                          <span
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${
+                              resolved.tier === "with_vault"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {resolved.tier === "with_vault" ? (
+                              <>
+                                <BadgeCheck className="h-3 w-3" />
+                                Vault order price
+                              </>
+                            ) : (
+                              "Equipment only price"
+                            )}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {priceChanged && (
+                          <span className="text-xs text-gray-400 line-through">
+                            ${item.unit_price.toFixed(2)}
+                          </span>
+                        )}
+                        <span
+                          className={`transition-all duration-500 ${
+                            isAnimating
+                              ? "text-green-700 font-semibold"
+                              : "text-gray-500"
+                          }`}
+                        >
+                          {item.quantity} &times; ${displayPrice.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+              {resolvedPrices.some(
+                (r) => r.has_conditional_pricing && r.tier === "with_vault",
+              ) && (
+                <p className="mt-1.5 text-xs text-green-600 flex items-center gap-1">
+                  <BadgeCheck className="h-3 w-3" />
+                  Vault order pricing applied — equipment price reduced because
+                  order includes a vault.
+                </p>
+              )}
             </div>
           )}
 
