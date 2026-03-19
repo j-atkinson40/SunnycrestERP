@@ -182,17 +182,16 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "sort_order": 1,
     },
     {
-        "item_key": "add_first_customer",
+        "item_key": "setup_funeral_home_customers",
         "tier": "must_complete",
         "category": "data_setup",
-        "title": "Add your first customer",
+        "title": "Add your funeral home customers",
         "description": (
-            "Add the customers you deliver to — funeral homes, contractors, "
-            "or anyone you bill."
+            "Connect, discover, and add the funeral homes you deliver to."
         ),
-        "estimated_minutes": 10,
+        "estimated_minutes": 15,
         "action_type": "navigate",
-        "action_target": "/customers/new",
+        "action_target": "/onboarding/customers/funeral-homes",
         "sort_order": 2,
     },
     {
@@ -264,19 +263,6 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/charges",
         "sort_order": 7,
-    },
-    {
-        "item_key": "setup_funeral_home_customers",
-        "tier": "should_complete",
-        "category": "data_setup",
-        "title": "Add your funeral home customers",
-        "description": (
-            "Connect, discover, and add the funeral homes you deliver to."
-        ),
-        "estimated_minutes": 15,
-        "action_type": "navigate",
-        "action_target": "/onboarding/customers/funeral-homes",
-        "sort_order": 8,
     },
     {
         "item_key": "setup_sms_confirmation",
