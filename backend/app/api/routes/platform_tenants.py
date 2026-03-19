@@ -181,12 +181,23 @@ def delete_tenant(
     tenant_name = company.name
     db.expunge(company)  # detach from session
 
-    # Simple multi-pass approach: discover FK refs via pg_constraint,
-    # delete in passes until the company can be removed.
+    # Multi-pass delete with savepoints around each statement so FK
+    # violations don't abort the entire transaction.
     engine = db.get_bind()
     connection = engine.connect()
     try:
         trans = connection.begin()
+
+        # Helper: execute SQL inside a savepoint so failures don't kill the transaction
+        def safe_exec(stmt, params=None):
+            sp = connection.begin_nested()
+            try:
+                result = connection.execute(text(stmt), params or {})
+                sp.commit()
+                return result
+            except Exception:
+                sp.rollback()
+                return None
 
         # Discover ALL tables that FK-reference companies
         company_refs = connection.execute(text("""
@@ -212,61 +223,92 @@ def delete_tenant(
               AND ns.nspname = 'public'
         """)).fetchall()
 
-        # Get user IDs for this tenant
-        user_ids = [
-            r[0] for r in connection.execute(
-                text("SELECT id FROM users WHERE company_id = :tid"),
-                {"tid": tenant_id},
-            ).fetchall()
-        ]
+        # Discover ALL tables that FK-reference roles
+        role_refs = connection.execute(text("""
+            SELECT DISTINCT src.relname, a.attname
+            FROM pg_constraint c
+            JOIN pg_class src ON c.conrelid = src.oid
+            JOIN pg_class tgt ON c.confrelid = tgt.oid
+            JOIN pg_attribute a ON a.attrelid = src.oid AND a.attnum = ANY(c.conkey)
+            JOIN pg_namespace ns ON src.relnamespace = ns.oid
+            WHERE c.contype = 'f' AND tgt.relname = 'roles'
+              AND ns.nspname = 'public' AND src.relname != 'roles'
+        """)).fetchall()
 
-        # Pass 1: Null out all user references so users can be deleted
+        # Get user IDs and role IDs for this tenant
+        user_ids = [r[0] for r in connection.execute(
+            text("SELECT id FROM users WHERE company_id = :tid"), {"tid": tenant_id}
+        ).fetchall()]
+
+        role_ids = [r[0] for r in connection.execute(
+            text("SELECT id FROM roles WHERE company_id = :tid"), {"tid": tenant_id}
+        ).fetchall()]
+
+        # Pass 1: Delete all company-referencing rows (3 rounds for circular deps)
+        for _round in range(3):
+            for tbl, col in company_refs:
+                if tbl in ('users', 'roles'):
+                    continue  # Handle these separately
+                safe_exec(f'DELETE FROM "{tbl}" WHERE "{col}" = :tid', {"tid": tenant_id})
+
+        # Pass 2: Null out or delete all user references
         if user_ids:
             for tbl, col in user_refs:
-                try:
-                    # Check if column is nullable
-                    is_nullable = connection.execute(text("""
-                        SELECT is_nullable FROM information_schema.columns
-                        WHERE table_schema = 'public' AND table_name = :tbl AND column_name = :col
-                    """), {"tbl": tbl, "col": col}).scalar()
-
-                    if is_nullable == 'YES':
-                        connection.execute(
-                            text(f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = ANY(:ids)'),
-                            {"ids": user_ids},
-                        )
-                    else:
-                        # Non-nullable FK to users — must delete the row
-                        connection.execute(
-                            text(f'DELETE FROM "{tbl}" WHERE "{col}" = ANY(:ids)'),
-                            {"ids": user_ids},
-                        )
-                except Exception as e:
-                    logger.debug("Pass 1 skip %s.%s: %s", tbl, col, str(e)[:80])
-
-        # Pass 2: Delete users and roles
-        if user_ids:
-            try:
-                connection.execute(text("DELETE FROM users WHERE company_id = :tid"), {"tid": tenant_id})
-            except Exception as e:
-                logger.warning("Users delete failed: %s", str(e)[:200])
-        try:
-            connection.execute(text("DELETE FROM roles WHERE company_id = :tid"), {"tid": tenant_id})
-        except Exception as e:
-            logger.debug("Roles delete: %s", str(e)[:80])
-
-        # Pass 3: Delete all company-referencing rows (3 attempts for circular deps)
-        for attempt in range(3):
-            for tbl, col in company_refs:
-                try:
-                    connection.execute(
-                        text(f'DELETE FROM "{tbl}" WHERE "{col}" = :tid'),
-                        {"tid": tenant_id},
+                if tbl == 'users':
+                    continue  # Self-ref handled below
+                # Try NULL first (works for nullable FKs)
+                result = safe_exec(
+                    f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = ANY(:ids)',
+                    {"ids": user_ids},
+                )
+                if result is None:
+                    # NULL failed (non-nullable) — delete the rows
+                    safe_exec(
+                        f'DELETE FROM "{tbl}" WHERE "{col}" = ANY(:ids)',
+                        {"ids": user_ids},
                     )
-                except Exception:
-                    pass
 
-        # Pass 4: Delete the company
+        # Pass 3: Null out or delete all role references
+        if role_ids:
+            for tbl, col in role_refs:
+                if tbl == 'roles':
+                    continue
+                result = safe_exec(
+                    f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = ANY(:ids)',
+                    {"ids": role_ids},
+                )
+                if result is None:
+                    safe_exec(
+                        f'DELETE FROM "{tbl}" WHERE "{col}" = ANY(:ids)',
+                        {"ids": role_ids},
+                    )
+
+        # Pass 4: Null self-refs on users, then delete users
+        if user_ids:
+            safe_exec(
+                'UPDATE users SET created_by = NULL, modified_by = NULL WHERE company_id = :tid',
+                {"tid": tenant_id},
+            )
+            safe_exec('DELETE FROM users WHERE company_id = :tid', {"tid": tenant_id})
+
+        # Pass 5: Delete roles
+        safe_exec('DELETE FROM roles WHERE company_id = :tid', {"tid": tenant_id})
+
+        # Pass 6: One more round of company refs (in case users/roles were blocking)
+        for tbl, col in company_refs:
+            safe_exec(f'DELETE FROM "{tbl}" WHERE "{col}" = :tid', {"tid": tenant_id})
+
+        # Pass 7: Self-ref on companies (parent_company_id)
+        safe_exec(
+            'UPDATE companies SET parent_company_id = NULL WHERE parent_company_id = :tid',
+            {"tid": tenant_id},
+        )
+        safe_exec(
+            'UPDATE companies SET created_by = NULL, modified_by = NULL WHERE id = :tid',
+            {"tid": tenant_id},
+        )
+
+        # Final: Delete the company
         connection.execute(
             text("DELETE FROM companies WHERE id = :tid"),
             {"tid": tenant_id},
