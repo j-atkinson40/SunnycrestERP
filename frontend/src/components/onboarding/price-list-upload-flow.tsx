@@ -724,9 +724,42 @@ interface ReviewRowProps {
   importId: string;
 }
 
+function getBundleType(name: string): { label: string; color: string; hint: string } | null {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(" only")) {
+    return {
+      label: "Single Item Bundle",
+      color: "bg-amber-100 text-amber-700",
+      hint: "This is a single-item package option — the customer pays this flat rate for just this item.",
+    };
+  }
+  if (lower.includes(" & ")) {
+    return {
+      label: "Partial Bundle",
+      color: "bg-blue-100 text-blue-700",
+      hint: "This is a partial equipment package — includes the items named in the title.",
+    };
+  }
+  if (
+    lower.includes("full") ||
+    lower.includes("equipment") ||
+    lower.includes("setup") ||
+    lower.includes("package")
+  ) {
+    return {
+      label: "Full Bundle",
+      color: "bg-purple-100 text-purple-700",
+      hint: "Full equipment package — manufacturer defines what's included.",
+    };
+  }
+  return null;
+}
+
 function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) {
   const isSkipped = item.action === "skip";
   const isBundle = item.match_status === "bundle" || item.action === "create_bundle";
+  const bundleType = isBundle ? getBundleType(item.extracted_name) : null;
+  const hasNamedComponents = item.match_reasoning?.includes("[named-in-title]") ?? false;
 
   const handlePriceChange = useCallback(
     (value: string) => {
@@ -807,11 +840,20 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
   return (
     <tr className={cn(isSkipped && "opacity-50")}>
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <p className="font-medium">{item.extracted_name}</p>
-          {isBundle && (
+          {isBundle && bundleType ? (
+            <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium", bundleType.color)}>
+              <Package className="h-3 w-3" /> {bundleType.label}
+            </span>
+          ) : isBundle ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700">
               <Package className="h-3 w-3" /> Bundle
+            </span>
+          ) : null}
+          {hasNamedComponents && (
+            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600 border border-amber-200">
+              Named in title
             </span>
           )}
         </div>
@@ -828,11 +870,46 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
         {isBundle ? (
           <div>
             <p className="text-sm font-medium">{item.final_product_name}</p>
-            {item.match_reasoning && (
-              <p className="mt-1 text-xs italic text-muted-foreground">
-                {item.match_reasoning}
+            {bundleType && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {bundleType.hint}
               </p>
             )}
+            {item.match_reasoning && (() => {
+              // Extract suggested components from reasoning text
+              const compMatch = item.match_reasoning.match(/Suggested components: (.+)$/);
+              if (compMatch) {
+                const components = compMatch[1].split(", ");
+                return (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {components.map((comp, i) => {
+                      const isNamed = comp.includes("[named-in-title]");
+                      const cleanName = comp.replace(/ \[.*?\]/g, "").trim();
+                      return (
+                        <span
+                          key={i}
+                          className={cn(
+                            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium",
+                            isNamed
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {cleanName}
+                        </span>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              // Show plain reasoning if no components
+              const plainReasoning = item.match_reasoning.split(" | Suggested components:")[0];
+              return plainReasoning ? (
+                <p className="mt-1 text-xs italic text-muted-foreground">
+                  {plainReasoning}
+                </p>
+              ) : null;
+            })()}
           </div>
         ) : tab === "low_confidence" ? (
           <div>

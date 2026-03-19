@@ -118,25 +118,149 @@ OVERSIZE VAULT HANDLING:
 - If an oversize vault has no specific dimension (just "OS" or "Oversize"), name it with "Oversize" like "Continental Oversize".
 
 EQUIPMENT BUNDLE DETECTION (CRITICAL — do NOT mark these as unmatched):
-- Items like "Full Equipment", "Equipment Package", "Equipment w/o Chairs", "Setup Package", "Tent Only", "Equipment Only", "Full Setup" are equipment BUNDLES — flat-rate packages.
+- Items like "Full Equipment", "Equipment Package", "Equipment w/o Chairs", "Setup Package", "Full Setup" are equipment BUNDLES — flat-rate packages.
 - ALWAYS set match_status to "bundle" for these items. NEVER set them to "unmatched".
 - Set template_id to null, template_name to the bundle name, confidence to 0.90.
-- Do NOT assume bundle contents based on bundle name. Different manufacturers define bundles differently.
-- Only suggest bundle components if you find evidence in the price list itself. Evidence means: individual equipment line items whose prices sum to approximately the bundle price (within 20%).
-- If you find evidence, include it in the match object:
-  "match": {
-    "template_id": null,
-    "template_name": "Full Equipment",
-    "confidence": 0.90,
-    "reasoning": "Equipment bundle detected",
-    "bundle_components_suggested": [
-      {"component": "Lowering Device", "evidence": "Found 'Lowering Device — $65' as individual item"},
-      {"component": "Tent", "evidence": "Found 'Tent — $40' as individual item"}
-    ]
-  }
-- If NO individual equipment items are found on the price list, set bundle_components_suggested to an empty array [].
-- NEVER suggest components based on bundle name alone.
+
+PARTIAL BUNDLE DISAMBIGUATION — "ONLY" SUFFIX:
+- When a line item name ends with "Only" it is ALWAYS a partial equipment bundle, NEVER an individual product.
+- "Only" indicates this is a bundle containing just that one item as a package option.
+- Examples:
+  * "Lowering Device Only" → match_status "bundle", extracted_name "Lowering Device Only"
+  * "Tent Only" → match_status "bundle", extracted_name "Tent Only"
+  * "Chairs Only" → match_status "bundle", extracted_name "Chairs Only"
+- Do NOT match these against individual product templates. Do NOT strip "Only" from the name.
+- The bundle name should be preserved exactly as written on the price list.
+
+COMPOUND BUNDLE NAMES WITH AMPERSAND (&):
+- Line items with "&" connecting equipment item names are partial bundles containing those items.
+- "[Item] & [Item]" → match_status "bundle" containing both named items.
+- Examples:
+  * "Lowering Device & Grass" → bundle containing lowering device + grass mats
+  * "Lowering Device & Tent" → bundle containing lowering device + tent
+  * "Tent & Chairs" → bundle containing tent + chairs
+- For compound bundles, set bundle_components_suggested based on the named items:
+  "bundle_components_suggested": [
+    {"component": "Lowering Device", "evidence": "Named explicitly in bundle title 'Lowering Device & Grass'"},
+    {"component": "Grass Mats", "evidence": "Named explicitly in bundle title as 'Grass' — refers to grass mats"}
+  ]
+- "Grass" in a bundle name refers to grass mats / artificial turf. Map "Grass" → "Grass Mats".
+- This is the ONE case where component suggestions are based on name — because the components are explicitly stated in the bundle title.
+
+EVIDENCE-BASED COMPONENT SUGGESTIONS (for non-compound bundles):
+- Do NOT assume bundle contents based on bundle name alone. Different manufacturers define bundles differently.
+- Only suggest components if you find evidence in the price list: individual equipment line items whose prices sum to approximately the bundle price (within 20%).
+- If evidence found:
+  "bundle_components_suggested": [
+    {"component": "Lowering Device", "evidence": "Found 'Lowering Device — $65' as individual item on price list"}
+  ]
+- If NO evidence: set bundle_components_suggested to an empty array [].
 """
+
+
+EQUIPMENT_KEYWORDS = {
+    "lowering", "device", "tent", "grass", "mats", "chairs",
+    "straps", "equipment", "setup", "canopy", "cremation", "table",
+}
+
+
+def _reclassify_bundle_items(items: list[dict]) -> list[dict]:
+    """Post-process Claude's output to catch misclassified equipment bundles.
+
+    Guard 1: Items ending in "Only" must be bundles.
+    Guard 2: Items with " & " between equipment keywords must be bundles.
+    """
+    for item in items:
+        name = (item.get("extracted_name") or "").strip()
+        status = item.get("match_status", "")
+
+        # Guard 1: "Only" suffix → always a bundle
+        if name.lower().endswith(" only") and status != "bundle":
+            logger.info(
+                "Reclassifying '%s' from %s to bundle — ends with 'Only'",
+                name, status,
+            )
+            item["match_status"] = "bundle"
+            if item.get("match"):
+                item["match"]["template_id"] = None
+                item["match"]["reasoning"] = (
+                    f"Reclassified: '{name}' ends with 'Only' — partial equipment bundle"
+                )
+            else:
+                item["match"] = {
+                    "template_id": None,
+                    "template_name": name,
+                    "confidence": 0.90,
+                    "reasoning": f"Reclassified: '{name}' ends with 'Only' — partial equipment bundle",
+                }
+
+        # Guard 2: " & " between equipment-related words → compound bundle
+        if " & " in name and status != "bundle":
+            parts = name.lower().split(" & ")
+            all_equipment = all(
+                any(kw in part for kw in EQUIPMENT_KEYWORDS) for part in parts
+            )
+            if all_equipment:
+                logger.info(
+                    "Reclassifying '%s' from %s to bundle — compound equipment name",
+                    name, status,
+                )
+                item["match_status"] = "bundle"
+                # Build component suggestions from the compound name
+                components = []
+                for part in parts:
+                    part_clean = part.strip().title()
+                    # Map common short names
+                    if "grass" in part.lower():
+                        part_clean = "Grass Mats"
+                    elif "tent" in part.lower():
+                        part_clean = "Cemetery Tent"
+                    elif "chair" in part.lower():
+                        part_clean = "Chairs"
+                    elif "lowering" in part.lower():
+                        part_clean = "Lowering Device"
+                    components.append({
+                        "component": part_clean,
+                        "evidence": f"Named explicitly in bundle title '{name}'",
+                    })
+                item["match"] = {
+                    "template_id": None,
+                    "template_name": name,
+                    "confidence": 0.90,
+                    "reasoning": f"Compound equipment bundle — components named in title",
+                    "bundle_components_suggested": components,
+                }
+
+    return items
+
+
+def _build_bundle_reasoning(match: dict, status: str) -> str | None:
+    """Build enriched reasoning for bundle items that includes component info."""
+    reasoning = match.get("reasoning", "")
+    if status != "bundle":
+        return reasoning or None
+
+    components = match.get("bundle_components_suggested", [])
+    if not components:
+        return reasoning or None
+
+    # Append component suggestion details to reasoning
+    comp_parts = []
+    for comp in components:
+        name = comp.get("component", "")
+        evidence = comp.get("evidence", "")
+        if "Named explicitly" in evidence:
+            comp_parts.append(f"{name} [named-in-title]")
+        elif evidence:
+            comp_parts.append(f"{name} [price-evidence]")
+        else:
+            comp_parts.append(name)
+
+    if comp_parts:
+        suffix = " | Suggested components: " + ", ".join(comp_parts)
+        reasoning = (reasoning or "") + suffix
+
+    return reasoning or None
 
 
 def analyze_price_list(db: Session, import_id: str) -> None:
@@ -250,6 +374,10 @@ Confidence thresholds:
             db.commit()
             return
 
+        # Post-process: reclassify misclassified bundle items
+        if "items" in parsed:
+            parsed["items"] = _reclassify_bundle_items(parsed["items"])
+
         # Store analysis
         imp.claude_analysis = json.dumps(parsed)
         imp.extraction_token_usage = json.dumps(
@@ -304,7 +432,7 @@ Confidence thresholds:
                     if match and match.get("confidence")
                     else None
                 ),
-                match_reasoning=match.get("reasoning") if match else None,
+                match_reasoning=_build_bundle_reasoning(match, status) if match else None,
                 final_product_name=(
                     # Always prefer the canonical DB name over Claude's interpretation
                     template_map.get(match.get("template_id", ""))
