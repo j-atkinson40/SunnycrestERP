@@ -137,6 +137,11 @@ def analyze_price_list(db: Session, import_id: str) -> None:
         "Be precise about prices — extract the exact dollar amount shown.\n"
         "Be thorough about product names — recognize variations and abbreviations.\n"
         "Be honest about confidence — flag anything ambiguous.\n"
+        "IMPORTANT: When you match a product to the catalog, use the EXACT template_name "
+        "from the catalog as the template_name in your response. Do NOT modify, shorten, "
+        "or create your own product name. For example, if the catalog has "
+        "'Monticello Urn Vault', return exactly 'Monticello Urn Vault' — not "
+        "'Monticello (Urn)' or 'Monticello Urn'.\n"
         "Return JSON only. No other text."
     )
 
@@ -220,6 +225,9 @@ Confidence thresholds:
             }
         )
 
+        # Build a template lookup map for canonical names
+        template_map = {t.id: t.product_name for t in templates}
+
         # Create import items
         high = low = unmatched = 0
         for item_data in parsed.get("items", []):
@@ -249,7 +257,11 @@ Confidence thresholds:
                 extracted_sku=item_data.get("extracted_sku"),
                 match_status=status,
                 matched_template_id=match.get("template_id") if match else None,
-                matched_template_name=match.get("template_name") if match else None,
+                matched_template_name=(
+                    # Use canonical name from DB if we have the template_id
+                    template_map.get(match.get("template_id", ""), match.get("template_name"))
+                    if match else None
+                ),
                 match_confidence=(
                     Decimal(str(match["confidence"]))
                     if match and match.get("confidence")
@@ -257,9 +269,11 @@ Confidence thresholds:
                 ),
                 match_reasoning=match.get("reasoning") if match else None,
                 final_product_name=(
-                    match.get("template_name")
+                    # Always prefer the canonical DB name over Claude's interpretation
+                    template_map.get(match.get("template_id", ""))
+                    or match.get("template_name")
                     or item_data.get("extracted_name", "Unknown")
-                ),
+                ) if match else item_data.get("extracted_name", "Unknown"),
                 final_price=(
                     Decimal(str(item_data["extracted_price"]))
                     if item_data.get("extracted_price")
