@@ -90,14 +90,22 @@ const WILBERT_LINES: VaultLine[] = [
   { name: "Graveliner", prefix: "GVL" },
   { name: "Graveliner (Social Service)", prefix: "GSS" },
   { name: "Loved & Cherished", prefix: "LC" },
-].map(({ name, prefix }) => ({
-  name,
-  selected: false,
-  description: `Wilbert ${name}`,
-  skuPrefix: prefix,
-  basePrice: "",
-  variants: defaultVariants(),
-}));
+].map(({ name, prefix }) => {
+  // These lines are sold by most Wilbert licensees — default ON
+  const DEFAULT_ON = new Set([
+    "Graveliner", "Graveliner (Social Service)", "Monticello", "Salute",
+    "Continental", "Venetian", "Veteran Triune",
+    "Stainless Steel Triune", "Cameo Rose Triune",
+  ]);
+  return {
+    name,
+    selected: DEFAULT_ON.has(name),
+    description: `Wilbert ${name}`,
+    skuPrefix: prefix,
+    basePrice: "",
+    variants: defaultVariants(),
+  };
+});
 
 // Color/style sub-variants for vault lines that come in multiple options
 const VAULT_LINE_SUB_VARIANTS: Record<string, SubVariant[]> = {
@@ -119,8 +127,8 @@ const VAULT_LINE_SUB_VARIANTS: Record<string, SubVariant[]> = {
 const URN_VAULT_ITEMS: SimpleProduct[] = [
   { name: "Bronze Triune", selected: false, price: "" },
   { name: "Copper Triune", selected: false, price: "" },
-  { name: "Stainless Steel Triune", selected: false, price: "" },
-  { name: "Cameo Rose Triune", selected: false, price: "" },
+  { name: "Stainless Steel Triune", selected: true, price: "" },
+  { name: "Cameo Rose Triune", selected: true, price: "" },
   {
     name: "Universal",
     selected: false,
@@ -132,7 +140,7 @@ const URN_VAULT_ITEMS: SimpleProduct[] = [
   },
   {
     name: "Venetian",
-    selected: false,
+    selected: true,
     price: "",
     subVariants: [
       { label: "White", enabled: true, skuSuffix: "WHT" },
@@ -140,8 +148,9 @@ const URN_VAULT_ITEMS: SimpleProduct[] = [
     ],
   },
   { name: "Salute", selected: false, price: "" },
-  { name: "Monticello", selected: false, price: "" },
-  { name: "Graveliner", selected: false, price: "" },
+  { name: "Monticello", selected: true, price: "" },
+  { name: "Graveliner", selected: true, price: "" },
+  { name: "Veteran", selected: true, price: "" },
 ];
 
 const URN_ITEMS: SimpleProduct[] = [
@@ -165,10 +174,10 @@ const URN_ITEMS: SimpleProduct[] = [
 ];
 
 const RENTAL_ITEMS: RentalItem[] = [
-  { name: "Lowering Device", selected: false, price: "", rentalUnit: "per service" },
-  { name: "Cemetery Tent", selected: false, price: "", rentalUnit: "per service" },
-  { name: "Grass Mats", selected: false, price: "", rentalUnit: "per service" },
-  { name: "Cremation Table", selected: false, price: "", rentalUnit: "per service" },
+  { name: "Lowering Device", selected: true, price: "", rentalUnit: "per service" },
+  { name: "Cemetery Tent", selected: true, price: "", rentalUnit: "per service" },
+  { name: "Grass Mats", selected: true, price: "", rentalUnit: "per service" },
+  { name: "Cremation Table", selected: true, price: "", rentalUnit: "per service" },
 ];
 
 const SOLD_ITEMS: SimpleProduct[] = [];
@@ -291,7 +300,7 @@ export default function CatalogBuilder() {
   const [ownLines, setOwnLines] = useState<VaultLine[]>([]);
 
   // Step 1 - Urn Vaults
-  const [sellUrnVaults, setSellUrnVaults] = useState(false);
+  const [sellUrnVaults, setSellUrnVaults] = useState(true);
   const [urnVaults, setUrnVaults] = useState<SimpleProduct[]>(URN_VAULT_ITEMS);
 
   // Step 2 - Urns
@@ -299,10 +308,10 @@ export default function CatalogBuilder() {
   const [urns, setUrns] = useState<SimpleProduct[]>(URN_ITEMS);
 
   // Step 3 - Cemetery Equipment
-  const [provideEquipment, setProvideEquipment] = useState(false);
+  const [provideEquipment, setProvideEquipment] = useState(true);
   const [rentalItems, setRentalItems] = useState<RentalItem[]>(RENTAL_ITEMS);
   const [chairs, setChairs] = useState<ChairConfig>({
-    enabled: false,
+    enabled: true,
     pricePerSet: "",
     chairsPerSet: "4",
   });
