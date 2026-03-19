@@ -15,6 +15,77 @@ logger = logging.getLogger(__name__)
 ANALYSIS_MODEL = "claude-sonnet-4-20250514"
 
 
+def _try_parse_json(cleaned: str, raw_response: str, was_truncated: bool) -> dict | None:
+    """Try multiple strategies to parse JSON from Claude's response."""
+    # Strategy 1: direct parse
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 2: fix trailing commas more aggressively
+    attempt = re.sub(r",\s*([}\]])", r"\1", cleaned)
+    try:
+        return json.loads(attempt)
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 3: if truncated, try to close the JSON structure
+    if was_truncated:
+        # Find the last complete item by looking for the last "},"
+        last_complete = cleaned.rfind("},")
+        if last_complete > 0:
+            truncated = cleaned[: last_complete + 1]  # up to and including the }
+            # Close the items array and summary
+            truncated += '], "summary": {"total_items": 0, "matched_high": 0, "matched_low": 0, "unmatched": 0}}'
+            truncated = re.sub(r",\s*([}\]])", r"\1", truncated)
+            try:
+                return json.loads(truncated)
+            except json.JSONDecodeError:
+                pass
+
+    # Strategy 4: extract just the items array
+    items_match = re.search(r'"items"\s*:\s*\[', cleaned)
+    if items_match:
+        # Find all complete item objects
+        items_start = items_match.end()
+        items = []
+        depth = 0
+        current_start = None
+        for i, ch in enumerate(cleaned[items_start:], start=items_start):
+            if ch == "{":
+                if depth == 0:
+                    current_start = i
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0 and current_start is not None:
+                    item_str = cleaned[current_start : i + 1]
+                    item_str = re.sub(r",\s*([}\]])", r"\1", item_str)
+                    try:
+                        items.append(json.loads(item_str))
+                    except json.JSONDecodeError:
+                        pass
+                    current_start = None
+            elif ch == "]" and depth == 0:
+                break
+
+        if items:
+            logger.info("Recovered %d items via manual extraction", len(items))
+            return {
+                "items": items,
+                "summary": {
+                    "total_items": len(items),
+                    "matched_high": 0,
+                    "matched_low": 0,
+                    "unmatched": 0,
+                },
+            }
+
+    logger.error("All JSON parse strategies failed for response (%d chars)", len(raw_response))
+    return None
+
+
 WILBERT_VARIATIONS = """
 Common Wilbert product name variations:
 - Monticello: MON, Monti, Monticello Std, Monticello OS
@@ -113,37 +184,32 @@ Confidence thresholds:
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         message = client.messages.create(
             model=ANALYSIS_MODEL,
-            max_tokens=4096,
+            max_tokens=16384,  # Large enough for 50+ product price lists
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
 
         response_text = message.content[0].text
+        stop_reason = message.stop_reason
+
+        # If truncated (max_tokens hit), try to repair the JSON
+        if stop_reason == "max_tokens":
+            logger.warning("Claude response was truncated — attempting JSON repair")
+
         # Strip code fences if present
         cleaned = re.sub(r"^```(?:json)?\s*\n?", "", response_text.strip())
         cleaned = re.sub(r"\n?\s*```$", "", cleaned)
 
-        # Fix common JSON issues from Claude: trailing commas, single quotes
-        # Remove trailing commas before } or ]
+        # Fix common JSON issues: trailing commas
         cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
 
-        try:
-            parsed = json.loads(cleaned)
-        except json.JSONDecodeError as je:
-            logger.warning("JSON parse failed, attempting repair: %s", str(je)[:200])
-            # Try more aggressive cleanup
-            # Replace single quotes with double quotes (risky but often works)
-            attempt2 = cleaned.replace("'", '"')
-            attempt2 = re.sub(r",\s*([}\]])", r"\1", attempt2)
-            try:
-                parsed = json.loads(attempt2)
-            except json.JSONDecodeError:
-                # Last resort: store raw response and fail gracefully
-                imp.status = "failed"
-                imp.error_message = f"Could not parse Claude response: {str(je)[:300]}"
-                imp.claude_analysis = response_text[:10000]
-                db.commit()
-                return
+        parsed = _try_parse_json(cleaned, response_text, stop_reason == "max_tokens")
+        if parsed is None:
+            imp.status = "failed"
+            imp.error_message = "Could not parse Claude response as JSON"
+            imp.claude_analysis = response_text[:10000]
+            db.commit()
+            return
 
         # Store analysis
         imp.claude_analysis = json.dumps(parsed)
