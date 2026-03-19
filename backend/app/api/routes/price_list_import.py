@@ -1,16 +1,19 @@
 """Price List Import routes — AI-powered price list extraction and matching."""
 
 import logging
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.company_resolver import get_current_company
 from app.api.deps import get_current_user
 from app.database import SessionLocal, get_db
+from app.models.charge_library_item import ChargeLibraryItem
 from app.models.company import Company
 from app.models.price_list_import import PriceListImport, PriceListImportItem
 from app.models.product import Product
@@ -180,10 +183,13 @@ def get_import_review(
         "unmatched": [],
         "ignored": [],
         "custom": [],
+        "charges": [],
     }
     for item in items:
-        # Bundle items go into low_confidence tab for review
-        if item.match_status == "bundle":
+        # Charge items go into charges tab
+        if item.charge_category:
+            bucket = grouped["charges"]
+        elif item.match_status == "bundle":
             bucket = grouped["low_confidence"]
         else:
             bucket = grouped.get(item.match_status, grouped["unmatched"])
@@ -236,6 +242,16 @@ def update_import_item(
         item.extracted_price_with_vault = data.extracted_price_with_vault
     if data.extracted_price_standalone is not None:
         item.extracted_price_standalone = data.extracted_price_standalone
+    if data.charge_match_type is not None:
+        item.charge_match_type = data.charge_match_type
+    if data.matched_charge_id is not None:
+        item.matched_charge_id = data.matched_charge_id
+    if data.charge_key_to_use is not None:
+        item.charge_key_to_use = data.charge_key_to_use
+    if data.pricing_type_suggestion is not None:
+        item.pricing_type_suggestion = data.pricing_type_suggestion
+    if data.enable_on_import is not None:
+        item.enable_on_import = data.enable_on_import
 
     item.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -362,6 +378,80 @@ def confirm_import(
         item.product_id = product.id
         created += 1
 
+    # Process charge-type items
+    charges_created = 0
+    charges_updated = 0
+
+    for item in items:
+        if item.action not in ("create_custom",) or not item.charge_category:
+            continue  # Only process charge-type items with create_custom action
+
+        if item.matched_charge_id:
+            # Update existing charge
+            existing_charge = db.query(ChargeLibraryItem).filter(
+                ChargeLibraryItem.id == item.matched_charge_id,
+            ).first()
+            if existing_charge:
+                if item.has_conditional_pricing:
+                    existing_charge.has_conditional_pricing = True
+                    existing_charge.with_vault_price = item.extracted_price_with_vault
+                    existing_charge.standalone_price = item.extracted_price_standalone
+                    existing_charge.fixed_amount = item.extracted_price_standalone
+                elif item.extracted_price is not None:
+                    existing_charge.fixed_amount = item.extracted_price
+
+                if item.pricing_type_suggestion:
+                    existing_charge.pricing_type = item.pricing_type_suggestion
+                existing_charge.is_enabled = item.enable_on_import
+                existing_charge.updated_at = now
+                charges_updated += 1
+                continue
+
+        # Create new charge
+        charge_key = item.charge_key_to_use or item.charge_key_suggestion
+        if not charge_key:
+            # Generate from name
+            base_key = re.sub(r"[^a-z0-9]+", "_", (item.final_product_name or item.extracted_name).lower()).strip("_")
+            charge_key = f"{base_key}_custom"
+
+        # Check for key collision
+        existing = db.query(ChargeLibraryItem).filter(
+            ChargeLibraryItem.tenant_id == company.id,
+            ChargeLibraryItem.charge_key == charge_key,
+        ).first()
+        if existing:
+            charge_key = f"{charge_key}_{uuid.uuid4().hex[:6]}"
+
+        # Get next sort_order
+        max_sort = db.query(func.max(ChargeLibraryItem.sort_order)).filter(
+            ChargeLibraryItem.tenant_id == company.id,
+        ).scalar() or 0
+
+        new_charge = ChargeLibraryItem(
+            id=str(uuid.uuid4()),
+            tenant_id=company.id,
+            charge_key=charge_key,
+            charge_name=item.final_product_name or item.extracted_name,
+            category=item.charge_category or "other",
+            is_enabled=item.enable_on_import,
+            is_system=False,
+            pricing_type=item.pricing_type_suggestion or "variable",
+            fixed_amount=(
+                item.extracted_price_standalone if item.has_conditional_pricing
+                else item.extracted_price
+            ),
+            has_conditional_pricing=item.has_conditional_pricing or False,
+            with_vault_price=item.extracted_price_with_vault if item.has_conditional_pricing else None,
+            standalone_price=item.extracted_price_standalone if item.has_conditional_pricing else None,
+            variable_placeholder=f"Enter {(item.final_product_name or item.extracted_name).lower()} amount",
+            invoice_label=item.final_product_name or item.extracted_name,
+            sort_order=max_sort + 1,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(new_charge)
+        charges_created += 1
+
     imp.status = "confirmed"
     imp.confirmed_at = now
     imp.confirmed_by = current_user.id
@@ -371,6 +461,8 @@ def confirm_import(
         import_id=import_id,
         products_created=created,
         products_skipped=skipped,
+        charges_created=charges_created,
+        charges_updated=charges_updated,
     )
 
 

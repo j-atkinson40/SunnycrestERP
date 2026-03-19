@@ -45,6 +45,15 @@ export interface PriceListImportItem {
   has_conditional_pricing: boolean;
   is_bundle_price_variant: boolean;
   price_variant_type: "standalone" | "with_vault" | null;
+  // Charge library fields
+  charge_category: string | null;
+  charge_key_suggestion: string | null;
+  charge_match_type: "exact_key" | "fuzzy_name" | "new" | null;
+  matched_charge_id: string | null;
+  matched_charge_name: string | null;
+  charge_key_to_use: string | null;
+  pricing_type_suggestion: "fixed" | "variable" | "per_mile" | null;
+  enable_on_import: boolean;
 }
 
 export interface ReviewData {
@@ -55,10 +64,20 @@ export interface ReviewData {
     unmatched: PriceListImportItem[];
     ignored: PriceListImportItem[];
     custom: PriceListImportItem[];
+    charges: PriceListImportItem[];
   };
   // Convenience aliases for the component
   import_info?: PriceListImport;
   high_confidence?: PriceListImportItem[];
   low_confidence?: PriceListImportItem[];
   unmatched?: PriceListImportItem[];
+  charges?: PriceListImportItem[];
+}
+
+export interface ConfirmResult {
+  import_id: string;
+  products_created: number;
+  products_skipped: number;
+  charges_created: number;
+  charges_updated: number;
 }

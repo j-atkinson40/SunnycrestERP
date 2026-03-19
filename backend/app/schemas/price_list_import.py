@@ -58,6 +58,15 @@ class PriceListImportItemResponse(BaseModel):
     has_conditional_pricing: bool = False
     is_bundle_price_variant: bool = False
     price_variant_type: str | None = None
+    # Charge matching
+    charge_category: str | None = None
+    charge_key_suggestion: str | None = None
+    charge_match_type: str | None = None
+    matched_charge_id: str | None = None
+    matched_charge_name: str | None = None
+    charge_key_to_use: str | None = None
+    pricing_type_suggestion: str | None = None
+    enable_on_import: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -74,9 +83,17 @@ class PriceListItemUpdate(BaseModel):
     has_conditional_pricing: bool | None = None
     extracted_price_with_vault: Decimal | None = None
     extracted_price_standalone: Decimal | None = None
+    # Charge fields
+    charge_match_type: str | None = None
+    matched_charge_id: str | None = None
+    charge_key_to_use: str | None = None
+    pricing_type_suggestion: str | None = None
+    enable_on_import: bool | None = None
 
 
 class PriceListConfirmResponse(BaseModel):
     import_id: str
     products_created: int
     products_skipped: int
+    charges_created: int = 0
+    charges_updated: int = 0

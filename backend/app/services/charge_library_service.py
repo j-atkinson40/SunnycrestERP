@@ -129,13 +129,21 @@ DEFAULT_CHARGES: list[dict] = [
         "sort_order": 11,
     },
     {
+        "charge_key": "holiday_charge",
+        "charge_name": "Holiday Service Charge",
+        "category": "labor",
+        "description": "Charged for services performed on holidays. Amount typically varies by holiday.",
+        "is_enabled": False,
+        "sort_order": 12,
+    },
+    {
         "charge_key": "setup_crew",
         "charge_name": "Setup Crew",
         "category": "labor",
         "description": (
             "Charged when a setup crew is dispatched in addition to the driver."
         ),
-        "sort_order": 12,
+        "sort_order": 13,
     },
 ]
 

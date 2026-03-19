@@ -214,6 +214,48 @@ When detected as a pair — mark both items:
 - Post-processing will merge them into a single conditional pricing item.
 
 "With Our Product" and "Without Our Product" are price tier headers — NEVER treat them as product names or match them against product templates.
+
+CHARGE DETECTION:
+After checking for overage charges, equipment bundles, and products — classify remaining items as charges if they match these patterns:
+
+OVERAGE CHARGES (match_status: custom, charge_category: surcharge):
+Already handled by existing overage patterns. These have item_type "overage_charge".
+
+FLAT SERVICE FEES (match_status: custom, charge_category: service):
+- Setup fee, Service fee, Administrative fee
+- After-hours fee, After hours delivery, Emergency delivery
+- Holiday charge, Holiday delivery, Holiday service
+- Weekend charge, Weekend delivery
+- Return trip, Return visit, Second delivery attempt
+
+MILEAGE AND FUEL (match_status: custom, charge_category: delivery):
+- Mileage charge, Fuel surcharge, Fuel charge
+- Per mile, Mileage fee, Travel charge
+- Delivery charge, Delivery fee (if not already a product)
+
+RUSH AND EMERGENCY (match_status: custom, charge_category: surcharge):
+- Rush fee, Rush charge, Rush order
+- Emergency fee, Emergency delivery, Priority fee
+- Same day delivery, Same day service
+
+PERSONALIZATION (match_status: custom, charge_category: service):
+- Personalization, Engraving, Legacy print
+- Inscription, Custom engraving, Name plate
+- Memorial personalization
+
+DISINTERMENT AND REINTERMENT (match_status: custom, charge_category: service):
+- Disinterment, Dis-interment
+- Re-interment, Reinterment
+- Removal and reinterment, Exhumation
+
+For detected charges, set:
+- match_status: "custom"
+- charge_category: "service" | "delivery" | "surcharge" | "labor"
+- charge_key_suggestion: the most likely matching key from this list:
+  delivery_fee, mileage_fuel_surcharge, after_hours_delivery, rush_order_fee,
+  return_trip_fee, vault_personalization, disinterment_service, re_interment_service,
+  liner_installation, grave_space_setup, overtime_weekend_labor, holiday_charge
+- If no standard key matches, set charge_key_suggestion to null.
 """
 
 
@@ -501,6 +543,76 @@ def _group_bundle_variants(items: list[dict]) -> list[dict]:
     return [i for i in items if i.get("match_status") != "absorbed_into_variant"]
 
 
+_CHARGE_PATTERNS = {
+    "service": [
+        re.compile(r"setup\s+fee", re.IGNORECASE),
+        re.compile(r"service\s+fee", re.IGNORECASE),
+        re.compile(r"after[\s-]*hours", re.IGNORECASE),
+        re.compile(r"emergency\s+(delivery|fee|service)", re.IGNORECASE),
+        re.compile(r"return\s+(trip|visit)", re.IGNORECASE),
+        re.compile(r"second\s+(delivery|attempt)", re.IGNORECASE),
+        re.compile(r"personali[sz]ation", re.IGNORECASE),
+        re.compile(r"engrav(ing|e)", re.IGNORECASE),
+        re.compile(r"legacy\s+print", re.IGNORECASE),
+        re.compile(r"inscription", re.IGNORECASE),
+        re.compile(r"name\s*plate", re.IGNORECASE),
+        re.compile(r"dis[\s-]*interment", re.IGNORECASE),
+        re.compile(r"re[\s-]*interment", re.IGNORECASE),
+        re.compile(r"exhumation", re.IGNORECASE),
+        re.compile(r"liner\s+install", re.IGNORECASE),
+        re.compile(r"grave\s+(space\s+)?setup", re.IGNORECASE),
+    ],
+    "delivery": [
+        re.compile(r"mileage", re.IGNORECASE),
+        re.compile(r"fuel\s+(sur)?charge", re.IGNORECASE),
+        re.compile(r"per\s+mile", re.IGNORECASE),
+        re.compile(r"travel\s+charge", re.IGNORECASE),
+        re.compile(r"delivery\s+(fee|charge)", re.IGNORECASE),
+    ],
+    "surcharge": [
+        re.compile(r"rush\s+(fee|charge|order)", re.IGNORECASE),
+        re.compile(r"priority\s+fee", re.IGNORECASE),
+        re.compile(r"same\s+day", re.IGNORECASE),
+        re.compile(r"holiday", re.IGNORECASE),
+        re.compile(r"weekend\s+(charge|delivery|fee)", re.IGNORECASE),
+    ],
+    "labor": [
+        re.compile(r"overtime", re.IGNORECASE),
+        re.compile(r"saturday\s+(charge|fee|labor|delivery)", re.IGNORECASE),
+        re.compile(r"sunday\s+(charge|fee|labor|delivery)", re.IGNORECASE),
+    ],
+}
+
+
+def _classify_charge_items(items: list[dict]) -> list[dict]:
+    """Post-process: classify items as charges based on name patterns.
+
+    Items that match charge patterns get charge_category set.
+    Items already classified as custom by Claude's overage detection keep their status.
+    """
+    for item in items:
+        name = (item.get("extracted_name") or "").strip()
+        status = item.get("match_status", "")
+
+        # Skip items already well-classified
+        if status in ("high_confidence", "low_confidence", "bundle"):
+            continue
+
+        # If Claude already set charge_category, keep it
+        if item.get("charge_category"):
+            continue
+
+        # Check if item matches charge patterns
+        for category, patterns in _CHARGE_PATTERNS.items():
+            if any(p.search(name) for p in patterns):
+                item["charge_category"] = category
+                if status != "custom":
+                    item["match_status"] = "custom"
+                break
+
+    return items
+
+
 def analyze_price_list(db: Session, import_id: str) -> None:
     """Run Claude analysis on an extracted price list."""
     imp = db.query(PriceListImport).filter(PriceListImport.id == import_id).first()
@@ -565,6 +677,8 @@ For each item in the price list, return:
       "is_bundle_price_variant": false,
       "price_variant_type": null,
       "bundle_variant_group": null,
+      "charge_category": null,
+      "charge_key_suggestion": null,
       "match": {{
         "template_id": "uuid-string or null",
         "template_name": "matched product name",
@@ -623,6 +737,7 @@ Confidence thresholds:
             parsed["items"] = _reclassify_bundle_items(parsed["items"])
             parsed["items"] = _group_bundle_variants(parsed["items"])
             parsed["items"] = _fix_urn_vault_items(parsed["items"], templates)
+            parsed["items"] = _classify_charge_items(parsed["items"])
 
         # Store analysis
         imp.claude_analysis = json.dumps(parsed)
@@ -706,6 +821,8 @@ Confidence thresholds:
                 has_conditional_pricing=bool(item_data.get("has_conditional_pricing", False)),
                 is_bundle_price_variant=bool(item_data.get("is_bundle_price_variant", False)),
                 price_variant_type=item_data.get("price_variant_type"),
+                charge_category=item_data.get("charge_category"),
+                charge_key_suggestion=item_data.get("charge_key_suggestion"),
             )
             db.add(import_item)
 
@@ -713,6 +830,21 @@ Confidence thresholds:
         imp.items_matched_high_confidence = high
         imp.items_matched_low_confidence = low
         imp.items_unmatched = unmatched
+
+        # Run charge matching for charge-type items
+        from app.services.charge_matching_service import match_charges_for_import
+
+        charge_items = (
+            db.query(PriceListImportItem)
+            .filter(
+                PriceListImportItem.import_id == imp.id,
+                PriceListImportItem.charge_category.isnot(None),
+            )
+            .all()
+        )
+        if charge_items:
+            match_charges_for_import(db, imp.tenant_id, charge_items)
+
         imp.status = "review_ready"
         db.commit()
 

@@ -22,6 +22,11 @@ import {
   SkipForward,
   Plus,
   Package,
+  Zap,
+  Link2,
+  ToggleLeft,
+  ToggleRight,
+  ExternalLink,
 } from "lucide-react";
 import type {
   PriceListImport,
@@ -68,7 +73,7 @@ function fileIcon(name: string) {
 
 // ── Component ────────────────────────────────────────────────────
 
-type Step = "upload" | "processing" | "review" | "confirm";
+type Step = "upload" | "processing" | "review" | "confirm" | "done";
 
 interface Props {
   onBack: () => void;
@@ -208,7 +213,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
   // ── Step 3: Review ──
 
   const [activeTab, setActiveTab] = useState<
-    "high_confidence" | "low_confidence" | "unmatched"
+    "high_confidence" | "low_confidence" | "unmatched" | "charges"
   >("high_confidence");
   const [localItems, setLocalItems] = useState<
     Record<string, PriceListImportItem>
@@ -223,6 +228,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
       ...(reviewData.high_confidence || []),
       ...(reviewData.low_confidence || []),
       ...(reviewData.unmatched || []),
+      ...(reviewData.charges || []),
     ]) {
       map[item.id] = { ...item };
     }
@@ -280,13 +286,14 @@ export default function PriceListUploadFlow({ onBack }: Props) {
 
   // Items organized by tab
   const tabItems = useMemo(() => {
-    if (!reviewData) return { high: [], low: [], unmatched: [] };
+    if (!reviewData) return { high: [], low: [], unmatched: [], charges: [] };
     const get = (ids: PriceListImportItem[] | undefined) =>
       (ids || []).map((i) => localItems[i.id] ?? i);
     return {
       high: get(reviewData.high_confidence),
       low: get(reviewData.low_confidence),
       unmatched: get(reviewData.unmatched),
+      charges: get(reviewData.charges),
     };
   }, [reviewData, localItems]);
 
@@ -295,14 +302,16 @@ export default function PriceListUploadFlow({ onBack }: Props) {
   const [confirming, setConfirming] = useState(false);
 
   const confirmSummary = useMemo(() => {
-    const included = Object.values(localItems).filter(
-      (i) => i.action === "create_product" || i.action === "create_custom" || i.action === "create_bundle",
+    const allItems = Object.values(localItems);
+    const included = allItems.filter(
+      (i) =>
+        (i.action === "create_product" || i.action === "create_custom" || i.action === "create_bundle") &&
+        !i.charge_category,
     );
     // Group by category-ish extracted from name
     const groups: Record<string, { count: number; min: number; max: number }> =
       {};
     for (const item of included) {
-      // Try to infer category from matched template or product name
       const name = item.final_product_name || item.extracted_name;
       let category = "Other";
       const nameLower = name.toLowerCase();
@@ -342,18 +351,46 @@ export default function PriceListUploadFlow({ onBack }: Props) {
       if (price > groups[category].max) groups[category].max = price;
     }
 
-    return { groups, total: included.length };
+    // Charge library summary
+    const chargeItems = allItems.filter((i) => i.charge_category && i.action === "create_custom");
+    const chargesMatched = chargeItems.filter((i) => i.matched_charge_id).length;
+    const chargesNew = chargeItems.filter((i) => !i.matched_charge_id).length;
+
+    return {
+      groups,
+      total: included.length,
+      chargesMatched,
+      chargesNew,
+      chargesTotal: chargeItems.length,
+    };
   }, [localItems]);
+
+  const [confirmResult, setConfirmResult] = useState<{
+    products_created: number;
+    charges_created: number;
+    charges_updated: number;
+  } | null>(null);
 
   const handleConfirm = useCallback(async () => {
     if (!importData) return;
     setConfirming(true);
     try {
       const result = await importService.confirmImport(importData.id);
-      toast.success(
-        `Catalog built! ${result.products_created} products created.`,
-      );
-      navigate("/products");
+      const parts: string[] = [];
+      if (result.products_created > 0)
+        parts.push(`${result.products_created} products created`);
+      if (result.charges_created > 0)
+        parts.push(`${result.charges_created} new charges added`);
+      if (result.charges_updated > 0)
+        parts.push(`${result.charges_updated} charges updated`);
+      toast.success(`Catalog built! ${parts.join(", ")}.`);
+      setConfirmResult(result);
+      // If charges were created/updated, show success step before navigating
+      if (result.charges_created > 0 || result.charges_updated > 0) {
+        setStep("done");
+      } else {
+        navigate("/products");
+      }
     } catch {
       toast.error("Failed to build catalog. Please try again.");
     } finally {
@@ -546,6 +583,15 @@ export default function PriceListUploadFlow({ onBack }: Props) {
         label: "Not Matched",
         count: tabItems.unmatched.length,
       },
+      ...(tabItems.charges.length > 0
+        ? [
+            {
+              key: "charges" as const,
+              label: "Add-On Charges",
+              count: tabItems.charges.length,
+            },
+          ]
+        : []),
     ];
 
     const currentItems =
@@ -553,7 +599,9 @@ export default function PriceListUploadFlow({ onBack }: Props) {
         ? tabItems.high
         : activeTab === "low_confidence"
           ? tabItems.low
-          : tabItems.unmatched;
+          : activeTab === "charges"
+            ? tabItems.charges
+            : tabItems.unmatched;
 
     return (
       <div className="mx-auto max-w-5xl space-y-6 py-8">
@@ -609,47 +657,70 @@ export default function PriceListUploadFlow({ onBack }: Props) {
           ))}
         </div>
 
-        {/* Table */}
-        <Card>
-          <CardContent className="p-0">
+        {/* Table / Cards */}
+        {activeTab === "charges" ? (
+          <div className="space-y-3">
             {currentItems.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <Package className="mb-3 h-10 w-10 text-muted-foreground/30" />
-                <p>No items in this category</p>
-              </div>
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <Zap className="mb-3 h-10 w-10 text-muted-foreground/30" />
+                  <p>No add-on charges detected</p>
+                </CardContent>
+              </Card>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/30 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      <th className="px-4 py-3">Your Price List</th>
-                      {activeTab !== "unmatched" && (
-                        <>
-                          <th className="px-2 py-3 text-center w-8" />
-                          <th className="px-4 py-3">Platform Product</th>
-                        </>
-                      )}
-                      <th className="px-4 py-3 text-right">Price</th>
-                      <th className="px-4 py-3 text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {currentItems.map((item) => (
-                      <ReviewRow
-                        key={item.id}
-                        item={item}
-                        tab={activeTab}
-                        onAction={handleItemAction}
-                        onUpdate={updateLocalItem}
-                        importId={importData?.id ?? ""}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              currentItems.map((item) => (
+                <ChargeCard
+                  key={item.id}
+                  item={item}
+                  onAction={handleItemAction}
+                  onUpdate={updateLocalItem}
+                  importId={importData?.id ?? ""}
+                />
+              ))
             )}
-          </CardContent>
-        </Card>
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              {currentItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <Package className="mb-3 h-10 w-10 text-muted-foreground/30" />
+                  <p>No items in this category</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/30 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        <th className="px-4 py-3">Your Price List</th>
+                        {activeTab !== "unmatched" && (
+                          <>
+                            <th className="px-2 py-3 text-center w-8" />
+                            <th className="px-4 py-3">Platform Product</th>
+                          </>
+                        )}
+                        <th className="px-4 py-3 text-right">Price</th>
+                        <th className="px-4 py-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {currentItems.map((item) => (
+                        <ReviewRow
+                          key={item.id}
+                          item={item}
+                          tab={activeTab as "high_confidence" | "low_confidence" | "unmatched"}
+                          onAction={handleItemAction}
+                          onUpdate={updateLocalItem}
+                          importId={importData?.id ?? ""}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between">
@@ -666,6 +737,65 @@ export default function PriceListUploadFlow({ onBack }: Props) {
   }
 
   // ── Step 4: Confirm ──
+
+  if (step === "done" && confirmResult) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6 py-8">
+        <div className="text-center">
+          <CheckCircle2 className="mx-auto mb-4 h-16 w-16 text-green-500" />
+          <h1 className="text-2xl font-bold">Catalog built successfully!</h1>
+          <p className="mt-2 text-muted-foreground">
+            Your products and charges are ready to use.
+          </p>
+        </div>
+
+        <Card>
+          <CardContent className="space-y-4 pt-6">
+            {confirmResult.products_created > 0 && (
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Package className="h-5 w-5 text-green-600" />
+                  <p className="font-medium">Products Created</p>
+                </div>
+                <Badge variant="secondary">{confirmResult.products_created}</Badge>
+              </div>
+            )}
+            {confirmResult.charges_updated > 0 && (
+              <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Link2 className="h-5 w-5 text-blue-600" />
+                  <p className="font-medium text-blue-900">Charges Updated</p>
+                </div>
+                <Badge className="bg-blue-100 text-blue-700">{confirmResult.charges_updated}</Badge>
+              </div>
+            )}
+            {confirmResult.charges_created > 0 && (
+              <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Zap className="h-5 w-5 text-green-600" />
+                  <p className="font-medium text-green-900">New Charges Added</p>
+                </div>
+                <Badge className="bg-green-100 text-green-700">{confirmResult.charges_created}</Badge>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center justify-center gap-3">
+          <Button onClick={() => navigate("/products")}>
+            View Products
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+          {(confirmResult.charges_created > 0 || confirmResult.charges_updated > 0) && (
+            <Button variant="outline" onClick={() => navigate("/settings/charges")}>
+              Manage Charges
+              <ExternalLink className="ml-2 h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 py-8">
@@ -707,6 +837,43 @@ export default function PriceListUploadFlow({ onBack }: Props) {
               </p>
             </div>
           </div>
+
+          {/* Charge library section */}
+          {confirmSummary.chargesTotal > 0 && (
+            <>
+              <div className="border-t pt-4">
+                <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Charge Library
+                </p>
+                {confirmSummary.chargesMatched > 0 && (
+                  <div className="mb-2 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Link2 className="h-5 w-5 text-blue-600" />
+                      <p className="text-sm font-medium text-blue-900">
+                        Existing charges to update
+                      </p>
+                    </div>
+                    <Badge className="bg-blue-100 text-blue-700">
+                      {confirmSummary.chargesMatched}
+                    </Badge>
+                  </div>
+                )}
+                {confirmSummary.chargesNew > 0 && (
+                  <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Zap className="h-5 w-5 text-green-600" />
+                      <p className="text-sm font-medium text-green-900">
+                        New charges to add
+                      </p>
+                    </div>
+                    <Badge className="bg-green-100 text-green-700">
+                      {confirmSummary.chargesNew}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -1035,5 +1202,198 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
         </button>
       </td>
     </tr>
+  );
+}
+
+// ── Charge Card Sub-component ────────────────────────────────────
+
+const PRICING_TYPE_LABELS: Record<string, string> = {
+  fixed: "Flat Fee",
+  variable: "Variable",
+  per_mile: "Per Mile",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  service: "Service Fee",
+  delivery: "Delivery",
+  surcharge: "Surcharge",
+  labor: "Labor",
+  other: "Other",
+};
+
+interface ChargeCardProps {
+  item: PriceListImportItem;
+  onAction: (itemId: string, action: PriceListImportItem["action"]) => void;
+  onUpdate: (itemId: string, patch: Partial<PriceListImportItem>) => void;
+  importId: string;
+}
+
+function ChargeCard({ item, onAction, onUpdate, importId }: ChargeCardProps) {
+  const isSkipped = item.action === "skip";
+  const isMatched = !!item.matched_charge_id;
+  const matchType = item.charge_match_type;
+
+  const handleTogglePricingType = useCallback(
+    (type: string) => {
+      onUpdate(item.id, { pricing_type_suggestion: type as any });
+      importService
+        .updateItem(importId, item.id, { pricing_type_suggestion: type })
+        .catch(() => {});
+    },
+    [item.id, importId, onUpdate],
+  );
+
+  const handleToggleEnable = useCallback(() => {
+    const next = !item.enable_on_import;
+    onUpdate(item.id, { enable_on_import: next });
+    importService
+      .updateItem(importId, item.id, { enable_on_import: next })
+      .catch(() => {});
+  }, [item.id, item.enable_on_import, importId, onUpdate]);
+
+  return (
+    <Card className={cn(isSkipped && "opacity-50")}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          {/* Left: Name + match status */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium">{item.extracted_name}</p>
+              {/* Category badge */}
+              {item.charge_category && (
+                <Badge variant="secondary" className="text-[10px]">
+                  {CATEGORY_LABELS[item.charge_category] || item.charge_category}
+                </Badge>
+              )}
+              {/* Match status badge */}
+              {isMatched ? (
+                <Badge className="bg-green-100 text-green-700 text-[10px]">
+                  <Link2 className="mr-1 h-3 w-3" />
+                  {matchType === "exact_key"
+                    ? "Exact match"
+                    : "Matched to existing"}
+                </Badge>
+              ) : (
+                <Badge className="bg-blue-100 text-blue-700 text-[10px]">
+                  <Plus className="mr-1 h-3 w-3" />
+                  New charge
+                </Badge>
+              )}
+            </div>
+
+            {/* Matched charge name */}
+            {isMatched && item.matched_charge_name && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Maps to: <span className="font-medium">{item.matched_charge_name}</span>
+                {item.charge_key_to_use && (
+                  <span className="ml-1 text-muted-foreground/60">
+                    ({item.charge_key_to_use})
+                  </span>
+                )}
+              </p>
+            )}
+
+            {/* Charge key suggestion for new charges */}
+            {!isMatched && item.charge_key_suggestion && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Key: <code className="rounded bg-muted px-1 py-0.5 text-[10px]">{item.charge_key_suggestion}</code>
+              </p>
+            )}
+          </div>
+
+          {/* Right: Price + controls */}
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            {/* Price display */}
+            {item.has_conditional_pricing ? (
+              <div className="space-y-1 text-right">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted-foreground">w/ vault:</span>
+                  <span className="text-sm font-medium">
+                    {formatPrice(item.extracted_price_with_vault)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted-foreground">standalone:</span>
+                  <span className="text-sm font-medium">
+                    {formatPrice(item.extracted_price_standalone)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <span className="text-sm font-medium">
+                {formatPrice(item.extracted_price)}
+              </span>
+            )}
+
+            {/* Action button */}
+            <button
+              type="button"
+              onClick={() =>
+                onAction(item.id, isSkipped ? "create_custom" : "skip")
+              }
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                isSkipped
+                  ? "bg-muted text-muted-foreground hover:bg-muted/80"
+                  : "bg-green-50 text-green-700 hover:bg-green-100",
+              )}
+            >
+              {isSkipped ? (
+                <>
+                  <SkipForward className="h-3 w-3" />
+                  Skip
+                </>
+              ) : (
+                <>
+                  <Zap className="h-3 w-3" />
+                  Add to Library
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom controls row — only if not skipped */}
+        {!isSkipped && (
+          <div className="mt-3 flex items-center gap-4 border-t pt-3">
+            {/* Pricing type toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Type:</span>
+              <div className="flex gap-1">
+                {["fixed", "variable", "per_mile"].map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => handleTogglePricingType(type)}
+                    className={cn(
+                      "rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors",
+                      (item.pricing_type_suggestion || "variable") === type
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80",
+                    )}
+                  >
+                    {PRICING_TYPE_LABELS[type]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Enable on import toggle */}
+            <button
+              type="button"
+              onClick={handleToggleEnable}
+              className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {item.enable_on_import ? (
+                <ToggleRight className="h-4 w-4 text-green-600" />
+              ) : (
+                <ToggleLeft className="h-4 w-4" />
+              )}
+              {item.enable_on_import ? "Enabled" : "Disabled"}
+            </button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

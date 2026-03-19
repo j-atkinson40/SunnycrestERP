@@ -109,6 +109,15 @@ class PriceListImportItem(Base):
     price_variant_type: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True
     )
+    # Charge matching fields
+    charge_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    charge_key_suggestion: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    charge_match_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    matched_charge_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    matched_charge_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    charge_key_to_use: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pricing_type_suggestion: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    enable_on_import: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

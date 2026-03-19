@@ -1,5 +1,9 @@
 import apiClient from "@/lib/api-client";
-import type { PriceListImport, ReviewData } from "@/types/price-list-import";
+import type {
+  ConfirmResult,
+  PriceListImport,
+  ReviewData,
+} from "@/types/price-list-import";
 
 export async function uploadPriceList(
   file: File,
@@ -33,13 +37,14 @@ export async function getReviewData(
     `/catalog/price-list-import/${importId}/review`,
   );
   // Normalize: backend returns {import, items: {high_confidence, ...}}
-  // Frontend expects import_info, high_confidence, low_confidence, unmatched at top level
+  // Frontend expects import_info, high_confidence, low_confidence, unmatched, charges at top level
   return {
     ...data,
     import_info: data.import ?? data.import_info,
     high_confidence: data.items?.high_confidence ?? data.high_confidence ?? [],
     low_confidence: data.items?.low_confidence ?? data.low_confidence ?? [],
     unmatched: data.items?.unmatched ?? data.unmatched ?? [],
+    charges: data.items?.charges ?? data.charges ?? [],
   };
 }
 
@@ -51,6 +56,14 @@ export async function updateItem(
     final_product_name?: string;
     final_price?: number;
     matched_template_id?: string;
+    extracted_price_with_vault?: number;
+    extracted_price_standalone?: number;
+    has_conditional_pricing?: boolean;
+    charge_match_type?: string;
+    matched_charge_id?: string;
+    charge_key_to_use?: string;
+    pricing_type_suggestion?: string;
+    enable_on_import?: boolean;
   },
 ): Promise<void> {
   await apiClient.patch(
@@ -67,7 +80,7 @@ export async function acceptAll(importId: string): Promise<void> {
 
 export async function confirmImport(
   importId: string,
-): Promise<{ products_created: number }> {
+): Promise<ConfirmResult> {
   const { data } = await apiClient.post(
     `/catalog/price-list-import/${importId}/confirm`,
   );
