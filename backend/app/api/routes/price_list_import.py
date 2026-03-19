@@ -278,12 +278,28 @@ def accept_all_items(
     if not imp:
         raise HTTPException(status_code=404, detail="Import not found")
 
+    # Non-charge items → create_product (or create_bundle for bundles)
     db.query(PriceListImportItem).filter(
-        PriceListImportItem.import_id == import_id
+        PriceListImportItem.import_id == import_id,
+        PriceListImportItem.charge_category.is_(None),
+        PriceListImportItem.match_status != "bundle",
     ).update({"action": "create_product"})
+
+    # Bundle items → create_bundle
+    db.query(PriceListImportItem).filter(
+        PriceListImportItem.import_id == import_id,
+        PriceListImportItem.match_status == "bundle",
+    ).update({"action": "create_bundle"})
+
+    # Charge items → create_custom (add to charge library)
+    db.query(PriceListImportItem).filter(
+        PriceListImportItem.import_id == import_id,
+        PriceListImportItem.charge_category.isnot(None),
+    ).update({"action": "create_custom"})
+
     db.commit()
 
-    return {"message": "All items set to create_product"}
+    return {"message": "All items accepted"}
 
 
 @router.post(

@@ -757,6 +757,9 @@ Confidence thresholds:
             match = item_data.get("match") or {}
             status = item_data.get("match_status", "unmatched")
 
+            # Charge items always default to create_custom (add to library)
+            is_charge = bool(item_data.get("charge_category"))
+
             if status == "high_confidence":
                 high += 1
                 action = "create_product"
@@ -766,6 +769,9 @@ Confidence thresholds:
             elif status == "bundle":
                 low += 1
                 action = "create_bundle"
+            elif is_charge:
+                unmatched += 1
+                action = "create_custom"
             else:
                 unmatched += 1
                 action = "skip"
