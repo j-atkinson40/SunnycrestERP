@@ -61,7 +61,9 @@ export async function updateTenant(tenantId: string, payload: Record<string, unk
 }
 
 export async function deleteTenant(tenantId: string) {
-  const { data } = await platformClient.delete(`/tenants/${tenantId}`);
+  // Use the debug-delete endpoint which is proven to work on Railway.
+  // The regular DELETE endpoint hits 500 due to unknown server issue.
+  const { data } = await platformClient.post(`/tenants/debug-delete/${tenantId}`);
   return data;
 }
 
