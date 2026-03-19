@@ -19,6 +19,7 @@ from app.models.onboarding_scenario import OnboardingScenario
 from app.models.onboarding_scenario_step import OnboardingScenarioStep
 from app.models.product import Product
 from app.models.product_catalog_template import ProductCatalogTemplate
+from app.services.charge_library_service import seed_default_charges as _seed_default_charges
 from app.schemas.onboarding import (
     OnboardingTemplateCreate,
     OnboardingTemplateUpdate,
@@ -252,6 +253,20 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "sort_order": 6,
     },
     {
+        "item_key": "setup_charges",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Configure your fees and surcharges",
+        "description": (
+            "Tell the system which fees you charge and at what rates. "
+            "These appear automatically on orders and invoices."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/onboarding/charges",
+        "sort_order": 7,
+    },
+    {
         "item_key": "setup_sms_confirmation",
         "tier": "should_complete",
         "category": "integration",
@@ -263,7 +278,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/delivery/settings",
-        "sort_order": 7,
+        "sort_order": 8,
     },
     {
         "item_key": "run_production_log_scenario",
@@ -277,7 +292,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 2,
         "action_type": "navigate",
         "action_target": "/onboarding/scenarios/production_log_walkthrough",
-        "sort_order": 8,
+        "sort_order": 9,
     },
     {
         "item_key": "set_inventory_minimums",
@@ -291,7 +306,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/inventory",
-        "sort_order": 9,
+        "sort_order": 10,
     },
     {
         "item_key": "invite_team",
@@ -304,7 +319,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/admin/users",
-        "sort_order": 10,
+        "sort_order": 11,
     },
     # OPTIONAL
     {
@@ -319,7 +334,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 30,
         "action_type": "navigate",
         "action_target": "/safety",
-        "sort_order": 11,
+        "sort_order": 12,
     },
     {
         "item_key": "explore_extensions",
@@ -330,7 +345,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/extensions",
-        "sort_order": 12,
+        "sort_order": 13,
     },
     {
         "item_key": "run_month_end_scenario",
@@ -344,7 +359,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/scenarios/month_end_walkthrough",
-        "sort_order": 13,
+        "sort_order": 14,
     },
     {
         "item_key": "customize_invoice_template",
@@ -357,7 +372,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/admin/settings",
-        "sort_order": 14,
+        "sort_order": 15,
     },
     {
         "item_key": "complete_urn_catalog",
@@ -371,7 +386,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/products/urns",
-        "sort_order": 15,
+        "sort_order": 16,
     },
 ]
 
@@ -909,6 +924,10 @@ def initialize_checklist(
             sort_order=item_def.get("sort_order", 0),
         )
         db.add(item)
+
+    # --- Seed default charge library for manufacturing preset ---
+    if preset == "manufacturing":
+        _seed_default_charges(db, tenant_id)
 
     # --- Create scenarios + steps ---
     scenarios_def = _PRESET_SCENARIOS.get(preset, MANUFACTURING_SCENARIOS)

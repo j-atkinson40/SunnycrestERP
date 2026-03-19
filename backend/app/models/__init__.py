@@ -10,6 +10,7 @@ from app.models.customer import Customer
 from app.models.customer_contact import CustomerContact
 from app.models.customer_note import CustomerNote
 from app.models.carrier import Carrier
+from app.models.charge_library_item import ChargeLibraryItem
 from app.models.cure_schedule import CureSchedule
 from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
 from app.models.delivery import Delivery
@@ -144,6 +145,7 @@ __all__ = [
     "CustomerNote",
     "CustomerPayment",
     "Carrier",
+    "ChargeLibraryItem",
     "CureSchedule",
     "CustomerPaymentApplication",
     "Delivery",

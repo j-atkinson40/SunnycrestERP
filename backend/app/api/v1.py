@@ -18,6 +18,7 @@ from app.api.routes import (
     bom,
     carrier_portal,
     cases,
+    charge_library,
     companies,
     customers,
     deliveries,
@@ -92,6 +93,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     cases.router, prefix="/cases", tags=["Funeral Home Cases"]
+)
+v1_router.include_router(
+    charge_library.router, prefix="/charge-library", tags=["Charge Library"]
 )
 v1_router.include_router(
     companies.router, prefix="/companies", tags=["Company Management"]
