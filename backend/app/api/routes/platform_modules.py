@@ -329,6 +329,17 @@ def _do_onboard_tenant(data, user, db):
         logging.getLogger(__name__).warning(f"Failed to initialize onboarding: {e}")
         result["onboarding_initialized"] = False
 
+    # Seed default charge library (separate step — table may not exist on fresh deploys)
+    if data.vertical == "manufacturing":
+        try:
+            from app.services.charge_library_service import seed_default_charges
+            seed_default_charges(db, company.id)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to seed charges: {e}")
+
     # Kick off website intelligence if URL provided
     if data.website_url:
         try:

@@ -19,7 +19,6 @@ from app.models.onboarding_scenario import OnboardingScenario
 from app.models.onboarding_scenario_step import OnboardingScenarioStep
 from app.models.product import Product
 from app.models.product_catalog_template import ProductCatalogTemplate
-from app.services.charge_library_service import seed_default_charges as _seed_default_charges
 from app.schemas.onboarding import (
     OnboardingTemplateCreate,
     OnboardingTemplateUpdate,
@@ -925,9 +924,8 @@ def initialize_checklist(
         )
         db.add(item)
 
-    # --- Seed default charge library for manufacturing preset ---
-    if preset == "manufacturing":
-        _seed_default_charges(db, tenant_id)
+    # NOTE: charge library seeding moved to tenant creation endpoint
+    # to avoid transaction issues if the table doesn't exist yet.
 
     # --- Create scenarios + steps ---
     scenarios_def = _PRESET_SCENARIOS.get(preset, MANUFACTURING_SCENARIOS)
