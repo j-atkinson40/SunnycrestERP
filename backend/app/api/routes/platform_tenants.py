@@ -158,6 +158,97 @@ def get_tenant(
     }
 
 
+@router.post("/debug-delete/{tenant_id}")
+def debug_delete_tenant(
+    tenant_id: str,
+    _user: PlatformUser = Depends(require_platform_role("super_admin")),
+    db: Session = Depends(get_db),
+):
+    """Debug version of delete that returns errors as 200 so CORS doesn't block."""
+    import traceback
+    from sqlalchemy import text as sa_text
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    if not company:
+        return {"status": "error", "detail": "Tenant not found"}
+
+    tenant_name = company.name
+    db.expunge(company)
+    steps = []
+
+    try:
+        def safe_run(label, stmt_str, params=None):
+            nested = db.begin_nested()
+            try:
+                db.execute(sa_text(stmt_str), params or {})
+                nested.commit()
+                steps.append({"step": label, "status": "ok"})
+            except Exception as e:
+                nested.rollback()
+                steps.append({"step": label, "status": "failed", "error": str(e)[:200]})
+
+        # Get user/role IDs
+        user_ids = [r[0] for r in db.execute(sa_text("SELECT id FROM users WHERE company_id = :tid"), {"tid": tenant_id}).fetchall()]
+        role_ids = [r[0] for r in db.execute(sa_text("SELECT id FROM roles WHERE company_id = :tid"), {"tid": tenant_id}).fetchall()]
+        steps.append({"step": "discovery", "users": len(user_ids), "roles": len(role_ids)})
+
+        # Get all company/tenant ref tables
+        ref_cols = db.execute(sa_text("""
+            SELECT table_name, column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND column_name IN ('company_id', 'tenant_id')
+            AND table_name != 'companies'
+        """)).fetchall()
+        steps.append({"step": "ref_discovery", "tables": len(ref_cols)})
+
+        # Delete company refs
+        for _ in range(3):
+            for tbl, col in ref_cols:
+                safe_run(f"del_{tbl}.{col}", f'DELETE FROM "{tbl}" WHERE "{col}" = :tid', {"tid": tenant_id})
+
+        # Null user refs
+        for uid in user_ids:
+            safe_run(f"null_user_{uid[:8]}",
+                "UPDATE users SET created_by = NULL, modified_by = NULL WHERE id = :uid",
+                {"uid": uid})
+            for tbl in ["employee_profiles", "user_permission_overrides"]:
+                safe_run(f"del_{tbl}_{uid[:8]}",
+                    f'DELETE FROM "{tbl}" WHERE user_id = :uid', {"uid": uid})
+
+        # Null role refs
+        for rid in role_ids:
+            safe_run(f"null_role_{rid[:8]}",
+                'UPDATE users SET role_id = NULL WHERE role_id = :rid', {"rid": rid})
+
+        # Delete users
+        safe_run("del_users", 'DELETE FROM users WHERE company_id = :tid', {"tid": tenant_id})
+        safe_run("del_roles", 'DELETE FROM roles WHERE company_id = :tid', {"tid": tenant_id})
+
+        # Final company ref cleanup
+        for tbl, col in ref_cols:
+            safe_run(f"final_{tbl}.{col}", f'DELETE FROM "{tbl}" WHERE "{col}" = :tid', {"tid": tenant_id})
+
+        # Self refs
+        safe_run("null_company_self",
+            'UPDATE companies SET parent_company_id = NULL, created_by = NULL, modified_by = NULL WHERE id = :tid',
+            {"tid": tenant_id})
+
+        # Delete company
+        db.execute(sa_text("DELETE FROM companies WHERE id = :tid"), {"tid": tenant_id})
+        db.commit()
+        steps.append({"step": "delete_company", "status": "ok"})
+
+        return {"status": "success", "tenant": tenant_name, "steps": steps}
+    except Exception as e:
+        db.rollback()
+        return {
+            "status": "error",
+            "detail": f"{type(e).__name__}: {str(e)[:500]}",
+            "traceback": traceback.format_exc()[-1000:],
+            "steps": steps,
+        }
+
+
 @router.get("/debug-tenant/{slug}")
 def debug_tenant_by_slug(
     slug: str,
