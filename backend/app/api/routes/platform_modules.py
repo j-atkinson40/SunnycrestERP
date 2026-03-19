@@ -174,6 +174,25 @@ def onboard_tenant(
 
     This is the single entry point for tenant onboarding from the platform admin.
     """
+    import logging as _log
+    import traceback
+    _logger = _log.getLogger("onboard_tenant")
+
+    try:
+        return _do_onboard_tenant(data, user, db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.exception("Onboard tenant failed")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Tenant creation failed: {type(e).__name__}: {str(e)[:500]}",
+        )
+
+
+def _do_onboard_tenant(data, user, db):
+    """Inner onboard logic — separated so the outer function can catch all errors."""
     from app.core.security import hash_password as get_password_hash
     from app.models.company import Company
     from app.models.user import User
@@ -196,8 +215,16 @@ def onboard_tenant(
                 "Cleaning up orphaned user %s (email=%s, old company_id=%s)",
                 existing_user.id, existing_user.email, existing_user.company_id,
             )
-            db.delete(existing_user)
-            db.flush()
+            from sqlalchemy import text as _text
+            # Null out self-refs first, then delete
+            try:
+                db.execute(_text("UPDATE users SET created_by = NULL, modified_by = NULL WHERE id = :uid"), {"uid": existing_user.id})
+                db.execute(_text("DELETE FROM users WHERE id = :uid"), {"uid": existing_user.id})
+                db.flush()
+            except Exception as cleanup_err:
+                logging.getLogger(__name__).warning("Orphan cleanup failed: %s", cleanup_err)
+                db.rollback()
+                raise HTTPException(status_code=409, detail=f"Email '{data.admin_email}' is tied to orphaned data. Please use a different email.")
         else:
             raise HTTPException(status_code=409, detail=f"Email '{data.admin_email}' already in use")
 
