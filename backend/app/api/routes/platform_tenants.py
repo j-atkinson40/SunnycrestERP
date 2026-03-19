@@ -181,128 +181,96 @@ def delete_tenant(
     tenant_name = company.name
     db.expunge(company)  # detach from session
 
-    # Use a server-side PL/pgSQL function that iterates through all FK
-    # references and deletes them in dependency order. This works on
-    # managed PostgreSQL (Railway) without superuser privileges.
+    # Simple multi-pass approach: discover FK refs via pg_constraint,
+    # delete in passes until the company can be removed.
     engine = db.get_bind()
     connection = engine.connect()
     try:
         trans = connection.begin()
 
-        # Create a temporary function that cascades deletes through all FKs
-        connection.execute(text("""
-            CREATE OR REPLACE FUNCTION _delete_tenant_cascade(p_tenant_id text)
-            RETURNS void AS $$
-            DECLARE
-                r RECORD;
-                sql_stmt text;
-                pass_num int := 0;
-                max_passes int := 10;
-                rows_deleted int;
-            BEGIN
-                -- Multi-pass deletion: keep trying until nothing references the tenant
-                LOOP
-                    pass_num := pass_num + 1;
-                    rows_deleted := 0;
+        # Discover ALL tables that FK-reference companies
+        company_refs = connection.execute(text("""
+            SELECT DISTINCT src.relname, a.attname
+            FROM pg_constraint c
+            JOIN pg_class src ON c.conrelid = src.oid
+            JOIN pg_class tgt ON c.confrelid = tgt.oid
+            JOIN pg_attribute a ON a.attrelid = src.oid AND a.attnum = ANY(c.conkey)
+            JOIN pg_namespace ns ON src.relnamespace = ns.oid
+            WHERE c.contype = 'f' AND tgt.relname = 'companies'
+              AND ns.nspname = 'public' AND src.relname != 'companies'
+        """)).fetchall()
 
-                    -- Find all FK constraints that reference companies.id
-                    FOR r IN
-                        SELECT DISTINCT
-                            src.relname AS src_table,
-                            a.attname AS src_column
-                        FROM pg_constraint c
-                        JOIN pg_class src ON c.conrelid = src.oid
-                        JOIN pg_class tgt ON c.confrelid = tgt.oid
-                        JOIN pg_attribute a ON a.attrelid = src.oid
-                            AND a.attnum = ANY(c.conkey)
-                        JOIN pg_namespace ns ON src.relnamespace = ns.oid
-                        WHERE c.contype = 'f'
-                          AND tgt.relname = 'companies'
-                          AND ns.nspname = 'public'
-                          AND src.relname != 'companies'
-                    LOOP
-                        sql_stmt := format(
-                            'DELETE FROM %I WHERE %I = $1',
-                            r.src_table, r.src_column
-                        );
-                        BEGIN
-                            EXECUTE sql_stmt USING p_tenant_id;
-                            GET DIAGNOSTICS rows_deleted = rows_deleted + ROW_COUNT;
-                        EXCEPTION WHEN OTHERS THEN
-                            -- FK violation means we need another pass
-                            NULL;
-                        END;
-                    END LOOP;
+        # Discover ALL tables that FK-reference users
+        user_refs = connection.execute(text("""
+            SELECT DISTINCT src.relname, a.attname
+            FROM pg_constraint c
+            JOIN pg_class src ON c.conrelid = src.oid
+            JOIN pg_class tgt ON c.confrelid = tgt.oid
+            JOIN pg_attribute a ON a.attrelid = src.oid AND a.attnum = ANY(c.conkey)
+            JOIN pg_namespace ns ON src.relnamespace = ns.oid
+            WHERE c.contype = 'f' AND tgt.relname = 'users'
+              AND ns.nspname = 'public'
+        """)).fetchall()
 
-                    -- Also handle users table FK refs: null out all user references
-                    -- then delete users
-                    BEGIN
-                        UPDATE users SET created_by = NULL, modified_by = NULL
-                        WHERE company_id = p_tenant_id;
+        # Get user IDs for this tenant
+        user_ids = [
+            r[0] for r in connection.execute(
+                text("SELECT id FROM users WHERE company_id = :tid"),
+                {"tid": tenant_id},
+            ).fetchall()
+        ]
 
-                        -- Null out user refs in other tables
-                        FOR r IN
-                            SELECT DISTINCT
-                                src.relname AS src_table,
-                                a.attname AS src_column
-                            FROM pg_constraint c
-                            JOIN pg_class src ON c.conrelid = src.oid
-                            JOIN pg_class tgt ON c.confrelid = tgt.oid
-                            JOIN pg_attribute a ON a.attrelid = src.oid
-                                AND a.attnum = ANY(c.conkey)
-                            JOIN pg_namespace ns ON src.relnamespace = ns.oid
-                            WHERE c.contype = 'f'
-                              AND tgt.relname = 'users'
-                              AND ns.nspname = 'public'
-                              AND src.relname != 'users'
-                        LOOP
-                            sql_stmt := format(
-                                'UPDATE %I SET %I = NULL WHERE %I IN (SELECT id FROM users WHERE company_id = $1)',
-                                r.src_table, r.src_column, r.src_column
-                            );
-                            BEGIN
-                                EXECUTE sql_stmt USING p_tenant_id;
-                            EXCEPTION WHEN OTHERS THEN
-                                NULL;
-                            END;
-                        END LOOP;
+        # Pass 1: Null out all user references so users can be deleted
+        if user_ids:
+            for tbl, col in user_refs:
+                try:
+                    # Check if column is nullable
+                    is_nullable = connection.execute(text("""
+                        SELECT is_nullable FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = :tbl AND column_name = :col
+                    """), {"tbl": tbl, "col": col}).scalar()
 
-                        DELETE FROM users WHERE company_id = p_tenant_id;
-                    EXCEPTION WHEN OTHERS THEN
-                        NULL;
-                    END;
+                    if is_nullable == 'YES':
+                        connection.execute(
+                            text(f'UPDATE "{tbl}" SET "{col}" = NULL WHERE "{col}" = ANY(:ids)'),
+                            {"ids": user_ids},
+                        )
+                    else:
+                        # Non-nullable FK to users — must delete the row
+                        connection.execute(
+                            text(f'DELETE FROM "{tbl}" WHERE "{col}" = ANY(:ids)'),
+                            {"ids": user_ids},
+                        )
+                except Exception as e:
+                    logger.debug("Pass 1 skip %s.%s: %s", tbl, col, str(e)[:80])
 
-                    -- Try to delete roles
-                    BEGIN
-                        DELETE FROM roles WHERE company_id = p_tenant_id;
-                    EXCEPTION WHEN OTHERS THEN
-                        NULL;
-                    END;
+        # Pass 2: Delete users and roles
+        if user_ids:
+            try:
+                connection.execute(text("DELETE FROM users WHERE company_id = :tid"), {"tid": tenant_id})
+            except Exception as e:
+                logger.warning("Users delete failed: %s", str(e)[:200])
+        try:
+            connection.execute(text("DELETE FROM roles WHERE company_id = :tid"), {"tid": tenant_id})
+        except Exception as e:
+            logger.debug("Roles delete: %s", str(e)[:80])
 
-                    -- Try to delete the company
-                    BEGIN
-                        DELETE FROM companies WHERE id = p_tenant_id;
-                        -- If we get here, it worked
-                        RETURN;
-                    EXCEPTION WHEN OTHERS THEN
-                        -- Still blocked — continue to next pass
-                        IF pass_num >= max_passes THEN
-                            RAISE EXCEPTION 'Could not delete tenant after % passes', max_passes;
-                        END IF;
-                    END;
-                END LOOP;
-            END;
-            $$ LANGUAGE plpgsql;
-        """))
+        # Pass 3: Delete all company-referencing rows (3 attempts for circular deps)
+        for attempt in range(3):
+            for tbl, col in company_refs:
+                try:
+                    connection.execute(
+                        text(f'DELETE FROM "{tbl}" WHERE "{col}" = :tid'),
+                        {"tid": tenant_id},
+                    )
+                except Exception:
+                    pass
 
-        # Execute the cascade delete function
+        # Pass 4: Delete the company
         connection.execute(
-            text("SELECT _delete_tenant_cascade(:tid)"),
+            text("DELETE FROM companies WHERE id = :tid"),
             {"tid": tenant_id},
         )
-
-        # Clean up the function
-        connection.execute(text("DROP FUNCTION IF EXISTS _delete_tenant_cascade(text)"))
 
         trans.commit()
         logger.info("Tenant %s (%s) deleted successfully", tenant_id, tenant_name)
@@ -310,13 +278,6 @@ def delete_tenant(
         logger.exception("Failed to delete tenant %s", tenant_id)
         try:
             trans.rollback()
-        except Exception:
-            pass
-        # Clean up function on failure too
-        try:
-            conn2 = engine.connect()
-            conn2.execute(text("DROP FUNCTION IF EXISTS _delete_tenant_cascade(text)"))
-            conn2.close()
         except Exception:
             pass
         raise HTTPException(
