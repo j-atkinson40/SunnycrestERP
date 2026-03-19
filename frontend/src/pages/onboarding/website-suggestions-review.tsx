@@ -291,8 +291,27 @@ export default function WebsiteSuggestionsReview() {
     );
   }
 
-  if (!intelligence || localSuggestions.length === 0) {
-    // Nothing to review; go straight to catalog builder
+  if (!intelligence) {
+    // No website intelligence at all — go to catalog builder
+    navigate("/onboarding/catalog-builder", { replace: true });
+    return null;
+  }
+
+  if (intelligence.scrape_status === "pending" || intelligence.scrape_status === "in_progress") {
+    return (
+      <div className="mx-auto max-w-3xl p-6 text-center">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin text-teal-500 mb-4" />
+        <h2 className="text-lg font-semibold">Scanning your website...</h2>
+        <p className="text-sm text-muted-foreground mt-1">This usually takes 30-60 seconds. You can continue to the catalog builder and come back.</p>
+        <Button variant="outline" className="mt-4" onClick={() => navigate("/onboarding/catalog-builder")}>
+          Skip to Catalog Builder →
+        </Button>
+      </div>
+    );
+  }
+
+  if (localSuggestions.length === 0) {
+    // Scrape completed but no actionable suggestions found
     navigate("/onboarding/catalog-builder", { replace: true });
     return null;
   }
