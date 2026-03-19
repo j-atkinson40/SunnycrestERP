@@ -76,7 +76,7 @@ def get_directory_for_area(
 def get_directory_for_tenant(
     db: Session,
     tenant_id: str,
-    radius_miles: int = 50,
+    radius_miles: int = 100,
 ) -> list[dict]:
     """Get directory entries using the tenant's facility address for location."""
     from app.models.company import Company
