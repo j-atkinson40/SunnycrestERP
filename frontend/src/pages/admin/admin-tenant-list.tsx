@@ -406,6 +406,13 @@ export default function AdminTenantList() {
                     <p className="truncate text-xs text-muted-foreground">
                       {tenant.slug}.yourerp.com
                     </p>
+                    {(tenant.facility_city || tenant.facility_state) && (
+                      <p className="text-xs text-muted-foreground">
+                        {tenant.facility_city && tenant.facility_state
+                          ? `${tenant.facility_city}, ${tenant.facility_state}`
+                          : tenant.facility_state || ""}
+                      </p>
+                    )}
                   </div>
                 </div>
 

@@ -20,6 +20,17 @@ export interface TenantOverview {
   subscription_status: string | null;
   plan_name: string | null;
   created_at: string;
+  company_legal_name?: string | null;
+  facility_address_line1?: string | null;
+  facility_address_line2?: string | null;
+  facility_city?: string | null;
+  facility_state?: string | null;
+  facility_zip?: string | null;
+  company_phone?: string | null;
+  website_url?: string | null;
+  npca_certification_status?: string | null;
+  spring_burials_answer?: string | null;
+  internal_admin_notes?: string | null;
 }
 
 export interface TenantDetail extends TenantOverview {
@@ -152,6 +163,16 @@ export interface OnboardTenantRequest {
   admin_last_name: string;
   initial_settings?: Record<string, unknown>;
   website_url?: string;
+  company_legal_name?: string;
+  facility_address_line1?: string;
+  facility_address_line2?: string;
+  facility_city?: string;
+  facility_state?: string;
+  facility_zip?: string;
+  company_phone?: string;
+  npca_certification_status?: string;
+  spring_burials_answer?: string;
+  internal_admin_notes?: string;
 }
 
 export interface OnboardTenantResponse {

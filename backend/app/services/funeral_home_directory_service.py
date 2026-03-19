@@ -73,6 +73,28 @@ def get_directory_for_area(
     return [_entry_to_dict(e) for e in entries]
 
 
+def get_directory_for_tenant(
+    db: Session,
+    tenant_id: str,
+    radius_miles: int = 50,
+) -> list[dict]:
+    """Get directory entries using the tenant's facility address for location."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    if not company:
+        return []
+
+    lat = float(company.facility_latitude) if company.facility_latitude else None
+    lng = float(company.facility_longitude) if company.facility_longitude else None
+
+    if not lat or not lng:
+        # No geocoded location available
+        return []
+
+    return get_directory_for_area(db, tenant_id, lat, lng, radius_miles)
+
+
 def get_platform_matches(db: Session, tenant_id: str) -> list[dict]:
     """Get funeral home tenants on the platform that might be this manufacturer's customers."""
     from app.models.company import Company

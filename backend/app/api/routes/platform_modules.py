@@ -39,6 +39,17 @@ class CreateTenantRequest(BaseModel):
     admin_last_name: str = "User"
     initial_settings: dict | None = None  # e.g. {"spring_burials_enabled": true}
     website_url: str | None = None
+    # Facility / company details captured at creation
+    company_legal_name: str | None = None
+    facility_address_line1: str | None = None
+    facility_address_line2: str | None = None
+    facility_city: str | None = None
+    facility_state: str | None = None
+    facility_zip: str | None = None
+    company_phone: str | None = None
+    npca_certification_status: str = "unknown"
+    spring_burials_answer: str = "unknown"  # "unknown", "yes", "no"
+    internal_admin_notes: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +251,30 @@ def _do_onboard_tenant(data, user, db):
     db.add(company)
     db.flush()
 
+    # Populate facility / company details captured at creation
+    company.company_legal_name = data.company_legal_name
+    company.facility_address_line1 = data.facility_address_line1
+    company.facility_address_line2 = data.facility_address_line2
+    company.facility_city = data.facility_city
+    company.facility_state = data.facility_state
+    company.facility_zip = data.facility_zip
+    company.company_phone = data.company_phone
+    company.npca_certification_status = data.npca_certification_status
+    company.npca_certification_set_by = (
+        "admin_at_creation" if data.npca_certification_status != "unknown" else None
+    )
+    company.spring_burials_known_at_creation = data.spring_burials_answer != "unknown"
+    company.internal_admin_notes = data.internal_admin_notes
+
+    # If spring burials = yes, persist in settings_json
+    if data.spring_burials_answer == "yes":
+        company.set_setting("spring_burials_enabled", True)
+        if data.facility_state:
+            from app.core.spring_burial_defaults import get_season_defaults
+            defaults = get_season_defaults(data.facility_state)
+            company.set_setting("spring_burial_season_start", defaults["start"])
+            company.set_setting("spring_burial_season_end", defaults["end"])
+
     # Seed default roles
     from app.services.role_service import seed_default_roles
     admin_role, _employee_role = seed_default_roles(db, company.id)
@@ -293,6 +328,19 @@ def _do_onboard_tenant(data, user, db):
                 company_id=company.id, module=mod_key, enabled=True
             ))
     result["modules_enabled"] = len(modules_to_enable)
+
+    # If NPCA = certified, auto-enable npca_audit_prep module
+    if data.npca_certification_status == "certified":
+        npca_rec = db.query(CompanyModule).filter(
+            CompanyModule.company_id == company.id,
+            CompanyModule.module == "npca_audit_prep",
+        ).first()
+        if npca_rec:
+            npca_rec.enabled = True
+        else:
+            db.add(CompanyModule(
+                company_id=company.id, module="npca_audit_prep", enabled=True
+            ))
 
     # Commit the core tenant data first so the session is clean
     db.commit()
@@ -429,5 +477,28 @@ def _do_onboard_tenant(data, user, db):
             _logging.getLogger(__name__).warning(
                 f"Failed to start website intelligence: {e}"
             )
+
+    # Geocode facility address in background after commit
+    if data.facility_address_line1 and data.facility_city:
+        try:
+            import threading
+
+            def _geocode(tid: str):
+                try:
+                    from app.services.geocoding_service import geocode_tenant_address
+                    geocode_tenant_address(tid)
+                except Exception as exc:
+                    import logging as _log
+                    _log.getLogger("geocoding").warning(
+                        "Background geocode failed for tenant %s: %s", tid, exc
+                    )
+
+            thread = threading.Thread(
+                target=_geocode, args=(company.id,), daemon=True
+            )
+            thread.start()
+            result["geocoding"] = "started"
+        except Exception:
+            pass
 
     return result

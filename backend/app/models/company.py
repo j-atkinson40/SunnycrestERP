@@ -61,6 +61,31 @@ class Company(Base):
     # Tenant-specific settings (JSON blob — spring_burials_enabled, etc.)
     settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Facility address (separate from mailing address above)
+    company_legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    facility_address_line1: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    facility_address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    facility_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    facility_state: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    facility_zip: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    facility_latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
+    facility_longitude: Mapped[Decimal | None] = mapped_column(Numeric(11, 7), nullable=True)
+    company_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # NPCA certification
+    npca_certification_status: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, default="unknown"
+    )
+    npca_certification_set_by: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    # Spring burials
+    spring_burials_known_at_creation: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+
+    # Internal notes (platform admin only)
+    internal_admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Organizational Hierarchy
     parent_company_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("companies.id"), nullable=True, index=True

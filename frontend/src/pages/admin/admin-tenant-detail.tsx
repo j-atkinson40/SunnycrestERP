@@ -44,6 +44,9 @@ import {
   RotateCcw,
   Trash2,
   Pause,
+  MapPin,
+  Globe,
+  Save,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -75,6 +78,46 @@ function getPreset(tenant: TenantDetail): string | null {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// US States + Dropdown options
+// ---------------------------------------------------------------------------
+
+const US_STATES = [
+  { value: "AL", label: "Alabama" }, { value: "AK", label: "Alaska" },
+  { value: "AZ", label: "Arizona" }, { value: "AR", label: "Arkansas" },
+  { value: "CA", label: "California" }, { value: "CO", label: "Colorado" },
+  { value: "CT", label: "Connecticut" }, { value: "DE", label: "Delaware" },
+  { value: "FL", label: "Florida" }, { value: "GA", label: "Georgia" },
+  { value: "HI", label: "Hawaii" }, { value: "ID", label: "Idaho" },
+  { value: "IL", label: "Illinois" }, { value: "IN", label: "Indiana" },
+  { value: "IA", label: "Iowa" }, { value: "KS", label: "Kansas" },
+  { value: "KY", label: "Kentucky" }, { value: "LA", label: "Louisiana" },
+  { value: "ME", label: "Maine" }, { value: "MD", label: "Maryland" },
+  { value: "MA", label: "Massachusetts" }, { value: "MI", label: "Michigan" },
+  { value: "MN", label: "Minnesota" }, { value: "MS", label: "Mississippi" },
+  { value: "MO", label: "Missouri" }, { value: "MT", label: "Montana" },
+  { value: "NE", label: "Nebraska" }, { value: "NV", label: "Nevada" },
+  { value: "NH", label: "New Hampshire" }, { value: "NJ", label: "New Jersey" },
+  { value: "NM", label: "New Mexico" }, { value: "NY", label: "New York" },
+  { value: "NC", label: "North Carolina" }, { value: "ND", label: "North Dakota" },
+  { value: "OH", label: "Ohio" }, { value: "OK", label: "Oklahoma" },
+  { value: "OR", label: "Oregon" }, { value: "PA", label: "Pennsylvania" },
+  { value: "RI", label: "Rhode Island" }, { value: "SC", label: "South Carolina" },
+  { value: "SD", label: "South Dakota" }, { value: "TN", label: "Tennessee" },
+  { value: "TX", label: "Texas" }, { value: "UT", label: "Utah" },
+  { value: "VT", label: "Vermont" }, { value: "VA", label: "Virginia" },
+  { value: "WA", label: "Washington" }, { value: "WV", label: "West Virginia" },
+  { value: "WI", label: "Wisconsin" }, { value: "WY", label: "Wyoming" },
+];
+
+const NPCA_OPTIONS = [
+  { value: "unknown", label: "Unknown" },
+  { value: "certified", label: "Certified" },
+  { value: "pursuing", label: "Pursuing certification" },
+  { value: "wilbert_only", label: "Wilbert standards only" },
+  { value: "not_certified", label: "Not certified" },
+];
 
 // ---------------------------------------------------------------------------
 // Tab definitions
@@ -975,8 +1018,65 @@ function SettingsTab({
   deleteConfirm: string;
   onDeleteConfirmChange: (v: string) => void;
 }) {
+  const [companyForm, setCompanyForm] = useState({
+    company_legal_name: tenant.company_legal_name || "",
+    facility_address_line1: tenant.facility_address_line1 || "",
+    facility_address_line2: tenant.facility_address_line2 || "",
+    facility_city: tenant.facility_city || "",
+    facility_state: tenant.facility_state || "",
+    facility_zip: tenant.facility_zip || "",
+    company_phone: tenant.company_phone || "",
+  });
+  const [companyDirty, setCompanyDirty] = useState(false);
+  const [companySaving, setCompanySaving] = useState(false);
+
+  const [intelForm, setIntelForm] = useState({
+    website_url: tenant.website_url || "",
+    npca_certification_status: tenant.npca_certification_status || "unknown",
+    internal_admin_notes: tenant.internal_admin_notes || "",
+  });
+  const [intelDirty, setIntelDirty] = useState(false);
+  const [intelSaving, setIntelSaving] = useState(false);
+
+  function updateCompany(field: string, value: string) {
+    setCompanyForm((f) => ({ ...f, [field]: value }));
+    setCompanyDirty(true);
+  }
+
+  function updateIntel(field: string, value: string) {
+    setIntelForm((f) => ({ ...f, [field]: value }));
+    setIntelDirty(true);
+  }
+
+  async function saveCompanyInfo() {
+    setCompanySaving(true);
+    try {
+      await updateTenant(tenant.id, companyForm);
+      toast.success("Company information saved");
+      setCompanyDirty(false);
+    } catch {
+      toast.error("Failed to save company information");
+    } finally {
+      setCompanySaving(false);
+    }
+  }
+
+  async function saveIntelInfo() {
+    setIntelSaving(true);
+    try {
+      await updateTenant(tenant.id, intelForm);
+      toast.success("Platform intelligence saved");
+      setIntelDirty(false);
+    } catch {
+      toast.error("Failed to save platform intelligence");
+    } finally {
+      setIntelSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {/* Tenant Information (read-only summary) */}
       <Card>
         <CardHeader>
           <CardTitle>Tenant Information</CardTitle>
@@ -1008,6 +1108,200 @@ function SettingsTab({
               <p className="text-sm font-medium">
                 {new Date(tenant.created_at).toLocaleString()}
               </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Company Information (editable) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="h-4 w-4" />
+              Company Information
+            </CardTitle>
+            <Button
+              variant="default"
+              size="sm"
+              disabled={!companyDirty || companySaving}
+              onClick={saveCompanyInfo}
+              className="gap-1.5"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {companySaving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Company Legal Name
+              </label>
+              <input
+                type="text"
+                value={companyForm.company_legal_name}
+                onChange={(e) => updateCompany("company_legal_name", e.target.value)}
+                placeholder="Legal entity name"
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Facility Address Line 1
+              </label>
+              <input
+                type="text"
+                value={companyForm.facility_address_line1}
+                onChange={(e) => updateCompany("facility_address_line1", e.target.value)}
+                placeholder="123 Industrial Blvd"
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Facility Address Line 2
+              </label>
+              <input
+                type="text"
+                value={companyForm.facility_address_line2}
+                onChange={(e) => updateCompany("facility_address_line2", e.target.value)}
+                placeholder="Suite 100"
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                City
+              </label>
+              <input
+                type="text"
+                value={companyForm.facility_city}
+                onChange={(e) => updateCompany("facility_city", e.target.value)}
+                placeholder="Springfield"
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  State
+                </label>
+                <select
+                  value={companyForm.facility_state}
+                  onChange={(e) => updateCompany("facility_state", e.target.value)}
+                  className="w-full rounded-md border px-3 py-1.5 text-sm"
+                >
+                  <option value="">Select</option>
+                  {US_STATES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Zip Code
+                </label>
+                <input
+                  type="text"
+                  value={companyForm.facility_zip}
+                  onChange={(e) => updateCompany("facility_zip", e.target.value)}
+                  placeholder="12345"
+                  className="w-full rounded-md border px-3 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Company Phone
+              </label>
+              <input
+                type="tel"
+                value={companyForm.company_phone}
+                onChange={(e) => updateCompany("company_phone", e.target.value)}
+                placeholder="(555) 123-4567"
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button variant="outline" size="sm" className="gap-1.5" disabled>
+                <MapPin className="h-3 w-3" />
+                Re-geocode Address
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Platform Intelligence (editable) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-4 w-4" />
+              Platform Intelligence
+            </CardTitle>
+            <Button
+              variant="default"
+              size="sm"
+              disabled={!intelDirty || intelSaving}
+              onClick={saveIntelInfo}
+              className="gap-1.5"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {intelSaving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Website URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={intelForm.website_url}
+                  onChange={(e) => updateIntel("website_url", e.target.value)}
+                  placeholder="https://www.example.com"
+                  className="flex-1 rounded-md border px-3 py-1.5 text-sm"
+                />
+                <Button variant="outline" size="sm" disabled>
+                  Re-run Scan
+                </Button>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                NPCA Certification Status
+              </label>
+              <select
+                value={intelForm.npca_certification_status}
+                onChange={(e) => updateIntel("npca_certification_status", e.target.value)}
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              >
+                {NPCA_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Internal Notes
+              </label>
+              <textarea
+                value={intelForm.internal_admin_notes}
+                onChange={(e) => updateIntel("internal_admin_notes", e.target.value)}
+                placeholder="Internal notes about this tenant..."
+                rows={4}
+                className="w-full rounded-md border px-3 py-1.5 text-sm"
+              />
             </div>
           </div>
         </CardContent>

@@ -18,8 +18,58 @@ import {
   ArrowRight,
   Snowflake,
   Sun,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { CardContent } from "@/components/ui/card";
+
+// ── US States ────────────────────────────────────────────────────────────────
+
+const US_STATES = [
+  { value: "AL", label: "Alabama" }, { value: "AK", label: "Alaska" },
+  { value: "AZ", label: "Arizona" }, { value: "AR", label: "Arkansas" },
+  { value: "CA", label: "California" }, { value: "CO", label: "Colorado" },
+  { value: "CT", label: "Connecticut" }, { value: "DE", label: "Delaware" },
+  { value: "FL", label: "Florida" }, { value: "GA", label: "Georgia" },
+  { value: "HI", label: "Hawaii" }, { value: "ID", label: "Idaho" },
+  { value: "IL", label: "Illinois" }, { value: "IN", label: "Indiana" },
+  { value: "IA", label: "Iowa" }, { value: "KS", label: "Kansas" },
+  { value: "KY", label: "Kentucky" }, { value: "LA", label: "Louisiana" },
+  { value: "ME", label: "Maine" }, { value: "MD", label: "Maryland" },
+  { value: "MA", label: "Massachusetts" }, { value: "MI", label: "Michigan" },
+  { value: "MN", label: "Minnesota" }, { value: "MS", label: "Mississippi" },
+  { value: "MO", label: "Missouri" }, { value: "MT", label: "Montana" },
+  { value: "NE", label: "Nebraska" }, { value: "NV", label: "Nevada" },
+  { value: "NH", label: "New Hampshire" }, { value: "NJ", label: "New Jersey" },
+  { value: "NM", label: "New Mexico" }, { value: "NY", label: "New York" },
+  { value: "NC", label: "North Carolina" }, { value: "ND", label: "North Dakota" },
+  { value: "OH", label: "Ohio" }, { value: "OK", label: "Oklahoma" },
+  { value: "OR", label: "Oregon" }, { value: "PA", label: "Pennsylvania" },
+  { value: "RI", label: "Rhode Island" }, { value: "SC", label: "South Carolina" },
+  { value: "SD", label: "South Dakota" }, { value: "TN", label: "Tennessee" },
+  { value: "TX", label: "Texas" }, { value: "UT", label: "Utah" },
+  { value: "VT", label: "Vermont" }, { value: "VA", label: "Virginia" },
+  { value: "WA", label: "Washington" }, { value: "WV", label: "West Virginia" },
+  { value: "WI", label: "Wisconsin" }, { value: "WY", label: "Wyoming" },
+];
+
+// ── NPCA Certification Options ───────────────────────────────────────────────
+
+const NPCA_OPTIONS = [
+  { value: "unknown", label: "Unknown" },
+  { value: "certified", label: "Certified" },
+  { value: "pursuing", label: "Pursuing certification" },
+  { value: "wilbert_only", label: "Wilbert standards only" },
+  { value: "not_certified", label: "Not certified" },
+];
+
+// ── Spring Burials Options ───────────────────────────────────────────────────
+
+const SPRING_BURIALS_OPTIONS = [
+  { value: "unknown", label: "Unknown \u2014 ask during onboarding" },
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
 
 // ── Preset visual config ─────────────────────────────────────────────────────
 
@@ -64,6 +114,37 @@ function slugify(text: string): string {
     .slice(0, 50);
 }
 
+// ── Collapsible Section ──────────────────────────────────────────────────────
+
+function CollapsibleSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-lg border">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold hover:bg-muted/50"
+      >
+        {title}
+        {open ? (
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        )}
+      </button>
+      {open && <div className="border-t px-4 pb-4 pt-3">{children}</div>}
+    </div>
+  );
+}
+
 // ── Steps ────────────────────────────────────────────────────────────────────
 
 function getSteps(preset: string | null): string[] {
@@ -91,13 +172,26 @@ export default function TenantOnboardingPage() {
     admin_first_name: "Admin",
     admin_last_name: "User",
     website_url: "",
+    // New company information fields
+    company_legal_name: "",
+    facility_address_line1: "",
+    facility_address_line2: "",
+    facility_city: "",
+    facility_state: "",
+    facility_zip: "",
+    company_phone: "",
+    // Platform intelligence fields
+    npca_certification_status: "unknown",
+    spring_burials_answer: "unknown",
+    // Notes
+    internal_admin_notes: "",
   });
   const [slugManual, setSlugManual] = useState(false);
 
   // Step 2: Vertical
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
-  // Step 2.5: Manufacturing configuration
+  // Step 2.5: Manufacturing configuration (legacy — kept for the step flow)
   const [springBurials, setSpringBurials] = useState<boolean | null>(null);
 
   const STEPS = getSteps(selectedPreset);
@@ -131,12 +225,15 @@ export default function TenantOnboardingPage() {
 
   function canProceed(): boolean {
     if (step === 0) {
-      return !!(
+      const baseValid = !!(
         form.name.trim() &&
         form.slug.trim() &&
         form.admin_email.trim() &&
         form.admin_password.length >= 6
       );
+      // If manufacturing is already selected, require address fields
+      // But we don't know preset yet at step 0, so just require base fields
+      return baseValid;
     }
     if (step === 1) return selectedPreset !== null;
     // Manufacturing config step — must answer spring burial question
@@ -165,6 +262,16 @@ export default function TenantOnboardingPage() {
         admin_last_name: form.admin_last_name,
         initial_settings: initialSettings,
         website_url: form.website_url || undefined,
+        company_legal_name: form.company_legal_name || undefined,
+        facility_address_line1: form.facility_address_line1 || undefined,
+        facility_address_line2: form.facility_address_line2 || undefined,
+        facility_city: form.facility_city || undefined,
+        facility_state: form.facility_state || undefined,
+        facility_zip: form.facility_zip || undefined,
+        company_phone: form.company_phone || undefined,
+        npca_certification_status: form.npca_certification_status !== "unknown" ? form.npca_certification_status : undefined,
+        spring_burials_answer: form.spring_burials_answer !== "unknown" ? form.spring_burials_answer : undefined,
+        internal_admin_notes: form.internal_admin_notes || undefined,
       });
 
       // No manual module selection — the backend onboardTenant endpoint
@@ -221,7 +328,7 @@ export default function TenantOnboardingPage() {
                     : "bg-gray-100 text-gray-400"
               }`}
             >
-              {i < step ? "✓" : i + 1}
+              {i < step ? "\u2713" : i + 1}
             </div>
             <span
               className={`text-sm ${
@@ -239,113 +346,293 @@ export default function TenantOnboardingPage() {
 
       {/* ── Step 1: Company Details ── */}
       {step === 0 && (
-        <Card className="p-6">
-          <h2 className="mb-4 text-lg font-semibold">Company Details</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Company Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="Acme Vault Co."
-                className="w-full rounded-md border px-3 py-2 text-sm"
-              />
+        <div className="space-y-4">
+          {/* Account Setup */}
+          <Card className="p-6">
+            <h2 className="mb-4 text-lg font-semibold">Account Setup</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Company Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  placeholder="Acme Vault Co."
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Subdomain <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.slug}
+                  onChange={(e) => {
+                    setSlugManual(true);
+                    setForm((f) => ({ ...f, slug: e.target.value }));
+                  }}
+                  placeholder="acme-vault"
+                  className="w-full rounded-md border px-3 py-2 text-sm font-mono"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  {form.slug || "..."}.yourplatform.com
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Admin Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={form.admin_email}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, admin_email: e.target.value }))
+                  }
+                  placeholder="admin@company.com"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Admin Password <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={form.admin_password}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, admin_password: e.target.value }))
+                  }
+                  placeholder="Min 6 characters"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Admin First Name
+                </label>
+                <input
+                  type="text"
+                  value={form.admin_first_name}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, admin_first_name: e.target.value }))
+                  }
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Admin Last Name
+                </label>
+                <input
+                  type="text"
+                  value={form.admin_last_name}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, admin_last_name: e.target.value }))
+                  }
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Subdomain <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={form.slug}
-                onChange={(e) => {
-                  setSlugManual(true);
-                  setForm((f) => ({ ...f, slug: e.target.value }));
-                }}
-                placeholder="acme-vault"
-                className="w-full rounded-md border px-3 py-2 text-sm font-mono"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                {form.slug || "..."}.yourplatform.com
-              </p>
+          </Card>
+
+          {/* Company Information */}
+          <Card className="p-6">
+            <h2 className="mb-4 text-lg font-semibold">Company Information</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium">
+                  Company Legal Name
+                </label>
+                <input
+                  type="text"
+                  value={form.company_legal_name}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, company_legal_name: e.target.value }))
+                  }
+                  placeholder="Acme Vault Manufacturing, Inc."
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium">
+                  Facility Address Line 1
+                </label>
+                <input
+                  type="text"
+                  value={form.facility_address_line1}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, facility_address_line1: e.target.value }))
+                  }
+                  placeholder="123 Industrial Blvd"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium">
+                  Facility Address Line 2
+                </label>
+                <input
+                  type="text"
+                  value={form.facility_address_line2}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, facility_address_line2: e.target.value }))
+                  }
+                  placeholder="Suite 100"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={form.facility_city}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, facility_city: e.target.value }))
+                  }
+                  placeholder="Springfield"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    State
+                  </label>
+                  <select
+                    value={form.facility_state}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, facility_state: e.target.value }))
+                    }
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                  >
+                    <option value="">Select state</option>
+                    {US_STATES.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Zip Code
+                  </label>
+                  <input
+                    type="text"
+                    value={form.facility_zip}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, facility_zip: e.target.value }))
+                    }
+                    placeholder="12345"
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Company Phone
+                </label>
+                <input
+                  type="tel"
+                  value={form.company_phone}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, company_phone: e.target.value }))
+                  }
+                  placeholder="(555) 123-4567"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
             </div>
+          </Card>
+
+          {/* Platform Intelligence (collapsible, open by default) */}
+          <CollapsibleSection title="Platform Intelligence" defaultOpen={true}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium">
+                  Website URL
+                </label>
+                <input
+                  type="url"
+                  value={form.website_url}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, website_url: e.target.value }))
+                  }
+                  placeholder="https://www.example.com"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  We'll scan this to suggest products during onboarding
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  NPCA Certification Status
+                </label>
+                <select
+                  value={form.npca_certification_status}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, npca_certification_status: e.target.value }))
+                  }
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                >
+                  {NPCA_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Only relevant for manufacturing presets
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Spring Burials
+                </label>
+                <select
+                  value={form.spring_burials_answer}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, spring_burials_answer: e.target.value }))
+                  }
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                >
+                  {SPRING_BURIALS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Only relevant for manufacturing presets
+                </p>
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          {/* Notes (collapsible, closed by default) */}
+          <CollapsibleSection title="Notes" defaultOpen={false}>
             <div>
               <label className="mb-1 block text-sm font-medium">
-                Admin Email <span className="text-red-500">*</span>
+                Internal Notes
               </label>
-              <input
-                type="email"
-                value={form.admin_email}
+              <textarea
+                value={form.internal_admin_notes}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, admin_email: e.target.value }))
+                  setForm((f) => ({ ...f, internal_admin_notes: e.target.value }))
                 }
-                placeholder="admin@company.com"
+                placeholder="Internal notes about this tenant (not visible to tenant)..."
+                rows={4}
                 className="w-full rounded-md border px-3 py-2 text-sm"
               />
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Admin Password <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={form.admin_password}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, admin_password: e.target.value }))
-                }
-                placeholder="Min 6 characters"
-                className="w-full rounded-md border px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Admin First Name
-              </label>
-              <input
-                type="text"
-                value={form.admin_first_name}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, admin_first_name: e.target.value }))
-                }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Admin Last Name
-              </label>
-              <input
-                type="text"
-                value={form.admin_last_name}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, admin_last_name: e.target.value }))
-                }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium">
-                Company Website (optional)
-              </label>
-              <input
-                type="url"
-                value={form.website_url}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, website_url: e.target.value }))
-                }
-                placeholder="https://www.example.com"
-                className="w-full rounded-md border px-3 py-2 text-sm"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                We'll scan their website to suggest products and certifications
-                during onboarding
-              </p>
-            </div>
-          </div>
-        </Card>
+          </CollapsibleSection>
+        </div>
       )}
 
       {/* ── Step 2: Choose Vertical ── */}
@@ -465,6 +752,11 @@ export default function TenantOnboardingPage() {
                 <p className="text-sm font-medium text-gray-500">Company</p>
                 <p className="text-lg font-semibold">{form.name}</p>
                 <p className="text-sm text-gray-500 font-mono">{form.slug}</p>
+                {form.company_legal_name && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Legal: {form.company_legal_name}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Vertical</p>
@@ -482,6 +774,16 @@ export default function TenantOnboardingPage() {
                 </p>
                 <p className="text-sm text-gray-500">{form.admin_email}</p>
               </div>
+              {(form.facility_city || form.facility_state) && (
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Location</p>
+                  <p className="text-sm">
+                    {[form.facility_address_line1, form.facility_city, form.facility_state, form.facility_zip]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </p>
+                </div>
+              )}
             </div>
           </Card>
 

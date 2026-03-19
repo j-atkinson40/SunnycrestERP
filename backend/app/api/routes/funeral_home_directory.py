@@ -24,21 +24,31 @@ router = APIRouter()
 
 @router.get("/funeral-home-directory", response_model=DirectoryListResponse)
 def get_directory(
-    latitude: float = Query(..., description="Center latitude"),
-    longitude: float = Query(..., description="Center longitude"),
+    latitude: float | None = Query(None, description="Center latitude"),
+    longitude: float | None = Query(None, description="Center longitude"),
     radius_miles: int = Query(50, ge=1, le=200, description="Search radius in miles"),
     current_user: User = Depends(get_current_user),
     company: Company = Depends(get_current_company),
     db: Session = Depends(get_db),
 ):
-    """Get funeral home directory entries for the manufacturer's area."""
-    entries = funeral_home_directory_service.get_directory_for_area(
-        db,
-        tenant_id=company.id,
-        latitude=latitude,
-        longitude=longitude,
-        radius_miles=radius_miles,
-    )
+    """Get funeral home directory entries for the manufacturer's area.
+
+    If lat/lng are omitted, uses the tenant's geocoded facility address.
+    """
+    if latitude is not None and longitude is not None:
+        entries = funeral_home_directory_service.get_directory_for_area(
+            db,
+            tenant_id=company.id,
+            latitude=latitude,
+            longitude=longitude,
+            radius_miles=radius_miles,
+        )
+    else:
+        entries = funeral_home_directory_service.get_directory_for_tenant(
+            db,
+            tenant_id=company.id,
+            radius_miles=radius_miles,
+        )
     return DirectoryListResponse(
         entries=entries,
         total=len(entries),
