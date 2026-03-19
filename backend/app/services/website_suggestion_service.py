@@ -140,17 +140,7 @@ def generate_suggestions(
         )
         suggestions.append(s)
 
-    # Spring burials
-    spring = analysis_result.get("spring_burials", {})
-    if spring.get("detected") and spring.get("confidence", 0) >= THRESHOLDS["spring_burial"]:
-        s = _create_suggestion(
-            db, tenant_id, "spring_burial",
-            key="spring_burial_program",
-            label="Enable Spring Burial Tracking",
-            confidence=spring["confidence"],
-            evidence=spring.get("evidence"),
-        )
-        suggestions.append(s)
+    # Spring burials — handled during tenant creation, not here
 
     # DO NOT generate urn category suggestions — urns are handled
     # by the catalog builder urn step, not the review screen
