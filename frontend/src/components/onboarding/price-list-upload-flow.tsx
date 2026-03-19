@@ -201,9 +201,9 @@ export default function PriceListUploadFlow({ onBack }: Props) {
     if (!reviewData) return;
     const map: Record<string, PriceListImportItem> = {};
     for (const item of [
-      ...reviewData.high_confidence,
-      ...reviewData.low_confidence,
-      ...reviewData.unmatched,
+      ...(reviewData.high_confidence || []),
+      ...(reviewData.low_confidence || []),
+      ...(reviewData.unmatched || []),
     ]) {
       map[item.id] = { ...item };
     }
@@ -262,8 +262,8 @@ export default function PriceListUploadFlow({ onBack }: Props) {
   // Items organized by tab
   const tabItems = useMemo(() => {
     if (!reviewData) return { high: [], low: [], unmatched: [] };
-    const get = (ids: PriceListImportItem[]) =>
-      ids.map((i) => localItems[i.id] ?? i);
+    const get = (ids: PriceListImportItem[] | undefined) =>
+      (ids || []).map((i) => localItems[i.id] ?? i);
     return {
       high: get(reviewData.high_confidence),
       low: get(reviewData.low_confidence),
