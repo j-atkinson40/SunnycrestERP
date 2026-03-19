@@ -118,16 +118,24 @@ OVERSIZE VAULT HANDLING:
 - If an oversize vault has no specific dimension (just "OS" or "Oversize"), name it with "Oversize" like "Continental Oversize".
 
 EQUIPMENT BUNDLE DETECTION (CRITICAL — do NOT mark these as unmatched):
-- Items like "Full Equipment", "Equipment Package", "Equipment w/o Chairs", "Setup Package", "Tent Only", "Equipment Only", "Full Setup" are equipment BUNDLES — flat-rate packages containing multiple pieces of equipment.
+- Items like "Full Equipment", "Equipment Package", "Equipment w/o Chairs", "Setup Package", "Tent Only", "Equipment Only", "Full Setup" are equipment BUNDLES — flat-rate packages.
 - ALWAYS set match_status to "bundle" for these items. NEVER set them to "unmatched".
 - Set template_id to null, template_name to the bundle name, confidence to 0.90.
-- In reasoning, list the likely components (e.g., "Bundle likely includes: lowering device, tent, grass mats, chairs").
-- Common bundle names and their likely components:
-  * "Full Equipment" / "Full Setup" → lowering device + tent + grass mats + chairs
-  * "Equipment Without Chairs" / "Equipment w/o Chairs" / "Equipment Only" → lowering device + tent + grass mats
-  * "Tent Only" → tent only (still a bundle/package line item)
-  * "Setup Package" → lowering device + tent + grass mats
-- ANY line item in an equipment/setup section that represents a flat-rate package of services should use match_status "bundle".
+- Do NOT assume bundle contents based on bundle name. Different manufacturers define bundles differently.
+- Only suggest bundle components if you find evidence in the price list itself. Evidence means: individual equipment line items whose prices sum to approximately the bundle price (within 20%).
+- If you find evidence, include it in the match object:
+  "match": {
+    "template_id": null,
+    "template_name": "Full Equipment",
+    "confidence": 0.90,
+    "reasoning": "Equipment bundle detected",
+    "bundle_components_suggested": [
+      {"component": "Lowering Device", "evidence": "Found 'Lowering Device — $65' as individual item"},
+      {"component": "Tent", "evidence": "Found 'Tent — $40' as individual item"}
+    ]
+  }
+- If NO individual equipment items are found on the price list, set bundle_components_suggested to an empty array [].
+- NEVER suggest components based on bundle name alone.
 """
 
 

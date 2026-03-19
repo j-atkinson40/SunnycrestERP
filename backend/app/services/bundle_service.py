@@ -37,6 +37,9 @@ def get_bundle(db: Session, tenant_id: str, bundle_id: str) -> dict | None:
 
 def create_bundle(db: Session, tenant_id: str, user_id: str, data: dict) -> dict:
     """Create a new product bundle with components."""
+    if not data.get("components"):
+        raise ValueError("At least one component is required")
+
     bundle = ProductBundle(
         id=str(uuid.uuid4()),
         company_id=tenant_id,

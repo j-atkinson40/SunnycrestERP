@@ -825,7 +825,16 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
         <ArrowRight className="h-4 w-4 text-muted-foreground/40 mx-auto" />
       </td>
       <td className="px-4 py-3">
-        {tab === "low_confidence" ? (
+        {isBundle ? (
+          <div>
+            <p className="text-sm font-medium">{item.final_product_name}</p>
+            {item.match_reasoning && (
+              <p className="mt-1 text-xs italic text-muted-foreground">
+                {item.match_reasoning}
+              </p>
+            )}
+          </div>
+        ) : tab === "low_confidence" ? (
           <div>
             <Input
               value={item.final_product_name}

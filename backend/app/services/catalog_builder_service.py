@@ -259,13 +259,53 @@ def build_catalog(
                 products_created += 1
                 equipment_product_map[item["name"]] = sold_pid
 
+            # Build key-to-product-id map for component_keys lookup
+            KEY_TO_PRODUCT_NAME = {
+                "lowering_device": "Lowering Device",
+                "cremation_table": "Cremation Table",
+                "cemetery_tent_single": "Cemetery Tent - Single",
+                "cemetery_tent_double": "Cemetery Tent - Double",
+                "grass_mats": "Grass Mats",
+                "chairs": None,  # special: match anything with "Chair" in name
+                "burial_straps": "Burial Straps",
+                "vault_covers": "Vault Covers",
+            }
+            equipment_key_map: dict[str, str] = {}
+            for key, canonical_name in KEY_TO_PRODUCT_NAME.items():
+                if canonical_name:
+                    pid = equipment_product_map.get(canonical_name)
+                    if pid:
+                        equipment_key_map[key] = pid
+                else:
+                    # Special case: find first product with "Chair" in name
+                    for pname, pid in equipment_product_map.items():
+                        if "chair" in pname.lower():
+                            equipment_key_map[key] = pid
+                            break
+
             # Equipment Bundles
             for bd in ce.get("bundles", []):
                 components = []
-                for cname in bd.get("component_names", []):
+
+                # Prefer component_keys (new format)
+                for ckey in bd.get("component_keys", []):
+                    pid = equipment_key_map.get(ckey)
+                    if pid:
+                        components.append({"product_id": pid, "quantity": 1})
+
+                # Fallback: component_names (legacy format)
+                if not components:
+                    for cname in bd.get("component_names", []):
+                        pid = equipment_product_map.get(cname)
+                        if pid:
+                            components.append({"product_id": pid, "quantity": 1})
+
+                # Also add custom_components by name lookup
+                for cname in bd.get("custom_components", []):
                     pid = equipment_product_map.get(cname)
                     if pid:
                         components.append({"product_id": pid, "quantity": 1})
+
                 if not components:
                     continue
                 bundle = ProductBundle(

@@ -55,13 +55,32 @@ interface ChairConfig {
   chairsPerSet: string;
 }
 
+interface EquipmentItem {
+  key: string;
+  displayName: string;
+  pricingType: "rental" | "sale";
+}
+
 interface BundleConfig {
   name: string;
   enabled: boolean;
   price: string;
-  componentNames: string[];
-  description: string;
+  selectedComponents: Set<string>; // keys from CEMETERY_EQUIPMENT_ITEMS
+  customComponents: string[]; // free-text "Other" items
+  standaloneItems: Set<string>; // keys of items also sold individually
+  standalonePrices: Record<string, string>; // key → price for standalone items
 }
+
+const CEMETERY_EQUIPMENT_ITEMS: EquipmentItem[] = [
+  { key: "lowering_device", displayName: "Lowering Device", pricingType: "rental" },
+  { key: "cremation_table", displayName: "Cremation Table", pricingType: "rental" },
+  { key: "cemetery_tent_single", displayName: "Cemetery Tent — Single", pricingType: "rental" },
+  { key: "cemetery_tent_double", displayName: "Cemetery Tent — Double", pricingType: "rental" },
+  { key: "grass_mats", displayName: "Grass Mats", pricingType: "rental" },
+  { key: "chairs", displayName: "Chairs", pricingType: "rental" },
+  { key: "burial_straps", displayName: "Burial Straps", pricingType: "sale" },
+  { key: "vault_covers", displayName: "Vault Covers / Lids", pricingType: "sale" },
+];
 
 const STEP_LABELS = [
   "Burial Vaults",
@@ -331,15 +350,19 @@ export default function CatalogBuilder() {
       name: "Full Equipment",
       enabled: true,
       price: "",
-      componentNames: ["Lowering Device", "Cemetery Tent - Single", "Grass Mats", "Chairs"],
-      description: "Lowering device, single tent, grass mats, and chairs",
+      selectedComponents: new Set<string>(),
+      customComponents: [],
+      standaloneItems: new Set<string>(),
+      standalonePrices: {},
     },
     {
       name: "Equipment Without Chairs",
       enabled: false,
       price: "",
-      componentNames: ["Lowering Device", "Cemetery Tent - Single", "Grass Mats"],
-      description: "Lowering device, single tent, and grass mats",
+      selectedComponents: new Set<string>(),
+      customComponents: [],
+      standaloneItems: new Set<string>(),
+      standalonePrices: {},
     },
   ]);
 
@@ -555,7 +578,7 @@ export default function CatalogBuilder() {
       count += rentalItems.filter((r) => r.selected && r.price).length;
       if (chairs.enabled && chairs.pricePerSet) count += 1;
       count += soldItems.filter((s) => s.selected && s.price).length;
-      count += equipmentBundles.filter((b) => b.enabled && b.price).length;
+      count += equipmentBundles.filter((b) => b.enabled && b.price && b.selectedComponents.size > 0).length;
     }
     return count;
   }, [
@@ -660,12 +683,12 @@ export default function CatalogBuilder() {
           };
         }
         const enabledBundles = equipmentBundles
-          .filter((b) => b.enabled && b.price)
+          .filter((b) => b.enabled && b.price && b.selectedComponents.size > 0)
           .map((b) => ({
             name: b.name,
             price: parseFloat(b.price),
-            component_names: b.componentNames,
-            description: b.description,
+            component_keys: [...b.selectedComponents],
+            custom_components: b.customComponents.filter(Boolean),
           }));
         if (enabledBundles.length) equipment.bundles = enabledBundles;
         if (Object.keys(equipment).length) payload.cemetery_equipment = equipment;
@@ -1336,10 +1359,10 @@ export default function CatalogBuilder() {
                 <p className="mb-3 text-xs text-muted-foreground">
                   Offer flat-rate packages that combine multiple equipment items. Customers can still choose individual items a la carte.
                 </p>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {equipmentBundles.map((bundle, idx) => (
                     <div
-                      key={bundle.name}
+                      key={`bundle-${idx}`}
                       className={cn(
                         "rounded-lg border p-4 transition-colors",
                         bundle.enabled ? "border-primary/30 bg-primary/5" : "border-border",
@@ -1358,12 +1381,20 @@ export default function CatalogBuilder() {
                           }}
                           className="h-4 w-4 rounded accent-primary"
                         />
-                        <div className="flex-1">
-                          <span className="font-medium text-sm">{bundle.name}</span>
-                          <p className="text-xs text-muted-foreground">{bundle.description}</p>
-                        </div>
+                        <Input
+                          value={bundle.name}
+                          onChange={(e) => {
+                            setEquipmentBundles((prev) => {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], name: e.target.value };
+                              return next;
+                            });
+                          }}
+                          className="max-w-64 font-medium"
+                          placeholder="Bundle name"
+                        />
                         {bundle.enabled && (
-                          <div className="flex items-center gap-1">
+                          <div className="ml-auto flex items-center gap-1">
                             <span className="text-xs text-muted-foreground">$</span>
                             <Input
                               type="number"
@@ -1383,8 +1414,94 @@ export default function CatalogBuilder() {
                           </div>
                         )}
                       </div>
+
+                      {bundle.enabled && (
+                        <div className="mt-3 pl-7">
+                          {idx === 0 && (
+                            <p className="mb-2 text-xs text-muted-foreground italic">
+                              Check the items included in this package. Bundle names can be anything — use what appears on your price list.
+                            </p>
+                          )}
+                          <p className="mb-2 text-xs font-medium text-muted-foreground">
+                            What's in this package? Check everything included:
+                          </p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {CEMETERY_EQUIPMENT_ITEMS.map((item) => (
+                              <label
+                                key={item.key}
+                                className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50 cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={bundle.selectedComponents.has(item.key)}
+                                  onChange={(e) => {
+                                    setEquipmentBundles((prev) => {
+                                      const next = [...prev];
+                                      const comps = new Set(next[idx].selectedComponents);
+                                      if (e.target.checked) comps.add(item.key);
+                                      else comps.delete(item.key);
+                                      next[idx] = { ...next[idx], selectedComponents: comps };
+                                      return next;
+                                    });
+                                  }}
+                                  className="h-3.5 w-3.5 rounded accent-primary"
+                                />
+                                {item.displayName}
+                              </label>
+                            ))}
+                          </div>
+
+                          {/* Other / custom item */}
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Other:</span>
+                            <Input
+                              value={bundle.customComponents[0] || ""}
+                              onChange={(e) => {
+                                setEquipmentBundles((prev) => {
+                                  const next = [...prev];
+                                  next[idx] = {
+                                    ...next[idx],
+                                    customComponents: e.target.value ? [e.target.value] : [],
+                                  };
+                                  return next;
+                                });
+                              }}
+                              placeholder="e.g., Generator, Canopy Weights"
+                              className="max-w-64 h-8 text-sm"
+                            />
+                          </div>
+
+                          {bundle.enabled && bundle.selectedComponents.size === 0 && !bundle.customComponents.filter(Boolean).length && bundle.price && (
+                            <p className="mt-2 text-xs text-red-500">
+                              Select at least one item to include in this bundle.
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
+
+                  {/* Add another bundle */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEquipmentBundles((prev) => [
+                        ...prev,
+                        {
+                          name: "",
+                          enabled: true,
+                          price: "",
+                          selectedComponents: new Set<string>(),
+                          customComponents: [],
+                          standaloneItems: new Set<string>(),
+                          standalonePrices: {},
+                        },
+                      ]);
+                    }}
+                  >
+                    + Add another package
+                  </Button>
                 </div>
               </div>
 
@@ -1465,11 +1582,15 @@ export default function CatalogBuilder() {
           detail: "Sold",
         });
       }
-      for (const b of equipmentBundles.filter((b) => b.enabled && b.price)) {
+      for (const b of equipmentBundles.filter((b) => b.enabled && b.price && (b.selectedComponents.size > 0 || b.customComponents.filter(Boolean).length > 0))) {
+        const componentList = [
+          ...CEMETERY_EQUIPMENT_ITEMS.filter((i) => b.selectedComponents.has(i.key)).map((i) => i.displayName),
+          ...b.customComponents.filter(Boolean),
+        ];
         items.push({
           name: `Bundle: ${b.name}`,
           price: `$${parseFloat(b.price).toFixed(2)}`,
-          detail: `Bundle — ${b.description}`,
+          detail: `Bundle — ${componentList.join(", ")}`,
         });
       }
       if (items.length) sections.push({ title: "Cemetery Equipment", items });

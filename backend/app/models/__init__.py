@@ -117,6 +117,7 @@ from app.models.stock_replenishment_rule import StockReplenishmentRule
 from app.models.subscription import BillingEvent, Subscription
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.sync_log import SyncLog
+from app.models.tenant_equipment_item import TenantEquipmentItem
 from app.models.tenant_extension import TenantExtension
 from app.models.tenant_feature_flag import TenantFeatureFlag
 from app.models.tenant_module_config import TenantModuleConfig
@@ -263,6 +264,7 @@ __all__ = [
     "SubscriptionPlan",
     "BillingEvent",
     "SyncLog",
+    "TenantEquipmentItem",
     "TenantExtension",
     "TenantFeatureFlag",
     "TenantModuleConfig",

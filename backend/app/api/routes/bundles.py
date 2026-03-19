@@ -9,9 +9,15 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.company import Company
 from app.models.user import User
+from app.models.tenant_equipment_item import TenantEquipmentItem
 from app.services import bundle_service
 
 router = APIRouter()
+
+
+class TenantEquipmentItemCreate(BaseModel):
+    name: str
+    pricing_type: str = "rental"
 
 
 class BundleComponentInput(BaseModel):
@@ -37,6 +43,50 @@ class BundleUpdate(BaseModel):
     is_active: bool | None = None
     sort_order: int | None = None
     components: list[BundleComponentInput] | None = None
+
+
+@router.get("/equipment-items")
+def list_equipment_items(
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    """List custom equipment items for this tenant."""
+    items = (
+        db.query(TenantEquipmentItem)
+        .filter(TenantEquipmentItem.company_id == company.id, TenantEquipmentItem.is_active == True)  # noqa: E712
+        .order_by(TenantEquipmentItem.name)
+        .all()
+    )
+    return [{"id": i.id, "name": i.name, "pricing_type": i.pricing_type} for i in items]
+
+
+@router.post("/equipment-items", status_code=201)
+def create_equipment_item(
+    data: TenantEquipmentItemCreate,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    """Create a custom equipment item for this tenant."""
+    import uuid as _uuid
+    existing = db.query(TenantEquipmentItem).filter(
+        TenantEquipmentItem.company_id == company.id,
+        TenantEquipmentItem.name == data.name.strip(),
+    ).first()
+    if existing:
+        return {"id": existing.id, "name": existing.name, "pricing_type": existing.pricing_type}
+
+    item = TenantEquipmentItem(
+        id=str(_uuid.uuid4()),
+        company_id=company.id,
+        name=data.name.strip(),
+        pricing_type=data.pricing_type,
+        created_by=current_user.id,
+    )
+    db.add(item)
+    db.commit()
+    return {"id": item.id, "name": item.name, "pricing_type": item.pricing_type}
 
 
 @router.get("/bundles")
