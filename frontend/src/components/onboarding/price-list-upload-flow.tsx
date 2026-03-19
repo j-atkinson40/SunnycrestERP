@@ -127,8 +127,27 @@ export default function PriceListUploadFlow({ onBack }: Props) {
   useEffect(() => {
     if (step !== "processing" || !importData) return;
 
+    const startTime = Date.now();
+    const TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+
     const poll = async () => {
       try {
+        // Safety timeout — if analysis takes longer than 3 minutes, show error
+        if (Date.now() - startTime > TIMEOUT_MS) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setImportData((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: "failed" as const,
+                  error_message:
+                    "Analysis is taking longer than expected. Please try again.",
+                }
+              : prev,
+          );
+          return;
+        }
+
         const status = await importService.getImportStatus(importData.id);
         setImportData(status);
 

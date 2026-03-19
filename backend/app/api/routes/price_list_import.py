@@ -46,6 +46,20 @@ def _run_analysis_bg(import_id: str) -> None:
         analyze_price_list(db, import_id)
     except Exception:
         logger.exception("Background analysis failed for import %s", import_id)
+        # Ensure the import is marked as failed so the UI stops spinning
+        try:
+            db.rollback()
+            imp = (
+                db.query(PriceListImport)
+                .filter(PriceListImport.id == import_id)
+                .first()
+            )
+            if imp and imp.status not in ("review_ready", "confirmed", "failed"):
+                imp.status = "failed"
+                imp.error_message = "Analysis crashed unexpectedly. Please retry."
+                db.commit()
+        except Exception:
+            logger.exception("Failed to mark import %s as failed", import_id)
     finally:
         db.close()
 

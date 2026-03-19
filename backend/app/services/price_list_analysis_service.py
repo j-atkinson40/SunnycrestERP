@@ -508,7 +508,7 @@ def analyze_price_list(db: Session, import_id: str) -> None:
         return
 
     imp.status = "matching"
-    db.flush()
+    db.commit()
 
     # Build catalog reference from product_catalog_templates
     templates = (
@@ -718,6 +718,10 @@ Confidence thresholds:
 
     except Exception as e:
         logger.exception("Price list analysis failed: %s", e)
+        try:
+            db.rollback()
+        except Exception:
+            pass
         imp.status = "failed"
         imp.error_message = str(e)[:500]
         db.commit()
