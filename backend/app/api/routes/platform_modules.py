@@ -184,10 +184,22 @@ def onboard_tenant(
     if existing:
         raise HTTPException(status_code=409, detail=f"Slug '{data.slug}' already taken")
 
-    # Check email uniqueness
+    # Check email uniqueness — clean up orphaned users from failed deletes
     existing_user = db.query(User).filter(User.email == data.admin_email).first()
     if existing_user:
-        raise HTTPException(status_code=409, detail=f"Email '{data.admin_email}' already in use")
+        # Check if the user's company still exists
+        user_company = db.query(Company).filter(Company.id == existing_user.company_id).first()
+        if user_company is None:
+            # Orphaned user — company was deleted but user survived. Clean it up.
+            import logging
+            logging.getLogger(__name__).info(
+                "Cleaning up orphaned user %s (email=%s, old company_id=%s)",
+                existing_user.id, existing_user.email, existing_user.company_id,
+            )
+            db.delete(existing_user)
+            db.flush()
+        else:
+            raise HTTPException(status_code=409, detail=f"Email '{data.admin_email}' already in use")
 
     # Create company
     import json as _json
