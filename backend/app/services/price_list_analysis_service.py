@@ -104,8 +104,9 @@ Common Wilbert product name variations:
 - Monarch: MRC
 
 IMPORTANT MATCHING RULES:
-- "Tribute" without a color specification (White or Gray) should be matched to BOTH "White Tribute" and "Gray Tribute" as two separate high_confidence items with the same price. Create TWO items in your output — one matched to White Tribute and one to Gray Tribute.
-- Similarly, "Venetian" without a color should match to BOTH "White Venetian" and "Gold Venetian" as two items.
+- When a price list item ALREADY specifies a color (e.g. "Gold Venetian Burial Vault", "White Tribute Burial Vault", "Gray Tribute"), match it directly to the corresponding catalog template as HIGH_CONFIDENCE. Do NOT treat these as color-split results — they are explicit matches.
+- "Tribute" without a color specification (White or Gray) should be matched to BOTH "White Tribute" and "Gray Tribute" as two separate high_confidence items with the same price. Create TWO items in your output — one matched to White Tribute and one to Gray Tribute. Only split when no color is specified.
+- Similarly, "Venetian" without a color should match to BOTH "White Venetian" and "Gold Venetian" as two items. Only split when no color is specified. If the price list says "Gold Venetian" or "White Venetian", match directly at high_confidence.
 - Products in an urn vault section of the price list MUST be matched to the Urn Vault category templates, NOT the Burial Vault templates. Use the exact urn vault template name (e.g. "Monticello Urn Vault" not "Monticello Burial Vault").
 - CRITICAL: For items in an urn vault section, ALWAYS include "Urn Vault" in the extracted_name. For example, if the price list has a section labeled "URN VAULTS" and lists "Monticello" under it, the extracted_name MUST be "Monticello Urn Vault", NOT just "Monticello". The section context determines the product type.
 - If a price list item says just "Veteran" in an urn vault section, match it to "Veteran Urn Vault" with extracted_name "Veteran Urn Vault".
@@ -613,6 +614,46 @@ def _classify_charge_items(items: list[dict]) -> list[dict]:
     return items
 
 
+def _promote_exact_matches(items: list[dict], templates: list) -> list[dict]:
+    """Promote low_confidence items to high_confidence if they exactly match a template.
+
+    Claude sometimes marks color-specific vaults (e.g. 'Gold Venetian Burial Vault')
+    as low_confidence when the price list already has the full name. If the template_id
+    or template_name is an exact match, promote to high_confidence.
+    """
+    template_names = {t.product_name.lower(): t for t in templates}
+    template_ids = {t.id for t in templates}
+
+    for item in items:
+        if item.get("match_status") != "low_confidence":
+            continue
+        # Don't promote bundles
+        match = item.get("match") or {}
+        template_id = match.get("template_id")
+        template_name = (match.get("template_name") or "").strip()
+
+        # Check 1: template_id is a valid template
+        if template_id and template_id in template_ids:
+            item["match_status"] = "high_confidence"
+            logger.info(
+                "Promoted '%s' to high_confidence — exact template_id match",
+                item.get("extracted_name"),
+            )
+            continue
+
+        # Check 2: template_name exactly matches a catalog template
+        if template_name.lower() in template_names:
+            tpl = template_names[template_name.lower()]
+            item["match_status"] = "high_confidence"
+            match["template_id"] = tpl.id
+            logger.info(
+                "Promoted '%s' to high_confidence — exact template_name match '%s'",
+                item.get("extracted_name"), tpl.product_name,
+            )
+
+    return items
+
+
 def analyze_price_list(db: Session, import_id: str) -> None:
     """Run Claude analysis on an extracted price list."""
     imp = db.query(PriceListImport).filter(PriceListImport.id == import_id).first()
@@ -737,6 +778,7 @@ Confidence thresholds:
             parsed["items"] = _reclassify_bundle_items(parsed["items"])
             parsed["items"] = _group_bundle_variants(parsed["items"])
             parsed["items"] = _fix_urn_vault_items(parsed["items"], templates)
+            parsed["items"] = _promote_exact_matches(parsed["items"], templates)
             parsed["items"] = _classify_charge_items(parsed["items"])
 
         # Store analysis
