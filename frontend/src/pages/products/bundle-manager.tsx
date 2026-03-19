@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Package, Plus, Pencil, Trash2, DollarSign, X, Check, Tag } from "lucide-react";
+import { Package, Plus, Pencil, Trash2, DollarSign, Check } from "lucide-react";
 import * as bundleService from "@/services/bundle-service";
 import apiClient from "@/lib/api-client";
 import type { ProductBundle, BundleCreate } from "@/types/bundle";
