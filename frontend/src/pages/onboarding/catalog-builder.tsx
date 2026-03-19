@@ -93,7 +93,7 @@ const WILBERT_LINES: VaultLine[] = [
 ].map(({ name, prefix }) => {
   // These lines are sold by most Wilbert licensees — default ON
   const DEFAULT_ON = new Set([
-    "Graveliner", "Graveliner (Social Service)", "Monticello", "Salute",
+    "Graveliner", "Monticello", "Salute",
     "Continental", "Venetian", "Veteran Triune",
     "Stainless Steel Triune", "Cameo Rose Triune",
   ]);
