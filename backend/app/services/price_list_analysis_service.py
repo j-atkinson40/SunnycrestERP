@@ -117,6 +117,22 @@ OVERSIZE VAULT HANDLING:
 - Match oversize vaults to the base vault line template (e.g. Continental Burial Vault) but set match_status to "low_confidence" with reasoning explaining it's an oversize variant, so the manufacturer can confirm.
 - If an oversize vault has no specific dimension (just "OS" or "Oversize"), name it with "Oversize" like "Continental Oversize".
 
+CLASSIFICATION PRIORITY ORDER:
+1. First check if item is an overage/add-on charge (Extra X, Additional X, X Over N)
+2. Then check if item is an equipment bundle (Full Equipment, X Only, X & Y)
+3. Then check if item is a regular product
+4. Default to unmatched if none match
+An item matching overage patterns should NEVER be classified as a bundle, even if it contains equipment keywords.
+
+OVERAGE / ADD-ON CHARGE DETECTION:
+- Items like "Extra Chairs (Over 8)", "Additional Chair", "Chairs Over 8", "Extra Chairs" are per-unit overage charges, NOT bundles.
+- These are charges for additional units beyond a standard threshold.
+- Set match_status to "custom" (they are custom products the manufacturer defines).
+- Do NOT set match_status to "bundle" for overage items.
+- Examples:
+  * "Extra Chairs (Over 8)" → match_status "custom", NOT a bundle
+  * "Additional Chairs" → match_status "custom", NOT a bundle
+
 EQUIPMENT BUNDLE DETECTION (CRITICAL — do NOT mark these as unmatched):
 - Items like "Full Equipment", "Equipment Package", "Equipment w/o Chairs", "Setup Package", "Full Setup" are equipment BUNDLES — flat-rate packages.
 - ALWAYS set match_status to "bundle" for these items. NEVER set them to "unmatched".
@@ -164,15 +180,41 @@ EQUIPMENT_KEYWORDS = {
 }
 
 
+_OVERAGE_PATTERNS = [
+    re.compile(r"extra\s+\w+\s*\(over\s+\d+\)", re.IGNORECASE),   # "Extra Chairs (Over 8)"
+    re.compile(r"additional\s+\w+", re.IGNORECASE),                 # "Additional Chair"
+    re.compile(r"\w+\s+over\s+\d+", re.IGNORECASE),                # "Chairs over 8"
+    re.compile(r"extra\s+\w+", re.IGNORECASE),                      # "Extra Chairs"
+]
+
+
 def _reclassify_bundle_items(items: list[dict]) -> list[dict]:
     """Post-process Claude's output to catch misclassified equipment bundles.
 
+    Guard 0: Overage/add-on charges must NOT be bundles.
     Guard 1: Items ending in "Only" must be bundles.
     Guard 2: Items with " & " between equipment keywords must be bundles.
     """
     for item in items:
         name = (item.get("extracted_name") or "").strip()
         status = item.get("match_status", "")
+
+        # Guard 0: Overage/add-on charges — must never be classified as bundle
+        is_overage = any(p.search(name) for p in _OVERAGE_PATTERNS)
+        if is_overage:
+            if status == "bundle":
+                logger.info(
+                    "Reclassifying '%s' from bundle to custom — overage charge",
+                    name,
+                )
+                item["match_status"] = "custom"
+                item["match"] = {
+                    "template_id": None,
+                    "template_name": name,
+                    "confidence": 0.85,
+                    "reasoning": f"Overage/add-on charge — per-unit charge beyond a threshold",
+                }
+            continue  # skip all other guards for overage items
 
         # Guard 1: "Only" suffix → always a bundle
         if name.lower().endswith(" only") and status != "bundle":

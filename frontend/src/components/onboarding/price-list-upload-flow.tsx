@@ -728,14 +728,14 @@ function getBundleType(name: string): { label: string; color: string; hint: stri
   const lower = name.toLowerCase();
   if (lower.endsWith(" only")) {
     return {
-      label: "Single Item Bundle",
+      label: "Single Item Service",
       color: "bg-amber-100 text-amber-700",
-      hint: "This is a single-item package option — the customer pays this flat rate for just this item.",
+      hint: "This is a single-item graveside service. The customer pays this flat rate when ordering just this item.",
     };
   }
   if (lower.includes(" & ")) {
     return {
-      label: "Partial Bundle",
+      label: "Equipment Package",
       color: "bg-blue-100 text-blue-700",
       hint: "This is a partial equipment package — includes the items named in the title.",
     };
@@ -747,7 +747,7 @@ function getBundleType(name: string): { label: string; color: string; hint: stri
     lower.includes("package")
   ) {
     return {
-      label: "Full Bundle",
+      label: "Equipment Package",
       color: "bg-purple-100 text-purple-700",
       hint: "Full equipment package — manufacturer defines what's included.",
     };
