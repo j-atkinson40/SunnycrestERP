@@ -305,6 +305,78 @@ def _build_bundle_reasoning(match: dict, status: str) -> str | None:
     return reasoning or None
 
 
+_URN_VAULT_INDICATORS = re.compile(
+    r"\burn\b|\bUV\b|\burn\s*vlt\b|\burn\s*vault\b",
+    re.IGNORECASE,
+)
+
+
+def _fix_urn_vault_items(items: list[dict], templates: list) -> list[dict]:
+    """Post-process: ensure urn vault items have 'Urn Vault' in the name and
+    are matched to the correct urn vault template (not burial vault)."""
+    # Build lookup: lowercase base name → urn vault template
+    urn_templates_by_base = {}
+    for t in templates:
+        name = t.product_name
+        if "urn vault" not in name.lower():
+            continue
+        # "Monticello Urn Vault" → base "monticello"
+        base = name.lower().replace(" urn vault", "").strip()
+        urn_templates_by_base[base] = t
+
+    for item in items:
+        extracted = item.get("extracted_name", "")
+        raw = item.get("raw_text", "")
+        context = f"{extracted} {raw}"
+
+        # Skip if no urn vault indicator in extracted name or raw text
+        if not _URN_VAULT_INDICATORS.search(context):
+            continue
+
+        match = item.get("match") or {}
+        current_name = match.get("template_name", "")
+
+        # Already correct
+        if "urn vault" in current_name.lower():
+            continue
+
+        # Strip "Burial Vault" to get the base vault line name
+        base = current_name.lower().replace(" burial vault", "").strip()
+
+        # Also try from extracted_name (Claude may not have matched to any template)
+        if base not in urn_templates_by_base:
+            base = extracted.lower().replace("urn vault", "").replace("urn vlt", "").replace("uv ", "").strip()
+
+        # Find the correct urn vault template
+        if base in urn_templates_by_base:
+            correct_tpl = urn_templates_by_base[base]
+            logger.info(
+                "Correcting urn vault: '%s' → '%s' (template %s)",
+                current_name or extracted, correct_tpl.product_name, correct_tpl.id,
+            )
+            item["match"] = {
+                **(match or {}),
+                "template_id": correct_tpl.id,
+                "template_name": correct_tpl.product_name,
+                "reasoning": (match.get("reasoning", "") or "")
+                + " [Corrected: matched to urn vault template]",
+            }
+        else:
+            # No exact template match — at minimum ensure the name says "Urn Vault"
+            if current_name and "vault" in current_name.lower():
+                corrected = current_name.replace("Burial Vault", "Urn Vault")
+            elif current_name:
+                corrected = f"{current_name} Urn Vault"
+            else:
+                corrected = f"{extracted} Urn Vault" if "urn" not in extracted.lower() else extracted
+            logger.info("Appending 'Urn Vault' to name: '%s' → '%s'", current_name or extracted, corrected)
+            if not item.get("match"):
+                item["match"] = {}
+            item["match"]["template_name"] = corrected
+
+    return items
+
+
 def analyze_price_list(db: Session, import_id: str) -> None:
     """Run Claude analysis on an extracted price list."""
     imp = db.query(PriceListImport).filter(PriceListImport.id == import_id).first()
@@ -419,6 +491,7 @@ Confidence thresholds:
         # Post-process: reclassify misclassified bundle items
         if "items" in parsed:
             parsed["items"] = _reclassify_bundle_items(parsed["items"])
+            parsed["items"] = _fix_urn_vault_items(parsed["items"], templates)
 
         # Store analysis
         imp.claude_analysis = json.dumps(parsed)
