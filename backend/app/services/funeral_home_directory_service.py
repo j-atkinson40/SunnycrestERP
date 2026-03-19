@@ -89,7 +89,21 @@ def get_directory_for_tenant(
     lng = float(company.facility_longitude) if company.facility_longitude else None
 
     if not lat or not lng:
-        # No geocoded location available
+        # Try geocoding on the fly if address is available
+        if company.facility_address_line1 and company.facility_city:
+            try:
+                from app.services.geocoding_service import geocode_tenant_address
+                if geocode_tenant_address(tenant_id):
+                    # Refresh the company record
+                    db.refresh(company)
+                    lat = float(company.facility_latitude) if company.facility_latitude else None
+                    lng = float(company.facility_longitude) if company.facility_longitude else None
+            except Exception:
+                pass
+
+    if not lat or not lng:
+        # Still no location — return empty
+        logger.warning("No geocoded location for tenant %s", tenant_id)
         return []
 
     return get_directory_for_area(db, tenant_id, lat, lng, radius_miles)

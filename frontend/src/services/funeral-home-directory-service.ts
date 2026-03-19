@@ -6,16 +6,18 @@ import type {
   ManualCustomer,
 } from "@/types/funeral-home-directory";
 
+const BASE = "/onboarding/customers";
+
 export async function getDirectory(): Promise<DirectoryEntry[]> {
-  const { data } = await apiClient.get("/funeral-home-directory");
-  return data;
+  const { data } = await apiClient.get(`${BASE}/funeral-home-directory`);
+  return data.entries || data;
 }
 
 export async function getPlatformMatches(): Promise<PlatformMatch[]> {
   const { data } = await apiClient.get(
-    "/funeral-home-directory/platform-matches"
+    `${BASE}/funeral-home-directory/platform-matches`
   );
-  return data;
+  return data.matches || data;
 }
 
 export async function recordSelections(
@@ -26,7 +28,7 @@ export async function recordSelections(
   skipped: number;
 }> {
   const { data } = await apiClient.post(
-    "/funeral-home-directory/selections",
+    `${BASE}/funeral-home-directory/selections`,
     { selections }
   );
   return data;
@@ -35,13 +37,13 @@ export async function recordSelections(
 export async function addManualCustomers(
   customers: ManualCustomer[]
 ): Promise<{ created_customers: number }> {
-  const { data } = await apiClient.post("/funeral-home-directory/manual", {
+  const { data } = await apiClient.post(`${BASE}/funeral-home-directory/manual`, {
     customers,
   });
   return data;
 }
 
 export async function refreshDirectory(): Promise<DirectoryEntry[]> {
-  const { data } = await apiClient.post("/funeral-home-directory/refresh");
-  return data;
+  const { data } = await apiClient.post(`${BASE}/funeral-home-directory/refresh`);
+  return data.entries || data;
 }
