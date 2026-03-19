@@ -47,6 +47,7 @@ from app.api.routes import (
     order_station,
     performance_notes,
     platform_fees,
+    price_list_import,
     production_log,
     catalog_builder,
     spring_burials,
@@ -187,6 +188,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     platform_fees.router, prefix="/platform-fees", tags=["Platform Fees"]
+)
+v1_router.include_router(
+    price_list_import.router, prefix="/catalog", tags=["Price List Import"]
 )
 v1_router.include_router(
     production_log.router, prefix="/production", tags=["Production Log"]

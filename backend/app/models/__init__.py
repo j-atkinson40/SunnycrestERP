@@ -69,6 +69,7 @@ from app.models.onboarding_scenario import OnboardingScenario
 from app.models.onboarding_scenario_step import OnboardingScenarioStep
 from app.models.production_log_entry import ProductionLogEntry
 from app.models.production_log_summary import ProductionLogSummary
+from app.models.price_list_import import PriceListImport, PriceListImportItem
 from app.models.product_catalog_template import ProductCatalogTemplate
 from app.models.product_substitution_rule import ProductSubstitutionRule
 from app.models.quick_quote_template import QuickQuoteTemplate
@@ -216,6 +217,8 @@ __all__ = [
     "Product",
     "ProductionLogEntry",
     "ProductionLogSummary",
+    "PriceListImport",
+    "PriceListImportItem",
     "ProductCatalogTemplate",
     "ProductCategory",
     "QuickQuoteTemplate",

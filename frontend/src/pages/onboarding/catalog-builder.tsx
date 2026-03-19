@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Globe } from "lucide-react";
+import { Globe, FileUp, ArrowRight } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import * as intelligenceService from "@/services/website-intelligence-service";
+import PriceListUploadFlow from "@/components/onboarding/price-list-upload-flow";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -286,6 +287,7 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 
 export default function CatalogBuilder() {
   const navigate = useNavigate();
+  const [entryMode, setEntryMode] = useState<"choice" | "upload" | "manual">("choice");
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
@@ -1440,6 +1442,60 @@ export default function CatalogBuilder() {
     renderReview,
   ];
 
+  // ── Choice Screen ───────────────────────────────────────────────
+
+  if (entryMode === "choice") {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6 py-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold">Set up your product catalog</h1>
+          <p className="mt-2 text-muted-foreground">
+            Choose how you'd like to get started
+          </p>
+        </div>
+
+        {/* Primary: Upload */}
+        <button
+          onClick={() => setEntryMode("upload")}
+          className="w-full rounded-xl border-2 border-primary/20 bg-primary/5 p-6 text-left transition-all hover:border-primary/40 hover:bg-primary/10"
+        >
+          <div className="flex items-start gap-4">
+            <div className="rounded-lg bg-primary/10 p-3">
+              <FileUp className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">Upload your price list</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Upload your existing price list and we'll build your catalog
+                automatically. Works with Excel, PDF, Word, or CSV files.
+              </p>
+              <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary">
+                Recommended — saves the most time
+                <ArrowRight className="h-4 w-4" />
+              </span>
+            </div>
+          </div>
+        </button>
+
+        {/* Secondary: Manual */}
+        <button
+          onClick={() => setEntryMode("manual")}
+          className="w-full text-center text-sm text-muted-foreground hover:text-foreground"
+        >
+          Or build catalog step by step &rarr;
+        </button>
+      </div>
+    );
+  }
+
+  // ── Upload Flow ────────────────────────────────────────────────
+
+  if (entryMode === "upload") {
+    return <PriceListUploadFlow onBack={() => setEntryMode("choice")} />;
+  }
+
+  // ── Manual Wizard (existing 4-step flow) ───────────────────────
+
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div>
@@ -1464,8 +1520,13 @@ export default function CatalogBuilder() {
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
-          onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
-          disabled={currentStep === 0}
+          onClick={() => {
+            if (currentStep === 0) {
+              setEntryMode("choice");
+            } else {
+              setCurrentStep((s) => Math.max(0, s - 1));
+            }
+          }}
         >
           Back
         </Button>
