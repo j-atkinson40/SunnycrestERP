@@ -95,6 +95,7 @@ import ProductionLog from "@/pages/production-log/production-log";
 import ProductionLogSummary from "@/pages/production-log/production-log-summary";
 import MobileProductionLog from "@/pages/production-log/mobile-production-log";
 import SpringBurialList from "@/pages/spring-burials/spring-burial-list";
+import OrderStation from "@/pages/orders/order-station";
 import OnboardingHub from "@/pages/onboarding/onboarding-hub";
 import IntegrationSetupPage from "@/pages/onboarding/integration-setup";
 import OnboardingAnalyticsPage from "@/pages/onboarding/onboarding-analytics";
@@ -212,6 +213,15 @@ export default function App() {
                       path="/customers/:customerId"
                       element={<CustomerDetailPage />}
                     />
+                  </Route>
+
+                  {/* Order Station — requires sales module + ar.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="ar.view" requiredModule="sales" />
+                    }
+                  >
+                    <Route path="/order-station" element={<OrderStation />} />
                   </Route>
 
                   {/* Sales / AR — requires sales module + ar.view permission */}

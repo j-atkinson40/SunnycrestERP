@@ -9,6 +9,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Boolean,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,9 +28,12 @@ class Quote(Base):
         String(36), ForeignKey("companies.id"), nullable=False, index=True
     )
     number: Mapped[str] = mapped_column(String(50), nullable=False)  # QTE-YYYY-####
-    customer_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("customers.id"), nullable=False, index=True
+    customer_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("customers.id"), nullable=True, index=True
     )
+    customer_name: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # For walk-in / quick quotes without a customer record
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="draft"
     )  # draft, sent, accepted, rejected, expired, converted
@@ -59,6 +63,32 @@ class Quote(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     converted_to_order_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
+    )
+
+    # Order station fields
+    product_line: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )  # wastewater, redi_rock, rosetta, funeral_vaults
+    template_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+    permit_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    permit_jurisdiction: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    installation_address: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
+    installation_city: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    installation_state: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )
+    contact_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    delivery_charge: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
     )
 
     # Audit

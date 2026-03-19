@@ -42,6 +42,7 @@ from app.api.routes import (
     network,
     notifications,
     onboarding,
+    order_station,
     performance_notes,
     platform_fees,
     production_log,
@@ -163,6 +164,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     onboarding.router, prefix="/onboarding", tags=["Onboarding"]
+)
+v1_router.include_router(
+    order_station.router,
+    prefix="/order-station",
+    tags=["Order Entry Station"],
 )
 v1_router.include_router(
     performance_notes.router,
