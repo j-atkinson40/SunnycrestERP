@@ -108,6 +108,14 @@ IMPORTANT MATCHING RULES:
 - Similarly, "Venetian" without a color should match to BOTH "White Venetian" and "Gold Venetian" as two items.
 - Products labeled as urn vaults should be matched to the Urn Vault category templates, NOT the Burial Vault templates. Use the exact urn vault template name (e.g. "Monticello Urn Vault" not "Monticello (Urn)").
 - If a price list item says just "Veteran" in an urn vault section, match it to "Veteran Urn Vault".
+
+OVERSIZE VAULT HANDLING:
+- Oversize vaults come in different dimensions (e.g. 31", 33", 34", 36"). Each size is a separate product.
+- When you find an oversize vault with a specific dimension, create it as a SEPARATE item with match_status "custom" (not unmatched).
+- Set the extracted_name to include the vault line name plus the size, like: "Continental 34\"", "Monticello 31\"", "Venetian 36\"".
+- Do NOT group multiple oversize sizes together. Each size+vault combination is its own product.
+- Match oversize vaults to the base vault line template (e.g. Continental Burial Vault) but set match_status to "low_confidence" with reasoning explaining it's an oversize variant, so the manufacturer can confirm.
+- If an oversize vault has no specific dimension (just "OS" or "Oversize"), name it with "Oversize" like "Continental Oversize".
 """
 
 
