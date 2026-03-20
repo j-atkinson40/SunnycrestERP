@@ -291,6 +291,9 @@ def install_extension(
     db.commit()
     db.refresh(te)
 
+    # Check if this extension activates a new functional area
+    _notify_new_functional_area(db, tenant_id, extension_key, ext.display_name, actor_id)
+
     result = {
         "extension_key": extension_key,
         "status": new_status,
@@ -609,6 +612,62 @@ def _log_activity(
         details=json.dumps(details) if details else None,
     )
     db.add(log)
+
+
+def _notify_new_functional_area(
+    db: Session,
+    tenant_id: str,
+    extension_key: str,
+    extension_display_name: str,
+    actor_id: str | None,
+):
+    """If this extension activates a new functional area, notify owner/admins."""
+    from app.services import functional_area_service, notification_service
+    from app.models.user import User
+
+    result = functional_area_service.check_new_area_on_extension_install(
+        db, tenant_id, extension_key
+    )
+    if not result:
+        return
+
+    area_name = result["display_name"]
+
+    # Log to activity
+    _log_activity(db, tenant_id, "", "new_functional_area_available", actor_id, {
+        "extension_key": extension_key,
+        "area_key": result["area_key"],
+        "area_display_name": area_name,
+    })
+
+    # Notify all owner/full_admin users for this tenant
+    admins = (
+        db.query(User)
+        .filter(
+            User.company_id == tenant_id,
+            User.is_active.is_(True),
+            User.role.in_(["owner", "admin"]),
+        )
+        .all()
+    )
+
+    for admin in admins:
+        notification_service.create_notification(
+            db,
+            tenant_id,
+            admin.id,
+            title="New Team Area Available",
+            message=(
+                f"Installing {extension_display_name} unlocked a new functional area: "
+                f"{area_name}. Assign employees to this area in Team Settings."
+            ),
+            type="info",
+            category="employee",
+            link="/admin/employees",
+            actor_id=actor_id,
+        )
+
+    db.commit()
 
 
 # ---------------------------------------------------------------------------

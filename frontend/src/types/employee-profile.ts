@@ -13,6 +13,7 @@ export interface EmployeeProfile {
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
   notes: string | null;
+  functional_areas: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -32,4 +33,5 @@ export interface EmployeeProfileAdminUpdate extends EmployeeProfileUpdate {
   department_id?: string | null;
   hire_date?: string;
   notes?: string;
+  functional_areas?: string[];
 }

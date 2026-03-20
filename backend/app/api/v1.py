@@ -33,6 +33,7 @@ from app.api.routes import (
     equipment,
     extensions,
     feature_flags,
+    functional_areas,
     fh_portal,
     fh_price_list,
     ftc_compliance,
@@ -143,6 +144,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     feature_flags.router, prefix="/feature-flags", tags=["Feature Flags"]
+)
+v1_router.include_router(
+    functional_areas.router, prefix="/team", tags=["Functional Areas"]
 )
 v1_router.include_router(
     fh_portal.router, prefix="/portal/family", tags=["Family Portal"]

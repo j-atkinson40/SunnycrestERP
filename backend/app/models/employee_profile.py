@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import Date, DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -38,6 +39,9 @@ class EmployeeProfile(Base):
     emergency_contact_phone: Mapped[str | None] = mapped_column(
         String(30), nullable=True
     )
+
+    # Functional areas — JSON array of area_key strings
+    functional_areas: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Admin-only
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

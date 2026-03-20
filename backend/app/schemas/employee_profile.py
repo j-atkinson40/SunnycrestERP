@@ -20,6 +20,7 @@ class EmployeeProfileResponse(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
     notes: str | None = None
+    functional_areas: list[str] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -45,3 +46,4 @@ class EmployeeProfileAdminUpdate(EmployeeProfileUpdate):
     department_id: str | None = None
     hire_date: date | None = None
     notes: str | None = None
+    functional_areas: list[str] | None = None

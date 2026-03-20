@@ -46,6 +46,7 @@ def update_profile(
         "phone", "position", "department_id", "hire_date",
         "address_street", "address_city", "address_state", "address_zip",
         "emergency_contact_name", "emergency_contact_phone", "notes",
+        "functional_areas",
     ]
     old_data = {}
     for f in all_fields:

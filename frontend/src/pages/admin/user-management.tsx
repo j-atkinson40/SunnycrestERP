@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { X } from "lucide-react";
 import { userService } from "@/services/user-service";
 import { roleService } from "@/services/role-service";
+import { functionalAreaService } from "@/services/functional-area-service";
+import { dismissHelp, getDismissedHelp } from "@/services/onboarding-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { User } from "@/types/auth";
 import type { UserCreate } from "@/types/user";
@@ -35,6 +38,42 @@ export default function UserManagement() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [roles, setRoles] = useState<RoleResponse[]>([]);
+
+  // New functional area banner
+  const [newAreaBanner, setNewAreaBanner] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check if there are extension-gated areas the admin hasn't seen
+    Promise.all([
+      functionalAreaService.getAreas(),
+      getDismissedHelp(),
+    ]).then(([res, dismissed]) => {
+      const extensionGated = res.areas.filter((a) => a.required_extension);
+      if (extensionGated.length > 0) {
+        const key = `new_area_${extensionGated[0].area_key}`;
+        if (!dismissed.includes(key)) {
+          setNewAreaBanner(
+            `New functional area available: ${extensionGated[0].display_name}. ` +
+            `Assign employees to this area on their profile page.`
+          );
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
+  async function dismissAreaBanner() {
+    setNewAreaBanner(null);
+    try {
+      // Find the extension-gated area to build the dismiss key
+      const res = await functionalAreaService.getAreas();
+      const extensionGated = res.areas.filter((a) => a.required_extension);
+      if (extensionGated.length > 0) {
+        await dismissHelp(`new_area_${extensionGated[0].area_key}`);
+      }
+    } catch {
+      // Non-critical
+    }
+  }
 
   // Create user dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -128,6 +167,18 @@ export default function UserManagement() {
 
   return (
     <div className="space-y-6">
+      {newAreaBanner && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+          <span>{newAreaBanner}</span>
+          <button
+            onClick={dismissAreaBanner}
+            className="shrink-0 rounded p-0.5 hover:bg-amber-200/50 dark:hover:bg-amber-800/50"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">User Management</h1>

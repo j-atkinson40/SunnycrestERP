@@ -148,6 +148,9 @@ def seed_platform_admin():
 
             from app.services.catalog_template_seeder import seed_wilbert_templates
             seed_wilbert_templates(db)
+
+            from app.services.functional_area_service import seed_functional_areas
+            seed_functional_areas(db)
         finally:
             db.close()
 

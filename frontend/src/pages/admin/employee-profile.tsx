@@ -28,6 +28,7 @@ import DocumentList from "@/components/document-list";
 import EquipmentSection from "@/components/equipment-section";
 import OnboardingSection from "@/components/onboarding-section";
 import PerformanceNotesSection from "@/components/performance-notes-section";
+import FunctionalAreaMatrix from "@/components/functional-area-matrix";
 import apiClient from "@/lib/api-client";
 
 export default function AdminEmployeeProfile() {
@@ -53,6 +54,7 @@ export default function AdminEmployeeProfile() {
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [functionalAreas, setFunctionalAreas] = useState<string[]>([]);
 
   // Departments list
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -82,6 +84,7 @@ export default function AdminEmployeeProfile() {
     setEmergencyName(p.emergency_contact_name || "");
     setEmergencyPhone(p.emergency_contact_phone || "");
     setNotes(p.notes || "");
+    setFunctionalAreas(p.functional_areas || []);
   }
 
   async function loadDepartments() {
@@ -133,6 +136,7 @@ export default function AdminEmployeeProfile() {
         emergency_contact_name: emergencyName,
         emergency_contact_phone: emergencyPhone,
         notes,
+        functional_areas: functionalAreas,
       });
       populateForm(updated);
       toast.success("Employee profile saved");
@@ -481,6 +485,20 @@ export default function AdminEmployeeProfile() {
               </div>
             </div>
           </div>
+        </Card>
+
+        {/* Functional Areas */}
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Functional Areas</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Select the business areas this employee works in.
+          </p>
+          <Separator className="my-4" />
+          <FunctionalAreaMatrix
+            selectedAreas={functionalAreas}
+            onChange={setFunctionalAreas}
+            disabled={!canEdit}
+          />
         </Card>
 
         {/* Address */}
