@@ -97,9 +97,9 @@ function getManufacturingNav(
       functionalArea: "customer_management",
     },
     {
-      label: "Delivery Schedule",
-      href: "/delivery/dispatch",
-      icon: "Truck",
+      label: "Scheduling Board",
+      href: "/scheduling",
+      icon: "Kanban",
       permission: "deliveries.view",
       requiresModule: "driver_delivery",
       functionalArea: "funeral_scheduling",
@@ -267,7 +267,7 @@ function getManufacturingNav(
     sections,
     mobileTabs: [
       { label: "Orders", href: "/ar/orders", icon: "ClipboardList" },
-      { label: "Schedule", href: "/delivery/dispatch", icon: "Truck" },
+      { label: "Schedule", href: "/scheduling", icon: "Kanban" },
       { label: "Inventory", href: "/inventory", icon: "Package" },
       { label: "Production", href: "/production-log", icon: "Factory" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },

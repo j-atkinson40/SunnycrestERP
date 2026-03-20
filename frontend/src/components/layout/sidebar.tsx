@@ -10,6 +10,7 @@ import {
   Factory,
   FileText,
   FolderOpen,
+  Gem,
   Kanban,
   LayoutDashboard,
   Link as LinkIcon,
@@ -24,11 +25,13 @@ import {
   Receipt,
   Scale,
   ShieldCheck,
+  Snowflake,
   Sparkles,
   Truck,
   UserCircle,
   Users,
   Wrench,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -47,6 +50,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Factory,
   FileText,
   FolderOpen,
+  Gem,
   Kanban,
   LayoutDashboard,
   Link: LinkIcon,
@@ -61,10 +65,13 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Receipt,
   Scale,
   ShieldCheck,
+  Snowflake,
+  Sparkles,
   Truck,
   UserCircle,
   Users,
   Wrench,
+  Zap,
 };
 
 function resolveIcon(name: string): LucideIcon | null {

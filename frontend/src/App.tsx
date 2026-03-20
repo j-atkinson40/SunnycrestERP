@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/auth-context";
 import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
@@ -51,13 +51,12 @@ import CustomerPaymentsPage from "@/pages/customer-payments";
 import ARAgingPage2 from "@/pages/ar-aging";
 import ModulesPage from "@/pages/admin/modules";
 import DeliverySettingsPage from "@/pages/admin/delivery-settings";
-import DispatchPage from "@/pages/delivery/dispatch";
 import OperationsPage from "@/pages/delivery/operations";
 import HistoryPage from "@/pages/delivery/history";
 import DeliveryDetailPage from "@/pages/delivery/delivery-detail";
 import RouteDetailPage from "@/pages/delivery/route-detail";
 import CarriersPage from "@/pages/delivery/carriers";
-import FuneralSchedulingPage from "@/pages/delivery/funeral-scheduling";
+import SchedulingBoardPage from "@/pages/delivery/scheduling-board";
 import BOMListPage from "@/pages/bom/bom-list";
 import BOMDetailPage from "@/pages/bom/bom-detail";
 import ProjectListPage from "@/pages/projects/project-list";
@@ -432,13 +431,14 @@ export default function App() {
                       <ProtectedRoute requiredPermission="delivery.view" requiredModule="driver_delivery" />
                     }
                   >
-                    <Route path="/delivery/dispatch" element={<DispatchPage />} />
+                    <Route path="/scheduling" element={<SchedulingBoardPage />} />
+                    <Route path="/delivery/dispatch" element={<Navigate to="/scheduling" replace />} />
+                    <Route path="/delivery/funeral-scheduling" element={<Navigate to="/scheduling" replace />} />
                     <Route path="/delivery/operations" element={<OperationsPage />} />
                     <Route path="/delivery/history" element={<HistoryPage />} />
                     <Route path="/delivery/deliveries/:id" element={<DeliveryDetailPage />} />
                     <Route path="/delivery/routes/:id" element={<RouteDetailPage />} />
                     <Route path="/delivery/settings" element={<DeliverySettingsPage />} />
-                    <Route path="/delivery/funeral-scheduling" element={<FuneralSchedulingPage />} />
                   </Route>
                   <Route
                     element={

@@ -1142,10 +1142,10 @@ export default function OrderStation() {
                   variant="outline"
                   size="sm"
                   className="w-full justify-start"
-                  onClick={() => navigate("/delivery/dispatch")}
+                  onClick={() => navigate("/scheduling")}
                 >
                   <Truck className="h-4 w-4 mr-2" />
-                  Delivery Dispatch
+                  Scheduling Board
                 </Button>
               </div>
             </Card>
