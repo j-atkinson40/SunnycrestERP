@@ -232,8 +232,8 @@ MANUFACTURING_CHECKLIST_ITEMS = [
             "your books automatically."
         ),
         "estimated_minutes": 30,
-        "action_type": "modal",
-        "action_target": "integration_setup_modal",
+        "action_type": "navigate",
+        "action_target": "/onboarding/integrations/accounting",
         "sort_order": 6,
     },
     {
@@ -903,12 +903,19 @@ def fix_checklist_targets(db: Session) -> None:
     """
     _TARGET_FIXES = {
         "add_employees": "/onboarding/team",
+        "connect_accounting": "/onboarding/integrations/accounting",
     }
     for item_key, correct_target in _TARGET_FIXES.items():
         db.query(OnboardingChecklistItem).filter(
             OnboardingChecklistItem.item_key == item_key,
             OnboardingChecklistItem.action_target != correct_target,
         ).update({"action_target": correct_target})
+
+    # Fix action_type for items that were incorrectly set to "modal"
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "connect_accounting",
+        OnboardingChecklistItem.action_type != "navigate",
+    ).update({"action_type": "navigate"})
 
     # Promote configure_cross_tenant to must_complete (was should_complete)
     db.query(OnboardingChecklistItem).filter(
