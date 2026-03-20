@@ -31,7 +31,10 @@ def list_catalog(
     search: str | None = None,
 ) -> list[dict]:
     """Full catalog with tenant install status merged in."""
-    q = db.query(ExtensionDefinition).filter(ExtensionDefinition.is_active.is_(True))
+    q = db.query(ExtensionDefinition).filter(
+        ExtensionDefinition.is_active.is_(True),
+        ExtensionDefinition.hidden_from_catalog.isnot(True),
+    )
 
     if category:
         q = q.filter(ExtensionDefinition.category == category)
@@ -781,7 +784,8 @@ EXTENSION_CATALOG = [
         "category": "scheduling",
         "applicable_verticals": ["manufacturing"],
         "default_enabled_for": ["manufacturing"],
-        "cannot_disable": False,
+        "cannot_disable": True,
+        "hidden_from_catalog": True,
         "access_model": "included",
         "status": "active",
         "version": "1.0.0",

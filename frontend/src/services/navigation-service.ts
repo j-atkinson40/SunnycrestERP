@@ -248,6 +248,11 @@ function getManufacturingNav(
         },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
         {
+          label: "Network Preferences",
+          href: "/settings/network/preferences",
+          icon: "Link",
+        },
+        {
           label: "Notifications",
           href: "/notifications",
           icon: "Bell",

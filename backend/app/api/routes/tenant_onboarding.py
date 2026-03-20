@@ -16,12 +16,14 @@ from app.services import tenant_onboarding_service
 from app.schemas.tenant_onboarding import (
     CheckInCallSchedule,
     ChecklistItemUpdate,
+    CrossTenantPreferences,
     DataImportCreate,
     DataImportUpdate,
     HelpDismissalCreate,
     IntegrationSetupCreate,
     IntegrationSetupUpdate,
     ProductTemplateImportRequest,
+    SchedulingBoardConfig,
     ScenarioAdvance,
     WhiteGloveRequest,
 )
@@ -384,3 +386,139 @@ def schedule_check_in(
     return tenant_onboarding_service.schedule_check_in(
         db, company.id, data.model_dump(exclude_none=True), current_user.id
     )
+
+
+# ---------------------------------------------------------------------------
+# Scheduling Board Setup
+# ---------------------------------------------------------------------------
+
+
+@router.post("/scheduling-board/configure")
+def configure_scheduling_board(
+    data: SchedulingBoardConfig,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    """Save scheduling board configuration and mark checklist item complete."""
+    company.set_setting("scheduling_board_driver_count", data.driver_count)
+    company.set_setting("scheduling_board_saturday_handling", data.saturday_handling)
+    company.set_setting("scheduling_board_lead_time", data.lead_time)
+    if data.lead_time_custom_days is not None:
+        company.set_setting("scheduling_board_lead_time_custom_days", data.lead_time_custom_days)
+    company.set_setting("scheduling_board_configured", True)
+    db.commit()
+
+    # Mark onboarding item complete
+    try:
+        tenant_onboarding_service.check_completion(db, company.id, "setup_scheduling_board")
+    except Exception:
+        pass  # Item may not exist if checklist wasn't initialized
+
+    return {"status": "ok", "settings": {
+        "driver_count": data.driver_count,
+        "saturday_handling": data.saturday_handling,
+        "lead_time": data.lead_time,
+        "lead_time_custom_days": data.lead_time_custom_days,
+    }}
+
+
+@router.get("/scheduling-board/config")
+def get_scheduling_board_config(
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+):
+    """Get current scheduling board configuration."""
+    return {
+        "driver_count": company.get_setting("scheduling_board_driver_count", 2),
+        "saturday_handling": company.get_setting("scheduling_board_saturday_handling", "normal"),
+        "lead_time": company.get_setting("scheduling_board_lead_time", "2_business_days"),
+        "lead_time_custom_days": company.get_setting("scheduling_board_lead_time_custom_days"),
+        "configured": company.get_setting("scheduling_board_configured", False),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Cross-Tenant Preferences
+# ---------------------------------------------------------------------------
+
+
+@router.post("/cross-tenant-preferences")
+def save_cross_tenant_preferences(
+    data: CrossTenantPreferences,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    """Save cross-tenant network preferences and manage extension installs."""
+    from app.services import extension_service
+
+    company.set_setting("delivery_notifications_enabled", data.delivery_notifications_enabled)
+    company.set_setting("cemetery_delivery_notifications", data.cemetery_delivery_notifications)
+    company.set_setting("allow_portal_spring_burial_requests", data.allow_portal_spring_burial_requests)
+    company.set_setting("accept_legacy_print_submissions", data.accept_legacy_print_submissions)
+    company.set_setting("cross_tenant_preferences_configured", True)
+    db.commit()
+
+    # Install/enable extensions based on preferences
+    if data.delivery_notifications_enabled:
+        try:
+            ext_def = extension_service.get_extension(db, "funeral_home_coordination")
+            te = extension_service.get_tenant_extension(db, company.id, "funeral_home_coordination")
+            if ext_def and not te:
+                extension_service.install_extension(db, company.id, "funeral_home_coordination")
+            elif te and not te.enabled:
+                te.enabled = True
+                te.status = "active" if not ext_def.setup_required else "pending_setup"
+                db.commit()
+        except Exception:
+            pass
+    else:
+        te = extension_service.get_tenant_extension(db, company.id, "funeral_home_coordination")
+        if te and te.enabled:
+            te.enabled = False
+            te.status = "disabled"
+            db.commit()
+
+    if data.accept_legacy_print_submissions:
+        try:
+            ext_def = extension_service.get_extension(db, "legacy_print_generator")
+            te = extension_service.get_tenant_extension(db, company.id, "legacy_print_generator")
+            if ext_def and not te:
+                extension_service.install_extension(db, company.id, "legacy_print_generator")
+            elif te and not te.enabled:
+                te.enabled = True
+                te.status = "active"
+                db.commit()
+        except Exception:
+            pass
+    else:
+        te = extension_service.get_tenant_extension(db, company.id, "legacy_print_generator")
+        if te and te.enabled:
+            te.enabled = False
+            te.status = "disabled"
+            db.commit()
+
+    # Mark onboarding item complete
+    try:
+        tenant_onboarding_service.check_completion(db, company.id, "configure_cross_tenant")
+    except Exception:
+        pass
+
+    return {"status": "ok", "preferences": data.model_dump()}
+
+
+@router.get("/cross-tenant-preferences")
+def get_cross_tenant_preferences(
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+):
+    """Get current cross-tenant network preferences."""
+    return {
+        "delivery_notifications_enabled": company.get_setting("delivery_notifications_enabled", True),
+        "cemetery_delivery_notifications": company.get_setting("cemetery_delivery_notifications", True),
+        "allow_portal_spring_burial_requests": company.get_setting("allow_portal_spring_burial_requests", True),
+        "accept_legacy_print_submissions": company.get_setting("accept_legacy_print_submissions", True),
+        "cross_tenant_preferences_configured": company.get_setting("cross_tenant_preferences_configured", False),
+        "spring_burials_enabled": company.get_setting("spring_burials_enabled", False),
+    }

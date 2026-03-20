@@ -224,3 +224,27 @@ class OnboardingAnalyticsResponse(BaseModel):
     avg_completion_pct: float
     avg_days_to_complete: float | None = None
     drop_off_items: list[dict] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Scheduling Board Setup
+# ---------------------------------------------------------------------------
+
+
+class SchedulingBoardConfig(BaseModel):
+    driver_count: int = 2
+    saturday_handling: str = "normal"  # normal | surcharge | no_delivery
+    lead_time: str = "2_business_days"  # same_day | next_business_day | 2_business_days | custom
+    lead_time_custom_days: int | None = None
+
+
+# ---------------------------------------------------------------------------
+# Cross-Tenant Preferences
+# ---------------------------------------------------------------------------
+
+
+class CrossTenantPreferences(BaseModel):
+    delivery_notifications_enabled: bool = True
+    cemetery_delivery_notifications: bool = True
+    allow_portal_spring_burial_requests: bool = True
+    accept_legacy_print_submissions: bool = True

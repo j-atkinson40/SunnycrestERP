@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Link } from "react-router-dom";
 import { networkService } from "@/services/network-service";
 import type {
   NetworkRelationship,
@@ -145,6 +146,12 @@ export default function NetworkManagementPage() {
           <p className="text-muted-foreground">
             Manage cross-tenant relationships and transactions
           </p>
+          <Link
+            to="/settings/network/preferences"
+            className="text-sm text-blue-600 hover:underline mt-1 inline-block"
+          >
+            Notification preferences &rarr;
+          </Link>
         </div>
         <Dialog open={showCreate} onOpenChange={setShowCreate}>
           <DialogTrigger render={<Button />}>

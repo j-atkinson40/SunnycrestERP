@@ -39,6 +39,7 @@ class ExtensionDefinition(Base):
     hooks_registered = Column(Text, nullable=True)  # JSON array of hook names
     group = Column(String(60), nullable=True)
     cannot_disable = Column(Boolean, default=False)
+    hidden_from_catalog = Column(Boolean, default=False)
     sort_order = Column(Integer, default=100)
     requested_by_tenant_id = Column(String(36), nullable=True)
     is_customer_requested = Column(Boolean, default=False)
