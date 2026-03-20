@@ -151,6 +151,9 @@ def seed_platform_admin():
 
             from app.services.functional_area_service import seed_functional_areas
             seed_functional_areas(db)
+
+            from app.services.onboarding_service import fix_checklist_targets
+            fix_checklist_targets(db)
         finally:
             db.close()
 

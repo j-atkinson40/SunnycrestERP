@@ -878,6 +878,23 @@ _PRESET_SCENARIOS: dict[str, list[dict]] = {
 # ===================================================================
 
 
+def fix_checklist_targets(db: Session) -> None:
+    """Patch stale action_target values on existing checklist items.
+
+    Called on startup so that code-level changes to the seed definitions
+    propagate to tenants that were already initialised.
+    """
+    _TARGET_FIXES = {
+        "add_employees": "/onboarding/team",
+    }
+    for item_key, correct_target in _TARGET_FIXES.items():
+        db.query(OnboardingChecklistItem).filter(
+            OnboardingChecklistItem.item_key == item_key,
+            OnboardingChecklistItem.action_target != correct_target,
+        ).update({"action_target": correct_target})
+    db.commit()
+
+
 def initialize_checklist(
     db: Session, tenant_id: str, preset: str
 ) -> OnboardingChecklist:
