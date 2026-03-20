@@ -146,6 +146,7 @@ def seed_platform_admin():
             try:
                 seed_extensions(db)
                 seed_tenant_extension_defaults(db)
+                db.commit()
             except Exception as exc:
                 print(f"WARNING: Extension seeding failed — {exc}")
                 db.rollback()
@@ -158,6 +159,8 @@ def seed_platform_admin():
 
             from app.services.onboarding_service import fix_checklist_targets
             fix_checklist_targets(db)
+
+            db.commit()
         finally:
             db.close()
 

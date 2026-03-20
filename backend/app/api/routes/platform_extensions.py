@@ -39,6 +39,7 @@ def list_extension_definitions(
             "display_name": e.display_name,
             "tagline": e.tagline,
             "description": e.description,
+            "section": e.section,
             "category": e.category,
             "publisher": e.publisher,
             "applicable_verticals": e.applicable_verticals_list,
