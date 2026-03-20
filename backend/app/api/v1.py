@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     accounting,
+    accounting_connection,
     ai,
     ancillary_orders,
     ap,
@@ -83,6 +84,11 @@ v1_router = APIRouter()
 # --- Route registration (alphabetical) ---
 v1_router.include_router(
     accounting.router, prefix="/accounting", tags=["Accounting Integration"]
+)
+v1_router.include_router(
+    accounting_connection.router,
+    prefix="/accounting-connection",
+    tags=["Accounting Connection"],
 )
 v1_router.include_router(ai.router, prefix="/ai", tags=["AI"])
 v1_router.include_router(

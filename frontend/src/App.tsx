@@ -110,6 +110,7 @@ import WebsiteSuggestionsReview from "@/pages/onboarding/website-suggestions-rev
 import ChargeSetupPage from "@/pages/onboarding/charge-setup";
 import TeamSetupPage from "@/pages/onboarding/team-setup";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
+import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import SchedulingSetupPage from "@/pages/onboarding/scheduling-setup";
 import NetworkPreferencesPage from "@/pages/onboarding/network-preferences";
 import NetworkPreferencesSettingsPage from "@/pages/admin/network-preferences";
@@ -474,6 +475,7 @@ export default function App() {
                   <Route path="/onboarding/team" element={<TeamSetupPage />} />
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
+                  <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
                   <Route path="/onboarding/scheduling" element={<SchedulingSetupPage />} />
                   <Route path="/onboarding/network-preferences" element={<NetworkPreferencesPage />} />
                   <Route path="/settings/charges" element={<ChargeSetupPage />} />

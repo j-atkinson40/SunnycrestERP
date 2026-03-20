@@ -68,7 +68,7 @@ export function getNavigation(
 function getManufacturingNav(
   modules: Set<string>,
   perms: Set<string>,
-  _settings: Record<string, unknown> = {},
+  settings: Record<string, unknown> = {},
   areas: Set<string> = new Set(),
 ): NavigationConfig {
   const sections: NavSection[] = [];
@@ -173,6 +173,9 @@ function getManufacturingNav(
   }
 
   // Finance
+  const hasSyncError =
+    settings.accounting_connection_status === "connected" &&
+    settings.last_sync_error;
   const financeItems = filterByPermission(
     [
       {
@@ -181,6 +184,7 @@ function getManufacturingNav(
         icon: "Receipt",
         permission: "invoices.view",
         functionalArea: "invoicing_ar",
+        ...(hasSyncError ? { badge: "!" } : {}),
       },
     ],
     modules,

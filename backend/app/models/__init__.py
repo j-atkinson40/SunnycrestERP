@@ -1,3 +1,4 @@
+from app.models.accounting_connection import AccountingConnection
 from app.models.api_key import ApiKey
 from app.models.api_key_usage import ApiKeyUsage
 from app.models.audit_log import AuditLog
@@ -138,6 +139,7 @@ from app.models.vendor_payment_application import VendorPaymentApplication
 from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIntelligenceSuggestion
 
 __all__ = [
+    "AccountingConnection",
     "ApiKey",
     "ApiKeyUsage",
     "AuditLog",

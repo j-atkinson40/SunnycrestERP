@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
 import { NotificationDropdown } from "./notification-dropdown";
+import { AccountingReminderBanner } from "@/components/accounting-reminder-banner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -40,6 +41,7 @@ export function AppLayout() {
             </Button>
           </div>
         </header>
+        <AccountingReminderBanner />
         <main className="flex-1 overflow-y-auto p-6 pb-20 md:pb-6">
           <Outlet />
         </main>

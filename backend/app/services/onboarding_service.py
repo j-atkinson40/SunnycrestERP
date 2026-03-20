@@ -233,7 +233,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         ),
         "estimated_minutes": 30,
         "action_type": "navigate",
-        "action_target": "/onboarding/integrations/accounting",
+        "action_target": "/onboarding/accounting",
         "sort_order": 6,
     },
     {
@@ -903,7 +903,7 @@ def fix_checklist_targets(db: Session) -> None:
     """
     _TARGET_FIXES = {
         "add_employees": "/onboarding/team",
-        "connect_accounting": "/onboarding/integrations/accounting",
+        "connect_accounting": "/onboarding/accounting",
     }
     for item_key, correct_target in _TARGET_FIXES.items():
         db.query(OnboardingChecklistItem).filter(
