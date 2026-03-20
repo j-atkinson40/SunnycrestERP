@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { api } from "@/lib/api-client";
+import api from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
