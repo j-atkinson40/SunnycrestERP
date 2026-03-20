@@ -534,6 +534,49 @@ export interface AncillaryOrdersResponse {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Direct Ship Orders
+// ---------------------------------------------------------------------------
+
+export type DirectShipStatus =
+  | "pending"
+  | "ordered_from_wilbert"
+  | "shipped"
+  | "done";
+
+export interface DirectShipCard {
+  delivery_id: string;
+  delivery_type: string;
+  funeral_home_name: string;
+  product_summary: string;
+  deceased_name: string;
+  status: string;
+  direct_ship_status: DirectShipStatus;
+  wilbert_order_number: string | null;
+  direct_ship_notes: string | null;
+  needed_by: string | null;
+  marked_shipped_at: string | null;
+  marked_shipped_by: string | null;
+  completed_at: string | null;
+  special_instructions: string | null;
+  created_at: string | null;
+}
+
+export interface DirectShipResponse {
+  needs_ordering: DirectShipCard[];
+  ordered: DirectShipCard[];
+  shipped: DirectShipCard[];
+  completed: DirectShipCard[];
+  stats: {
+    total: number;
+    needs_ordering: number;
+    ordered: number;
+    shipped: number;
+    completed: number;
+    unresolved: number;
+  };
+}
+
 export interface AncillaryConsoleItem {
   delivery_id: string;
   delivery_type: string;

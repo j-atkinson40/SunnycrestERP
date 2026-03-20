@@ -347,8 +347,8 @@ def update_scheduling_type(
     current_user: User = Depends(get_current_user),
 ):
     """Toggle a delivery between kanban and ancillary scheduling."""
-    if data.scheduling_type not in ("kanban", "ancillary"):
-        raise HTTPException(status_code=400, detail="scheduling_type must be 'kanban' or 'ancillary'")
+    if data.scheduling_type not in ("kanban", "ancillary", "direct_ship"):
+        raise HTTPException(status_code=400, detail="scheduling_type must be 'kanban', 'ancillary', or 'direct_ship'")
 
     delivery = db.query(Delivery).filter(
         Delivery.id == delivery_id,
@@ -360,9 +360,15 @@ def update_scheduling_type(
     delivery.scheduling_type = data.scheduling_type
     if data.scheduling_type == "ancillary" and not delivery.ancillary_fulfillment_status:
         delivery.ancillary_fulfillment_status = "unassigned"
+    elif data.scheduling_type == "direct_ship":
+        delivery.ancillary_fulfillment_status = None
+        delivery.assigned_driver_id = None
+        if not delivery.direct_ship_status:
+            delivery.direct_ship_status = "pending"
     elif data.scheduling_type == "kanban":
         delivery.ancillary_fulfillment_status = None
         delivery.assigned_driver_id = None
+        delivery.direct_ship_status = None
     delivery.modified_at = datetime.now(UTC)
     db.commit()
 

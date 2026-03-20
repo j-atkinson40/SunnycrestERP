@@ -330,8 +330,12 @@ class DeliveryCreate(BaseModel):
     special_instructions: str | None = None
     weight_lbs: Decimal | None = None
     # Ancillary fields
-    scheduling_type: str | None = None  # 'kanban' | 'ancillary'
+    scheduling_type: str | None = None  # 'kanban' | 'ancillary' | 'direct_ship'
     pickup_expected_by: datetime | None = None
+    # Direct ship fields
+    direct_ship_status: str | None = None
+    wilbert_order_number: str | None = None
+    direct_ship_notes: str | None = None
 
 
 class DeliveryUpdate(BaseModel):
@@ -354,6 +358,10 @@ class DeliveryUpdate(BaseModel):
     assigned_driver_id: str | None = None
     pickup_expected_by: datetime | None = None
     pickup_confirmed_by: str | None = None
+    # Direct ship fields
+    direct_ship_status: str | None = None
+    wilbert_order_number: str | None = None
+    direct_ship_notes: str | None = None
 
 
 class DeliveryListItem(BaseModel):
@@ -415,6 +423,12 @@ class DeliveryResponse(BaseModel):
     pickup_expected_by: datetime | None = None
     pickup_confirmed_at: datetime | None = None
     pickup_confirmed_by: str | None = None
+    # Direct ship fields
+    direct_ship_status: str | None = None
+    wilbert_order_number: str | None = None
+    direct_ship_notes: str | None = None
+    marked_shipped_at: datetime | None = None
+    marked_shipped_by: str | None = None
 
     class Config:
         from_attributes = True

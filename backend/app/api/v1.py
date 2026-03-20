@@ -25,6 +25,7 @@ from app.api.routes import (
     customers,
     deliveries,
     delivery_portal,
+    direct_ship,
     delivery_settings,
     delivery_types,
     departments,
@@ -119,6 +120,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     delivery_portal.router, prefix="/portal", tags=["Delivery Portal"]
+)
+v1_router.include_router(
+    direct_ship.router, prefix="/extensions/funeral-kanban", tags=["Direct Ship"]
 )
 v1_router.include_router(
     delivery_settings.router, prefix="/settings", tags=["Delivery Settings"]

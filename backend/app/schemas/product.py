@@ -100,6 +100,7 @@ class ProductUpdate(BaseModel):
     unit_of_measure: str | None = None
     image_url: str | None = None
     is_active: bool | None = None
+    is_direct_ship_product: bool | None = None
 
     @field_validator("*", mode="before")
     @classmethod
@@ -122,6 +123,7 @@ class ProductResponse(BaseModel):
     unit_of_measure: str | None = None
     image_url: str | None = None
     is_active: bool
+    is_direct_ship_product: bool = False
     created_at: datetime
     updated_at: datetime
     price_tiers: list[PriceTierResponse] = []

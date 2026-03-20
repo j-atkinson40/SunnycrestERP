@@ -83,6 +83,21 @@ class Delivery(Base):
         String(200), nullable=True
     )
 
+    # Direct ship fields
+    direct_ship_status: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, index=True
+    )  # pending, ordered_from_wilbert, shipped, done
+    wilbert_order_number: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    direct_ship_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    marked_shipped_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    marked_shipped_by: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

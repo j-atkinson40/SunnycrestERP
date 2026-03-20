@@ -49,6 +49,9 @@ class Product(Base):
     product_line: Mapped[str | None] = mapped_column(String(100), nullable=True)  # e.g. "Monticello"
     variant_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # e.g. "STD-1P"
 
+    # Direct ship flag
+    is_direct_ship_product: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Urn catalog / Wilbert import fields
     wilbert_sku: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     wholesale_cost: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)

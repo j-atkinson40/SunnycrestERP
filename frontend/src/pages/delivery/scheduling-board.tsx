@@ -1,13 +1,15 @@
 /**
- * Scheduling Board — Multi-panel Kanban view with Ancillary Orders panel
+ * Scheduling Board — Multi-panel Kanban view with side panels
  *
  * Shows today's full Kanban board stacked above the next delivery day's
  * Kanban board. On Saturdays, shows three panels (Sat + Sun + Mon) for
  * weekend planning. The "next delivery day" is context-aware — skips
  * weekends when delivery is disabled.
  *
- * Ancillary panel sits alongside the Kanban board in a two-column layout
- * (collapsible). On mobile, it slides up as a drawer.
+ * Right column contains two collapsible panels stacked vertically:
+ * - Ancillary Orders (date-scoped)
+ * - Direct Ship Orders (7-day lookahead)
+ * On mobile, each slides up as a drawer via bottom pills.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -20,6 +22,11 @@ import {
   AncillaryMobilePill,
   AncillaryDrawer,
 } from "@/components/delivery/ancillary-panel";
+import {
+  DirectShipPanel,
+  DirectShipMobilePill,
+  DirectShipDrawer,
+} from "@/components/delivery/direct-ship-panel";
 import api from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
@@ -298,6 +305,7 @@ export default function SchedulingBoardPage() {
   const sundayKey = collapseKey("sunday", tenantId, userId);
   const mondaySatKey = collapseKey("monday_sat", tenantId, userId);
   const ancillaryKey = collapseKey("ancillary", tenantId, userId);
+  const directShipKey = collapseKey("direct_ship", tenantId, userId);
 
   const [collapseState, setCollapseState] = useState<Record<string, boolean>>(
     () => ({
@@ -305,6 +313,7 @@ export default function SchedulingBoardPage() {
       sunday: loadPanelCollapsed(sundayKey),
       monday_sat: loadPanelCollapsed(mondaySatKey),
       ancillary: loadPanelCollapsed(ancillaryKey),
+      direct_ship: loadPanelCollapsed(directShipKey),
     }),
   );
 
@@ -376,27 +385,35 @@ export default function SchedulingBoardPage() {
   }, [dateParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mobile drawer state
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [ancillaryDrawerOpen, setAncillaryDrawerOpen] = useState(false);
+  const [directShipDrawerOpen, setDirectShipDrawerOpen] = useState(false);
 
-  // Ancillary unresolved count for the mobile pill
+  // Unresolved counts for mobile pills and collapsed tab
   const [ancillaryUnresolved, setAncillaryUnresolved] = useState(0);
+  const [directShipUnresolved, setDirectShipUnresolved] = useState(0);
   useEffect(() => {
-    const fetchCount = async () => {
+    const fetchCounts = async () => {
       try {
-        const resp = await api.get("/api/v1/extensions/funeral-kanban/ancillary", {
-          params: { date: primaryDate },
-        });
-        setAncillaryUnresolved(resp.data?.stats?.unresolved ?? 0);
+        const [ancResp, dsResp] = await Promise.all([
+          api.get("/api/v1/extensions/funeral-kanban/ancillary", {
+            params: { date: primaryDate },
+          }),
+          api.get("/api/v1/extensions/funeral-kanban/direct-ship"),
+        ]);
+        setAncillaryUnresolved(ancResp.data?.stats?.unresolved ?? 0);
+        setDirectShipUnresolved(dsResp.data?.stats?.unresolved ?? 0);
       } catch {
         // ignore
       }
     };
-    fetchCount();
-    const interval = setInterval(fetchCount, 60_000);
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 60_000);
     return () => clearInterval(interval);
   }, [primaryDate]);
 
   const ancillaryCollapsed = collapseState.ancillary ?? false;
+  const directShipCollapsed = collapseState.direct_ship ?? false;
+  const bothSidePanelsCollapsed = ancillaryCollapsed && directShipCollapsed;
 
   return (
     <div className="flex h-full">
@@ -458,16 +475,27 @@ export default function SchedulingBoardPage() {
               &#8594;
             </button>
 
-            {/* Ancillary toggle button (desktop only) */}
-            {!isMobile && ancillaryCollapsed && (
+            {/* Side panel toggle button (desktop only) — shows when both collapsed */}
+            {!isMobile && bothSidePanelsCollapsed && (
               <button
-                onClick={() => toggleCollapse("ancillary")}
+                onClick={() => {
+                  toggleCollapse("ancillary");
+                  if (directShipCollapsed) toggleCollapse("direct_ship");
+                }}
                 className="flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
               >
-                &#128230; Ancillary
+                &#9664;
+                <span>Ancillary</span>
                 {ancillaryUnresolved > 0 && (
                   <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                     {ancillaryUnresolved}
+                  </span>
+                )}
+                <span className="text-slate-300">&middot;</span>
+                <span>Direct Ship</span>
+                {directShipUnresolved > 0 && (
+                  <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                    {directShipUnresolved}
                   </span>
                 )}
               </button>
@@ -502,27 +530,72 @@ export default function SchedulingBoardPage() {
         })}
       </div>
 
-      {/* ── Ancillary Panel (desktop) ── */}
-      {!isMobile && !ancillaryCollapsed && (
-        <AncillaryPanel
-          dateStr={primaryDate}
-          collapsed={false}
-          onToggleCollapse={() => toggleCollapse("ancillary")}
-        />
+      {/* ── Right Column: Ancillary + Direct Ship (desktop) ── */}
+      {!isMobile && !bothSidePanelsCollapsed && (
+        <div className="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-slate-50/50 overflow-y-auto">
+          {/* Ancillary Panel */}
+          {!ancillaryCollapsed ? (
+            <AncillaryPanel
+              dateStr={primaryDate}
+              collapsed={false}
+              onToggleCollapse={() => toggleCollapse("ancillary")}
+            />
+          ) : (
+            <button
+              onClick={() => toggleCollapse("ancillary")}
+              className="flex items-center justify-between border-b px-4 py-2 text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+            >
+              <span className="font-medium">&#128230; Ancillary Orders</span>
+              {ancillaryUnresolved > 0 && (
+                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                  {ancillaryUnresolved}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Direct Ship Panel */}
+          {!directShipCollapsed ? (
+            <DirectShipPanel
+              collapsed={false}
+              onToggleCollapse={() => toggleCollapse("direct_ship")}
+            />
+          ) : (
+            <button
+              onClick={() => toggleCollapse("direct_ship")}
+              className="flex items-center justify-between border-b px-4 py-2 text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+            >
+              <span className="font-medium">&#128236; Direct Ship</span>
+              {directShipUnresolved > 0 && (
+                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                  {directShipUnresolved}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
       )}
 
-      {/* ── Ancillary Mobile Pill + Drawer ── */}
+      {/* ── Mobile Pills + Drawers ── */}
       {isMobile && (
         <>
           <AncillaryMobilePill
             dateStr={primaryDate}
             unresolvedCount={ancillaryUnresolved}
-            onClick={() => setMobileDrawerOpen(true)}
+            onClick={() => setAncillaryDrawerOpen(true)}
+          />
+          <DirectShipMobilePill
+            unresolvedCount={directShipUnresolved}
+            onClick={() => setDirectShipDrawerOpen(true)}
           />
           <AncillaryDrawer
             dateStr={primaryDate}
-            open={mobileDrawerOpen}
-            onClose={() => setMobileDrawerOpen(false)}
+            open={ancillaryDrawerOpen}
+            onClose={() => setAncillaryDrawerOpen(false)}
+          />
+          <DirectShipDrawer
+            open={directShipDrawerOpen}
+            onClose={() => setDirectShipDrawerOpen(false)}
           />
         </>
       )}
