@@ -9,6 +9,7 @@ import {
   Trash2,
   Plus,
   CheckCircle2,
+  ChevronDown,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,7 @@ export default function TeamSetupPage() {
   const [areaMap, setAreaMap] = useState<Record<string, string[]>>({});
   const [savingAreas, setSavingAreas] = useState(false);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set());
 
   // Load roles on mount
   useEffect(() => {
@@ -241,6 +243,22 @@ export default function TeamSetupPage() {
   }
 
   // ── Phase 2: Area assignment ───────────────────────────────────
+
+  function toggleCollapsed(userId: string) {
+    setCollapsedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  function getAreaNames(areaKeys: string[]): string {
+    if (areaKeys.length === 0) return "None assigned";
+    return areaKeys
+      .map((key) => areas.find((a) => a.area_key === key)?.display_name ?? key)
+      .join(", ");
+  }
 
   function updateEmployeeAreas(userId: string, newAreas: string[]) {
     setAreaMap((prev) => ({ ...prev, [userId]: newAreas }));
@@ -521,24 +539,45 @@ export default function TeamSetupPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-4">
-                  {employees.map((emp) => (
-                    <Card key={emp.id}>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-base">
-                          {emp.first_name} {emp.last_name}
-                        </CardTitle>
-                        <CardDescription>{emp.email}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <FunctionalAreaMatrix
-                          selectedAreas={areaMap[emp.id] || []}
-                          onChange={(newAreas) => updateEmployeeAreas(emp.id, newAreas)}
-                          areas={areas}
-                        />
-                      </CardContent>
-                    </Card>
-                  ))}
+                <div className="space-y-3">
+                  {employees.map((emp) => {
+                    const isCollapsed = collapsedCards.has(emp.id);
+                    const empAreas = areaMap[emp.id] || [];
+                    return (
+                      <Card key={emp.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between px-6 py-4 text-left"
+                          onClick={() => toggleCollapsed(emp.id)}
+                        >
+                          <div className="min-w-0">
+                            <div className="text-base font-semibold">
+                              {emp.first_name} {emp.last_name}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {isCollapsed
+                                ? getAreaNames(empAreas)
+                                : emp.email}
+                            </div>
+                          </div>
+                          <ChevronDown
+                            className={`size-5 shrink-0 text-muted-foreground transition-transform ${
+                              isCollapsed ? "" : "rotate-180"
+                            }`}
+                          />
+                        </button>
+                        {!isCollapsed && (
+                          <CardContent className="pt-0">
+                            <FunctionalAreaMatrix
+                              selectedAreas={empAreas}
+                              onChange={(newAreas) => updateEmployeeAreas(emp.id, newAreas)}
+                              areas={areas}
+                            />
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
 
