@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { X } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { usePresetTheme } from "@/contexts/preset-theme-context";
 import { salesService } from "@/services/sales-service";
 import type { Invoice } from "@/types/sales";
 import { Button } from "@/components/ui/button";
@@ -19,7 +21,7 @@ function fmtCurrency(n: string | number) {
 }
 
 function fmtDate(d: string | null) {
-  if (!d) return "—";
+  if (!d) return "\u2014";
   return new Date(d).toLocaleDateString();
 }
 
@@ -70,6 +72,20 @@ function invoiceStatusBadge(status: string) {
 }
 
 const PER_PAGE = 20;
+const SYNC_BANNER_DISMISS_KEY = "invoice_sync_error_banner_dismissed";
+
+function providerLabel(provider: string | undefined): string {
+  switch (provider) {
+    case "quickbooks_online":
+      return "QuickBooks Online";
+    case "quickbooks_desktop":
+      return "QuickBooks Desktop";
+    case "sage_100":
+      return "Sage 100";
+    default:
+      return "your accounting software";
+  }
+}
 
 export default function InvoicesPage() {
   useAuth();
@@ -79,6 +95,30 @@ export default function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState("");
   const [loading, setLoading] = useState(true);
+  const [syncBannerDismissed, setSyncBannerDismissed] = useState(() => {
+    return sessionStorage.getItem(SYNC_BANNER_DISMISS_KEY) === "true";
+  });
+
+  let tenantSettings: Record<string, unknown> = {};
+  try {
+    const theme = usePresetTheme();
+    tenantSettings = theme.tenantSettings;
+  } catch {
+    // PresetThemeProvider may not be available in all contexts
+  }
+
+  const connectionStatus = tenantSettings.accounting_connection_status as string | undefined;
+  const lastSyncError = tenantSettings.last_sync_error as string | undefined;
+  const provider = tenantSettings.accounting_provider as string | undefined;
+  const showSyncBanner =
+    !syncBannerDismissed &&
+    connectionStatus === "connected" &&
+    !!lastSyncError;
+
+  const dismissSyncBanner = () => {
+    sessionStorage.setItem(SYNC_BANNER_DISMISS_KEY, "true");
+    setSyncBannerDismissed(true);
+  };
 
   const loadInvoices = useCallback(async () => {
     setLoading(true);
@@ -103,6 +143,30 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-6">
+      {/* Sync error banner */}
+      {showSyncBanner && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
+          <p className="text-sm text-amber-900">
+            Accounting sync error — invoices failed to sync to{" "}
+            {providerLabel(provider)}.{" "}
+            <Link
+              to="/settings/integrations/accounting"
+              className="font-medium underline hover:text-amber-700"
+            >
+              View and fix errors →
+            </Link>
+          </p>
+          <button
+            type="button"
+            onClick={dismissSyncBanner}
+            className="shrink-0 text-amber-600 hover:text-amber-800 transition-colors"
+            aria-label="Dismiss sync error banner"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Invoices</h1>
@@ -169,7 +233,7 @@ export default function InvoicesPage() {
                       {invoice.number}
                     </Link>
                   </TableCell>
-                  <TableCell>{invoice.customer_name || "—"}</TableCell>
+                  <TableCell>{invoice.customer_name || "\u2014"}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {fmtDate(invoice.invoice_date)}
                   </TableCell>

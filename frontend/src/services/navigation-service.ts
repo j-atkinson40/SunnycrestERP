@@ -230,6 +230,12 @@ function getManufacturingNav(
           icon: "Plug",
         },
         {
+          label: "Accounting",
+          href: "/settings/integrations/accounting",
+          icon: "Calculator",
+          ...(hasSyncError ? { badge: "\u2022" } : {}),
+        },
+        {
           label: "Equipment Bundles",
           href: "/settings/catalog/bundles",
           icon: "Package",

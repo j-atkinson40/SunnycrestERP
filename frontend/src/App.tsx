@@ -111,6 +111,7 @@ import ChargeSetupPage from "@/pages/onboarding/charge-setup";
 import TeamSetupPage from "@/pages/onboarding/team-setup";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
+import SyncHealthDashboardPage from "@/pages/admin/sync-health-dashboard";
 import SchedulingSetupPage from "@/pages/onboarding/scheduling-setup";
 import NetworkPreferencesPage from "@/pages/onboarding/network-preferences";
 import NetworkPreferencesSettingsPage from "@/pages/admin/network-preferences";
@@ -481,6 +482,7 @@ export default function App() {
                   <Route path="/settings/charges" element={<ChargeSetupPage />} />
                   <Route path="/settings/network/preferences" element={<NetworkPreferencesSettingsPage />} />
                   <Route path="/settings/scheduling" element={<SchedulingSettingsPage />} />
+                  <Route path="/settings/integrations/accounting" element={<SyncHealthDashboardPage />} />
 
                   {/* Extension Catalog — any authenticated user */}
                   <Route path="/extensions" element={<ExtensionCatalogPage />} />

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,6 +59,16 @@ class AccountingConnection(Base):
     # ── Sync configuration ────────────────────────────────────────
     sync_config = mapped_column(JSONB, nullable=True)
     account_mappings = mapped_column(JSONB, nullable=True)
+
+    # ── Enhanced accounting fields ─────────────────────────────────
+    connection_attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    income_account_mappings = mapped_column(JSONB, nullable=True)
+    csv_column_mappings = mapped_column(JSONB, nullable=True)
+    customer_match_completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
 
     # ── Last sync info ────────────────────────────────────────────
     last_sync_at: Mapped[datetime | None] = mapped_column(
