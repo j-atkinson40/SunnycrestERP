@@ -29,10 +29,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronRight,
-  Wrench,
   ClipboardList,
-  Settings,
-  Eye,
 } from "lucide-react";
 import type {
   PriceListImport,
@@ -313,70 +310,6 @@ export default function PriceListUploadFlow({ onBack }: Props) {
   // ── Step 4: Confirm ──
 
   const [confirming, setConfirming] = useState(false);
-
-  const confirmSummary = useMemo(() => {
-    const allItems = Object.values(localItems);
-    const included = allItems.filter(
-      (i) =>
-        (i.action === "create_product" || i.action === "create_custom" || i.action === "create_bundle") &&
-        !i.charge_category,
-    );
-    // Group by category-ish extracted from name
-    const groups: Record<string, { count: number; min: number; max: number }> =
-      {};
-    for (const item of included) {
-      const name = item.final_product_name || item.extracted_name;
-      let category = "Other";
-      const nameLower = name.toLowerCase();
-      if (nameLower.includes("burial") || nameLower.includes("vault")) {
-        if (nameLower.includes("urn")) {
-          category = "Urn Vaults";
-        } else {
-          category = "Burial Vaults";
-        }
-      } else if (nameLower.includes("urn")) {
-        category = "Urns";
-      } else if (
-        nameLower.includes("lowering") ||
-        nameLower.includes("tent") ||
-        nameLower.includes("grass") ||
-        nameLower.includes("chair") ||
-        nameLower.includes("equipment")
-      ) {
-        category = "Cemetery Equipment";
-      } else if (
-        nameLower.includes("marker") ||
-        nameLower.includes("memorial") ||
-        nameLower.includes("monument")
-      ) {
-        category = "Memorials";
-      }
-      if (item.action === "create_bundle") {
-        category = "Equipment Bundles";
-      }
-
-      const price = item.final_price ?? 0;
-      if (!groups[category]) {
-        groups[category] = { count: 0, min: price, max: price };
-      }
-      groups[category].count++;
-      if (price < groups[category].min) groups[category].min = price;
-      if (price > groups[category].max) groups[category].max = price;
-    }
-
-    // Charge library summary
-    const chargeItems = allItems.filter((i) => i.charge_category && i.action === "create_custom");
-    const chargesMatched = chargeItems.filter((i) => i.matched_charge_id).length;
-    const chargesNew = chargeItems.filter((i) => !i.matched_charge_id).length;
-
-    return {
-      groups,
-      total: included.length,
-      chargesMatched,
-      chargesNew,
-      chargesTotal: chargeItems.length,
-    };
-  }, [localItems]);
 
   // ── Summary data for the pre-confirmation summary screen ──────
   const summaryData = useMemo(() => {
