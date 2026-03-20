@@ -344,7 +344,6 @@ export default function PriceListUploadFlow({ onBack }: Props) {
 
     // Categorize by product type
     function getCategory(item: PriceListImportItem): string {
-      if (item.action === "create_bundle") return "equipment_packages";
       const name = (item.final_product_name || item.extracted_name).toLowerCase();
       if (name.includes("urn vault") || (name.includes("urn") && name.includes("vault")))
         return "urn_vaults";
@@ -352,14 +351,17 @@ export default function PriceListUploadFlow({ onBack }: Props) {
         return "burial_vaults";
       if (name.includes("urn")) return "urns";
       if (
+        item.action === "create_bundle" ||
+        name.includes("equipment") ||
         name.includes("lowering") ||
         name.includes("tent") ||
         name.includes("grass") ||
         name.includes("chair") ||
         name.includes("strap") ||
-        name.includes("cremation table")
+        name.includes("cremation table") ||
+        name.includes("setup")
       )
-        return "individual_equipment";
+        return "equipment";
       return "other";
     }
 
@@ -367,8 +369,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
       burial_vaults: [],
       urn_vaults: [],
       urns: [],
-      equipment_packages: [],
-      individual_equipment: [],
+      equipment: [],
       other: [],
     };
 
@@ -390,8 +391,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
       { key: "burial_vaults", label: "Burial Vaults", icon: "📦" },
       { key: "urn_vaults", label: "Urn Vaults", icon: "🏺" },
       { key: "urns", label: "Urns", icon: "⚱️" },
-      { key: "equipment_packages", label: "Equipment Packages", icon: "🧰" },
-      { key: "individual_equipment", label: "Individual Equipment Items", icon: "🔧" },
+      { key: "equipment", label: "Equipment", icon: "🧰" },
       { key: "other", label: "Other Products", icon: "📋" },
     ];
 
@@ -962,7 +962,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
                 <div className="flex items-center gap-3">
                   <Badge variant="secondary">
                     {group.items.length}{" "}
-                    {group.key === "equipment_packages"
+                    {group.key === "equipment"
                       ? group.items.length === 1
                         ? "package"
                         : "packages"
@@ -981,7 +981,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
               {isGroupExpanded(group.key) && (
                 <div className="border-t">
                   {/* Equipment packages — special layout */}
-                  {group.key === "equipment_packages" ? (
+                  {group.key === "equipment" ? (
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
