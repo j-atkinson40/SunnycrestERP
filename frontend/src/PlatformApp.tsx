@@ -15,6 +15,7 @@ import AdminTenantDetail from "@/pages/admin/admin-tenant-detail";
 import TenantOnboardingPage from "@/pages/platform/tenant-onboarding";
 import TenantModulesPage from "@/pages/platform/tenant-modules";
 import ExtensionDemandPage from "@/pages/platform/extension-demand";
+import PlatformExtensionCatalogPage from "@/pages/platform/extension-catalog";
 import PlatformFeatureFlagsPage from "@/pages/platform/feature-flags";
 import SystemHealthPage from "@/pages/platform/system-health";
 import ImpersonationLogPage from "@/pages/platform/impersonation-log";
@@ -42,6 +43,10 @@ export default function PlatformApp() {
             <Route
               path="/tenants/:tenantId/modules"
               element={<TenantModulesPage />}
+            />
+            <Route
+              path="/extensions/catalog"
+              element={<PlatformExtensionCatalogPage />}
             />
             <Route
               path="/extensions/demand"

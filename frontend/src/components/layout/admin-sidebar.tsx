@@ -55,8 +55,8 @@ const sections: NavSection[] = [
   {
     title: "Product",
     items: [
-      { label: "Extension Catalog", href: "/extensions/demand", icon: Puzzle },
-      { label: "Demand Signals", href: "/demand-signals", icon: TrendingUp },
+      { label: "Extension Catalog", href: "/extensions/catalog", icon: Puzzle },
+      { label: "Demand Signals", href: "/extensions/demand", icon: TrendingUp },
       { label: "Onboarding Templates", href: "/onboarding-templates", icon: ClipboardList },
     ],
   },
