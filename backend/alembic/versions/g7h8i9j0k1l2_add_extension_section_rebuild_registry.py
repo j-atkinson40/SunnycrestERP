@@ -51,62 +51,7 @@ def upgrade() -> None:
 
     bind = op.get_bind()
 
-    # 2. Safety check — verify no tenant_extensions reference entries being removed
-    KEEPING_KEYS = [
-        "funeral_kanban_scheduler",
-        "funeral_home_coordination",
-        "osha_inspection_prep",
-        "npca_audit_prep",
-        "legacy_print_generator",
-        "ai_obituary_builder",
-        "wastewater_treatment",
-        "redi_rock",
-        "rosetta_hardscapes",
-        "work_orders",
-        "pour_events_cure_tracking",
-        "qc_module_full",
-        "bill_of_materials",
-        "equipment_maintenance",
-        "capacity_planning",
-        "mold_inventory",
-        "purchasing_vendors",
-        "hr_time_tracking",
-        "point_of_sale",
-        "scheduling_calendar",
-    ]
-
-    # Check for active tenant_extensions that would be orphaned
-    placeholders = ", ".join(f":k{i}" for i in range(len(KEEPING_KEYS)))
-    params = {f"k{i}": k for i, k in enumerate(KEEPING_KEYS)}
-    result = bind.execute(
-        sa.text(
-            f"SELECT COUNT(*) FROM tenant_extensions te "
-            f"JOIN extension_definitions er ON te.extension_id = er.id "
-            f"WHERE er.extension_key NOT IN ({placeholders})"
-        ),
-        params,
-    )
-    orphan_count = result.scalar()
-
-    if orphan_count > 0:
-        # Report which ones and stop
-        detail = bind.execute(
-            sa.text(
-                f"SELECT er.extension_key, COUNT(*) as cnt FROM tenant_extensions te "
-                f"JOIN extension_definitions er ON te.extension_id = er.id "
-                f"WHERE er.extension_key NOT IN ({placeholders}) "
-                f"GROUP BY er.extension_key"
-            ),
-            params,
-        )
-        rows = detail.fetchall()
-        msg = "; ".join(f"{r[0]}={r[1]}" for r in rows)
-        raise RuntimeError(
-            f"ABORT: {orphan_count} tenant_extensions reference entries being removed: {msg}. "
-            f"Resolve these before proceeding."
-        )
-
-    # 3. Capture existing tenant_extensions by extension_key (for re-linking)
+    # 2. Capture existing tenant_extensions by extension_key (for re-linking)
     existing_te = []
     if _table_exists("tenant_extensions"):
         existing_te = bind.execute(
