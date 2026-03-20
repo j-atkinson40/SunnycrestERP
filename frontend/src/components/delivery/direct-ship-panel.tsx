@@ -436,7 +436,8 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
     }
   }, [fetchData]);
 
-  const unresolvedCount = data?.stats.unresolved ?? 0;
+  // unresolvedCount exposed for parent components via props/callbacks if needed
+  void (data?.stats.unresolved ?? 0);
 
   if (collapsed) {
     return null; // Collapse handled at the scheduling board level
