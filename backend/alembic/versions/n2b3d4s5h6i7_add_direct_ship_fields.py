@@ -1,15 +1,15 @@
 """Add direct ship fields to deliveries and is_direct_ship_product to products.
 
-Revision ID: b2c3d4e5f6g7
-Revises: a1b2c3d4e5f6
+Revision ID: n2b3d4s5h6i7
+Revises: n1a2n3c4o5r6
 Create Date: 2026-03-20
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-revision = "b2c3d4e5f6g7"
-down_revision = "a1b2c3d4e5f6"
+revision = "n2b3d4s5h6i7"
+down_revision = "n1a2n3c4o5r6"
 branch_labels = None
 depends_on = None
 

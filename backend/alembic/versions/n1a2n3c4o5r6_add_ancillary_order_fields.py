@@ -1,6 +1,6 @@
 """Add ancillary order fields to deliveries table.
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: n1a2n3c4o5r6
 Revises: z5a6b7c8d9e0
 Create Date: 2026-03-20
 """
@@ -8,7 +8,7 @@ Create Date: 2026-03-20
 from alembic import op
 import sqlalchemy as sa
 
-revision = "a1b2c3d4e5f6"
+revision = "n1a2n3c4o5r6"
 down_revision = "z5a6b7c8d9e0"
 branch_labels = None
 depends_on = None

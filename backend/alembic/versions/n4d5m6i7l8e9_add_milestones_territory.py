@@ -1,15 +1,15 @@
 """Add driver milestone settings, delivery area, and service territories.
 
-Revision ID: d4e5f6g7h8i9
-Revises: c3d4e5f6g7h8
+Revision ID: n4d5m6i7l8e9
+Revises: n3c4a5f6l7o8
 Create Date: 2026-03-20
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-revision = "d4e5f6g7h8i9"
-down_revision = "c3d4e5f6g7h8"
+revision = "n4d5m6i7l8e9"
+down_revision = "n3c4a5f6l7o8"
 branch_labels = None
 depends_on = None
 

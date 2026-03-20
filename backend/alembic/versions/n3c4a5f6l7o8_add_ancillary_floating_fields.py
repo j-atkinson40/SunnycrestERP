@@ -1,15 +1,15 @@
 """Add ancillary floating fields to deliveries.
 
-Revision ID: c3d4e5f6g7h8
-Revises: b2c3d4e5f6g7
+Revision ID: n3c4a5f6l7o8
+Revises: n2b3d4s5h6i7
 Create Date: 2026-03-20
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-revision = "c3d4e5f6g7h8"
-down_revision = "b2c3d4e5f6g7"
+revision = "n3c4a5f6l7o8"
+down_revision = "n2b3d4s5h6i7"
 branch_labels = None
 depends_on = None
 
