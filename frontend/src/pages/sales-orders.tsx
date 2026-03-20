@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
+import { usePresetTheme } from "@/contexts/preset-theme-context";
 import { salesService } from "@/services/sales-service";
 import type { SalesOrder } from "@/types/sales";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -13,6 +15,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+// Lazy-load the Spring Burials page so it's only fetched when the tab is active
+import { lazy, Suspense } from "react";
+const SpringBurialList = lazy(
+  () => import("@/pages/spring-burials/spring-burial-list"),
+);
 
 function statusBadge(status: string) {
   switch (status) {
@@ -60,7 +68,81 @@ function fmtDate(d: string | null) {
 
 export default function SalesOrdersPage() {
   useAuth();
+  const { tenantSettings } = usePresetTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
 
+  const springBurialsEnabled = tenantSettings.spring_burials_enabled === true;
+  const activeTab = searchParams.get("tab") === "spring-burials" && springBurialsEnabled
+    ? "spring-burials"
+    : "all";
+
+  const setTab = (tab: string) => {
+    if (tab === "all") {
+      searchParams.delete("tab");
+    } else {
+      searchParams.set("tab", tab);
+    }
+    setSearchParams(searchParams, { replace: true });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Orders</h1>
+      </div>
+
+      {/* Tabs — only show if Spring Burials is enabled */}
+      {springBurialsEnabled && (
+        <div className="flex items-center gap-1 border-b">
+          <button
+            onClick={() => setTab("all")}
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px",
+              activeTab === "all"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300",
+            )}
+          >
+            All Orders
+          </button>
+          <button
+            onClick={() => setTab("spring-burials")}
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px",
+              activeTab === "spring-burials"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300",
+            )}
+          >
+            Spring Burials
+          </button>
+        </div>
+      )}
+
+      {/* Tab content */}
+      {activeTab === "spring-burials" ? (
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+            </div>
+          }
+        >
+          <SpringBurialList />
+        </Suspense>
+      ) : (
+        <OrdersTable />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Orders table — extracted to keep tab switching clean
+// ---------------------------------------------------------------------------
+
+function OrdersTable() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -89,12 +171,9 @@ export default function SalesOrdersPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Sales Orders</h1>
-          <p className="text-muted-foreground">{total} orders</p>
-        </div>
+        <p className="text-muted-foreground text-sm">{total} orders</p>
       </div>
 
       {/* Filters */}
@@ -196,6 +275,6 @@ export default function SalesOrdersPage() {
           </Button>
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -68,7 +68,7 @@ export function getNavigation(
 function getManufacturingNav(
   modules: Set<string>,
   perms: Set<string>,
-  settings: Record<string, unknown> = {},
+  _settings: Record<string, unknown> = {},
   areas: Set<string> = new Set(),
 ): NavigationConfig {
   const sections: NavSection[] = [];
@@ -112,12 +112,6 @@ function getManufacturingNav(
       functionalArea: "production_log",
     },
     {
-      label: "Urns",
-      href: "/products/urns",
-      icon: "Gem",
-      permission: "products.view",
-    },
-    {
       label: "Production Log",
       href: "/production-log",
       icon: "Factory",
@@ -126,15 +120,6 @@ function getManufacturingNav(
       functionalArea: "production_log",
     },
   ];
-
-  // Spring Burials — only if enabled in tenant settings
-  if (settings.spring_burials_enabled) {
-    opsItems.push({
-      label: "Spring Burials",
-      href: "/spring-burials",
-      icon: "Snowflake",
-    });
-  }
 
   // Extension-added items
   if (modules.has("work_orders")) {
