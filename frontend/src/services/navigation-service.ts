@@ -5,6 +5,7 @@ export interface NavItem {
   badge?: number | string;
   permission?: string;
   requiresModule?: string;
+  functionalArea?: string; // employee must have this area assigned
 }
 
 export interface NavSection {
@@ -44,13 +45,15 @@ export function getNavigation(
   enabledModules: Set<string>,
   permissions: Set<string>,
   tenantSettings?: Record<string, unknown>,
+  functionalAreas?: Set<string>,
 ): NavigationConfig {
   const preset = vertical || "manufacturing";
   const settings = tenantSettings || {};
+  const areas = functionalAreas || new Set<string>();
 
   switch (preset) {
     case "manufacturing":
-      return getManufacturingNav(enabledModules, permissions, settings);
+      return getManufacturingNav(enabledModules, permissions, settings, areas);
     case "funeral_home":
       return getFuneralHomeNav(enabledModules, permissions);
     case "cemetery":
@@ -58,7 +61,7 @@ export function getNavigation(
     case "crematory":
       return getCrematoryNav(enabledModules, permissions);
     default:
-      return getManufacturingNav(enabledModules, permissions);
+      return getManufacturingNav(enabledModules, permissions, settings, areas);
   }
 }
 
@@ -66,6 +69,7 @@ function getManufacturingNav(
   modules: Set<string>,
   perms: Set<string>,
   settings: Record<string, unknown> = {},
+  areas: Set<string> = new Set(),
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
@@ -90,6 +94,7 @@ function getManufacturingNav(
       href: "/customers",
       icon: "Users",
       permission: "customers.view",
+      functionalArea: "customer_management",
     },
     {
       label: "Delivery Schedule",
@@ -97,12 +102,14 @@ function getManufacturingNav(
       icon: "Truck",
       permission: "deliveries.view",
       requiresModule: "driver_delivery",
+      functionalArea: "funeral_scheduling",
     },
     {
       label: "Inventory",
       href: "/inventory",
       icon: "Package",
       permission: "inventory.view",
+      functionalArea: "production_log",
     },
     {
       label: "Urns",
@@ -116,6 +123,7 @@ function getManufacturingNav(
       icon: "Factory",
       permission: "production_log.view",
       requiresModule: "daily_production_log",
+      functionalArea: "production_log",
     },
   ];
 
@@ -146,7 +154,7 @@ function getManufacturingNav(
 
   sections.push({
     title: "Operations",
-    items: filterByPermission(opsItems, modules, perms),
+    items: filterByPermission(opsItems, modules, perms, areas),
   });
 
   // Compliance
@@ -157,6 +165,7 @@ function getManufacturingNav(
       icon: "ShieldCheck",
       permission: "safety.view",
       requiresModule: "safety_management",
+      functionalArea: "safety_compliance",
     },
   ];
   if (modules.has("npca_audit_prep")) {
@@ -172,6 +181,7 @@ function getManufacturingNav(
     complianceItems,
     modules,
     perms,
+    areas,
   );
   if (filteredCompliance.length > 0) {
     sections.push({ title: "Compliance", items: filteredCompliance });
@@ -185,10 +195,12 @@ function getManufacturingNav(
         href: "/ar/invoices",
         icon: "Receipt",
         permission: "invoices.view",
+        functionalArea: "invoicing_ar",
       },
     ],
     modules,
     perms,
+    areas,
   );
   if (financeItems.length > 0) {
     sections.push({ title: "Finance", items: financeItems });
@@ -555,11 +567,17 @@ function filterByPermission(
   items: NavItem[],
   modules: Set<string>,
   _perms: Set<string>,
+  areas?: Set<string>,
 ): NavItem[] {
   return items.filter((item) => {
     if (item.requiresModule && !modules.has(item.requiresModule)) return false;
-    // Permission checking happens at route level; nav shows all items
-    // that pass module gating for simplicity
+    // Functional area filtering — only applied when areas are configured
+    if (item.functionalArea && areas && areas.size > 0) {
+      // full_admin bypasses area restrictions
+      if (!areas.has("full_admin") && !areas.has(item.functionalArea)) {
+        return false;
+      }
+    }
     return true;
   });
 }

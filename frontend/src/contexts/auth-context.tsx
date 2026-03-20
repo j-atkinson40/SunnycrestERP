@@ -20,6 +20,8 @@ interface AuthContextType {
   hasPermission: (key: string) => boolean;
   enabledModules: Set<string>;
   hasModule: (key: string) => boolean;
+  functionalAreas: Set<string>;
+  hasFunctionalArea: (key: string) => boolean;
   isAdmin: boolean;
   refreshUser: () => Promise<void>;
   refreshCompany: () => Promise<void>;
@@ -53,6 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasModule = useCallback(
     (key: string) => enabledModules.has(key),
     [enabledModules]
+  );
+
+  const functionalAreas = useMemo(
+    () => new Set(user?.functional_areas ?? []),
+    [user?.functional_areas]
+  );
+
+  const hasFunctionalArea = useCallback(
+    (key: string) => functionalAreas.has(key),
+    [functionalAreas]
   );
 
   const isAdmin = useMemo(
@@ -140,6 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasPermission,
         enabledModules,
         hasModule,
+        functionalAreas,
+        hasFunctionalArea,
         isAdmin,
         refreshUser,
         refreshCompany,

@@ -20,7 +20,7 @@ export function PresetThemeProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { company, enabledModules, permissions } = useAuth();
+  const { company, enabledModules, permissions, functionalAreas } = useAuth();
 
   const tenantSettings = useMemo(
     () => parseTenantSettings(company),
@@ -33,8 +33,9 @@ export function PresetThemeProvider({
       enabledModules ?? new Set(),
       permissions ?? new Set(),
       tenantSettings,
+      functionalAreas,
     );
-  }, [company?.vertical, enabledModules, permissions, tenantSettings]);
+  }, [company?.vertical, enabledModules, permissions, tenantSettings, functionalAreas]);
 
   // Set CSS custom property on root
   useEffect(() => {

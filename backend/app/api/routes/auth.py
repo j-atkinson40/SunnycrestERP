@@ -19,6 +19,7 @@ from app.services import audit_service
 from app.services.auth_service import change_password, login_user, refresh_tokens, register_user
 from app.services.extension_service import get_active_extension_keys
 from app.services.module_service import get_enabled_module_keys
+from app.services import employee_profile_service, functional_area_service
 from app.services.permission_service import get_user_permissions
 
 router = APIRouter()
@@ -104,10 +105,19 @@ def me(
     enabled_modules = get_enabled_module_keys(db, current_user.company_id)
     enabled_extensions = get_active_extension_keys(db, current_user.company_id)
     user_data = _user_to_response(current_user)
+
+    # Get employee's active functional areas (filtered by tenant extensions)
+    profile = employee_profile_service.get_profile(db, current_user.id)
+    tenant_areas = functional_area_service.get_areas_for_tenant(db, current_user.company_id)
+    active_areas = functional_area_service.get_active_areas_for_employee(
+        profile.functional_areas if profile else None, tenant_areas
+    )
+
     return {
         **user_data,
         "permissions": permissions,
         "enabled_modules": enabled_modules,
         "enabled_extensions": enabled_extensions,
+        "functional_areas": active_areas,
         "company": CompanyResponse.model_validate(company).model_dump(),
     }

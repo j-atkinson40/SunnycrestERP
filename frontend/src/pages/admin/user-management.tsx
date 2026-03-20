@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { X } from "lucide-react";
 import { userService } from "@/services/user-service";
 import { roleService } from "@/services/role-service";
+import { employeeProfileService } from "@/services/employee-profile-service";
 import { functionalAreaService } from "@/services/functional-area-service";
 import { dismissHelp, getDismissedHelp } from "@/services/onboarding-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import FunctionalAreaMatrix from "@/components/functional-area-matrix";
 import {
   Table,
   TableBody,
@@ -85,6 +87,7 @@ export default function UserManagement() {
     role_id: "",
   });
   const [createError, setCreateError] = useState("");
+  const [newUserAreas, setNewUserAreas] = useState<string[]>([]);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -136,7 +139,17 @@ export default function UserManagement() {
   async function handleCreate() {
     setCreateError("");
     try {
-      await userService.createUser(newUser);
+      const created = await userService.createUser(newUser);
+      // Save functional areas to the new employee's profile
+      if (newUserAreas.length > 0) {
+        try {
+          await employeeProfileService.updateProfile(created.id, {
+            functional_areas: newUserAreas,
+          });
+        } catch {
+          // Non-critical — areas can be assigned later on their profile page
+        }
+      }
       setDialogOpen(false);
       const employeeRole = roles.find(
         (r) => r.is_system && r.slug === "employee"
@@ -148,6 +161,7 @@ export default function UserManagement() {
         last_name: "",
         role_id: employeeRole?.id || "",
       });
+      setNewUserAreas([]);
       loadUsers();
     } catch (err: unknown) {
       setCreateError(getApiErrorMessage(err, "Failed to create user"));
@@ -262,6 +276,16 @@ export default function UserManagement() {
                       ))
                   )}
                 </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Functional Areas</Label>
+                <p className="text-xs text-muted-foreground">
+                  What parts of the business will this person work in?
+                </p>
+                <FunctionalAreaMatrix
+                  selectedAreas={newUserAreas}
+                  onChange={setNewUserAreas}
+                />
               </div>
             </div>
             <DialogFooter>

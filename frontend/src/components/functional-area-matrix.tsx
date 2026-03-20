@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckSquare, Square, Loader2 } from "lucide-react";
+import { CheckSquare, Square, Loader2, Lightbulb } from "lucide-react";
 import { functionalAreaService } from "@/services/functional-area-service";
 import type { FunctionalArea } from "@/types/functional-area";
 
@@ -53,6 +53,8 @@ export default function FunctionalAreaMatrix({
     );
   }
 
+  const hasProductAreas = areas.some((a) => a.required_extension);
+
   return (
     <div className="space-y-1">
       {areas.map((area) => {
@@ -85,6 +87,17 @@ export default function FunctionalAreaMatrix({
           </button>
         );
       })}
+      {!hasProductAreas && (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200">
+          <Lightbulb className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <span className="font-medium">Adding product lines later?</span>{" "}
+            If you enable Redi-Rock, Wastewater, or Rosetta extensions, new
+            scheduling areas will appear here automatically. You'll be prompted
+            to assign them to your team.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

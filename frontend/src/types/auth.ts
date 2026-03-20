@@ -9,6 +9,7 @@ export interface User {
   permissions: string[];
   enabled_modules: string[];
   enabled_extensions: string[];
+  functional_areas: string[];
   is_active: boolean;
   company_id: string;
   created_at: string;
