@@ -27,6 +27,12 @@ import {
   ToggleLeft,
   ToggleRight,
   ExternalLink,
+  ChevronDown,
+  ChevronRight,
+  Wrench,
+  ClipboardList,
+  Settings,
+  Eye,
 } from "lucide-react";
 import type {
   PriceListImport,
@@ -74,6 +80,13 @@ function fileIcon(name: string) {
 // ── Component ────────────────────────────────────────────────────
 
 type Step = "upload" | "processing" | "review" | "confirm" | "done";
+
+interface SummaryGroup {
+  key: string;
+  label: string;
+  icon: string;
+  items: (PriceListImportItem & { source: string })[];
+}
 
 interface Props {
   onBack: () => void;
@@ -365,6 +378,125 @@ export default function PriceListUploadFlow({ onBack }: Props) {
     };
   }, [localItems]);
 
+  // ── Summary data for the pre-confirmation summary screen ──────
+  const summaryData = useMemo(() => {
+    const allItems = Object.values(localItems);
+
+    // Categorize included items
+    const included = allItems.filter(
+      (i) =>
+        (i.action === "create_product" ||
+          i.action === "create_custom" ||
+          i.action === "create_bundle") &&
+        !i.charge_category,
+    );
+
+    const charges = allItems.filter(
+      (i) => i.charge_category && i.action !== "skip",
+    );
+
+    const skipped = allItems.filter((i) => i.action === "skip");
+
+    // Determine source label
+    function getSource(item: PriceListImportItem): string {
+      if (item.action === "create_bundle") return "Equipment package";
+      if (item.match_status === "high_confidence" && item.matched_template_id)
+        return "Matched to template";
+      if (item.match_status === "low_confidence" && item.matched_template_id)
+        return "Confirmed match";
+      if (item.match_status === "custom" || item.match_status === "unmatched")
+        return "Created as detected";
+      return "From price list";
+    }
+
+    // Categorize by product type
+    function getCategory(item: PriceListImportItem): string {
+      if (item.action === "create_bundle") return "equipment_packages";
+      const name = (item.final_product_name || item.extracted_name).toLowerCase();
+      if (name.includes("urn vault") || (name.includes("urn") && name.includes("vault")))
+        return "urn_vaults";
+      if (name.includes("burial") || name.includes("vault") || name.includes("graveliner") || name.includes("liner"))
+        return "burial_vaults";
+      if (name.includes("urn")) return "urns";
+      if (
+        name.includes("lowering") ||
+        name.includes("tent") ||
+        name.includes("grass") ||
+        name.includes("chair") ||
+        name.includes("strap") ||
+        name.includes("cremation table")
+      )
+        return "individual_equipment";
+      return "other";
+    }
+
+    const groupMap: Record<string, (PriceListImportItem & { source: string })[]> = {
+      burial_vaults: [],
+      urn_vaults: [],
+      urns: [],
+      equipment_packages: [],
+      individual_equipment: [],
+      other: [],
+    };
+
+    for (const item of included) {
+      const cat = getCategory(item);
+      groupMap[cat].push({ ...item, source: getSource(item) });
+    }
+
+    // Sort items within each group alphabetically
+    for (const items of Object.values(groupMap)) {
+      items.sort((a, b) =>
+        (a.final_product_name || a.extracted_name).localeCompare(
+          b.final_product_name || b.extracted_name,
+        ),
+      );
+    }
+
+    const GROUP_DEFS: { key: string; label: string; icon: string }[] = [
+      { key: "burial_vaults", label: "Burial Vaults", icon: "📦" },
+      { key: "urn_vaults", label: "Urn Vaults", icon: "🏺" },
+      { key: "urns", label: "Urns", icon: "⚱️" },
+      { key: "equipment_packages", label: "Equipment Packages", icon: "🧰" },
+      { key: "individual_equipment", label: "Individual Equipment Items", icon: "🔧" },
+      { key: "other", label: "Other Products", icon: "📋" },
+    ];
+
+    const groups: SummaryGroup[] = GROUP_DEFS.filter(
+      (g) => groupMap[g.key].length > 0,
+    ).map((g) => ({
+      ...g,
+      items: groupMap[g.key],
+    }));
+
+    const chargesWithSource = charges.map((c) => ({
+      ...c,
+      source: c.matched_charge_id
+        ? `Updates existing charge${c.matched_charge_name ? ` "${c.matched_charge_name}"` : ""}`
+        : "New charge",
+    }));
+
+    return {
+      groups,
+      charges: chargesWithSource,
+      skipped,
+      totalProducts: included.filter((i) => i.action !== "create_bundle").length,
+      totalPackages: included.filter((i) => i.action === "create_bundle").length,
+      totalCharges: charges.length,
+      totalSkipped: skipped.length,
+    };
+  }, [localItems]);
+
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const toggleGroup = (key: string) =>
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  const isGroupExpanded = (key: string) => expandedGroups[key] !== false; // default expanded
+
+  const [showSkipped, setShowSkipped] = useState(false);
+
+  // ── Confirm with progress ─────────────────────────────────────
+  const [confirmProgress, setConfirmProgress] = useState<string[]>([]);
+
   const [confirmResult, setConfirmResult] = useState<{
     products_created: number;
     charges_created: number;
@@ -374,29 +506,48 @@ export default function PriceListUploadFlow({ onBack }: Props) {
   const handleConfirm = useCallback(async () => {
     if (!importData) return;
     setConfirming(true);
+    setConfirmProgress([]);
+
+    // Show progress messages as we go
+    const addProgress = (msg: string) =>
+      setConfirmProgress((prev) => [...prev, msg]);
+
+    // Pre-compute counts for progress messages
+    const sd = summaryData;
+    for (const g of sd.groups) {
+      addProgress(`Adding ${g.items.length} ${g.label.toLowerCase()} to catalog...`);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    if (sd.charges.length > 0) {
+      addProgress(`Processing ${sd.charges.length} charges...`);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
     try {
       const result = await importService.confirmImport(importData.id);
-      const parts: string[] = [];
-      if (result.products_created > 0)
-        parts.push(`${result.products_created} products created`);
-      if (result.charges_created > 0)
-        parts.push(`${result.charges_created} new charges added`);
-      if (result.charges_updated > 0)
-        parts.push(`${result.charges_updated} charges updated`);
-      toast.success(`Catalog built! ${parts.join(", ")}.`);
-      setConfirmResult(result);
-      // If charges were created/updated, show success step before navigating
-      if (result.charges_created > 0 || result.charges_updated > 0) {
-        setStep("done");
-      } else {
-        navigate("/products");
+
+      // Replace progress with success lines
+      const progress: string[] = [];
+      for (const g of sd.groups) {
+        progress.push(`✓ ${g.items.length} ${g.label.toLowerCase()} added to product catalog`);
       }
+      if (result.charges_updated > 0) {
+        progress.push(`✓ ${result.charges_updated} charges updated in charge library`);
+      }
+      if (result.charges_created > 0) {
+        progress.push(`✓ ${result.charges_created} new charges added to charge library`);
+      }
+      setConfirmProgress(progress);
+
+      setConfirmResult(result);
+      setStep("done");
     } catch {
       toast.error("Failed to build catalog. Please try again.");
+      setConfirmProgress([]);
     } finally {
       setConfirming(false);
     }
-  }, [importData, navigate]);
+  }, [importData, summaryData]);
 
   // ── Render ─────────────────────────────────────────────────────
 
@@ -728,7 +879,7 @@ export default function PriceListUploadFlow({ onBack }: Props) {
             Start over
           </Button>
           <Button onClick={() => setStep("confirm")}>
-            Looks good — build my catalog
+            Review Summary
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </div>
@@ -743,158 +894,426 @@ export default function PriceListUploadFlow({ onBack }: Props) {
       <div className="mx-auto max-w-2xl space-y-6 py-8">
         <div className="text-center">
           <CheckCircle2 className="mx-auto mb-4 h-16 w-16 text-green-500" />
-          <h1 className="text-2xl font-bold">Catalog built successfully!</h1>
+          <h1 className="text-2xl font-bold">Your catalog is ready</h1>
           <p className="mt-2 text-muted-foreground">
-            Your products and charges are ready to use.
+            {confirmResult.products_created} products
+            {summaryData.totalPackages > 0 &&
+              ` · ${summaryData.totalPackages} equipment packages`}
+            {(confirmResult.charges_created > 0 || confirmResult.charges_updated > 0) &&
+              ` · ${confirmResult.charges_created + confirmResult.charges_updated} charges`}
           </p>
         </div>
 
-        <Card>
-          <CardContent className="space-y-4 pt-6">
-            {confirmResult.products_created > 0 && (
-              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <Package className="h-5 w-5 text-green-600" />
-                  <p className="font-medium">Products Created</p>
-                </div>
-                <Badge variant="secondary">{confirmResult.products_created}</Badge>
-              </div>
-            )}
-            {confirmResult.charges_updated > 0 && (
-              <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <Link2 className="h-5 w-5 text-blue-600" />
-                  <p className="font-medium text-blue-900">Charges Updated</p>
-                </div>
-                <Badge className="bg-blue-100 text-blue-700">{confirmResult.charges_updated}</Badge>
-              </div>
-            )}
-            {confirmResult.charges_created > 0 && (
-              <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <Zap className="h-5 w-5 text-green-600" />
-                  <p className="font-medium text-green-900">New Charges Added</p>
-                </div>
-                <Badge className="bg-green-100 text-green-700">{confirmResult.charges_created}</Badge>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Progress log */}
+        {confirmProgress.length > 0 && (
+          <Card>
+            <CardContent className="space-y-2 pt-6">
+              {confirmProgress.map((line, i) => (
+                <p key={i} className="flex items-center gap-2 text-sm">
+                  {line.startsWith("✓") ? (
+                    <Check className="h-4 w-4 shrink-0 text-green-600" />
+                  ) : (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+                  )}
+                  <span className={line.startsWith("✓") ? "text-green-900" : "text-muted-foreground"}>
+                    {line.replace(/^✓\s*/, "")}
+                  </span>
+                </p>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="flex items-center justify-center gap-3">
           <Button onClick={() => navigate("/products")}>
-            View Products
+            View Product Catalog
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
           {(confirmResult.charges_created > 0 || confirmResult.charges_updated > 0) && (
             <Button variant="outline" onClick={() => navigate("/settings/charges")}>
-              Manage Charges
+              View Charge Library
               <ExternalLink className="ml-2 h-4 w-4" />
             </Button>
           )}
+          <Button
+            variant="default"
+            className="bg-green-600 hover:bg-green-700"
+            onClick={() => navigate("/onboarding")}
+          >
+            Continue Onboarding
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 py-8">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold">Confirm your catalog</h1>
-        <p className="mt-2 text-muted-foreground">
-          Here's what we'll create from your price list.
+    <div className="mx-auto max-w-4xl space-y-6 pb-24 pt-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold">
+          Here's what will be added to your catalog
+        </h1>
+        <p className="mt-1 text-muted-foreground">
+          Review everything before we build your catalog. You can go back and
+          make changes.
         </p>
       </div>
 
-      <Card>
-        <CardContent className="space-y-4 pt-6">
-          {Object.entries(confirmSummary.groups)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([category, data]) => (
-              <div
-                key={category}
-                className="flex items-center justify-between rounded-lg border px-4 py-3"
-              >
-                <div>
-                  <p className="font-medium">{category}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {data.count} product{data.count !== 1 ? "s" : ""}
-                  </p>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {formatPrice(data.min)}
-                  {data.min !== data.max && ` — ${formatPrice(data.max)}`}
-                </p>
-              </div>
-            ))}
+      {/* Running totals bar */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-muted/30 px-4 py-2.5 text-sm">
+        {summaryData.totalProducts > 0 && (
+          <span>
+            <strong>{summaryData.totalProducts}</strong> Products
+          </span>
+        )}
+        {summaryData.totalPackages > 0 && (
+          <>
+            <span className="text-muted-foreground">·</span>
+            <span>
+              <strong>{summaryData.totalPackages}</strong> Equipment Packages
+            </span>
+          </>
+        )}
+        {summaryData.totalCharges > 0 && (
+          <>
+            <span className="text-muted-foreground">·</span>
+            <span>
+              <strong>{summaryData.totalCharges}</strong> Charges
+            </span>
+          </>
+        )}
+        {summaryData.totalSkipped > 0 && (
+          <>
+            <span className="text-muted-foreground">·</span>
+            <span className="text-muted-foreground">
+              <strong>{summaryData.totalSkipped}</strong> Skipped
+            </span>
+          </>
+        )}
+      </div>
 
-          <div className="border-t pt-4">
-            <div className="flex items-center justify-between">
-              <p className="text-lg font-semibold">Total</p>
-              <p className="text-lg font-semibold">
-                {confirmSummary.total} product
-                {confirmSummary.total !== 1 ? "s" : ""}
+      {/* ── SECTION 1: Product Catalog ────────────────────────────── */}
+      {summaryData.groups.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Product Catalog</h2>
+              <p className="text-sm text-muted-foreground">
+                These items will appear in your product catalog and can be added
+                to orders and invoices.
               </p>
+            </div>
+            <a
+              href="/products"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-sm text-blue-600 hover:underline"
+            >
+              View your product catalog
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          {summaryData.groups.map((group) => (
+            <Card key={group.key}>
+              <button
+                className="flex w-full items-center justify-between px-5 py-3.5 text-left"
+                onClick={() => toggleGroup(group.key)}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{group.icon}</span>
+                  <span className="font-semibold">{group.label}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge variant="secondary">
+                    {group.items.length}{" "}
+                    {group.key === "equipment_packages"
+                      ? group.items.length === 1
+                        ? "package"
+                        : "packages"
+                      : group.items.length === 1
+                        ? "product"
+                        : "products"}
+                  </Badge>
+                  {isGroupExpanded(group.key) ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+              </button>
+
+              {isGroupExpanded(group.key) && (
+                <div className="border-t">
+                  {/* Equipment packages — special layout */}
+                  {group.key === "equipment_packages" ? (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                          <th className="px-5 py-2">Package Name</th>
+                          <th className="px-3 py-2">With Vault</th>
+                          <th className="px-3 py-2">Without Vault</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.items.map((item) => (
+                          <tr key={item.id} className="border-b last:border-b-0">
+                            <td className="px-5 py-2.5 font-medium">
+                              {item.final_product_name || item.extracted_name}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {item.has_conditional_pricing && item.extracted_price_with_vault
+                                ? formatPrice(item.extracted_price_with_vault)
+                                : item.final_price
+                                  ? formatPrice(item.final_price)
+                                  : "--"}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {item.has_conditional_pricing && item.extracted_price_standalone
+                                ? formatPrice(item.extracted_price_standalone)
+                                : "--"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    /* Regular products — standard table */
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                          <th className="px-5 py-2">Product Name</th>
+                          <th className="px-3 py-2">SKU</th>
+                          <th className="px-3 py-2 text-right">Price</th>
+                          <th className="px-3 py-2 text-right">Source</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.items.map((item) => (
+                          <tr key={item.id} className="border-b last:border-b-0">
+                            <td className="px-5 py-2.5 font-medium">
+                              {item.final_product_name || item.extracted_name}
+                            </td>
+                            <td className="px-3 py-2.5 text-muted-foreground">
+                              {item.final_sku || item.extracted_sku || "--"}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              {item.has_conditional_pricing ? (
+                                <span className="space-x-1">
+                                  <span className="text-xs text-muted-foreground">w/ vault:</span>{" "}
+                                  {formatPrice(item.extracted_price_with_vault)}
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">standalone:</span>{" "}
+                                  {formatPrice(item.extracted_price_standalone)}
+                                </span>
+                              ) : (
+                                formatPrice(item.final_price ?? item.extracted_price)
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-xs text-muted-foreground">
+                              {item.source}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* ── SECTION 2: Charge Library ─────────────────────────────── */}
+      {summaryData.charges.length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Charge Library</h2>
+            <p className="text-sm text-muted-foreground">
+              These fees and surcharges will be added to your charge library and
+              can be applied to orders.
+            </p>
+          </div>
+
+          {/* Destination callout */}
+          <div className="rounded-lg border border-blue-200 bg-blue-50/50 px-5 py-4">
+            <div className="flex items-start gap-3">
+              <ClipboardList className="mt-0.5 h-5 w-5 text-blue-600" />
+              <div className="text-sm">
+                <p className="font-medium text-blue-900">
+                  These charges go to your Charge Library
+                </p>
+                <p className="mt-0.5 text-blue-800/70">
+                  Not your product catalog — a separate place in your settings
+                  where you manage fees and surcharges.
+                </p>
+                <a
+                  href="/settings/charges"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1.5 inline-flex items-center gap-1 text-blue-600 hover:underline"
+                >
+                  Preview charge library
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
             </div>
           </div>
 
-          {/* Charge library section */}
-          {confirmSummary.chargesTotal > 0 && (
-            <>
-              <div className="border-t pt-4">
-                <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Charge Library
-                </p>
-                {confirmSummary.chargesMatched > 0 && (
-                  <div className="mb-2 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Link2 className="h-5 w-5 text-blue-600" />
-                      <p className="text-sm font-medium text-blue-900">
-                        Existing charges to update
+          {/* Charge rows */}
+          <Card>
+            <div className="divide-y">
+              {summaryData.charges.map((charge) => (
+                <div key={charge.id} className="px-5 py-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold">
+                        {charge.final_product_name || charge.extracted_name}
                       </p>
+                      <Badge
+                        variant="outline"
+                        className="mt-1 text-xs capitalize"
+                      >
+                        {(charge.charge_category || "other").replace(/_/g, " ")}
+                      </Badge>
                     </div>
-                    <Badge className="bg-blue-100 text-blue-700">
-                      {confirmSummary.chargesMatched}
-                    </Badge>
-                  </div>
-                )}
-                {confirmSummary.chargesNew > 0 && (
-                  <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Zap className="h-5 w-5 text-green-600" />
-                      <p className="text-sm font-medium text-green-900">
-                        New charges to add
-                      </p>
+                    <div className="text-right text-sm">
+                      {charge.has_conditional_pricing ? (
+                        <>
+                          <span className="text-xs text-muted-foreground">
+                            w/ vault:
+                          </span>{" "}
+                          {formatPrice(charge.extracted_price_with_vault)}
+                          <br />
+                          <span className="text-xs text-muted-foreground">
+                            standalone:
+                          </span>{" "}
+                          {formatPrice(charge.extracted_price_standalone)}
+                        </>
+                      ) : charge.pricing_type_suggestion === "variable" ? (
+                        <span className="text-muted-foreground">
+                          Variable — dispatcher enters amount
+                        </span>
+                      ) : charge.extracted_price != null ? (
+                        formatPrice(charge.extracted_price)
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Variable — dispatcher enters amount
+                        </span>
+                      )}
                     </div>
-                    <Badge className="bg-green-100 text-green-700">
-                      {confirmSummary.chargesNew}
-                    </Badge>
                   </div>
-                )}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+                  <p className="mt-1.5 text-sm">
+                    {charge.matched_charge_id ? (
+                      <span className="text-green-700">
+                        → Updates existing charge
+                        {charge.matched_charge_name &&
+                          ` "${charge.matched_charge_name}"`}{" "}
+                        in your library
+                      </span>
+                    ) : (
+                      <span className="text-blue-700">
+                        → New charge — will be added to your library
+                      </span>
+                    )}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
 
-      <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => setStep("review")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to review
-        </Button>
-        <Button onClick={handleConfirm} disabled={confirming}>
-          {confirming ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Building catalog...
-            </>
-          ) : (
-            <>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Build My Catalog
-            </>
+      {/* ── SKIPPED ITEMS ─────────────────────────────────────────── */}
+      {summaryData.totalSkipped > 0 && (
+        <div>
+          <button
+            className="flex w-full items-center gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-left text-sm font-medium text-muted-foreground hover:bg-muted/40"
+            onClick={() => setShowSkipped((v) => !v)}
+          >
+            {showSkipped ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+            Skipped items ({summaryData.totalSkipped})
+          </button>
+
+          {showSkipped && (
+            <div className="mt-2 space-y-1 rounded-lg border px-5 py-4">
+              {summaryData.skipped.map((item) => (
+                <p key={item.id} className="text-sm text-muted-foreground">
+                  · "{item.final_product_name || item.extracted_name}" — skipped
+                </p>
+              ))}
+              <p className="mt-3 text-xs text-muted-foreground">
+                Skipped items are not added to your catalog. You can add them
+                manually from your Products or Charge Library settings at any
+                time.
+              </p>
+            </div>
           )}
-        </Button>
+        </div>
+      )}
+
+      {/* ── Confirm progress (visible during confirm) ─────────────── */}
+      {confirming && confirmProgress.length > 0 && (
+        <Card>
+          <CardContent className="space-y-2 pt-6">
+            {confirmProgress.map((line, i) => (
+              <p key={i} className="flex items-center gap-2 text-sm">
+                {line.startsWith("✓") ? (
+                  <Check className="h-4 w-4 shrink-0 text-green-600" />
+                ) : (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+                )}
+                <span className={line.startsWith("✓") ? "text-green-900" : "text-muted-foreground"}>
+                  {line.replace(/^✓\s*/, "")}
+                </span>
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Sticky Footer ─────────────────────────────────────────── */}
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-3">
+          <Button variant="outline" onClick={() => setStep("review")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Review
+          </Button>
+
+          <span className="hidden text-sm text-muted-foreground md:block">
+            {summaryData.totalProducts + summaryData.totalPackages > 0 &&
+              `${summaryData.totalProducts + summaryData.totalPackages} products`}
+            {summaryData.totalPackages > 0 &&
+              ` · ${summaryData.totalPackages} packages`}
+            {summaryData.totalCharges > 0 &&
+              ` · ${summaryData.totalCharges} charges`}
+          </span>
+
+          <Button
+            onClick={handleConfirm}
+            disabled={confirming}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {confirming ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Building your catalog...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Confirm and Build Catalog
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
