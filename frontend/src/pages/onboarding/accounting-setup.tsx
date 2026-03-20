@@ -78,7 +78,11 @@ interface PreAuditData {
   customer_count: number;
   potential_duplicates: number;
   invoice_count: number;
-  sync_frequency: string;
+  sync_frequency: {
+    invoices: string;
+    payments: string;
+    customers: string;
+  };
 }
 
 interface CustomerMatch {
@@ -334,8 +338,13 @@ function PreConnectionAuditCard() {
               </p>
             </div>
           )}
-          <div className="col-span-2 text-xs text-muted-foreground text-center">
-            Sync frequency: {data.sync_frequency || "Real-time"}
+          <div className="col-span-2 space-y-1 pt-2 border-t">
+            <p className="text-xs font-medium text-muted-foreground">Going forward:</p>
+            <ul className="text-xs text-muted-foreground space-y-0.5">
+              <li>New invoices sync {data.sync_frequency?.invoices ?? "automatically"}</li>
+              <li>Payments sync {data.sync_frequency?.payments ?? "automatically"}</li>
+              <li>New customers sync {data.sync_frequency?.customers ?? "automatically"}</li>
+            </ul>
           </div>
         </div>
       </CardContent>

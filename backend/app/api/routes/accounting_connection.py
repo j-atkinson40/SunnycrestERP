@@ -191,11 +191,15 @@ def get_connection_status(
     db: Session = Depends(get_db),
 ):
     """Get the current accounting connection status."""
-    conn = (
-        db.query(AccountingConnection)
-        .filter(AccountingConnection.company_id == current_user.company_id)
-        .first()
-    )
+    try:
+        conn = (
+            db.query(AccountingConnection)
+            .filter(AccountingConnection.company_id == current_user.company_id)
+            .first()
+        )
+    except Exception:
+        # Table may not exist yet if migration hasn't run
+        return ConnectionStatusResponse(status="not_started")
     if not conn:
         return ConnectionStatusResponse(status="not_started")
     return _to_response(conn)
