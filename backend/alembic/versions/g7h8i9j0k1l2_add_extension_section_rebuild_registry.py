@@ -99,9 +99,18 @@ def upgrade() -> None:
         sa.text("SELECT id, extension_key, extension_id FROM tenant_extensions")
     ).fetchall()
 
-    # 4. NULL out FK references so we can delete extension_definitions
+    # 4. NULL out / clear FK references so we can delete extension_definitions
     if existing_te:
         bind.execute(sa.text("UPDATE tenant_extensions SET extension_id = NULL"))
+    # Also clear extension_notify_requests and extension_activity_logs
+    bind.execute(sa.text(
+        "DELETE FROM extension_notify_requests WHERE extension_id IN "
+        "(SELECT id FROM extension_definitions)"
+    ))
+    bind.execute(sa.text(
+        "DELETE FROM extension_activity_log WHERE extension_id IN "
+        "(SELECT id FROM extension_definitions)"
+    ))
 
     # 5. Delete all extension_definitions
     bind.execute(sa.text("DELETE FROM extension_definitions"))
