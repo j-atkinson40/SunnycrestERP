@@ -143,8 +143,12 @@ def seed_platform_admin():
             seed_modules(db)
 
             from app.services.extension_service import seed_extensions, seed_tenant_extension_defaults
-            seed_extensions(db)
-            seed_tenant_extension_defaults(db)
+            try:
+                seed_extensions(db)
+                seed_tenant_extension_defaults(db)
+            except Exception as exc:
+                print(f"WARNING: Extension seeding failed — {exc}")
+                db.rollback()
 
             from app.services.catalog_template_seeder import seed_wilbert_templates
             seed_wilbert_templates(db)
