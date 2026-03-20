@@ -916,6 +916,12 @@ def fix_checklist_targets(db: Session) -> None:
         OnboardingChecklistItem.tier != "must_complete",
     ).update({"tier": "must_complete"})
 
+    # Remove deprecated checklist items that were folded into other items
+    _DEPRECATED_ITEMS = ["configure_delivery_zones"]
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key.in_(_DEPRECATED_ITEMS),
+    ).delete(synchronize_session=False)
+
     # --- Backfill missing checklist items for existing tenants ---
     # Get all existing checklists grouped by preset
     checklists = db.query(OnboardingChecklist).all()
