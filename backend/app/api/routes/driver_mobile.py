@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_module
@@ -341,7 +342,7 @@ def get_console_deliveries(
 
     total = len(cards)
 
-    # Fetch ancillary items assigned to this driver for this date
+    # Fetch ancillary items assigned to this driver for this date (exclude floating)
     ancillary_items = (
         db.query(Delivery)
         .filter(
@@ -349,6 +350,7 @@ def get_console_deliveries(
             Delivery.scheduling_type == "ancillary",
             Delivery.assigned_driver_id == driver.id,
             Delivery.requested_date == target_date,
+            or_(Delivery.ancillary_is_floating.is_(False), Delivery.ancillary_is_floating.is_(None)),
             Delivery.status != "cancelled",
         )
         .order_by(Delivery.created_at)

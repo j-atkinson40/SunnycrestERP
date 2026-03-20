@@ -388,19 +388,34 @@ export default function SchedulingBoardPage() {
   const [ancillaryDrawerOpen, setAncillaryDrawerOpen] = useState(false);
   const [directShipDrawerOpen, setDirectShipDrawerOpen] = useState(false);
 
+  // Compute 3-day ancillary window dates
+  const ancillaryWindowDates = useMemo(() => {
+    const d1 = primaryDate;
+    const d2 = getNextDeliveryDay(d1, saturdayEnabled, sundayEnabled);
+    const d3 = getNextDeliveryDay(d2, saturdayEnabled, sundayEnabled);
+    return [d1, d2, d3];
+  }, [primaryDate, saturdayEnabled, sundayEnabled]);
+
   // Unresolved counts for mobile pills and collapsed tab
   const [ancillaryUnresolved, setAncillaryUnresolved] = useState(0);
+  const [ancillaryFloating, setAncillaryFloating] = useState(0);
   const [directShipUnresolved, setDirectShipUnresolved] = useState(0);
   useEffect(() => {
     const fetchCounts = async () => {
       try {
         const [ancResp, dsResp] = await Promise.all([
           api.get("/api/v1/extensions/funeral-kanban/ancillary", {
-            params: { date: primaryDate },
+            params: {
+              date: primaryDate,
+              day1: ancillaryWindowDates[0],
+              day2: ancillaryWindowDates[1],
+              day3: ancillaryWindowDates[2],
+            },
           }),
           api.get("/api/v1/extensions/funeral-kanban/direct-ship"),
         ]);
         setAncillaryUnresolved(ancResp.data?.stats?.unresolved ?? 0);
+        setAncillaryFloating(ancResp.data?.stats?.floating_unresolved ?? 0);
         setDirectShipUnresolved(dsResp.data?.stats?.unresolved ?? 0);
       } catch {
         // ignore
@@ -409,7 +424,7 @@ export default function SchedulingBoardPage() {
     fetchCounts();
     const interval = setInterval(fetchCounts, 60_000);
     return () => clearInterval(interval);
-  }, [primaryDate]);
+  }, [primaryDate, ancillaryWindowDates]);
 
   const ancillaryCollapsed = collapseState.ancillary ?? false;
   const directShipCollapsed = collapseState.direct_ship ?? false;
@@ -489,6 +504,7 @@ export default function SchedulingBoardPage() {
                 {ancillaryUnresolved > 0 && (
                   <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                     {ancillaryUnresolved}
+                    {ancillaryFloating > 0 && ` \u00b7 ${ancillaryFloating} floating`}
                   </span>
                 )}
                 <span className="text-slate-300">&middot;</span>
@@ -536,7 +552,8 @@ export default function SchedulingBoardPage() {
           {/* Ancillary Panel */}
           {!ancillaryCollapsed ? (
             <AncillaryPanel
-              dateStr={primaryDate}
+              anchorDate={primaryDate}
+              windowDates={ancillaryWindowDates}
               collapsed={false}
               onToggleCollapse={() => toggleCollapse("ancillary")}
             />
@@ -546,11 +563,18 @@ export default function SchedulingBoardPage() {
               className="flex items-center justify-between border-b px-4 py-2 text-xs text-slate-500 hover:bg-slate-100 transition-colors"
             >
               <span className="font-medium">&#128230; Ancillary Orders</span>
-              {ancillaryUnresolved > 0 && (
-                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                  {ancillaryUnresolved}
-                </span>
-              )}
+              <span className="flex items-center gap-1">
+                {ancillaryUnresolved > 0 && (
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                    {ancillaryUnresolved}
+                  </span>
+                )}
+                {ancillaryFloating > 0 && (
+                  <span className="text-[10px] text-amber-600">
+                    {ancillaryFloating} floating
+                  </span>
+                )}
+              </span>
             </button>
           )}
 
@@ -580,8 +604,8 @@ export default function SchedulingBoardPage() {
       {isMobile && (
         <>
           <AncillaryMobilePill
-            dateStr={primaryDate}
             unresolvedCount={ancillaryUnresolved}
+            floatingCount={ancillaryFloating}
             onClick={() => setAncillaryDrawerOpen(true)}
           />
           <DirectShipMobilePill
@@ -589,7 +613,8 @@ export default function SchedulingBoardPage() {
             onClick={() => setDirectShipDrawerOpen(true)}
           />
           <AncillaryDrawer
-            dateStr={primaryDate}
+            anchorDate={primaryDate}
+            windowDates={ancillaryWindowDates}
             open={ancillaryDrawerOpen}
             onClose={() => setAncillaryDrawerOpen(false)}
           />

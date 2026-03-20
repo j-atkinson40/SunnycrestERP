@@ -332,6 +332,8 @@ class DeliveryCreate(BaseModel):
     # Ancillary fields
     scheduling_type: str | None = None  # 'kanban' | 'ancillary' | 'direct_ship'
     pickup_expected_by: datetime | None = None
+    ancillary_is_floating: bool | None = None
+    ancillary_soft_target_date: date | None = None
     # Direct ship fields
     direct_ship_status: str | None = None
     wilbert_order_number: str | None = None
@@ -358,6 +360,8 @@ class DeliveryUpdate(BaseModel):
     assigned_driver_id: str | None = None
     pickup_expected_by: datetime | None = None
     pickup_confirmed_by: str | None = None
+    ancillary_is_floating: bool | None = None
+    ancillary_soft_target_date: date | None = None
     # Direct ship fields
     direct_ship_status: str | None = None
     wilbert_order_number: str | None = None
@@ -385,6 +389,8 @@ class DeliveryListItem(BaseModel):
     scheduling_type: str | None = None
     ancillary_fulfillment_status: str | None = None
     assigned_driver_id: str | None = None
+    ancillary_is_floating: bool | None = None
+    ancillary_soft_target_date: date | None = None
 
     class Config:
         from_attributes = True
@@ -423,6 +429,8 @@ class DeliveryResponse(BaseModel):
     pickup_expected_by: datetime | None = None
     pickup_confirmed_at: datetime | None = None
     pickup_confirmed_by: str | None = None
+    ancillary_is_floating: bool | None = None
+    ancillary_soft_target_date: date | None = None
     # Direct ship fields
     direct_ship_status: str | None = None
     wilbert_order_number: str | None = None

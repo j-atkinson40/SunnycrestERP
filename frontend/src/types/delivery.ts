@@ -495,6 +495,8 @@ export interface AncillaryCard {
   deceased_name: string;
   status: string;
   ancillary_fulfillment_status: AncillaryFulfillmentStatus;
+  ancillary_is_floating: boolean;
+  ancillary_soft_target_date: string | null;
   assigned_driver_id: string | null;
   pickup_expected_by: string | null;
   pickup_confirmed_at: string | null;
@@ -505,10 +507,16 @@ export interface AncillaryCard {
   created_at: string | null;
 }
 
+export interface AncillaryDayGroup {
+  date: string;
+  cards: AncillaryCard[];
+}
+
 export interface AncillaryDriverGroup {
   driver_id: string;
   driver_name: string;
   items: AncillaryCard[];
+  items_by_day: AncillaryDayGroup[];
   item_count: number;
 }
 
@@ -518,19 +526,27 @@ export interface AncillaryAvailableDriver {
 }
 
 export interface AncillaryOrdersResponse {
-  date: string;
+  anchor_date: string;
+  window_dates: string[];
   needs_action: AncillaryCard[];
+  needs_action_by_day: AncillaryDayGroup[];
   awaiting_pickup: AncillaryCard[];
+  awaiting_pickup_by_day: AncillaryDayGroup[];
   assigned_groups: AncillaryDriverGroup[];
   completed: AncillaryCard[];
+  floating: AncillaryCard[];
+  floating_completed: AncillaryCard[];
   available_drivers: AncillaryAvailableDriver[];
   stats: {
     total: number;
+    scheduled_total: number;
+    floating_total: number;
     needs_action: number;
     awaiting_pickup: number;
     assigned: number;
     completed: number;
     unresolved: number;
+    floating_unresolved: number;
   };
 }
 

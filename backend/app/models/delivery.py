@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -82,6 +82,12 @@ class Delivery(Base):
     pickup_confirmed_by: Mapped[str | None] = mapped_column(
         String(200), nullable=True
     )
+    ancillary_is_floating: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=False
+    )  # True = floating order (no hard delivery date)
+    ancillary_soft_target_date: Mapped[date | None] = mapped_column(
+        Date, nullable=True
+    )  # Optional soft target for floating orders
 
     # Direct ship fields
     direct_ship_status: Mapped[str | None] = mapped_column(

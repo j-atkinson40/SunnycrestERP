@@ -1,9 +1,10 @@
 /**
- * AncillaryPanel — side panel for ancillary orders on the Scheduling Board.
+ * AncillaryPanel v2 — 3-day rolling window + floating orders queue.
  *
  * Shows funeral-service-related orders that don't involve a cemetery burial
- * (drop-offs, pickups, supply deliveries). Grouped into three status sections
- * plus a collapsible completed section.
+ * (drop-offs, pickups, supply deliveries). Scheduled orders are shown in a
+ * rolling 3-day window with day sub-sections. Floating orders (no hard date)
+ * appear in a separate holding queue below.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +15,7 @@ import api from "@/lib/api-client";
 import type {
   AncillaryCard,
   AncillaryAvailableDriver,
+  AncillaryDayGroup,
   AncillaryOrdersResponse,
 } from "@/types/delivery";
 
@@ -22,26 +24,18 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface AncillaryPanelProps {
-  dateStr: string;
+  anchorDate: string;
+  /** The 3 delivery-day dates (computed by scheduling board via getNextDeliveryDay) */
+  windowDates: string[];
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Date helpers
 // ---------------------------------------------------------------------------
 
 function formatTime(isoStr: string | null): string {
-  if (!isoStr) return "";
-  try {
-    const d = new Date(isoStr);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-function formatCompletedTime(isoStr: string | null): string {
   if (!isoStr) return "";
   try {
     const d = new Date(isoStr);
@@ -56,13 +50,93 @@ function isOverdue(expectedBy: string | null): boolean {
   return new Date(expectedBy) < new Date();
 }
 
-function formatPanelDate(dateStr: string): string {
+function formatDayLabel(dateStr: string): string {
   const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
+  if (dateStr === todayStr) return "Today";
+  if (dateStr === tomorrowStr) return "Tomorrow";
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatHeaderDateRange(windowDates: string[]): string {
+  if (windowDates.length === 0) return "";
+  const first = new Date(windowDates[0] + "T12:00:00");
+  const last = new Date(windowDates[windowDates.length - 1] + "T12:00:00");
+  const f = first.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const l = last.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${f} \u2013 ${l}`;
+}
+
+// ---------------------------------------------------------------------------
+// DaySectionHeader
+// ---------------------------------------------------------------------------
+
+function DaySectionHeader({ dateStr }: { dateStr: string }) {
+  return (
+    <div className="flex items-center gap-2 pt-1 pb-0.5">
+      <div className="h-px flex-1 bg-slate-200" />
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {formatDayLabel(dateStr)}
+      </span>
+      <div className="h-px flex-1 bg-slate-200" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MoveDropdown — shift scheduled orders between days in the window
+// ---------------------------------------------------------------------------
+
+function MoveDropdown({
+  currentDate,
+  windowDates,
+  onMove,
+}: {
+  currentDate: string | null;
+  windowDates: string[];
+  onMove: (newDate: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const otherDates = windowDates.filter((d) => d !== currentDate);
+
+  if (otherDates.length === 0) return null;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+      >
+        Move
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border bg-white shadow-lg">
+          {otherDates.map((d) => (
+            <button
+              key={d}
+              onClick={() => {
+                onMove(d);
+                setOpen(false);
+              }}
+              className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+            >
+              {formatDayLabel(d)} ({formatShortDate(d)})
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -72,13 +146,17 @@ function formatPanelDate(dateStr: string): string {
 function NeedsActionCard({
   card,
   drivers,
+  windowDates,
   onAssign,
   onMarkPickup,
+  onMove,
 }: {
   card: AncillaryCard;
   drivers: AncillaryAvailableDriver[];
+  windowDates: string[];
   onAssign: (deliveryId: string, driverId: string) => void;
   onMarkPickup: (deliveryId: string) => void;
+  onMove: (deliveryId: string, newDate: string) => void;
 }) {
   const [showDriverDropdown, setShowDriverDropdown] = useState(false);
 
@@ -134,6 +212,11 @@ function NeedsActionCard({
         >
           Mark as Pickup
         </button>
+        <MoveDropdown
+          currentDate={card.requested_date}
+          windowDates={windowDates}
+          onMove={(newDate) => onMove(card.delivery_id, newDate)}
+        />
       </div>
     </div>
   );
@@ -145,10 +228,14 @@ function NeedsActionCard({
 
 function AwaitingPickupCard({
   card,
+  windowDates,
   onConfirmPickup,
+  onMove,
 }: {
   card: AncillaryCard;
+  windowDates: string[];
   onConfirmPickup: (deliveryId: string) => void;
+  onMove: (deliveryId: string, newDate: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const overdue = isOverdue(card.pickup_expected_by);
@@ -160,7 +247,7 @@ function AwaitingPickupCard({
           {card.funeral_home_name || "Unknown"}
         </span>
         <Badge variant="outline" className="shrink-0 text-[10px] border-violet-300 text-violet-600">
-          &#9742; Pickup
+          Pickup
         </Badge>
       </div>
       {card.product_summary && (
@@ -172,25 +259,22 @@ function AwaitingPickupCard({
       {card.pickup_expected_by && (
         <p className={cn(
           "text-xs",
-          overdue ? "text-amber-600 font-medium animate-pulse" : "text-slate-500",
+          overdue ? "text-amber-600 font-medium" : "text-slate-500",
         )}>
           Expected: {formatTime(card.pickup_expected_by)}
-          {overdue && " \u26A0\uFE0F"}
+          {overdue && " (overdue)"}
         </p>
       )}
 
-      {!confirming ? (
-        <button
-          onClick={() => setConfirming(true)}
-          className="mt-1 rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
-        >
-          &#10003; Picked Up
-        </button>
-      ) : (
-        <div className="mt-1 rounded border border-emerald-200 bg-emerald-50 p-2 space-y-2">
-          <p className="text-xs text-emerald-700">
-            Confirm pickup by {card.funeral_home_name}?
-          </p>
+      <div className="flex items-center justify-between pt-1">
+        {!confirming ? (
+          <button
+            onClick={() => setConfirming(true)}
+            className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+          >
+            Picked Up
+          </button>
+        ) : (
           <div className="flex gap-2">
             <button
               onClick={() => {
@@ -199,7 +283,7 @@ function AwaitingPickupCard({
               }}
               className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700"
             >
-              Yes, mark as picked up
+              Confirm
             </button>
             <button
               onClick={() => setConfirming(false)}
@@ -208,8 +292,13 @@ function AwaitingPickupCard({
               Cancel
             </button>
           </div>
-        </div>
-      )}
+        )}
+        <MoveDropdown
+          currentDate={card.requested_date}
+          windowDates={windowDates}
+          onMove={(newDate) => onMove(card.delivery_id, newDate)}
+        />
+      </div>
     </div>
   );
 }
@@ -221,13 +310,17 @@ function AwaitingPickupCard({
 function AssignedCard({
   card,
   drivers,
+  windowDates,
   onConfirmDelivered,
   onReassign,
+  onMove,
 }: {
   card: AncillaryCard;
   drivers: AncillaryAvailableDriver[];
+  windowDates: string[];
   onConfirmDelivered: (deliveryId: string) => void;
   onReassign: (deliveryId: string, driverId: string) => void;
+  onMove: (deliveryId: string, newDate: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [showReassign, setShowReassign] = useState(false);
@@ -255,7 +348,7 @@ function AssignedCard({
             onClick={() => setConfirming(true)}
             className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
-            &#10003; Delivered
+            Delivered
           </button>
         ) : (
           <div className="flex gap-2">
@@ -277,29 +370,36 @@ function AssignedCard({
           </div>
         )}
 
-        <div className="relative">
-          <button
-            onClick={() => setShowReassign(!showReassign)}
-            className="text-[10px] text-slate-400 hover:text-slate-600 underline"
-          >
-            Reassign
-          </button>
-          {showReassign && (
-            <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border bg-white shadow-lg">
-              {drivers.map((d) => (
-                <button
-                  key={d.driver_id}
-                  onClick={() => {
-                    onReassign(card.delivery_id, d.driver_id);
-                    setShowReassign(false);
-                  }}
-                  className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
-                >
-                  {d.name}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setShowReassign(!showReassign)}
+              className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+            >
+              Reassign
+            </button>
+            {showReassign && (
+              <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border bg-white shadow-lg">
+                {drivers.map((d) => (
+                  <button
+                    key={d.driver_id}
+                    onClick={() => {
+                      onReassign(card.delivery_id, d.driver_id);
+                      setShowReassign(false);
+                    }}
+                    className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                  >
+                    {d.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <MoveDropdown
+            currentDate={card.requested_date}
+            windowDates={windowDates}
+            onMove={(newDate) => onMove(card.delivery_id, newDate)}
+          />
         </div>
       </div>
     </div>
@@ -307,7 +407,7 @@ function AssignedCard({
 }
 
 // ---------------------------------------------------------------------------
-// MarkPickupModal (inline form)
+// MarkPickupInline
 // ---------------------------------------------------------------------------
 
 function MarkPickupInline({
@@ -332,7 +432,6 @@ function MarkPickupInline({
           value={time}
           onChange={(e) => setTime(e.target.value)}
           className="block w-full rounded border px-2 py-1 text-xs"
-          placeholder="Optional"
         />
       </div>
       <div className="space-y-1.5">
@@ -342,13 +441,11 @@ function MarkPickupInline({
           value={contact}
           onChange={(e) => setContact(e.target.value)}
           className="block w-full rounded border px-2 py-1 text-xs"
-          placeholder="Optional"
         />
       </div>
       <div className="flex gap-2 pt-1">
         <button
           onClick={() => {
-            // Build ISO timestamp if time was given
             let expectedBy: string | null = null;
             if (time) {
               const today = new Date();
@@ -374,24 +471,223 @@ function MarkPickupInline({
 }
 
 // ---------------------------------------------------------------------------
+// FloatingCard — card in the floating queue
+// ---------------------------------------------------------------------------
+
+function FloatingCard({
+  card,
+  drivers,
+  windowDates,
+  onAssignFloating,
+  onFloatingMarkPickup,
+}: {
+  card: AncillaryCard;
+  drivers: AncillaryAvailableDriver[];
+  windowDates: string[];
+  onAssignFloating: (deliveryId: string, driverId: string, deliveryDate: string) => void;
+  onFloatingMarkPickup: (deliveryId: string, deliveryDate: string) => void;
+}) {
+  const [showAssign, setShowAssign] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState("");
+  const [selectedDate, setSelectedDate] = useState(windowDates[0] || "");
+  const [showPickupDate, setShowPickupDate] = useState(false);
+  const [pickupDate, setPickupDate] = useState(windowDates[0] || "");
+
+  return (
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-sm font-semibold text-slate-900 leading-tight">
+          {card.funeral_home_name || "Unknown"}
+        </span>
+        <div className="flex items-center gap-1">
+          <Badge variant="outline" className="shrink-0 text-[10px] border-slate-300 text-slate-500">
+            {card.order_type_label}
+          </Badge>
+          <Badge variant="outline" className="shrink-0 text-[10px] border-amber-300 text-amber-600 bg-amber-50">
+            Floating
+          </Badge>
+        </div>
+      </div>
+      {card.product_summary && (
+        <p className="text-xs text-slate-600">{card.product_summary}</p>
+      )}
+      {card.deceased_name && (
+        <p className="text-xs text-slate-500">{card.deceased_name}</p>
+      )}
+      {card.ancillary_soft_target_date && (
+        <p className="text-[10px] text-slate-400">
+          Soft target: {formatShortDate(card.ancillary_soft_target_date)}
+        </p>
+      )}
+
+      {/* Combined driver + date picker for assign */}
+      {!showAssign && !showPickupDate && (
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            onClick={() => setShowAssign(true)}
+            className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            Assign
+          </button>
+          <button
+            onClick={() => setShowPickupDate(true)}
+            className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            Mark as Pickup
+          </button>
+        </div>
+      )}
+
+      {showAssign && (
+        <div className="rounded border border-blue-200 bg-blue-50 p-2 space-y-2">
+          <p className="text-[10px] font-medium text-blue-700">Assign to driver + date</p>
+          <select
+            value={selectedDriver}
+            onChange={(e) => setSelectedDriver(e.target.value)}
+            className="block w-full rounded border px-2 py-1 text-xs"
+          >
+            <option value="">Select driver...</option>
+            {drivers.map((d) => (
+              <option key={d.driver_id} value={d.driver_id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="block w-full rounded border px-2 py-1 text-xs"
+          >
+            {windowDates.map((d) => (
+              <option key={d} value={d}>
+                {formatDayLabel(d)} ({formatShortDate(d)})
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                if (!selectedDriver) {
+                  toast.error("Select a driver");
+                  return;
+                }
+                onAssignFloating(card.delivery_id, selectedDriver, selectedDate);
+                setShowAssign(false);
+              }}
+              className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              Assign
+            </button>
+            <button
+              onClick={() => setShowAssign(false)}
+              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showPickupDate && (
+        <div className="rounded border border-violet-200 bg-violet-50 p-2 space-y-2">
+          <p className="text-[10px] font-medium text-violet-700">Choose pickup date</p>
+          <select
+            value={pickupDate}
+            onChange={(e) => setPickupDate(e.target.value)}
+            className="block w-full rounded border px-2 py-1 text-xs"
+          >
+            {windowDates.map((d) => (
+              <option key={d} value={d}>
+                {formatDayLabel(d)} ({formatShortDate(d)})
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                onFloatingMarkPickup(card.delivery_id, pickupDate);
+                setShowPickupDate(false);
+              }}
+              className="rounded bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-700"
+            >
+              Confirm
+            </button>
+            <button
+              onClick={() => setShowPickupDate(false)}
+              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DayGroupedCards — renders cards grouped by date within a status section
+// ---------------------------------------------------------------------------
+
+function DayGroupedCards({
+  dayGroups,
+  renderCard,
+}: {
+  dayGroups: AncillaryDayGroup[];
+  renderCard: (card: AncillaryCard) => React.ReactNode;
+}) {
+  if (dayGroups.length === 0) return null;
+  // If only one day, skip the sub-section header
+  const skipHeaders = dayGroups.length === 1;
+
+  return (
+    <div className="space-y-1.5">
+      {dayGroups.map((group) => (
+        <div key={group.date} className="space-y-1.5">
+          {!skipHeaders && <DaySectionHeader dateStr={group.date} />}
+          {group.cards.map((card) => (
+            <div key={card.delivery_id}>{renderCard(card)}</div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main AncillaryPanel
 // ---------------------------------------------------------------------------
 
-export function AncillaryPanel({ dateStr, collapsed, onToggleCollapse }: AncillaryPanelProps) {
+export function AncillaryPanel({
+  anchorDate,
+  windowDates,
+  collapsed,
+  onToggleCollapse,
+}: AncillaryPanelProps) {
   const [data, setData] = useState<AncillaryOrdersResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [pickupFormId, setPickupFormId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [showFloatingCompleted, setShowFloatingCompleted] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch data
   const fetchData = useCallback(async (showLoading = true) => {
-    if (!dateStr) return;
+    if (!anchorDate) return;
     if (showLoading) setLoading(true);
     try {
+      const params: Record<string, string> = {
+        date: anchorDate,
+        include_completed: "true",
+      };
+      if (windowDates.length >= 3) {
+        params.day1 = windowDates[0];
+        params.day2 = windowDates[1];
+        params.day3 = windowDates[2];
+      }
       const resp = await api.get<AncillaryOrdersResponse>(
         "/api/v1/extensions/funeral-kanban/ancillary",
-        { params: { date: dateStr, include_completed: true } },
+        { params },
       );
       setData(resp.data);
     } catch {
@@ -399,7 +695,7 @@ export function AncillaryPanel({ dateStr, collapsed, onToggleCollapse }: Ancilla
     } finally {
       setLoading(false);
     }
-  }, [dateStr]);
+  }, [anchorDate, windowDates]);
 
   useEffect(() => {
     fetchData();
@@ -411,7 +707,8 @@ export function AncillaryPanel({ dateStr, collapsed, onToggleCollapse }: Ancilla
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchData]);
 
-  // Actions
+  // --- Actions ---
+
   const handleAssign = useCallback(async (deliveryId: string, driverId: string) => {
     try {
       await api.post(`/api/v1/extensions/funeral-kanban/ancillary/${deliveryId}/assign`, {
@@ -474,46 +771,93 @@ export function AncillaryPanel({ dateStr, collapsed, onToggleCollapse }: Ancilla
     }
   }, [fetchData]);
 
+  const handleMove = useCallback(async (deliveryId: string, newDate: string) => {
+    try {
+      await api.post(`/api/v1/extensions/funeral-kanban/ancillary/${deliveryId}/move`, {
+        new_date: newDate,
+      });
+      toast.success(`Moved to ${formatDayLabel(newDate)}`);
+      fetchData(false);
+    } catch {
+      toast.error("Failed to move");
+    }
+  }, [fetchData]);
+
+  const handleAssignFloating = useCallback(async (
+    deliveryId: string,
+    driverId: string,
+    deliveryDate: string,
+  ) => {
+    try {
+      await api.post(`/api/v1/extensions/funeral-kanban/ancillary/${deliveryId}/assign-floating`, {
+        driver_id: driverId,
+        delivery_date: deliveryDate,
+      });
+      toast.success("Floating order assigned");
+      fetchData(false);
+    } catch {
+      toast.error("Failed to assign floating order");
+    }
+  }, [fetchData]);
+
+  const handleFloatingMarkPickup = useCallback(async (
+    deliveryId: string,
+    deliveryDate: string,
+  ) => {
+    try {
+      await api.post(`/api/v1/extensions/funeral-kanban/ancillary/${deliveryId}/floating-mark-pickup`, {
+        delivery_date: deliveryDate,
+      });
+      toast.success("Floating order marked as pickup");
+      fetchData(false);
+    } catch {
+      toast.error("Failed to update");
+    }
+  }, [fetchData]);
+
   const unresolvedCount = data?.stats.unresolved ?? 0;
+  const floatingCount = data?.stats.floating_unresolved ?? 0;
   const drivers = data?.available_drivers ?? [];
 
-  // ── Collapsed tab ──
+  // ── Collapsed view ──
   if (collapsed) {
-    return (
-      <button
-        onClick={onToggleCollapse}
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-30 flex items-center gap-1.5 rounded-l-lg border border-r-0 bg-white px-2 py-3 shadow-md hover:bg-slate-50 transition-colors"
-        style={{ writingMode: "vertical-lr" }}
-      >
-        <span className="text-xs font-medium text-slate-600">&#9664; Ancillary</span>
-        {unresolvedCount > 0 && (
-          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
-            style={{ writingMode: "horizontal-tb" }}
-          >
-            {unresolvedCount}
-          </span>
-        )}
-      </button>
-    );
+    return null; // Parent handles collapsed rendering
   }
 
+  const dateRange = formatHeaderDateRange(windowDates);
+  const hasAnyData = data && data.stats.total > 0;
+
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col border-l border-slate-200 bg-slate-50/50">
+    <div className="flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div>
           <h3 className="text-sm font-bold text-slate-900">Ancillary Orders</h3>
-          <p className="text-[11px] text-slate-500">{formatPanelDate(dateStr)}</p>
+          <p className="text-[11px] text-slate-500">
+            {dateRange}
+            {floatingCount > 0 && (
+              <span className="ml-1 text-amber-600">
+                + {floatingCount} floating
+              </span>
+            )}
+          </p>
         </div>
-        <button
-          onClick={onToggleCollapse}
-          className="rounded p-1 hover:bg-slate-200 transition-colors"
-          aria-label="Collapse ancillary panel"
-        >
-          <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          {unresolvedCount > 0 && (
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+              {unresolvedCount}
+            </span>
+          )}
+          <button
+            onClick={onToggleCollapse}
+            className="rounded p-1 hover:bg-slate-200 transition-colors"
+            aria-label="Collapse ancillary panel"
+          >
+            <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -522,78 +866,87 @@ export function AncillaryPanel({ dateStr, collapsed, onToggleCollapse }: Ancilla
           <div className="flex items-center justify-center py-8">
             <p className="text-xs text-slate-400">Loading...</p>
           </div>
-        ) : !data || data.stats.total === 0 ? (
+        ) : !hasAnyData ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="text-2xl mb-2">&#128230;</div>
-            <p className="text-xs text-slate-400">No ancillary orders for this date</p>
+            <p className="text-xs text-slate-400">No ancillary orders</p>
           </div>
         ) : (
           <>
+            {/* ── SCHEDULED SECTION ── */}
+
             {/* Group 1: Needs Action */}
-            {data.needs_action.length > 0 && (
+            {data!.needs_action.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                     Needs Action
                   </h4>
                   <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                    {data.needs_action.length}
+                    {data!.needs_action.length}
                   </Badge>
                 </div>
-                {data.needs_action.map((card) =>
-                  pickupFormId === card.delivery_id ? (
-                    <MarkPickupInline
-                      key={card.delivery_id}
-                      deliveryId={card.delivery_id}
-                      onConfirm={handleMarkPickup}
-                      onCancel={() => setPickupFormId(null)}
-                    />
-                  ) : (
-                    <NeedsActionCard
-                      key={card.delivery_id}
-                      card={card}
-                      drivers={drivers}
-                      onAssign={handleAssign}
-                      onMarkPickup={(id) => setPickupFormId(id)}
-                    />
-                  ),
-                )}
+                <DayGroupedCards
+                  dayGroups={data!.needs_action_by_day}
+                  renderCard={(card) =>
+                    pickupFormId === card.delivery_id ? (
+                      <MarkPickupInline
+                        deliveryId={card.delivery_id}
+                        onConfirm={handleMarkPickup}
+                        onCancel={() => setPickupFormId(null)}
+                      />
+                    ) : (
+                      <NeedsActionCard
+                        card={card}
+                        drivers={drivers}
+                        windowDates={windowDates}
+                        onAssign={handleAssign}
+                        onMarkPickup={(id) => setPickupFormId(id)}
+                        onMove={handleMove}
+                      />
+                    )
+                  }
+                />
               </div>
             )}
 
             {/* Group 2: Awaiting Pickup */}
-            {data.awaiting_pickup.length > 0 && (
+            {data!.awaiting_pickup.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                     Awaiting Pickup
                   </h4>
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-300 text-violet-600">
-                    {data.awaiting_pickup.length}
+                    {data!.awaiting_pickup.length}
                   </Badge>
                 </div>
-                {data.awaiting_pickup.map((card) => (
-                  <AwaitingPickupCard
-                    key={card.delivery_id}
-                    card={card}
-                    onConfirmPickup={handleConfirmPickup}
-                  />
-                ))}
+                <DayGroupedCards
+                  dayGroups={data!.awaiting_pickup_by_day}
+                  renderCard={(card) => (
+                    <AwaitingPickupCard
+                      card={card}
+                      windowDates={windowDates}
+                      onConfirmPickup={handleConfirmPickup}
+                      onMove={handleMove}
+                    />
+                  )}
+                />
               </div>
             )}
 
             {/* Group 3: With Drivers */}
-            {data.assigned_groups.length > 0 && (
+            {data!.assigned_groups.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                     With Drivers
                   </h4>
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-600">
-                    {data.stats.assigned}
+                    {data!.stats.assigned}
                   </Badge>
                 </div>
-                {data.assigned_groups.map((group) => (
+                {data!.assigned_groups.map((group) => (
                   <div key={group.driver_id} className="space-y-1.5">
                     <p className="text-xs font-semibold text-slate-700">
                       {group.driver_name}{" "}
@@ -601,42 +954,99 @@ export function AncillaryPanel({ dateStr, collapsed, onToggleCollapse }: Ancilla
                         ({group.item_count} item{group.item_count !== 1 ? "s" : ""})
                       </span>
                     </p>
-                    {group.items.map((card) => (
-                      <AssignedCard
-                        key={card.delivery_id}
-                        card={card}
-                        drivers={drivers}
-                        onConfirmDelivered={handleConfirmDelivered}
-                        onReassign={handleReassign}
-                      />
-                    ))}
+                    <DayGroupedCards
+                      dayGroups={group.items_by_day}
+                      renderCard={(card) => (
+                        <AssignedCard
+                          card={card}
+                          drivers={drivers}
+                          windowDates={windowDates}
+                          onConfirmDelivered={handleConfirmDelivered}
+                          onReassign={handleReassign}
+                          onMove={handleMove}
+                        />
+                      )}
+                    />
                   </div>
                 ))}
               </div>
             )}
 
             {/* Completed toggle */}
-            {data.completed.length > 0 && (
+            {data!.completed.length > 0 && (
               <div className="space-y-1">
                 <button
                   onClick={() => setShowCompleted(!showCompleted)}
                   className="flex w-full items-center justify-between rounded-lg bg-slate-100 px-3 py-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-200 transition-colors"
                 >
-                  <span>Show completed ({data.completed.length})</span>
+                  <span>Show completed ({data!.completed.length})</span>
                   <span>{showCompleted ? "\u25B4" : "\u25BE"}</span>
                 </button>
                 {showCompleted && (
                   <div className="space-y-0.5 pt-1">
-                    {data.completed.map((card) => (
+                    {data!.completed.map((card) => (
                       <div key={card.delivery_id} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-slate-400">
                         <span className="text-emerald-500">&#10003;</span>
                         <span className="flex-1 truncate">
                           {card.funeral_home_name} — {card.product_summary || card.order_type_label}
-                          {card.deceased_name ? ` — ${card.deceased_name}` : ""}
                         </span>
-                        <span className="shrink-0">{formatCompletedTime(card.completed_at)}</span>
+                        <span className="shrink-0">{formatTime(card.completed_at)}</span>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── FLOATING SECTION ── */}
+            {(data!.floating.length > 0 || data!.floating_completed.length > 0) && (
+              <div className="space-y-2 border-t border-amber-200 pt-3">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                    Floating Orders
+                  </h4>
+                  {data!.floating.length > 0 && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600 bg-amber-50">
+                      {data!.floating.length}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  No hard delivery date — assign to schedule
+                </p>
+
+                {data!.floating.map((card) => (
+                  <FloatingCard
+                    key={card.delivery_id}
+                    card={card}
+                    drivers={drivers}
+                    windowDates={windowDates}
+                    onAssignFloating={handleAssignFloating}
+                    onFloatingMarkPickup={handleFloatingMarkPickup}
+                  />
+                ))}
+
+                {data!.floating_completed.length > 0 && (
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setShowFloatingCompleted(!showFloatingCompleted)}
+                      className="flex w-full items-center justify-between rounded-lg bg-amber-50 px-3 py-1.5 text-[11px] font-medium text-amber-600 hover:bg-amber-100 transition-colors"
+                    >
+                      <span>Completed floating ({data!.floating_completed.length})</span>
+                      <span>{showFloatingCompleted ? "\u25B4" : "\u25BE"}</span>
+                    </button>
+                    {showFloatingCompleted && (
+                      <div className="space-y-0.5 pt-1">
+                        {data!.floating_completed.map((card) => (
+                          <div key={card.delivery_id} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-slate-400">
+                            <span className="text-emerald-500">&#10003;</span>
+                            <span className="flex-1 truncate">
+                              {card.funeral_home_name} — {card.product_summary || card.order_type_label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -649,15 +1059,16 @@ export function AncillaryPanel({ dateStr, collapsed, onToggleCollapse }: Ancilla
 }
 
 // ---------------------------------------------------------------------------
-// Mobile Drawer variant
+// Mobile Pill + Drawer
 // ---------------------------------------------------------------------------
 
 export function AncillaryMobilePill({
   unresolvedCount,
+  floatingCount,
   onClick,
 }: {
-  dateStr: string;
   unresolvedCount: number;
+  floatingCount: number;
   onClick: () => void;
 }) {
   return (
@@ -666,10 +1077,15 @@ export function AncillaryMobilePill({
       className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-white border border-slate-300 px-4 py-2 shadow-lg hover:bg-slate-50 transition-colors"
     >
       <span className="text-sm">&#128230;</span>
-      <span className="text-xs font-medium text-slate-700">Ancillary Orders</span>
+      <span className="text-xs font-medium text-slate-700">Ancillary</span>
       {unresolvedCount > 0 && (
         <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
           {unresolvedCount}
+        </span>
+      )}
+      {floatingCount > 0 && (
+        <span className="text-[10px] text-amber-600">
+          {floatingCount} floating
         </span>
       )}
     </button>
@@ -677,11 +1093,13 @@ export function AncillaryMobilePill({
 }
 
 export function AncillaryDrawer({
-  dateStr,
+  anchorDate,
+  windowDates,
   open,
   onClose,
 }: {
-  dateStr: string;
+  anchorDate: string;
+  windowDates: string[];
   open: boolean;
   onClose: () => void;
 }) {
@@ -689,9 +1107,7 @@ export function AncillaryDrawer({
 
   return (
     <div className="fixed inset-0 z-40">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      {/* Drawer */}
       <div className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-white shadow-2xl animate-in slide-in-from-bottom duration-200">
         <div className="sticky top-0 flex items-center justify-between border-b bg-white px-4 py-3">
           <h3 className="text-sm font-bold text-slate-900">Ancillary Orders</h3>
@@ -702,7 +1118,12 @@ export function AncillaryDrawer({
           </button>
         </div>
         <div className="px-1 pb-8">
-          <AncillaryPanel dateStr={dateStr} collapsed={false} onToggleCollapse={onClose} />
+          <AncillaryPanel
+            anchorDate={anchorDate}
+            windowDates={windowDates}
+            collapsed={false}
+            onToggleCollapse={onClose}
+          />
         </div>
       </div>
     </div>
