@@ -13,7 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import api from "@/lib/api-client";
 import type {
   AncillaryCard,
-  AncillaryDriverGroup,
   AncillaryAvailableDriver,
   AncillaryOrdersResponse,
 } from "@/types/delivery";
@@ -654,7 +653,6 @@ export function AncillaryPanel({ dateStr, collapsed, onToggleCollapse }: Ancilla
 // ---------------------------------------------------------------------------
 
 export function AncillaryMobilePill({
-  dateStr,
   unresolvedCount,
   onClick,
 }: {
