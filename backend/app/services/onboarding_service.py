@@ -908,7 +908,8 @@ _PRESET_SCENARIOS: dict[str, list[dict]] = {
 
 
 def fix_checklist_targets(db: Session) -> None:
-    """Patch stale action_target / tier values on existing checklist items.
+    """Patch stale action_target / tier values on existing checklist items
+    and backfill any missing items from the current seed definitions.
 
     Called on startup so that code-level changes to the seed definitions
     propagate to tenants that were already initialised.
@@ -927,6 +928,44 @@ def fix_checklist_targets(db: Session) -> None:
         OnboardingChecklistItem.item_key == "configure_cross_tenant",
         OnboardingChecklistItem.tier != "must_complete",
     ).update({"tier": "must_complete"})
+
+    # --- Backfill missing checklist items for existing tenants ---
+    # Get all existing checklists grouped by preset
+    checklists = db.query(OnboardingChecklist).all()
+    for checklist in checklists:
+        preset = checklist.preset or "manufacturing"
+        items_def = _PRESET_ITEMS.get(preset, MANUFACTURING_CHECKLIST_ITEMS)
+
+        # Get existing item keys for this tenant
+        existing_keys = {
+            row.item_key
+            for row in db.query(OnboardingChecklistItem.item_key).filter(
+                OnboardingChecklistItem.tenant_id == checklist.tenant_id,
+            ).all()
+        }
+
+        # Insert any missing items
+        for item_def in items_def:
+            if item_def["item_key"] not in existing_keys:
+                item = OnboardingChecklistItem(
+                    tenant_id=checklist.tenant_id,
+                    checklist_id=checklist.id,
+                    item_key=item_def["item_key"],
+                    tier=item_def["tier"],
+                    category=item_def["category"],
+                    title=item_def["title"],
+                    description=item_def.get("description"),
+                    estimated_minutes=item_def.get("estimated_minutes", 0),
+                    action_type=item_def["action_type"],
+                    action_target=item_def.get("action_target"),
+                    sort_order=item_def.get("sort_order", 0),
+                )
+                db.add(item)
+                logger.info(
+                    "Backfilled checklist item %s for tenant %s",
+                    item_def["item_key"],
+                    checklist.tenant_id,
+                )
 
     db.commit()
 
