@@ -99,10 +99,14 @@ def upgrade() -> None:
         sa.text("SELECT id, extension_key, extension_id FROM tenant_extensions")
     ).fetchall()
 
-    # 4. Delete all extension_definitions
+    # 4. NULL out FK references so we can delete extension_definitions
+    if existing_te:
+        bind.execute(sa.text("UPDATE tenant_extensions SET extension_id = NULL"))
+
+    # 5. Delete all extension_definitions
     bind.execute(sa.text("DELETE FROM extension_definitions"))
 
-    # 5. Seed the new registry
+    # 6. Seed the new registry
     NEW_REGISTRY = [
         # ── CORE ──
         {
@@ -585,7 +589,7 @@ def upgrade() -> None:
             },
         )
 
-    # 6. Re-link tenant_extensions to new IDs by extension_key
+    # 7. Re-link tenant_extensions to new IDs by extension_key
     if existing_te:
         bind.execute(
             sa.text(
