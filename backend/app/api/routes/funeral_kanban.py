@@ -3,6 +3,7 @@
 from datetime import date, datetime, UTC
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_module
@@ -123,6 +124,7 @@ def get_schedule(
     config = _require_funeral_kanban(db, current_user.company_id)
 
     # Get all funeral_vault deliveries for this date that are unscheduled
+    # Exclude ancillary orders — they appear in the ancillary panel instead
     unscheduled_deliveries = (
         db.query(Delivery)
         .filter(
@@ -130,6 +132,10 @@ def get_schedule(
             Delivery.delivery_type == "funeral_vault",
             Delivery.requested_date == schedule_date,
             Delivery.status.in_(["pending"]),
+            or_(
+                Delivery.scheduling_type == "kanban",
+                Delivery.scheduling_type.is_(None),
+            ),
         )
         .order_by(Delivery.required_window_start, Delivery.created_at)
         .all()
@@ -163,6 +169,7 @@ def get_schedule(
 
     # Also check for scheduled funeral_vault deliveries that aren't in the pending query
     # (status might have been updated to "scheduled")
+    # Exclude ancillary orders
     additional_scheduled = (
         db.query(Delivery)
         .filter(
@@ -170,6 +177,10 @@ def get_schedule(
             Delivery.delivery_type == "funeral_vault",
             Delivery.requested_date == schedule_date,
             Delivery.id.in_(scheduled_delivery_ids) if scheduled_delivery_ids else False,
+            or_(
+                Delivery.scheduling_type == "kanban",
+                Delivery.scheduling_type.is_(None),
+            ),
         )
         .all()
     ) if scheduled_delivery_ids else []

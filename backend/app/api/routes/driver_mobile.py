@@ -340,6 +340,39 @@ def get_console_deliveries(
             in_progress_count += 1
 
     total = len(cards)
+
+    # Fetch ancillary items assigned to this driver for this date
+    ancillary_items = (
+        db.query(Delivery)
+        .filter(
+            Delivery.company_id == current_user.company_id,
+            Delivery.scheduling_type == "ancillary",
+            Delivery.assigned_driver_id == driver.id,
+            Delivery.requested_date == target_date,
+            Delivery.status != "cancelled",
+        )
+        .order_by(Delivery.created_at)
+        .all()
+    )
+
+    ancillary_cards = []
+    for ad in ancillary_items:
+        tc = ad.type_config or {}
+        ancillary_cards.append({
+            "delivery_id": ad.id,
+            "delivery_type": ad.delivery_type,
+            "order_type_label": {
+                "funeral_home_dropoff": "Drop-off",
+                "funeral_home_pickup": "Pickup",
+                "supply_delivery": "Supply",
+            }.get(ad.delivery_type, ad.delivery_type),
+            "funeral_home_name": tc.get("funeral_home_name", ""),
+            "product_summary": tc.get("product_summary", tc.get("vault_type", "")),
+            "deceased_name": tc.get("family_name", tc.get("deceased_name", "")),
+            "ancillary_fulfillment_status": ad.ancillary_fulfillment_status or "unassigned",
+            "special_instructions": ad.special_instructions,
+        })
+
     return {
         "date": target_date.isoformat(),
         "driver_id": driver.id,
@@ -347,6 +380,7 @@ def get_console_deliveries(
         "route_id": route.id,
         "route_status": route.status,
         "deliveries": cards,
+        "ancillary_items": ancillary_cards,
         "stats": {
             "total": total,
             "completed": completed_count,
@@ -453,3 +487,34 @@ def update_console_delivery_status(
         "delivery_status": delivery.status,
         "completed_at": delivery.completed_at.isoformat() if delivery.completed_at else None,
     }
+
+
+@router.post("/console/ancillary/{delivery_id}/confirm")
+def confirm_ancillary_delivery(
+    delivery_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module(MODULE)),
+    current_user: User = Depends(get_current_user),
+):
+    """Driver confirms an ancillary delivery (drop-off/supply) from the console."""
+    driver = delivery_service.get_driver_by_employee(db, current_user.id, current_user.company_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="No driver profile found")
+
+    delivery = db.query(Delivery).filter(
+        Delivery.id == delivery_id,
+        Delivery.company_id == current_user.company_id,
+        Delivery.scheduling_type == "ancillary",
+        Delivery.assigned_driver_id == driver.id,
+    ).first()
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Ancillary delivery not found or not assigned to you")
+
+    now = datetime.now(UTC)
+    delivery.ancillary_fulfillment_status = "completed"
+    delivery.status = "completed"
+    delivery.completed_at = now
+    delivery.modified_at = now
+    db.commit()
+
+    return {"status": "completed", "delivery_id": delivery_id}

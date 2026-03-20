@@ -63,6 +63,26 @@ class Delivery(Base):
         String(100), nullable=True
     )
 
+    # Ancillary order fields
+    scheduling_type: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, index=True
+    )  # 'kanban' | 'ancillary' — NULL treated as kanban
+    ancillary_fulfillment_status: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, index=True
+    )  # unassigned, awaiting_pickup, assigned_to_driver, completed
+    assigned_driver_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )  # driver assigned for ancillary delivery (not via route/stop)
+    pickup_expected_by: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    pickup_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    pickup_confirmed_by: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
+
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

@@ -329,6 +329,9 @@ class DeliveryCreate(BaseModel):
     type_config: dict | None = None
     special_instructions: str | None = None
     weight_lbs: Decimal | None = None
+    # Ancillary fields
+    scheduling_type: str | None = None  # 'kanban' | 'ancillary'
+    pickup_expected_by: datetime | None = None
 
 
 class DeliveryUpdate(BaseModel):
@@ -345,6 +348,12 @@ class DeliveryUpdate(BaseModel):
     type_config: dict | None = None
     special_instructions: str | None = None
     weight_lbs: Decimal | None = None
+    # Ancillary fields
+    scheduling_type: str | None = None
+    ancillary_fulfillment_status: str | None = None
+    assigned_driver_id: str | None = None
+    pickup_expected_by: datetime | None = None
+    pickup_confirmed_by: str | None = None
 
 
 class DeliveryListItem(BaseModel):
@@ -364,6 +373,10 @@ class DeliveryListItem(BaseModel):
     weight_lbs: Decimal | None = None
     scheduled_at: datetime | None = None
     created_at: datetime
+    # Ancillary fields
+    scheduling_type: str | None = None
+    ancillary_fulfillment_status: str | None = None
+    assigned_driver_id: str | None = None
 
     class Config:
         from_attributes = True
@@ -395,6 +408,13 @@ class DeliveryResponse(BaseModel):
     created_by: str | None = None
     created_at: datetime
     modified_at: datetime | None = None
+    # Ancillary fields
+    scheduling_type: str | None = None
+    ancillary_fulfillment_status: str | None = None
+    assigned_driver_id: str | None = None
+    pickup_expected_by: datetime | None = None
+    pickup_confirmed_at: datetime | None = None
+    pickup_confirmed_by: str | None = None
 
     class Config:
         from_attributes = True

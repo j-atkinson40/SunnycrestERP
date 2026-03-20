@@ -1,10 +1,13 @@
 /**
- * Scheduling Board — Multi-panel Kanban view
+ * Scheduling Board — Multi-panel Kanban view with Ancillary Orders panel
  *
  * Shows today's full Kanban board stacked above the next delivery day's
  * Kanban board. On Saturdays, shows three panels (Sat + Sun + Mon) for
  * weekend planning. The "next delivery day" is context-aware — skips
  * weekends when delivery is disabled.
+ *
+ * Ancillary panel sits alongside the Kanban board in a two-column layout
+ * (collapsible). On mobile, it slides up as a drawer.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -12,6 +15,12 @@ import { useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/auth-context";
 import { KanbanPanel } from "@/components/delivery/kanban-panel";
+import {
+  AncillaryPanel,
+  AncillaryMobilePill,
+  AncillaryDrawer,
+} from "@/components/delivery/ancillary-panel";
+import api from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,8 +77,6 @@ function getSchedulingPanels(
   const dayOfWeek = current.getDay(); // 0=Sun, 1=Mon ... 6=Sat
 
   // Saturday — always show three panels: Sat + Sun + Mon
-  // Sunday may have funerals even if not a standard delivery day
-  // Monday always needs to be planned on Saturday
   if (dayOfWeek === 6) {
     return {
       panels: [
@@ -84,8 +91,8 @@ function getSchedulingPanels(
   // Friday — show Fri + Sat (or Mon if Saturday delivery disabled)
   if (dayOfWeek === 5) {
     const nextDay = saturdayEnabled
-      ? formatDate(addDays(current, 1)) // Saturday
-      : formatDate(addDays(current, 3)); // Monday
+      ? formatDate(addDays(current, 1))
+      : formatDate(addDays(current, 3));
     return {
       panels: [currentDateStr, nextDay],
       isSaturdayView: false,
@@ -101,18 +108,15 @@ function getSchedulingPanels(
   }
 
   // Monday through Thursday — show today + tomorrow
-  // Skip Sunday if Sunday delivery disabled
   const tomorrow = addDays(current, 1);
   const tomorrowDay = tomorrow.getDay();
 
   if (tomorrowDay === 0 && !sundayEnabled) {
     return {
-      panels: [currentDateStr, formatDate(addDays(current, 2))], // skip to Monday
+      panels: [currentDateStr, formatDate(addDays(current, 2))],
       isSaturdayView: false,
     };
   }
-
-  // TODO: check company holidays when holiday calendar is built
 
   return {
     panels: [currentDateStr, formatDate(tomorrow)],
@@ -152,12 +156,12 @@ function getPrevDeliveryDay(
 
   if (dayOfWeek === 0 && !sundayEnabled) {
     if (saturdayEnabled) {
-      return formatDate(addDays(current, -2)); // Saturday
+      return formatDate(addDays(current, -2));
     }
-    return formatDate(addDays(current, -2)); // Friday
+    return formatDate(addDays(current, -2));
   }
   if (dayOfWeek === 6 && !saturdayEnabled) {
-    return formatDate(addDays(current, -2)); // Friday
+    return formatDate(addDays(current, -2));
   }
 
   return formatDate(yesterday);
@@ -236,12 +240,31 @@ function getPanelSubtitle(
 }
 
 // ---------------------------------------------------------------------------
+// useIsMobile hook
+// ---------------------------------------------------------------------------
+
+function useIsMobile(breakpoint = 768): boolean {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < breakpoint : false,
+  );
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
+// ---------------------------------------------------------------------------
 // Main Scheduling Board Page
 // ---------------------------------------------------------------------------
 
 export default function SchedulingBoardPage() {
   const { user, company } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isMobile = useIsMobile();
 
   // Tenant settings for weekend delivery
   const tenantSettings =
@@ -274,12 +297,14 @@ export default function SchedulingBoardPage() {
   const tomorrowKey = collapseKey("tomorrow", tenantId, userId);
   const sundayKey = collapseKey("sunday", tenantId, userId);
   const mondaySatKey = collapseKey("monday_sat", tenantId, userId);
+  const ancillaryKey = collapseKey("ancillary", tenantId, userId);
 
   const [collapseState, setCollapseState] = useState<Record<string, boolean>>(
     () => ({
       tomorrow: loadPanelCollapsed(tomorrowKey),
       sunday: loadPanelCollapsed(sundayKey),
       monday_sat: loadPanelCollapsed(mondaySatKey),
+      ancillary: loadPanelCollapsed(ancillaryKey),
     }),
   );
 
@@ -350,91 +375,157 @@ export default function SchedulingBoardPage() {
     }
   }, [dateParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Mobile drawer state
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  // Ancillary unresolved count for the mobile pill
+  const [ancillaryUnresolved, setAncillaryUnresolved] = useState(0);
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const resp = await api.get("/api/v1/extensions/funeral-kanban/ancillary", {
+          params: { date: primaryDate },
+        });
+        setAncillaryUnresolved(resp.data?.stats?.unresolved ?? 0);
+      } catch {
+        // ignore
+      }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 60_000);
+    return () => clearInterval(interval);
+  }, [primaryDate]);
+
+  const ancillaryCollapsed = collapseState.ancillary ?? false;
+
   return (
-    <div className="flex h-full flex-col gap-6 p-6">
-      {/* ── Page Header ── */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">
-              Scheduling Board
-            </h1>
-            {isSaturdayView && isDefaultView && (
-              <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 text-xs font-medium">
-                Weekend Planning View
-              </Badge>
+    <div className="flex h-full">
+      {/* ── Main content: Kanban panels ── */}
+      <div className="flex-1 flex flex-col gap-6 p-6 overflow-y-auto">
+        {/* ── Page Header ── */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight">
+                Scheduling Board
+              </h1>
+              {isSaturdayView && isDefaultView && (
+                <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 text-xs font-medium">
+                  Weekend Planning View
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {isDefaultView
+                ? isSaturdayView
+                  ? `Saturday, ${formatShortDate(todayStr)} \u00b7 Today + Weekend Planning View`
+                  : `Today \u2014 ${formatShortDate(todayStr)}`
+                : formatShortDate(primaryDate)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Back to today pill */}
+            {!isDefaultView && (
+              <button
+                onClick={goToday}
+                className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+              >
+                <span>&#8617;</span>
+                Back to today
+              </button>
+            )}
+
+            {/* Navigation arrows + date picker */}
+            <button
+              onClick={goPrev}
+              className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-slate-100 transition-colors"
+              aria-label="Previous delivery day"
+            >
+              &#8592;
+            </button>
+            <input
+              type="date"
+              value={primaryDate}
+              onChange={handleDateChange}
+              className="rounded-md border px-3 py-1.5 text-sm"
+            />
+            <button
+              onClick={goNext}
+              className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-slate-100 transition-colors"
+              aria-label="Next delivery day"
+            >
+              &#8594;
+            </button>
+
+            {/* Ancillary toggle button (desktop only) */}
+            {!isMobile && ancillaryCollapsed && (
+              <button
+                onClick={() => toggleCollapse("ancillary")}
+                className="flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                &#128230; Ancillary
+                {ancillaryUnresolved > 0 && (
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                    {ancillaryUnresolved}
+                  </span>
+                )}
+              </button>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {isDefaultView
-              ? isSaturdayView
-                ? `Saturday, ${formatShortDate(todayStr)} \u00b7 Today + Weekend Planning View`
-                : `Today \u2014 ${formatShortDate(todayStr)}`
-              : formatShortDate(primaryDate)}
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Back to today pill */}
-          {!isDefaultView && (
-            <button
-              onClick={goToday}
-              className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-            >
-              <span>↩</span>
-              Back to today
-            </button>
-          )}
+        {/* ── Panels — dynamically rendered (2 or 3) ── */}
+        {panels.map((dateStr, idx) => {
+          const panelType = getCollapsePanelType(idx);
+          const isFirst = idx === 0;
+          const isOptionalDay = isSaturdayView && idx === 1;
+          const showPlanAheadBadge = isSaturdayView && idx === 2;
 
-          {/* Navigation arrows + date picker */}
-          <button
-            onClick={goPrev}
-            className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-slate-100 transition-colors"
-            aria-label="Previous delivery day"
-          >
-            ←
-          </button>
-          <input
-            type="date"
-            value={primaryDate}
-            onChange={handleDateChange}
-            className="rounded-md border px-3 py-1.5 text-sm"
-          />
-          <button
-            onClick={goNext}
-            className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-slate-100 transition-colors"
-            aria-label="Next delivery day"
-          >
-            →
-          </button>
-        </div>
+          return (
+            <KanbanPanel
+              key={dateStr}
+              dateStr={dateStr}
+              isToday={dateStr === todayStr}
+              label={getPanelLabel(dateStr, idx, primaryDate, isSaturdayView)}
+              subtitle={getPanelSubtitle(dateStr, idx, primaryDate)}
+              collapsed={isFirst ? false : (collapseState[panelType] ?? false)}
+              onToggleCollapse={
+                isFirst ? undefined : () => toggleCollapse(panelType)
+              }
+              collapsible={!isFirst}
+              isOptionalDay={isOptionalDay}
+              showPlanAheadBadge={showPlanAheadBadge}
+              panelPrefix={`panel${idx}`}
+            />
+          );
+        })}
       </div>
 
-      {/* ── Panels — dynamically rendered (2 or 3) ── */}
-      {panels.map((dateStr, idx) => {
-        const panelType = getCollapsePanelType(idx);
-        const isFirst = idx === 0;
-        const isOptionalDay = isSaturdayView && idx === 1; // Sunday in Saturday view
-        const showPlanAheadBadge = isSaturdayView && idx === 2; // Monday in Saturday view
+      {/* ── Ancillary Panel (desktop) ── */}
+      {!isMobile && !ancillaryCollapsed && (
+        <AncillaryPanel
+          dateStr={primaryDate}
+          collapsed={false}
+          onToggleCollapse={() => toggleCollapse("ancillary")}
+        />
+      )}
 
-        return (
-          <KanbanPanel
-            key={dateStr}
-            dateStr={dateStr}
-            isToday={dateStr === todayStr}
-            label={getPanelLabel(dateStr, idx, primaryDate, isSaturdayView)}
-            subtitle={getPanelSubtitle(dateStr, idx, primaryDate)}
-            collapsed={isFirst ? false : (collapseState[panelType] ?? false)}
-            onToggleCollapse={
-              isFirst ? undefined : () => toggleCollapse(panelType)
-            }
-            collapsible={!isFirst}
-            isOptionalDay={isOptionalDay}
-            showPlanAheadBadge={showPlanAheadBadge}
-            panelPrefix={`panel${idx}`}
+      {/* ── Ancillary Mobile Pill + Drawer ── */}
+      {isMobile && (
+        <>
+          <AncillaryMobilePill
+            dateStr={primaryDate}
+            unresolvedCount={ancillaryUnresolved}
+            onClick={() => setMobileDrawerOpen(true)}
           />
-        );
-      })}
+          <AncillaryDrawer
+            dateStr={primaryDate}
+            open={mobileDrawerOpen}
+            onClose={() => setMobileDrawerOpen(false)}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -54,6 +54,17 @@ interface ConsoleDelivery {
   driver_notes: string | null;
 }
 
+interface AncillaryItem {
+  delivery_id: string;
+  delivery_type: string;
+  order_type_label: string;
+  funeral_home_name: string;
+  product_summary: string;
+  deceased_name: string;
+  ancillary_fulfillment_status: string;
+  special_instructions: string | null;
+}
+
 interface ConsoleResponse {
   date: string;
   driver_id: string;
@@ -61,6 +72,7 @@ interface ConsoleResponse {
   route_id: string | null;
   route_status: string | null;
   deliveries: ConsoleDelivery[];
+  ancillary_items?: AncillaryItem[];
   stats: {
     total: number;
     completed: number;
@@ -556,8 +568,23 @@ export default function DeliveryConsolePage() {
           err && typeof err === "object" && "response" in err
             ? ((err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? "Update failed")
             : "Update failed";
-        // Brief toast-style feedback (could enhance with a toast lib)
         alert(msg);
+      } finally {
+        setUpdatingId(null);
+      }
+    },
+    [fetchDeliveries],
+  );
+
+  // Ancillary delivery confirm handler
+  const handleAncillaryConfirm = useCallback(
+    async (deliveryId: string) => {
+      setUpdatingId(deliveryId);
+      try {
+        await api.post(`/api/v1/driver/console/ancillary/${deliveryId}/confirm`);
+        await fetchDeliveries();
+      } catch {
+        alert("Failed to confirm delivery");
       } finally {
         setUpdatingId(null);
       }
@@ -650,6 +677,15 @@ export default function DeliveryConsolePage() {
         </div>
       )}
 
+      {/* Ancillary items — "Also on your route today" */}
+      {data.ancillary_items && data.ancillary_items.length > 0 && (
+        <AncillarySection
+          items={data.ancillary_items}
+          onConfirm={handleAncillaryConfirm}
+          updatingId={updatingId}
+        />
+      )}
+
       {/* Completed cards (collapsed section) */}
       {completedCards.length > 0 && !allDone && (
         <CompletedSection cards={completedCards} />
@@ -657,6 +693,132 @@ export default function DeliveryConsolePage() {
 
       {/* Next day preview */}
       <NextDayPreview nextDayData={nextDayData} isLoading={nextDayLoading} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ancillary Console Card — compact secondary item
+// ---------------------------------------------------------------------------
+
+function AncillaryConsoleCard({
+  item,
+  onConfirm,
+  isUpdating,
+}: {
+  item: AncillaryItem;
+  onConfirm: (deliveryId: string) => void;
+  isUpdating: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isCompleted = item.ancillary_fulfillment_status === "completed";
+
+  useEffect(() => {
+    if (confirming) {
+      confirmTimerRef.current = setTimeout(() => setConfirming(false), 5000);
+    }
+    return () => { if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current); };
+  }, [confirming]);
+
+  return (
+    <div className={cn(
+      "rounded-lg border px-3 py-2.5 space-y-1",
+      isCompleted
+        ? "border-emerald-200 bg-emerald-50/50 opacity-75"
+        : "border-slate-200 bg-white",
+    )}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-slate-900 truncate">
+          {item.funeral_home_name || "Delivery"}
+        </span>
+        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+          {item.order_type_label}
+        </span>
+      </div>
+      <p className="text-xs text-slate-600 truncate">
+        {item.product_summary}
+        {item.deceased_name ? ` \u00b7 ${item.deceased_name}` : ""}
+      </p>
+      {item.special_instructions && (
+        <p className="text-[11px] text-amber-600 truncate">{item.special_instructions}</p>
+      )}
+      <div className="pt-1">
+        {isCompleted ? (
+          <span className="text-xs text-emerald-600 font-medium">&#10003; Dropped Off</span>
+        ) : !confirming ? (
+          <button
+            onClick={() => setConfirming(true)}
+            disabled={isUpdating}
+            className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 active:bg-emerald-200 transition-colors"
+          >
+            &#10003; Dropped Off
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              setConfirming(false);
+              onConfirm(item.delivery_id);
+            }}
+            disabled={isUpdating}
+            className="w-full rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white animate-pulse active:bg-emerald-700"
+          >
+            Tap Again to Confirm
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ancillary Section — "Also on your route today"
+// ---------------------------------------------------------------------------
+
+function AncillarySection({
+  items,
+  onConfirm,
+  updatingId,
+}: {
+  items: AncillaryItem[];
+  onConfirm: (deliveryId: string) => void;
+  updatingId: string | null;
+}) {
+  const activeItems = items.filter((i) => i.ancillary_fulfillment_status !== "completed");
+  const completedItems = items.filter((i) => i.ancillary_fulfillment_status === "completed");
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      {/* Divider */}
+      <div className="flex items-center gap-3 pt-2">
+        <div className="h-px flex-1 bg-slate-300" />
+        <span className="text-xs font-semibold text-slate-400 whitespace-nowrap">
+          Also on your route today ({items.length} item{items.length !== 1 ? "s" : ""})
+        </span>
+        <div className="h-px flex-1 bg-slate-300" />
+      </div>
+
+      {/* Active ancillary items */}
+      {activeItems.map((item) => (
+        <AncillaryConsoleCard
+          key={item.delivery_id}
+          item={item}
+          onConfirm={onConfirm}
+          isUpdating={updatingId === item.delivery_id}
+        />
+      ))}
+
+      {/* Completed ancillary items */}
+      {completedItems.map((item) => (
+        <AncillaryConsoleCard
+          key={item.delivery_id}
+          item={item}
+          onConfirm={onConfirm}
+          isUpdating={false}
+        />
+      ))}
     </div>
   );
 }

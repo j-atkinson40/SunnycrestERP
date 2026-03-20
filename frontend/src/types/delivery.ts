@@ -475,3 +475,72 @@ export interface KanbanAssignResponse {
   route_id?: string;
   sequence?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Ancillary Orders
+// ---------------------------------------------------------------------------
+
+export type AncillaryFulfillmentStatus =
+  | "unassigned"
+  | "awaiting_pickup"
+  | "assigned_to_driver"
+  | "completed";
+
+export interface AncillaryCard {
+  delivery_id: string;
+  delivery_type: string;
+  order_type_label: string;
+  funeral_home_name: string;
+  product_summary: string;
+  deceased_name: string;
+  status: string;
+  ancillary_fulfillment_status: AncillaryFulfillmentStatus;
+  assigned_driver_id: string | null;
+  pickup_expected_by: string | null;
+  pickup_confirmed_at: string | null;
+  pickup_confirmed_by: string | null;
+  requested_date: string | null;
+  completed_at: string | null;
+  special_instructions: string | null;
+  created_at: string | null;
+}
+
+export interface AncillaryDriverGroup {
+  driver_id: string;
+  driver_name: string;
+  items: AncillaryCard[];
+  item_count: number;
+}
+
+export interface AncillaryAvailableDriver {
+  driver_id: string;
+  name: string;
+}
+
+export interface AncillaryOrdersResponse {
+  date: string;
+  needs_action: AncillaryCard[];
+  awaiting_pickup: AncillaryCard[];
+  assigned_groups: AncillaryDriverGroup[];
+  completed: AncillaryCard[];
+  available_drivers: AncillaryAvailableDriver[];
+  stats: {
+    total: number;
+    needs_action: number;
+    awaiting_pickup: number;
+    assigned: number;
+    completed: number;
+    unresolved: number;
+  };
+}
+
+export interface AncillaryConsoleItem {
+  delivery_id: string;
+  delivery_type: string;
+  order_type_label: string;
+  funeral_home_name: string;
+  product_summary: string;
+  deceased_name: string;
+  ancillary_fulfillment_status: AncillaryFulfillmentStatus;
+  special_instructions: string | null;
+}
