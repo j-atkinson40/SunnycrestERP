@@ -76,7 +76,11 @@ import SafetyOSHA300Page from "@/pages/safety/safety-osha300";
 import ProductionBoardPage from "@/pages/production/production-board";
 import PourEventCreatePage from "@/pages/production/pour-event-create";
 import WorkOrderDetailPage from "@/pages/production/work-order-detail";
+import { ConsoleLayout } from "@/components/layout/console-layout";
 import { DriverLayout } from "@/components/layout/driver-layout";
+import ConsoleSelectPage from "@/pages/console/console-select";
+import DeliveryConsolePage from "@/pages/console/delivery-console";
+import ProductionConsolePage from "@/pages/console/production-console";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
 import StopDetailPage from "@/pages/driver/stop-detail";
@@ -567,6 +571,15 @@ export default function App() {
                   <Route path="/driver/route" element={<DriverRoutePage />} />
                   <Route path="/driver/stops/:stopId" element={<StopDetailPage />} />
                   <Route path="/driver/mileage" element={<MileagePage />} />
+                </Route>
+              </Route>
+
+              {/* Console — production/delivery employees */}
+              <Route element={<ProtectedRoute />}>
+                <Route element={<ConsoleLayout />}>
+                  <Route path="/console" element={<ConsoleSelectPage />} />
+                  <Route path="/console/delivery" element={<DeliveryConsolePage />} />
+                  <Route path="/console/production" element={<ProductionConsolePage />} />
                 </Route>
               </Route>
 

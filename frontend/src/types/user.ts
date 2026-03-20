@@ -1,11 +1,16 @@
 import type { User } from "./auth";
 
 export interface UserCreate {
-  email: string;
-  password: string;
   first_name: string;
   last_name: string;
-  role_id: string;
+  track?: string;
+  email?: string;
+  password?: string;
+  username?: string;
+  pin?: string;
+  console_access?: string[];
+  idle_timeout_minutes?: number;
+  role_id?: string;
 }
 
 export interface UserUpdate {
@@ -14,6 +19,9 @@ export interface UserUpdate {
   last_name?: string;
   role_id?: string;
   is_active?: boolean;
+  username?: string;
+  console_access?: string[];
+  idle_timeout_minutes?: number;
 }
 
 export interface PaginatedUsers {
@@ -25,5 +33,5 @@ export interface PaginatedUsers {
 
 export interface BulkCreateResponse {
   created: User[];
-  errors: { index: number; email: string; detail: string }[];
+  errors: { index: number; identifier: string; detail: string }[];
 }

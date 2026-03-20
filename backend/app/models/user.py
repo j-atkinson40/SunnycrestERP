@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -11,6 +12,13 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("email", "company_id", name="uq_users_email_company"),
+        Index(
+            "uq_users_username_company",
+            "company_id",
+            "username",
+            unique=True,
+            postgresql_where="username IS NOT NULL",
+        ),
     )
 
     id: Mapped[str] = mapped_column(
@@ -27,6 +35,24 @@ class User(Base):
     company_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("companies.id"), nullable=False, index=True
     )
+
+    # Two-track employee model
+    track: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default="office_management"
+    )
+    username: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    pin_encrypted: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pin_set_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    console_access = mapped_column(JSONB, nullable=True)
+    idle_timeout_minutes: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, server_default="30"
+    )
+    last_console_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

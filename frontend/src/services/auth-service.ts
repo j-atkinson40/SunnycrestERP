@@ -12,6 +12,11 @@ export const authService = {
     return response.data;
   },
 
+  async loginPin(username: string, pin: string): Promise<TokenResponse> {
+    const response = await apiClient.post<TokenResponse>("/auth/login", { username, pin });
+    return response.data;
+  },
+
   async register(data: RegisterRequest): Promise<User> {
     const response = await apiClient.post<User>("/auth/register", data);
     return response.data;

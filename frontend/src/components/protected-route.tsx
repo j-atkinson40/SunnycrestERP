@@ -6,10 +6,11 @@ interface ProtectedRouteProps {
   requiredPermission?: string;
   requiredModule?: string;
   adminOnly?: boolean;
+  requiredConsole?: string;
 }
 
-export function ProtectedRoute({ requiredPermission, requiredModule, adminOnly }: ProtectedRouteProps) {
-  const { user, isLoading, isAuthenticated, hasPermission, hasModule, isAdmin } = useAuth();
+export function ProtectedRoute({ requiredPermission, requiredModule, adminOnly, requiredConsole }: ProtectedRouteProps) {
+  const { user, isLoading, isAuthenticated, hasPermission, hasModule, isAdmin, consoleAccess, track } = useAuth();
 
   if (isLoading) {
     return (
@@ -39,6 +40,12 @@ export function ProtectedRoute({ requiredPermission, requiredModule, adminOnly }
 
   if (requiredPermission && user && !hasPermission(requiredPermission)) {
     return <Navigate to="/unauthorized" replace />;
+  }
+
+  if (requiredConsole) {
+    if (track !== "production_delivery" || !consoleAccess.has(requiredConsole)) {
+      return <Navigate to="/unauthorized" replace />;
+    }
   }
 
   return <Outlet />;

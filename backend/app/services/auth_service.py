@@ -2,12 +2,14 @@ from fastapi import HTTPException, status
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
     hash_password,
     verify_password,
+    verify_pin,
 )
 from app.models.company import Company
 from app.models.role import Role
@@ -113,17 +115,40 @@ def register_user(db: Session, data: RegisterRequest, company: Company) -> User:
 
 
 def login_user(db: Session, data: LoginRequest, company: Company) -> TokenResponse:
-    """Login scoped to a specific company."""
-    user = (
-        db.query(User)
-        .filter(User.email == data.email, User.company_id == company.id)
-        .first()
-    )
-    if not user or not verify_password(data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+    """Login scoped to a specific company. Supports email+password or username+PIN."""
+    from datetime import datetime as dt, timezone as tz
+
+    if data.email:
+        # ── Office/Management track: email + password ──
+        user = (
+            db.query(User)
+            .filter(User.email == data.email, User.company_id == company.id)
+            .first()
         )
+        if not user or not verify_password(data.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+    else:
+        # ── Production/Delivery track: username + PIN ──
+        user = (
+            db.query(User)
+            .filter(
+                User.username == data.username,
+                User.company_id == company.id,
+                User.track == "production_delivery",
+            )
+            .first()
+        )
+        if not user or not user.pin_encrypted or not verify_pin(data.pin, user.pin_encrypted):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or PIN",
+            )
+        # Update last console login
+        user.last_console_login_at = dt.now(tz.utc)
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -131,6 +156,19 @@ def login_user(db: Session, data: LoginRequest, company: Company) -> TokenRespon
         )
 
     token_data = {"sub": user.id, "company_id": company.id}
+
+    # Production users get additional claims and shorter token TTL
+    if user.track == "production_delivery":
+        token_data["track"] = "production_delivery"
+        token_data["console_access"] = user.console_access or []
+        db.commit()
+        return TokenResponse(
+            access_token=create_access_token(
+                token_data, expires_minutes=settings.CONSOLE_TOKEN_EXPIRE_MINUTES
+            ),
+            refresh_token=create_refresh_token(token_data),
+        )
+
     return TokenResponse(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),

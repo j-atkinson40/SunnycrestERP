@@ -13,11 +13,17 @@ export interface User {
   is_active: boolean;
   company_id: string;
   created_at: string;
+  track?: string;
+  username?: string;
+  console_access?: string[];
+  idle_timeout_minutes?: number;
 }
 
 export interface LoginRequest {
-  email: string;
-  password: string;
+  email?: string;
+  password?: string;
+  username?: string;
+  pin?: string;
 }
 
 export interface RegisterRequest {

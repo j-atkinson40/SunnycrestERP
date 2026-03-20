@@ -1,9 +1,27 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+    """Accepts either email+password (office) or username+pin (production)."""
+
+    email: EmailStr | None = None
+    password: str | None = None
+    username: str | None = None
+    pin: str | None = None
+
+    @model_validator(mode="after")
+    def validate_login_mode(self):
+        has_email = bool(self.email)
+        has_username = bool(self.username)
+        if has_email and has_username:
+            raise ValueError("Provide either email+password or username+pin, not both")
+        if not has_email and not has_username:
+            raise ValueError("Provide either email+password or username+pin")
+        if has_email and not self.password:
+            raise ValueError("Password is required for email login")
+        if has_username and not self.pin:
+            raise ValueError("PIN is required for username login")
+        return self
 
 
 class RegisterRequest(BaseModel):

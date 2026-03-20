@@ -80,12 +80,16 @@ export default function UserManagement() {
   // Create user dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState<UserCreate>({
-    email: "",
-    password: "",
     first_name: "",
     last_name: "",
+    email: "",
+    password: "",
     role_id: "",
   });
+  const [createTrack, setCreateTrack] = useState<"office_management" | "production_delivery">("office_management");
+  const [createUsername, setCreateUsername] = useState("");
+  const [createPin, setCreatePin] = useState("");
+  const [createConsoles, setCreateConsoles] = useState<string[]>([]);
   const [createError, setCreateError] = useState("");
   const [newUserAreas, setNewUserAreas] = useState<string[]>([]);
 
@@ -139,28 +143,58 @@ export default function UserManagement() {
   async function handleCreate() {
     setCreateError("");
     try {
-      const created = await userService.createUser(newUser);
-      // Save functional areas to the new employee's profile
-      if (newUserAreas.length > 0) {
+      const payload: UserCreate = {
+        first_name: newUser.first_name,
+        last_name: newUser.last_name,
+        role_id: newUser.role_id,
+      };
+      if (createTrack === "production_delivery") {
+        payload.track = "production_delivery";
+        payload.username = createUsername;
+        payload.pin = createPin;
+        payload.console_access = createConsoles;
+      } else {
+        payload.email = newUser.email;
+        payload.password = newUser.password;
+      }
+
+      const created = await userService.createUser(payload);
+
+      // Save functional areas for office users
+      if (createTrack === "office_management" && newUserAreas.length > 0) {
         try {
           await employeeProfileService.updateProfile(created.id, {
             functional_areas: newUserAreas,
           });
         } catch {
-          // Non-critical — areas can be assigned later on their profile page
+          // Non-critical
         }
       }
+
+      // Save console access for production users
+      if (createTrack === "production_delivery" && createConsoles.length > 0) {
+        try {
+          await userService.updateUser(created.id, { console_access: createConsoles });
+        } catch {
+          // Non-critical
+        }
+      }
+
       setDialogOpen(false);
       const employeeRole = roles.find(
         (r) => r.is_system && r.slug === "employee"
       );
       setNewUser({
-        email: "",
-        password: "",
         first_name: "",
         last_name: "",
+        email: "",
+        password: "",
         role_id: employeeRole?.id || "",
       });
+      setCreateTrack("office_management");
+      setCreateUsername("");
+      setCreatePin("");
+      setCreateConsoles([]);
       setNewUserAreas([]);
       loadUsers();
     } catch (err: unknown) {
@@ -215,6 +249,35 @@ export default function UserManagement() {
               </div>
             )}
             <div className="space-y-4">
+              {/* Track toggle */}
+              <div className="space-y-2">
+                <Label>Employee Type</Label>
+                <div className="flex rounded-md border overflow-hidden text-sm w-fit">
+                  <button
+                    type="button"
+                    className={`px-4 py-1.5 transition-colors ${
+                      createTrack === "office_management"
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    }`}
+                    onClick={() => setCreateTrack("office_management")}
+                  >
+                    Office / Management
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-4 py-1.5 transition-colors ${
+                      createTrack === "production_delivery"
+                        ? "bg-blue-600 text-white"
+                        : "hover:bg-muted"
+                    }`}
+                    onClick={() => setCreateTrack("production_delivery")}
+                  >
+                    Production / Delivery
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>First Name</Label>
@@ -235,26 +298,82 @@ export default function UserManagement() {
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, email: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Password</Label>
-                <Input
-                  type="password"
-                  value={newUser.password}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, password: e.target.value })
-                  }
-                />
-              </div>
+
+              {createTrack === "office_management" ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      value={newUser.email ?? ""}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, email: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Password</Label>
+                    <Input
+                      type="password"
+                      value={newUser.password ?? ""}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, password: e.target.value })
+                      }
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Username</Label>
+                    <Input
+                      value={createUsername}
+                      onChange={(e) => setCreateUsername(e.target.value)}
+                      placeholder="john.s"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>PIN (4 digits)</Label>
+                    <Input
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={createPin}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                        setCreatePin(v);
+                      }}
+                      placeholder="1234"
+                      className="font-mono"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Console Access</Label>
+                    <div className="space-y-1">
+                      {[
+                        { key: "delivery_console", label: "Delivery Console" },
+                        { key: "production_console", label: "Production Console" },
+                      ].map((opt) => (
+                        <label key={opt.key} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={createConsoles.includes(opt.key)}
+                            onChange={() =>
+                              setCreateConsoles((prev) =>
+                                prev.includes(opt.key)
+                                  ? prev.filter((k) => k !== opt.key)
+                                  : [...prev, opt.key]
+                              )
+                            }
+                            className="size-4 rounded"
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="space-y-2">
                 <Label>Role</Label>
                 <select
@@ -277,16 +396,19 @@ export default function UserManagement() {
                   )}
                 </select>
               </div>
-              <div className="space-y-2">
-                <Label>Functional Areas</Label>
-                <p className="text-xs text-muted-foreground">
-                  What parts of the business will this person work in?
-                </p>
-                <FunctionalAreaMatrix
-                  selectedAreas={newUserAreas}
-                  onChange={setNewUserAreas}
-                />
-              </div>
+
+              {createTrack === "office_management" && (
+                <div className="space-y-2">
+                  <Label>Functional Areas</Label>
+                  <p className="text-xs text-muted-foreground">
+                    What parts of the business will this person work in?
+                  </p>
+                  <FunctionalAreaMatrix
+                    selectedAreas={newUserAreas}
+                    onChange={setNewUserAreas}
+                  />
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
@@ -340,9 +462,20 @@ export default function UserManagement() {
               users.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">
-                    {user.first_name} {user.last_name}
+                    <div className="flex items-center gap-2">
+                      {user.first_name} {user.last_name}
+                      {user.track === "production_delivery" && (
+                        <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-400">
+                          Production
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
-                  <TableCell>{user.email}</TableCell>
+                  <TableCell>
+                    {user.track === "production_delivery"
+                      ? <span className="text-muted-foreground">@{user.username}</span>
+                      : user.email}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {(user as User & { position?: string }).position || "—"}
                   </TableCell>

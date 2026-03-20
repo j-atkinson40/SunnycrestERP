@@ -188,6 +188,32 @@ def require_module(module_name: str):
     return _check_module
 
 
+def require_console_access(console_key: str):
+    """
+    Dependency factory for console-based authorization.
+
+    Usage: Depends(require_console_access("delivery_console"))
+    """
+
+    def _check_console(
+        current_user: User = Depends(get_current_user),
+    ) -> User:
+        if current_user.track != "production_delivery":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Console access required",
+            )
+        access = current_user.console_access or []
+        if console_key not in access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"No access to {console_key}",
+            )
+        return current_user
+
+    return _check_console
+
+
 # ---------------------------------------------------------------------------
 # Platform admin auth dependencies
 # ---------------------------------------------------------------------------

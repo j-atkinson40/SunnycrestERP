@@ -22,10 +22,13 @@ interface AuthContextType {
   hasModule: (key: string) => boolean;
   functionalAreas: Set<string>;
   hasFunctionalArea: (key: string) => boolean;
+  track: string;
+  consoleAccess: Set<string>;
   isAdmin: boolean;
   refreshUser: () => Promise<void>;
   refreshCompany: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  loginPin: (username: string, pin: string) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => void;
 }
@@ -65,6 +68,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasFunctionalArea = useCallback(
     (key: string) => functionalAreas.has(key),
     [functionalAreas]
+  );
+
+  const track = useMemo(
+    () => user?.track ?? "office_management",
+    [user?.track]
+  );
+
+  const consoleAccess = useMemo(
+    () => new Set(user?.console_access ?? []),
+    [user?.console_access]
   );
 
   const isAdmin = useMemo(
@@ -119,6 +132,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loginPin = useCallback(async (username: string, pin: string) => {
+    const tokens = await authService.loginPin(username, pin);
+    localStorage.setItem("access_token", tokens.access_token);
+    localStorage.setItem("refresh_token", tokens.refresh_token);
+    const me = await authService.getMe();
+    setUser(me);
+    if (me.company) {
+      setCompany(me.company);
+    }
+  }, []);
+
   const register = useCallback(async (data: RegisterRequest) => {
     await authService.register(data);
     const tokens = await authService.login({
@@ -135,11 +159,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Store last username for shared tablet convenience
+    if (user?.track === "production_delivery" && user.username) {
+      localStorage.setItem("last_username", user.username);
+    }
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     setUser(null);
     setCompany(null);
-  }, []);
+  }, [user?.track, user?.username]);
 
   return (
     <AuthContext.Provider
@@ -154,10 +182,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasModule,
         functionalAreas,
         hasFunctionalArea,
+        track,
+        consoleAccess,
         isAdmin,
         refreshUser,
         refreshCompany,
         login,
+        loginPin,
         register,
         logout,
       }}

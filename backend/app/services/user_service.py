@@ -1,7 +1,10 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.security import hash_password
+import secrets
+from datetime import datetime, timezone
+
+from app.core.security import decrypt_pin, encrypt_pin, hash_password
 from app.models.employee_profile import EmployeeProfile
 from app.models.role import Role
 from app.models.user import User
@@ -90,16 +93,32 @@ def get_user(db: Session, user_id: str, company_id: str) -> User:
 def create_user(
     db: Session, data: UserCreate, company_id: str, actor_id: str | None = None
 ) -> User:
-    existing = (
-        db.query(User)
-        .filter(User.email == data.email, User.company_id == company_id)
-        .first()
-    )
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
+    is_production = data.track == "production_delivery"
+
+    if is_production:
+        # Check username uniqueness within tenant
+        existing = (
+            db.query(User)
+            .filter(User.username == data.username, User.company_id == company_id)
+            .first()
         )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Username already taken",
+            )
+    else:
+        # Check email uniqueness within tenant
+        existing = (
+            db.query(User)
+            .filter(User.email == data.email, User.company_id == company_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already registered",
+            )
 
     # Resolve role_id: use provided or default to employee
     role_id = data.role_id
@@ -108,15 +127,36 @@ def create_user(
     else:
         _validate_role_id(db, role_id, company_id)
 
-    user = User(
-        email=data.email,
-        hashed_password=hash_password(data.password),
-        first_name=data.first_name,
-        last_name=data.last_name,
-        role_id=role_id,
-        company_id=company_id,
-        created_by=actor_id,
-    )
+    if is_production:
+        # Production track: username + PIN, sentinel email/password
+        sentinel_email = f"{data.username}@noemail.internal"
+        user = User(
+            email=sentinel_email,
+            hashed_password=hash_password(secrets.token_hex(16)),
+            first_name=data.first_name,
+            last_name=data.last_name,
+            role_id=role_id,
+            company_id=company_id,
+            created_by=actor_id,
+            track="production_delivery",
+            username=data.username,
+            pin_encrypted=encrypt_pin(data.pin),
+            pin_set_at=datetime.now(timezone.utc),
+            console_access=data.console_access or [],
+            idle_timeout_minutes=data.idle_timeout_minutes or 30,
+        )
+    else:
+        # Office track: email + password (existing behavior)
+        user = User(
+            email=data.email,
+            hashed_password=hash_password(data.password),
+            first_name=data.first_name,
+            last_name=data.last_name,
+            role_id=role_id,
+            company_id=company_id,
+            created_by=actor_id,
+        )
+
     db.add(user)
     db.flush()
 
@@ -128,10 +168,12 @@ def create_user(
         user.id,
         user_id=actor_id,
         changes={
-            "email": data.email,
+            "email": data.email if not is_production else None,
+            "username": data.username if is_production else None,
             "first_name": data.first_name,
             "last_name": data.last_name,
             "role_id": role_id,
+            "track": data.track,
         },
     )
 
@@ -148,7 +190,7 @@ def create_user(
         message=f"Welcome to {company_name}! Your account has been created.",
         type="success",
         category="user",
-        link="/profile",
+        link="/profile" if not is_production else "/console",
         actor_id=actor_id,
     )
 
@@ -291,13 +333,13 @@ def create_users_bulk(
         except HTTPException as exc:
             errors.append({
                 "index": i,
-                "email": data.email,
+                "identifier": data.email or data.username,
                 "detail": exc.detail,
             })
         except Exception as exc:
             errors.append({
                 "index": i,
-                "email": data.email,
+                "identifier": data.email or data.username,
                 "detail": str(exc),
             })
 
@@ -337,3 +379,95 @@ def reset_user_password(
     )
 
     db.commit()
+
+
+def reset_user_pin(
+    db: Session,
+    user_id: str,
+    new_pin: str,
+    company_id: str,
+    actor_id: str | None = None,
+) -> None:
+    """Admin reset of a production user's PIN."""
+    user = get_user(db, user_id, company_id)
+    if user.track != "production_delivery":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PIN reset is only for production/delivery users",
+        )
+    user.pin_encrypted = encrypt_pin(new_pin)
+    user.pin_set_at = datetime.now(timezone.utc)
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "pin_reset",
+        "user",
+        user.id,
+        user_id=actor_id,
+    )
+
+    notification_service.create_notification(
+        db,
+        company_id,
+        user.id,
+        title="PIN Reset",
+        message="Your PIN has been reset by an administrator.",
+        type="warning",
+        category="user",
+        actor_id=actor_id,
+    )
+
+    db.commit()
+
+
+def get_user_pin(
+    db: Session, user_id: str, company_id: str
+) -> str:
+    """Admin retrieval of a production user's plaintext PIN."""
+    user = get_user(db, user_id, company_id)
+    if user.track != "production_delivery" or not user.pin_encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No PIN set for this user",
+        )
+    return decrypt_pin(user.pin_encrypted)
+
+
+def suggest_username(
+    db: Session, first_name: str, last_name: str, company_id: str
+) -> str:
+    """Suggest an available username for a production user within a tenant."""
+    first = first_name.strip().lower().replace(" ", "")
+    last = last_name.strip().lower().replace(" ", "")
+
+    if not first:
+        first = "user"
+
+    # Try firstname.lastinitial, then firstname.lastname, then firstname.lastinitialN
+    candidates = [f"{first}.{last[0]}" if last else first]
+    if last:
+        candidates.append(f"{first}.{last}")
+
+    for candidate in candidates:
+        exists = (
+            db.query(User)
+            .filter(User.username == candidate, User.company_id == company_id)
+            .first()
+        )
+        if not exists:
+            return candidate
+
+    # Append incrementing number
+    base = f"{first}.{last[0]}" if last else first
+    n = 2
+    while True:
+        candidate = f"{base}{n}"
+        exists = (
+            db.query(User)
+            .filter(User.username == candidate, User.company_id == company_id)
+            .first()
+        )
+        if not exists:
+            return candidate
+        n += 1

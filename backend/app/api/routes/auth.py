@@ -55,12 +55,15 @@ def login(
 ):
     result = login_user(db, data, company)
 
-    # Log successful login
-    user = (
-        db.query(User)
-        .filter(User.email == data.email, User.company_id == company.id)
-        .first()
-    )
+    # Log successful login — look up by email or username
+    if data.email:
+        user = db.query(User).filter(
+            User.email == data.email, User.company_id == company.id
+        ).first()
+    else:
+        user = db.query(User).filter(
+            User.username == data.username, User.company_id == company.id
+        ).first()
     if user:
         audit_service.log_action(
             db,
@@ -119,5 +122,8 @@ def me(
         "enabled_modules": enabled_modules,
         "enabled_extensions": enabled_extensions,
         "functional_areas": active_areas,
+        "track": current_user.track or "office_management",
+        "username": current_user.username,
+        "console_access": current_user.console_access or [],
         "company": CompanyResponse.model_validate(company).model_dump(),
     }

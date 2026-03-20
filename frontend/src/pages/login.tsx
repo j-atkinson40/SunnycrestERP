@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { getCompanySlug } from "@/lib/tenant";
@@ -16,20 +16,36 @@ import {
 } from "@/components/ui/card";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, loginPin } = useAuth();
   const companySlug = getCompanySlug();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Detect if user is typing an email (contains @) vs username
+  const isEmailMode = identifier.includes("@");
+
+  // Pre-fill last username for shared tablets
+  useEffect(() => {
+    const lastUsername = localStorage.getItem("last_username");
+    if (lastUsername) {
+      setIdentifier(lastUsername);
+    }
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      if (isEmailMode) {
+        await login(identifier, password);
+      } else {
+        await loginPin(identifier, pin);
+      }
       navigate("/");
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Login failed"));
@@ -55,26 +71,56 @@ export default function LoginPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="identifier">Email or Username</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="identifier"
+                type="text"
+                placeholder="you@example.com or username"
+                value={identifier}
+                onChange={(e) => {
+                  setIdentifier(e.target.value);
+                  // Clear the credential field when switching modes
+                  if (e.target.value.includes("@")) {
+                    setPin("");
+                  } else {
+                    setPassword("");
+                  }
+                }}
                 required
+                autoComplete="username"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
+            {isEmailMode ? (
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="pin">PIN</Label>
+                <Input
+                  id="pin"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="4-digit PIN"
+                  value={pin}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                    setPin(v);
+                  }}
+                  required
+                  autoComplete="one-time-code"
+                />
+              </div>
+            )}
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
             <Button type="submit" className="w-full" disabled={loading}>

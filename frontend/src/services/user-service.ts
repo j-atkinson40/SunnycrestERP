@@ -43,4 +43,23 @@ export const userService = {
       new_password: newPassword,
     });
   },
+
+  async resetPin(userId: string, newPin: string): Promise<void> {
+    await apiClient.post(`/users/${userId}/reset-pin`, {
+      new_pin: newPin,
+    });
+  },
+
+  async getPin(userId: string): Promise<string> {
+    const response = await apiClient.get<{ pin: string }>(`/users/${userId}/pin`);
+    return response.data.pin;
+  },
+
+  async suggestUsername(firstName: string, lastName: string): Promise<string> {
+    const params = new URLSearchParams({ first_name: firstName, last_name: lastName });
+    const response = await apiClient.get<{ username: string }>(
+      `/users/suggest-username?${params.toString()}`
+    );
+    return response.data.username;
+  },
 };
