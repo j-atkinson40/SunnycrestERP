@@ -249,10 +249,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "integration_setup_modal",
         "sort_order": 6,
     },
-    # SHOULD COMPLETE
     {
         "item_key": "configure_cross_tenant",
-        "tier": "should_complete",
+        "tier": "must_complete",
         "category": "workflow",
         "title": "Configure network preferences",
         "description": (
@@ -265,6 +264,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["setup_funeral_home_customers"]',
         "sort_order": 7,
     },
+    # SHOULD COMPLETE
     {
         "item_key": "run_vault_scenario",
         "tier": "should_complete",
@@ -908,7 +908,7 @@ _PRESET_SCENARIOS: dict[str, list[dict]] = {
 
 
 def fix_checklist_targets(db: Session) -> None:
-    """Patch stale action_target values on existing checklist items.
+    """Patch stale action_target / tier values on existing checklist items.
 
     Called on startup so that code-level changes to the seed definitions
     propagate to tenants that were already initialised.
@@ -921,6 +921,13 @@ def fix_checklist_targets(db: Session) -> None:
             OnboardingChecklistItem.item_key == item_key,
             OnboardingChecklistItem.action_target != correct_target,
         ).update({"action_target": correct_target})
+
+    # Promote configure_cross_tenant to must_complete (was should_complete)
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "configure_cross_tenant",
+        OnboardingChecklistItem.tier != "must_complete",
+    ).update({"tier": "must_complete"})
+
     db.commit()
 
 
