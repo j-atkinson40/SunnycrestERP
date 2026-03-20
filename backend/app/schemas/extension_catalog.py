@@ -17,6 +17,7 @@ class ExtensionCatalogItem(BaseModel):
     name: str  # display_name
     tagline: str | None = None
     description: str | None = None
+    section: str = "core"
     category: str = "workflow"
     publisher: str = "first_party"
     applicable_verticals: list[str] = []
@@ -79,6 +80,7 @@ class ExtensionRegistryCreate(BaseModel):
     display_name: str
     tagline: str | None = None
     description: str | None = None
+    section: str = "core"
     category: str = "workflow"
     applicable_verticals: list[str] = Field(default_factory=lambda: ["all"])
     default_enabled_for: list[str] = Field(default_factory=list)
@@ -104,6 +106,7 @@ class ExtensionRegistryUpdate(BaseModel):
     display_name: str | None = None
     tagline: str | None = None
     description: str | None = None
+    section: str | None = None
     category: str | None = None
     applicable_verticals: list[str] | None = None
     default_enabled_for: list[str] | None = None
@@ -135,6 +138,7 @@ class DemandSignalItem(BaseModel):
     id: str
     extension_key: str
     name: str
+    section: str = "core"
     category: str
     tagline: str | None = None
     notify_me_count: int

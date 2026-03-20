@@ -7,8 +7,10 @@ export type ExtensionCategory =
   | "reporting"
   | "workflow"
   | "communications"
-  | "industry_specific";
+  | "industry_specific"
+  | "operations";
 
+export type ExtensionSection = "core" | "product_lines" | "basic_operations" | "advanced_manufacturing";
 export type ExtensionStatus = "active" | "coming_soon" | "beta" | "deprecated";
 export type AccessModel = "included" | "plan_required" | "paid_addon";
 export type InstallStatus = "active" | "disabled" | "pending_setup";
@@ -19,6 +21,7 @@ export interface ExtensionCatalogItem {
   name: string;
   tagline: string | null;
   description: string | null;
+  section: ExtensionSection;
   category: ExtensionCategory;
   publisher: string;
   applicable_verticals: string[];
@@ -86,6 +89,7 @@ export const CATEGORY_LABELS: Record<ExtensionCategory, string> = {
   workflow: "Workflow",
   communications: "Communications",
   industry_specific: "Industry Specific",
+  operations: "Operations",
 };
 
 export const CATEGORY_COLORS: Record<ExtensionCategory, string> = {
@@ -96,7 +100,22 @@ export const CATEGORY_COLORS: Record<ExtensionCategory, string> = {
   workflow: "bg-indigo-100 text-indigo-800",
   communications: "bg-pink-100 text-pink-800",
   industry_specific: "bg-orange-100 text-orange-800",
+  operations: "bg-slate-100 text-slate-800",
 };
+
+export const SECTION_LABELS: Record<ExtensionSection, string> = {
+  core: "Core",
+  product_lines: "Product Lines",
+  basic_operations: "Basic Operations",
+  advanced_manufacturing: "Advanced Manufacturing",
+};
+
+export const SECTION_ORDER: ExtensionSection[] = [
+  "core",
+  "product_lines",
+  "basic_operations",
+  "advanced_manufacturing",
+];
 
 export const STATUS_LABELS: Record<ExtensionStatus, string> = {
   active: "Available",

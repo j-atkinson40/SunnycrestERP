@@ -7,7 +7,7 @@ import { extensionService } from "@/services/extension-service";
 import { ExtensionCard } from "@/components/extensions/extension-card";
 import { ExtensionDetailPanel } from "@/components/extensions/extension-detail-panel";
 import type { ExtensionCatalogItem, ExtensionCategory } from "@/types/extension";
-import { CATEGORY_LABELS } from "@/types/extension";
+import { CATEGORY_LABELS, SECTION_LABELS, SECTION_ORDER } from "@/types/extension";
 
 // ── Preset configuration ──
 
@@ -28,21 +28,7 @@ interface SectionDef {
   filter: (ext: ExtensionCatalogItem) => boolean;
 }
 
-// Extension keys per section per vertical
-const MANUFACTURING_PRODUCT_LINES = new Set([
-  "wastewater_treatment",
-  "redi_rock",
-  "rosetta_hardscapes",
-]);
-const MANUFACTURING_COMPLIANCE = new Set(["npca_audit_prep"]);
-const MANUFACTURING_GOING_DEEPER = new Set([
-  "work_orders",
-  "pour_events_cure_tracking",
-  "pour_events_batch_tickets",
-  "qc_module_full",
-  "full_qc_module",
-]);
-
+// Extension keys per section per vertical (non-manufacturing — hardcoded until those verticals get section field)
 const FH_FEATURED = new Set(["ai_obituary_builder"]);
 const FH_GROW = new Set([
   "florist",
@@ -80,44 +66,24 @@ const CREMATORY_OPS = new Set([
 
 function getSectionsForVertical(vertical: Vertical): SectionDef[] {
   switch (vertical) {
-    case "manufacturing":
-      return [
+    case "manufacturing": {
+      // Build sections dynamically from the `section` field returned by the API
+      const sectionDefs: SectionDef[] = [
         {
           key: "installed",
           title: "Installed",
           filter: (ext) => ext.installed && ext.install_status === "active",
         },
-        {
-          key: "product_lines",
-          title: "Product Lines",
-          description: "Add the product lines you sell.",
-          filter: (ext) =>
-            MANUFACTURING_PRODUCT_LINES.has(ext.extension_key) && !ext.installed,
-        },
-        {
-          key: "compliance",
-          title: "Compliance",
-          description: "Stay audit-ready automatically.",
-          filter: (ext) =>
-            MANUFACTURING_COMPLIANCE.has(ext.extension_key) && !ext.installed,
-        },
-        {
-          key: "going_deeper",
-          title: "Going Deeper",
-          description:
-            "Advanced production planning for operations that want more granularity.",
-          badge: "Advanced",
-          filter: (ext) =>
-            MANUFACTURING_GOING_DEEPER.has(ext.extension_key) &&
-            !ext.installed &&
-            ext.status !== "coming_soon",
-        },
-        {
-          key: "coming_soon",
-          title: "Coming Soon",
-          filter: (ext) => ext.status === "coming_soon" && !ext.installed,
-        },
       ];
+      for (const sec of SECTION_ORDER) {
+        sectionDefs.push({
+          key: sec,
+          title: SECTION_LABELS[sec],
+          filter: (ext) => ext.section === sec && !ext.installed,
+        });
+      }
+      return sectionDefs;
+    }
     case "funeral_home":
       return [
         {

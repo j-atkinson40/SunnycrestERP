@@ -23,6 +23,7 @@ class ExtensionDefinition(Base):
 
     # ── Catalog fields ──
     tagline = Column(String(300), nullable=True)
+    section = Column(String(50), nullable=False, server_default="core")
     category = Column(String(40), nullable=False, default="workflow")
     publisher = Column(String(30), nullable=False, default="first_party")
     applicable_verticals = Column(Text, nullable=True)  # JSON array
