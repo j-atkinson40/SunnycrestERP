@@ -205,7 +205,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         ),
         "estimated_minutes": 15,
         "action_type": "navigate",
-        "action_target": "/admin/users",
+        "action_target": "/onboarding/team",
         "sort_order": 3,
     },
     {

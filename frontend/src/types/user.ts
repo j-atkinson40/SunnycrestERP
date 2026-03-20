@@ -22,3 +22,8 @@ export interface PaginatedUsers {
   page: number;
   per_page: number;
 }
+
+export interface BulkCreateResponse {
+  created: User[];
+  errors: { index: number; email: string; detail: string }[];
+}

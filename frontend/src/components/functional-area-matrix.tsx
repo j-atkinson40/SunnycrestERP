@@ -10,23 +10,29 @@ interface FunctionalAreaMatrixProps {
   onChange: (areas: string[]) => void;
   /** Disable all toggles */
   disabled?: boolean;
+  /** Pre-fetched areas — skips internal API call when provided */
+  areas?: FunctionalArea[];
 }
 
 export default function FunctionalAreaMatrix({
   selectedAreas,
   onChange,
   disabled = false,
+  areas: externalAreas,
 }: FunctionalAreaMatrixProps) {
-  const [areas, setAreas] = useState<FunctionalArea[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [internalAreas, setInternalAreas] = useState<FunctionalArea[]>([]);
+  const [loading, setLoading] = useState(!externalAreas);
 
   useEffect(() => {
+    if (externalAreas) return; // skip fetch when parent provides areas
     functionalAreaService
       .getAreas()
-      .then((res) => setAreas(res.areas))
+      .then((res) => setInternalAreas(res.areas))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [externalAreas]);
+
+  const areas = externalAreas ?? internalAreas;
 
   function toggle(areaKey: string) {
     if (disabled) return;

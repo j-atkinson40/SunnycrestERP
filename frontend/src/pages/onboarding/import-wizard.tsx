@@ -32,14 +32,14 @@ const TYPE_LABELS: Record<string, string> = {
 
 const TYPE_LIST_ROUTES: Record<string, string> = {
   customers: "/customers",
-  employees: "/admin/users",
+  employees: "/onboarding/team?phase=assign",
   products: "/products",
   price_list: "/products",
 };
 
 const TYPE_CREATE_ROUTES: Record<string, string> = {
   customers: "/customers",
-  employees: "/admin/users",
+  employees: "/onboarding/team",
   products: "/products",
   price_list: "/products",
 };

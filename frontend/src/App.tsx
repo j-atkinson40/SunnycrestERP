@@ -105,6 +105,7 @@ import ScenarioPlayerPage from "@/pages/onboarding/scenario-player";
 import CatalogBuilder from "@/pages/onboarding/catalog-builder";
 import WebsiteSuggestionsReview from "@/pages/onboarding/website-suggestions-review";
 import ChargeSetupPage from "@/pages/onboarding/charge-setup";
+import TeamSetupPage from "@/pages/onboarding/team-setup";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import UrnCatalogPage from "@/pages/products/urn-catalog";
 import UrnImportWizard from "@/pages/products/urn-import-wizard";
@@ -462,6 +463,7 @@ export default function App() {
                   <Route path="/onboarding/scenarios/:scenarioKey" element={<ScenarioPlayerPage />} />
                   <Route path="/onboarding/website-review" element={<WebsiteSuggestionsReview />} />
                   <Route path="/onboarding/catalog-builder" element={<CatalogBuilder />} />
+                  <Route path="/onboarding/team" element={<TeamSetupPage />} />
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/settings/charges" element={<ChargeSetupPage />} />

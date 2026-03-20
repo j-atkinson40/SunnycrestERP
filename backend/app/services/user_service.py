@@ -5,7 +5,7 @@ from app.core.security import hash_password
 from app.models.employee_profile import EmployeeProfile
 from app.models.role import Role
 from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.services import audit_service, notification_service
 
 
@@ -274,6 +274,34 @@ def deactivate_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+def create_users_bulk(
+    db: Session, users: list[UserCreate], company_id: str, actor_id: str | None = None
+) -> dict:
+    """Create multiple users at once. Returns partial success — errors don't block others."""
+    created: list[UserResponse] = []
+    errors: list[dict] = []
+
+    for i, data in enumerate(users):
+        try:
+            user = create_user(db, data, company_id, actor_id=actor_id)
+            db.refresh(user)
+            created.append(UserResponse.model_validate(user))
+        except HTTPException as exc:
+            errors.append({
+                "index": i,
+                "email": data.email,
+                "detail": exc.detail,
+            })
+        except Exception as exc:
+            errors.append({
+                "index": i,
+                "email": data.email,
+                "detail": str(exc),
+            })
+
+    return {"created": created, "errors": errors}
 
 
 def reset_user_password(

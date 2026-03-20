@@ -1,6 +1,6 @@
 import apiClient from "@/lib/api-client";
 import type { User } from "@/types/auth";
-import type { PaginatedUsers, UserCreate, UserUpdate } from "@/types/user";
+import type { PaginatedUsers, UserCreate, UserUpdate, BulkCreateResponse } from "@/types/user";
 
 export const userService = {
   async getUsers(
@@ -31,6 +31,11 @@ export const userService = {
 
   async deleteUser(userId: string): Promise<void> {
     await apiClient.delete(`/users/${userId}`);
+  },
+
+  async bulkCreateUsers(users: UserCreate[]): Promise<BulkCreateResponse> {
+    const response = await apiClient.post<BulkCreateResponse>("/users/bulk", { users });
+    return response.data;
   },
 
   async resetPassword(userId: string, newPassword: string): Promise<void> {

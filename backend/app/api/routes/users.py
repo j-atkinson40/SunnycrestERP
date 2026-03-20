@@ -6,11 +6,12 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.password import ResetPasswordRequest
 from app.schemas.role import UserPermissionOverrideRequest, UserPermissionOverridesResponse
-from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.schemas.user import UserBulkCreate, UserCreate, UserResponse, UserUpdate
 from app.services.permission_service import get_user_permissions
 from app.services.role_service import get_user_permission_overrides, set_user_permission_overrides
 from app.services.user_service import (
     create_user,
+    create_users_bulk,
     deactivate_user,
     get_user,
     get_users,
@@ -64,6 +65,18 @@ def read_user(
 ):
     user = get_user(db, user_id, current_user.company_id)
     return _user_to_response(user)
+
+
+@router.post("/bulk", status_code=201)
+def create_bulk(
+    data: UserBulkCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users.create")),
+):
+    result = create_users_bulk(
+        db, data.users, current_user.company_id, actor_id=current_user.id
+    )
+    return result
 
 
 @router.post("", status_code=201)

@@ -32,3 +32,12 @@ class UserUpdate(BaseModel):
     last_name: str | None = None
     role_id: str | None = None
     is_active: bool | None = None
+
+
+class UserBulkCreate(BaseModel):
+    users: list[UserCreate]
+
+
+class UserBulkResponse(BaseModel):
+    created: list[UserResponse]
+    errors: list[dict]
