@@ -593,18 +593,83 @@ function SageFlow() {
   );
 }
 
+// ── Provider Picker ───────────────────────────────────────────
+
+function AccountingProviderPicker({
+  onSelect,
+}: {
+  onSelect: (provider: "quickbooks" | "sage") => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold">
+          Connect your accounting software
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Choose your accounting provider to get started. Invoices, payments,
+          and customer records will sync automatically.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onSelect("quickbooks")}
+          className="rounded-lg border-2 p-6 text-left hover:border-primary hover:bg-primary/5 transition-colors"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#2CA01C]/10">
+              <span className="text-lg font-bold text-[#2CA01C]">QB</span>
+            </div>
+            <Badge>Cloud</Badge>
+          </div>
+          <h3 className="text-base font-semibold">QuickBooks Online</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Direct cloud-to-cloud sync. Customers, invoices, and payments
+            flow automatically.
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onSelect("sage")}
+          className="rounded-lg border-2 p-6 text-left hover:border-primary hover:bg-primary/5 transition-colors"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+              <span className="text-lg font-bold text-emerald-700">S</span>
+            </div>
+            <Badge variant="outline">CSV or API</Badge>
+          </div>
+          <h3 className="text-base font-semibold">Sage 100</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Export Sage-formatted CSV files on a schedule, or connect
+            directly via API.
+          </p>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────
 
 export default function IntegrationSetupPage() {
   const { type } = useParams<{ type: string }>();
   const navigate = useNavigate();
 
-  if (type !== "quickbooks" && type !== "sage") {
+  const [selectedProvider, setSelectedProvider] = useState<"quickbooks" | "sage" | null>(
+    type === "quickbooks" ? "quickbooks" : type === "sage" ? "sage" : null,
+  );
+
+  const validTypes = ["quickbooks", "sage", "accounting"];
+  if (!validTypes.includes(type || "")) {
     return (
       <div className="flex flex-col items-center gap-4 py-16">
         <h2 className="text-xl font-semibold">Unknown Integration</h2>
         <p className="text-sm text-muted-foreground">
-          The integration type "{type}" is not recognized.
+          The integration type &ldquo;{type}&rdquo; is not recognized.
         </p>
         <Button onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
       </div>
@@ -631,10 +696,18 @@ export default function IntegrationSetupPage() {
           Onboarding
         </button>
         <span>/</span>
-        <span className="text-foreground font-medium capitalize">{type}</span>
+        <span className="text-foreground font-medium">
+          {selectedProvider ? selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1) : "Accounting"}
+        </span>
       </nav>
 
-      {type === "quickbooks" ? <QuickBooksFlow /> : <SageFlow />}
+      {selectedProvider === "quickbooks" ? (
+        <QuickBooksFlow />
+      ) : selectedProvider === "sage" ? (
+        <SageFlow />
+      ) : (
+        <AccountingProviderPicker onSelect={setSelectedProvider} />
+      )}
     </div>
   );
 }
