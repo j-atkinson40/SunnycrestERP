@@ -46,7 +46,7 @@ const SATURDAY_OPTIONS: {
   {
     value: "spring_only",
     label: "We deliver on Saturdays with a surcharge for spring burials only",
-    desc: "The surcharge only applies during spring burial season",
+    desc: "The surcharge only applies to orders scheduled from the Spring Burials page — not every Saturday delivery during the spring season",
     showChargeLink: true,
   },
   {
