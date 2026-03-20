@@ -154,6 +154,35 @@ async def upload_media(
 
 
 # ---------------------------------------------------------------------------
+# Milestone settings for the driver console
+# ---------------------------------------------------------------------------
+
+
+@router.get("/console/milestone-settings")
+def get_milestone_settings(
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module(MODULE)),
+    current_user: User = Depends(get_current_user),
+):
+    """Get milestone button visibility settings for the driver console."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        return {
+            "milestone_on_my_way_enabled": True,
+            "milestone_arrived_enabled": True,
+            "milestone_delivered_enabled": True,
+        }
+
+    return {
+        "milestone_on_my_way_enabled": company.get_setting("milestone_on_my_way_enabled", True),
+        "milestone_arrived_enabled": company.get_setting("milestone_arrived_enabled", True),
+        "milestone_delivered_enabled": company.get_setting("milestone_delivered_enabled", True),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Console — rich delivery cards for the driver console view
 # ---------------------------------------------------------------------------
 

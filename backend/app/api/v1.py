@@ -63,6 +63,7 @@ from app.api.routes import (
     safety,
     roles,
     sage_exports,
+    service_territory,
     sales,
     super_admin,
     sync_logs,
@@ -238,6 +239,9 @@ v1_router.include_router(
 v1_router.include_router(roles.router, prefix="/roles", tags=["Role Management"])
 v1_router.include_router(
     sage_exports.router, prefix="/sage-exports", tags=["Sage Exports"]
+)
+v1_router.include_router(
+    service_territory.router, prefix="/settings", tags=["Service Territory"]
 )
 v1_router.include_router(
     sales.router, prefix="/sales", tags=["Sales & AR"]

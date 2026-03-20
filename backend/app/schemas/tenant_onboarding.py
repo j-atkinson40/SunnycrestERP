@@ -248,3 +248,8 @@ class CrossTenantPreferences(BaseModel):
     cemetery_delivery_notifications: bool = True
     allow_portal_spring_burial_requests: bool = True
     accept_legacy_print_submissions: bool = True
+    # Driver status milestones
+    milestone_scheduled_enabled: bool = True
+    milestone_on_my_way_enabled: bool = True
+    milestone_arrived_enabled: bool = True
+    milestone_delivered_enabled: bool = True

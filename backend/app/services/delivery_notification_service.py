@@ -63,6 +63,30 @@ def _create_tenant_notification(
     return notif
 
 
+def _is_milestone_enabled(db: Session, company_id: str, milestone: str) -> bool:
+    """Check if a specific milestone notification is enabled for a tenant."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        return True  # Default to enabled
+
+    # Master switch — delivery_notifications_enabled
+    if not company.get_setting("delivery_notifications_enabled", True):
+        return False
+
+    key_map = {
+        "scheduled": "milestone_scheduled_enabled",
+        "on_my_way": "milestone_on_my_way_enabled",
+        "arrived": "milestone_arrived_enabled",
+        "delivered": "milestone_delivered_enabled",
+    }
+    setting_key = key_map.get(milestone)
+    if not setting_key:
+        return True
+    return company.get_setting(setting_key, True)
+
+
 def on_driver_arrived(db: Session, delivery: Delivery) -> None:
     """Called when a driver arrives at a delivery stop."""
     from app.services.delivery_settings_service import get_settings
@@ -78,8 +102,8 @@ def on_driver_arrived(db: Session, delivery: Delivery) -> None:
                 f"Your delivery driver has arrived at {delivery.delivery_address or 'the delivery location'}.",
             )
 
-    # Notify connected tenants
-    if settings.notify_connected_tenant_on_arrival:
+    # Notify connected tenants — respects milestone toggle
+    if settings.notify_connected_tenant_on_arrival and _is_milestone_enabled(db, delivery.company_id, "arrived"):
         _notify_connected_tenants(
             db,
             delivery,
@@ -104,8 +128,16 @@ def on_setup_complete(db: Session, delivery: Delivery) -> None:
 
 
 def on_driver_departed(db: Session, delivery: Delivery) -> None:
-    """Called when driver departs from a stop."""
-    pass  # Placeholder for future dispatch-board real-time updates
+    """Called when driver departs for a delivery (On My Way milestone)."""
+    if not _is_milestone_enabled(db, delivery.company_id, "on_my_way"):
+        return
+
+    _notify_connected_tenants(
+        db,
+        delivery,
+        "driver_on_my_way",
+        f"Your vault is on the way — driver is headed to {delivery.delivery_address or 'the cemetery'}",
+    )
 
 
 def on_delivery_complete(db: Session, delivery: Delivery) -> None:
@@ -132,6 +164,23 @@ def on_delivery_complete(db: Session, delivery: Delivery) -> None:
         order_integration_service.on_delivery_completed(db, delivery)
     except Exception as exc:
         logger.error("Auto-invoice hook failed for delivery %s: %s", delivery.id, exc)
+
+
+def on_delivery_scheduled(db: Session, delivery: Delivery) -> None:
+    """Called when a delivery is assigned to a driver/schedule (Scheduled milestone).
+
+    This fires automatically — no driver action required.
+    """
+    if not _is_milestone_enabled(db, delivery.company_id, "scheduled"):
+        return
+
+    date_str = delivery.requested_date.isoformat() if delivery.requested_date else "TBD"
+    _notify_connected_tenants(
+        db,
+        delivery,
+        "delivery_scheduled",
+        f"Your vault has been scheduled for delivery on {date_str}",
+    )
 
 
 def on_carrier_assigned(db: Session, delivery: Delivery) -> None:

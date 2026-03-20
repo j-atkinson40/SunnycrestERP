@@ -1,8 +1,14 @@
 /**
  * Cross-Tenant Preferences — Onboarding step.
  *
- * Four preference cards that control how the manufacturer interacts
- * with connected funeral homes and cemeteries.
+ * Six preference cards that control how the manufacturer interacts
+ * with connected funeral homes and cemeteries:
+ * 1. Delivery Notifications
+ * 2. Cemetery Notifications
+ * 3. Spring Burial Portal Scheduling
+ * 4. Legacy Print Submission
+ * 5. Delivery Area (county selector)
+ * 6. Driver Status Milestones
  */
 
 import { useEffect, useState } from "react";
@@ -11,6 +17,8 @@ import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Mail, Building2, Leaf, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CrossTenantPreferenceCard } from "@/components/network/cross-tenant-preference-card";
+import { DeliveryAreaCard } from "@/components/network/delivery-area-card";
+import { DriverStatusMilestonesCard } from "@/components/network/driver-status-milestones-card";
 import apiClient from "@/lib/api-client";
 
 interface Preferences {
@@ -18,6 +26,10 @@ interface Preferences {
   cemetery_delivery_notifications: boolean;
   allow_portal_spring_burial_requests: boolean;
   accept_legacy_print_submissions: boolean;
+  milestone_scheduled_enabled: boolean;
+  milestone_on_my_way_enabled: boolean;
+  milestone_arrived_enabled: boolean;
+  milestone_delivered_enabled: boolean;
 }
 
 export default function NetworkPreferencesPage() {
@@ -26,11 +38,17 @@ export default function NetworkPreferencesPage() {
   const [loading, setLoading] = useState(true);
   const [springBurialsEnabled, setSpringBurialsEnabled] = useState(false);
   const [hasCemeteryCustomers, setHasCemeteryCustomers] = useState<boolean | null>(null);
+  const [deliveryAreaConfigured, setDeliveryAreaConfigured] = useState(false);
+  const [facilityState, setFacilityState] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<Preferences>({
     delivery_notifications_enabled: true,
     cemetery_delivery_notifications: true,
     allow_portal_spring_burial_requests: true,
     accept_legacy_print_submissions: true,
+    milestone_scheduled_enabled: true,
+    milestone_on_my_way_enabled: true,
+    milestone_arrived_enabled: true,
+    milestone_delivered_enabled: true,
   });
 
   useEffect(() => {
@@ -44,8 +62,14 @@ export default function NetworkPreferencesPage() {
         cemetery_delivery_notifications: d.cemetery_delivery_notifications ?? true,
         allow_portal_spring_burial_requests: d.allow_portal_spring_burial_requests ?? true,
         accept_legacy_print_submissions: d.accept_legacy_print_submissions ?? true,
+        milestone_scheduled_enabled: d.milestone_scheduled_enabled ?? true,
+        milestone_on_my_way_enabled: d.milestone_on_my_way_enabled ?? true,
+        milestone_arrived_enabled: d.milestone_arrived_enabled ?? true,
+        milestone_delivered_enabled: d.milestone_delivered_enabled ?? true,
       });
       setSpringBurialsEnabled(d.spring_burials_enabled ?? false);
+      setDeliveryAreaConfigured(d.delivery_area_configured ?? false);
+      setFacilityState(d.facility_state ?? null);
       const items = custRes.data?.items ?? custRes.data ?? [];
       setHasCemeteryCustomers(Array.isArray(items) && items.length > 0);
     }).finally(() => setLoading(false));
@@ -155,6 +179,26 @@ export default function NetworkPreferencesPage() {
           noLabel="No — not applicable to my operation"
           value={prefs.accept_legacy_print_submissions}
           onChange={(v) => update("accept_legacy_print_submissions", v)}
+        />
+
+        {/* Card 5 — Delivery Area */}
+        <DeliveryAreaCard
+          facilityState={facilityState}
+          deliveryAreaConfigured={deliveryAreaConfigured}
+          onSaved={() => setDeliveryAreaConfigured(true)}
+          mode="onboarding"
+        />
+
+        {/* Card 6 — Driver Status Milestones */}
+        <DriverStatusMilestonesCard
+          value={{
+            milestone_scheduled_enabled: prefs.milestone_scheduled_enabled,
+            milestone_on_my_way_enabled: prefs.milestone_on_my_way_enabled,
+            milestone_arrived_enabled: prefs.milestone_arrived_enabled,
+            milestone_delivered_enabled: prefs.milestone_delivered_enabled,
+          }}
+          onChange={(key, val) => update(key, val)}
+          disabled={!prefs.delivery_notifications_enabled}
         />
       </div>
 

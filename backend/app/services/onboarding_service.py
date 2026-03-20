@@ -209,19 +209,6 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "sort_order": 3,
     },
     {
-        "item_key": "configure_delivery_zones",
-        "tier": "must_complete",
-        "category": "data_setup",
-        "title": "Set your delivery area",
-        "description": (
-            "Define where you deliver so the scheduling system knows your coverage."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/delivery/settings",
-        "sort_order": 4,
-    },
-    {
         "item_key": "setup_scheduling_board",
         "tier": "must_complete",
         "category": "workflow",
@@ -255,10 +242,10 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "category": "workflow",
         "title": "Configure network preferences",
         "description": (
-            "Choose how you want to work with connected funeral homes "
-            "and cemeteries."
+            "Set your delivery area, choose how you work with connected "
+            "funeral homes, and configure driver status milestones."
         ),
-        "estimated_minutes": 3,
+        "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/network-preferences",
         "depends_on": '["setup_funeral_home_customers"]',

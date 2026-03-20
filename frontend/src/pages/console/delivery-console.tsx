@@ -16,6 +16,16 @@ import api from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
+// Milestone settings — loaded once on mount
+// ---------------------------------------------------------------------------
+
+interface MilestoneSettings {
+  milestone_on_my_way_enabled: boolean;
+  milestone_arrived_enabled: boolean;
+  milestone_delivered_enabled: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -131,10 +141,12 @@ function DeliveryCard({
   card,
   onStatusUpdate,
   isUpdating,
+  milestones,
 }: {
   card: ConsoleDelivery;
   onStatusUpdate: (deliveryId: string, newStatus: string) => void;
   isUpdating: boolean;
+  milestones: MilestoneSettings;
 }) {
   const [confirmingComplete, setConfirmingComplete] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,43 +167,68 @@ function DeliveryCard({
     };
   }, [confirmingComplete]);
 
-  const handlePrimaryAction = useCallback(() => {
-    if (isCompleted) return;
+  // Determine the next available status based on milestone settings.
+  // If a milestone is disabled, its step is skipped entirely.
+  const getNextStatus = useCallback((): string | null => {
+    if (isCompleted) return null;
 
     if (!isEnRoute && !isArrived) {
-      // First tap: mark en_route
-      onStatusUpdate(card.delivery_id, "en_route");
-    } else if (isEnRoute) {
-      // Mark arrived
-      onStatusUpdate(card.delivery_id, "arrived");
-    } else if (isArrived) {
+      // Scheduled → first enabled step
+      if (milestones.milestone_on_my_way_enabled) return "en_route";
+      if (milestones.milestone_arrived_enabled) return "arrived";
+      if (milestones.milestone_delivered_enabled) return "completed";
+      return null; // all disabled — no action available
+    }
+    if (isEnRoute) {
+      if (milestones.milestone_arrived_enabled) return "arrived";
+      if (milestones.milestone_delivered_enabled) return "completed";
+      return null;
+    }
+    if (isArrived) {
+      if (milestones.milestone_delivered_enabled) return "completed";
+      return null;
+    }
+    return null;
+  }, [isCompleted, isEnRoute, isArrived, milestones]);
+
+  const handlePrimaryAction = useCallback(() => {
+    const nextStatus = getNextStatus();
+    if (!nextStatus) return;
+
+    if (nextStatus === "completed") {
       if (!confirmingComplete) {
-        // First tap on "Mark Delivered" — show confirmation
         setConfirmingComplete(true);
       } else {
-        // Second tap — confirm delivery
         setConfirmingComplete(false);
         onStatusUpdate(card.delivery_id, "completed");
       }
+    } else {
+      onStatusUpdate(card.delivery_id, nextStatus);
     }
-  }, [isCompleted, isEnRoute, isArrived, confirmingComplete, card.delivery_id, onStatusUpdate]);
+  }, [getNextStatus, confirmingComplete, card.delivery_id, onStatusUpdate]);
 
   const getPrimaryButtonText = (): string => {
     if (isCompleted) return "Delivered";
-    if (!isEnRoute && !isArrived) return "On My Way";
-    if (isEnRoute) return "I've Arrived";
-    if (isArrived && confirmingComplete) return "Tap Again to Confirm";
-    if (isArrived) return "Mark Delivered";
+    const nextStatus = getNextStatus();
+    if (!nextStatus) return "Delivered"; // fallback — shouldn't render
+    if (nextStatus === "en_route") return "On My Way";
+    if (nextStatus === "arrived") return isEnRoute ? "I've Arrived" : "I've Arrived";
+    if (nextStatus === "completed" && confirmingComplete) return "Tap Again to Confirm";
+    if (nextStatus === "completed") return isArrived ? "Mark Delivered" : "Mark Delivered";
     return "Update";
   };
 
   const getPrimaryButtonStyle = (): string => {
     if (isCompleted) return "bg-emerald-600 text-white opacity-60 cursor-not-allowed";
-    if (isArrived && confirmingComplete) return "bg-red-600 text-white animate-pulse";
-    if (isArrived) return "bg-emerald-600 text-white active:bg-emerald-700";
-    if (isEnRoute) return "bg-blue-600 text-white active:bg-blue-700";
+    const nextStatus = getNextStatus();
+    if (nextStatus === "completed" && confirmingComplete) return "bg-red-600 text-white animate-pulse";
+    if (nextStatus === "completed") return "bg-emerald-600 text-white active:bg-emerald-700";
+    if (nextStatus === "arrived") return "bg-blue-600 text-white active:bg-blue-700";
+    if (nextStatus === "en_route") return "bg-indigo-600 text-white active:bg-indigo-700";
     return "bg-indigo-600 text-white active:bg-indigo-700";
   };
+
+  const hasAction = isCompleted || getNextStatus() !== null;
 
   return (
     <div
@@ -324,27 +361,29 @@ function DeliveryCard({
         )}
       </div>
 
-      {/* Action Button */}
-      <div className="border-t px-4 py-3">
-        <button
-          onClick={handlePrimaryAction}
-          disabled={isCompleted || isUpdating}
-          className={cn(
-            "w-full rounded-lg px-4 py-3 text-sm font-semibold transition-all",
-            getPrimaryButtonStyle(),
-            isUpdating && "opacity-50 cursor-wait",
-          )}
-        >
-          {isUpdating ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Updating...
-            </span>
-          ) : (
-            getPrimaryButtonText()
-          )}
-        </button>
-      </div>
+      {/* Action Button — only rendered when there's a valid next step */}
+      {hasAction && (
+        <div className="border-t px-4 py-3">
+          <button
+            onClick={handlePrimaryAction}
+            disabled={isCompleted || isUpdating}
+            className={cn(
+              "w-full rounded-lg px-4 py-3 text-sm font-semibold transition-all",
+              getPrimaryButtonStyle(),
+              isUpdating && "opacity-50 cursor-wait",
+            )}
+          >
+            {isUpdating ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Updating...
+              </span>
+            ) : (
+              getPrimaryButtonText()
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -492,8 +531,23 @@ export default function DeliveryConsolePage() {
   const [nextDayLoading, setNextDayLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [milestones, setMilestones] = useState<MilestoneSettings>({
+    milestone_on_my_way_enabled: true,
+    milestone_arrived_enabled: true,
+    milestone_delivered_enabled: true,
+  });
 
   const todayStr = useMemo(() => formatDate(new Date()), []);
+
+  // Fetch milestone settings once on mount
+  useEffect(() => {
+    api
+      .get<MilestoneSettings>("/api/v1/driver/console/milestone-settings")
+      .then((resp) => setMilestones(resp.data))
+      .catch(() => {
+        // Default to all enabled on error
+      });
+  }, []);
 
   // Fetch today's deliveries
   const fetchDeliveries = useCallback(async () => {
@@ -672,6 +726,7 @@ export default function DeliveryConsolePage() {
               card={card}
               onStatusUpdate={handleStatusUpdate}
               isUpdating={updatingId === card.delivery_id}
+              milestones={milestones}
             />
           ))}
         </div>
@@ -848,6 +903,7 @@ function CompletedSection({ cards }: { cards: ConsoleDelivery[] }) {
               card={card}
               onStatusUpdate={() => {}}
               isUpdating={false}
+              milestones={{ milestone_on_my_way_enabled: true, milestone_arrived_enabled: true, milestone_delivered_enabled: true }}
             />
           ))}
         </div>

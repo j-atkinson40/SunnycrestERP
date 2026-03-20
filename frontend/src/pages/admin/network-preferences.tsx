@@ -1,7 +1,7 @@
 /**
  * Network Preferences — Post-onboarding settings page.
  *
- * Same four preference cards as the onboarding wizard, but saves
+ * Same six preference cards as the onboarding wizard, but saves
  * immediately on toggle (no batch save button) and no progress bar.
  */
 
@@ -9,6 +9,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Mail, Building2, Leaf, Image } from "lucide-react";
 import { CrossTenantPreferenceCard } from "@/components/network/cross-tenant-preference-card";
+import { DeliveryAreaCard } from "@/components/network/delivery-area-card";
+import { DriverStatusMilestonesCard } from "@/components/network/driver-status-milestones-card";
 import apiClient from "@/lib/api-client";
 
 interface Preferences {
@@ -16,17 +18,27 @@ interface Preferences {
   cemetery_delivery_notifications: boolean;
   allow_portal_spring_burial_requests: boolean;
   accept_legacy_print_submissions: boolean;
+  milestone_scheduled_enabled: boolean;
+  milestone_on_my_way_enabled: boolean;
+  milestone_arrived_enabled: boolean;
+  milestone_delivered_enabled: boolean;
 }
 
 export default function NetworkPreferencesSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [springBurialsEnabled, setSpringBurialsEnabled] = useState(false);
   const [hasCemeteryCustomers, setHasCemeteryCustomers] = useState<boolean | null>(null);
+  const [deliveryAreaConfigured, setDeliveryAreaConfigured] = useState(false);
+  const [facilityState, setFacilityState] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<Preferences>({
     delivery_notifications_enabled: true,
     cemetery_delivery_notifications: true,
     allow_portal_spring_burial_requests: true,
     accept_legacy_print_submissions: true,
+    milestone_scheduled_enabled: true,
+    milestone_on_my_way_enabled: true,
+    milestone_arrived_enabled: true,
+    milestone_delivered_enabled: true,
   });
 
   useEffect(() => {
@@ -40,14 +52,21 @@ export default function NetworkPreferencesSettingsPage() {
         cemetery_delivery_notifications: d.cemetery_delivery_notifications ?? true,
         allow_portal_spring_burial_requests: d.allow_portal_spring_burial_requests ?? true,
         accept_legacy_print_submissions: d.accept_legacy_print_submissions ?? true,
+        milestone_scheduled_enabled: d.milestone_scheduled_enabled ?? true,
+        milestone_on_my_way_enabled: d.milestone_on_my_way_enabled ?? true,
+        milestone_arrived_enabled: d.milestone_arrived_enabled ?? true,
+        milestone_delivered_enabled: d.milestone_delivered_enabled ?? true,
       });
       setSpringBurialsEnabled(d.spring_burials_enabled ?? false);
+      setDeliveryAreaConfigured(d.delivery_area_configured ?? false);
+      setFacilityState(d.facility_state ?? null);
       const items = custRes.data?.items ?? custRes.data ?? [];
       setHasCemeteryCustomers(Array.isArray(items) && items.length > 0);
     }).finally(() => setLoading(false));
   }, []);
 
   const handleChange = async (key: keyof Preferences, value: boolean) => {
+    const prev = { ...prefs };
     const updated = { ...prefs, [key]: value };
     setPrefs(updated);
     try {
@@ -55,7 +74,7 @@ export default function NetworkPreferencesSettingsPage() {
       toast.success("Preference updated");
     } catch {
       // Revert on failure
-      setPrefs(prefs);
+      setPrefs(prev);
       toast.error("Failed to save preference");
     }
   };
@@ -81,6 +100,7 @@ export default function NetworkPreferencesSettingsPage() {
       </div>
 
       <div className="space-y-5">
+        {/* Card 1 — Delivery Notifications */}
         <CrossTenantPreferenceCard
           icon={Mail}
           title="Delivery Notifications"
@@ -96,6 +116,7 @@ export default function NetworkPreferencesSettingsPage() {
           onChange={(v) => handleChange("delivery_notifications_enabled", v)}
         />
 
+        {/* Card 2 — Cemetery Notifications */}
         <CrossTenantPreferenceCard
           icon={Building2}
           title="Cemetery Notifications"
@@ -111,6 +132,7 @@ export default function NetworkPreferencesSettingsPage() {
           }
         />
 
+        {/* Card 3 — Spring Burial Portal Scheduling */}
         <CrossTenantPreferenceCard
           icon={Leaf}
           title="Spring Burial Portal Scheduling"
@@ -127,6 +149,7 @@ export default function NetworkPreferencesSettingsPage() {
           hidden={!springBurialsEnabled}
         />
 
+        {/* Card 4 — Legacy Print Submission */}
         <CrossTenantPreferenceCard
           icon={Image}
           title="Legacy Print Submission"
@@ -135,6 +158,26 @@ export default function NetworkPreferencesSettingsPage() {
           noLabel="No — not applicable to my operation"
           value={prefs.accept_legacy_print_submissions}
           onChange={(v) => handleChange("accept_legacy_print_submissions", v)}
+        />
+
+        {/* Card 5 — Delivery Area */}
+        <DeliveryAreaCard
+          facilityState={facilityState}
+          deliveryAreaConfigured={deliveryAreaConfigured}
+          onSaved={() => setDeliveryAreaConfigured(true)}
+          mode="settings"
+        />
+
+        {/* Card 6 — Driver Status Milestones */}
+        <DriverStatusMilestonesCard
+          value={{
+            milestone_scheduled_enabled: prefs.milestone_scheduled_enabled,
+            milestone_on_my_way_enabled: prefs.milestone_on_my_way_enabled,
+            milestone_arrived_enabled: prefs.milestone_arrived_enabled,
+            milestone_delivered_enabled: prefs.milestone_delivered_enabled,
+          }}
+          onChange={(key, val) => handleChange(key, val)}
+          disabled={!prefs.delivery_notifications_enabled}
         />
       </div>
     </div>

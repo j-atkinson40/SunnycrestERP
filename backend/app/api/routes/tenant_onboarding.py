@@ -457,6 +457,11 @@ def save_cross_tenant_preferences(
     company.set_setting("cemetery_delivery_notifications", data.cemetery_delivery_notifications)
     company.set_setting("allow_portal_spring_burial_requests", data.allow_portal_spring_burial_requests)
     company.set_setting("accept_legacy_print_submissions", data.accept_legacy_print_submissions)
+    # Driver status milestones
+    company.set_setting("milestone_scheduled_enabled", data.milestone_scheduled_enabled)
+    company.set_setting("milestone_on_my_way_enabled", data.milestone_on_my_way_enabled)
+    company.set_setting("milestone_arrived_enabled", data.milestone_arrived_enabled)
+    company.set_setting("milestone_delivered_enabled", data.milestone_delivered_enabled)
     company.set_setting("cross_tenant_preferences_configured", True)
     db.commit()
 
@@ -499,11 +504,13 @@ def save_cross_tenant_preferences(
             te.status = "disabled"
             db.commit()
 
-    # Mark onboarding item complete
-    try:
-        tenant_onboarding_service.check_completion(db, company.id, "configure_cross_tenant")
-    except Exception:
-        pass
+    # Mark onboarding item complete only if delivery area is also configured
+    delivery_area_configured = company.get_setting("delivery_area_configured", False)
+    if delivery_area_configured:
+        try:
+            tenant_onboarding_service.check_completion(db, company.id, "configure_cross_tenant")
+        except Exception:
+            pass
 
     return {"status": "ok", "preferences": data.model_dump()}
 
@@ -521,4 +528,12 @@ def get_cross_tenant_preferences(
         "accept_legacy_print_submissions": company.get_setting("accept_legacy_print_submissions", True),
         "cross_tenant_preferences_configured": company.get_setting("cross_tenant_preferences_configured", False),
         "spring_burials_enabled": company.get_setting("spring_burials_enabled", False),
+        # Driver status milestones
+        "milestone_scheduled_enabled": company.get_setting("milestone_scheduled_enabled", True),
+        "milestone_on_my_way_enabled": company.get_setting("milestone_on_my_way_enabled", True),
+        "milestone_arrived_enabled": company.get_setting("milestone_arrived_enabled", True),
+        "milestone_delivered_enabled": company.get_setting("milestone_delivered_enabled", True),
+        # Delivery area
+        "delivery_area_configured": company.get_setting("delivery_area_configured", False),
+        "facility_state": company.facility_state,
     }
