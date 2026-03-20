@@ -29,6 +29,18 @@ def _column_exists(table: str, column: str) -> bool:
     return result.scalar() > 0
 
 
+def _table_exists(table: str) -> bool:
+    bind = op.get_bind()
+    result = bind.execute(
+        sa.text(
+            "SELECT COUNT(*) FROM information_schema.tables "
+            "WHERE table_name = :table"
+        ),
+        {"table": table},
+    )
+    return result.scalar() > 0
+
+
 def upgrade() -> None:
     # 1. Add section column if not present
     if not _column_exists("extension_definitions", "section"):
@@ -95,22 +107,26 @@ def upgrade() -> None:
         )
 
     # 3. Capture existing tenant_extensions by extension_key (for re-linking)
-    existing_te = bind.execute(
-        sa.text("SELECT id, extension_key, extension_id FROM tenant_extensions")
-    ).fetchall()
+    existing_te = []
+    if _table_exists("tenant_extensions"):
+        existing_te = bind.execute(
+            sa.text("SELECT id, extension_key, extension_id FROM tenant_extensions")
+        ).fetchall()
 
-    # 4. NULL out / clear FK references so we can delete extension_definitions
-    if existing_te:
-        bind.execute(sa.text("UPDATE tenant_extensions SET extension_id = NULL"))
-    # Also clear extension_notify_requests and extension_activity_logs
-    bind.execute(sa.text(
-        "DELETE FROM extension_notify_requests WHERE extension_id IN "
-        "(SELECT id FROM extension_definitions)"
-    ))
-    bind.execute(sa.text(
-        "DELETE FROM extension_activity_log WHERE extension_id IN "
-        "(SELECT id FROM extension_definitions)"
-    ))
+        # 4. NULL out / clear FK references so we can delete extension_definitions
+        if existing_te:
+            bind.execute(sa.text("UPDATE tenant_extensions SET extension_id = NULL"))
+    # Also clear extension_notify_requests and extension_activity_log (if tables exist)
+    if _table_exists("extension_notify_requests"):
+        bind.execute(sa.text(
+            "DELETE FROM extension_notify_requests WHERE extension_id IN "
+            "(SELECT id FROM extension_definitions)"
+        ))
+    if _table_exists("extension_activity_log"):
+        bind.execute(sa.text(
+            "DELETE FROM extension_activity_log WHERE extension_id IN "
+            "(SELECT id FROM extension_definitions)"
+        ))
 
     # 5. Delete all extension_definitions
     bind.execute(sa.text("DELETE FROM extension_definitions"))
