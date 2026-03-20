@@ -23,7 +23,23 @@ def _column_exists(table, column):
     return column in cols
 
 
+def _table_exists(table):
+    from sqlalchemy import inspect as sa_inspect
+    bind = op.get_bind()
+    insp = sa_inspect(bind)
+    return table in insp.get_table_names()
+
+
 def upgrade():
+    # 0. Fix quick_quote_templates.tenant_id — must be nullable for system templates
+    if _table_exists("quick_quote_templates"):
+        op.alter_column(
+            "quick_quote_templates",
+            "tenant_id",
+            existing_type=sa.String(36),
+            nullable=True,
+        )
+
     # 1. Add hidden_from_catalog column to extension_definitions
     if not _column_exists("extension_definitions", "hidden_from_catalog"):
         op.add_column(

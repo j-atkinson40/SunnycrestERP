@@ -34,7 +34,15 @@ def upgrade() -> None:
     tables = _get_tables(conn)
 
     # ── quick_quote_templates table ──────────────────────────────────────
-    if "quick_quote_templates" not in tables:
+    if "quick_quote_templates" in tables:
+        # Ensure tenant_id is nullable for system templates
+        op.alter_column(
+            "quick_quote_templates",
+            "tenant_id",
+            existing_type=sa.String(36),
+            nullable=True,
+        )
+    else:
         op.create_table(
             "quick_quote_templates",
             sa.Column("id", sa.String(36), primary_key=True),
@@ -42,7 +50,7 @@ def upgrade() -> None:
                 "tenant_id",
                 sa.String(36),
                 sa.ForeignKey("companies.id"),
-                nullable=False,
+                nullable=True,
                 index=True,
             ),
             sa.Column("template_name", sa.String(255), nullable=False),
