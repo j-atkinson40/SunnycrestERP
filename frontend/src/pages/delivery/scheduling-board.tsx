@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/auth-context";
 import { KanbanPanel } from "@/components/delivery/kanban-panel";
@@ -430,6 +430,25 @@ export default function SchedulingBoardPage() {
   const directShipCollapsed = collapseState.direct_ship ?? false;
   const bothSidePanelsCollapsed = ancillaryCollapsed && directShipCollapsed;
 
+  // Check for drivers not yet on the Kanban board
+  const [newDriverNames, setNewDriverNames] = useState<string[]>([]);
+  useEffect(() => {
+    Promise.all([
+      api.get("/tenant-onboarding/scheduling-board/drivers"),
+      api.get("/tenant-onboarding/scheduling-board/config"),
+    ])
+      .then(([driversRes, configRes]) => {
+        const allDrivers: { driver_id: string; name: string }[] =
+          driversRes.data.drivers ?? [];
+        const kanbanIds: string[] = configRes.data.kanban_driver_ids ?? [];
+        if (kanbanIds.length === 0) return; // Not configured yet — don't show banner
+        const kanbanSet = new Set(kanbanIds);
+        const missing = allDrivers.filter((d) => !kanbanSet.has(d.driver_id));
+        setNewDriverNames(missing.map((d) => d.name));
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="flex h-full">
       {/* ── Main content: Kanban panels ── */}
@@ -518,6 +537,24 @@ export default function SchedulingBoardPage() {
             )}
           </div>
         </div>
+
+        {/* ── New driver banner ── */}
+        {newDriverNames.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
+            <span className="text-amber-700">
+              <strong>{newDriverNames.join(", ")}</strong>{" "}
+              {newDriverNames.length === 1 ? "was" : "were"} added to your team
+              but {newDriverNames.length === 1 ? "doesn't" : "don't"} have a
+              scheduling lane yet.
+            </span>
+            <Link
+              to="/settings/scheduling"
+              className="shrink-0 font-medium text-amber-800 underline hover:text-amber-900"
+            >
+              Add {newDriverNames.length === 1 ? "them" : "them"} to the board &rarr;
+            </Link>
+          </div>
+        )}
 
         {/* ── Panels — dynamically rendered (2 or 3) ── */}
         {panels.map((dateStr, idx) => {

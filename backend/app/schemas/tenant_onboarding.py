@@ -232,10 +232,11 @@ class OnboardingAnalyticsResponse(BaseModel):
 
 
 class SchedulingBoardConfig(BaseModel):
-    driver_count: int = 2
-    saturday_handling: str = "normal"  # normal | surcharge | no_delivery
-    lead_time: str = "2_business_days"  # same_day | next_business_day | 2_business_days | custom
-    lead_time_custom_days: int | None = None
+    kanban_driver_ids: list[str] = []
+    saturday_delivery_enabled: bool = True
+    saturday_surcharge_type: str | None = None  # always | spring_burials_only | none | null
+    sunday_delivery_enabled: bool = False
+    sunday_surcharge_enabled: bool = False
 
 
 # ---------------------------------------------------------------------------

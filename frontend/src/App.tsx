@@ -113,6 +113,7 @@ import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customer
 import SchedulingSetupPage from "@/pages/onboarding/scheduling-setup";
 import NetworkPreferencesPage from "@/pages/onboarding/network-preferences";
 import NetworkPreferencesSettingsPage from "@/pages/admin/network-preferences";
+import SchedulingSettingsPage from "@/pages/admin/scheduling-settings";
 import UrnCatalogPage from "@/pages/products/urn-catalog";
 import UrnImportWizard from "@/pages/products/urn-import-wizard";
 import BundleManager from "@/pages/products/bundle-manager";
@@ -477,6 +478,7 @@ export default function App() {
                   <Route path="/onboarding/network-preferences" element={<NetworkPreferencesPage />} />
                   <Route path="/settings/charges" element={<ChargeSetupPage />} />
                   <Route path="/settings/network/preferences" element={<NetworkPreferencesSettingsPage />} />
+                  <Route path="/settings/scheduling" element={<SchedulingSettingsPage />} />
 
                   {/* Extension Catalog — any authenticated user */}
                   <Route path="/extensions" element={<ExtensionCatalogPage />} />

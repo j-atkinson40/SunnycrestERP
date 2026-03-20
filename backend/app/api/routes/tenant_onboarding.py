@@ -401,11 +401,11 @@ def configure_scheduling_board(
     db: Session = Depends(get_db),
 ):
     """Save scheduling board configuration and mark checklist item complete."""
-    company.set_setting("scheduling_board_driver_count", data.driver_count)
-    company.set_setting("scheduling_board_saturday_handling", data.saturday_handling)
-    company.set_setting("scheduling_board_lead_time", data.lead_time)
-    if data.lead_time_custom_days is not None:
-        company.set_setting("scheduling_board_lead_time_custom_days", data.lead_time_custom_days)
+    company.set_setting("kanban_driver_ids", data.kanban_driver_ids)
+    company.set_setting("saturday_delivery_enabled", data.saturday_delivery_enabled)
+    company.set_setting("saturday_surcharge_type", data.saturday_surcharge_type)
+    company.set_setting("sunday_delivery_enabled", data.sunday_delivery_enabled)
+    company.set_setting("sunday_surcharge_enabled", data.sunday_surcharge_enabled)
     company.set_setting("scheduling_board_configured", True)
     db.commit()
 
@@ -415,12 +415,7 @@ def configure_scheduling_board(
     except Exception:
         pass  # Item may not exist if checklist wasn't initialized
 
-    return {"status": "ok", "settings": {
-        "driver_count": data.driver_count,
-        "saturday_handling": data.saturday_handling,
-        "lead_time": data.lead_time,
-        "lead_time_custom_days": data.lead_time_custom_days,
-    }}
+    return {"status": "ok"}
 
 
 @router.get("/scheduling-board/config")
@@ -430,12 +425,47 @@ def get_scheduling_board_config(
 ):
     """Get current scheduling board configuration."""
     return {
-        "driver_count": company.get_setting("scheduling_board_driver_count", 2),
-        "saturday_handling": company.get_setting("scheduling_board_saturday_handling", "normal"),
-        "lead_time": company.get_setting("scheduling_board_lead_time", "2_business_days"),
-        "lead_time_custom_days": company.get_setting("scheduling_board_lead_time_custom_days"),
+        "kanban_driver_ids": company.get_setting("kanban_driver_ids", []),
+        "saturday_delivery_enabled": company.get_setting("saturday_delivery_enabled", True),
+        "saturday_surcharge_type": company.get_setting("saturday_surcharge_type"),
+        "sunday_delivery_enabled": company.get_setting("sunday_delivery_enabled", False),
+        "sunday_surcharge_enabled": company.get_setting("sunday_surcharge_enabled", False),
         "configured": company.get_setting("scheduling_board_configured", False),
     }
+
+
+@router.get("/scheduling-board/drivers")
+def get_scheduling_board_drivers(
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    """Get active drivers for the scheduling board driver picker.
+
+    Returns drivers from the drivers table (active, linked to active users).
+    """
+    from app.models.driver import Driver
+
+    active_drivers = (
+        db.query(Driver)
+        .filter(
+            Driver.company_id == company.id,
+            Driver.active.is_(True),
+        )
+        .all()
+    )
+    result = []
+    for drv in active_drivers:
+        # Only include drivers whose employee account is active
+        if drv.employee and drv.employee.is_active:
+            name = f"{drv.employee.first_name} {drv.employee.last_name}"
+            result.append({
+                "driver_id": drv.id,
+                "employee_id": drv.employee_id,
+                "name": name,
+            })
+    result.sort(key=lambda d: d["name"])
+    return {"drivers": result}
 
 
 # ---------------------------------------------------------------------------
