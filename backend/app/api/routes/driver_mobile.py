@@ -1,13 +1,17 @@
-"""Driver mobile endpoints — today's route, events, media."""
+"""Driver mobile endpoints — today's route, events, media, console."""
 
+from datetime import date, datetime, UTC
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_module
 from app.database import get_db
+from app.models.delivery import Delivery
+from app.models.delivery_route import DeliveryRoute
+from app.models.delivery_stop import DeliveryStop
 from app.models.user import User
 from app.schemas.delivery import EventCreate, EventResponse, MediaResponse, RouteResponse, StopResponse
 from app.services import delivery_service, driver_mobile_service
@@ -146,3 +150,306 @@ async def upload_media(
         media_type=media_type,
         file_url=f"/media/{file_name}",
     )
+
+
+# ---------------------------------------------------------------------------
+# Console — rich delivery cards for the driver console view
+# ---------------------------------------------------------------------------
+
+
+def _serialize_console_card(delivery: Delivery, stop: DeliveryStop | None, config: dict | None = None) -> dict:
+    """Build a rich card payload for the driver console."""
+    tc = delivery.type_config or {}
+    config = config or {}
+
+    # Parse service time for display
+    service_time_raw = tc.get("service_time", "")
+    service_time_display = service_time_raw
+    if service_time_raw and ":" in service_time_raw:
+        try:
+            parts = service_time_raw.split(":")
+            hour = int(parts[0])
+            minute = parts[1] if len(parts) > 1 else "00"
+            ampm = "AM" if hour < 12 else "PM"
+            display_hour = hour if hour <= 12 else hour - 12
+            if display_hour == 0:
+                display_hour = 12
+            service_time_display = f"{display_hour}:{minute} {ampm}"
+        except (ValueError, IndexError):
+            pass
+
+    # Hours until service
+    hours_until_service = None
+    is_critical = False
+    is_warning = False
+    critical_hours = config.get("critical_window_hours", 4) if config else 4
+
+    if service_time_raw and delivery.requested_date:
+        try:
+            parts = service_time_raw.split(":")
+            service_dt = datetime(
+                delivery.requested_date.year,
+                delivery.requested_date.month,
+                delivery.requested_date.day,
+                int(parts[0]),
+                int(parts[1]) if len(parts) > 1 else 0,
+                tzinfo=UTC,
+            )
+            now = datetime.now(UTC)
+            delta = (service_dt - now).total_seconds() / 3600
+            hours_until_service = round(delta, 1)
+            is_critical = delta < critical_hours
+            is_warning = not is_critical and delta < critical_hours * 2
+        except (ValueError, IndexError):
+            pass
+
+    # Format delivery windows
+    window_start = None
+    window_end = None
+    if delivery.required_window_start:
+        window_start = delivery.required_window_start.strftime("%I:%M %p").lstrip("0")
+    if delivery.required_window_end:
+        window_end = delivery.required_window_end.strftime("%I:%M %p").lstrip("0")
+
+    # Customer name from relationship
+    customer_name = None
+    if delivery.customer:
+        customer_name = delivery.customer.name if hasattr(delivery.customer, "name") else None
+
+    card = {
+        "delivery_id": delivery.id,
+        "delivery_type": delivery.delivery_type,
+        "status": delivery.status,
+        "priority": delivery.priority,
+        "delivery_address": delivery.delivery_address,
+        "delivery_lat": str(delivery.delivery_lat) if delivery.delivery_lat else None,
+        "delivery_lng": str(delivery.delivery_lng) if delivery.delivery_lng else None,
+        "requested_date": delivery.requested_date.isoformat() if delivery.requested_date else None,
+        "required_window_start": window_start,
+        "required_window_end": window_end,
+        "special_instructions": delivery.special_instructions,
+        "customer_name": customer_name,
+        "order_id": delivery.order_id,
+        "completed_at": delivery.completed_at.isoformat() if delivery.completed_at else None,
+        # Funeral-specific fields from type_config
+        "family_name": tc.get("family_name", ""),
+        "cemetery_name": tc.get("cemetery_name", ""),
+        "funeral_home_name": tc.get("funeral_home_name", ""),
+        "service_time": service_time_raw,
+        "service_time_display": service_time_display,
+        "vault_type": tc.get("vault_type", ""),
+        "vault_personalization": tc.get("vault_personalization", ""),
+        "hours_until_service": hours_until_service,
+        "is_critical": is_critical,
+        "is_warning": is_warning,
+        # Stop info
+        "stop_id": stop.id if stop else None,
+        "stop_status": stop.status if stop else None,
+        "sequence_number": stop.sequence_number if stop else None,
+        "actual_arrival": stop.actual_arrival.isoformat() if stop and stop.actual_arrival else None,
+        "actual_departure": stop.actual_departure.isoformat() if stop and stop.actual_departure else None,
+        "driver_notes": stop.driver_notes if stop else None,
+    }
+
+    return card
+
+
+@router.get("/console/deliveries")
+def get_console_deliveries(
+    delivery_date: date = Query(default=None, alias="date"),
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module(MODULE)),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all deliveries assigned to the current driver for a given date.
+
+    Returns enriched cards with funeral-specific data, stop status, and
+    time urgency calculations for the driver console view.
+    """
+    driver = delivery_service.get_driver_by_employee(db, current_user.id, current_user.company_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="No driver profile found for this user")
+
+    target_date = delivery_date or date.today()
+
+    # Find routes for this driver on this date
+    routes = (
+        db.query(DeliveryRoute)
+        .filter(
+            DeliveryRoute.driver_id == driver.id,
+            DeliveryRoute.company_id == current_user.company_id,
+            DeliveryRoute.route_date == target_date,
+            DeliveryRoute.status.notin_(["cancelled"]),
+        )
+        .all()
+    )
+
+    if not routes:
+        return {
+            "date": target_date.isoformat(),
+            "driver_id": driver.id,
+            "driver_name": f"{current_user.first_name} {current_user.last_name}",
+            "route_id": None,
+            "route_status": None,
+            "deliveries": [],
+            "stats": {"total": 0, "completed": 0, "remaining": 0, "in_progress": 0},
+        }
+
+    # Use first active route (typically one per day)
+    route = routes[0]
+
+    # Get stops with deliveries eagerly loaded
+    stops = (
+        db.query(DeliveryStop)
+        .filter(DeliveryStop.route_id == route.id)
+        .order_by(DeliveryStop.sequence_number)
+        .all()
+    )
+
+    # Load kanban config if available
+    from app.services import extension_service
+    kanban_config = None
+    try:
+        if extension_service.is_extension_enabled(db, current_user.company_id, "funeral_kanban_scheduling"):
+            kanban_config = extension_service.get_extension_config(
+                db, current_user.company_id, "funeral_kanban_scheduling"
+            )
+    except Exception:
+        pass
+
+    # Build cards
+    cards = []
+    completed_count = 0
+    in_progress_count = 0
+
+    for stop in stops:
+        delivery = (
+            db.query(Delivery)
+            .filter(Delivery.id == stop.delivery_id)
+            .first()
+        )
+        if not delivery:
+            continue
+
+        card = _serialize_console_card(delivery, stop, kanban_config)
+        cards.append(card)
+
+        if stop.status == "completed" or delivery.status == "completed":
+            completed_count += 1
+        elif stop.status in ("en_route", "arrived") or delivery.status in ("in_transit", "arrived", "setup"):
+            in_progress_count += 1
+
+    total = len(cards)
+    return {
+        "date": target_date.isoformat(),
+        "driver_id": driver.id,
+        "driver_name": f"{current_user.first_name} {current_user.last_name}",
+        "route_id": route.id,
+        "route_status": route.status,
+        "deliveries": cards,
+        "stats": {
+            "total": total,
+            "completed": completed_count,
+            "remaining": total - completed_count,
+            "in_progress": in_progress_count,
+        },
+    }
+
+
+@router.patch("/console/deliveries/{delivery_id}/status")
+def update_console_delivery_status(
+    delivery_id: str,
+    data: UpdateStopStatusRequest,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module(MODULE)),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a delivery's status from the driver console.
+
+    Handles the full lifecycle: en_route → arrived → completed.
+    Also updates the parent Delivery status to keep Kanban boards in sync.
+    """
+    driver = delivery_service.get_driver_by_employee(db, current_user.id, current_user.company_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="No driver profile found")
+
+    # Find the delivery
+    delivery = db.query(Delivery).filter(
+        Delivery.id == delivery_id,
+        Delivery.company_id == current_user.company_id,
+    ).first()
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+
+    # Find the stop for this delivery in a current route
+    stop = (
+        db.query(DeliveryStop)
+        .join(DeliveryRoute, DeliveryRoute.id == DeliveryStop.route_id)
+        .filter(
+            DeliveryStop.delivery_id == delivery_id,
+            DeliveryRoute.driver_id == driver.id,
+            DeliveryRoute.status.notin_(["cancelled", "completed"]),
+        )
+        .first()
+    )
+    if not stop:
+        raise HTTPException(status_code=404, detail="No active stop found for this delivery")
+
+    now = datetime.now(UTC)
+    new_status = data.status
+
+    # Update stop
+    stop.status = new_status
+    if data.driver_notes is not None:
+        stop.driver_notes = data.driver_notes
+    if new_status == "en_route":
+        pass  # No timestamp needed
+    elif new_status == "arrived" and not stop.actual_arrival:
+        stop.actual_arrival = now
+    elif new_status == "completed" and not stop.actual_departure:
+        stop.actual_departure = now
+
+    # Map stop status to delivery status
+    delivery_status_map = {
+        "en_route": "in_transit",
+        "arrived": "arrived",
+        "completed": "completed",
+    }
+    new_delivery_status = delivery_status_map.get(new_status)
+    if new_delivery_status:
+        delivery.status = new_delivery_status
+        if new_delivery_status == "completed":
+            delivery.completed_at = now
+
+    delivery.modified_at = now
+    db.commit()
+
+    # Post a delivery event for tracking
+    try:
+        event_type_map = {
+            "en_route": "departed",
+            "arrived": "arrived",
+            "completed": "completed",
+        }
+        event_type = event_type_map.get(new_status)
+        if event_type:
+            driver_mobile_service.post_event(
+                db,
+                current_user.company_id,
+                driver.id,
+                {
+                    "delivery_id": delivery_id,
+                    "event_type": event_type,
+                    "source": "driver",
+                    "notes": data.driver_notes,
+                },
+            )
+    except Exception:
+        pass  # Don't fail the status update if event posting fails
+
+    return {
+        "delivery_id": delivery_id,
+        "status": new_status,
+        "delivery_status": delivery.status,
+        "completed_at": delivery.completed_at.isoformat() if delivery.completed_at else None,
+    }
