@@ -701,18 +701,35 @@ export default function PriceListUploadFlow({ onBack }: Props) {
               products in your price list.
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleAcceptAll}
-            disabled={acceptingAll}
-          >
-            {acceptingAll ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          {(() => {
+            // Check if all non-skip items are already accepted
+            const allItems = Object.values(localItems);
+            const allAccepted = allItems.length > 0 && allItems.every(
+              (i) => i.action === "create_product" || i.action === "create_bundle" || i.action === "create_custom" || i.action === "skip",
+            );
+            const nonSkipAccepted = allItems.filter(
+              (i) => i.action !== "skip",
+            ).length;
+            return allAccepted && nonSkipAccepted > 0 ? (
+              <Button variant="outline" disabled className="border-green-200 bg-green-50 text-green-700 opacity-100">
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+                All {nonSkipAccepted} items accepted
+              </Button>
             ) : (
-              <Check className="mr-2 h-4 w-4" />
-            )}
-            Accept all suggestions
-          </Button>
+              <Button
+                variant="outline"
+                onClick={handleAcceptAll}
+                disabled={acceptingAll}
+              >
+                {acceptingAll ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="mr-2 h-4 w-4" />
+                )}
+                Accept all suggestions
+              </Button>
+            );
+          })()}
         </div>
 
         {/* Tabs */}
@@ -1295,6 +1312,7 @@ function getBundleType(name: string): { label: string; color: string; hint: stri
 
 function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) {
   const isSkipped = item.action === "skip";
+  const isAccepted = item.action === "create_product" || item.action === "create_bundle" || item.action === "create_custom";
   const isBundle = item.match_status === "bundle" || item.action === "create_bundle";
   const bundleType = isBundle ? getBundleType(item.extracted_name) : null;
   const hasNamedComponents = item.match_reasoning?.includes("[named-in-title]") ?? false;
@@ -1323,7 +1341,10 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
 
   if (tab === "unmatched") {
     return (
-      <tr className={cn(isSkipped && "opacity-50")}>
+      <tr className={cn(
+        isSkipped && "opacity-50",
+        isAccepted && "bg-green-50/50",
+      )}>
         <td className="px-4 py-3">
           <Input
             value={item.final_product_name}
@@ -1354,7 +1375,7 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
                 "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                 isSkipped
                   ? "bg-muted text-muted-foreground hover:bg-muted/80"
-                  : "bg-primary/10 text-primary hover:bg-primary/20",
+                  : "bg-green-100 text-green-700 hover:bg-green-200",
               )}
             >
               {isSkipped ? (
@@ -1364,8 +1385,8 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
                 </>
               ) : (
                 <>
-                  <Plus className="h-3 w-3" />
-                  Add as Custom
+                  <CheckCircle2 className="h-3 w-3" />
+                  Included
                 </>
               )}
             </button>
@@ -1376,7 +1397,10 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
   }
 
   return (
-    <tr className={cn(isSkipped && "opacity-50")}>
+    <tr className={cn(
+      isSkipped && "opacity-50",
+      isAccepted && "bg-green-50/50",
+    )}>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="font-medium">{item.extracted_name}</p>
@@ -1530,9 +1554,7 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
             "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
             isSkipped
               ? "bg-muted text-muted-foreground hover:bg-muted/80"
-              : isBundle
-                ? "bg-purple-50 text-purple-700 hover:bg-purple-100"
-                : "bg-green-50 text-green-700 hover:bg-green-100",
+              : "bg-green-100 text-green-700 hover:bg-green-200",
           )}
         >
           {isSkipped ? (
@@ -1542,13 +1564,13 @@ function ReviewRow({ item, tab, onAction, onUpdate, importId }: ReviewRowProps) 
             </>
           ) : isBundle ? (
             <>
-              <Package className="h-3 w-3" />
-              Create Bundle
+              <CheckCircle2 className="h-3 w-3" />
+              Bundle
             </>
           ) : (
             <>
-              <Check className="h-3 w-3" />
-              Include
+              <CheckCircle2 className="h-3 w-3" />
+              Included
             </>
           )}
         </button>
@@ -1687,7 +1709,7 @@ function ChargeCard({ item, onAction, onUpdate, importId }: ChargeCardProps) {
                 "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                 isSkipped
                   ? "bg-muted text-muted-foreground hover:bg-muted/80"
-                  : "bg-green-50 text-green-700 hover:bg-green-100",
+                  : "bg-green-100 text-green-700 hover:bg-green-200",
               )}
             >
               {isSkipped ? (
@@ -1697,8 +1719,8 @@ function ChargeCard({ item, onAction, onUpdate, importId }: ChargeCardProps) {
                 </>
               ) : (
                 <>
-                  <Zap className="h-3 w-3" />
-                  Add to Library
+                  <CheckCircle2 className="h-3 w-3" />
+                  Added to Library
                 </>
               )}
             </button>
