@@ -73,6 +73,9 @@ import SafetyProgramsPage from "@/pages/safety/safety-programs";
 import SafetyTrainingPage from "@/pages/safety/safety-training";
 import SafetyOSHA300Page from "@/pages/safety/safety-osha300";
 import SafetyNoticesPage from "@/pages/safety/safety-notices";
+import SafetyTrainingCalendarPage from "@/pages/safety/safety-training-calendar";
+import SafetyTrainingPostPage from "@/pages/safety/safety-training-post";
+import SafetyToolboxTalksPage from "@/pages/safety/safety-toolbox-talks";
 import ProductionBoardPage from "@/pages/production/production-board";
 import PourEventCreatePage from "@/pages/production/pour-event-create";
 import WorkOrderDetailPage from "@/pages/production/work-order-detail";
@@ -411,6 +414,9 @@ export default function App() {
                     <Route path="/safety/chemicals" element={<SafetyChemicalsPage />} />
                     <Route path="/safety/loto" element={<SafetyLOTOPage />} />
                     <Route path="/safety/notices" element={<SafetyNoticesPage />} />
+                    <Route path="/safety/training/calendar" element={<SafetyTrainingCalendarPage />} />
+                    <Route path="/safety/training/:scheduleId/post" element={<SafetyTrainingPostPage />} />
+                    <Route path="/safety/toolbox-talks" element={<SafetyToolboxTalksPage />} />
                     <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
                   </Route>
 

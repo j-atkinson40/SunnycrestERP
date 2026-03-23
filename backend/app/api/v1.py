@@ -64,6 +64,7 @@ from app.api.routes import (
     purchase_orders,
     qc,
     safety,
+    safety_training_system,
     roles,
     sage_exports,
     service_territory,
@@ -249,6 +250,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     safety.router, prefix="/safety", tags=["Safety Management"]
+)
+v1_router.include_router(
+    safety_training_system.router,
+    prefix="/safety",
+    tags=["Safety Training System"],
 )
 v1_router.include_router(roles.router, prefix="/roles", tags=["Role Management"])
 v1_router.include_router(

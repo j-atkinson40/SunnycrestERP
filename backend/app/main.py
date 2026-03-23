@@ -178,6 +178,13 @@ def run_data_seeders():
     except Exception as exc:
         print(f"WARNING: Checklist backfill failed — {exc}")
         db.rollback()
+
+    try:
+        from app.services.safety_training_seeder import seed_training_topics
+        seed_training_topics(db)
+    except Exception as exc:
+        print(f"WARNING: Safety training topic seeding failed — {exc}")
+        db.rollback()
     finally:
         db.close()
 
