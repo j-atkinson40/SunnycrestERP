@@ -504,22 +504,60 @@ for t in TRAININGS:
         TOPIC_DATA[parts[3]] = t
 
 
+# N/A alternative text for fields where equipment/feature doesn't exist
+NA_TEXT = {
+    "overhead_crane": (
+        "This facility does not operate overhead cranes. "
+        "If you encounter crane operations at any work site, "
+        "do not approach the lift zone and contact your "
+        "supervisor for site-specific procedures."
+    ),
+    "confined_spaces": (
+        "This facility does not currently have permit-required "
+        "confined spaces. If you encounter a space at any work "
+        "site that may qualify as a confined space &mdash; enclosed, "
+        "limited entry, not designed for continuous occupancy &mdash; "
+        "treat it as permit-required and contact your supervisor "
+        "before entering under any circumstances."
+    ),
+    "confined_space_permit": (
+        "Contact your supervisor before any confined space entry."
+    ),
+    "forklift": (
+        "This facility does not currently operate forklifts or "
+        "powered industrial trucks. If you work at a site where "
+        "forklifts operate, maintain a safe distance, use "
+        "designated pedestrian walkways, and make eye contact "
+        "with operators before crossing travel paths."
+    ),
+    "pedestrian_walkways": (
+        "Remain aware of vehicle traffic in all work areas "
+        "and make eye contact with equipment operators before "
+        "crossing any travel path."
+    ),
+    "electrical_panels": (
+        "All electrical panel access and electrical work at "
+        "this facility is performed by licensed contractors. "
+        "Employees must never open electrical panels or attempt "
+        "electrical repairs. Report any electrical concerns to "
+        "your supervisor immediately."
+    ),
+}
+
+
 def fill_placeholders(text: str, details: dict) -> str:
-    """Replace [PLACEHOLDER] strings with facility-specific values."""
+    """Replace [PLACEHOLDER] strings with facility-specific values or N/A text."""
     replacements = {
+        # Always-applicable fields
         "[COMPANY NAME]": details.get("company_name", "[COMPANY NAME]"),
         "[LOCATION &mdash; FILL IN]": details.get("_generic_location", "[LOCATION &mdash; FILL IN]"),
         "[LOTO DEVICE LOCATION &mdash; FILL IN]": details.get("loto_device_location", "[LOCATION &mdash; FILL IN]"),
         "[SDS LOCATION &mdash; FILL IN]": " and ".join(details.get("sds_locations", [])) or "[LOCATION &mdash; FILL IN]",
         "[PPE REPLACEMENT LOCATION &mdash; FILL IN]": details.get("ppe_replacement_location", "[LOCATION &mdash; FILL IN]"),
-        "[ELECTRICAL PANEL LOCATION &mdash; FILL IN]": ", ".join(details.get("electrical_panel_locations", [])) or "[LOCATION &mdash; FILL IN]",
         "[EARPLUG LOCATION &mdash; FILL IN]": details.get("earplug_dispenser_location", "[LOCATION &mdash; FILL IN]"),
         "[FIRST AID KIT LOCATIONS &mdash; FILL IN]": " and ".join(details.get("first_aid_kit_locations", [])) or "[LOCATION &mdash; FILL IN]",
         "[FIRST AID TRAINED &mdash; FILL IN]": ", ".join(details.get("first_aid_trained_employees", [])) or "posted at the first aid station",
         "[LADDER STORAGE &mdash; FILL IN]": details.get("ladder_storage_location", "[LOCATION &mdash; FILL IN]"),
-        "[SPECIFIC TANKS, PITS, OR FORMS &mdash; FILL IN]": ", ".join(details.get("confined_spaces", [])) or "[LOCATIONS &mdash; FILL IN]",
-        "[SUPERVISOR/SAFETY MANAGER &mdash; FILL IN]": details.get("confined_space_permit_issuer", "[NAME/TITLE &mdash; FILL IN]"),
-        "[CAPACITY &mdash; FILL IN]": details.get("crane_rated_capacity", "[CAPACITY &mdash; FILL IN]"),
         "[ASSEMBLY POINT &mdash; FILL IN]": details.get("assembly_point", "[ASSEMBLY POINT &mdash; FILL IN]"),
         "[SEVERE WEATHER SHELTER &mdash; FILL IN]": details.get("severe_weather_shelter", "[SHELTER LOCATION &mdash; FILL IN]"),
         "[LOCATIONS &mdash; FILL IN]": details.get("evacuation_map_locations", "[LOCATIONS &mdash; FILL IN]"),
@@ -528,6 +566,31 @@ def fill_placeholders(text: str, details: dict) -> str:
             f"{details.get('emergency_contact_name', '')} &middot; {details.get('emergency_contact_phone', '')}"
             if details.get("emergency_contact_name")
             else "[EMERGENCY CONTACT &mdash; FILL IN]"
+        ),
+        # N/A-capable fields
+        "[CAPACITY &mdash; FILL IN]": (
+            NA_TEXT["overhead_crane"]
+            if details.get("overhead_crane_not_applicable")
+            else (
+                f"{details['overhead_crane_capacity']} tons"
+                if details.get("overhead_crane_capacity")
+                else "[CAPACITY &mdash; FILL IN]"
+            )
+        ),
+        "[SPECIFIC TANKS, PITS, OR FORMS &mdash; FILL IN]": (
+            NA_TEXT["confined_spaces"]
+            if details.get("confined_spaces_not_applicable")
+            else ", ".join(details.get("confined_spaces", [])) or "[LOCATIONS &mdash; FILL IN]"
+        ),
+        "[SUPERVISOR/SAFETY MANAGER &mdash; FILL IN]": (
+            NA_TEXT["confined_space_permit"]
+            if details.get("confined_spaces_not_applicable")
+            else details.get("confined_space_permit_issuer", "[NAME/TITLE &mdash; FILL IN]")
+        ),
+        "[ELECTRICAL PANEL LOCATION &mdash; FILL IN]": (
+            NA_TEXT["electrical_panels"]
+            if details.get("electrical_panels_not_applicable")
+            else ", ".join(details.get("electrical_panel_locations", [])) or "[LOCATION &mdash; FILL IN]"
         ),
     }
     for placeholder, value in replacements.items():

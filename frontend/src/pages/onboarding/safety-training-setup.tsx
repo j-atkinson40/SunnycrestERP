@@ -37,6 +37,12 @@ interface FacilityDetails {
   confined_space_permit_issuer: string;
   crane_rated_capacity: string;
   pedestrian_walkway_description: string;
+  // N/A flags
+  overhead_crane_not_applicable: boolean;
+  confined_spaces_not_applicable: boolean;
+  forklift_not_applicable: boolean;
+  electrical_panels_not_applicable: boolean;
+  [key: string]: string | string[] | boolean;
 }
 
 const EMPTY_DETAILS: FacilityDetails = {
@@ -59,6 +65,10 @@ const EMPTY_DETAILS: FacilityDetails = {
   confined_space_permit_issuer: "",
   crane_rated_capacity: "",
   pedestrian_walkway_description: "",
+  overhead_crane_not_applicable: false,
+  confined_spaces_not_applicable: false,
+  forklift_not_applicable: false,
+  electrical_panels_not_applicable: false,
 };
 
 const SINGLE_FIELDS = [
@@ -75,13 +85,33 @@ const MULTI_FIELDS = [
   "first_aid_kit_locations", "first_aid_trained_employees", "confined_spaces",
 ] as const;
 
+// Map of N/A flags to the fields they resolve
+const NA_RESOLVES: Record<string, string[]> = {
+  overhead_crane_not_applicable: ["crane_rated_capacity"],
+  confined_spaces_not_applicable: ["confined_spaces", "confined_space_permit_issuer"],
+  forklift_not_applicable: ["pedestrian_walkway_description"],
+  electrical_panels_not_applicable: ["electrical_panel_locations"],
+};
+
 function countFilled(d: FacilityDetails): number {
+  // Collect fields resolved by N/A flags
+  const resolvedByNA = new Set<string>();
+  for (const [flag, fields] of Object.entries(NA_RESOLVES)) {
+    if (d[flag]) {
+      for (const f of fields) resolvedByNA.add(f);
+    }
+  }
+
   let count = 0;
   for (const k of SINGLE_FIELDS) {
-    if (d[k]?.trim()) count++;
+    if (resolvedByNA.has(k)) { count++; continue; }
+    const v = d[k];
+    if (typeof v === "string" && v.trim()) count++;
   }
   for (const k of MULTI_FIELDS) {
-    if (d[k]?.some((v: string) => v.trim())) count++;
+    if (resolvedByNA.has(k)) { count++; continue; }
+    const v = d[k];
+    if (Array.isArray(v) && v.some((s: string) => s.trim())) count++;
   }
   return count;
 }
@@ -359,7 +389,18 @@ export default function SafetyTrainingSetupPage() {
 
               <FieldRow label="PPE replacement location" hint="Apr · PPE" value={details.ppe_replacement_location} onChange={(v) => setDetails((d) => ({ ...d, ppe_replacement_location: v }))} placeholder="Supply cabinet in the shop" />
 
-              <MultiFieldRow label="Electrical panel locations" hint="May · Electrical" values={details.electrical_panel_locations} onChange={(i, v) => updateMultiValue("electrical_panel_locations", i, v)} onAdd={() => addMultiValue("electrical_panel_locations")} onRemove={(i) => removeMultiValue("electrical_panel_locations", i)} placeholder="East wall of production building" />
+              {/* Electrical panels — N/A capable */}
+              <NaFieldGroup
+                label="Electrical panel locations"
+                hint="May · Electrical"
+                applicable={!details.electrical_panels_not_applicable}
+                onToggle={(applicable) => setDetails((d) => ({ ...d, electrical_panels_not_applicable: !applicable }))}
+                applicableLabel="Our employees work near electrical panels"
+                naLabel="All electrical work handled by outside contractors"
+                naDescription="The May training will focus on hazard awareness and reporting rather than panel locations."
+              >
+                <MultiFieldRow label="" values={details.electrical_panel_locations} onChange={(i, v) => updateMultiValue("electrical_panel_locations", i, v)} onAdd={() => addMultiValue("electrical_panel_locations")} onRemove={(i) => removeMultiValue("electrical_panel_locations", i)} placeholder="East wall of production building" />
+              </NaFieldGroup>
 
               <FieldRow label="Earplug dispenser location" hint="Jun · Hearing" value={details.earplug_dispenser_location} onChange={(v) => setDetails((d) => ({ ...d, earplug_dispenser_location: v }))} placeholder="Near production floor entrance" />
 
@@ -367,15 +408,47 @@ export default function SafetyTrainingSetupPage() {
 
               <MultiFieldRow label="CPR/first aid trained employees" hint="Sep · First Aid" values={details.first_aid_trained_employees} onChange={(i, v) => updateMultiValue("first_aid_trained_employees", i, v)} onAdd={() => addMultiValue("first_aid_trained_employees")} onRemove={(i) => removeMultiValue("first_aid_trained_employees", i)} placeholder="Dave Martinez (certified March 2026)" />
 
-              <FieldRow label="Overhead crane rated capacity" hint="Aug · Crane" value={details.crane_rated_capacity} onChange={(v) => setDetails((d) => ({ ...d, crane_rated_capacity: v }))} placeholder="10" suffix="tons" />
+              {/* Overhead crane — N/A capable */}
+              <NaFieldGroup
+                label="Overhead crane rated capacity"
+                hint="Aug · Crane"
+                applicable={!details.overhead_crane_not_applicable}
+                onToggle={(applicable) => setDetails((d) => ({ ...d, overhead_crane_not_applicable: !applicable }))}
+                applicableLabel="We operate an overhead crane"
+                naLabel="We do not operate an overhead crane"
+                naDescription="The August training will note that crane operations are not performed at this facility."
+              >
+                <FieldRow label="" value={details.crane_rated_capacity} onChange={(v) => setDetails((d) => ({ ...d, crane_rated_capacity: v }))} placeholder="10" suffix="tons" />
+              </NaFieldGroup>
 
-              <FieldRow label="Pedestrian walkways" hint="Feb · Forklift" value={details.pedestrian_walkway_description} onChange={(v) => setDetails((d) => ({ ...d, pedestrian_walkway_description: v }))} placeholder="Yellow striped walkways along east and west walls" />
+              {/* Forklift / pedestrian walkways — N/A capable (paired) */}
+              <NaFieldGroup
+                label="Forklift operations"
+                hint="Feb · Forklift"
+                applicable={!details.forklift_not_applicable}
+                onToggle={(applicable) => setDetails((d) => ({ ...d, forklift_not_applicable: !applicable }))}
+                applicableLabel="We operate forklifts or powered industrial trucks"
+                naLabel="We do not operate forklifts or powered industrial trucks"
+                naDescription="The February training will be scoped to general material handling safety instead."
+              >
+                <FieldRow label="Pedestrian walkways" value={details.pedestrian_walkway_description} onChange={(v) => setDetails((d) => ({ ...d, pedestrian_walkway_description: v }))} placeholder="Yellow striped walkways along east and west walls" />
+              </NaFieldGroup>
 
               <FieldRow label="Ladder storage location" hint="Oct · Fall Protection" value={details.ladder_storage_location} onChange={(v) => setDetails((d) => ({ ...d, ladder_storage_location: v }))} placeholder="Storage room adjacent to loading dock" />
 
-              <MultiFieldRow label="Confined spaces in facility" hint="Nov · Confined Space" values={details.confined_spaces} onChange={(i, v) => updateMultiValue("confined_spaces", i, v)} onAdd={() => addMultiValue("confined_spaces")} onRemove={(i) => removeMultiValue("confined_spaces", i)} placeholder="Septic tanks, product forms during curing" />
-
-              <FieldRow label="Confined space permit issuer" hint="Nov · Confined Space" value={details.confined_space_permit_issuer} onChange={(v) => setDetails((d) => ({ ...d, confined_space_permit_issuer: v }))} placeholder="Dave Martinez (safety manager)" />
+              {/* Confined spaces — N/A capable (paired with permit issuer) */}
+              <NaFieldGroup
+                label="Confined spaces"
+                hint="Nov · Confined Space"
+                applicable={!details.confined_spaces_not_applicable}
+                onToggle={(applicable) => setDetails((d) => ({ ...d, confined_spaces_not_applicable: !applicable }))}
+                applicableLabel="We have confined spaces"
+                naLabel="We do not have permit-required confined spaces"
+                naDescription="The November training will cover awareness for work performed at other sites."
+              >
+                <MultiFieldRow label="Confined spaces in facility" values={details.confined_spaces} onChange={(i, v) => updateMultiValue("confined_spaces", i, v)} onAdd={() => addMultiValue("confined_spaces")} onRemove={(i) => removeMultiValue("confined_spaces", i)} placeholder="Septic tanks, product forms during curing" />
+                <FieldRow label="Who issues entry permits?" value={details.confined_space_permit_issuer} onChange={(v) => setDetails((d) => ({ ...d, confined_space_permit_issuer: v }))} placeholder="Dave Martinez (safety manager)" />
+              </NaFieldGroup>
             </CardContent>
           </Card>
 
@@ -522,6 +595,50 @@ export default function SafetyTrainingSetupPage() {
 }
 
 // ── Reusable field components ──
+
+function NaFieldGroup({
+  label,
+  hint,
+  applicable,
+  onToggle,
+  applicableLabel,
+  naLabel,
+  naDescription,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  applicable: boolean;
+  onToggle: (applicable: boolean) => void;
+  applicableLabel: string;
+  naLabel: string;
+  naDescription: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-md border p-3 ${!applicable ? "border-amber-200 bg-amber-50/30" : "border-gray-200"}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-gray-700">{label}</span>
+        {hint && <span className="text-xs text-gray-400">{hint}</span>}
+      </div>
+      <div className="space-y-1.5 mb-2">
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="radio" name={`na-${label}`} checked={applicable} onChange={() => onToggle(true)} className="h-4 w-4" />
+          {applicableLabel}
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="radio" name={`na-${label}`} checked={!applicable} onChange={() => onToggle(false)} className="h-4 w-4" />
+          {naLabel}
+        </label>
+      </div>
+      {applicable ? (
+        <div className="ml-6">{children}</div>
+      ) : (
+        <p className="ml-6 text-xs text-amber-700 italic">{naDescription}</p>
+      )}
+    </div>
+  );
+}
 
 function FieldRow({
   label,
