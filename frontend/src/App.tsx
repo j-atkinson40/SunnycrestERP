@@ -47,6 +47,7 @@ import SalesOrdersPage from "@/pages/sales-orders";
 import SalesOrderDetailPage from "@/pages/sales-order-detail";
 import InvoicesPage from "@/pages/invoices";
 import BillingPage from "@/pages/billing/billing-page";
+import { ReceivedStatementDetail } from "@/pages/billing/received-statements";
 import InvoiceDetailPage from "@/pages/invoice-detail";
 import CustomerPaymentsPage from "@/pages/customer-payments";
 import ARAgingPage2 from "@/pages/ar-aging";
@@ -314,6 +315,10 @@ export default function App() {
                     <Route
                       path="/billing"
                       element={<BillingPage />}
+                    />
+                    <Route
+                      path="/billing/received/:id"
+                      element={<ReceivedStatementDetail />}
                     />
                     <Route
                       path="/ar/invoices"

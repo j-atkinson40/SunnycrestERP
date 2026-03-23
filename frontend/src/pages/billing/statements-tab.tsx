@@ -191,11 +191,57 @@ export function StatementsTab() {
     }
   }
 
+  const [deliveringPlatform, setDeliveringPlatform] = useState(false)
+  const [sendingAll, setSendingAll] = useState(false)
+
+  const deliverPlatform = async () => {
+    if (!activeRun) return
+    setDeliveringPlatform(true)
+    try {
+      const res = await apiClient.post(
+        `/statements/runs/${activeRun.id}/deliver-platform`
+      )
+      toast.success(`${res.data.delivered} platform statements delivered`)
+      const statusRes = await apiClient.get(
+        `/statements/runs/${activeRun.id}/status`
+      )
+      setActiveRun(statusRes.data)
+    } catch {
+      toast.error("Failed to deliver platform statements")
+    } finally {
+      setDeliveringPlatform(false)
+    }
+  }
+
+  const sendAll = async () => {
+    if (!activeRun) return
+    setSendingAll(true)
+    try {
+      const res = await apiClient.post(
+        `/statements/runs/${activeRun.id}/send-all`
+      )
+      toast.success(
+        `Platform: ${res.data.platform.delivered}, Digital: ${res.data.digital.sent} sent`
+      )
+      const statusRes = await apiClient.get(
+        `/statements/runs/${activeRun.id}/status`
+      )
+      setActiveRun(statusRes.data)
+    } catch {
+      toast.error("Failed to send statements")
+    } finally {
+      setSendingAll(false)
+    }
+  }
+
   const digitalCount = eligible.filter(
     (c) => c.delivery_method === "digital"
   ).length
   const mailCount = eligible.filter(
     (c) => c.delivery_method === "mail"
+  ).length
+  const platformCount = eligible.filter(
+    (c) => c.delivery_method === "platform"
   ).length
 
   if (loading) {
@@ -254,8 +300,11 @@ export function StatementsTab() {
             {isReady && (
               <div className="mt-4 space-y-4">
                 <div className="text-sm text-gray-600">
-                  ✓ {completedCount} statements generated ·{" "}
-                  {activeRun.digital_count} digital · {activeRun.mail_count}{" "}
+                  ✓ {completedCount} statements generated
+                  {activeRun.customers.filter(c => c.delivery_method === "platform").length > 0 && (
+                    <> · {activeRun.customers.filter(c => c.delivery_method === "platform").length} platform</>
+                  )}
+                  {" "}· {activeRun.digital_count} digital · {activeRun.mail_count}{" "}
                   mail
                   {activeRun.failed > 0 && (
                     <span className="text-red-600 ml-2">
@@ -263,6 +312,57 @@ export function StatementsTab() {
                     </span>
                   )}
                 </div>
+
+                {/* Combined send-all button */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <Button
+                    onClick={sendAll}
+                    disabled={sendingAll}
+                    className="w-full gap-2"
+                    size="lg"
+                  >
+                    <Send className="h-4 w-4" />
+                    {sendingAll
+                      ? "Sending all..."
+                      : "Send all statements — platform + email + mail"}
+                  </Button>
+                  <p className="text-xs text-blue-600 mt-2 text-center">
+                    Delivers to platforms, emails digital, saves mail for printing
+                  </p>
+                </div>
+
+                {/* Platform section */}
+                {activeRun.customers.filter(c => c.delivery_method === "platform").length > 0 && (
+                  <div className="border rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-900 mb-2">
+                      Platform Statements
+                    </h4>
+                    <p className="text-sm text-gray-500 mb-2">
+                      {activeRun.customers.filter(c => c.delivery_method === "platform").length} statements
+                      ready for cross-tenant delivery
+                    </p>
+                    <div className="space-y-1 mb-3">
+                      {activeRun.customers
+                        .filter(c => c.delivery_method === "platform")
+                        .map(c => (
+                          <div key={c.id} className="flex items-center justify-between text-sm">
+                            <span className="text-gray-700">{c.customer_name}</span>
+                            <span className="text-gray-500">${c.balance_due} due</span>
+                          </div>
+                        ))}
+                    </div>
+                    <Button
+                      onClick={deliverPlatform}
+                      disabled={deliveringPlatform}
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                    >
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      {deliveringPlatform ? "Delivering..." : "Deliver to platforms"}
+                    </Button>
+                  </div>
+                )}
 
                 {/* Digital section */}
                 {activeRun.digital_count > 0 && (
@@ -412,7 +512,9 @@ export function StatementsTab() {
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-gray-400" />
               <span>
-                {eligible.length} customers eligible · {digitalCount} digital ·{" "}
+                {eligible.length} customers eligible
+                {platformCount > 0 && <> · {platformCount} platform</>}
+                {" "}· {digitalCount} digital ·{" "}
                 {mailCount} mail
               </span>
             </div>

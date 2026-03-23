@@ -85,6 +85,12 @@ class CustomerStatement(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_sent_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
     send_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cross-tenant delivery fields
+    cross_tenant_delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cross_tenant_received_statement_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    payment_received_cross_tenant: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    payment_amount_cross_tenant: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    payment_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
