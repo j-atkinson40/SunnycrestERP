@@ -132,6 +132,42 @@ import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import CompanyRegisterPage from "@/pages/company-register";
 import PlatformAdminEntry from "@/pages/platform-admin-entry";
+import { Component, type ErrorInfo, type ReactNode } from "react";
+
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("App error boundary caught:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, fontFamily: "sans-serif" }}>
+          <h1 style={{ color: "#b91c1c" }}>Something went wrong</h1>
+          <pre style={{ whiteSpace: "pre-wrap", color: "#666", marginTop: 12 }}>
+            {this.state.error?.message}
+          </pre>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 16, padding: "8px 16px", cursor: "pointer" }}
+          >
+            Reload page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   // Platform admin gets an entirely separate app
@@ -147,6 +183,7 @@ export default function App() {
   const slug = getCompanySlug();
 
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <AuthProvider>
       <FeatureFlagProvider>
@@ -652,5 +689,6 @@ export default function App() {
       </FeatureFlagProvider>
       </AuthProvider>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }
