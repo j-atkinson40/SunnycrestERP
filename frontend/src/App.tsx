@@ -72,6 +72,7 @@ import SafetyLOTOPage from "@/pages/safety/safety-loto";
 import SafetyProgramsPage from "@/pages/safety/safety-programs";
 import SafetyTrainingPage from "@/pages/safety/safety-training";
 import SafetyOSHA300Page from "@/pages/safety/safety-osha300";
+import SafetyNoticesPage from "@/pages/safety/safety-notices";
 import ProductionBoardPage from "@/pages/production/production-board";
 import PourEventCreatePage from "@/pages/production/pour-event-create";
 import WorkOrderDetailPage from "@/pages/production/work-order-detail";
@@ -409,6 +410,7 @@ export default function App() {
                     <Route path="/safety/incidents/new" element={<SafetyIncidentPage />} />
                     <Route path="/safety/chemicals" element={<SafetyChemicalsPage />} />
                     <Route path="/safety/loto" element={<SafetyLOTOPage />} />
+                    <Route path="/safety/notices" element={<SafetyNoticesPage />} />
                     <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
                   </Route>
 

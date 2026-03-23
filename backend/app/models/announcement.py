@@ -46,6 +46,39 @@ class Announcement(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Content type
+    content_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default="announcement"
+    )  # announcement, note, safety_notice
+
+    # Safety notice fields (only populated when content_type = 'safety_notice')
+    safety_category: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )  # procedure, equipment_alert, osha_reminder, incident_followup, training_assignment, toolbox_talk
+    requires_acknowledgment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    is_compliance_relevant: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    document_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    document_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    linked_equipment_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenant_equipment_items.id"), nullable=True
+    )
+    linked_incident_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("safety_incidents.id"), nullable=True
+    )
+    linked_training_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("safety_training_events.id"), nullable=True
+    )
+    acknowledgment_deadline: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -58,3 +91,6 @@ class Announcement(Base):
     # Relationships
     created_by = relationship("User", foreign_keys=[created_by_user_id])
     reads = relationship("AnnouncementRead", back_populates="announcement", cascade="all, delete-orphan")
+    linked_equipment = relationship("TenantEquipmentItem", foreign_keys=[linked_equipment_id])
+    linked_incident = relationship("SafetyIncident", foreign_keys=[linked_incident_id])
+    linked_training = relationship("SafetyTrainingEvent", foreign_keys=[linked_training_id])

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -30,6 +30,12 @@ class AnnouncementRead(Base):
     dismissed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # Acknowledgment tracking for safety notices
+    acknowledgment_type: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # dismissed, acknowledged
+    acknowledgment_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     announcement = relationship("Announcement", back_populates="reads")
     user = relationship("User")

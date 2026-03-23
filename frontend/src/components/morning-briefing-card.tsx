@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { X, RefreshCw, Check, ChevronRight, Pin } from "lucide-react";
+import { X, RefreshCw, Check, ChevronRight, Pin, AlertTriangle, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,13 +33,33 @@ interface AnnouncementItem {
   title: string;
   body: string | null;
   priority: "info" | "warning" | "critical";
+  content_type: string; // "announcement" | "note" | "safety_notice"
   pin_to_top: boolean;
   created_at: string | null;
   expires_at: string | null;
   created_by_name: string | null;
   is_read: boolean;
   is_dismissed: boolean;
+  // Safety notice fields
+  safety_category: string | null;
+  requires_acknowledgment: boolean;
+  is_compliance_relevant: boolean;
+  document_url: string | null;
+  document_filename: string | null;
+  acknowledgment_deadline: string | null;
+  is_acknowledged: boolean;
 }
+
+// ── Safety category labels ──
+
+const SAFETY_CATEGORY_LABELS: Record<string, string> = {
+  procedure: "New Procedure",
+  equipment_alert: "Equipment Alert",
+  osha_reminder: "OSHA Reminder",
+  incident_followup: "Incident Follow-up",
+  training_assignment: "Training Assignment",
+  toolbox_talk: "Toolbox Talk",
+};
 
 // ── Action link inference ──
 
@@ -103,7 +123,7 @@ function todayDateString(): string {
 
 function isAllClear(data: BriefingResponse): boolean {
   if (data.content?.toLowerCase().startsWith("all clear")) return true;
-  if (data.content?.startsWith("✓")) return true;
+  if (data.content?.startsWith("\u2713")) return true;
   if (data.items.length <= 1 && data.items.every((i) => i.priority === "info")) return true;
   return false;
 }
@@ -122,6 +142,29 @@ function relativeTime(isoString: string): string {
   return `${diffDays}d ago`;
 }
 
+function deadlineStatus(deadline: string | null): "ok" | "approaching" | "past" | null {
+  if (!deadline) return null;
+  const now = Date.now();
+  const dl = new Date(deadline).getTime();
+  if (dl < now) return "past";
+  if (dl - now < 24 * 60 * 60 * 1000) return "approaching";
+  return "ok";
+}
+
+// ── Sort announcements: required unacknowledged safety first, then pinned, then rest ──
+
+function sortAnnouncements(items: AnnouncementItem[]): AnnouncementItem[] {
+  return [...items].sort((a, b) => {
+    const aRequired = a.content_type === "safety_notice" && a.requires_acknowledgment && !a.is_acknowledged;
+    const bRequired = b.content_type === "safety_notice" && b.requires_acknowledgment && !b.is_acknowledged;
+    if (aRequired && !bRequired) return -1;
+    if (!aRequired && bRequired) return 1;
+    if (a.pin_to_top && !b.pin_to_top) return -1;
+    if (!a.pin_to_top && b.pin_to_top) return 1;
+    return 0;
+  });
+}
+
 // ── Component ──
 
 export function MorningBriefingCard() {
@@ -134,6 +177,8 @@ export function MorningBriefingCard() {
   const [userInteracted, setUserInteracted] = useState(false);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
+  const [ackNote, setAckNote] = useState("");
   const autoDismissTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoDismissTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -201,6 +246,17 @@ export function MorningBriefingCard() {
     setAnnouncements((prev) => prev.filter((a) => a.id !== id));
   };
 
+  const handleAcknowledge = async (id: string) => {
+    try {
+      await apiClient.post(`/announcements/${id}/acknowledge`, { note: ackNote || null });
+      setAnnouncements(prev => prev.filter(a => a.id !== id));
+      setAcknowledgingId(null);
+      setAckNote("");
+    } catch {
+      // silent fail
+    }
+  };
+
   // Auto-dismiss for all-clear
   useEffect(() => {
     if (!data || userInteracted || dismissed) return;
@@ -253,6 +309,10 @@ export function MorningBriefingCard() {
   };
 
   const hasAnnouncements = announcements.length > 0;
+  const sortedAnnouncements = sortAnnouncements(announcements);
+  const unacknowledgedSafetyCount = announcements.filter(
+    a => a.content_type === "safety_notice" && a.requires_acknowledgment && !a.is_acknowledged
+  ).length;
 
   // Don't render conditions
   if (dismissed && !hasAnnouncements) return null;
@@ -284,48 +344,211 @@ export function MorningBriefingCard() {
     <div>
       <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
         Announcements
+        {unacknowledgedSafetyCount > 0 && (
+          <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            {unacknowledgedSafetyCount} safety
+          </span>
+        )}
       </h4>
       <div className="space-y-2">
-        {announcements.map((a) => (
-          <div
-            key={a.id}
-            className={cn(
-              "pl-3 pr-2 py-2 rounded-sm border-l-2",
-              a.priority === "critical" && "border-l-red-500 bg-red-50/50",
-              a.priority === "warning" && "border-l-amber-500 bg-amber-50/50",
-              a.priority === "info" && "border-l-blue-400 bg-blue-50/50",
-            )}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  {a.pin_to_top && (
-                    <Pin className="h-3 w-3 text-gray-400 shrink-0" />
-                  )}
-                  <span className="text-sm font-semibold text-gray-900">
-                    {a.title}
-                  </span>
-                </div>
-                {a.body && (
-                  <p className="text-sm text-gray-700 mt-0.5 leading-relaxed">
-                    {a.body}
-                  </p>
+        {sortedAnnouncements.map((a) => {
+          // Case A: Required safety notice (requires_acknowledgment && !is_acknowledged)
+          if (a.content_type === "safety_notice" && a.requires_acknowledgment && !a.is_acknowledged) {
+            const dlStatus = deadlineStatus(a.acknowledgment_deadline);
+            const isAcknowledging = acknowledgingId === a.id;
+
+            return (
+              <div
+                key={a.id}
+                className={cn(
+                  "pl-3 pr-2 py-2 rounded-sm border-l-2",
+                  dlStatus === "past" ? "border-l-red-500 bg-red-50/50" : "border-l-amber-500 bg-amber-50/50",
                 )}
-                <p className="text-xs text-gray-400 mt-1">
-                  {a.created_by_name && <>from {a.created_by_name} &middot; </>}
-                  {a.created_at ? relativeTime(a.created_at) : ""}
-                </p>
-              </div>
-              <button
-                onClick={() => handleDismissAnnouncement(a.id)}
-                className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
-                aria-label="Dismiss announcement"
               >
-                <X className="h-3.5 w-3.5" />
-              </button>
+                {isAcknowledging ? (
+                  // Confirmation overlay
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-gray-900">
+                      Confirm acknowledgment
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      By acknowledging, you confirm you have read and understood this safety notice.
+                    </p>
+                    <textarea
+                      value={ackNote}
+                      onChange={(e) => setAckNote(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="Optional note..."
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => handleAcknowledge(a.id)}
+                      >
+                        Confirm
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={() => { setAcknowledgingId(null); setAckNote(""); }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  // Normal required safety notice content
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                        Safety Notice — Action Required
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900 mt-1">{a.title}</p>
+                    {a.body && (
+                      <p className="text-sm text-gray-700 mt-0.5 leading-relaxed">{a.body}</p>
+                    )}
+                    {a.document_url && (
+                      <a
+                        href={a.document_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1"
+                      >
+                        <FileText className="h-3 w-3" />
+                        {a.document_filename || "View document"}
+                      </a>
+                    )}
+                    <div className="flex items-center gap-3 mt-1">
+                      <p className="text-xs text-gray-400">
+                        {a.created_by_name && <>from {a.created_by_name} &middot; </>}
+                        {a.created_at ? relativeTime(a.created_at) : ""}
+                      </p>
+                      {a.acknowledgment_deadline && (
+                        <span
+                          className={cn(
+                            "text-xs font-medium",
+                            dlStatus === "past" && "text-red-600",
+                            dlStatus === "approaching" && "text-amber-600",
+                            dlStatus === "ok" && "text-gray-500",
+                          )}
+                        >
+                          {dlStatus === "past" ? "Overdue" : `Due ${new Date(a.acknowledgment_deadline).toLocaleDateString()}`}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setAcknowledgingId(a.id)}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors"
+                    >
+                      <Check className="h-3 w-3" />
+                      I have read and understood this
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // Case B: Informational safety notice (content_type === "safety_notice" && !requires_acknowledgment)
+          if (a.content_type === "safety_notice" && !a.requires_acknowledgment) {
+            const categoryLabel = a.safety_category
+              ? SAFETY_CATEGORY_LABELS[a.safety_category] || a.safety_category
+              : "General";
+
+            return (
+              <div
+                key={a.id}
+                className="pl-3 pr-2 py-2 rounded-sm border-l-2 border-l-blue-400 bg-blue-50/50"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="shrink-0" role="img" aria-label="Safety vest">
+                        🦺
+                      </span>
+                      <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                        Safety Notice — {categoryLabel}
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900 mt-1">{a.title}</p>
+                    {a.body && (
+                      <p className="text-sm text-gray-700 mt-0.5 leading-relaxed">{a.body}</p>
+                    )}
+                    {a.document_url && (
+                      <a
+                        href={a.document_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1"
+                      >
+                        <FileText className="h-3 w-3" />
+                        {a.document_filename || "View document"}
+                      </a>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">
+                      {a.created_by_name && <>from {a.created_by_name} &middot; </>}
+                      {a.created_at ? relativeTime(a.created_at) : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDismissAnnouncement(a.id)}
+                    className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
+                    aria-label="Dismiss announcement"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // Case C: Regular announcement/note (existing behavior)
+          return (
+            <div
+              key={a.id}
+              className={cn(
+                "pl-3 pr-2 py-2 rounded-sm border-l-2",
+                a.priority === "critical" && "border-l-red-500 bg-red-50/50",
+                a.priority === "warning" && "border-l-amber-500 bg-amber-50/50",
+                a.priority === "info" && "border-l-blue-400 bg-blue-50/50",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    {a.pin_to_top && (
+                      <Pin className="h-3 w-3 text-gray-400 shrink-0" />
+                    )}
+                    <span className="text-sm font-semibold text-gray-900">
+                      {a.title}
+                    </span>
+                  </div>
+                  {a.body && (
+                    <p className="text-sm text-gray-700 mt-0.5 leading-relaxed">
+                      {a.body}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">
+                    {a.created_by_name && <>from {a.created_by_name} &middot; </>}
+                    {a.created_at ? relativeTime(a.created_at) : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDismissAnnouncement(a.id)}
+                  className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
+                  aria-label="Dismiss announcement"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   ) : null;
