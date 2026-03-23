@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function ConsoleLayout() {
-  const { user, logout, consoleAccess } = useAuth();
+  const { user, logout, consoleAccess, functionalAreas } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -27,6 +27,9 @@ export function ConsoleLayout() {
       : []),
     ...(consoleAccess.has("production_console")
       ? [{ label: "Production", href: "/console/production" }]
+      : []),
+    ...(functionalAreas.has("production_log") || functionalAreas.has("full_admin")
+      ? [{ label: "Operations", href: "/console/operations" }]
       : []),
   ];
 

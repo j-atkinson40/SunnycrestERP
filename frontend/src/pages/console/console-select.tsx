@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function ConsoleSelectPage() {
-  const { consoleAccess } = useAuth();
+  const { consoleAccess, functionalAreas } = useAuth();
 
   const consoles = [
     {
@@ -20,9 +20,21 @@ export default function ConsoleSelectPage() {
       icon: "🏭",
       href: "/console/production",
     },
+    {
+      key: "operations_board",
+      title: "Operations Board",
+      description: "Unified production dashboard — briefings, quick actions, daily log",
+      icon: "📋",
+      href: "/console/operations",
+    },
   ];
 
-  const available = consoles.filter((c) => consoleAccess.has(c.key));
+  const available = consoles.filter((c) => {
+    if (c.key === "operations_board") {
+      return functionalAreas.has("production_log") || functionalAreas.has("full_admin");
+    }
+    return consoleAccess.has(c.key);
+  });
 
   return (
     <div className="flex flex-col items-center gap-6 py-12">
