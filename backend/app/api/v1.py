@@ -18,6 +18,7 @@ from app.api.routes import (
     auth,
     billing,
     bom,
+    briefings,
     bundles,
     carrier_portal,
     cases,
@@ -103,6 +104,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     bom.router, prefix="/bom", tags=["Bill of Materials"]
+)
+v1_router.include_router(
+    briefings.router, prefix="/briefings", tags=["Morning Briefings"]
 )
 v1_router.include_router(
     bundles.router, prefix="/products", tags=["Product Bundles"]

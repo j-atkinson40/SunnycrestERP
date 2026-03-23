@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +42,14 @@ class EmployeeProfile(Base):
 
     # Functional areas — JSON array of area_key strings
     functional_areas: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    # Briefing preferences
+    briefing_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    briefing_primary_area_override: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )
 
     # Admin-only
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

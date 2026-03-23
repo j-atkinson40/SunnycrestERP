@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MorningBriefingCard } from "@/components/morning-briefing-card";
 import { useNavigate } from "react-router-dom";
 import {
   getTemplates,
@@ -716,6 +717,11 @@ export default function OrderStation() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Morning Briefing */}
+      <div className="px-6 pt-4">
+        <MorningBriefingCard />
+      </div>
+
       {/* ---- Sticky Quick Orders Bar ---- */}
       <div className="sticky top-0 z-20 bg-white border-b shadow-sm">
         <div className="px-6 py-3">

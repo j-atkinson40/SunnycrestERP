@@ -1,4 +1,5 @@
 from app.models.accounting_connection import AccountingConnection
+from app.models.assistant_profile import AssistantProfile
 from app.models.api_key import ApiKey
 from app.models.api_key_usage import ApiKeyUsage
 from app.models.audit_log import AuditLog
@@ -26,6 +27,7 @@ from app.models.delivery_type_definition import DeliveryTypeDefinition
 from app.models.department import Department
 from app.models.driver import Driver
 from app.models.document import Document
+from app.models.employee_briefing import EmployeeBriefing
 from app.models.employee_profile import EmployeeProfile
 from app.models.equipment import Equipment
 from app.models.extension_activity_log import ExtensionActivityLog
@@ -141,6 +143,7 @@ from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIn
 
 __all__ = [
     "AccountingConnection",
+    "AssistantProfile",
     "ApiKey",
     "ApiKeyUsage",
     "AuditLog",
@@ -170,6 +173,7 @@ __all__ = [
     "Department",
     "Driver",
     "Document",
+    "EmployeeBriefing",
     "EmployeeProfile",
     "Equipment",
     "ExtensionActivityLog",

@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SpringBurialWidget } from "@/components/dashboard/spring-burial-widget";
+import { MorningBriefingCard } from "@/components/morning-briefing-card";
 import * as onboardingService from "@/services/onboarding-service";
 import apiClient from "@/lib/api-client";
 
@@ -292,6 +293,9 @@ export function ManufacturingDashboard() {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Morning Briefing */}
+      <MorningBriefingCard />
+
       {/* Onboarding Banner — prominent, shows until setup is complete */}
       {onboardingPercent !== null && onboardingPercent < 100 && (
         <Link
