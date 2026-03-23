@@ -55,6 +55,9 @@ class EmployeeProfile(Base):
     can_create_announcements: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    can_post_to_operations_board: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
 
     # Admin-only
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -113,6 +113,12 @@ from app.models.safety_training import (
 from app.models.safety_training_topic import SafetyTrainingTopic
 from app.models.tenant_training_schedule import TenantTrainingSchedule
 from app.models.toolbox_talk import ToolboxTalk
+from app.models.operations_board import (
+    AnnouncementReply,
+    DailyProductionSummary,
+    OperationsBoardSettings,
+    OpsProductionLogEntry,
+)
 from app.models.osha_300_entry import OSHA300Entry
 from app.models.osha_300_year_end import OSHA300YearEndRecord
 from app.models.tenant_training_doc import TenantTrainingDoc
@@ -269,6 +275,10 @@ __all__ = [
     "SafetyTrainingTopic",
     "TenantTrainingSchedule",
     "ToolboxTalk",
+    "AnnouncementReply",
+    "DailyProductionSummary",
+    "OperationsBoardSettings",
+    "OpsProductionLogEntry",
     "OSHA300Entry",
     "OSHA300YearEndRecord",
     "TenantTrainingDoc",

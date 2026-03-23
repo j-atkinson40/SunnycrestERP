@@ -85,6 +85,7 @@ import { ConsoleLayout } from "@/components/layout/console-layout";
 import { DriverLayout } from "@/components/layout/driver-layout";
 import ConsoleSelectPage from "@/pages/console/console-select";
 import DeliveryConsolePage from "@/pages/console/delivery-console";
+import OperationsBoardPage from "@/pages/console/operations-board";
 import ProductionConsolePage from "@/pages/console/production-console";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
@@ -649,6 +650,7 @@ export default function App() {
                 <Route element={<ConsoleLayout />}>
                   <Route path="/console" element={<ConsoleSelectPage />} />
                   <Route path="/console/delivery" element={<DeliveryConsolePage />} />
+                  <Route path="/console/operations" element={<OperationsBoardPage />} />
                   <Route path="/console/production" element={<ProductionConsolePage />} />
                 </Route>
               </Route>
