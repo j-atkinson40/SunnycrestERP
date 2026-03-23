@@ -144,16 +144,28 @@ function ChecklistItemCard({
   const isCompleted = item.status === "completed";
   const isSkipped = item.status === "skipped";
 
-  // Check dependencies
+  // Check dependencies — depends_on may arrive as a JSON string from the API
+  const parsedDependsOn = useMemo(() => {
+    if (!item.depends_on) return [];
+    if (Array.isArray(item.depends_on)) return item.depends_on;
+    // Backend stores as JSON text — parse it
+    try {
+      const parsed = JSON.parse(item.depends_on as unknown as string);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [item.depends_on]);
+
   const unmetDependencies = useMemo(() => {
-    if (!item.depends_on || item.depends_on.length === 0) return [];
-    return item.depends_on
-      .map((key) => allItems.find((i) => i.item_key === key))
+    if (parsedDependsOn.length === 0) return [];
+    return parsedDependsOn
+      .map((key: string) => allItems.find((i) => i.item_key === key))
       .filter(
         (dep): dep is ChecklistItem =>
           dep !== undefined && dep.status !== "completed",
       );
-  }, [item.depends_on, allItems]);
+  }, [parsedDependsOn, allItems]);
 
   const isBlocked = unmetDependencies.length > 0;
 
