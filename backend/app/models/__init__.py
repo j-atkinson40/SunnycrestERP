@@ -113,6 +113,7 @@ from app.models.safety_training import (
 from app.models.safety_training_topic import SafetyTrainingTopic
 from app.models.tenant_training_schedule import TenantTrainingSchedule
 from app.models.toolbox_talk import ToolboxTalk
+from app.models.toolbox_talk_suggestion import ToolboxTalkSuggestion
 from app.models.operations_board import (
     AnnouncementReply,
     DailyProductionSummary,
@@ -275,6 +276,7 @@ __all__ = [
     "SafetyTrainingTopic",
     "TenantTrainingSchedule",
     "ToolboxTalk",
+    "ToolboxTalkSuggestion",
     "AnnouncementReply",
     "DailyProductionSummary",
     "OperationsBoardSettings",

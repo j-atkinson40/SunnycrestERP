@@ -41,6 +41,14 @@ class TenantTrainingSchedule(Base):
         Numeric(5, 2), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Escalation tracking
+    second_reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    owner_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    owner_notified_via: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

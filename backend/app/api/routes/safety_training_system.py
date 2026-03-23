@@ -779,3 +779,87 @@ def generate_preview_pdf(
         fields_filled=[label for key, label in loto_fields if details.get(key)],
         fields_placeholder=[label for key, label in loto_fields if not details.get(key)],
     )
+
+
+# ---------------------------------------------------------------------------
+# Toolbox Talk Suggestions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/toolbox-suggestions/active")
+def get_active_suggestion_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get the current active toolbox talk suggestion."""
+    from app.services.toolbox_suggestion_service import get_active_suggestion
+
+    suggestion = get_active_suggestion(db, current_user.company_id)
+    if not suggestion:
+        return {"suggestion": None}
+    return {
+        "suggestion": {
+            "id": suggestion.id,
+            "suggestion_date": str(suggestion.suggestion_date),
+            "topic_title": suggestion.topic_title,
+            "topic_category": suggestion.topic_category,
+            "trigger_type": suggestion.trigger_type,
+            "trigger_description": suggestion.trigger_description,
+            "talking_points": suggestion.talking_points,
+            "talking_points_generated_at": (
+                suggestion.talking_points_generated_at.isoformat()
+                if suggestion.talking_points_generated_at
+                else None
+            ),
+            "status": suggestion.status,
+        }
+    }
+
+
+@router.post("/toolbox-suggestions/generate")
+def generate_suggestion_now(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Manually trigger suggestion evaluation (admin/safety manager)."""
+    from app.services.toolbox_suggestion_service import (
+        create_suggestion,
+        evaluate_signals,
+    )
+
+    tenant_state = None
+    try:
+        from app.models.company import Company
+        company = db.query(Company).filter(Company.id == current_user.company_id).first()
+        tenant_state = getattr(company, "state", None) if company else None
+    except (ImportError, Exception):
+        pass
+
+    signal = evaluate_signals(db, current_user.company_id, tenant_state)
+    if not signal:
+        return {"suggestion": None, "message": "No signals fired — no suggestion generated"}
+
+    suggestion = create_suggestion(db, current_user.company_id, signal)
+    return {
+        "suggestion": {
+            "id": suggestion.id,
+            "topic_title": suggestion.topic_title,
+            "trigger_type": suggestion.trigger_type,
+            "trigger_description": suggestion.trigger_description,
+        }
+    }
+
+
+@router.post("/toolbox-suggestions/{suggestion_id}/dismiss")
+def dismiss_suggestion_endpoint(
+    suggestion_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Dismiss an active suggestion."""
+    from app.services.toolbox_suggestion_service import dismiss_suggestion
+
+    success = dismiss_suggestion(db, suggestion_id, current_user.company_id, current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Active suggestion not found")
+    return {"status": "ok"}

@@ -36,6 +36,9 @@ class ToolboxTalk(Base):
     attendees_external = mapped_column(JSONB, nullable=True)  # array of free-text names
     attendee_count: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    generated_from_suggestion_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("toolbox_talk_suggestions.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -47,3 +50,4 @@ class ToolboxTalk(Base):
 
     conductor = relationship("User", foreign_keys=[conducted_by])
     linked_topic = relationship("SafetyTrainingTopic", foreign_keys=[linked_training_topic_id])
+    suggestion = relationship("ToolboxTalkSuggestion", foreign_keys=[generated_from_suggestion_id])
