@@ -7,7 +7,7 @@
  * new features — new contributors register themselves and the board picks them up.
  */
 
-import { useState, useEffect, useCallback, type ComponentType } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
@@ -35,15 +35,11 @@ import apiClient from "@/lib/api-client"
 import OperationsBoardRegistry from "@/services/operations-board-registry"
 import "@/services/board-contributors"
 
-import type {
-  ButtonDefinition,
-  OperationsBoardSettings,
-  OverviewPanelDefinition,
-} from "@/types/operations-board"
+import type { OperationsBoardSettings } from "@/types/operations-board"
 
 // ── Icon map — resolves contributor icon strings to Lucide components ──
 
-const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   "alert-triangle": AlertTriangle,
   search: Search,
   "check-circle": CheckCircle,
@@ -104,7 +100,7 @@ function WorkOrdersOverviewPanel() {
   )
 }
 
-const PANEL_COMPONENTS: Record<string, ComponentType> = {
+const PANEL_COMPONENTS: Record<string, React.ComponentType> = {
   SafetyStatusPanel,
   DriverSchedulePanel,
   WorkOrdersOverviewPanel,
@@ -128,7 +124,7 @@ interface ProductionEntry {
 // ── Component ──
 
 export default function OperationsBoardPage() {
-  const { user, hasModule } = useAuth()
+  const { hasModule } = useAuth()
   const navigate = useNavigate()
   const [settings, setSettings] = useState<OperationsBoardSettings | null>(null)
   const [entries, setEntries] = useState<ProductionEntry[]>([])

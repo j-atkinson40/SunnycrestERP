@@ -6,7 +6,7 @@
  * render time and builds itself dynamically.
  */
 
-import type { ComponentType } from "react"
+
 
 // ── Button Definition ──
 
