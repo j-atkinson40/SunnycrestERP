@@ -203,8 +203,8 @@ function getManufacturingNav(
   const financeItems = filterByPermission(
     [
       {
-        label: "Invoices",
-        href: "/ar/invoices",
+        label: "Billing",
+        href: "/billing",
         icon: "Receipt",
         permission: "invoices.view",
         functionalArea: "invoicing_ar",
@@ -358,8 +358,8 @@ function getFuneralHomeNav(
   const financeItems = filterByPermission(
     [
       {
-        label: "Invoices",
-        href: "/ar/invoices",
+        label: "Billing",
+        href: "/billing",
         icon: "Receipt",
         permission: "fh_invoices.view",
       },
@@ -429,7 +429,7 @@ function getFuneralHomeNav(
       { label: "Cases", href: "/cases", icon: "FolderOpen" },
       { label: "New Case", href: "/cases/new", icon: "Plus" },
       { label: "FTC", href: "/funeral-home/compliance", icon: "Scale" },
-      { label: "Invoices", href: "/invoices", icon: "Receipt" },
+      { label: "Billing", href: "/billing", icon: "Receipt" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder: "First call, order vault, record payment...",
@@ -464,7 +464,7 @@ function getCemeteryNav(
   });
 
   const financeItems = filterByPermission(
-    [{ label: "Invoices", href: "/invoices", icon: "Receipt" }],
+    [{ label: "Billing", href: "/billing", icon: "Receipt" }],
     modules,
     perms,
   );
@@ -496,7 +496,7 @@ function getCemeteryNav(
       { label: "Interments", href: "/interments", icon: "MapPin" },
       { label: "Plots", href: "/plots", icon: "Map" },
       { label: "Deeds", href: "/deeds", icon: "FileText" },
-      { label: "Invoices", href: "/invoices", icon: "Receipt" },
+      { label: "Billing", href: "/billing", icon: "Receipt" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder:
@@ -550,7 +550,7 @@ function getCrematoryNav(
   }
 
   const financeItems = filterByPermission(
-    [{ label: "Invoices", href: "/invoices", icon: "Receipt" }],
+    [{ label: "Billing", href: "/billing", icon: "Receipt" }],
     modules,
     perms,
   );
@@ -582,7 +582,7 @@ function getCrematoryNav(
       { label: "Cases", href: "/crematory/cases", icon: "FolderOpen" },
       { label: "Schedule", href: "/crematory/schedule", icon: "Calendar" },
       { label: "Custody", href: "/crematory/custody", icon: "Link" },
-      { label: "Invoices", href: "/invoices", icon: "Receipt" },
+      { label: "Billing", href: "/billing", icon: "Receipt" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder: "New case, update status, schedule cremation...",

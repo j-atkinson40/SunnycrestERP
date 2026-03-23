@@ -101,6 +101,14 @@ class Customer(Base):
     is_seasonal: Mapped[bool] = mapped_column(Boolean, default=False)
     opening_date_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # --- Billing / Statements ---
+    billing_contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    billing_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    statement_delivery_method: Mapped[str] = mapped_column(String(20), server_default="digital")
+    statement_template_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    receives_statements: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    statement_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 

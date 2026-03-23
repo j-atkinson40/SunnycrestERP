@@ -46,6 +46,7 @@ import QuoteDetailPage from "@/pages/quote-detail";
 import SalesOrdersPage from "@/pages/sales-orders";
 import SalesOrderDetailPage from "@/pages/sales-order-detail";
 import InvoicesPage from "@/pages/invoices";
+import BillingPage from "@/pages/billing/billing-page";
 import InvoiceDetailPage from "@/pages/invoice-detail";
 import CustomerPaymentsPage from "@/pages/customer-payments";
 import ARAgingPage2 from "@/pages/ar-aging";
@@ -309,6 +310,10 @@ export default function App() {
                     <Route
                       path="/ar/orders/:id"
                       element={<SalesOrderDetailPage />}
+                    />
+                    <Route
+                      path="/billing"
+                      element={<BillingPage />}
                     />
                     <Route
                       path="/ar/invoices"

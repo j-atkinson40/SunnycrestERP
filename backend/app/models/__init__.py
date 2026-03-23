@@ -111,6 +111,7 @@ from app.models.safety_training import (
     SafetyTrainingRequirement,
 )
 from app.models.safety_training_topic import SafetyTrainingTopic
+from app.models.statement import CustomerStatement, StatementRun, StatementTemplate
 from app.models.tenant_training_schedule import TenantTrainingSchedule
 from app.models.toolbox_talk import ToolboxTalk
 from app.models.toolbox_talk_suggestion import ToolboxTalkSuggestion
@@ -274,6 +275,9 @@ __all__ = [
     "SafetyTrainingEvent",
     "SafetyTrainingRequirement",
     "SafetyTrainingTopic",
+    "StatementTemplate",
+    "StatementRun",
+    "CustomerStatement",
     "TenantTrainingSchedule",
     "ToolboxTalk",
     "ToolboxTalkSuggestion",
