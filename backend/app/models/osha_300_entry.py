@@ -42,6 +42,14 @@ class OSHA300Entry(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    is_locked: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    correction_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    corrected_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    corrected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

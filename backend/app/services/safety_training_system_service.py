@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.osha_300_entry import OSHA300Entry
+from app.models.osha_300_year_end import OSHA300YearEndRecord
 from app.models.safety_incident import SafetyIncident
 from app.models.safety_training_topic import SafetyTrainingTopic
 from app.models.tenant_training_schedule import TenantTrainingSchedule
@@ -495,3 +496,124 @@ def create_osha_300_manual(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+# ---------------------------------------------------------------------------
+# OSHA 300 Year-End Workflow
+# ---------------------------------------------------------------------------
+
+
+def get_or_create_year_end_record(
+    db: Session, tenant_id: str, year: int
+) -> OSHA300YearEndRecord:
+    record = (
+        db.query(OSHA300YearEndRecord)
+        .filter(OSHA300YearEndRecord.tenant_id == tenant_id, OSHA300YearEndRecord.year == year)
+        .first()
+    )
+    if not record:
+        record = OSHA300YearEndRecord(tenant_id=tenant_id, year=year)
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+    return record
+
+
+def get_year_end_status(db: Session, tenant_id: str, year: int) -> dict:
+    record = get_or_create_year_end_record(db, tenant_id, year)
+    entries = db.query(OSHA300Entry).filter(
+        OSHA300Entry.tenant_id == tenant_id, OSHA300Entry.year == year
+    ).all()
+    unreviewed = sum(1 for e in entries if e.is_auto_populated and not e.reviewed_at)
+    return {
+        "year": year,
+        "review_status": record.review_status,
+        "review_completed_at": record.review_completed_at.isoformat() if record.review_completed_at else None,
+        "entry_count": len(entries),
+        "unreviewed_count": unreviewed,
+        "form_300a_generated_at": record.form_300a_generated_at.isoformat() if record.form_300a_generated_at else None,
+        "form_300a_certified_at": record.form_300a_certified_at.isoformat() if record.form_300a_certified_at else None,
+        "form_300a_certified_name": record.form_300a_certified_name,
+        "posting_confirmed_at": record.posting_confirmed_at.isoformat() if record.posting_confirmed_at else None,
+        "posting_location": record.posting_location,
+        "retention_acknowledged_at": record.retention_acknowledged_at.isoformat() if record.retention_acknowledged_at else None,
+    }
+
+
+def complete_year_end_review(
+    db: Session, tenant_id: str, year: int, user_id: str, notes: str | None = None
+) -> OSHA300YearEndRecord:
+    record = get_or_create_year_end_record(db, tenant_id, year)
+    entry_count = db.query(OSHA300Entry).filter(
+        OSHA300Entry.tenant_id == tenant_id, OSHA300Entry.year == year
+    ).count()
+    record.review_status = "complete"
+    record.review_completed_at = datetime.now(timezone.utc)
+    record.review_completed_by = user_id
+    record.review_notes = notes
+    record.entry_count_at_review = entry_count
+    db.commit()
+    return record
+
+
+def certify_300a(
+    db: Session, tenant_id: str, year: int, user_id: str,
+    certified_name: str, certified_title: str,
+) -> OSHA300YearEndRecord:
+    record = get_or_create_year_end_record(db, tenant_id, year)
+    now = datetime.now(timezone.utc)
+    record.form_300a_generated_at = record.form_300a_generated_at or now
+    record.form_300a_certified_by = user_id
+    record.form_300a_certified_at = now
+    record.form_300a_certified_name = certified_name
+    record.form_300a_certified_title = certified_title
+    db.commit()
+    return record
+
+
+def confirm_posting(
+    db: Session, tenant_id: str, year: int, location: str, save_location: bool = False
+) -> OSHA300YearEndRecord:
+    from app.models.company import Company
+    record = get_or_create_year_end_record(db, tenant_id, year)
+    record.posting_confirmed_at = datetime.now(timezone.utc)
+    record.posting_location = location
+    if save_location:
+        company = db.query(Company).filter(Company.id == tenant_id).first()
+        if company:
+            company.set_setting("osha_300_posting_location", location)
+    db.commit()
+    return record
+
+
+def acknowledge_retention(db: Session, tenant_id: str, year: int) -> OSHA300YearEndRecord:
+    record = get_or_create_year_end_record(db, tenant_id, year)
+    record.retention_acknowledged_at = datetime.now(timezone.utc)
+    db.commit()
+    return record
+
+
+def lock_prior_year_entries(db: Session, tenant_id: str, year: int) -> int:
+    count = db.query(OSHA300Entry).filter(
+        OSHA300Entry.tenant_id == tenant_id, OSHA300Entry.year == year,
+        OSHA300Entry.is_locked == False,
+    ).update({"is_locked": True})
+    get_or_create_year_end_record(db, tenant_id, year)
+    db.commit()
+    return count
+
+
+def correct_locked_entry(
+    db: Session, entry_id: str, tenant_id: str, user_id: str, correction_notes: str
+) -> bool:
+    entry = db.query(OSHA300Entry).filter(
+        OSHA300Entry.id == entry_id, OSHA300Entry.tenant_id == tenant_id,
+        OSHA300Entry.is_locked == True,
+    ).first()
+    if not entry:
+        return False
+    entry.correction_notes = correction_notes
+    entry.corrected_by = user_id
+    entry.corrected_at = datetime.now(timezone.utc)
+    db.commit()
+    return True

@@ -14,15 +14,22 @@ from app.api.deps import get_current_user, require_permission
 from app.database import get_db
 from app.models.user import User
 from app.services.safety_training_system_service import (
+    acknowledge_retention,
+    certify_300a,
+    complete_year_end_review,
+    confirm_posting,
+    correct_locked_entry,
     create_osha_300_from_incident,
     create_osha_300_manual,
     create_toolbox_talk,
     get_osha_300a_summary,
     get_schedule_detail,
     get_training_schedule,
+    get_year_end_status,
     initialize_annual_schedule,
     list_osha_300,
     list_toolbox_talks,
+    lock_prior_year_entries,
     post_training,
     review_osha_300_entry,
 )
@@ -246,6 +253,111 @@ def create_from_incident(
             detail="Incident not found or not OSHA recordable",
         )
     return {"id": entry.id, "entry_number": entry.entry_number}
+
+
+# ---------------------------------------------------------------------------
+# OSHA 300 Year-End Workflow
+# ---------------------------------------------------------------------------
+
+
+class YearEndReviewComplete(BaseModel):
+    notes: str | None = None
+
+
+class Certify300ARequest(BaseModel):
+    certified_name: str
+    certified_title: str
+
+
+class ConfirmPostingRequest(BaseModel):
+    location: str
+    save_location: bool = False
+
+
+class CorrectionRequest(BaseModel):
+    correction_notes: str
+
+
+@router.get("/osha-300/year-end/{year}")
+def get_year_end(
+    year: int,
+    current_user: User = Depends(require_permission("safety.view")),
+    db: Session = Depends(get_db),
+):
+    """Get year-end workflow status."""
+    return get_year_end_status(db, current_user.company_id, year)
+
+
+@router.post("/osha-300/year-end/{year}/complete-review")
+def complete_review(
+    year: int,
+    body: YearEndReviewComplete,
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Complete the year-end entry review."""
+    complete_year_end_review(db, current_user.company_id, year, current_user.id, body.notes)
+    return {"status": "ok"}
+
+
+@router.post("/osha-300/year-end/{year}/certify")
+def certify(
+    year: int,
+    body: Certify300ARequest,
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Certify the 300A form."""
+    certify_300a(db, current_user.company_id, year, current_user.id, body.certified_name, body.certified_title)
+    return {"status": "ok"}
+
+
+@router.post("/osha-300/year-end/{year}/confirm-posting")
+def confirm_post(
+    year: int,
+    body: ConfirmPostingRequest,
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Confirm 300A has been posted."""
+    confirm_posting(db, current_user.company_id, year, body.location, body.save_location)
+    return {"status": "ok"}
+
+
+@router.post("/osha-300/year-end/{year}/acknowledge-retention")
+def ack_retention(
+    year: int,
+    current_user: User = Depends(require_permission("safety.view")),
+    db: Session = Depends(get_db),
+):
+    """Acknowledge the 5-year retention requirement."""
+    acknowledge_retention(db, current_user.company_id, year)
+    return {"status": "ok"}
+
+
+@router.post("/osha-300/year-end/{year}/lock")
+def lock_year(
+    year: int,
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Lock all entries for a prior year."""
+    count = lock_prior_year_entries(db, current_user.company_id, year)
+    return {"locked": count}
+
+
+@router.post("/osha-300/entries/{entry_id}/correct")
+def correct_entry(
+    entry_id: str,
+    body: CorrectionRequest,
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Apply a correction to a locked entry."""
+    success = correct_locked_entry(db, entry_id, current_user.company_id, current_user.id, body.correction_notes)
+    if not success:
+        raise HTTPException(status_code=404, detail="Entry not found or not locked")
+    return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------
@@ -593,3 +705,77 @@ def complete_safety_training_setup(
     on_safety_training_configured(db, company.id)
 
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# PDF Preview (Single Document)
+# ---------------------------------------------------------------------------
+
+
+class PreviewResult(BaseModel):
+    pdf_url: str
+    topic_title: str
+    fields_filled: list[str]
+    fields_placeholder: list[str]
+
+
+@router.post("/training/preview", response_model=PreviewResult)
+def generate_preview_pdf(
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Generate a single preview PDF (LOTO) to verify facility details."""
+    import json
+    import os
+    import subprocess
+
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    details = company.get_setting("safety_facility_details", {})
+    details["company_name"] = details.get("company_name") or company.name
+
+    output_base = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "static", "tenant-pdfs", company.id,
+    )
+    os.makedirs(output_base, exist_ok=True)
+
+    output_filename = "preview_lockout_tagout.pdf"
+    output_path = os.path.join(output_base, output_filename)
+
+    script_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "..", "scripts", "generate_safety_training_pdfs.py",
+    )
+
+    params = json.dumps({
+        "topic_key": "lockout_tagout",
+        "output_path": output_path,
+        "details": details,
+    })
+
+    try:
+        subprocess.run(["python", script_path, params], capture_output=True, text=True, timeout=30)
+    except Exception as exc:
+        logger.warning("Preview generation failed: %s", exc)
+        raise HTTPException(status_code=500, detail="PDF generation failed")
+
+    pdf_url = f"/static/tenant-pdfs/{company.id}/{output_filename}"
+
+    loto_fields = [
+        ("company_name", "Company name"),
+        ("loto_device_location", "Lockout device location"),
+        ("assembly_point", "Assembly point"),
+        ("emergency_contact_name", "Emergency contact"),
+    ]
+
+    return PreviewResult(
+        pdf_url=pdf_url,
+        topic_title="Lockout/Tagout (LOTO)",
+        fields_filled=[label for key, label in loto_fields if details.get(key)],
+        fields_placeholder=[label for key, label in loto_fields if not details.get(key)],
+    )

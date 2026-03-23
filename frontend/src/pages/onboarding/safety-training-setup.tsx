@@ -125,13 +125,19 @@ export default function SafetyTrainingSetupPage() {
   const navigate = useNavigate();
   const isOnboarding = location.pathname.startsWith("/onboarding");
 
-  const [stage, setStage] = useState<1 | "2a" | "2b" | 3>(1);
+  const [stage, setStage] = useState<1 | "2a" | "2b" | "2.5" | 3>(1);
   const [details, setDetails] = useState<FacilityDetails>({ ...EMPTY_DETAILS });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<string[]>([]);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Preview state (Stage 2.5)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [fieldsFilled, setFieldsFilled] = useState<string[]>([]);
+  const [fieldsPlaceholder, setFieldsPlaceholder] = useState<string[]>([]);
 
   // Load existing facility details
   useEffect(() => {
@@ -457,17 +463,14 @@ export default function SafetyTrainingSetupPage() {
             <Button variant="ghost" onClick={() => setStage(1)} className="gap-1">
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
-            <Button onClick={handleGenerate} disabled={generating} className="gap-1">
-              {generating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Generating...
-                </>
-              ) : (
-                <>
-                  Generate my training documents{" "}
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
+            <Button
+              onClick={async () => {
+                await saveDetails();
+                setStage("2.5");
+              }}
+              className="gap-1"
+            >
+              Preview a document first <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -506,6 +509,136 @@ export default function SafetyTrainingSetupPage() {
               Continue <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* ═══ STAGE 2.5 — PREVIEW SINGLE PDF ═══ */}
+      {stage === "2.5" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">
+              Preview Your Training Document
+            </h2>
+            <p className="text-sm text-gray-500">
+              We'll generate a preview of your January training (Lockout/Tagout)
+              so you can verify your facility details are filling in correctly.
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              LOTO uses the most facility-specific details — if it looks right,
+              the others will too.
+            </p>
+          </div>
+
+          {!previewUrl && !previewLoading && (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <FileText className="mx-auto h-10 w-10 text-gray-300 mb-3" />
+                <Button
+                  onClick={async () => {
+                    setPreviewLoading(true);
+                    try {
+                      const res = await apiClient.post("/safety/training/preview");
+                      setPreviewUrl(res.data.pdf_url);
+                      setFieldsFilled(res.data.fields_filled || []);
+                      setFieldsPlaceholder(res.data.fields_placeholder || []);
+                    } catch {
+                      toast.error("Failed to generate preview");
+                    } finally {
+                      setPreviewLoading(false);
+                    }
+                  }}
+                  className="gap-1"
+                >
+                  Generate preview <ArrowRight className="h-4 w-4" />
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {previewLoading && (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-gray-400 mb-2" />
+                <p className="text-sm text-gray-500">Generating preview...</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {previewUrl && (
+            <>
+              <Card>
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Preview — January: Lockout/Tagout
+                    </h3>
+                    <a
+                      href={previewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      Open full PDF in new tab
+                    </a>
+                  </div>
+
+                  {/* Field completion status */}
+                  <div className="space-y-1.5 mt-4">
+                    <p className="text-xs font-medium text-gray-500 mb-2">
+                      Fields in this document:
+                    </p>
+                    {fieldsFilled.map((f) => (
+                      <div key={f} className="flex items-center gap-2 text-xs">
+                        <Check className="h-3.5 w-3.5 text-green-600" />
+                        <span className="text-gray-700">{f}</span>
+                      </div>
+                    ))}
+                    {fieldsPlaceholder.map((f) => (
+                      <div key={f} className="flex items-center gap-2 text-xs">
+                        <span className="h-3.5 w-3.5 text-amber-500 font-bold text-center">⚠</span>
+                        <span className="text-amber-700">
+                          {f} — still blank (placeholder shown in PDF)
+                        </span>
+                        <button
+                          onClick={() => {
+                            setPreviewUrl(null);
+                            setStage("2a");
+                          }}
+                          className="text-blue-600 hover:underline ml-1"
+                        >
+                          Edit →
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex items-center justify-between pt-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setPreviewUrl(null);
+                    setStage("2a");
+                  }}
+                  className="gap-1"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Edit facility details
+                </Button>
+                <Button onClick={handleGenerate} disabled={generating} className="gap-1">
+                  {generating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Generating all 12...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" /> Looks good — generate all 12
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

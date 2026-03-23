@@ -77,6 +77,7 @@ import SafetyTrainingCalendarPage from "@/pages/safety/safety-training-calendar"
 import SafetyTrainingPostPage from "@/pages/safety/safety-training-post";
 import SafetyToolboxTalksPage from "@/pages/safety/safety-toolbox-talks";
 import SafetyTrainingDocumentsPage from "@/pages/safety/safety-training-documents";
+import SafetyOSHA300YearEndPage from "@/pages/safety/safety-osha300-yearend";
 import ProductionBoardPage from "@/pages/production/production-board";
 import PourEventCreatePage from "@/pages/production/pour-event-create";
 import WorkOrderDetailPage from "@/pages/production/work-order-detail";
@@ -458,6 +459,7 @@ export default function App() {
                     <Route path="/safety/toolbox-talks" element={<SafetyToolboxTalksPage />} />
                     <Route path="/safety/training/documents" element={<SafetyTrainingDocumentsPage />} />
                     <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
+                    <Route path="/safety/osha-300/year-end/:year" element={<SafetyOSHA300YearEndPage />} />
                   </Route>
 
                   {/* Production Log — requires daily_production_log module */}
