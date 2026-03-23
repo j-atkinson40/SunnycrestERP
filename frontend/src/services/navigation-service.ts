@@ -210,6 +210,13 @@ function getManufacturingNav(
         functionalArea: "invoicing_ar",
         ...(hasSyncError ? { badge: "!" } : {}),
       },
+      {
+        label: "Vendors & Bills",
+        href: "/ap/bills",
+        icon: "Receipt",
+        permission: "ap.view",
+        functionalArea: "invoicing_ar",
+      },
     ],
     modules,
     perms,
@@ -363,6 +370,12 @@ function getFuneralHomeNav(
         icon: "Receipt",
         permission: "fh_invoices.view",
       },
+      {
+        label: "Vendors & Bills",
+        href: "/ap/bills",
+        icon: "Receipt",
+        permission: "ap.view",
+      },
     ],
     modules,
     perms,
@@ -464,7 +477,15 @@ function getCemeteryNav(
   });
 
   const financeItems = filterByPermission(
-    [{ label: "Billing", href: "/billing", icon: "Receipt" }],
+    [
+      { label: "Billing", href: "/billing", icon: "Receipt" },
+      {
+        label: "Vendors & Bills",
+        href: "/ap/bills",
+        icon: "Receipt",
+        permission: "ap.view",
+      },
+    ],
     modules,
     perms,
   );
@@ -550,7 +571,15 @@ function getCrematoryNav(
   }
 
   const financeItems = filterByPermission(
-    [{ label: "Billing", href: "/billing", icon: "Receipt" }],
+    [
+      { label: "Billing", href: "/billing", icon: "Receipt" },
+      {
+        label: "Vendors & Bills",
+        href: "/ap/bills",
+        icon: "Receipt",
+        permission: "ap.view",
+      },
+    ],
     modules,
     perms,
   );
