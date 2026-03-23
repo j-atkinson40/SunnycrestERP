@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Home } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { Button } from "@/components/ui/button";
@@ -56,9 +57,19 @@ export function ConsoleLayout() {
 
       {/* Top bar */}
       <header className="flex h-12 items-center justify-between border-b px-4">
-        <span className="text-sm font-semibold">
-          {user?.first_name} {user?.last_name}
-        </span>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/dashboard"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Home className="h-4 w-4" />
+            <span className="hidden sm:inline">Home</span>
+          </Link>
+          <span className="text-muted-foreground/40">|</span>
+          <span className="text-sm font-semibold">
+            {user?.first_name} {user?.last_name}
+          </span>
+        </div>
         <Button
           variant="ghost"
           size="sm"
