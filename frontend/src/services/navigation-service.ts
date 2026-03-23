@@ -125,6 +125,12 @@ function getManufacturingNav(
       requiresModule: "daily_production_log",
       functionalArea: "production_log",
     },
+    {
+      label: "Operations Board",
+      href: "/console/operations",
+      icon: "LayoutDashboard",
+      functionalArea: "production_log",
+    },
   ];
 
   // Extension-added items
