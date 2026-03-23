@@ -90,3 +90,13 @@ def on_manufacturer_linked(db: Session, tenant_id: str) -> None:
         check_completion(db, tenant_id, "link_vault_supplier")
     except Exception:
         logger.exception("Onboarding hook failed: on_manufacturer_linked")
+
+
+def on_team_intelligence_configured(db: Session, tenant_id: str) -> None:
+    """Call after team intelligence (briefings + announcements) is configured."""
+    try:
+        from app.services.onboarding_service import check_completion
+
+        check_completion(db, tenant_id, "setup_team_intelligence")
+    except Exception:
+        logger.exception("Onboarding hook failed: on_team_intelligence_configured")

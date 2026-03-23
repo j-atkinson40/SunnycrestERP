@@ -110,6 +110,7 @@ import CatalogBuilder from "@/pages/onboarding/catalog-builder";
 import WebsiteSuggestionsReview from "@/pages/onboarding/website-suggestions-review";
 import ChargeSetupPage from "@/pages/onboarding/charge-setup";
 import TeamSetupPage from "@/pages/onboarding/team-setup";
+import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import SyncHealthDashboardPage from "@/pages/admin/sync-health-dashboard";
@@ -478,11 +479,13 @@ export default function App() {
                   <Route path="/onboarding/website-review" element={<WebsiteSuggestionsReview />} />
                   <Route path="/onboarding/catalog-builder" element={<CatalogBuilder />} />
                   <Route path="/onboarding/team" element={<TeamSetupPage />} />
+                  <Route path="/onboarding/team-intelligence" element={<TeamIntelligencePage />} />
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
                   <Route path="/onboarding/scheduling" element={<SchedulingSetupPage />} />
                   <Route path="/onboarding/network-preferences" element={<NetworkPreferencesPage />} />
+                  <Route path="/settings/team-intelligence" element={<TeamIntelligencePage />} />
                   <Route path="/settings/charges" element={<ChargeSetupPage />} />
                   <Route path="/settings/network/preferences" element={<NetworkPreferencesSettingsPage />} />
                   <Route path="/settings/scheduling" element={<SchedulingSettingsPage />} />

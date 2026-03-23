@@ -225,6 +225,11 @@ function getManufacturingNav(
     items: filterByPermission(
       [
         {
+          label: "Team Intelligence",
+          href: "/settings/team-intelligence",
+          icon: "BrainCircuit",
+        },
+        {
           label: "Company Profile",
           href: "/admin/settings",
           icon: "Building2",
