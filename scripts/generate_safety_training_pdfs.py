@@ -254,7 +254,7 @@ TRAININGS = [
             "If you find equipment locked out &mdash; do not attempt to remove the lock or bypass it",
             "Affected employees (those who work near but not on equipment) must stay clear of the area",
         ],
-        "in_our_facility": "Your facility has energy isolation points on all major equipment &mdash; batch plant mixers, conveyors, compressors, and forming equipment. Lockout devices and locks are located at [LOCATION &mdash; FILL IN]. Any equipment with a lockout tag applied must be treated as energized until the lock is removed by the person who applied it.",
+        "in_our_facility": "Your facility has energy isolation points on all major equipment &mdash; batch plant mixers, conveyors, compressors, and forming equipment. Lockout devices and locks are located at [LOTO DEVICE LOCATION &mdash; FILL IN]. Any equipment with a lockout tag applied must be treated as energized until the lock is removed by the person who applied it.",
         "discussion_questions": [
             "Where are the energy isolation points on the batch plant mixer?",
             "What do you do if your lock is damaged or you lose the key?",
@@ -291,7 +291,7 @@ TRAININGS = [
         "key_points": [
             "Every chemical in your workplace has a Safety Data Sheet (SDS) &mdash; it tells you the hazards, safe handling, and emergency response",
             "GHS labels on containers have a signal word (Danger or Warning), pictograms, and hazard statements &mdash; read them before using a product",
-            "SDS documents are located at [LOCATION &mdash; FILL IN] and must be accessible at all times",
+            "SDS documents are located at [SDS LOCATION &mdash; FILL IN] and must be accessible at all times",
             "If you are exposed to a chemical &mdash; flush with water, find the SDS, and report the exposure",
             "Never transfer chemicals to unlabeled containers",
             "Dispose of chemical waste according to the instructions on the SDS &mdash; never pour down drains",
@@ -317,7 +317,7 @@ TRAININGS = [
             "Gloves appropriate for the task &mdash; leather for material handling, chemical-resistant for admixtures",
             "Replace damaged or worn PPE immediately &mdash; do not wait until it fails completely",
         ],
-        "in_our_facility": "Required PPE for each area of our facility is posted at the entrance to that area. Replacement PPE is available from [LOCATION &mdash; FILL IN]. If your PPE is damaged, bring it to your supervisor &mdash; it will be replaced at no cost to you.",
+        "in_our_facility": "Required PPE for each area of our facility is posted at the entrance to that area. Replacement PPE is available from [PPE REPLACEMENT LOCATION &mdash; FILL IN]. If your PPE is damaged, bring it to your supervisor &mdash; it will be replaced at no cost to you.",
         "discussion_questions": [
             "What PPE is required in the production yard?",
             "How do you know when a hard hat needs to be replaced?",
@@ -338,7 +338,7 @@ TRAININGS = [
             "Lockout/Tagout applies to electrical energy &mdash; all electrical work requires the circuit to be de-energized and locked out first",
             "Arc flash is an explosive release of energy from electrical equipment &mdash; stay out of marked arc flash boundaries",
         ],
-        "in_our_facility": "Electrical panels are located at [LOCATION &mdash; FILL IN]. Only maintenance staff with electrical training are authorized to open panels or work on equipment electrical systems. All other staff must report electrical concerns to a supervisor.",
+        "in_our_facility": "Electrical panels are located at [ELECTRICAL PANEL LOCATION &mdash; FILL IN]. Only maintenance staff with electrical training are authorized to open panels or work on equipment electrical systems. All other staff must report electrical concerns to a supervisor.",
         "discussion_questions": [
             "Who is authorized to work on electrical equipment in our facility?",
             "What should you do if you see a damaged extension cord?",
@@ -359,7 +359,7 @@ TRAININGS = [
             "Signs of hearing damage: ringing in your ears after work, asking people to repeat themselves more often",
             "Audiometric (hearing) testing is offered annually &mdash; take advantage of it",
         ],
-        "in_our_facility": "High-noise areas are marked with yellow hearing protection required signs. If you are unsure whether an area requires protection, ask your supervisor or wear protection as a precaution. Disposable earplugs are available at [LOCATION &mdash; FILL IN].",
+        "in_our_facility": "High-noise areas are marked with yellow hearing protection required signs. If you are unsure whether an area requires protection, ask your supervisor or wear protection as a precaution. Disposable earplugs are available at [EARPLUG LOCATION &mdash; FILL IN].",
         "discussion_questions": [
             "Which areas of our facility require hearing protection?",
             "How do you know if your foam earplugs are inserted correctly?",
@@ -417,7 +417,7 @@ TRAININGS = [
         "key_points": [
             "Treat all blood and bodily fluids as potentially infectious &mdash; put on gloves before providing first aid",
             "Standard precautions apply every time &mdash; you cannot tell by looking whether blood contains pathogens",
-            "First aid kits are located at [LOCATION &mdash; FILL IN] &mdash; know where they are before an emergency",
+            "First aid kits are located at [FIRST AID KIT LOCATIONS &mdash; FILL IN] &mdash; know where they are before an emergency",
             "For serious injuries &mdash; call 911 first, then provide first aid until emergency services arrive",
             "After any contact with blood &mdash; wash hands thoroughly with soap and water for at least 20 seconds",
             "Report all exposures to blood or bodily fluids to your supervisor immediately",
@@ -443,7 +443,7 @@ TRAININGS = [
             "Never carry tools or materials in your hands while climbing &mdash; use a tool belt or hoisting line",
             "Guardrails, covers, and personal fall arrest systems must not be removed or bypassed",
         ],
-        "in_our_facility": "Elevated work areas in our facility include loading docks, mold storage areas, and roof access points. Ladders are stored at [LOCATION &mdash; FILL IN]. If you identify a fall hazard &mdash; an open floor hole, a missing guardrail, an unsecured edge &mdash; report it immediately and block access if possible.",
+        "in_our_facility": "Elevated work areas in our facility include loading docks, mold storage areas, and roof access points. Ladders are stored at [LADDER STORAGE &mdash; FILL IN]. If you identify a fall hazard &mdash; an open floor hole, a missing guardrail, an unsecured edge &mdash; report it immediately and block access if possible.",
         "discussion_questions": [
             "At what height does fall protection become required in general industry?",
             "How do you check that an extension ladder is at the correct angle?",
@@ -478,12 +478,12 @@ TRAININGS = [
         "osha_label": "Emergency Action Plans",
         "why_it_matters": "Knowing what to do before an emergency happens is the difference between an orderly evacuation and a chaotic one. Every person in your facility should know the evacuation routes, assembly points, and who to call without having to think about it.",
         "key_points": [
-            "The emergency assembly point is at [LOCATION &mdash; FILL IN] &mdash; go there immediately upon hearing the alarm",
+            "The emergency assembly point is at [ASSEMBLY POINT &mdash; FILL IN] &mdash; go there immediately upon hearing the alarm",
             "Do not stop to collect personal belongings during an evacuation &mdash; leave immediately",
             "Fire extinguisher use &mdash; PASS: Pull the pin, Aim at the base, Squeeze the handle, Sweep side to side",
             "Only attempt to fight a small, contained fire if you are trained and have a clear exit path &mdash; otherwise evacuate",
             "Know who to call: fire/medical/police: 911 &middot; Facility emergency contact: [NAME AND NUMBER &mdash; FILL IN]",
-            "Severe weather shelter location: [LOCATION &mdash; FILL IN]",
+            "Severe weather shelter location: [SEVERE WEATHER SHELTER &mdash; FILL IN]",
         ],
         "in_our_facility": "Evacuation route maps are posted at [LOCATIONS &mdash; FILL IN]. Fire extinguishers are inspected monthly and tagged with the inspection date. The designated fire wardens for our facility are [NAMES &mdash; FILL IN]. During an emergency, do not use elevators.",
         "discussion_questions": [
@@ -550,7 +550,6 @@ def fill_placeholders(text: str, details: dict) -> str:
     replacements = {
         # Always-applicable fields
         "[COMPANY NAME]": details.get("company_name", "[COMPANY NAME]"),
-        "[LOCATION &mdash; FILL IN]": details.get("_generic_location", "[LOCATION &mdash; FILL IN]"),
         "[LOTO DEVICE LOCATION &mdash; FILL IN]": details.get("loto_device_location", "[LOCATION &mdash; FILL IN]"),
         "[SDS LOCATION &mdash; FILL IN]": " and ".join(details.get("sds_locations", [])) or "[LOCATION &mdash; FILL IN]",
         "[PPE REPLACEMENT LOCATION &mdash; FILL IN]": details.get("ppe_replacement_location", "[LOCATION &mdash; FILL IN]"),
