@@ -397,3 +397,199 @@ def revert_training_document(
     if not updated:
         raise HTTPException(status_code=404, detail="No tenant document found")
     return {"status": "reverted"}
+
+
+# ---------------------------------------------------------------------------
+# Facility Details & Personalized PDF Generation
+# ---------------------------------------------------------------------------
+
+
+class FacilityDetailsUpdate(BaseModel):
+    facility_details: dict
+
+
+class GenerateResult(BaseModel):
+    generated: list[str]
+    skipped: list[str]
+
+
+@router.get("/training/facility-details")
+def get_facility_details(
+    current_user: User = Depends(require_permission("safety.view")),
+    db: Session = Depends(get_db),
+):
+    """Get the tenant's facility details for PDF personalization."""
+    from app.api.company_resolver import get_current_company
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    return {
+        "facility_details": company.get_setting("safety_facility_details", {}),
+        "doc_preference": company.get_setting("safety_training_doc_preference"),
+        "setup_complete": company.get_setting("safety_training_setup_complete", False),
+        "pdfs_generated_at": company.get_setting("safety_pdfs_generated_at"),
+    }
+
+
+@router.put("/training/facility-details")
+def save_facility_details(
+    body: FacilityDetailsUpdate,
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Save facility details for PDF personalization."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    company.set_setting("safety_facility_details", body.facility_details)
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/training/generate-personalized-pdfs")
+def generate_personalized_pdfs(
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Generate personalized PDFs for all topics using facility details.
+
+    Replaces placeholder text in platform defaults with tenant-specific info.
+    Skips topics with manually uploaded documents.
+    """
+    import json
+    import os
+    import subprocess
+
+    from app.models.company import Company
+    from app.models.safety_training_topic import SafetyTrainingTopic
+    from app.models.tenant_training_doc import TenantTrainingDoc
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    details = company.get_setting("safety_facility_details", {})
+    details["company_name"] = details.get("company_name") or company.name
+
+    topics = db.query(SafetyTrainingTopic).order_by(SafetyTrainingTopic.month_number).all()
+
+    # Find manually uploaded docs (not personalized defaults)
+    manual_keys = {
+        d.topic_key
+        for d in db.query(TenantTrainingDoc).filter(
+            TenantTrainingDoc.tenant_id == company.id,
+            TenantTrainingDoc.is_active == True,
+            TenantTrainingDoc.is_personalized_default == False,
+        ).all()
+    }
+
+    # Output directory for this tenant
+    output_base = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "static", "tenant-pdfs", company.id,
+    )
+    os.makedirs(output_base, exist_ok=True)
+
+    generated = []
+    skipped = []
+
+    # Find the generation script
+    script_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "..", "scripts", "generate_safety_training_pdfs.py",
+    )
+
+    for topic in topics:
+        if topic.topic_key in manual_keys:
+            skipped.append(topic.title)
+            continue
+
+        output_filename = f"safety_training_{str(topic.month_number).zfill(2)}_{topic.topic_key}.pdf"
+        output_path = os.path.join(output_base, output_filename)
+
+        # Call the generation script with details
+        params = json.dumps({
+            "topic_key": topic.topic_key,
+            "output_path": output_path,
+            "details": details,
+        })
+
+        try:
+            subprocess.run(
+                ["python", script_path, params],
+                capture_output=True, text=True, timeout=30,
+            )
+        except Exception as exc:
+            logger.warning("PDF generation failed for %s: %s", topic.topic_key, exc)
+            continue
+
+        # Determine URL path
+        file_url = f"/static/tenant-pdfs/{company.id}/{output_filename}"
+
+        # Upsert tenant doc record
+        existing = db.query(TenantTrainingDoc).filter(
+            TenantTrainingDoc.tenant_id == company.id,
+            TenantTrainingDoc.topic_key == topic.topic_key,
+            TenantTrainingDoc.is_active == True,
+            TenantTrainingDoc.is_personalized_default == True,
+        ).first()
+
+        if existing:
+            existing.file_url = file_url
+            existing.filename = output_filename
+            existing.notes = f"Auto-generated with facility details"
+        else:
+            # Deactivate any old personalized defaults
+            db.query(TenantTrainingDoc).filter(
+                TenantTrainingDoc.tenant_id == company.id,
+                TenantTrainingDoc.topic_key == topic.topic_key,
+                TenantTrainingDoc.is_personalized_default == True,
+            ).update({"is_active": False})
+
+            doc = TenantTrainingDoc(
+                tenant_id=company.id,
+                topic_key=topic.topic_key,
+                filename=output_filename,
+                file_url=file_url,
+                is_personalized_default=True,
+                is_active=True,
+                uploaded_by=current_user.id,
+                notes="Auto-generated with facility details",
+            )
+            db.add(doc)
+
+        generated.append(topic.title)
+
+    from datetime import timezone
+    company.set_setting("safety_pdfs_generated_at", datetime.now(timezone.utc).isoformat())
+    company.set_setting("safety_training_doc_preference", "platform_defaults")
+    db.commit()
+
+    return GenerateResult(generated=generated, skipped=skipped)
+
+
+@router.post("/training/complete-setup")
+def complete_safety_training_setup(
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Mark safety training setup as complete."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    company.set_setting("safety_training_setup_complete", True)
+    db.commit()
+
+    from app.services.onboarding_hooks import on_safety_training_configured
+    on_safety_training_configured(db, company.id)
+
+    return {"status": "ok"}

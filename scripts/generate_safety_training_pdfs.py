@@ -121,8 +121,9 @@ def build_pdf(
 
     story = []
 
-    # Company placeholder
-    story.append(Paragraph("[COMPANY NAME]", company_style))
+    # Company name (personalized or placeholder)
+    company_name = _extra.get("_company_name", "[COMPANY NAME]")
+    story.append(Paragraph(company_name, company_style))
     story.append(
         HRFlowable(width="100%", thickness=0.5, color=MID_GRAY, spaceAfter=12)
     )
@@ -493,8 +494,84 @@ TRAININGS = [
     },
 ]
 
+# ── Lookup by topic_key ──────────────────────────────────────────────────────
+TOPIC_DATA = {t["filename"].split("_", 3)[-1].replace(".pdf", ""): t for t in TRAININGS}
+# Also index by the actual topic_key pattern used in the database
+for t in TRAININGS:
+    # Extract topic key from filename: safety_training_01_lockout_tagout.pdf -> lockout_tagout
+    parts = t["filename"].replace(".pdf", "").split("_", 3)
+    if len(parts) >= 4:
+        TOPIC_DATA[parts[3]] = t
+
+
+def fill_placeholders(text: str, details: dict) -> str:
+    """Replace [PLACEHOLDER] strings with facility-specific values."""
+    replacements = {
+        "[COMPANY NAME]": details.get("company_name", "[COMPANY NAME]"),
+        "[LOCATION &mdash; FILL IN]": details.get("_generic_location", "[LOCATION &mdash; FILL IN]"),
+        "[LOTO DEVICE LOCATION &mdash; FILL IN]": details.get("loto_device_location", "[LOCATION &mdash; FILL IN]"),
+        "[SDS LOCATION &mdash; FILL IN]": " and ".join(details.get("sds_locations", [])) or "[LOCATION &mdash; FILL IN]",
+        "[PPE REPLACEMENT LOCATION &mdash; FILL IN]": details.get("ppe_replacement_location", "[LOCATION &mdash; FILL IN]"),
+        "[ELECTRICAL PANEL LOCATION &mdash; FILL IN]": ", ".join(details.get("electrical_panel_locations", [])) or "[LOCATION &mdash; FILL IN]",
+        "[EARPLUG LOCATION &mdash; FILL IN]": details.get("earplug_dispenser_location", "[LOCATION &mdash; FILL IN]"),
+        "[FIRST AID KIT LOCATIONS &mdash; FILL IN]": " and ".join(details.get("first_aid_kit_locations", [])) or "[LOCATION &mdash; FILL IN]",
+        "[FIRST AID TRAINED &mdash; FILL IN]": ", ".join(details.get("first_aid_trained_employees", [])) or "posted at the first aid station",
+        "[LADDER STORAGE &mdash; FILL IN]": details.get("ladder_storage_location", "[LOCATION &mdash; FILL IN]"),
+        "[SPECIFIC TANKS, PITS, OR FORMS &mdash; FILL IN]": ", ".join(details.get("confined_spaces", [])) or "[LOCATIONS &mdash; FILL IN]",
+        "[SUPERVISOR/SAFETY MANAGER &mdash; FILL IN]": details.get("confined_space_permit_issuer", "[NAME/TITLE &mdash; FILL IN]"),
+        "[CAPACITY &mdash; FILL IN]": details.get("crane_rated_capacity", "[CAPACITY &mdash; FILL IN]"),
+        "[ASSEMBLY POINT &mdash; FILL IN]": details.get("assembly_point", "[ASSEMBLY POINT &mdash; FILL IN]"),
+        "[SEVERE WEATHER SHELTER &mdash; FILL IN]": details.get("severe_weather_shelter", "[SHELTER LOCATION &mdash; FILL IN]"),
+        "[LOCATIONS &mdash; FILL IN]": details.get("evacuation_map_locations", "[LOCATIONS &mdash; FILL IN]"),
+        "[NAMES &mdash; FILL IN]": " and ".join(details.get("fire_wardens", [])) or "[FIRE WARDENS &mdash; FILL IN]",
+        "[NAME AND NUMBER &mdash; FILL IN]": (
+            f"{details.get('emergency_contact_name', '')} &middot; {details.get('emergency_contact_phone', '')}"
+            if details.get("emergency_contact_name")
+            else "[EMERGENCY CONTACT &mdash; FILL IN]"
+        ),
+    }
+    for placeholder, value in replacements.items():
+        text = text.replace(placeholder, value)
+    return text
+
+
+def generate_personalized(topic_key: str, output_path: str, details: dict) -> None:
+    """Generate a personalized PDF for a specific topic with facility details."""
+    topic = TOPIC_DATA.get(topic_key)
+    if not topic:
+        print(f"Unknown topic_key: {topic_key}")
+        return
+
+    personalized = {
+        **topic,
+        "filename": output_path,
+        "why_it_matters": fill_placeholders(topic["why_it_matters"], details),
+        "in_our_facility": fill_placeholders(topic["in_our_facility"], details),
+        "key_points": [fill_placeholders(p, details) for p in topic["key_points"]],
+        "discussion_questions": [fill_placeholders(q, details) for q in topic["discussion_questions"]],
+    }
+    # Override company name in the PDF header
+    if details.get("company_name"):
+        personalized["_company_name"] = details["company_name"]
+
+    build_pdf(**personalized)
+
+
 if __name__ == "__main__":
-    print(f"Generating {len(TRAININGS)} safety training PDFs...")
-    for training in TRAININGS:
-        build_pdf(**training)
-    print(f"\nAll {len(TRAININGS)} PDFs generated in: {OUTPUT_DIR}")
+    import json
+    import sys
+
+    if len(sys.argv) > 1:
+        # Personalized generation mode
+        params = json.loads(sys.argv[1])
+        generate_personalized(
+            params["topic_key"],
+            params["output_path"],
+            params.get("details", {}),
+        )
+    else:
+        # Default: generate all 12 platform defaults
+        print(f"Generating {len(TRAININGS)} safety training PDFs...")
+        for training in TRAININGS:
+            build_pdf(**training)
+        print(f"\nAll {len(TRAININGS)} PDFs generated in: {OUTPUT_DIR}")

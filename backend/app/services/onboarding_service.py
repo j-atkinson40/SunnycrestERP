@@ -224,6 +224,21 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "sort_order": 4,
     },
     {
+        "item_key": "setup_safety_training",
+        "tier": "must_complete",
+        "category": "team",
+        "title": "Set up your safety training program",
+        "description": (
+            "Choose your training documents and personalize them "
+            "with your facility details."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/onboarding/safety-training",
+        "depends_on": '["setup_team_intelligence"]',
+        "sort_order": 5,
+    },
+    {
         "item_key": "setup_scheduling_board",
         "tier": "must_complete",
         "category": "workflow",
@@ -920,6 +935,7 @@ def fix_checklist_targets(db: Session) -> None:
         "add_employees": "/onboarding/team",
         "connect_accounting": "/onboarding/accounting",
         "setup_team_intelligence": "/onboarding/team-intelligence",
+        "setup_safety_training": "/onboarding/safety-training",
     }
     for item_key, correct_target in _TARGET_FIXES.items():
         db.query(OnboardingChecklistItem).filter(

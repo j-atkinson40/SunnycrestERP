@@ -115,6 +115,7 @@ import CatalogBuilder from "@/pages/onboarding/catalog-builder";
 import WebsiteSuggestionsReview from "@/pages/onboarding/website-suggestions-review";
 import ChargeSetupPage from "@/pages/onboarding/charge-setup";
 import TeamSetupPage from "@/pages/onboarding/team-setup";
+import SafetyTrainingSetupPage from "@/pages/onboarding/safety-training-setup";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
@@ -490,6 +491,7 @@ export default function App() {
                   <Route path="/onboarding/catalog-builder" element={<CatalogBuilder />} />
                   <Route path="/onboarding/team" element={<TeamSetupPage />} />
                   <Route path="/onboarding/team-intelligence" element={<TeamIntelligencePage />} />
+                  <Route path="/onboarding/safety-training" element={<SafetyTrainingSetupPage />} />
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />

@@ -33,6 +33,9 @@ class TenantTrainingDoc(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_personalized_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

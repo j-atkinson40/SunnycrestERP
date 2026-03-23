@@ -100,3 +100,13 @@ def on_team_intelligence_configured(db: Session, tenant_id: str) -> None:
         check_completion(db, tenant_id, "setup_team_intelligence")
     except Exception:
         logger.exception("Onboarding hook failed: on_team_intelligence_configured")
+
+
+def on_safety_training_configured(db: Session, tenant_id: str) -> None:
+    """Call after safety training program is set up."""
+    try:
+        from app.services.onboarding_service import check_completion
+
+        check_completion(db, tenant_id, "setup_safety_training")
+    except Exception:
+        logger.exception("Onboarding hook failed: on_safety_training_configured")
