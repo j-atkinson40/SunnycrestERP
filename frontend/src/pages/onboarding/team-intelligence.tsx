@@ -1,9 +1,11 @@
 /**
  * Team Intelligence — Morning Briefings & Announcements configuration.
  *
- * Two contexts:
+ * Routes:
  *   /onboarding/team-intelligence → onboarding wizard with Back/Continue footer
  *   /settings/team-intelligence   → settings page with Save, history, management
+ *
+ * @module onboarding/team-intelligence
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
