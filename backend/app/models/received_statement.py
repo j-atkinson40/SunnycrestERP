@@ -17,6 +17,7 @@ class ReceivedStatement(Base):
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False, index=True)
     from_tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False)
     from_tenant_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    relationship_type: Mapped[str | None] = mapped_column(String(100), nullable=True, server_default="manufacturer_funeral_home")
     customer_statement_id: Mapped[str] = mapped_column(String(36), nullable=False)
     statement_period_month: Mapped[int] = mapped_column(Integer, nullable=False)
     statement_period_year: Mapped[int] = mapped_column(Integer, nullable=False)

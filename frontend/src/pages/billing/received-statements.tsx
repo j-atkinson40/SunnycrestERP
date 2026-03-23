@@ -25,9 +25,16 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ]
 
+const RELATIONSHIP_TYPE_LABELS: Record<string, string> = {
+  manufacturer_funeral_home: "Manufacturer",
+  supplier_manufacturer: "Supplier",
+  wilbert_licensee: "Wilbert",
+}
+
 interface ReceivedStatement {
   id: string
   from_tenant_name: string
+  relationship_type: string
   month: number
   year: number
   balance_due: string
@@ -272,7 +279,7 @@ export function ReceivedStatementDetail() {
             Statement from {detail.from_tenant_name}
           </h3>
           <p className="text-sm text-gray-500 mb-4">
-            {MONTH_NAMES[detail.month]} {detail.year}
+            {RELATIONSHIP_TYPE_LABELS[detail.relationship_type] || detail.relationship_type} · {MONTH_NAMES[detail.month]} {detail.year}
           </p>
 
           <div className="grid grid-cols-2 gap-4 text-sm mb-4">

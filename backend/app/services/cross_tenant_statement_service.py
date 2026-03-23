@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
-from app.models.fh_manufacturer_relationship import FHManufacturerRelationship
+from app.models.platform_tenant_relationship import PlatformTenantRelationship
 from app.models.received_statement import ReceivedStatement, StatementPayment
 from app.models.statement import CustomerStatement
 
@@ -33,23 +33,24 @@ def deliver_statement_cross_tenant(
     if not manufacturer:
         return False
 
-    # Find the relationship to get the funeral home tenant
+    # Find the billing relationship via generalized platform_tenant_relationships
+    # supplier_tenant_id = manufacturer, tenant_id = customer (funeral home)
     relationship = (
-        db.query(FHManufacturerRelationship)
+        db.query(PlatformTenantRelationship)
         .filter(
-            FHManufacturerRelationship.manufacturer_tenant_id == tenant_id,
-            FHManufacturerRelationship.platform_billing_enabled.is_(True),
-            FHManufacturerRelationship.status == "active",
+            PlatformTenantRelationship.supplier_tenant_id == tenant_id,
+            PlatformTenantRelationship.billing_enabled.is_(True),
+            PlatformTenantRelationship.status == "active",
         )
         .first()
     )
-    if not relationship or not relationship.funeral_home_tenant_id:
+    if not relationship or not relationship.tenant_id:
         stmt.status = "failed"
-        stmt.send_error = "No active platform connection found"
+        stmt.send_error = "No active platform billing connection found"
         db.commit()
         return False
 
-    fh_tenant_id = relationship.funeral_home_tenant_id
+    fh_tenant_id = relationship.tenant_id
 
     try:
         # Create received_statement on the funeral home side
@@ -57,6 +58,7 @@ def deliver_statement_cross_tenant(
             tenant_id=fh_tenant_id,
             from_tenant_id=tenant_id,
             from_tenant_name=manufacturer.name,
+            relationship_type=relationship.relationship_type,
             customer_statement_id=stmt.id,
             statement_period_month=stmt.statement_period_month,
             statement_period_year=stmt.statement_period_year,
@@ -132,6 +134,7 @@ def get_received_statements(
         {
             "id": s.id,
             "from_tenant_name": s.from_tenant_name,
+            "relationship_type": s.relationship_type or "manufacturer_funeral_home",
             "month": s.statement_period_month,
             "year": s.statement_period_year,
             "balance_due": str(s.balance_due),
@@ -176,6 +179,7 @@ def get_received_statement_detail(
     return {
         "id": s.id,
         "from_tenant_name": s.from_tenant_name,
+        "relationship_type": s.relationship_type or "manufacturer_funeral_home",
         "month": s.statement_period_month,
         "year": s.statement_period_year,
         "previous_balance": str(s.previous_balance),

@@ -110,6 +110,7 @@ from app.models.safety_training import (
     SafetyTrainingEvent,
     SafetyTrainingRequirement,
 )
+from app.models.platform_tenant_relationship import PlatformTenantRelationship
 from app.models.received_statement import ReceivedStatement, StatementPayment
 from app.models.safety_training_topic import SafetyTrainingTopic
 from app.models.statement import CustomerStatement, StatementRun, StatementTemplate
@@ -275,6 +276,7 @@ __all__ = [
     "SafetyProgram",
     "SafetyTrainingEvent",
     "SafetyTrainingRequirement",
+    "PlatformTenantRelationship",
     "ReceivedStatement",
     "SafetyTrainingTopic",
     "StatementPayment",
