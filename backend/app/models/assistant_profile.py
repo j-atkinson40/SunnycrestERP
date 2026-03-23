@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import Date, DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -22,6 +23,9 @@ class AssistantProfile(Base):
     primary_area: Mapped[str | None] = mapped_column(String(50), nullable=True)
     last_briefing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_briefing_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disabled_briefing_items = mapped_column(JSONB, server_default="[]")
+    disabled_announcement_categories = mapped_column(JSONB, server_default="[]")
+    disabled_console_items = mapped_column(JSONB, server_default="[]")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

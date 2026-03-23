@@ -214,14 +214,15 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "category": "team",
         "title": "Set up morning briefings and announcements",
         "description": (
-            "Configure daily briefings for your team and set up "
-            "who can post company announcements."
+            "Configure morning briefings and announcements for your team. "
+            "Complete your other setup steps first — briefings are most useful "
+            "once your products, customers, team, and safety programs are in place."
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/onboarding/team-intelligence",
         "depends_on": '["add_employees"]',
-        "sort_order": 4,
+        "sort_order": 99,
     },
     {
         "item_key": "setup_safety_training",
@@ -947,6 +948,19 @@ def fix_checklist_targets(db: Session) -> None:
         OnboardingChecklistItem.item_key == "setup_safety_training",
         OnboardingChecklistItem.depends_on.isnot(None),
     ).update({"depends_on": None})
+
+    # Move setup_team_intelligence to last among must_complete (sort_order 99)
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "setup_team_intelligence",
+        OnboardingChecklistItem.sort_order != 99,
+    ).update({
+        "sort_order": 99,
+        "description": (
+            "Configure morning briefings and announcements for your team. "
+            "Complete your other setup steps first \u2014 briefings are most useful "
+            "once your products, customers, team, and safety programs are in place."
+        ),
+    })
 
     # Fix action_type for items that were incorrectly set to "modal"
     db.query(OnboardingChecklistItem).filter(

@@ -306,12 +306,22 @@ class EmployeeBriefingConfigOut(BaseModel):
     primary_area_override: str | None = None
     briefing_enabled: bool = True
     can_create_announcements: bool = False
+    console_access: list[str] = []
+    disabled_briefing_items: list[str] = []
+    disabled_announcement_categories: list[str] = []
+    disabled_console_items: list[str] = []
 
 
 class EmployeeBriefingConfigUpdate(BaseModel):
     briefing_enabled: bool | None = None
     briefing_primary_area_override: str | None = None
     can_create_announcements: bool | None = None
+
+
+class IntelligenceSettingsUpdate(BaseModel):
+    disabled_briefing_items: list[str] | None = None
+    disabled_announcement_categories: list[str] | None = None
+    disabled_console_items: list[str] | None = None
 
 
 class TenantBriefingSettingsOut(BaseModel):
@@ -382,6 +392,14 @@ def get_team_config(
                 else "production"
             )
 
+        # Get assistant profile for intelligence settings
+        from app.models.assistant_profile import AssistantProfile
+        ap = (
+            db.query(AssistantProfile)
+            .filter(AssistantProfile.user_id == u.id)
+            .first()
+        )
+
         results.append(EmployeeBriefingConfigOut(
             user_id=u.id,
             first_name=u.first_name,
@@ -393,6 +411,10 @@ def get_team_config(
             primary_area_override=profile.briefing_primary_area_override if profile else None,
             briefing_enabled=profile.briefing_enabled if profile else True,
             can_create_announcements=profile.can_create_announcements if profile else False,
+            console_access=u.console_access or [],
+            disabled_briefing_items=ap.disabled_briefing_items or [] if ap else [],
+            disabled_announcement_categories=ap.disabled_announcement_categories or [] if ap else [],
+            disabled_console_items=ap.disabled_console_items or [] if ap else [],
         ))
 
     return results
@@ -554,3 +576,41 @@ def get_briefing_history(
         ))
 
     return results
+
+
+@router.patch("/team-config/{user_id}/intelligence")
+def update_intelligence_settings(
+    user_id: str,
+    body: IntelligenceSettingsUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update per-employee intelligence settings (disabled items/categories)."""
+    from app.models.assistant_profile import AssistantProfile
+
+    target_user = (
+        db.query(User)
+        .filter(User.id == user_id, User.company_id == current_user.company_id)
+        .first()
+    )
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    ap = db.query(AssistantProfile).filter(AssistantProfile.user_id == user_id).first()
+    if not ap:
+        ap = AssistantProfile(
+            user_id=user_id,
+            company_id=current_user.company_id,
+        )
+        db.add(ap)
+        db.flush()
+
+    if body.disabled_briefing_items is not None:
+        ap.disabled_briefing_items = body.disabled_briefing_items
+    if body.disabled_announcement_categories is not None:
+        ap.disabled_announcement_categories = body.disabled_announcement_categories
+    if body.disabled_console_items is not None:
+        ap.disabled_console_items = body.disabled_console_items
+
+    db.commit()
+    return {"status": "ok"}

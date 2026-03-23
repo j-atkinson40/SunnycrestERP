@@ -18,8 +18,6 @@ import {
   Check,
   Pin,
   Megaphone,
-  Truck,
-  Factory,
   X,
   Eye,
   Trash2,
@@ -33,6 +31,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import apiClient from "@/lib/api-client";
 import { completeChecklistItem } from "@/services/onboarding-service";
+import {
+  BRIEFING_ITEM_REGISTRY,
+  ANNOUNCEMENT_CATEGORY_REGISTRY,
+  AREA_LABELS,
+} from "@/constants/intelligence-registries";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +50,10 @@ interface EmployeeConfig {
   primary_area_override: string | null;
   briefing_enabled: boolean;
   can_create_announcements: boolean;
+  console_access: string[];
+  disabled_briefing_items: string[];
+  disabled_announcement_categories: string[];
+  disabled_console_items: string[];
 }
 
 interface TenantSettings {
@@ -138,16 +145,6 @@ const EXAMPLE_BRIEFINGS = {
   },
 };
 
-const AREA_LABELS: Record<string, string> = {
-  funeral_scheduling: "Funeral Scheduling",
-  invoicing_ar: "Invoicing / AR",
-  safety_compliance: "Safety & Compliance",
-  production_log: "Production Log",
-  customer_management: "Customer Management",
-  full_admin: "Full Admin",
-  precast_scheduling: "Precast Scheduling",
-};
-
 const TIME_OPTIONS = [
   { value: "06:00", label: "6:00 AM" },
   { value: "06:30", label: "6:30 AM" },
@@ -229,6 +226,7 @@ export default function TeamIntelligencePage() {
   const [testSent, setTestSent] = useState(false);
   const [testConfirmed, setTestConfirmed] = useState(false);
   const [employeeFilter, setEmployeeFilter] = useState<"all" | "office" | "drivers">("all");
+  const [expandedEmployeeId, setExpandedEmployeeId] = useState<string | null>(null);
 
   // ── Tab 2 — Announcements state ─────────────────────────────────────────────
   const [announcementTitle, setAnnouncementTitle] = useState("");
@@ -295,6 +293,27 @@ export default function TeamIntelligencePage() {
     async (userId: string, updates: Partial<EmployeeConfig>) => {
       try {
         await apiClient.patch(`/briefings/team-config/${userId}`, updates);
+        setEmployees((prev) =>
+          prev.map((e) => (e.user_id === userId ? { ...e, ...updates } : e))
+        );
+        flashSaved();
+      } catch {
+        toast.error("Failed to save change");
+      }
+    },
+    [flashSaved]
+  );
+
+  // ── Intelligence settings save (disabled items/categories) ─────────────────
+
+  const patchIntelligence = useCallback(
+    async (userId: string, updates: {
+      disabled_briefing_items?: string[];
+      disabled_announcement_categories?: string[];
+      disabled_console_items?: string[];
+    }) => {
+      try {
+        await apiClient.patch(`/briefings/team-config/${userId}/intelligence`, updates);
         setEmployees((prev) =>
           prev.map((e) => (e.user_id === userId ? { ...e, ...updates } : e))
         );
@@ -445,16 +464,6 @@ export default function TeamIntelligencePage() {
 
   // ── Bulk toggles ────────────────────────────────────────────────────────────
 
-  const bulkToggleBriefings = useCallback(
-    async (enabled: boolean) => {
-      const targets = filteredEmployees.filter((e) => e.briefing_enabled !== enabled);
-      for (const emp of targets) {
-        await patchEmployee(emp.user_id, { briefing_enabled: enabled });
-      }
-    },
-    [filteredEmployees, patchEmployee]
-  );
-
   // ── Loading state ───────────────────────────────────────────────────────────
 
   if (loading) {
@@ -603,172 +612,199 @@ export default function TeamIntelligencePage() {
           {/* Remaining sections only when enabled */}
           {briefingsEnabled && (
             <>
-              {/* ── Section B: Employee Table ──────────────────────────────── */}
+              {/* ── Section B: Employee Intelligence Matrix ──────────────── */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Team Members</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Filter bar */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-muted-foreground">Show:</span>
-                    {(["all", "office", "drivers"] as const).map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => setEmployeeFilter(f)}
-                        className={cn(
-                          "rounded-md px-3 py-1 text-sm transition-colors",
-                          employeeFilter === f
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        {f === "all" && "All"}
-                        {f === "office" && (
-                          <>
-                            <Factory className="mr-1 inline size-3.5" />
-                            Office
-                          </>
-                        )}
-                        {f === "drivers" && (
-                          <>
-                            <Truck className="mr-1 inline size-3.5" />
-                            Drivers
-                          </>
-                        )}
-                      </button>
-                    ))}
-
-                    {/* Bulk toggles */}
-                    <div className="ml-auto flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => bulkToggleBriefings(true)}
-                      >
-                        Enable all shown
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => bulkToggleBriefings(false)}
-                      >
-                        Disable all shown
-                      </Button>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Team Intelligence Profiles</CardTitle>
+                    <div className="flex gap-2">
+                      {(["all", "office", "drivers"] as const).map((f) => (
+                        <button key={f} onClick={() => setEmployeeFilter(f)} className={cn("rounded-md px-2.5 py-1 text-xs transition-colors", employeeFilter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground")}>
+                          {f === "all" ? "All" : f === "office" ? "Office" : "Drivers"}
+                        </button>
+                      ))}
                     </div>
                   </div>
+                  {isOnboarding && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      You can fine-tune which briefing items and announcement types each person receives from Settings → Team Intelligence after onboarding.
+                    </p>
+                  )}
+                </CardHeader>
+                <CardContent className="p-0">
+                  {/* Matrix header */}
+                  <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-4 px-4 py-2 border-b text-xs font-medium text-muted-foreground">
+                    <span>Employee</span>
+                    <span className="w-20 text-center">Briefing</span>
+                    <span className="w-32 text-center">Primary Focus</span>
+                    <span className="w-20 text-center">Announce</span>
+                    <span className="w-8"></span>
+                  </div>
 
-                  {/* Table */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-muted-foreground">
-                          <th className="pb-2 font-medium">Employee</th>
-                          <th className="pb-2 font-medium">Primary Focus</th>
-                          <th className="pb-2 text-center font-medium">Briefing</th>
-                          <th className="pb-2 text-center font-medium">Preview</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {filteredEmployees.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={4}
-                              className="py-6 text-center text-muted-foreground"
-                            >
-                              No employees match this filter.
-                            </td>
-                          </tr>
-                        )}
-                        {filteredEmployees.map((emp) => (
-                          <tr key={emp.user_id} className="group">
-                            {/* Name + title */}
-                            <td className="py-3 pr-4">
-                              <div className="font-medium">
-                                {emp.first_name} {emp.last_name}
-                              </div>
-                              {emp.display_title && (
-                                <div className="text-xs text-muted-foreground">
-                                  {emp.display_title}
-                                </div>
-                              )}
-                              <div className="mt-0.5 text-xs text-muted-foreground">
-                                {emp.track === "office_management" ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <Factory className="size-3" /> Office
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1">
-                                    <Truck className="size-3" /> Driver
-                                  </span>
-                                )}
-                              </div>
-                            </td>
+                  {/* Employee rows */}
+                  <div className="divide-y">
+                    {filteredEmployees.length === 0 && (
+                      <p className="py-8 text-center text-sm text-muted-foreground">No employees match this filter.</p>
+                    )}
+                    {filteredEmployees.map((emp) => {
+                      const isExpanded = expandedEmployeeId === emp.user_id;
+                      const isDriver = emp.track === "production_delivery" && emp.console_access?.includes("delivery_console");
+                      const isProduction = emp.track === "production_delivery" && !isDriver;
+                      const effectiveArea = emp.primary_area_override || emp.primary_area || (isDriver ? "driver" : isProduction ? "production_staff" : null);
+                      const briefingItems = effectiveArea ? (BRIEFING_ITEM_REGISTRY[effectiveArea] || []) : [];
 
-                            {/* Primary focus (auto-detect + override) */}
-                            <td className="py-3 pr-4">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">
-                                  Auto: {areaLabel(emp.primary_area)}
-                                </span>
-                              </div>
-                              <select
-                                value={emp.primary_area_override ?? ""}
-                                onChange={(e) =>
-                                  patchEmployee(emp.user_id, {
-                                    primary_area_override: e.target.value || null,
-                                  })
-                                }
-                                className="mt-1 block w-full max-w-[200px] rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                              >
-                                <option value="">Use auto-detect</option>
-                                {Object.entries(AREA_LABELS).map(([key, label]) => (
-                                  <option key={key} value={key}>
-                                    {label}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
+                      return (
+                        <div key={emp.user_id}>
+                          {/* Summary row */}
+                          <div
+                            className={cn("grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-4 px-4 py-2.5 items-center hover:bg-muted/30 cursor-pointer transition-colors", isExpanded && "bg-muted/20")}
+                            onClick={() => setExpandedEmployeeId(isExpanded ? null : emp.user_id)}
+                          >
+                            <div>
+                              <span className="text-sm font-medium">{emp.first_name} {emp.last_name}</span>
+                              {emp.display_title && <span className="ml-2 text-xs text-muted-foreground">{emp.display_title}</span>}
+                            </div>
 
                             {/* Briefing toggle */}
-                            <td className="py-3 text-center">
+                            <div className="w-20 flex justify-center" onClick={(e) => e.stopPropagation()}>
                               <button
-                                onClick={() =>
-                                  patchEmployee(emp.user_id, {
-                                    briefing_enabled: !emp.briefing_enabled,
-                                  })
-                                }
-                                className={cn(
-                                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
-                                  emp.briefing_enabled ? "bg-primary" : "bg-muted"
-                                )}
+                                onClick={() => patchEmployee(emp.user_id, { briefing_enabled: !emp.briefing_enabled })}
+                                className={cn("relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors", emp.briefing_enabled ? "bg-primary" : "bg-muted")}
                               >
-                                <span
-                                  className={cn(
-                                    "pointer-events-none inline-block size-5 rounded-full bg-white shadow ring-0 transition-transform",
-                                    emp.briefing_enabled
-                                      ? "translate-x-5"
-                                      : "translate-x-0"
-                                  )}
-                                />
+                                <span className={cn("pointer-events-none inline-block size-4 rounded-full bg-white shadow transition-transform", emp.briefing_enabled ? "translate-x-4" : "translate-x-0")} />
                               </button>
-                            </td>
+                            </div>
 
-                            {/* Preview link */}
-                            <td className="py-3 text-center">
+                            {/* Primary area label */}
+                            <div className="w-32 text-center text-xs text-muted-foreground">
+                              {AREA_LABELS[effectiveArea || ""] || effectiveArea || "—"}
+                            </div>
+
+                            {/* Announce receive toggle */}
+                            <div className="w-20 flex justify-center" onClick={(e) => e.stopPropagation()}>
+                              {emp.track === "office_management" ? (
+                                <button
+                                  onClick={() => patchEmployee(emp.user_id, { can_create_announcements: !emp.can_create_announcements })}
+                                  className={cn("relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors", emp.can_create_announcements ? "bg-primary" : "bg-muted")}
+                                >
+                                  <span className={cn("pointer-events-none inline-block size-4 rounded-full bg-white shadow transition-transform", emp.can_create_announcements ? "translate-x-4" : "translate-x-0")} />
+                                </button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </div>
+
+                            {/* Expand chevron */}
+                            <div className="w-8 text-center">
+                              <span className={cn("inline-block transition-transform text-muted-foreground", isExpanded && "rotate-90")}>▶</span>
+                            </div>
+                          </div>
+
+                          {/* ── Expanded detail panel ──────────────────────── */}
+                          {isExpanded && (
+                            <div className="bg-muted/10 border-t px-6 py-4 space-y-5">
+                              {/* Briefing section */}
+                              <div>
+                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Morning Briefing</h4>
+                                {emp.track === "office_management" && emp.functional_areas.length > 0 && (
+                                  <div className="mb-3">
+                                    <label className="text-xs font-medium text-muted-foreground">Primary area</label>
+                                    <select
+                                      value={emp.primary_area_override ?? ""}
+                                      onChange={(e) => patchEmployee(emp.user_id, { primary_area_override: e.target.value || null })}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="ml-2 rounded-md border border-input bg-background px-2 py-1 text-xs"
+                                    >
+                                      <option value="">Auto-detect ({AREA_LABELS[emp.primary_area || ""] || emp.primary_area})</option>
+                                      {emp.functional_areas.map((a) => (
+                                        <option key={a} value={a}>{AREA_LABELS[a] || a}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
+
+                                {briefingItems.length > 0 && (
+                                  <div className="rounded-md border bg-background p-3">
+                                    <p className="text-xs font-medium text-muted-foreground mb-2">
+                                      {emp.first_name}'s briefing includes:
+                                    </p>
+                                    <div className="space-y-1.5">
+                                      {briefingItems.map((item) => {
+                                        const isDisabled = emp.disabled_briefing_items?.includes(item.key);
+                                        return (
+                                          <label key={item.key} className="flex items-start gap-2 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={!isDisabled}
+                                              onChange={() => {
+                                                const current = emp.disabled_briefing_items || [];
+                                                const next = isDisabled
+                                                  ? current.filter((k) => k !== item.key)
+                                                  : [...current, item.key];
+                                                patchIntelligence(emp.user_id, { disabled_briefing_items: next });
+                                              }}
+                                              className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300"
+                                            />
+                                            <div>
+                                              <span className="text-xs font-medium">{item.label}</span>
+                                              <span className="text-xs text-muted-foreground ml-1">— {item.description}</span>
+                                            </div>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Announcement categories section */}
+                              <div>
+                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Safety Notice Categories</h4>
+                                <div className="rounded-md border bg-background p-3 space-y-1.5">
+                                  {ANNOUNCEMENT_CATEGORY_REGISTRY.map((cat) => {
+                                    const isDisabled = emp.disabled_announcement_categories?.includes(cat.key);
+                                    return (
+                                      <label key={cat.key} className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={!isDisabled}
+                                          onChange={() => {
+                                            const current = emp.disabled_announcement_categories || [];
+                                            const next = isDisabled
+                                              ? current.filter((k) => k !== cat.key)
+                                              : [...current, cat.key];
+                                            patchIntelligence(emp.user_id, { disabled_announcement_categories: next });
+                                          }}
+                                          className="h-3.5 w-3.5 rounded border-gray-300"
+                                        />
+                                        <span className="text-xs">{cat.label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Console section (drivers/production only) */}
+                              {emp.track === "production_delivery" && (
+                                <div>
+                                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Console Access</h4>
+                                  <p className="text-xs text-muted-foreground">
+                                    {isDriver ? "Delivery console: On" : isProduction ? "Production console" : "No console access"}
+                                  </p>
+                                </div>
+                              )}
+
                               <button
-                                onClick={() => {
-                                  fetchPreview();
-                                }}
-                                className="text-primary hover:underline"
+                                onClick={() => setExpandedEmployeeId(null)}
+                                className="text-xs text-muted-foreground hover:text-foreground"
                               >
-                                <Eye className="inline size-4" />
+                                Close ▲
                               </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
