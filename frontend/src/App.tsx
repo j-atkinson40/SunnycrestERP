@@ -99,6 +99,7 @@ import ProductionLogSummary from "@/pages/production-log/production-log-summary"
 import MobileProductionLog from "@/pages/production-log/mobile-production-log";
 import SpringBurialList from "@/pages/spring-burials/spring-burial-list";
 import OrderStation from "@/pages/orders/order-station";
+import AnnouncementsPage from "@/pages/announcements";
 import OnboardingHub from "@/pages/onboarding/onboarding-hub";
 import IntegrationSetupPage from "@/pages/onboarding/integration-setup";
 import OnboardingAnalyticsPage from "@/pages/onboarding/onboarding-analytics";
@@ -464,6 +465,9 @@ export default function App() {
                     <Route path="/funeral-home/compliance" element={<FHCompliancePage />} />
                     <Route path="/funeral-home/price-list" element={<FHPriceListPage />} />
                   </Route>
+
+                  {/* Announcements — any authenticated user */}
+                  <Route path="/announcements" element={<AnnouncementsPage />} />
 
                   {/* Onboarding — any authenticated user */}
                   <Route path="/onboarding" element={<OnboardingHub />} />

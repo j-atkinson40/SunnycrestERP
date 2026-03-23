@@ -12,6 +12,7 @@ from app.api.routes import (
     accounting_connection,
     ai,
     ancillary_orders,
+    announcements,
     ap,
     api_keys,
     audit,
@@ -94,6 +95,9 @@ v1_router.include_router(
 v1_router.include_router(ai.router, prefix="/ai", tags=["AI"])
 v1_router.include_router(
     ancillary_orders.router, prefix="/extensions/funeral-kanban", tags=["Ancillary Orders"]
+)
+v1_router.include_router(
+    announcements.router, prefix="/announcements", tags=["Announcements"]
 )
 v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["API Keys"])
 v1_router.include_router(ap.router, prefix="/ap", tags=["Accounts Payable"])

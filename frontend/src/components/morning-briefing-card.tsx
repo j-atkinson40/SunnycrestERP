@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { X, RefreshCw, Check, ChevronRight } from "lucide-react";
+import { X, RefreshCw, Check, ChevronRight, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,6 +26,19 @@ interface BriefingResponse {
   generated_at: string;
   briefing_date: string;
   reason?: string;
+}
+
+interface AnnouncementItem {
+  id: string;
+  title: string;
+  body: string | null;
+  priority: "info" | "warning" | "critical";
+  pin_to_top: boolean;
+  created_at: string | null;
+  expires_at: string | null;
+  created_by_name: string | null;
+  is_read: boolean;
+  is_dismissed: boolean;
 }
 
 // ── Action link inference ──
@@ -95,6 +108,20 @@ function isAllClear(data: BriefingResponse): boolean {
   return false;
 }
 
+function relativeTime(isoString: string): string {
+  const now = Date.now();
+  const then = new Date(isoString).getTime();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  if (diffDays === 1) return "yesterday";
+  return `${diffDays}d ago`;
+}
+
 // ── Component ──
 
 export function MorningBriefingCard() {
@@ -105,6 +132,8 @@ export function MorningBriefingCard() {
   const [dismissed, setDismissed] = useState(false);
   const [autoDismissProgress, setAutoDismissProgress] = useState(100);
   const [userInteracted, setUserInteracted] = useState(false);
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
   const autoDismissTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoDismissTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -129,17 +158,48 @@ export function MorningBriefingCard() {
     }
   }, []);
 
+  // Fetch announcements
+  const fetchAnnouncements = useCallback(async () => {
+    try {
+      const res = await apiClient.get<AnnouncementItem[]>("/announcements/my");
+      setAnnouncements(res.data);
+    } catch {
+      setAnnouncements([]);
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await fetchBriefing();
+      await Promise.all([fetchBriefing(), fetchAnnouncements()]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [fetchBriefing]);
+  }, [fetchBriefing, fetchAnnouncements]);
+
+  // Mark unread announcements as read (fire-and-forget)
+  useEffect(() => {
+    if (announcementsLoading) return;
+    announcements.forEach((a) => {
+      if (!a.is_read) {
+        apiClient.post(`/announcements/${a.id}/read`).catch(() => {});
+      }
+    });
+  }, [announcements, announcementsLoading]);
+
+  const handleDismissAnnouncement = async (id: string) => {
+    try {
+      await apiClient.post(`/announcements/${id}/dismiss`);
+    } catch {
+      // continue removing from UI
+    }
+    setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+  };
 
   // Auto-dismiss for all-clear
   useEffect(() => {
@@ -192,8 +252,10 @@ export function MorningBriefingCard() {
     }
   };
 
+  const hasAnnouncements = announcements.length > 0;
+
   // Don't render conditions
-  if (dismissed) return null;
+  if (dismissed && !hasAnnouncements) return null;
   if (loading) {
     return (
       <Card className="relative overflow-hidden">
@@ -211,18 +273,85 @@ export function MorningBriefingCard() {
       </Card>
     );
   }
-  if (!data) return null;
-  if (data.content === null && data.reason === "disabled") return null;
 
-  const allClear = isAllClear(data);
+  const briefingDisabled = data?.content === null && data?.reason === "disabled";
+  const hasBriefing = data && !briefingDisabled && !dismissed;
+
+  if (!hasBriefing && !hasAnnouncements) return null;
+
+  // ── Announcements section (reused across variants) ──
+  const announcementsSection = hasAnnouncements ? (
+    <div>
+      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+        Announcements
+      </h4>
+      <div className="space-y-2">
+        {announcements.map((a) => (
+          <div
+            key={a.id}
+            className={cn(
+              "pl-3 pr-2 py-2 rounded-sm border-l-2",
+              a.priority === "critical" && "border-l-red-500 bg-red-50/50",
+              a.priority === "warning" && "border-l-amber-500 bg-amber-50/50",
+              a.priority === "info" && "border-l-blue-400 bg-blue-50/50",
+            )}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  {a.pin_to_top && (
+                    <Pin className="h-3 w-3 text-gray-400 shrink-0" />
+                  )}
+                  <span className="text-sm font-semibold text-gray-900">
+                    {a.title}
+                  </span>
+                </div>
+                {a.body && (
+                  <p className="text-sm text-gray-700 mt-0.5 leading-relaxed">
+                    {a.body}
+                  </p>
+                )}
+                <p className="text-xs text-gray-400 mt-1">
+                  {a.created_by_name && <>from {a.created_by_name} &middot; </>}
+                  {a.created_at ? relativeTime(a.created_at) : ""}
+                </p>
+              </div>
+              <button
+                onClick={() => handleDismissAnnouncement(a.id)}
+                className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
+                aria-label="Dismiss announcement"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
+  const allClear = hasBriefing ? isAllClear(data!) : false;
   const afternoon = isAfterNoon();
-  const headerTitle = data.tier === "role_based" ? "Your day" : afternoon ? "Current Status" : "Today";
-  const timeLabel = afternoon
-    ? `as of ${formatTime(data.generated_at)}`
-    : formatTime(data.generated_at);
+  const headerTitle = data?.tier === "role_based" ? "Your day" : afternoon ? "Current Status" : "Today";
+  const timeLabel = data
+    ? afternoon
+      ? `as of ${formatTime(data.generated_at)}`
+      : formatTime(data.generated_at)
+    : "";
+
+  // ── Announcements-only (no briefing to show) ──
+  if (!hasBriefing && hasAnnouncements) {
+    return (
+      <Card ref={cardRef} className="relative overflow-hidden">
+        <CardContent className="p-5">
+          {announcementsSection}
+        </CardContent>
+      </Card>
+    );
+  }
 
   // ── Driver / role_based paragraph variant ──
-  if (data.tier === "role_based") {
+  if (data!.tier === "role_based") {
     return (
       <Card
         ref={cardRef}
@@ -231,6 +360,10 @@ export function MorningBriefingCard() {
         onClick={handleInteraction}
       >
         <CardContent className="p-5">
+          {announcementsSection}
+          {hasAnnouncements && (
+            <div className="my-3 border-t border-gray-100" />
+          )}
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900">{headerTitle}</h3>
             <div className="flex items-center gap-2">
@@ -245,7 +378,7 @@ export function MorningBriefingCard() {
             </div>
           </div>
           <p className="text-sm text-gray-700 leading-relaxed">
-            {data.content ?? data.items.map((i) => i.text).join(" ")}
+            {data!.content ?? data!.items.map((i) => i.text).join(" ")}
           </p>
         </CardContent>
       </Card>
@@ -254,7 +387,7 @@ export function MorningBriefingCard() {
 
   // ── All-clear variant ──
   if (allClear) {
-    const displayText = data.content ?? data.items[0]?.text ?? "All clear. No flags.";
+    const displayText = data!.content ?? data!.items[0]?.text ?? "All clear. No flags.";
     return (
       <Card
         ref={cardRef}
@@ -263,6 +396,10 @@ export function MorningBriefingCard() {
         onClick={handleInteraction}
       >
         <CardContent className="p-5">
+          {announcementsSection}
+          {hasAnnouncements && (
+            <div className="my-3 border-t border-gray-100" />
+          )}
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900">{headerTitle}</h3>
             <div className="flex items-center gap-2">
@@ -303,6 +440,12 @@ export function MorningBriefingCard() {
       onClick={handleInteraction}
     >
       <CardContent className="p-5">
+        {/* Announcements */}
+        {announcementsSection}
+        {hasAnnouncements && data!.items.length > 0 && (
+          <div className="my-3 border-t border-gray-100" />
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-gray-900">{headerTitle}</h3>
@@ -320,8 +463,8 @@ export function MorningBriefingCard() {
 
         {/* Items */}
         <div className="space-y-3">
-          {data.items.map((item) => {
-            const action = inferActionLink(item, data.primary_area);
+          {data!.items.map((item) => {
+            const action = inferActionLink(item, data!.primary_area);
             return (
               <div
                 key={item.number}
@@ -363,8 +506,8 @@ export function MorningBriefingCard() {
         {/* Footer / Refresh */}
         <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
           <div className="text-xs text-gray-400">
-            {data.was_cached && (
-              <span>Generated at {formatTime(data.generated_at)} &middot; </span>
+            {data!.was_cached && (
+              <span>Generated at {formatTime(data!.generated_at)} &middot; </span>
             )}
           </div>
           <Button

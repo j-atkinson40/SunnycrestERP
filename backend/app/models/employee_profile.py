@@ -51,6 +51,11 @@ class EmployeeProfile(Base):
         String(50), nullable=True
     )
 
+    # Announcement permissions
+    can_create_announcements: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     # Admin-only
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

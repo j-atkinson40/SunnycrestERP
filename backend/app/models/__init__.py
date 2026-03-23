@@ -1,4 +1,6 @@
 from app.models.accounting_connection import AccountingConnection
+from app.models.announcement import Announcement
+from app.models.announcement_read import AnnouncementRead
 from app.models.assistant_profile import AssistantProfile
 from app.models.api_key import ApiKey
 from app.models.api_key_usage import ApiKeyUsage
@@ -143,6 +145,8 @@ from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIn
 
 __all__ = [
     "AccountingConnection",
+    "Announcement",
+    "AnnouncementRead",
     "AssistantProfile",
     "ApiKey",
     "ApiKeyUsage",

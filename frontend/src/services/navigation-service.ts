@@ -77,6 +77,11 @@ function getManufacturingNav(
   const opsItems: NavItem[] = [
     { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
     {
+      label: "Announcements",
+      href: "/announcements",
+      icon: "Megaphone",
+    },
+    {
       label: "Order Station",
       href: "/order-station",
       icon: "Zap",
