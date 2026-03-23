@@ -1,5 +1,6 @@
 from app.models.accounting_connection import AccountingConnection
 from app.models.announcement import Announcement
+from app.models.ap_settings import APSettings
 from app.models.announcement_read import AnnouncementRead
 from app.models.assistant_profile import AssistantProfile
 from app.models.api_key import ApiKey
@@ -163,6 +164,7 @@ __all__ = [
     "AccountingConnection",
     "Announcement",
     "AnnouncementRead",
+    "APSettings",
     "AssistantProfile",
     "ApiKey",
     "ApiKeyUsage",

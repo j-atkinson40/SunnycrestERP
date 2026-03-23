@@ -63,9 +63,17 @@ class VendorBill(Base):
     # --- Other ---
     payment_terms: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(30), server_default="manual")
+    received_statement_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    attachment_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    attachment_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     qbo_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True, index=True
     )
+    quickbooks_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    quickbooks_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     approved_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )

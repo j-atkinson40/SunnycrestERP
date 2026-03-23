@@ -79,10 +79,16 @@ class Vendor(Base):
 
     # --- Other ---
     tax_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_1099_vendor: Mapped[bool] = mapped_column(Boolean, server_default="false")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- Sage sync ---
     sage_vendor_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # --- QuickBooks sync ---
+    quickbooks_vendor_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    quickbooks_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    quickbooks_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- Relationships ---
     company = relationship("Company")

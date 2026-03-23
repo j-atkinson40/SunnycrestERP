@@ -61,6 +61,14 @@ class VendorPayment(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # --- QuickBooks sync ---
+    quickbooks_payment_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    quickbooks_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # --- Relationships ---
     company = relationship("Company")
     vendor = relationship("Vendor")
