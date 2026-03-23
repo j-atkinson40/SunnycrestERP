@@ -974,6 +974,7 @@ def fix_checklist_targets(db: Session) -> None:
                     action_type=item_def["action_type"],
                     action_target=item_def.get("action_target"),
                     sort_order=item_def.get("sort_order", 0),
+                    depends_on=item_def.get("depends_on"),
                 )
                 db.add(item)
                 logger.info(
@@ -1027,6 +1028,7 @@ def initialize_checklist(
             action_type=item_def["action_type"],
             action_target=item_def.get("action_target"),
             sort_order=item_def.get("sort_order", 0),
+            depends_on=item_def.get("depends_on"),
         )
         db.add(item)
 
