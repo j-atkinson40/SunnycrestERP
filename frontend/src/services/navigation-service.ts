@@ -6,6 +6,7 @@ export interface NavItem {
   permission?: string;
   requiresModule?: string;
   functionalArea?: string; // employee must have this area assigned
+  children?: NavItem[]; // nested sub-items shown when parent is expanded
 }
 
 export interface NavSection {
@@ -156,6 +157,18 @@ function getManufacturingNav(
       permission: "safety.view",
       requiresModule: "safety_management",
       functionalArea: "safety_compliance",
+      children: [
+        { label: "Dashboard", href: "/safety", icon: "LayoutDashboard" },
+        { label: "Training Calendar", href: "/safety/training/calendar", icon: "CalendarDays" },
+        { label: "Inspections", href: "/safety/inspections/new", icon: "ClipboardCheck" },
+        { label: "Toolbox Talks", href: "/safety/toolbox-talks", icon: "MessageSquare" },
+        { label: "Incidents", href: "/safety/incidents", icon: "AlertTriangle" },
+        { label: "Safety Notices", href: "/safety/notices", icon: "ShieldAlert" },
+        { label: "OSHA 300 Log", href: "/safety/osha-300", icon: "FileText" },
+        { label: "SDS / HazCom", href: "/safety/chemicals", icon: "FlaskConical" },
+        { label: "LOTO Procedures", href: "/safety/loto", icon: "Lock" },
+        { label: "Programs", href: "/safety/programs", icon: "BookOpen" },
+      ],
     },
   ];
   if (modules.has("npca_audit_prep")) {

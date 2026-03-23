@@ -1,22 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
+  AlertTriangle,
   Award,
   Bell,
+  BookOpen,
+  BrainCircuit,
   Building2,
+  Calculator,
   Calendar,
+  CalendarDays,
+  ChevronDown,
   ChevronRight,
+  ClipboardCheck,
   ClipboardList,
   Factory,
   FileText,
+  FlaskConical,
   FolderOpen,
   Gem,
   Kanban,
   LayoutDashboard,
   Link as LinkIcon,
   ListOrdered,
+  Lock,
   Map,
   MapPin,
+  Megaphone,
+  MessageSquare,
   MoreHorizontal,
   Package,
   Plug,
@@ -24,6 +35,7 @@ import {
   Puzzle,
   Receipt,
   Scale,
+  ShieldAlert,
   ShieldCheck,
   Snowflake,
   Sparkles,
@@ -42,21 +54,31 @@ import type { NavItem, NavSection } from "@/services/navigation-service";
 
 // ---- Icon lookup ----
 const ICON_MAP: Record<string, LucideIcon> = {
+  AlertTriangle,
   Award,
   Bell,
+  BookOpen,
+  BrainCircuit,
   Building2,
+  Calculator,
   Calendar,
+  CalendarDays,
+  ClipboardCheck,
   ClipboardList,
   Factory,
   FileText,
+  FlaskConical,
   FolderOpen,
   Gem,
   Kanban,
   LayoutDashboard,
   Link: LinkIcon,
   ListOrdered,
+  Lock,
   Map,
   MapPin,
+  Megaphone,
+  MessageSquare,
   MoreHorizontal,
   Package,
   Plug,
@@ -64,6 +86,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Puzzle,
   Receipt,
   Scale,
+  ShieldAlert,
   ShieldCheck,
   Snowflake,
   Sparkles,
@@ -299,6 +322,7 @@ function SidebarSection({
               item={item}
               active={isActive(item.href)}
               presetAccent={presetAccent}
+              isActive={isActive}
             />
           ))}
         </div>
@@ -312,20 +336,79 @@ function SidebarItem({
   item,
   active,
   presetAccent,
+  isActive,
 }: {
   item: NavItem;
   active: boolean;
   presetAccent: string;
+  isActive?: (href: string) => boolean;
 }) {
   const Icon = resolveIcon(item.icon);
+  const [expanded, setExpanded] = useState(false);
+  const hasChildren = item.children && item.children.length > 0;
+
+  // Auto-expand if any child is active
+  const childActive = hasChildren && isActive
+    ? item.children!.some((c) => isActive(c.href))
+    : false;
+
+  useEffect(() => {
+    if (childActive) setExpanded(true);
+  }, [childActive]);
 
   // Use inline style for the accent color so it adapts to preset
-  const activeStyle = active
+  const activeStyle = (active && !hasChildren)
     ? {
         borderLeftColor: presetAccent,
         backgroundColor: `${presetAccent}10`,
       }
     : undefined;
+
+  if (hasChildren) {
+    const parentActive = active || childActive;
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+            "border-l-2 border-transparent",
+            parentActive
+              ? "font-medium text-sidebar-foreground"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+          )}
+          style={parentActive ? { borderLeftColor: presetAccent, backgroundColor: `${presetAccent}08` } : undefined}
+        >
+          {Icon && (
+            <Icon
+              className="size-4 shrink-0"
+              style={parentActive ? { color: presetAccent } : undefined}
+            />
+          )}
+          <span className="truncate flex-1 text-left">{item.label}</span>
+          <ChevronDown
+            className={cn(
+              "size-3.5 shrink-0 transition-transform duration-200 text-muted-foreground/50",
+              !expanded && "-rotate-90",
+            )}
+          />
+        </button>
+        {expanded && (
+          <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2">
+            {item.children!.map((child) => (
+              <SidebarItem
+                key={child.href}
+                item={child}
+                active={isActive ? isActive(child.href) : false}
+                presetAccent={presetAccent}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Link
