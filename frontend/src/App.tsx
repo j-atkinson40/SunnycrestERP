@@ -316,9 +316,14 @@ export default function App() {
                       path="/billing"
                       element={<BillingPage />}
                     />
+                    {/* Redirect old billing/received to Vendors & Bills */}
                     <Route
                       path="/billing/received/:id"
-                      element={<ReceivedStatementDetail />}
+                      element={<Navigate to="/ap/bills?tab=received" replace />}
+                    />
+                    <Route
+                      path="/billing/received"
+                      element={<Navigate to="/ap/bills?tab=received" replace />}
                     />
                     <Route
                       path="/ar/invoices"
@@ -375,6 +380,10 @@ export default function App() {
                     <Route
                       path="/ap/bills/:id"
                       element={<VendorBillDetailPage />}
+                    />
+                    <Route
+                      path="/ap/received/:id"
+                      element={<ReceivedStatementDetail />}
                     />
                     <Route
                       path="/ap/payments"

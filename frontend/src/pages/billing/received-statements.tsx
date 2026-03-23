@@ -128,7 +128,7 @@ export function ReceivedStatementsList() {
               {stmts.map((s) => (
                 <button
                   key={s.id}
-                  onClick={() => navigate(`/billing/received/${s.id}`)}
+                  onClick={() => navigate(`/ap/received/${s.id}`)}
                   className="w-full flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
                 >
                   <div className="flex items-center gap-3">
@@ -266,7 +266,7 @@ export function ReceivedStatementDetail() {
   return (
     <div className="space-y-4">
       <button
-        onClick={() => navigate("/billing?tab=received")}
+        onClick={() => navigate("/ap/bills?tab=received")}
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
       >
         <ArrowLeft className="h-4 w-4" /> Back to received statements
