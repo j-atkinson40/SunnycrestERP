@@ -165,6 +165,23 @@ def seed_platform_admin():
             db.close()
 
 
+@app.on_event("startup")
+def run_data_seeders():
+    """Run data seeders that should always execute, regardless of platform admin config."""
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        from app.services.onboarding_service import fix_checklist_targets
+        fix_checklist_targets(db)
+        db.commit()
+    except Exception as exc:
+        print(f"WARNING: Checklist backfill failed — {exc}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 @app.get("/api/health", tags=["System"])
 def health_check():
     """Health check endpoint — used by Railway, load balancers, and CI."""

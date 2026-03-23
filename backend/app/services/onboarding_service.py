@@ -919,6 +919,7 @@ def fix_checklist_targets(db: Session) -> None:
     _TARGET_FIXES = {
         "add_employees": "/onboarding/team",
         "connect_accounting": "/onboarding/accounting",
+        "setup_team_intelligence": "/onboarding/team-intelligence",
     }
     for item_key, correct_target in _TARGET_FIXES.items():
         db.query(OnboardingChecklistItem).filter(
