@@ -235,7 +235,6 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/onboarding/safety-training",
-        "depends_on": '["add_employees"]',
         "sort_order": 5,
     },
     {
@@ -943,11 +942,11 @@ def fix_checklist_targets(db: Session) -> None:
             OnboardingChecklistItem.action_target != correct_target,
         ).update({"action_target": correct_target})
 
-    # Fix setup_safety_training depends_on — was setup_team_intelligence, should be add_employees
+    # Fix setup_safety_training — remove all dependencies, should be available immediately
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "setup_safety_training",
-        OnboardingChecklistItem.depends_on.contains("setup_team_intelligence"),
-    ).update({"depends_on": '["add_employees"]'})
+        OnboardingChecklistItem.depends_on.isnot(None),
+    ).update({"depends_on": None})
 
     # Fix action_type for items that were incorrectly set to "modal"
     db.query(OnboardingChecklistItem).filter(
