@@ -123,6 +123,14 @@ app.include_router(platform_router, prefix="/api/platform")
 # Deprecated alias: /api/ (same routes, triggers deprecation headers)
 app.include_router(v1_router, prefix="/api")
 
+# Static files — safety training templates
+import os
+from fastapi.staticfiles import StaticFiles
+
+_static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.isdir(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
 
 @app.on_event("startup")
 def seed_platform_admin():

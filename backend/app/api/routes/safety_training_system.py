@@ -246,3 +246,154 @@ def create_from_incident(
             detail="Incident not found or not OSHA recordable",
         )
     return {"id": entry.id, "entry_number": entry.entry_number}
+
+
+# ---------------------------------------------------------------------------
+# Training Document Management
+# ---------------------------------------------------------------------------
+
+
+class TrainingDocOut(BaseModel):
+    topic_key: str
+    source: str  # "platform" or "tenant"
+    filename: str
+    url: str
+    uploaded_at: str | None = None
+    uploaded_by_name: str | None = None
+    notes: str | None = None
+
+
+class TrainingDocUpload(BaseModel):
+    topic_key: str
+    filename: str
+    file_url: str
+    file_size_bytes: int | None = None
+    notes: str | None = None
+
+
+@router.get("/training/documents")
+def list_training_documents(
+    current_user: User = Depends(require_permission("safety.view")),
+    db: Session = Depends(get_db),
+):
+    """List all 12 training topics with their current document (tenant or platform default)."""
+    from app.models.safety_training_topic import SafetyTrainingTopic
+    from app.models.tenant_training_doc import TenantTrainingDoc
+
+    topics = db.query(SafetyTrainingTopic).order_by(SafetyTrainingTopic.month_number).all()
+    tenant_docs = {
+        d.topic_key: d
+        for d in db.query(TenantTrainingDoc).filter(
+            TenantTrainingDoc.tenant_id == current_user.company_id,
+            TenantTrainingDoc.is_active == True,
+        ).all()
+    }
+
+    user_ids = [d.uploaded_by for d in tenant_docs.values() if d.uploaded_by]
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
+    results = []
+    for topic in topics:
+        tenant_doc = tenant_docs.get(topic.topic_key)
+        if tenant_doc:
+            uploader = users.get(tenant_doc.uploaded_by) if tenant_doc.uploaded_by else None
+            results.append(TrainingDocOut(
+                topic_key=topic.topic_key,
+                source="tenant",
+                filename=tenant_doc.filename,
+                url=tenant_doc.file_url,
+                uploaded_at=tenant_doc.uploaded_at.isoformat() if tenant_doc.uploaded_at else None,
+                uploaded_by_name=f"{uploader.first_name} {uploader.last_name}" if uploader else None,
+                notes=tenant_doc.notes,
+            ))
+        else:
+            default_filename = f"safety_training_{str(topic.month_number).zfill(2)}_{topic.topic_key}.pdf"
+            results.append(TrainingDocOut(
+                topic_key=topic.topic_key,
+                source="platform",
+                filename=default_filename,
+                url=f"/static/safety-templates/{default_filename}",
+            ))
+    return results
+
+
+@router.get("/training/documents/{topic_key}")
+def get_training_document(
+    topic_key: str,
+    current_user: User = Depends(require_permission("safety.view")),
+    db: Session = Depends(get_db),
+):
+    """Get the current training document for a specific topic."""
+    from app.models.safety_training_topic import SafetyTrainingTopic
+    from app.models.tenant_training_doc import TenantTrainingDoc
+
+    topic = db.query(SafetyTrainingTopic).filter(SafetyTrainingTopic.topic_key == topic_key).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    tenant_doc = db.query(TenantTrainingDoc).filter(
+        TenantTrainingDoc.tenant_id == current_user.company_id,
+        TenantTrainingDoc.topic_key == topic_key,
+        TenantTrainingDoc.is_active == True,
+    ).first()
+
+    if tenant_doc:
+        return TrainingDocOut(
+            topic_key=topic_key, source="tenant", filename=tenant_doc.filename,
+            url=tenant_doc.file_url,
+            uploaded_at=tenant_doc.uploaded_at.isoformat() if tenant_doc.uploaded_at else None,
+            notes=tenant_doc.notes,
+        )
+
+    default_filename = f"safety_training_{str(topic.month_number).zfill(2)}_{topic.topic_key}.pdf"
+    return TrainingDocOut(
+        topic_key=topic_key, source="platform", filename=default_filename,
+        url=f"/static/safety-templates/{default_filename}",
+    )
+
+
+@router.post("/training/documents", status_code=status.HTTP_201_CREATED)
+def upload_training_document(
+    body: TrainingDocUpload,
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Upload a tenant-specific training document to replace the platform default."""
+    from app.models.tenant_training_doc import TenantTrainingDoc
+
+    db.query(TenantTrainingDoc).filter(
+        TenantTrainingDoc.tenant_id == current_user.company_id,
+        TenantTrainingDoc.topic_key == body.topic_key,
+        TenantTrainingDoc.is_active == True,
+    ).update({"is_active": False})
+
+    doc = TenantTrainingDoc(
+        tenant_id=current_user.company_id, topic_key=body.topic_key,
+        filename=body.filename, file_url=body.file_url,
+        file_size_bytes=body.file_size_bytes, uploaded_by=current_user.id,
+        notes=body.notes,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return {"id": doc.id, "status": "uploaded"}
+
+
+@router.delete("/training/documents/{topic_key}")
+def revert_training_document(
+    topic_key: str,
+    current_user: User = Depends(require_permission("safety.create")),
+    db: Session = Depends(get_db),
+):
+    """Revert to platform default by deactivating the tenant document."""
+    from app.models.tenant_training_doc import TenantTrainingDoc
+
+    updated = db.query(TenantTrainingDoc).filter(
+        TenantTrainingDoc.tenant_id == current_user.company_id,
+        TenantTrainingDoc.topic_key == topic_key,
+        TenantTrainingDoc.is_active == True,
+    ).update({"is_active": False})
+    db.commit()
+    if not updated:
+        raise HTTPException(status_code=404, detail="No tenant document found")
+    return {"status": "reverted"}

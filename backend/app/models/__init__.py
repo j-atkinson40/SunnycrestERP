@@ -114,6 +114,7 @@ from app.models.safety_training_topic import SafetyTrainingTopic
 from app.models.tenant_training_schedule import TenantTrainingSchedule
 from app.models.toolbox_talk import ToolboxTalk
 from app.models.osha_300_entry import OSHA300Entry
+from app.models.tenant_training_doc import TenantTrainingDoc
 from app.models.product_category import ProductCategory
 from app.models.product_price_tier import ProductPriceTier
 from app.models.quote import Quote, QuoteLine
@@ -268,6 +269,7 @@ __all__ = [
     "TenantTrainingSchedule",
     "ToolboxTalk",
     "OSHA300Entry",
+    "TenantTrainingDoc",
     "EmployeeTrainingRecord",
     "ProductPriceTier",
     "Quote",
