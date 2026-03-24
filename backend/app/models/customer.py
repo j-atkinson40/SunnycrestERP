@@ -108,6 +108,11 @@ class Customer(Base):
     statement_template_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     receives_statements: Mapped[bool] = mapped_column(Boolean, server_default="true")
     statement_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # --- Billing profile ---
+    billing_profile: Mapped[str] = mapped_column(String(20), server_default="cod")
+    receives_monthly_statement: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    payment_terms: Mapped[str] = mapped_column(String(20), server_default="cod")
+    preferred_delivery_method: Mapped[str] = mapped_column(String(20), server_default="email")
 
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)

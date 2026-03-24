@@ -142,6 +142,121 @@ def run_history(
     return get_run_history(db, current_user.company_id)
 
 
+@router.get("/runs/current")
+def get_current_run_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get active or most recent statement run with items."""
+    from app.services.statement_generation_service import get_current_run as get_current
+    run = get_current(db, current_user.company_id)
+    if not run:
+        return {"run": None, "items": []}
+    from app.models.statement_run import StatementRunItem
+    from app.models.customer import Customer
+    items = db.query(StatementRunItem).filter(StatementRunItem.statement_run_id == run.id).all()
+    return {
+        "run": {
+            "id": run.id, "run_date": str(run.run_date),
+            "period_start": str(run.period_start), "period_end": str(run.period_end),
+            "status": run.status, "total_customers": run.total_customers,
+            "total_amount": float(run.total_amount or 0), "flagged_count": run.flagged_count,
+            "sent_count": run.sent_count, "failed_count": run.failed_count,
+        },
+        "items": [
+            {
+                "id": i.id, "customer_id": i.customer_id,
+                "customer_name": (db.query(Customer).filter(Customer.id == i.customer_id).first() or type("C", (), {"name": "Unknown"})).name,
+                "opening_balance": float(i.opening_balance or 0),
+                "invoices_total": float(i.invoices_total or 0),
+                "payments_total": float(i.payments_total or 0),
+                "closing_balance": float(i.closing_balance or 0),
+                "due_date": str(i.due_date) if i.due_date else None,
+                "flagged": i.flagged, "flag_reasons": i.flag_reasons or [],
+                "review_status": i.review_status,
+                "delivery_method": i.delivery_method,
+                "delivery_status": i.delivery_status,
+                "sent_at": i.sent_at.isoformat() if i.sent_at else None,
+            }
+            for i in items
+        ],
+    }
+
+
+class GenerateRunRequest(BaseModel):
+    period_start: str
+    period_end: str
+
+
+@router.post("/runs/generate")
+def generate_run(
+    body: GenerateRunRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate a new statement run with agent flagging."""
+    from datetime import date
+    from app.services.statement_generation_service import generate_statement_run
+    ps = date.fromisoformat(body.period_start)
+    pe = date.fromisoformat(body.period_end)
+    run = generate_statement_run(db, current_user.company_id, current_user.id, ps, pe)
+    return {"id": run.id, "status": run.status, "total_customers": run.total_customers, "flagged_count": run.flagged_count}
+
+
+class ReviewNote(BaseModel):
+    note: str | None = None
+
+
+@router.post("/runs/{run_id}/items/{item_id}/approve")
+def approve_item_endpoint(
+    run_id: str, item_id: str,
+    body: ReviewNote = ReviewNote(),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.statement_generation_service import approve_item
+    if not approve_item(db, item_id, current_user.company_id, current_user.id, body.note):
+        raise HTTPException(404, "Item not found")
+    return {"status": "approved"}
+
+
+@router.post("/runs/{run_id}/items/{item_id}/skip")
+def skip_item_endpoint(
+    run_id: str, item_id: str,
+    body: ReviewNote = ReviewNote(),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.statement_generation_service import skip_item
+    if not skip_item(db, item_id, current_user.company_id, current_user.id, body.note):
+        raise HTTPException(404, "Item not found")
+    return {"status": "skipped"}
+
+
+@router.post("/runs/{run_id}/approve-all-unflagged")
+def approve_unflagged(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.services.statement_generation_service import approve_all_unflagged
+    count = approve_all_unflagged(db, run_id, current_user.company_id, current_user.id)
+    return {"approved": count}
+
+
+@router.get("/customers/eligible-count")
+def eligible_count(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.customer import Customer
+    count = db.query(Customer).filter(
+        Customer.company_id == current_user.company_id,
+        Customer.receives_monthly_statement == True,
+    ).count()
+    return {"count": count}
+
+
 # ---------------------------------------------------------------------------
 # Customer statement history
 # ---------------------------------------------------------------------------

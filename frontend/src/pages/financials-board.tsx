@@ -265,6 +265,7 @@ function ARCommandZone() {
     { key: "collections", label: "Collections", count: collections?.drafts_awaiting },
     { key: "payments", label: "Payments" },
     { key: "credit", label: "Credit" },
+    { key: "statements", label: "Statements" },
   ]
 
   return (
@@ -380,6 +381,8 @@ function ARCommandZone() {
             <p className="text-sm text-gray-400 text-center py-8">Payment matching data will appear here</p>
           ) : activeTab === "credit" ? (
             <p className="text-sm text-gray-400 text-center py-8">Credit overview will appear here</p>
+          ) : activeTab === "statements" ? (
+            <StatementsSubTab />
           ) : null}
         </div>
       </CardContent>
@@ -607,5 +610,219 @@ function AgentActivityZone() {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// ── Statements Sub-Tab (inside AR Command Zone) ──
+
+interface StmtRunData {
+  run: {
+    id: string; run_date: string; period_start: string; period_end: string
+    status: string; total_customers: number; total_amount: number
+    flagged_count: number; sent_count: number; failed_count: number
+  } | null
+  items: {
+    id: string; customer_id: string; customer_name: string
+    opening_balance: number; invoices_total: number; payments_total: number
+    closing_balance: number; due_date: string | null
+    flagged: boolean; flag_reasons: { code: string; message: string }[]
+    review_status: string; delivery_method: string; delivery_status: string
+    sent_at: string | null
+  }[]
+}
+
+function StatementsSubTab() {
+  const [data, setData] = useState<StmtRunData | null>(null)
+  const [eligible, setEligible] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [sending, setSending] = useState(false)
+
+  useEffect(() => {
+    Promise.all([
+      apiClient.get("/statements/runs/current").then((r) => setData(r.data)),
+      apiClient.get("/statements/customers/eligible-count").then((r) => setEligible(r.data.count)),
+    ]).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const handleGenerate = async () => {
+    setGenerating(true)
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), 1)
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    try {
+      await apiClient.post("/statements/runs/generate", {
+        period_start: start.toISOString().split("T")[0],
+        period_end: end.toISOString().split("T")[0],
+      })
+      const res = await apiClient.get("/statements/runs/current")
+      setData(res.data)
+      toast.success("Statement run generated")
+    } catch {
+      toast.error("Failed to generate statements")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleApprove = async (itemId: string) => {
+    if (!data?.run) return
+    try {
+      await apiClient.post(`/statements/runs/${data.run.id}/items/${itemId}/approve`)
+      setData((prev) => prev ? {
+        ...prev,
+        items: prev.items.map((i) => i.id === itemId ? { ...i, review_status: "approved" } : i),
+      } : prev)
+    } catch { toast.error("Failed to approve") }
+  }
+
+  const handleSkip = async (itemId: string) => {
+    if (!data?.run) return
+    try {
+      await apiClient.post(`/statements/runs/${data.run.id}/items/${itemId}/skip`)
+      setData((prev) => prev ? {
+        ...prev,
+        items: prev.items.map((i) => i.id === itemId ? { ...i, review_status: "skipped" } : i),
+      } : prev)
+    } catch { toast.error("Failed to skip") }
+  }
+
+  const handleApproveAllUnflagged = async () => {
+    if (!data?.run) return
+    try {
+      const res = await apiClient.post(`/statements/runs/${data.run.id}/approve-all-unflagged`)
+      toast.success(`${res.data.approved} statements approved`)
+      const refreshed = await apiClient.get("/statements/runs/current")
+      setData(refreshed.data)
+    } catch { toast.error("Failed to approve") }
+  }
+
+  const handleSendAll = async () => {
+    if (!data?.run) return
+    setSending(true)
+    try {
+      await apiClient.post(`/statements/runs/${data.run.id}/send-all`)
+      const refreshed = await apiClient.get("/statements/runs/current")
+      setData(refreshed.data)
+      toast.success("Statements sent")
+    } catch { toast.error("Failed to send") }
+    finally { setSending(false) }
+  }
+
+  if (loading) return <div className="flex justify-center py-8"><RefreshCw className="h-5 w-5 animate-spin text-gray-300" /></div>
+
+  const run = data?.run
+  const items = data?.items || []
+  const flagged = items.filter((i) => i.flagged && i.review_status === "pending")
+  const approved = items.filter((i) => i.review_status === "approved")
+  const pendingReview = items.filter((i) => i.flagged && i.review_status === "pending").length
+
+  // STATE A — No active run
+  if (!run || run.status === "sent") {
+    return (
+      <div className="space-y-4">
+        {run && (
+          <div className="text-sm text-gray-500">
+            <p>Last run: {run.period_start} to {run.period_end}</p>
+            <p>{run.total_customers} customers · ${run.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} · Sent: {run.sent_count}</p>
+          </div>
+        )}
+        <div className="rounded-lg border border-gray-200 p-4">
+          <p className="text-sm font-medium text-gray-900 mb-1">
+            {eligible} customers eligible for monthly statements
+          </p>
+          <p className="text-xs text-gray-500 mb-3">Agent will notify you 3 days before month end.</p>
+          <Button size="sm" onClick={handleGenerate} disabled={generating} className="gap-1.5">
+            {generating ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : null}
+            {generating ? "Generating..." : "Generate Now"}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // STATE B — Review (draft / in_review)
+  if (["draft", "in_review", "approved"].includes(run.status)) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>{run.period_start} to {run.period_end}</span>
+          <span>{items.length} statements · {flagged.length} flagged</span>
+        </div>
+
+        {/* Flagged items */}
+        {flagged.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-amber-700 mb-2">{flagged.length} need review</p>
+            {flagged.map((item) => (
+              <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 mb-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-sm font-medium">{item.customer_name}</span>
+                    <span className="text-gray-500 ml-2 text-xs">${item.closing_balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => handleApprove(item.id)} className="text-xs text-green-600 hover:text-green-700 px-2 py-0.5 rounded bg-green-50">Approve</button>
+                    <button onClick={() => handleSkip(item.id)} className="text-xs text-gray-500 hover:text-gray-700 px-2 py-0.5 rounded bg-gray-50">Skip</button>
+                  </div>
+                </div>
+                <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                  {item.flag_reasons.map((f, i) => (
+                    <span key={i} className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">{f.message}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Approved summary */}
+        {approved.length > 0 && (
+          <div className="text-xs text-gray-500">
+            {approved.length} approved · ${approved.reduce((s, i) => s + i.closing_balance, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+          <Button size="sm" variant="outline" onClick={handleApproveAllUnflagged} className="text-xs">
+            Approve All Unflagged
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSendAll}
+            disabled={pendingReview > 0 || sending}
+            className="text-xs gap-1"
+            title={pendingReview > 0 ? "Review all flagged statements first" : ""}
+          >
+            {sending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : null}
+            Send All Approved
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // STATE C — Sending / partial
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-gray-500">
+        Sent: {run.sent_count} · Failed: {run.failed_count}
+      </div>
+      {items.map((item) => (
+        <div key={item.id} className="flex items-center justify-between text-sm py-1 border-b border-gray-100">
+          <span>{item.customer_name}</span>
+          <span className={cn(
+            "text-xs px-1.5 py-0.5 rounded",
+            item.delivery_status === "sent" ? "bg-blue-100 text-blue-700" :
+            item.delivery_status === "delivered" || item.delivery_status === "opened" ? "bg-green-100 text-green-700" :
+            item.delivery_status === "failed" || item.delivery_status === "bounced" ? "bg-red-100 text-red-700" :
+            "bg-gray-100 text-gray-500"
+          )}>
+            {item.delivery_status}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }

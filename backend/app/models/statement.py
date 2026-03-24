@@ -85,6 +85,13 @@ class CustomerStatement(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_sent_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
     send_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Agent flagging and review
+    flagged: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    flag_reasons: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    review_status: Mapped[str] = mapped_column(String(20), server_default="pending")
+    reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Cross-tenant delivery fields
     cross_tenant_delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cross_tenant_received_statement_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
