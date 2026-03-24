@@ -1,0 +1,187 @@
+/**
+ * Collections review page — /ar/collections/:sequenceId/review
+ * Shows drafted email for human review before sending.
+ */
+
+import { useState, useEffect } from "react"
+import { useParams, useNavigate } from "react-router-dom"
+import { toast } from "sonner"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Send, Pause, ArrowLeft, RefreshCw } from "lucide-react"
+import apiClient from "@/lib/api-client"
+
+interface CollectionData {
+  id: string
+  sequence_step: number
+  draft_subject: string | null
+  draft_body: string | null
+  paused: boolean
+  pause_reason: string | null
+  customer_name: string
+  customer_email: string | null
+  invoice_number: string | null
+  invoice_amount: number
+  days_overdue: number
+}
+
+export default function CollectionsReviewPage() {
+  const { sequenceId } = useParams<{ sequenceId: string }>()
+  const navigate = useNavigate()
+  const [data, setData] = useState<CollectionData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+  const [pausing, setPausing] = useState(false)
+  const [subject, setSubject] = useState("")
+  const [body, setBody] = useState("")
+  const [recipientEmail, setRecipientEmail] = useState("")
+  const [pauseReason, setPauseReason] = useState("")
+  const [showPauseForm, setShowPauseForm] = useState(false)
+
+  useEffect(() => {
+    if (!sequenceId) return
+    apiClient
+      .get(`/agents/collections/${sequenceId}`)
+      .then((res) => {
+        setData(res.data)
+        setSubject(res.data.draft_subject || "")
+        setBody(res.data.draft_body || "")
+        setRecipientEmail(res.data.customer_email || "")
+      })
+      .catch(() => toast.error("Failed to load collection details"))
+      .finally(() => setLoading(false))
+  }, [sequenceId])
+
+  const handleSend = async () => {
+    if (!recipientEmail) {
+      toast.error("Recipient email is required")
+      return
+    }
+    setSending(true)
+    try {
+      await apiClient.post(`/agents/collections/${sequenceId}/send`, {
+        subject, body, recipient_email: recipientEmail,
+      })
+      toast.success("Collections email sent")
+      navigate("/alerts")
+    } catch {
+      toast.error("Failed to send email")
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handlePause = async () => {
+    if (!pauseReason.trim()) {
+      toast.error("Please provide a reason")
+      return
+    }
+    setPausing(true)
+    try {
+      await apiClient.post(`/agents/collections/${sequenceId}/pause`, { reason: pauseReason.trim() })
+      toast.success("Collection sequence paused")
+      navigate("/alerts")
+    } catch {
+      toast.error("Failed to pause sequence")
+    } finally {
+      setPausing(false)
+    }
+  }
+
+  if (loading || !data) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <RefreshCw className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
+  const stepLabel = { 1: "First Notice", 2: "Second Notice", 3: "Final Notice" }[data.sequence_step] || "Notice"
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+        <ArrowLeft className="h-4 w-4" /> Back
+      </button>
+
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Collections Review — {stepLabel}</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          {data.customer_name} · Invoice #{data.invoice_number} · ${data.invoice_amount.toLocaleString()} · {data.days_overdue} days overdue
+        </p>
+      </div>
+
+      {/* Email draft */}
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
+            <input
+              type="email"
+              value={recipientEmail}
+              onChange={(e) => setRecipientEmail(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              placeholder="billing@customer.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Subject</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Body</label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={12}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
+            />
+          </div>
+
+          <p className="text-xs text-gray-400">
+            Generated by agent · Edit freely before sending
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Actions */}
+      <div className="flex items-center gap-3">
+        <Button onClick={handleSend} disabled={sending} className="gap-1.5">
+          <Send className="h-4 w-4" />
+          {sending ? "Sending..." : "Send Email"}
+        </Button>
+        <Button variant="outline" onClick={() => setShowPauseForm(!showPauseForm)} className="gap-1.5">
+          <Pause className="h-4 w-4" />
+          Decline & Pause
+        </Button>
+      </div>
+
+      {showPauseForm && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Why are you pausing this collection?
+            </label>
+            <textarea
+              value={pauseReason}
+              onChange={(e) => setPauseReason(e.target.value)}
+              rows={2}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              placeholder="e.g. Customer promised payment next week"
+            />
+            <Button variant="outline" onClick={handlePause} disabled={pausing}>
+              {pausing ? "Pausing..." : "Pause Sequence"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}

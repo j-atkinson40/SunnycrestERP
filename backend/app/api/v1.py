@@ -49,6 +49,7 @@ from app.api.routes import (
     job_queue,
     modules,
     network,
+    agents,
     notifications,
     onboarding,
     operations_board,
@@ -209,6 +210,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     onboarding.router, prefix="/onboarding", tags=["Onboarding"]
+)
+v1_router.include_router(
+    agents.router,
+    prefix="/agents",
+    tags=["Agents"],
 )
 v1_router.include_router(
     operations_board.router,

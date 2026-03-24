@@ -124,6 +124,8 @@ import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import AccountingReviewPage from "@/pages/onboarding/accounting-review";
+import AlertsPage from "@/pages/alerts";
+import CollectionsReviewPage from "@/pages/ar/collections-review";
 import SyncHealthDashboardPage from "@/pages/admin/sync-health-dashboard";
 import SchedulingSetupPage from "@/pages/onboarding/scheduling-setup";
 import NetworkPreferencesPage from "@/pages/onboarding/network-preferences";
@@ -386,6 +388,8 @@ export default function App() {
                       path="/ap/received/:id"
                       element={<ReceivedStatementDetail />}
                     />
+                    <Route path="/alerts" element={<AlertsPage />} />
+                    <Route path="/ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />
                     <Route
                       path="/ap/payments"
                       element={<VendorPaymentsPage />}

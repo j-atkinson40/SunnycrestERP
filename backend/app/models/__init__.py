@@ -1,3 +1,4 @@
+from app.models.agent import AgentActivityLog, AgentAlert, AgentCollectionSequence, AgentJob
 from app.models.accounting_analysis import (
     TenantAccountingAnalysis,
     TenantAccountingImportStaging,
