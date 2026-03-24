@@ -25,6 +25,8 @@ import {
   Truck,
   RefreshCw,
   X,
+  Home,
+  PackageCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
@@ -191,11 +193,20 @@ export default function OperationsBoardPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Operations Board</h1>
-          <p className="text-xs text-gray-500">
-            {dateStr} · {timeStr}
-          </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate("/")}
+            className="p-2 rounded-lg hover:bg-gray-100"
+            title="Back to dashboard"
+          >
+            <Home className="h-5 w-5 text-gray-500" />
+          </button>
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">Operations Board</h1>
+            <p className="text-xs text-gray-500">
+              {dateStr} · {timeStr}
+            </p>
+          </div>
         </div>
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -260,6 +271,9 @@ export default function OperationsBoardPage() {
             })}
           </div>
         )}
+
+        {/* ZONE — Receiving (PO deliveries) */}
+        <ReceivingZone navigate={navigate} />
 
         {/* ZONE 5 — Today's Production Log */}
         {settings.zone_production_log_visible !== false && (
@@ -467,5 +481,99 @@ function SettingToggle({
         className="h-4 w-4 rounded border-gray-300 mt-0.5 shrink-0"
       />
     </label>
+  )
+}
+
+// ── Receiving Zone — PO deliveries ──
+
+interface ExpectedPO {
+  id: string
+  po_number: string
+  vendor_name: string
+  total_amount: number
+  expected_delivery_date: string | null
+  status: string
+}
+
+function ReceivingZone({ navigate }: { navigate: (path: string) => void }) {
+  const [pos, setPOs] = useState<ExpectedPO[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiClient
+      .get("/purchasing/orders")
+      .then((r) => {
+        const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0]
+        const expected = (r.data as ExpectedPO[]).filter(
+          (p) =>
+            p.expected_delivery_date &&
+            (p.expected_delivery_date <= tomorrow) &&
+            ["approved", "sent", "partially_received"].includes(p.status)
+        )
+        setPOs(expected)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return null
+
+  return (
+    <Card className={pos.length > 0 ? "border-blue-200 bg-blue-50/30" : ""}>
+      <CardContent className="p-4">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <PackageCheck className="h-3.5 w-3.5" />
+          {pos.length > 0 ? `Deliveries (${pos.length} expected)` : "Receiving"}
+        </h3>
+
+        {pos.length > 0 ? (
+          <div className="space-y-2">
+            {pos.map((po) => (
+              <div
+                key={po.id}
+                className="rounded-lg border border-blue-200 bg-white p-3"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">
+                      {po.vendor_name}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-2">
+                      {po.po_number}
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium">
+                    ${po.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Expected {po.expected_delivery_date === new Date().toISOString().split("T")[0] ? "today" : "tomorrow"}
+                </p>
+                <Button
+                  size="sm"
+                  className="mt-2 gap-1.5"
+                  onClick={() => navigate(`/console/operations/receive/${po.id}`)}
+                >
+                  <PackageCheck className="h-3.5 w-3.5" />
+                  Receive Delivery
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-2">
+            <p className="text-sm text-gray-400 mb-2">No deliveries expected today</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs"
+              onClick={() => navigate("/console/operations/receive")}
+            >
+              Receive a Delivery
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

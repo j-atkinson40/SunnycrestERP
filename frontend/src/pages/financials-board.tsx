@@ -853,14 +853,62 @@ const PO_STATUS_COLORS: Record<string, string> = {
 function PurchaseOrdersSubTab() {
   const [orders, setOrders] = useState<POData[]>([])
   const [loading, setLoading] = useState(true)
-  const [, setShowCreate] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
+  const [creating, setCreating] = useState(false)
+  // Create form state
+  const [newVendorId, setNewVendorId] = useState("")
+  const [newDescription, setNewDescription] = useState("")
+  const [newQty, setNewQty] = useState("1")
+  const [newPrice, setNewPrice] = useState("")
+  const [newExpected, setNewExpected] = useState("")
+  const [vendors, setVendors] = useState<{ id: string; vendor_name: string }[]>([])
 
-  useEffect(() => {
+  const fetchOrders = useCallback(() => {
     apiClient.get("/purchasing/orders")
       .then((r) => setOrders(r.data))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    fetchOrders()
+    apiClient.get("/financials/ap/due").then(() => {}).catch(() => {})
+    apiClient.get("/ap/vendors").then((r) => {
+      if (Array.isArray(r.data)) setVendors(r.data)
+      else if (r.data?.vendors) setVendors(r.data.vendors)
+    }).catch(() => {})
+  }, [fetchOrders])
+
+  const handleCreatePO = async () => {
+    if (!newVendorId || !newDescription || !newPrice) {
+      toast.error("Vendor, description, and price are required")
+      return
+    }
+    setCreating(true)
+    try {
+      await apiClient.post("/purchasing/orders", {
+        vendor_id: newVendorId,
+        expected_delivery_date: newExpected || null,
+        lines: [{
+          description: newDescription,
+          quantity_ordered: parseFloat(newQty) || 1,
+          unit_price: parseFloat(newPrice) || 0,
+        }],
+      })
+      toast.success("Purchase order created")
+      setShowCreate(false)
+      setNewVendorId("")
+      setNewDescription("")
+      setNewQty("1")
+      setNewPrice("")
+      setNewExpected("")
+      fetchOrders()
+    } catch {
+      toast.error("Failed to create PO")
+    } finally {
+      setCreating(false)
+    }
+  }
 
   if (loading) return <div className="flex justify-center py-8"><RefreshCw className="h-5 w-5 animate-spin text-gray-300" /></div>
 
@@ -907,9 +955,79 @@ function PurchaseOrdersSubTab() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold text-gray-500">Open POs ({openPOs.length})</p>
-          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowCreate(true)}>+ New PO</Button>
+          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowCreate(!showCreate)}>
+            {showCreate ? "Cancel" : "+ New PO"}
+          </Button>
         </div>
-        {openPOs.length === 0 ? (
+
+        {/* Inline PO creation form */}
+        {showCreate && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 mb-3 space-y-2">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500">Vendor</label>
+              <select
+                value={newVendorId}
+                onChange={(e) => setNewVendorId(e.target.value)}
+                className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5"
+              >
+                <option value="">Select vendor...</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>{v.vendor_name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className="text-[10px] font-medium text-gray-500">Description</label>
+                <input
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5"
+                  placeholder="e.g. Portland Cement 50lb bags"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-gray-500">Expected</label>
+                <input
+                  type="date"
+                  value={newExpected}
+                  onChange={(e) => setNewExpected(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-medium text-gray-500">Qty</label>
+                <input
+                  type="number"
+                  value={newQty}
+                  onChange={(e) => setNewQty(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5"
+                  min="1"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-gray-500">Unit Price</label>
+                <input
+                  type="number"
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5"
+                  step="0.01"
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="flex items-end">
+                <Button size="sm" className="w-full text-xs h-7" onClick={handleCreatePO} disabled={creating}>
+                  {creating ? "Creating..." : "Create PO"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {openPOs.length === 0 && !showCreate ? (
           <p className="text-sm text-gray-400 text-center py-4">No open purchase orders</p>
         ) : (
           <div className="space-y-1.5">
