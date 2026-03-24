@@ -166,7 +166,42 @@ def update_checklist_item(
 # ===================================================================
 
 MANUFACTURING_CHECKLIST_ITEMS = [
-    # MUST COMPLETE
+    # MUST COMPLETE — strict sequence
+    # 1. Company info (implicit — handled by company setup)
+    # 2. Connect accounting — position 2, immediately after company
+    {
+        "item_key": "connect_accounting",
+        "tier": "must_complete",
+        "category": "integration",
+        "title": "Connect your accounting software",
+        "description": (
+            "Connect QuickBooks or upload your Sage chart of accounts. "
+            "We'll use it to pre-configure your GL mappings, import your "
+            "customers and vendors, and keep your financials in sync."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/onboarding/accounting",
+        "sort_order": 2,
+    },
+    # 3. Review imported data — hidden until accounting connected
+    {
+        "item_key": "accounting_import_review",
+        "tier": "must_complete",
+        "category": "integration",
+        "title": "Review your imported data",
+        "description": (
+            "Confirm the GL account mappings, customers, and vendors we "
+            "found in your accounting system. High-confidence items are "
+            "pre-approved — you only review exceptions."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/accounting/review",
+        "depends_on": '["connect_accounting"]',
+        "sort_order": 3,
+    },
+    # 4. Product catalog
     {
         "item_key": "add_products",
         "tier": "must_complete",
@@ -179,21 +214,26 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/catalog-builder",
-        "sort_order": 1,
+        "sort_order": 4,
     },
+    # 5. Price list — hidden until products set up
     {
-        "item_key": "setup_funeral_home_customers",
-        "tier": "must_complete",
+        "item_key": "setup_price_list",
+        "tier": "should_complete",
         "category": "data_setup",
-        "title": "Add your funeral home customers",
+        "title": "Upload your price list",
         "description": (
-            "Connect, discover, and add the funeral homes you deliver to."
+            "Upload your current price list. Products on your price list "
+            "will be automatically approved from your imported catalog. "
+            "Items not on your price list will be flagged for review."
         ),
-        "estimated_minutes": 15,
+        "estimated_minutes": 5,
         "action_type": "navigate",
-        "action_target": "/onboarding/customers/funeral-homes",
-        "sort_order": 2,
+        "action_target": "/onboarding/price-list",
+        "depends_on": '["add_products"]',
+        "sort_order": 5,
     },
+    # 6. Add team
     {
         "item_key": "add_employees",
         "tier": "must_complete",
@@ -206,8 +246,54 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/team",
-        "sort_order": 3,
+        "sort_order": 6,
     },
+    # 7. Safety training
+    {
+        "item_key": "setup_safety_training",
+        "tier": "must_complete",
+        "category": "team",
+        "title": "Set up your safety training program",
+        "description": (
+            "Choose your training documents and personalize them "
+            "with your facility details."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/onboarding/safety-training",
+        "sort_order": 7,
+    },
+    # 8. Scheduling board
+    {
+        "item_key": "setup_scheduling_board",
+        "tier": "must_complete",
+        "category": "workflow",
+        "title": "Set up your scheduling board",
+        "description": (
+            "Configure your delivery scheduling board — drivers, Saturday "
+            "handling, and capacity settings."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/scheduling",
+        "sort_order": 8,
+    },
+    # 9. Network preferences
+    {
+        "item_key": "configure_cross_tenant",
+        "tier": "must_complete",
+        "category": "workflow",
+        "title": "Configure network preferences",
+        "description": (
+            "Set your delivery area, choose how you work with connected "
+            "funeral homes, and configure driver status milestones."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/network-preferences",
+        "sort_order": 9,
+    },
+    # 10. Team intelligence — last must_complete
     {
         "item_key": "setup_team_intelligence",
         "tier": "must_complete",
@@ -224,63 +310,6 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["add_employees"]',
         "sort_order": 99,
     },
-    {
-        "item_key": "setup_safety_training",
-        "tier": "must_complete",
-        "category": "team",
-        "title": "Set up your safety training program",
-        "description": (
-            "Choose your training documents and personalize them "
-            "with your facility details."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/onboarding/safety-training",
-        "sort_order": 5,
-    },
-    {
-        "item_key": "setup_scheduling_board",
-        "tier": "must_complete",
-        "category": "workflow",
-        "title": "Set up your scheduling board",
-        "description": (
-            "Configure your delivery scheduling board — drivers, Saturday "
-            "handling, and capacity settings."
-        ),
-        "estimated_minutes": 5,
-        "action_type": "navigate",
-        "action_target": "/onboarding/scheduling",
-        "sort_order": 6,
-    },
-    {
-        "item_key": "connect_accounting",
-        "tier": "must_complete",
-        "category": "integration",
-        "title": "Connect your accounting software",
-        "description": (
-            "Connect QuickBooks or set up Sage export so invoices flow to "
-            "your books automatically."
-        ),
-        "estimated_minutes": 30,
-        "action_type": "navigate",
-        "action_target": "/onboarding/accounting",
-        "sort_order": 7,
-    },
-    {
-        "item_key": "configure_cross_tenant",
-        "tier": "must_complete",
-        "category": "workflow",
-        "title": "Configure network preferences",
-        "description": (
-            "Set your delivery area, choose how you work with connected "
-            "funeral homes, and configure driver status milestones."
-        ),
-        "estimated_minutes": 5,
-        "action_type": "navigate",
-        "action_target": "/onboarding/network-preferences",
-        "depends_on": '["setup_funeral_home_customers"]',
-        "sort_order": 8,
-    },
     # SHOULD COMPLETE
     {
         "item_key": "run_vault_scenario",
@@ -294,7 +323,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/scenarios/vault_order_walkthrough",
-        "sort_order": 9,
+        "sort_order": 101,
     },
     {
         "item_key": "setup_charges",
@@ -308,7 +337,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/onboarding/charges",
-        "sort_order": 10,
+        "sort_order": 102,
     },
     {
         "item_key": "setup_sms_confirmation",
@@ -322,7 +351,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/delivery/settings",
-        "sort_order": 11,
+        "sort_order": 103,
     },
     {
         "item_key": "run_production_log_scenario",
@@ -336,7 +365,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 2,
         "action_type": "navigate",
         "action_target": "/onboarding/scenarios/production_log_walkthrough",
-        "sort_order": 12,
+        "sort_order": 104,
     },
     {
         "item_key": "set_inventory_minimums",
@@ -350,7 +379,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/inventory",
-        "sort_order": 13,
+        "sort_order": 105,
     },
     {
         "item_key": "invite_team",
@@ -363,7 +392,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/admin/users",
-        "sort_order": 14,
+        "sort_order": 106,
     },
     # OPTIONAL
     {
@@ -378,7 +407,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 30,
         "action_type": "navigate",
         "action_target": "/safety",
-        "sort_order": 15,
+        "sort_order": 201,
     },
     {
         "item_key": "explore_extensions",
@@ -389,7 +418,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/extensions",
-        "sort_order": 16,
+        "sort_order": 202,
     },
     {
         "item_key": "run_month_end_scenario",
@@ -403,7 +432,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/scenarios/month_end_walkthrough",
-        "sort_order": 17,
+        "sort_order": 203,
     },
     {
         "item_key": "customize_invoice_template",
@@ -416,7 +445,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/admin/settings",
-        "sort_order": 18,
+        "sort_order": 204,
     },
     {
         "item_key": "complete_urn_catalog",
@@ -430,7 +459,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/products/urns",
-        "sort_order": 18,
+        "sort_order": 205,
     },
 ]
 
@@ -979,6 +1008,56 @@ def fix_checklist_targets(db: Session) -> None:
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key.in_(_DEPRECATED_ITEMS),
     ).delete(synchronize_session=False)
+
+    # Remove setup_funeral_home_customers from active checklists (moved to standing feature)
+    # Only remove if not already completed — keep completed records for history
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "setup_funeral_home_customers",
+        OnboardingChecklistItem.status.in_(["not_started", "in_progress"]),
+    ).delete(synchronize_session=False)
+
+    # Fix configure_cross_tenant — remove dependency on setup_funeral_home_customers
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "configure_cross_tenant",
+    ).update({"depends_on": None})
+
+    # Fix connect_accounting — must be position 2, updated description
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "connect_accounting",
+    ).update({
+        "sort_order": 2,
+        "description": (
+            "Connect QuickBooks or upload your Sage chart of accounts. "
+            "We'll use it to pre-configure your GL mappings, import your "
+            "customers and vendors, and keep your financials in sync."
+        ),
+        "estimated_minutes": 10,
+    })
+
+    # Fix add_products — position 4
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "add_products",
+    ).update({"sort_order": 4})
+
+    # Fix add_employees — position 6
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "add_employees",
+    ).update({"sort_order": 6})
+
+    # Fix setup_safety_training — position 7
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "setup_safety_training",
+    ).update({"sort_order": 7})
+
+    # Fix setup_scheduling_board — position 8
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "setup_scheduling_board",
+    ).update({"sort_order": 8})
+
+    # Fix configure_cross_tenant — position 9
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "configure_cross_tenant",
+    ).update({"sort_order": 9})
 
     # --- Backfill missing checklist items for existing tenants ---
     # Get all existing checklists grouped by preset
