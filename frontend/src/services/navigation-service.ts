@@ -203,6 +203,12 @@ function getManufacturingNav(
   const financeItems = filterByPermission(
     [
       {
+        label: "Financials Board",
+        href: "/financials",
+        icon: "BarChart3",
+        functionalArea: "invoicing_ar",
+      },
+      {
         label: "Billing",
         href: "/billing",
         icon: "Receipt",
@@ -364,6 +370,7 @@ function getFuneralHomeNav(
   // Finance
   const financeItems = filterByPermission(
     [
+      { label: "Financials Board", href: "/financials", icon: "BarChart3" },
       {
         label: "Billing",
         href: "/billing",
@@ -478,6 +485,7 @@ function getCemeteryNav(
 
   const financeItems = filterByPermission(
     [
+      { label: "Financials Board", href: "/financials", icon: "BarChart3" },
       { label: "Billing", href: "/billing", icon: "Receipt" },
       {
         label: "Vendors & Bills",
@@ -572,6 +580,7 @@ function getCrematoryNav(
 
   const financeItems = filterByPermission(
     [
+      { label: "Financials Board", href: "/financials", icon: "BarChart3" },
       { label: "Billing", href: "/billing", icon: "Receipt" },
       {
         label: "Vendors & Bills",
