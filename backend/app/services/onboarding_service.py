@@ -184,7 +184,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/accounting",
         "sort_order": 2,
     },
-    # 3. Review imported data — hidden until accounting connected
+    # 3. Review imported data
     {
         "item_key": "accounting_import_review",
         "tier": "must_complete",
@@ -201,7 +201,39 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["connect_accounting"]',
         "sort_order": 3,
     },
-    # 4. Product catalog
+    # 4. Tax rates — NEW
+    {
+        "item_key": "setup_tax_rates",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Configure your tax rates",
+        "description": (
+            "Add the sales tax rates that apply to your sales. "
+            "We'll use your accounting connection to suggest your tax liability account."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/tax-rates",
+        "depends_on": '["accounting_import_review"]',
+        "sort_order": 4,
+    },
+    # 5. Tax jurisdictions — NEW
+    {
+        "item_key": "setup_tax_jurisdictions",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Map your delivery counties",
+        "description": (
+            "Tell us which counties you deliver to so we can apply the "
+            "correct tax rate to each invoice automatically."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/tax-jurisdictions",
+        "depends_on": '["setup_tax_rates"]',
+        "sort_order": 5,
+    },
+    # 6. Product catalog
     {
         "item_key": "add_products",
         "tier": "must_complete",
@@ -214,9 +246,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/catalog-builder",
-        "sort_order": 4,
+        "sort_order": 6,
     },
-    # 5. Price list — hidden until products set up
+    # 7. Price list
     {
         "item_key": "setup_price_list",
         "tier": "should_complete",
@@ -231,9 +263,24 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/price-list",
         "depends_on": '["add_products"]',
-        "sort_order": 5,
+        "sort_order": 7,
     },
-    # 6. Add team
+    # 8. Financial accounts — NEW
+    {
+        "item_key": "setup_financial_accounts",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Add your bank and credit card accounts",
+        "description": (
+            "Add your checking accounts and credit cards so you can "
+            "reconcile your statements each month and keep your books accurate."
+        ),
+        "estimated_minutes": 3,
+        "action_type": "navigate",
+        "action_target": "/onboarding/financial-accounts",
+        "sort_order": 8,
+    },
+    # 9. Add team
     {
         "item_key": "add_employees",
         "tier": "must_complete",
@@ -246,9 +293,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/team",
-        "sort_order": 6,
+        "sort_order": 9,
     },
-    # 7. Safety training
+    # 10. Safety training
     {
         "item_key": "setup_safety_training",
         "tier": "must_complete",
@@ -261,9 +308,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/onboarding/safety-training",
-        "sort_order": 7,
+        "sort_order": 10,
     },
-    # 8. Scheduling board
+    # 11. Scheduling board
     {
         "item_key": "setup_scheduling_board",
         "tier": "must_complete",
@@ -276,9 +323,24 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/scheduling",
-        "sort_order": 8,
+        "sort_order": 11,
     },
-    # 9. Network preferences
+    # 12. Purchasing settings — NEW
+    {
+        "item_key": "setup_purchasing_settings",
+        "tier": "optional",
+        "category": "workflow",
+        "title": "Configure purchasing settings",
+        "description": (
+            "Set up purchase order numbering and approval thresholds "
+            "for your purchasing workflow."
+        ),
+        "estimated_minutes": 2,
+        "action_type": "navigate",
+        "action_target": "/settings/purchasing",
+        "sort_order": 12,
+    },
+    # 13. Network preferences
     {
         "item_key": "configure_cross_tenant",
         "tier": "must_complete",
@@ -291,7 +353,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/network-preferences",
-        "sort_order": 9,
+        "sort_order": 13,
     },
     # 10. Team intelligence — last must_complete
     {
@@ -1054,10 +1116,30 @@ def fix_checklist_targets(db: Session) -> None:
         OnboardingChecklistItem.item_key == "setup_scheduling_board",
     ).update({"sort_order": 8})
 
-    # Fix configure_cross_tenant — position 9
+    # Fix configure_cross_tenant — position 13
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "configure_cross_tenant",
+    ).update({"sort_order": 13})
+
+    # Fix add_employees — position 9
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "add_employees",
     ).update({"sort_order": 9})
+
+    # Fix setup_safety_training — position 10
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "setup_safety_training",
+    ).update({"sort_order": 10})
+
+    # Fix setup_scheduling_board — position 11
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "setup_scheduling_board",
+    ).update({"sort_order": 11})
+
+    # Fix add_products — position 6
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "add_products",
+    ).update({"sort_order": 6})
 
     # --- Backfill missing checklist items for existing tenants ---
     # Get all existing checklists grouped by preset
