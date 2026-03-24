@@ -50,6 +50,7 @@ from app.api.routes import (
     modules,
     network,
     agents,
+    financials_board,
     notifications,
     onboarding,
     operations_board,
@@ -215,6 +216,11 @@ v1_router.include_router(
     agents.router,
     prefix="/agents",
     tags=["Agents"],
+)
+v1_router.include_router(
+    financials_board.router,
+    prefix="/financials",
+    tags=["Financials Board"],
 )
 v1_router.include_router(
     operations_board.router,
