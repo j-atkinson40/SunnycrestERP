@@ -223,6 +223,12 @@ function getManufacturingNav(
         permission: "ap.view",
         functionalArea: "invoicing_ar",
       },
+      {
+        label: "Journal Entries",
+        href: "/journal-entries",
+        icon: "BookOpen",
+        functionalArea: "invoicing_ar",
+      },
     ],
     modules,
     perms,

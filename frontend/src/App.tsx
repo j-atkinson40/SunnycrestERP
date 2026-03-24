@@ -125,6 +125,7 @@ import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customer
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import AccountingReviewPage from "@/pages/onboarding/accounting-review";
 import AlertsPage from "@/pages/alerts";
+import JournalEntriesPage from "@/pages/journal-entries";
 import FinancialsBoardPage from "@/pages/financials-board";
 import CollectionsReviewPage from "@/pages/ar/collections-review";
 import SyncHealthDashboardPage from "@/pages/admin/sync-health-dashboard";
@@ -390,6 +391,7 @@ export default function App() {
                       element={<ReceivedStatementDetail />}
                     />
                     <Route path="/alerts" element={<AlertsPage />} />
+                    <Route path="/journal-entries" element={<JournalEntriesPage />} />
                     <Route path="/financials" element={<FinancialsBoardPage />} />
                     <Route path="/ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />
                     <Route
