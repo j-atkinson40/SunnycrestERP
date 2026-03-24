@@ -229,6 +229,12 @@ function getManufacturingNav(
         icon: "BookOpen",
         functionalArea: "invoicing_ar",
       },
+      {
+        label: "Reports",
+        href: "/reports",
+        icon: "BarChart3",
+        functionalArea: "invoicing_ar",
+      },
     ],
     modules,
     perms,

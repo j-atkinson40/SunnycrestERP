@@ -127,6 +127,7 @@ import AccountingReviewPage from "@/pages/onboarding/accounting-review";
 import AlertsPage from "@/pages/alerts";
 import JournalEntriesPage from "@/pages/journal-entries";
 import TaxSettingsPage from "@/pages/settings/tax-settings";
+import ReportsPage from "@/pages/reports";
 import FinancialsBoardPage from "@/pages/financials-board";
 import CollectionsReviewPage from "@/pages/ar/collections-review";
 import SyncHealthDashboardPage from "@/pages/admin/sync-health-dashboard";
@@ -394,6 +395,7 @@ export default function App() {
                     <Route path="/alerts" element={<AlertsPage />} />
                     <Route path="/journal-entries" element={<JournalEntriesPage />} />
                     <Route path="/settings/tax" element={<TaxSettingsPage />} />
+                    <Route path="/reports" element={<ReportsPage />} />
                     <Route path="/financials" element={<FinancialsBoardPage />} />
                     <Route path="/ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />
                     <Route

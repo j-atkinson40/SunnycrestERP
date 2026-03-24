@@ -63,7 +63,7 @@ export default function FinancialsBoardPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [settings, setSettings] = useState<Record<string, boolean>>({
     zone_briefing_visible: true, zone_ar_visible: true, zone_ap_visible: true,
-    zone_cashflow_visible: true, zone_reconciliation_visible: true, zone_activity_visible: true,
+    zone_cashflow_visible: true, zone_reconciliation_visible: true, zone_audit_visible: true, zone_activity_visible: true,
   })
 
   const fetchSummary = useCallback(async () => {
@@ -145,6 +145,9 @@ export default function FinancialsBoardPage() {
 
       {/* ZONE — Reconciliation */}
       {settings.zone_reconciliation_visible !== false && <ReconciliationZone />}
+
+      {/* ZONE — Audit Readiness */}
+      {settings.zone_audit_visible !== false && <AuditReadinessZone />}
 
       {/* ZONE 5 — Agent Activity */}
       {settings.zone_activity_visible && <AgentActivityZone />}
@@ -1315,6 +1318,79 @@ function ReconciliationZone() {
             })}
           </div>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Audit Readiness Zone ──
+
+interface HealthCheck {
+  overall_score: string; green: number; amber: number; red: number
+  findings: { severity: string; message: string; action_label?: string; action_url?: string }[]
+  check_date: string
+}
+
+const SCORE_STYLES = {
+  green: { label: "Audit-Ready", bg: "bg-green-50", border: "border-green-200", text: "text-green-700", icon: "✓" },
+  amber: { label: "Needs Attention", bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", icon: "⚠" },
+  red: { label: "Issues Found", bg: "bg-red-50", border: "border-red-200", text: "text-red-700", icon: "●" },
+}
+
+function AuditReadinessZone() {
+  const [health, setHealth] = useState<HealthCheck | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [showGreen, setShowGreen] = useState(false)
+
+  useEffect(() => {
+    apiClient.get("/reports/audit-health").then((r) => setHealth(r.data)).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try { const res = await apiClient.get("/reports/audit-health/run"); setHealth(res.data) }
+    catch {} finally { setRefreshing(false) }
+  }
+
+  if (loading || !health) return null
+
+  const style = SCORE_STYLES[health.overall_score as keyof typeof SCORE_STYLES] || SCORE_STYLES.green
+  const redFindings = health.findings.filter((f) => f.severity === "red")
+  const amberFindings = health.findings.filter((f) => f.severity === "amber")
+  const greenFindings = health.findings.filter((f) => f.severity === "green")
+
+  return (
+    <Card className={style.border}>
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Audit Readiness</h3>
+          <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} /> Refresh
+          </Button>
+        </div>
+        <div className={cn("rounded-lg p-3 mb-3 flex items-center gap-3", style.bg)}>
+          <span className={cn("text-2xl", style.text)}>{style.icon}</span>
+          <div>
+            <span className={cn("text-sm font-semibold", style.text)}>{style.label}</span>
+            <p className="text-xs text-gray-500">{health.red > 0 ? `${health.red} critical · ` : ""}{health.amber > 0 ? `${health.amber} warnings · ` : ""}{health.green} passing</p>
+          </div>
+        </div>
+        {redFindings.map((f, i) => (
+          <div key={i} className="rounded-lg border-l-4 border-red-500 bg-red-50/50 p-3 mb-2 text-xs">
+            <p className="font-medium text-red-800">{f.message}</p>
+            {f.action_label && f.action_url && <a href={f.action_url} className="text-red-600 underline mt-1 inline-block">{f.action_label}</a>}
+          </div>
+        ))}
+        {amberFindings.map((f, i) => (
+          <div key={i} className="rounded-lg border-l-4 border-amber-500 bg-amber-50/50 p-2.5 mb-1.5 text-xs">
+            <p className="text-amber-800">{f.message}</p>
+          </div>
+        ))}
+        {greenFindings.length > 0 && (
+          <button onClick={() => setShowGreen(!showGreen)} className="text-xs text-green-600 mt-2">✓ {greenFindings.length} checks passing {showGreen ? "▲" : "▼"}</button>
+        )}
+        {showGreen && greenFindings.map((f, i) => <div key={i} className="text-xs text-green-700 py-0.5 pl-4">✓ {f.message}</div>)}
       </CardContent>
     </Card>
   )
