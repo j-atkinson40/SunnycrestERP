@@ -1,3 +1,9 @@
+from app.models.accounting_analysis import (
+    TenantAccountingAnalysis,
+    TenantAccountingImportStaging,
+    TenantAlert,
+    TenantGLMapping,
+)
 from app.models.accounting_connection import AccountingConnection
 from app.models.announcement import Announcement
 from app.models.ap_settings import APSettings

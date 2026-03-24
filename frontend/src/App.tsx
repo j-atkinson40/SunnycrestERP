@@ -123,6 +123,7 @@ import SafetyTrainingSetupPage from "@/pages/onboarding/safety-training-setup";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
+import AccountingReviewPage from "@/pages/onboarding/accounting-review";
 import SyncHealthDashboardPage from "@/pages/admin/sync-health-dashboard";
 import SchedulingSetupPage from "@/pages/onboarding/scheduling-setup";
 import NetworkPreferencesPage from "@/pages/onboarding/network-preferences";
@@ -554,6 +555,7 @@ export default function App() {
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
+                  <Route path="/onboarding/accounting/review" element={<AccountingReviewPage />} />
                   <Route path="/onboarding/scheduling" element={<SchedulingSetupPage />} />
                   <Route path="/onboarding/network-preferences" element={<NetworkPreferencesPage />} />
                   <Route path="/settings/team-intelligence" element={<TeamIntelligencePage />} />

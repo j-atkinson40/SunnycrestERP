@@ -1056,3 +1056,108 @@ def increment_attempt(
     db.refresh(conn)
 
     return {"connection_attempt_count": conn.connection_attempt_count}
+
+
+# ---------------------------------------------------------------------------
+# AI Analysis — extraction, analysis, review, confirmation
+# ---------------------------------------------------------------------------
+
+
+class AnalysisConfirmation(BaseModel):
+    confirmations: list[dict]  # [{id, action: confirm|ignore|change, new_category?}]
+
+
+@router.post("/ai-analysis/trigger")
+async def trigger_ai_analysis(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Trigger AI analysis on extracted accounting data."""
+    from app.services.accounting_analysis_service import run_ai_analysis
+
+    run_id = await run_ai_analysis(db, current_user.company_id)
+    conn = _get_or_create_connection(db, current_user.company_id)
+    return {
+        "run_id": run_id,
+        "status": conn.ai_analysis_status,
+        "auto_approved": conn.ai_auto_approved_count,
+        "review_required": conn.ai_review_required_count,
+    }
+
+
+@router.get("/ai-analysis/status")
+def get_ai_analysis_status(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Get current AI analysis status."""
+    conn = _get_or_create_connection(db, current_user.company_id)
+    return {
+        "run_id": conn.ai_analysis_run_id,
+        "status": conn.ai_analysis_status or "not_started",
+        "started_at": conn.ai_analysis_started_at.isoformat() if conn.ai_analysis_started_at else None,
+        "completed_at": conn.ai_analysis_completed_at.isoformat() if conn.ai_analysis_completed_at else None,
+        "auto_approved": conn.ai_auto_approved_count or 0,
+        "review_required": conn.ai_review_required_count or 0,
+    }
+
+
+@router.get("/ai-analysis/results")
+def get_ai_analysis_results(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Get all analysis results grouped by type and status."""
+    from app.services.accounting_analysis_service import get_analysis_results
+
+    conn = _get_or_create_connection(db, current_user.company_id)
+    results = get_analysis_results(db, current_user.company_id, conn.ai_analysis_run_id)
+    return results
+
+
+@router.post("/ai-analysis/confirm")
+def confirm_ai_analysis(
+    body: AnalysisConfirmation,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Confirm AI analysis results — writes to live tables."""
+    from app.services.accounting_analysis_service import confirm_analysis
+
+    result = confirm_analysis(
+        db, current_user.company_id, current_user.id, body.confirmations,
+    )
+    # Check if this completes the onboarding step
+    check_completion(db, current_user.company_id, "accounting_connected")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Tenant alerts
+# ---------------------------------------------------------------------------
+
+
+@router.get("/alerts")
+def get_alerts(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Get unresolved tenant alerts."""
+    from app.services.accounting_analysis_service import get_unresolved_alerts
+
+    return get_unresolved_alerts(db, current_user.company_id)
+
+
+@router.post("/alerts/{alert_id}/resolve")
+def resolve_alert_endpoint(
+    alert_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Resolve a tenant alert."""
+    from app.services.accounting_analysis_service import resolve_alert
+
+    success = resolve_alert(db, alert_id, current_user.company_id, current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return {"status": "ok"}
