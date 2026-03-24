@@ -289,6 +289,18 @@ function getManufacturingNav(
           icon: "Package",
           permission: "products.view",
         },
+        {
+          label: "Tax Configuration",
+          href: "/settings/tax",
+          icon: "Percent",
+          functionalArea: "invoicing_ar",
+        },
+        {
+          label: "Financial Accounts",
+          href: "/settings/accounts",
+          icon: "Landmark",
+          functionalArea: "invoicing_ar",
+        },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
         {
           label: "Network Preferences",
