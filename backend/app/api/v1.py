@@ -54,6 +54,7 @@ from app.api.routes import (
     notifications,
     onboarding,
     operations_board,
+    purchasing,
     order_station,
     performance_notes,
     platform_fees,
@@ -226,6 +227,11 @@ v1_router.include_router(
     operations_board.router,
     prefix="/operations-board",
     tags=["Operations Board"],
+)
+v1_router.include_router(
+    purchasing.router,
+    prefix="/purchasing",
+    tags=["Purchasing"],
 )
 v1_router.include_router(
     order_station.router,

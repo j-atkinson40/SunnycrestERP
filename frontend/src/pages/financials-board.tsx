@@ -393,7 +393,7 @@ function ARCommandZone() {
 // ── Zone: AP Command Center ──
 
 function APCommandZone() {
-  const [activeTab, setActiveTab] = useState("due")
+  const [activeTab, setActiveTab] = useState("purchase-orders")
   const [bills, setBills] = useState<{ buckets: Record<string, number>; bills: APBill[] } | null>(null)
   const [paymentRun, setPaymentRun] = useState<{ bills: APBill[]; total: number; count: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -406,6 +406,7 @@ function APCommandZone() {
   }, [])
 
   const tabs = [
+    { key: "purchase-orders", label: "Purchase Orders" },
     { key: "due", label: "Due", count: bills?.bills.filter((b) => b.days_until_due <= 0).length },
     { key: "payment-run", label: "Payment Run", count: paymentRun?.count },
     { key: "vendors", label: "Vendors" },
@@ -441,6 +442,8 @@ function APCommandZone() {
         <div className="p-4 max-h-[500px] overflow-y-auto">
           {loading ? (
             <div className="flex justify-center py-8"><RefreshCw className="h-5 w-5 animate-spin text-gray-300" /></div>
+          ) : activeTab === "purchase-orders" ? (
+            <PurchaseOrdersSubTab />
           ) : activeTab === "due" && bills ? (
             <>
               <div className="flex gap-2 mb-4 text-[10px] font-medium">
@@ -823,6 +826,117 @@ function StatementsSubTab() {
           </span>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Purchase Orders Sub-Tab (inside AP Command Zone) ──
+
+interface POData {
+  id: string; po_number: string; status: string; vendor_name: string
+  total_amount: number; order_date: string | null; expected_delivery_date: string | null
+  match_status: string; approval_status: string | null
+}
+
+const PO_STATUS_COLORS: Record<string, string> = {
+  draft: "bg-gray-100 text-gray-600",
+  pending_approval: "bg-amber-100 text-amber-700",
+  approved: "bg-blue-100 text-blue-700",
+  sent: "bg-blue-100 text-blue-700",
+  partially_received: "bg-purple-100 text-purple-700",
+  fully_received: "bg-teal-100 text-teal-700",
+  matched: "bg-green-100 text-green-700",
+  closed: "bg-gray-100 text-gray-500",
+  cancelled: "bg-red-100 text-red-600",
+}
+
+function PurchaseOrdersSubTab() {
+  const [orders, setOrders] = useState<POData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [, setShowCreate] = useState(false)
+
+  useEffect(() => {
+    apiClient.get("/purchasing/orders")
+      .then((r) => setOrders(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="flex justify-center py-8"><RefreshCw className="h-5 w-5 animate-spin text-gray-300" /></div>
+
+  const openPOs = orders.filter((p) => !["closed", "cancelled"].includes(p.status))
+  const needsAttention = orders.filter((p) =>
+    p.approval_status === "pending" ||
+    p.match_status === "discrepancy" ||
+    (p.expected_delivery_date && new Date(p.expected_delivery_date) < new Date() && !["fully_received", "closed", "matched"].includes(p.status))
+  )
+  const committedTotal = openPOs.reduce((s, p) => s + p.total_amount, 0)
+
+  return (
+    <div className="space-y-4">
+      {/* Needs attention */}
+      {needsAttention.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-amber-700 mb-2">Needs attention ({needsAttention.length})</p>
+          {needsAttention.map((po) => (
+            <div key={po.id} className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 mb-2 text-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="font-medium">{po.vendor_name}</span>
+                  <span className="text-gray-400 ml-2 text-xs">{po.po_number}</span>
+                </div>
+                <span className="font-medium">${po.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex gap-1.5 mt-1">
+                {po.approval_status === "pending" && (
+                  <span className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">Awaiting approval</span>
+                )}
+                {po.match_status === "discrepancy" && (
+                  <span className="text-[10px] bg-red-100 text-red-700 rounded px-1.5 py-0.5">Match discrepancy</span>
+                )}
+                {po.expected_delivery_date && new Date(po.expected_delivery_date) < new Date() && !["fully_received", "closed", "matched"].includes(po.status) && (
+                  <span className="text-[10px] bg-red-100 text-red-700 rounded px-1.5 py-0.5">Delivery overdue</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Open POs */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500">Open POs ({openPOs.length})</p>
+          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowCreate(true)}>+ New PO</Button>
+        </div>
+        {openPOs.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No open purchase orders</p>
+        ) : (
+          <div className="space-y-1.5">
+            {openPOs.map((po) => (
+              <div key={po.id} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 font-mono">{po.po_number}</span>
+                  <span className="font-medium text-gray-900">{po.vendor_name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-700">${po.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  <span className={cn("text-[10px] px-1.5 py-0.5 rounded", PO_STATUS_COLORS[po.status] || "bg-gray-100 text-gray-600")}>
+                    {po.status.replace(/_/g, " ")}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Committed spend */}
+      {committedTotal > 0 && (
+        <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
+          Committed: ${committedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} in open POs
+        </div>
+      )}
     </div>
   )
 }
