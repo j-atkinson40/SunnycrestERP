@@ -63,7 +63,7 @@ export default function FinancialsBoardPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [settings, setSettings] = useState<Record<string, boolean>>({
     zone_briefing_visible: true, zone_ar_visible: true, zone_ap_visible: true,
-    zone_cashflow_visible: true, zone_activity_visible: true,
+    zone_cashflow_visible: true, zone_reconciliation_visible: true, zone_activity_visible: true,
   })
 
   const fetchSummary = useCallback(async () => {
@@ -142,6 +142,9 @@ export default function FinancialsBoardPage() {
 
       {/* ZONE 4 — Cash Flow */}
       {settings.zone_cashflow_visible && <CashFlowZone />}
+
+      {/* ZONE — Reconciliation */}
+      {settings.zone_reconciliation_visible !== false && <ReconciliationZone />}
 
       {/* ZONE 5 — Agent Activity */}
       {settings.zone_activity_visible && <AgentActivityZone />}
@@ -1056,5 +1059,263 @@ function PurchaseOrdersSubTab() {
         </div>
       )}
     </div>
+  )
+}
+
+// ── Reconciliation Zone ──
+
+interface ReconAccount {
+  id: string; account_type: string; account_name: string
+  institution_name: string | null; last_four: string | null
+  last_reconciled_date: string | null; last_reconciled_balance: number | null
+  days_since_reconciled: number | null; status: string
+}
+
+const RECON_STATUS_BADGE: Record<string, { label: string; color: string }> = {
+  current: { label: "Current", color: "bg-green-100 text-green-700" },
+  due_soon: { label: "Due soon", color: "bg-amber-100 text-amber-700" },
+  overdue: { label: "Overdue", color: "bg-red-100 text-red-700" },
+  never: { label: "Not reconciled", color: "bg-gray-100 text-gray-500" },
+}
+
+function ReconciliationZone() {
+  const [accounts, setAccounts] = useState<ReconAccount[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [runStatus, setRunStatus] = useState<Record<string, unknown> | null>(null)
+  const [runTxns, setRunTxns] = useState<Record<string, unknown>[]>([])
+
+  // Import form state
+  const [importingFor, setImportingFor] = useState<string | null>(null)
+  const [stmtDate, setStmtDate] = useState("")
+  const [stmtBalance, setStmtBalance] = useState("")
+  const [uploading, setUploading] = useState(false)
+  const [matching, setMatching] = useState(false)
+
+  useEffect(() => {
+    apiClient.get("/reconciliation/accounts")
+      .then((r) => setAccounts(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const startReconciliation = async (accountId: string) => {
+    if (!stmtDate || !stmtBalance) {
+      toast.error("Statement date and balance are required")
+      return
+    }
+    try {
+      const res = await apiClient.post("/reconciliation/runs/start", {
+        account_id: accountId,
+        statement_date: stmtDate,
+        statement_closing_balance: parseFloat(stmtBalance),
+      })
+      setActiveRunId(res.data.id)
+      setImportingFor(accountId)
+    } catch {
+      toast.error("Failed to start reconciliation")
+    }
+  }
+
+  const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0] || !activeRunId) return
+    setUploading(true)
+    const formData = new FormData()
+    formData.append("file", e.target.files[0])
+    try {
+      const res = await apiClient.post(`/reconciliation/runs/${activeRunId}/upload-csv`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      toast.success(`${res.data.transactions_parsed} transactions parsed`)
+      // Trigger matching
+      setMatching(true)
+      const matchRes = await apiClient.post(`/reconciliation/runs/${activeRunId}/run-matching`)
+      setRunStatus(matchRes.data)
+      // Load transactions
+      const txnRes = await apiClient.get(`/reconciliation/runs/${activeRunId}/transactions`)
+      setRunTxns(txnRes.data)
+      setMatching(false)
+    } catch {
+      toast.error("Failed to process CSV")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleConfirmMatch = async (txnId: string) => {
+    try {
+      await apiClient.patch(`/reconciliation/transactions/${txnId}/action`, { action: "confirm" })
+      setRunTxns((prev) => prev.map((t) => (t as { id: string }).id === txnId ? { ...t, match_status: "auto_cleared" } : t))
+    } catch { toast.error("Failed") }
+  }
+
+  const handleConfirmRecon = async () => {
+    if (!activeRunId) return
+    try {
+      await apiClient.post(`/reconciliation/runs/${activeRunId}/confirm`)
+      toast.success("Reconciliation confirmed")
+      setActiveRunId(null)
+      setImportingFor(null)
+      setRunStatus(null)
+      setRunTxns([])
+      // Refresh accounts
+      const res = await apiClient.get("/reconciliation/accounts")
+      setAccounts(res.data)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Cannot confirm"
+      toast.error(msg)
+    }
+  }
+
+  if (loading) return null
+
+  // Active reconciliation workflow
+  if (activeRunId && runStatus) {
+    const suggested = runTxns.filter((t) => (t as { match_status: string }).match_status === "suggested")
+    const unmatched = runTxns.filter((t) => (t as { match_status: string }).match_status === "unmatched")
+    // autoCleared count is shown via rs.auto_cleared from runStatus
+    const rs = runStatus as { auto_cleared: number; suggested: number; unmatched: number; difference: number; statement_closing_balance: number }
+
+    return (
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Reconciliation in Progress</h3>
+
+          <div className="flex gap-3 text-xs">
+            <span className="text-green-600">{rs.auto_cleared} auto-cleared</span>
+            <span className="text-amber-600">{rs.suggested} suggested</span>
+            <span className="text-red-600">{rs.unmatched} unmatched</span>
+          </div>
+
+          {/* Suggested matches */}
+          {suggested.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-amber-700 mb-2">{suggested.length} suggested matches</p>
+              {suggested.slice(0, 5).map((t) => {
+                const txn = t as { id: string; date: string; description: string; amount: number; confidence: number | null }
+                return (
+                  <div key={txn.id} className="rounded border border-amber-200 bg-amber-50/30 p-2 mb-1.5 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="text-gray-400">{txn.date}</span> <span className="font-medium">{txn.description}</span> <span className="ml-2">${Math.abs(txn.amount).toFixed(2)}</span>
+                      {txn.confidence && <span className="text-gray-400 ml-1">({Math.round(txn.confidence * 100)}%)</span>}
+                    </div>
+                    <button onClick={() => handleConfirmMatch(txn.id)} className="text-green-600 hover:text-green-700 px-2 py-0.5 rounded bg-green-50">Confirm</button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Unmatched */}
+          {unmatched.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-red-600 mb-2">{unmatched.length} unmatched</p>
+              {unmatched.slice(0, 5).map((t) => {
+                const txn = t as { id: string; date: string; description: string; amount: number }
+                return (
+                  <div key={txn.id} className="rounded border border-gray-200 p-2 mb-1.5 text-xs">
+                    <span className="text-gray-400">{txn.date}</span> <span>{txn.description}</span> <span className="ml-2 font-medium">${Math.abs(txn.amount).toFixed(2)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Balance tracker */}
+          <div className={cn("rounded-lg p-3 text-xs", Math.abs(rs.difference) < 0.01 ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200")}>
+            <div className="flex items-center justify-between">
+              <span>Statement balance: ${rs.statement_closing_balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span className={cn("font-semibold", Math.abs(rs.difference) < 0.01 ? "text-green-700" : "text-red-700")}>
+                Difference: ${rs.difference.toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={handleConfirmRecon}
+            disabled={Math.abs(rs.difference) > 0.005}
+            className="gap-1"
+          >
+            {Math.abs(rs.difference) < 0.01 ? "Confirm Reconciliation" : "Resolve all items to confirm"}
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Import step
+  if (importingFor) {
+    const acct = accounts.find((a) => a.id === importingFor)
+    return (
+      <Card>
+        <CardContent className="p-5 space-y-3">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Reconcile {acct?.account_name}
+          </h3>
+          {!activeRunId ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-medium text-gray-500">Statement date</label>
+                  <input type="date" value={stmtDate} onChange={(e) => setStmtDate(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-gray-500">Closing balance</label>
+                  <input type="number" step="0.01" value={stmtBalance} onChange={(e) => setStmtBalance(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5" placeholder="0.00" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => startReconciliation(importingFor)}>Start</Button>
+                <Button size="sm" variant="ghost" onClick={() => setImportingFor(null)}>Cancel</Button>
+              </div>
+            </>
+          ) : (
+            <div>
+              <p className="text-sm text-gray-600 mb-2">Upload your statement CSV</p>
+              <input type="file" accept=".csv" onChange={handleCSVUpload} className="text-xs" disabled={uploading || matching} />
+              {uploading && <p className="text-xs text-gray-500 mt-1">Uploading...</p>}
+              {matching && <p className="text-xs text-blue-600 mt-1">Matching transactions...</p>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Idle state — account list
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Reconciliation</h3>
+        {accounts.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">
+            No financial accounts set up. <a href="/settings/accounts" className="text-blue-600 underline">Add an account</a>
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {accounts.map((acct) => {
+              const badge = RECON_STATUS_BADGE[acct.status] || RECON_STATUS_BADGE.never
+              return (
+                <div key={acct.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">{acct.account_name}</span>
+                    {acct.institution_name && <span className="text-xs text-gray-400 ml-2">{acct.institution_name}</span>}
+                    {acct.last_four && <span className="text-xs text-gray-400"> ····{acct.last_four}</span>}
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {acct.last_reconciled_date ? `Last: ${acct.last_reconciled_date}` : "Never reconciled"}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded", badge.color)}>{badge.label}</span>
+                    <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setImportingFor(acct.id)}>Reconcile</Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

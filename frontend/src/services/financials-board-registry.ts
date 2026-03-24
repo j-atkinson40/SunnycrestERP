@@ -116,6 +116,22 @@ FinancialsBoardRegistry.register({
 })
 
 FinancialsBoardRegistry.register({
+  contributor_key: "reconciliation",
+  zone: {
+    key: "reconciliation",
+    label: "Reconciliation",
+    component: "ReconciliationZone",
+    sort_order: 4.5,
+    layout: "full",
+    refresh_interval_ms: 600000,
+    default_visible: true,
+  },
+  settings_items: [
+    { key: "zone_reconciliation_visible", label: "Reconciliation", default_value: true, group: "zones" },
+  ],
+})
+
+FinancialsBoardRegistry.register({
   contributor_key: "agent_activity",
   zone: {
     key: "activity",
