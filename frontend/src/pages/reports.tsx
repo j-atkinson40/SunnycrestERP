@@ -57,6 +57,9 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false)
   const [aiInput, setAIInput] = useState("")
   const [aiParsing, setAIParsing] = useState(false)
+  const [showPackageForm, setShowPackageForm] = useState(false)
+  const [pkgName, setPkgName] = useState("")
+  const [pkgGenerating, setPkgGenerating] = useState(false)
 
   const reportDef = REPORT_CATEGORIES.flatMap((c) => c.reports).find((r) => r.key === selectedReport)
 
@@ -133,10 +136,51 @@ export default function ReportsPage() {
           <Button size="sm" onClick={handleAIParse} disabled={aiParsing || !aiInput.trim()} className="gap-1">
             {aiParsing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
           </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={() => toast.info("Audit package generator coming soon")}>
-            <Package className="h-3.5 w-3.5" /> Audit Package
+          <Button size="sm" variant="outline" className="gap-1" onClick={() => setShowPackageForm(!showPackageForm)}>
+            <Package className="h-3.5 w-3.5" /> {showPackageForm ? "Cancel" : "Audit Package"}
           </Button>
         </div>
+
+        {/* Audit package form */}
+        {showPackageForm && (
+          <Card className="border-blue-200 bg-blue-50/30">
+            <CardContent className="p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-700">Generate Audit Package</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] font-medium text-gray-500">Package Name</label>
+                  <input value={pkgName} onChange={(e) => setPkgName(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5" placeholder="e.g. FY2025 Audit Package" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-gray-500">Period Start</label>
+                  <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-gray-500">Period End</label>
+                  <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs mt-0.5" />
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-500">Includes: Income Statement, AR Aging, AP Aging, Sales by Customer, Invoice Register, Tax Summary</p>
+              <Button size="sm" disabled={pkgGenerating} onClick={async () => {
+                setPkgGenerating(true)
+                try {
+                  await apiClient.post("/reports/audit-packages/generate", {
+                    package_name: pkgName || `Audit Package — ${periodStart} to ${periodEnd}`,
+                    period_start: periodStart, period_end: periodEnd,
+                    report_types: ["income_statement", "ar_aging", "ap_aging", "sales_by_customer", "invoice_register", "tax_summary"],
+                  })
+                  toast.success("Audit package generated")
+                  setShowPackageForm(false)
+                  setPkgName("")
+                } catch { toast.error("Failed to generate package") }
+                finally { setPkgGenerating(false) }
+              }} className="gap-1">
+                {pkgGenerating ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-3.5 w-3.5" />}
+                {pkgGenerating ? "Generating..." : "Generate Package"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Parameter controls */}
         {selectedReport && (

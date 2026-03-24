@@ -1353,7 +1353,25 @@ function AuditReadinessZone() {
     catch {} finally { setRefreshing(false) }
   }
 
-  if (loading || !health) return null
+  if (loading) return null
+
+  if (!health) {
+    return (
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Audit Readiness</h3>
+          </div>
+          <p className="text-sm text-gray-400 text-center py-4">No health check has been run yet.</p>
+          <div className="text-center">
+            <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} /> Run First Check
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   const style = SCORE_STYLES[health.overall_score as keyof typeof SCORE_STYLES] || SCORE_STYLES.green
   const redFindings = health.findings.filter((f) => f.severity === "red")
