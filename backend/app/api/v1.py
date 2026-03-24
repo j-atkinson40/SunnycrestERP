@@ -57,6 +57,7 @@ from app.api.routes import (
     operations_board,
     purchasing,
     reconciliation,
+    tax,
     order_station,
     performance_notes,
     platform_fees,
@@ -244,6 +245,11 @@ v1_router.include_router(
     reconciliation.router,
     prefix="/reconciliation",
     tags=["Reconciliation"],
+)
+v1_router.include_router(
+    tax.router,
+    prefix="/tax",
+    tags=["Tax"],
 )
 v1_router.include_router(
     order_station.router,
