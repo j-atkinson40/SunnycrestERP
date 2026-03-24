@@ -1,0 +1,3188 @@
+{
+  "metadata": {
+    "source": "Tax Foundation and state department of revenue data",
+    "last_updated": "2025-01-01",
+    "note": "Combined state + county rates. Local district taxes may apply additionally.",
+    "priority_states": [
+      "NY",
+      "PA",
+      "OH",
+      "IN",
+      "IL",
+      "MI",
+      "MO",
+      "KY",
+      "TN",
+      "GA",
+      "FL",
+      "TX",
+      "CA"
+    ]
+  },
+  "rates": [
+    {
+      "state": "NY",
+      "county": "Albany",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Allegany",
+      "state_rate": 4.0,
+      "county_rate": 4.5,
+      "combined_rate": 8.5
+    },
+    {
+      "state": "NY",
+      "county": "Broome",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Cattaraugus",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Cayuga",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Chautauqua",
+      "state_rate": 4.0,
+      "county_rate": 3.5,
+      "combined_rate": 7.5
+    },
+    {
+      "state": "NY",
+      "county": "Chemung",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Chenango",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Clinton",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Columbia",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Cortland",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Delaware",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Dutchess",
+      "state_rate": 4.0,
+      "county_rate": 3.75,
+      "combined_rate": 7.75
+    },
+    {
+      "state": "NY",
+      "county": "Erie",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Essex",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Franklin",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Fulton",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Genesee",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Greene",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Hamilton",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Herkimer",
+      "state_rate": 4.0,
+      "county_rate": 4.25,
+      "combined_rate": 8.25
+    },
+    {
+      "state": "NY",
+      "county": "Jefferson",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Lewis",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Livingston",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Madison",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Monroe",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Montgomery",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Nassau",
+      "state_rate": 4.0,
+      "county_rate": 4.25,
+      "combined_rate": 8.25
+    },
+    {
+      "state": "NY",
+      "county": "Niagara",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Oneida",
+      "state_rate": 4.0,
+      "county_rate": 4.75,
+      "combined_rate": 8.75
+    },
+    {
+      "state": "NY",
+      "county": "Onondaga",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Ontario",
+      "state_rate": 4.0,
+      "county_rate": 3.5,
+      "combined_rate": 7.5
+    },
+    {
+      "state": "NY",
+      "county": "Orange",
+      "state_rate": 4.0,
+      "county_rate": 3.75,
+      "combined_rate": 7.75
+    },
+    {
+      "state": "NY",
+      "county": "Orleans",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Oswego",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Otsego",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Putnam",
+      "state_rate": 4.0,
+      "county_rate": 4.125,
+      "combined_rate": 8.125
+    },
+    {
+      "state": "NY",
+      "county": "Rensselaer",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Rockland",
+      "state_rate": 4.0,
+      "county_rate": 4.375,
+      "combined_rate": 8.375
+    },
+    {
+      "state": "NY",
+      "county": "Saratoga",
+      "state_rate": 4.0,
+      "county_rate": 3.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "NY",
+      "county": "Schenectady",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Schoharie",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Schuyler",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Seneca",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "St Lawrence",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Steuben",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Suffolk",
+      "state_rate": 4.0,
+      "county_rate": 4.25,
+      "combined_rate": 8.25
+    },
+    {
+      "state": "NY",
+      "county": "Sullivan",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Tioga",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Tompkins",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Ulster",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Warren",
+      "state_rate": 4.0,
+      "county_rate": 3.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "NY",
+      "county": "Washington",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Wayne",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Westchester",
+      "state_rate": 4.0,
+      "county_rate": 3.375,
+      "combined_rate": 7.375
+    },
+    {
+      "state": "NY",
+      "county": "Wyoming",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "NY",
+      "county": "Yates",
+      "state_rate": 4.0,
+      "county_rate": 4.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "PA",
+      "county": "Adams",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Allegheny",
+      "state_rate": 6.0,
+      "county_rate": 1.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "PA",
+      "county": "Armstrong",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Beaver",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Bedford",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Berks",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Blair",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Bradford",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Bucks",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Butler",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Cambria",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Cameron",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Carbon",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Centre",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Chester",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Clarion",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Clearfield",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Clinton",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Columbia",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Crawford",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Cumberland",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Dauphin",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Delaware",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Elk",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Erie",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Fayette",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Forest",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Franklin",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Fulton",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Greene",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Huntingdon",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Indiana",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Jefferson",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Juniata",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Lackawanna",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Lancaster",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Lawrence",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Lebanon",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Lehigh",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Luzerne",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Lycoming",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "McKean",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Mercer",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Mifflin",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Monroe",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Montgomery",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Montour",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Northampton",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Northumberland",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Perry",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Philadelphia",
+      "state_rate": 6.0,
+      "county_rate": 2.0,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "PA",
+      "county": "Pike",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Potter",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Schuylkill",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Snyder",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Somerset",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Sullivan",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Susquehanna",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Tioga",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Union",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Venango",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Warren",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Washington",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Wayne",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Westmoreland",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "Wyoming",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "PA",
+      "county": "York",
+      "state_rate": 6.0,
+      "county_rate": 0.0,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "OH",
+      "county": "Adams",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Allen",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Ashland",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Ashtabula",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Athens",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Auglaize",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Belmont",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Brown",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Butler",
+      "state_rate": 5.75,
+      "county_rate": 0.75,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "OH",
+      "county": "Carroll",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Champaign",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Clark",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Clermont",
+      "state_rate": 5.75,
+      "county_rate": 1.0,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "OH",
+      "county": "Clinton",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Columbiana",
+      "state_rate": 5.75,
+      "county_rate": 1.0,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "OH",
+      "county": "Coshocton",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Crawford",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Cuyahoga",
+      "state_rate": 5.75,
+      "county_rate": 2.25,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "OH",
+      "county": "Darke",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Defiance",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Delaware",
+      "state_rate": 5.75,
+      "county_rate": 1.75,
+      "combined_rate": 7.5
+    },
+    {
+      "state": "OH",
+      "county": "Erie",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Fairfield",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Fayette",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Franklin",
+      "state_rate": 5.75,
+      "county_rate": 1.75,
+      "combined_rate": 7.5
+    },
+    {
+      "state": "OH",
+      "county": "Fulton",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Gallia",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Geauga",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Greene",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Guernsey",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Hamilton",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Hancock",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Hardin",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Harrison",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Henry",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Highland",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Hocking",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Holmes",
+      "state_rate": 5.75,
+      "county_rate": 1.0,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "OH",
+      "county": "Huron",
+      "state_rate": 5.75,
+      "county_rate": 1.25,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "OH",
+      "county": "Jackson",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Jefferson",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Knox",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Lake",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Lawrence",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Licking",
+      "state_rate": 5.75,
+      "county_rate": 1.75,
+      "combined_rate": 7.5
+    },
+    {
+      "state": "OH",
+      "county": "Logan",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Lorain",
+      "state_rate": 5.75,
+      "county_rate": 1.75,
+      "combined_rate": 7.5
+    },
+    {
+      "state": "OH",
+      "county": "Lucas",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Madison",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Mahoning",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Marion",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Medina",
+      "state_rate": 5.75,
+      "county_rate": 1.25,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "OH",
+      "county": "Meigs",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Mercer",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Miami",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Monroe",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Montgomery",
+      "state_rate": 5.75,
+      "county_rate": 1.75,
+      "combined_rate": 7.5
+    },
+    {
+      "state": "OH",
+      "county": "Morgan",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Morrow",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Muskingum",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Noble",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Ottawa",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Paulding",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Perry",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Pickaway",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Pike",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Portage",
+      "state_rate": 5.75,
+      "county_rate": 1.0,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "OH",
+      "county": "Preble",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Putnam",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Richland",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Ross",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Sandusky",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Scioto",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Seneca",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Shelby",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Stark",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Summit",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Trumbull",
+      "state_rate": 5.75,
+      "county_rate": 1.0,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "OH",
+      "county": "Tuscarawas",
+      "state_rate": 5.75,
+      "county_rate": 1.0,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "OH",
+      "county": "Union",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Van Wert",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Vinton",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Warren",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Washington",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Wayne",
+      "state_rate": 5.75,
+      "county_rate": 1.25,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "OH",
+      "county": "Williams",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Wood",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "OH",
+      "county": "Wyandot",
+      "state_rate": 5.75,
+      "county_rate": 1.5,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "IN",
+      "county": "Adams",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Allen",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Bartholomew",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Benton",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Blackford",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Boone",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Brown",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Carroll",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Cass",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Clark",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Clay",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Clinton",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Crawford",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Daviess",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Dearborn",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Decatur",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "DeKalb",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Delaware",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Dubois",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Elkhart",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Fayette",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Floyd",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Fountain",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Franklin",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Fulton",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Gibson",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Grant",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Greene",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Hamilton",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Hancock",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Harrison",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Hendricks",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Henry",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Howard",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Huntington",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Jackson",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Jasper",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Jay",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Jefferson",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Jennings",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Johnson",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Knox",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Kosciusko",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "LaGrange",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Lake",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "LaPorte",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Lawrence",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Madison",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Marion",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Marshall",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Martin",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Miami",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Monroe",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Montgomery",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Morgan",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Newton",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Noble",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Ohio",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Orange",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Owen",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Parke",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Perry",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Pike",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Porter",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Posey",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Pulaski",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Putnam",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Randolph",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Ripley",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Rush",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Scott",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Shelby",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Spencer",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "St Joseph",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Starke",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Steuben",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Sullivan",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Switzerland",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Tippecanoe",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Tipton",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Union",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Vanderburgh",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Vermillion",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Vigo",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Wabash",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Warren",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Warrick",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Washington",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Wayne",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Wells",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "White",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IN",
+      "county": "Whitley",
+      "state_rate": 7.0,
+      "county_rate": 0.0,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IL",
+      "county": "Adams",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Alexander",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Bond",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Boone",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Brown",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Bureau",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Calhoun",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Carroll",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Cass",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Champaign",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Christian",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Clark",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Clay",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Clinton",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Coles",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Cook",
+      "state_rate": 6.25,
+      "county_rate": 1.75,
+      "combined_rate": 8.0
+    },
+    {
+      "state": "IL",
+      "county": "Crawford",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Cumberland",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "DeKalb",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "DeWitt",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Douglas",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "DuPage",
+      "state_rate": 6.25,
+      "county_rate": 0.75,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IL",
+      "county": "Edgar",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Edwards",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Effingham",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Fayette",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Ford",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Franklin",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Fulton",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Gallatin",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Greene",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Grundy",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Hamilton",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Hancock",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Hardin",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Henderson",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Henry",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Iroquois",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Jackson",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Jasper",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Jefferson",
+      "state_rate": 6.25,
+      "county_rate": 1.0,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "IL",
+      "county": "Jersey",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Jo Daviess",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Johnson",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Kane",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Kankakee",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Kendall",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Knox",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Lake",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "LaSalle",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Lawrence",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Lee",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Livingston",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Logan",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Macon",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Macoupin",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Madison",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Marion",
+      "state_rate": 6.25,
+      "county_rate": 1.0,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "IL",
+      "county": "Marshall",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Mason",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Massac",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "McDonough",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "McHenry",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "McLean",
+      "state_rate": 6.25,
+      "county_rate": 0.5,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "IL",
+      "county": "Menard",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Mercer",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Monroe",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Montgomery",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Morgan",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Moultrie",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Ogle",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Peoria",
+      "state_rate": 6.25,
+      "county_rate": 1.0,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "IL",
+      "county": "Perry",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Piatt",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Pike",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Pope",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Pulaski",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Putnam",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Randolph",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Richland",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Rock Island",
+      "state_rate": 6.25,
+      "county_rate": 0.5,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "IL",
+      "county": "Saline",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Sangamon",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Schuyler",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Scott",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Shelby",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "St Clair",
+      "state_rate": 6.25,
+      "county_rate": 0.75,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IL",
+      "county": "Stark",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Stephenson",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Tazewell",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Union",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Vermilion",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "IL",
+      "county": "Wabash",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Warren",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Washington",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Wayne",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "White",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Whiteside",
+      "state_rate": 6.25,
+      "county_rate": 0.0,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "IL",
+      "county": "Will",
+      "state_rate": 6.25,
+      "county_rate": 0.75,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "IL",
+      "county": "Williamson",
+      "state_rate": 6.25,
+      "county_rate": 1.0,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "IL",
+      "county": "Winnebago",
+      "state_rate": 6.25,
+      "county_rate": 0.5,
+      "combined_rate": 6.75
+    },
+    {
+      "state": "IL",
+      "county": "Woodford",
+      "state_rate": 6.25,
+      "county_rate": 0.25,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "MI",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "MO",
+      "county": null,
+      "state_rate": 4.225,
+      "county_rate": null,
+      "combined_rate": 4.225
+    },
+    {
+      "state": "KY",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "TN",
+      "county": null,
+      "state_rate": 7.0,
+      "county_rate": null,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "GA",
+      "county": null,
+      "state_rate": 4.0,
+      "county_rate": null,
+      "combined_rate": 4.0
+    },
+    {
+      "state": "FL",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "TX",
+      "county": null,
+      "state_rate": 6.25,
+      "county_rate": null,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "CA",
+      "county": null,
+      "state_rate": 7.25,
+      "county_rate": null,
+      "combined_rate": 7.25
+    },
+    {
+      "state": "AL",
+      "county": null,
+      "state_rate": 4.0,
+      "county_rate": null,
+      "combined_rate": 4.0
+    },
+    {
+      "state": "AK",
+      "county": null,
+      "state_rate": 0.0,
+      "county_rate": null,
+      "combined_rate": 0.0
+    },
+    {
+      "state": "AZ",
+      "county": null,
+      "state_rate": 5.6,
+      "county_rate": null,
+      "combined_rate": 5.6
+    },
+    {
+      "state": "AR",
+      "county": null,
+      "state_rate": 6.5,
+      "county_rate": null,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "CO",
+      "county": null,
+      "state_rate": 2.9,
+      "county_rate": null,
+      "combined_rate": 2.9
+    },
+    {
+      "state": "CT",
+      "county": null,
+      "state_rate": 6.35,
+      "county_rate": null,
+      "combined_rate": 6.35
+    },
+    {
+      "state": "DE",
+      "county": null,
+      "state_rate": 0.0,
+      "county_rate": null,
+      "combined_rate": 0.0
+    },
+    {
+      "state": "HI",
+      "county": null,
+      "state_rate": 4.0,
+      "county_rate": null,
+      "combined_rate": 4.0
+    },
+    {
+      "state": "ID",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "IA",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "KS",
+      "county": null,
+      "state_rate": 6.5,
+      "county_rate": null,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "LA",
+      "county": null,
+      "state_rate": 4.45,
+      "county_rate": null,
+      "combined_rate": 4.45
+    },
+    {
+      "state": "ME",
+      "county": null,
+      "state_rate": 5.5,
+      "county_rate": null,
+      "combined_rate": 5.5
+    },
+    {
+      "state": "MD",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "MA",
+      "county": null,
+      "state_rate": 6.25,
+      "county_rate": null,
+      "combined_rate": 6.25
+    },
+    {
+      "state": "MN",
+      "county": null,
+      "state_rate": 6.875,
+      "county_rate": null,
+      "combined_rate": 6.875
+    },
+    {
+      "state": "MS",
+      "county": null,
+      "state_rate": 7.0,
+      "county_rate": null,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "MT",
+      "county": null,
+      "state_rate": 0.0,
+      "county_rate": null,
+      "combined_rate": 0.0
+    },
+    {
+      "state": "NE",
+      "county": null,
+      "state_rate": 5.5,
+      "county_rate": null,
+      "combined_rate": 5.5
+    },
+    {
+      "state": "NV",
+      "county": null,
+      "state_rate": 6.85,
+      "county_rate": null,
+      "combined_rate": 6.85
+    },
+    {
+      "state": "NH",
+      "county": null,
+      "state_rate": 0.0,
+      "county_rate": null,
+      "combined_rate": 0.0
+    },
+    {
+      "state": "NJ",
+      "county": null,
+      "state_rate": 6.625,
+      "county_rate": null,
+      "combined_rate": 6.625
+    },
+    {
+      "state": "NM",
+      "county": null,
+      "state_rate": 5.125,
+      "county_rate": null,
+      "combined_rate": 5.125
+    },
+    {
+      "state": "NC",
+      "county": null,
+      "state_rate": 4.75,
+      "county_rate": null,
+      "combined_rate": 4.75
+    },
+    {
+      "state": "ND",
+      "county": null,
+      "state_rate": 5.0,
+      "county_rate": null,
+      "combined_rate": 5.0
+    },
+    {
+      "state": "OK",
+      "county": null,
+      "state_rate": 4.5,
+      "county_rate": null,
+      "combined_rate": 4.5
+    },
+    {
+      "state": "OR",
+      "county": null,
+      "state_rate": 0.0,
+      "county_rate": null,
+      "combined_rate": 0.0
+    },
+    {
+      "state": "RI",
+      "county": null,
+      "state_rate": 7.0,
+      "county_rate": null,
+      "combined_rate": 7.0
+    },
+    {
+      "state": "SC",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "SD",
+      "county": null,
+      "state_rate": 4.2,
+      "county_rate": null,
+      "combined_rate": 4.2
+    },
+    {
+      "state": "UT",
+      "county": null,
+      "state_rate": 6.1,
+      "county_rate": null,
+      "combined_rate": 6.1
+    },
+    {
+      "state": "VT",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "VA",
+      "county": null,
+      "state_rate": 5.3,
+      "county_rate": null,
+      "combined_rate": 5.3
+    },
+    {
+      "state": "WA",
+      "county": null,
+      "state_rate": 6.5,
+      "county_rate": null,
+      "combined_rate": 6.5
+    },
+    {
+      "state": "WV",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    },
+    {
+      "state": "WI",
+      "county": null,
+      "state_rate": 5.0,
+      "county_rate": null,
+      "combined_rate": 5.0
+    },
+    {
+      "state": "WY",
+      "county": null,
+      "state_rate": 4.0,
+      "county_rate": null,
+      "combined_rate": 4.0
+    },
+    {
+      "state": "DC",
+      "county": null,
+      "state_rate": 6.0,
+      "county_rate": null,
+      "combined_rate": 6.0
+    }
+  ]
+}

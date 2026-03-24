@@ -1,0 +1,644 @@
+{
+  "12007": {
+    "county": "Albany",
+    "state": "NY",
+    "lat": 42.6526,
+    "lng": -73.7562
+  },
+  "14706": {
+    "county": "Allegany",
+    "state": "NY",
+    "lat": 42.2389,
+    "lng": -77.7904
+  },
+  "13901": {
+    "county": "Broome",
+    "state": "NY",
+    "lat": 42.0987,
+    "lng": -75.918
+  },
+  "14701": {
+    "county": "Chautauqua",
+    "state": "NY",
+    "lat": 42.2133,
+    "lng": -79.3839
+  },
+  "13021": {
+    "county": "Cayuga",
+    "state": "NY",
+    "lat": 42.9278,
+    "lng": -76.5661
+  },
+  "14901": {
+    "county": "Chemung",
+    "state": "NY",
+    "lat": 42.0898,
+    "lng": -76.8077
+  },
+  "13815": {
+    "county": "Chenango",
+    "state": "NY",
+    "lat": 42.531,
+    "lng": -75.5216
+  },
+  "12901": {
+    "county": "Clinton",
+    "state": "NY",
+    "lat": 44.6939,
+    "lng": -73.458
+  },
+  "12534": {
+    "county": "Columbia",
+    "state": "NY",
+    "lat": 42.2505,
+    "lng": -73.7913
+  },
+  "13045": {
+    "county": "Cortland",
+    "state": "NY",
+    "lat": 42.6013,
+    "lng": -76.1804
+  },
+  "13753": {
+    "county": "Delaware",
+    "state": "NY",
+    "lat": 42.2976,
+    "lng": -74.9219
+  },
+  "12601": {
+    "county": "Dutchess",
+    "state": "NY",
+    "lat": 41.7004,
+    "lng": -73.9209
+  },
+  "14201": {
+    "county": "Erie",
+    "state": "NY",
+    "lat": 42.7523,
+    "lng": -78.8032
+  },
+  "12932": {
+    "county": "Essex",
+    "state": "NY",
+    "lat": 44.1167,
+    "lng": -73.7329
+  },
+  "12953": {
+    "county": "Franklin",
+    "state": "NY",
+    "lat": 44.5917,
+    "lng": -74.2959
+  },
+  "12078": {
+    "county": "Fulton",
+    "state": "NY",
+    "lat": 43.1148,
+    "lng": -74.2729
+  },
+  "14020": {
+    "county": "Genesee",
+    "state": "NY",
+    "lat": 42.9981,
+    "lng": -78.1875
+  },
+  "12414": {
+    "county": "Greene",
+    "state": "NY",
+    "lat": 42.296,
+    "lng": -74.0132
+  },
+  "12842": {
+    "county": "Hamilton",
+    "state": "NY",
+    "lat": 43.6612,
+    "lng": -74.4651
+  },
+  "13350": {
+    "county": "Herkimer",
+    "state": "NY",
+    "lat": 43.0266,
+    "lng": -74.9857
+  },
+  "13601": {
+    "county": "Jefferson",
+    "state": "NY",
+    "lat": 44.0006,
+    "lng": -75.8836
+  },
+  "13367": {
+    "county": "Lewis",
+    "state": "NY",
+    "lat": 43.7847,
+    "lng": -75.4488
+  },
+  "14454": {
+    "county": "Livingston",
+    "state": "NY",
+    "lat": 42.7806,
+    "lng": -77.7908
+  },
+  "13032": {
+    "county": "Madison",
+    "state": "NY",
+    "lat": 42.9977,
+    "lng": -75.8463
+  },
+  "14604": {
+    "county": "Monroe",
+    "state": "NY",
+    "lat": 43.1566,
+    "lng": -77.6088
+  },
+  "13317": {
+    "county": "Montgomery",
+    "state": "NY",
+    "lat": 42.9367,
+    "lng": -74.5714
+  },
+  "11501": {
+    "county": "Nassau",
+    "state": "NY",
+    "lat": 40.7282,
+    "lng": -73.5594
+  },
+  "14301": {
+    "county": "Niagara",
+    "state": "NY",
+    "lat": 43.0947,
+    "lng": -78.9465
+  },
+  "13501": {
+    "county": "Oneida",
+    "state": "NY",
+    "lat": 43.1009,
+    "lng": -75.2327
+  },
+  "13202": {
+    "county": "Onondaga",
+    "state": "NY",
+    "lat": 43.0481,
+    "lng": -76.1474
+  },
+  "14424": {
+    "county": "Ontario",
+    "state": "NY",
+    "lat": 42.8862,
+    "lng": -77.2814
+  },
+  "10940": {
+    "county": "Orange",
+    "state": "NY",
+    "lat": 41.3912,
+    "lng": -74.3291
+  },
+  "14411": {
+    "county": "Orleans",
+    "state": "NY",
+    "lat": 43.2128,
+    "lng": -78.2117
+  },
+  "13126": {
+    "county": "Oswego",
+    "state": "NY",
+    "lat": 43.4553,
+    "lng": -76.5105
+  },
+  "13820": {
+    "county": "Otsego",
+    "state": "NY",
+    "lat": 42.4531,
+    "lng": -75.0648
+  },
+  "10512": {
+    "county": "Putnam",
+    "state": "NY",
+    "lat": 41.4,
+    "lng": -73.825
+  },
+  "12180": {
+    "county": "Rensselaer",
+    "state": "NY",
+    "lat": 42.7284,
+    "lng": -73.6918
+  },
+  "10901": {
+    "county": "Rockland",
+    "state": "NY",
+    "lat": 41.1489,
+    "lng": -74.0755
+  },
+  "12866": {
+    "county": "Saratoga",
+    "state": "NY",
+    "lat": 43.0831,
+    "lng": -73.7846
+  },
+  "12305": {
+    "county": "Schenectady",
+    "state": "NY",
+    "lat": 42.8142,
+    "lng": -73.9396
+  },
+  "12157": {
+    "county": "Schoharie",
+    "state": "NY",
+    "lat": 42.6569,
+    "lng": -74.3124
+  },
+  "14891": {
+    "county": "Schuyler",
+    "state": "NY",
+    "lat": 42.3821,
+    "lng": -76.8715
+  },
+  "13148": {
+    "county": "Seneca",
+    "state": "NY",
+    "lat": 42.9046,
+    "lng": -76.7949
+  },
+  "13617": {
+    "county": "St Lawrence",
+    "state": "NY",
+    "lat": 44.5889,
+    "lng": -75.1582
+  },
+  "14830": {
+    "county": "Steuben",
+    "state": "NY",
+    "lat": 42.1385,
+    "lng": -77.0546
+  },
+  "11701": {
+    "county": "Suffolk",
+    "state": "NY",
+    "lat": 40.7891,
+    "lng": -73.3263
+  },
+  "12701": {
+    "county": "Sullivan",
+    "state": "NY",
+    "lat": 41.6637,
+    "lng": -74.709
+  },
+  "13827": {
+    "county": "Tioga",
+    "state": "NY",
+    "lat": 42.1013,
+    "lng": -76.2608
+  },
+  "14850": {
+    "county": "Tompkins",
+    "state": "NY",
+    "lat": 42.444,
+    "lng": -76.5019
+  },
+  "12401": {
+    "county": "Ulster",
+    "state": "NY",
+    "lat": 41.9275,
+    "lng": -74.0235
+  },
+  "12804": {
+    "county": "Warren",
+    "state": "NY",
+    "lat": 43.3095,
+    "lng": -73.644
+  },
+  "12839": {
+    "county": "Washington",
+    "state": "NY",
+    "lat": 43.3008,
+    "lng": -73.4893
+  },
+  "14489": {
+    "county": "Wayne",
+    "state": "NY",
+    "lat": 43.0871,
+    "lng": -77.0862
+  },
+  "10601": {
+    "county": "Westchester",
+    "state": "NY",
+    "lat": 41.034,
+    "lng": -73.7629
+  },
+  "14569": {
+    "county": "Wyoming",
+    "state": "NY",
+    "lat": 42.7134,
+    "lng": -78.15
+  },
+  "14527": {
+    "county": "Yates",
+    "state": "NY",
+    "lat": 42.6139,
+    "lng": -77.0546
+  },
+  "17201": {
+    "county": "Franklin",
+    "state": "PA",
+    "lat": 39.942,
+    "lng": -77.6611
+  },
+  "15213": {
+    "county": "Allegheny",
+    "state": "PA",
+    "lat": 40.4406,
+    "lng": -79.9959
+  },
+  "19104": {
+    "county": "Philadelphia",
+    "state": "PA",
+    "lat": 39.9526,
+    "lng": -75.1652
+  },
+  "17101": {
+    "county": "Dauphin",
+    "state": "PA",
+    "lat": 40.2732,
+    "lng": -76.8867
+  },
+  "17602": {
+    "county": "Lancaster",
+    "state": "PA",
+    "lat": 40.0379,
+    "lng": -76.3055
+  },
+  "16501": {
+    "county": "Erie",
+    "state": "PA",
+    "lat": 42.1292,
+    "lng": -80.0851
+  },
+  "18015": {
+    "county": "Northampton",
+    "state": "PA",
+    "lat": 40.6259,
+    "lng": -75.3706
+  },
+  "18101": {
+    "county": "Lehigh",
+    "state": "PA",
+    "lat": 40.6023,
+    "lng": -75.4714
+  },
+  "18503": {
+    "county": "Lackawanna",
+    "state": "PA",
+    "lat": 41.409,
+    "lng": -75.6624
+  },
+  "18702": {
+    "county": "Luzerne",
+    "state": "PA",
+    "lat": 41.2459,
+    "lng": -75.8813
+  },
+  "19601": {
+    "county": "Berks",
+    "state": "PA",
+    "lat": 40.3357,
+    "lng": -75.9269
+  },
+  "19380": {
+    "county": "Chester",
+    "state": "PA",
+    "lat": 39.9597,
+    "lng": -75.6058
+  },
+  "18901": {
+    "county": "Bucks",
+    "state": "PA",
+    "lat": 40.3679,
+    "lng": -75.1247
+  },
+  "19401": {
+    "county": "Montgomery",
+    "state": "PA",
+    "lat": 40.1218,
+    "lng": -75.3399
+  },
+  "19013": {
+    "county": "Delaware",
+    "state": "PA",
+    "lat": 39.8621,
+    "lng": -75.3405
+  },
+  "17013": {
+    "county": "Cumberland",
+    "state": "PA",
+    "lat": 40.1632,
+    "lng": -77.1886
+  },
+  "17403": {
+    "county": "York",
+    "state": "PA",
+    "lat": 39.9626,
+    "lng": -76.7277
+  },
+  "43215": {
+    "county": "Franklin",
+    "state": "OH",
+    "lat": 39.9612,
+    "lng": -82.9988
+  },
+  "44114": {
+    "county": "Cuyahoga",
+    "state": "OH",
+    "lat": 41.4993,
+    "lng": -81.6944
+  },
+  "45202": {
+    "county": "Hamilton",
+    "state": "OH",
+    "lat": 39.1031,
+    "lng": -84.512
+  },
+  "44308": {
+    "county": "Summit",
+    "state": "OH",
+    "lat": 41.0814,
+    "lng": -81.519
+  },
+  "43604": {
+    "county": "Lucas",
+    "state": "OH",
+    "lat": 41.6528,
+    "lng": -83.5379
+  },
+  "45402": {
+    "county": "Montgomery",
+    "state": "OH",
+    "lat": 39.7589,
+    "lng": -84.1916
+  },
+  "44702": {
+    "county": "Stark",
+    "state": "OH",
+    "lat": 40.7989,
+    "lng": -81.3784
+  },
+  "44035": {
+    "county": "Lorain",
+    "state": "OH",
+    "lat": 41.452,
+    "lng": -82.1824
+  },
+  "44505": {
+    "county": "Mahoning",
+    "state": "OH",
+    "lat": 41.0998,
+    "lng": -80.6495
+  },
+  "44512": {
+    "county": "Trumbull",
+    "state": "OH",
+    "lat": 41.2389,
+    "lng": -80.7687
+  },
+  "45040": {
+    "county": "Butler",
+    "state": "OH",
+    "lat": 39.3614,
+    "lng": -84.461
+  },
+  "43055": {
+    "county": "Licking",
+    "state": "OH",
+    "lat": 40.0579,
+    "lng": -82.4013
+  },
+  "44805": {
+    "county": "Ashland",
+    "state": "OH",
+    "lat": 40.8684,
+    "lng": -82.3182
+  },
+  "44256": {
+    "county": "Medina",
+    "state": "OH",
+    "lat": 41.1384,
+    "lng": -81.8637
+  },
+  "43130": {
+    "county": "Fairfield",
+    "state": "OH",
+    "lat": 39.7132,
+    "lng": -82.599
+  },
+  "44060": {
+    "county": "Lake",
+    "state": "OH",
+    "lat": 41.694,
+    "lng": -81.343
+  },
+  "46204": {
+    "county": "Marion",
+    "state": "IN",
+    "lat": 39.7684,
+    "lng": -86.1581
+  },
+  "46802": {
+    "county": "Allen",
+    "state": "IN",
+    "lat": 41.0793,
+    "lng": -85.1394
+  },
+  "47906": {
+    "county": "Tippecanoe",
+    "state": "IN",
+    "lat": 40.4237,
+    "lng": -86.9212
+  },
+  "60601": {
+    "county": "Cook",
+    "state": "IL",
+    "lat": 41.8819,
+    "lng": -87.6278
+  },
+  "61602": {
+    "county": "Peoria",
+    "state": "IL",
+    "lat": 40.6936,
+    "lng": -89.589
+  },
+  "62701": {
+    "county": "Sangamon",
+    "state": "IL",
+    "lat": 39.7817,
+    "lng": -89.6501
+  },
+  "48201": {
+    "county": "Wayne",
+    "state": "MI",
+    "lat": 42.3314,
+    "lng": -83.0458
+  },
+  "49503": {
+    "county": "Kent",
+    "state": "MI",
+    "lat": 42.9634,
+    "lng": -85.6681
+  },
+  "63101": {
+    "county": "St Louis City",
+    "state": "MO",
+    "lat": 38.627,
+    "lng": -90.1994
+  },
+  "40202": {
+    "county": "Jefferson",
+    "state": "KY",
+    "lat": 38.2527,
+    "lng": -85.7585
+  },
+  "37203": {
+    "county": "Davidson",
+    "state": "TN",
+    "lat": 36.1627,
+    "lng": -86.7816
+  },
+  "30303": {
+    "county": "Fulton",
+    "state": "GA",
+    "lat": 33.749,
+    "lng": -84.388
+  },
+  "33101": {
+    "county": "Miami-Dade",
+    "state": "FL",
+    "lat": 25.7617,
+    "lng": -80.1918
+  },
+  "32801": {
+    "county": "Orange",
+    "state": "FL",
+    "lat": 28.5383,
+    "lng": -81.3792
+  },
+  "77001": {
+    "county": "Harris",
+    "state": "TX",
+    "lat": 29.7604,
+    "lng": -95.3698
+  },
+  "75201": {
+    "county": "Dallas",
+    "state": "TX",
+    "lat": 32.7767,
+    "lng": -96.797
+  },
+  "90001": {
+    "county": "Los Angeles",
+    "state": "CA",
+    "lat": 34.0522,
+    "lng": -118.2437
+  },
+  "95814": {
+    "county": "Sacramento",
+    "state": "CA",
+    "lat": 38.5816,
+    "lng": -121.4944
+  }
+}

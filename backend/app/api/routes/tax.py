@@ -15,6 +15,8 @@ from app.models.customer import Customer
 from app.models.tax import TaxJurisdiction, TaxRate
 from app.models.user import User
 
+import uuid
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -471,3 +473,148 @@ def _resolve_line_tax(
         "taxable_amount": float(line_amount),
         "rate_name": rate.rate_name,
     }
+
+
+# ── County Geographic Suggestions ──
+
+
+@router.get("/jurisdictions/county-suggestions")
+def get_county_suggestions(
+    radius_miles: float = Query(100, ge=10, le=300),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get county suggestions with pre-filled tax rates based on tenant location."""
+    from app.models.company import Company
+    from app.services.county_geographic_service import build_suggestions
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    tenant_zip = getattr(company, "zip", None) or getattr(company, "postal_code", None)
+    tenant_state = getattr(company, "state", None)
+
+    # Get existing jurisdictions to mark as already configured
+    existing = (
+        db.query(TaxJurisdiction)
+        .filter(TaxJurisdiction.tenant_id == current_user.company_id, TaxJurisdiction.is_active.is_(True))
+        .all()
+    )
+    existing_jurisdictions = [{"county": j.county, "state": j.state} for j in existing]
+
+    # Get customer counties from imported customers
+    customer_rows = (
+        db.query(Customer.state, Customer.county)
+        .filter(
+            Customer.company_id == current_user.company_id,
+            Customer.county.isnot(None),
+            Customer.county != "",
+            Customer.state.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+    customer_counties = [{"county": r.county, "state": r.state} for r in customer_rows if r.county and r.state]
+
+    suggestions = build_suggestions(
+        tenant_zip=tenant_zip,
+        tenant_state=tenant_state,
+        service_territory_counties=None,  # TODO: query from service territories if available
+        customer_counties=customer_counties if customer_counties else None,
+        existing_jurisdictions=existing_jurisdictions,
+        radius_miles=radius_miles,
+    )
+
+    return {
+        "suggestions": suggestions,
+        "tenant_state": tenant_state,
+        "tenant_zip": tenant_zip,
+        "has_service_territory": False,
+        "existing_count": len(existing_jurisdictions),
+    }
+
+
+class BulkJurisdictionItem(BaseModel):
+    state: str
+    county: str
+    rate_percentage: float
+
+
+class BulkJurisdictionCreate(BaseModel):
+    jurisdictions: list[BulkJurisdictionItem]
+
+
+@router.post("/jurisdictions/bulk-onboarding")
+def bulk_create_jurisdictions_onboarding(
+    body: BulkJurisdictionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bulk create tax jurisdictions from onboarding — deduplicates rates automatically."""
+    tenant_id = current_user.company_id
+    created_count = 0
+
+    # Get default GL account from existing tax rates
+    default_gl = None
+    existing_default_rate = (
+        db.query(TaxRate)
+        .filter(TaxRate.tenant_id == tenant_id, TaxRate.is_default.is_(True), TaxRate.is_active.is_(True))
+        .first()
+    )
+    if existing_default_rate:
+        default_gl = existing_default_rate.gl_account_id
+
+    for item in body.jurisdictions:
+        # Find or create rate with this percentage (deduplication)
+        rate_pct = round(item.rate_percentage, 4)
+        existing_rate = (
+            db.query(TaxRate)
+            .filter(
+                TaxRate.tenant_id == tenant_id,
+                TaxRate.is_active.is_(True),
+                func.round(TaxRate.rate_percentage, 2) == round(rate_pct, 2),
+            )
+            .first()
+        )
+
+        if existing_rate:
+            rate_id = existing_rate.id
+        else:
+            new_rate = TaxRate(
+                id=str(uuid.uuid4()),
+                tenant_id=tenant_id,
+                rate_name=f"{item.county} County, {item.state.upper()} ({rate_pct}%)",
+                rate_percentage=rate_pct,
+                is_default=False,
+                is_active=True,
+                gl_account_id=default_gl,
+            )
+            db.add(new_rate)
+            db.flush()
+            rate_id = new_rate.id
+
+        # Check if jurisdiction already exists
+        existing_jur = (
+            db.query(TaxJurisdiction)
+            .filter(
+                TaxJurisdiction.tenant_id == tenant_id,
+                func.lower(TaxJurisdiction.county) == item.county.lower(),
+                TaxJurisdiction.state == item.state.upper(),
+            )
+            .first()
+        )
+        if existing_jur:
+            continue
+
+        new_jur = TaxJurisdiction(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            jurisdiction_name=f"{item.county} County, {item.state.upper()}",
+            state=item.state.upper(),
+            county=item.county.lower(),
+            tax_rate_id=rate_id,
+            is_active=True,
+        )
+        db.add(new_jur)
+        created_count += 1
+
+    db.commit()
+    return {"created": created_count, "total_submitted": len(body.jurisdictions)}

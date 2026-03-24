@@ -120,6 +120,7 @@ import WebsiteSuggestionsReview from "@/pages/onboarding/website-suggestions-rev
 import ChargeSetupPage from "@/pages/onboarding/charge-setup";
 import TeamSetupPage from "@/pages/onboarding/team-setup";
 import SafetyTrainingSetupPage from "@/pages/onboarding/safety-training-setup";
+import TaxJurisdictionsOnboarding from "@/pages/onboarding/tax-jurisdictions";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
@@ -564,6 +565,7 @@ export default function App() {
                   <Route path="/onboarding/team" element={<TeamSetupPage />} />
                   <Route path="/onboarding/team-intelligence" element={<TeamIntelligencePage />} />
                   <Route path="/onboarding/safety-training" element={<SafetyTrainingSetupPage />} />
+                  <Route path="/onboarding/tax-jurisdictions" element={<TaxJurisdictionsOnboarding />} />
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
