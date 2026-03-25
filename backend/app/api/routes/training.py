@@ -128,8 +128,31 @@ def get_expl(
 ):
     expl = get_explanation(db, current_user.company_id, key)
     if not expl:
+        # Auto-seed explanations on first request if none exist for this tenant
+        from app.models.training import ContextualExplanation
+        count = db.query(ContextualExplanation).filter(ContextualExplanation.tenant_id == current_user.company_id).count()
+        if count == 0:
+            try:
+                from app.services.training_content_seed import seed_explanations
+                seed_explanations(db, current_user.company_id)
+                expl = get_explanation(db, current_user.company_id, key)
+                if expl:
+                    return {**expl, "exists": True}
+            except Exception as e:
+                logger.error(f"Failed to seed explanations: {e}")
         return {"exists": False}
     return {**expl, "exists": True}
+
+
+@router.post("/content/seed-explanations")
+def seed_expl(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Manually seed all contextual explanations for this tenant."""
+    from app.services.training_content_seed import seed_explanations
+    count = seed_explanations(db, current_user.company_id)
+    return {"seeded": count}
 
 
 # ── Guided Flows ──
