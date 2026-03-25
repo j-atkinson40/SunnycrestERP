@@ -36,6 +36,7 @@ from app.api.routes import (
     delivery_types,
     delivery_intelligence,
     departments,
+    training as training_routes,
     documents,
     driver_mobile,
     employee_profiles,
@@ -260,6 +261,11 @@ v1_router.include_router(
     delivery_intelligence.router,
     prefix="/delivery",
     tags=["Delivery Intelligence"],
+)
+v1_router.include_router(
+    training_routes.router,
+    prefix="/training",
+    tags=["Employee Training"],
 )
 v1_router.include_router(
     financial_health.router,
