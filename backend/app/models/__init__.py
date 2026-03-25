@@ -67,6 +67,12 @@ from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
 from app.models.preset_module import PresetModule
 from app.models.invoice import Invoice, InvoiceLine
+from app.models.delivery_intelligence import (
+    DeliveryCapacityBlock,
+    DeliveryConflictLog,
+    DeliveryDemandForecast,
+    DriverProfile,
+)
 from app.models.cross_system_intelligence import (
     CrossSystemInsight,
     FinancialHealthScore,

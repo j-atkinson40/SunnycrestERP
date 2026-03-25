@@ -34,6 +34,7 @@ from app.api.routes import (
     direct_ship,
     delivery_settings,
     delivery_types,
+    delivery_intelligence,
     departments,
     documents,
     driver_mobile,
@@ -254,6 +255,11 @@ v1_router.include_router(
     network_intelligence.router,
     prefix="/network",
     tags=["Network Intelligence"],
+)
+v1_router.include_router(
+    delivery_intelligence.router,
+    prefix="/delivery",
+    tags=["Delivery Intelligence"],
 )
 v1_router.include_router(
     financial_health.router,
