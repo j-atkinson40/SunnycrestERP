@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ContextualExplanation } from "@/components/contextual-explanation";
 import {
   apAgingService,
   type AgingReport,
@@ -68,6 +69,7 @@ export default function APAgingPage() {
           <p className="text-muted-foreground">
             Outstanding payables by vendor
           </p>
+          <ContextualExplanation explanationKey="ar_aging_buckets" />
         </div>
         <Button
           variant="outline"

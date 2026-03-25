@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
+import { ContextualExplanation } from "@/components/contextual-explanation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -67,6 +68,7 @@ export default function JournalEntriesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Journal Entries</h1>
           <p className="text-sm text-gray-500 mt-1">Manual adjustments, recurring entries, and period management</p>
+          <ContextualExplanation explanationKey="journal_entry_purpose" />
         </div>
       </div>
 

@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
+import { ContextualExplanation } from "@/components/contextual-explanation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -264,6 +265,7 @@ export function StatementsTab() {
 
     return (
       <div className="space-y-4">
+        <ContextualExplanation explanationKey="statement_vs_invoice" />
         {/* Run header */}
         <Card>
           <CardContent className="p-5">

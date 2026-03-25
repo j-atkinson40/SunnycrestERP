@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ContextualExplanation } from "@/components/contextual-explanation";
 import { salesService } from "@/services/sales-service";
 import type { ARAgingReport } from "@/types/sales";
 import {
@@ -51,6 +52,7 @@ export default function ARAgingPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <h1 className="text-2xl font-semibold">AR Aging Report</h1>
+      <ContextualExplanation explanationKey="ar_aging_buckets" />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
