@@ -122,6 +122,7 @@ import TeamSetupPage from "@/pages/onboarding/team-setup";
 import SafetyTrainingSetupPage from "@/pages/onboarding/safety-training-setup";
 import TaxJurisdictionsOnboarding from "@/pages/onboarding/tax-jurisdictions";
 import TransfersPage from "@/pages/transfers";
+import ProcedureLibraryPage, { ProcedureDetailPage } from "@/pages/training/procedure-library";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
@@ -480,6 +481,10 @@ export default function App() {
                       <ProtectedRoute requiredPermission="safety.view" requiredModule="safety_management" />
                     }
                   >
+                    {/* Training */}
+                    <Route path="/training/procedures" element={<ProcedureLibraryPage />} />
+                    <Route path="/training/procedures/:key" element={<ProcedureDetailPage />} />
+                    {/* Safety */}
                     <Route path="/safety" element={<SafetyDashboardPage />} />
                     <Route path="/safety/programs" element={<SafetyProgramsPage />} />
                     <Route path="/safety/training" element={<SafetyTrainingPage />} />

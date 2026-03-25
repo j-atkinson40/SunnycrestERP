@@ -197,6 +197,18 @@ function getManufacturingNav(
     sections.push({ title: "Compliance", items: filteredCompliance });
   }
 
+  // Training
+  sections.push({
+    title: "Training",
+    items: [
+      {
+        label: "Procedure Library",
+        href: "/training/procedures",
+        icon: "BookOpen",
+      },
+    ],
+  });
+
   // Finance
   const hasSyncError =
     settings.accounting_connection_status === "connected" &&

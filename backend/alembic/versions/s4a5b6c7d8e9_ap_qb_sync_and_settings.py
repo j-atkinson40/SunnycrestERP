@@ -8,8 +8,8 @@ Create Date: 2026-03-23
 import sqlalchemy as sa
 from alembic import op
 
-revision = "p4a5b6c7d8e9"
-down_revision = "p3a4b5c6d7e8"
+revision = "s4a5b6c7d8e9"
+down_revision = "s3a4b5c6d7e8"
 branch_labels = None
 depends_on = None
 

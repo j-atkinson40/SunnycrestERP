@@ -9,8 +9,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 
-revision = "p2a3b4c5d6e7"
-down_revision = "p1a2b3c4d5e6"
+revision = "s2a3b4c5d6e7"
+down_revision = "s1a2b3c4d5e6"
 branch_labels = None
 depends_on = None
 
