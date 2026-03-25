@@ -11,10 +11,12 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.services.delivery_intelligence_service import (
+    DEFAULT_CONFIG,
     build_forecast_range,
     check_order_conflict,
     get_active_conflicts,
     get_blocks,
+    get_config,
     get_drivers,
     get_forecasts,
     resolve_conflict,
@@ -22,6 +24,52 @@ from app.services.delivery_intelligence_service import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class ConfigUpdate(BaseModel):
+    config: dict
+
+
+@router.get("/config")
+def get_delivery_config(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get delivery intelligence configuration."""
+    return get_config(db, current_user.company_id)
+
+
+@router.patch("/config")
+def update_delivery_config(
+    body: ConfigUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update delivery intelligence configuration."""
+    from app.models.company import Company
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404)
+
+    # Merge with existing config
+    current = get_config(db, current_user.company_id)
+    updated = {**current, **body.config}
+
+    # Validate
+    if "flag_at_risk_level" in updated:
+        if updated["flag_at_risk_level"] not in ("moderate", "high"):
+            raise HTTPException(status_code=400, detail="flag_at_risk_level must be 'moderate' or 'high'")
+    if "minimum_days_to_flag" in updated:
+        if not (1 <= updated["minimum_days_to_flag"] <= 60):
+            raise HTTPException(status_code=400, detail="minimum_days_to_flag must be 1-60")
+
+    # Save to tenant_settings
+    settings = dict(company.settings or {})
+    settings["delivery_intelligence_config"] = updated
+    company.settings = settings
+    db.commit()
+
+    return updated
 
 
 class ConflictCheckRequest(BaseModel):

@@ -20,6 +20,35 @@ logger = logging.getLogger(__name__)
 
 SEASONAL_MULTIPLIERS = {1: 0.7, 2: 0.8, 3: 1.2, 4: 1.4, 5: 1.3, 6: 1.0, 7: 0.9, 8: 0.9, 9: 0.9, 10: 0.8, 11: 0.7, 12: 0.6}
 
+DEFAULT_CONFIG = {
+    "enabled": True,
+    "show_operations_board_zone": True,
+    "scheduling_warnings_enabled": True,
+    "conflict_alerts_enabled": True,
+    "block_suggestions_enabled": True,
+    "blanket_block_reassessment_enabled": True,
+    "weekly_review_alerts_enabled": True,
+    "minimum_days_to_flag": 14,
+    "flag_at_risk_level": "moderate",
+}
+
+
+def get_config(db: Session, tenant_id: str) -> dict:
+    """Load delivery intelligence config with defaults."""
+    from app.models.company import Company
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    if not company:
+        return {**DEFAULT_CONFIG, "enabled": False}
+    settings = getattr(company, "settings", None) or {}
+    config = settings.get("delivery_intelligence_config") or {}
+    # Merge with defaults — config keys override defaults
+    return {**DEFAULT_CONFIG, **config}
+
+
+def is_enabled(db: Session, tenant_id: str) -> bool:
+    """Quick check if delivery intelligence is enabled for this tenant."""
+    return get_config(db, tenant_id).get("enabled", False)
+
 
 # ---------------------------------------------------------------------------
 # Driver & Block Management
@@ -245,6 +274,12 @@ def get_forecasts(db: Session, tenant_id: str, days: int = 21) -> list[dict]:
 
 def check_order_conflict(db: Session, tenant_id: str, order_id: str | None, delivery_date: date, product_type: str, customer_name: str | None = None) -> dict | None:
     """Check if a delivery has a conflict. Returns conflict data or None."""
+    config = get_config(db, tenant_id)
+    if not config.get("enabled", False):
+        return None
+    if not config.get("scheduling_warnings_enabled", True):
+        return None
+
     # Check blocked
     block = is_day_blocked(db, tenant_id, delivery_date, product_type)
     if block:
