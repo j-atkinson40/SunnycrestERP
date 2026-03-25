@@ -4,8 +4,11 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 ARG VITE_API_URL
-RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production
+ARG VITE_APP_DOMAIN=getbridgeable.com
+RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
+    echo "VITE_APP_DOMAIN=${VITE_APP_DOMAIN}" >> .env.production
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_APP_DOMAIN=$VITE_APP_DOMAIN
 RUN npm run build
 
 FROM nginx:alpine

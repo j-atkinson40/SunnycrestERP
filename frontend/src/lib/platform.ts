@@ -19,6 +19,10 @@ export function isPlatformAdmin(): boolean {
   const baseDomain = import.meta.env.VITE_APP_DOMAIN;
   if (baseDomain && hostname === `admin.${baseDomain}`) return true;
 
+  // Hardened fallback: detect any hostname starting with "admin."
+  // This catches cases where VITE_APP_DOMAIN wasn't set at build time
+  if (hostname.startsWith("admin.") && !hostname.endsWith(".localhost")) return true;
+
   // Fallback for Railway URLs and non-subdomain setups:
   // Check localStorage flag (set via /platform-admin entry point)
   if (localStorage.getItem("platform_mode") === "true") return true;
