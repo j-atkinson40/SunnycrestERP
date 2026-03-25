@@ -67,6 +67,7 @@ from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
 from app.models.preset_module import PresetModule
 from app.models.invoice import Invoice, InvoiceLine
+from app.models.licensee_transfer import LicenseeTransfer, TransferNotification
 from app.models.manufacturer_directory_selection import ManufacturerDirectorySelection
 from app.models.mix_design import MixDesign
 from app.models.module_definition import ModuleDefinition

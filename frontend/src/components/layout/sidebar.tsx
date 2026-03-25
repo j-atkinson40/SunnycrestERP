@@ -45,6 +45,7 @@ import {
   Wrench,
   Zap,
   type LucideIcon,
+  ArrowRightLeft,
   BarChart3,
   PieChart,
 } from "lucide-react";
@@ -57,6 +58,7 @@ import type { NavItem, NavSection } from "@/services/navigation-service";
 // ---- Icon lookup ----
 const ICON_MAP: Record<string, LucideIcon> = {
   AlertTriangle,
+  ArrowRightLeft,
   Award,
   BarChart3,
   Bell,

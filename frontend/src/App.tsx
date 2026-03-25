@@ -121,6 +121,7 @@ import ChargeSetupPage from "@/pages/onboarding/charge-setup";
 import TeamSetupPage from "@/pages/onboarding/team-setup";
 import SafetyTrainingSetupPage from "@/pages/onboarding/safety-training-setup";
 import TaxJurisdictionsOnboarding from "@/pages/onboarding/tax-jurisdictions";
+import TransfersPage from "@/pages/transfers";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
@@ -385,6 +386,7 @@ export default function App() {
                       path="/ap/bills"
                       element={<VendorBillsPage />}
                     />
+                    <Route path="/transfers" element={<TransfersPage />} />
                     <Route
                       path="/ap/bills/:id"
                       element={<VendorBillDetailPage />}

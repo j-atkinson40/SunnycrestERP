@@ -131,6 +131,12 @@ function getManufacturingNav(
       icon: "LayoutDashboard",
       functionalArea: "production_log",
     },
+    {
+      label: "Transfers",
+      href: "/transfers",
+      icon: "ArrowRightLeft",
+      functionalArea: "funeral_scheduling",
+    },
   ];
 
   // Extension-added items

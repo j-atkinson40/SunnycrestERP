@@ -60,6 +60,7 @@ from app.api.routes import (
     reconciliation,
     reports,
     tax,
+    transfers,
     order_station,
     performance_notes,
     platform_fees,
@@ -255,6 +256,11 @@ v1_router.include_router(
     tax.router,
     prefix="/tax",
     tags=["Tax"],
+)
+v1_router.include_router(
+    transfers.router,
+    prefix="/transfers",
+    tags=["Licensee Transfers"],
 )
 v1_router.include_router(
     reports.router,
