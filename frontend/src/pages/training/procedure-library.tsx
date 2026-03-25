@@ -40,6 +40,7 @@ const CATEGORIES = [
   { key: "operations", label: "Operations" },
   { key: "transfers", label: "Transfers" },
   { key: "compliance", label: "Compliance" },
+  { key: "ai_workflows", label: "Working with the Agent" },
 ]
 
 const ROLE_LABELS: Record<string, string> = {
@@ -57,6 +58,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   operations: "bg-amber-100 text-amber-700",
   transfers: "bg-cyan-100 text-cyan-700",
   compliance: "bg-red-100 text-red-700",
+  ai_workflows: "bg-indigo-100 text-indigo-700",
 }
 
 export default function ProcedureLibraryPage() {
