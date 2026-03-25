@@ -719,14 +719,6 @@ export default function OrderStation() {
 
   // ---- Render ----
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full">
       {/* Morning Briefing */}
@@ -734,7 +726,7 @@ export default function OrderStation() {
         <MorningBriefingCard />
       </div>
 
-      {/* Tab bar — Orders | Transfers */}
+      {/* Tab bar — Orders | Transfers — always visible */}
       <div className="px-6 pt-3 pb-0">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex gap-6">
@@ -775,6 +767,12 @@ export default function OrderStation() {
 
       {/* Orders tab — existing content */}
       {activeTab === "orders" && <>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        </div>
+      ) : <>
 
       {/* ---- Sticky Quick Orders Bar ---- */}
       <div className="sticky top-0 z-20 bg-white border-b shadow-sm">
@@ -1213,6 +1211,7 @@ export default function OrderStation() {
         </div>
       </div>
 
+      </>}
       </>}
 
       {/* ---- Slide-Over (renders on all tabs) ---- */}
