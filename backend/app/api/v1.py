@@ -55,6 +55,7 @@ from app.api.routes import (
     agents,
     proactive_agents,
     report_intelligence,
+    network_intelligence,
     financials_board,
     journal_entries,
     notifications,
@@ -247,6 +248,11 @@ v1_router.include_router(
     report_intelligence.router,
     prefix="/report-intelligence",
     tags=["Report Intelligence"],
+)
+v1_router.include_router(
+    network_intelligence.router,
+    prefix="/network",
+    tags=["Network Intelligence"],
 )
 v1_router.include_router(
     financials_board.router,
