@@ -25,6 +25,7 @@ from app.api.routes import (
     cases,
     charge_library,
     companies,
+    behavioral_analytics,
     customers,
     deliveries,
     discount,
@@ -152,6 +153,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     finance_charges.router, prefix="/finance-charges", tags=["Finance Charges"]
+)
+v1_router.include_router(
+    behavioral_analytics.router, prefix="/behavioral", tags=["Behavioral Analytics"]
 )
 v1_router.include_router(
     delivery_portal.router, prefix="/portal", tags=["Delivery Portal"]
