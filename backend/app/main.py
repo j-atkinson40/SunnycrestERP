@@ -197,6 +197,26 @@ def run_data_seeders():
         db.close()
 
 
+@app.on_event("startup")
+def start_job_scheduler():
+    """Start the APScheduler background scheduler for all agent jobs."""
+    try:
+        from app.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as exc:
+        print(f"WARNING: Job scheduler failed to start — {exc}")
+
+
+@app.on_event("shutdown")
+def stop_job_scheduler():
+    """Gracefully shut down the APScheduler."""
+    try:
+        from app.scheduler import shutdown_scheduler
+        shutdown_scheduler()
+    except Exception:
+        pass
+
+
 @app.get("/api/health", tags=["System"])
 def health_check():
     """Health check endpoint — used by Railway, load balancers, and CI."""

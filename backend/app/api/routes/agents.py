@@ -40,16 +40,29 @@ def trigger_job(
     db: Session = Depends(get_db),
 ):
     """Manually trigger an agent job."""
-    runners = {
+    # Direct runners (run for current tenant with current DB session)
+    direct_runners = {
         "ar_aging_monitor": run_ar_aging_monitor,
         "collections_sequence": run_collections_sequence,
         "ap_upcoming_payments": run_ap_upcoming_payments,
     }
-    runner = runners.get(body.job_type)
-    if not runner:
-        raise HTTPException(status_code=400, detail=f"Unknown job type: {body.job_type}")
-    result = runner(db, current_user.company_id)
-    return result
+    runner = direct_runners.get(body.job_type)
+    if runner:
+        result = runner(db, current_user.company_id)
+        return result
+
+    # Scheduler-registered jobs (run via scheduler wrappers)
+    from app.scheduler import JOB_REGISTRY
+    scheduled_runner = JOB_REGISTRY.get(body.job_type)
+    if scheduled_runner:
+        import threading
+        threading.Thread(target=scheduled_runner, daemon=True).start()
+        return {"job_type": body.job_type, "status": "triggered_async"}
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unknown job type: {body.job_type}. Available: {list(direct_runners.keys()) + list(JOB_REGISTRY.keys())}",
+    )
 
 
 # ---------------------------------------------------------------------------
