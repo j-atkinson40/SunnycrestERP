@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # Environment: dev | staging | production
     ENVIRONMENT: str = "dev"
 
+    # Domain configuration
+    FRONTEND_URL: str = "http://localhost:5173"
+    PLATFORM_DOMAIN: str = "getbridgeable.com"
+
     # Redis (optional — job queue degrades to DB polling without it)
     REDIS_URL: str = ""
 
