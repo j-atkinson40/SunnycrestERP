@@ -134,6 +134,30 @@ def job_network_snapshot():
     _run_global("NETWORK_SNAPSHOT", build_platform_health_snapshot)
 
 
+def job_onboarding_pattern():
+    """Run onboarding timeline prediction for all tenants."""
+    from app.models.company import Company
+    from app.services.network_intelligence_service import predict_onboarding_timeline
+
+    tenant_ids = _get_active_tenant_ids()
+    logger.info(f"[ONBOARDING_PATTERN] Starting for {len(tenant_ids)} tenants")
+    success = 0
+    errors = 0
+    for tid in tenant_ids:
+        db = SessionLocal()
+        try:
+            company = db.query(Company).filter(Company.id == tid).first()
+            tenant_type = getattr(company, "preset", "manufacturing") if company else "manufacturing"
+            predict_onboarding_timeline(db, tid, tenant_type)
+            success += 1
+        except Exception as e:
+            errors += 1
+            logger.error(f"[ONBOARDING_PATTERN] Error for tenant {tid}: {e}", exc_info=True)
+        finally:
+            db.close()
+    logger.info(f"[ONBOARDING_PATTERN] Complete: {success} ok, {errors} errors")
+
+
 # ---------------------------------------------------------------------------
 # Job registry — maps names to wrapper functions (for manual trigger)
 # ---------------------------------------------------------------------------
@@ -151,6 +175,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "financial_health_score": job_financial_health_score,
     "cross_system_synthesis": job_cross_system_synthesis,
     "network_snapshot": job_network_snapshot,
+    "onboarding_pattern": job_onboarding_pattern,
 }
 
 
@@ -219,6 +244,16 @@ def register_all_jobs():
         CronTrigger(day=1, hour=2, minute=17),
         id="network_snapshot",
         name="network_snapshot",
+        replace_existing=True,
+        misfire_grace_time=86400,
+    )
+
+    # MONTHLY 1st at 4am — onboarding pattern analysis
+    scheduler.add_job(
+        job_onboarding_pattern,
+        CronTrigger(day=1, hour=4, minute=13),
+        id="onboarding_pattern",
+        name="onboarding_pattern",
         replace_existing=True,
         misfire_grace_time=86400,
     )
