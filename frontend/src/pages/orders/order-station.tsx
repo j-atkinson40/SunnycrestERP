@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { MorningBriefingCard } from "@/components/morning-briefing-card";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import {
   getTemplates,
   getActivity,
@@ -583,11 +584,16 @@ function OrderSlideOver({
   );
 }
 
+// Lazy-load transfers tab content
+const TransfersPage = lazy(() => import("@/pages/transfers"));
+
 // ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 export default function OrderStation() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") || "orders";
   const [templates, setTemplates] = useState<QuickQuoteTemplate[]>([]);
   const [activity, setActivity] = useState<OrderStationActivity | null>(null);
   const [loading, setLoading] = useState(true);
@@ -596,6 +602,12 @@ export default function OrderStation() {
     template: QuickQuoteTemplate;
     mode: "order" | "quote";
   } | null>(null);
+
+  const switchTab = (tab: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", tab);
+    setSearchParams(params);
+  };
 
   // ---- Data fetching ----
 
@@ -721,6 +733,48 @@ export default function OrderStation() {
       <div className="px-6 pt-4">
         <MorningBriefingCard />
       </div>
+
+      {/* Tab bar — Orders | Transfers */}
+      <div className="px-6 pt-3 pb-0">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex gap-6">
+            <button
+              onClick={() => switchTab("orders")}
+              className={cn(
+                "pb-3 text-sm font-medium border-b-2 transition-colors",
+                activeTab === "orders"
+                  ? "border-gray-900 text-gray-900"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              )}
+            >
+              Orders
+            </button>
+            <button
+              onClick={() => switchTab("transfers")}
+              className={cn(
+                "pb-3 text-sm font-medium border-b-2 transition-colors",
+                activeTab === "transfers"
+                  ? "border-gray-900 text-gray-900"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              )}
+            >
+              Transfers
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {/* Transfers tab */}
+      {activeTab === "transfers" && (
+        <div className="px-6 py-4">
+          <Suspense fallback={<div className="flex justify-center py-12"><div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" /></div>}>
+            <TransfersPage />
+          </Suspense>
+        </div>
+      )}
+
+      {/* Orders tab — existing content */}
+      {activeTab === "orders" && <>
 
       {/* ---- Sticky Quick Orders Bar ---- */}
       <div className="sticky top-0 z-20 bg-white border-b shadow-sm">
@@ -1159,7 +1213,9 @@ export default function OrderStation() {
         </div>
       </div>
 
-      {/* ---- Slide-Over ---- */}
+      </>}
+
+      {/* ---- Slide-Over (renders on all tabs) ---- */}
       {activeSlideOver && (
         <OrderSlideOver
           template={activeSlideOver.template}

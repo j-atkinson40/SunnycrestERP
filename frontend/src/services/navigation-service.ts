@@ -131,12 +131,7 @@ function getManufacturingNav(
       icon: "LayoutDashboard",
       functionalArea: "production_log",
     },
-    {
-      label: "Transfers",
-      href: "/transfers",
-      icon: "ArrowRightLeft",
-      functionalArea: "funeral_scheduling",
-    },
+    // Transfers moved to Orders page tab — no standalone nav item
   ];
 
   // Extension-added items
