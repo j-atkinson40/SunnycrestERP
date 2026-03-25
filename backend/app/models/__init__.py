@@ -67,6 +67,7 @@ from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
 from app.models.preset_module import PresetModule
 from app.models.invoice import Invoice, InvoiceLine
+from app.models.finance_charge import FinanceChargeItem, FinanceChargeRun
 from app.models.inter_licensee_pricing import (
     InterLicenseePriceList,
     InterLicenseePriceListItem,

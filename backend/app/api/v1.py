@@ -28,6 +28,7 @@ from app.api.routes import (
     customers,
     deliveries,
     discount,
+    finance_charges,
     delivery_portal,
     direct_ship,
     delivery_settings,
@@ -148,6 +149,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     discount.router, prefix="/discount", tags=["Early Payment Discount"]
+)
+v1_router.include_router(
+    finance_charges.router, prefix="/finance-charges", tags=["Finance Charges"]
 )
 v1_router.include_router(
     delivery_portal.router, prefix="/portal", tags=["Delivery Portal"]
