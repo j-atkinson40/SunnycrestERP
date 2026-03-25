@@ -27,6 +27,7 @@ from app.api.routes import (
     companies,
     customers,
     deliveries,
+    discount,
     delivery_portal,
     direct_ship,
     delivery_settings,
@@ -142,6 +143,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     deliveries.router, prefix="/delivery", tags=["Delivery & Dispatch"]
+)
+v1_router.include_router(
+    discount.router, prefix="/discount", tags=["Early Payment Discount"]
 )
 v1_router.include_router(
     delivery_portal.router, prefix="/portal", tags=["Delivery Portal"]
