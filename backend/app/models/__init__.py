@@ -167,7 +167,7 @@ from app.models.safety_training import (
 from app.models.platform_tenant_relationship import PlatformTenantRelationship
 from app.models.received_statement import ReceivedStatement, StatementPayment
 from app.models.safety_training_topic import SafetyTrainingTopic
-from app.models.statement import CustomerStatement, StatementRun, StatementTemplate
+from app.models.statement import CustomerStatement, StatementRun, StatementRunItem, StatementTemplate
 from app.models.tenant_training_schedule import TenantTrainingSchedule
 from app.models.toolbox_talk import ToolboxTalk
 from app.models.toolbox_talk_suggestion import ToolboxTalkSuggestion

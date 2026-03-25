@@ -1,10 +1,10 @@
-"""Billing statement models — templates, runs, customer statements."""
+"""Billing statement models — templates, runs, customer statements, run items."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -102,4 +102,44 @@ class CustomerStatement(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     run = relationship("StatementRun", back_populates="statements")
+    customer = relationship("Customer", foreign_keys=[customer_id])
+
+
+class StatementRunItem(Base):
+    __tablename__ = "statement_run_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False)
+    statement_run_id: Mapped[str] = mapped_column(String(36), ForeignKey("statement_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    customer_id: Mapped[str] = mapped_column(String(36), ForeignKey("customers.id"), nullable=False, index=True)
+    # Statement content
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    opening_balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    invoices_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    payments_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    credits_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    closing_balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Agent flags
+    flagged: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    flag_reasons: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    # Review
+    review_status: Mapped[str] = mapped_column(String(20), server_default="pending")
+    reviewed_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Delivery
+    delivery_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    delivery_status: Mapped[str] = mapped_column(String(20), server_default="pending")
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # PDF
+    pdf_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pdf_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    statement_run = relationship("StatementRun", foreign_keys=[statement_run_id])
     customer = relationship("Customer", foreign_keys=[customer_id])
