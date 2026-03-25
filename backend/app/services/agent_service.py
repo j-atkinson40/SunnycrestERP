@@ -212,6 +212,7 @@ def run_collections_sequence(db: Session, tenant_id: str) -> dict:
 
             seq.draft_subject = draft.get("subject", f"Payment Reminder — Invoice #{invoice.invoice_number}")
             seq.draft_body = draft.get("body", "")
+            seq.original_draft_body = seq.draft_body  # Store original for edit detection
             seq.next_scheduled_at = now + timedelta(days=14)
             drafts_created += 1
 

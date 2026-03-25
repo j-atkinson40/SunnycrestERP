@@ -74,6 +74,8 @@ class AgentCollectionSequence(Base):
     completed: Mapped[bool] = mapped_column(Boolean, server_default="false")
     draft_subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
     draft_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_draft_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_without_edit: Mapped[bool] = mapped_column(Boolean, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

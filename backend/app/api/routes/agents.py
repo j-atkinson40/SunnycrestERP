@@ -151,6 +151,11 @@ def send_collection(
     if not seq:
         raise HTTPException(status_code=404, detail="Sequence not found")
 
+    # Track whether the draft was edited before sending
+    original = seq.original_draft_body or seq.draft_body or ""
+    current = body.body or ""
+    seq.sent_without_edit = (original.strip() == current.strip())
+
     # TODO: integrate with email service to actually send
     # For now, mark as sent and log
     from datetime import datetime, timezone

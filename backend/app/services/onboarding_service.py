@@ -265,22 +265,6 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["add_products"]',
         "sort_order": 7,
     },
-    # 7.5. Inter-licensee pricing — auto-completes
-    {
-        "item_key": "setup_inter_licensee_pricing",
-        "tier": "optional",
-        "category": "data_setup",
-        "title": "Review your transfer pricing",
-        "description": (
-            "Your standard retail prices are used by default when partner "
-            "licensees transfer burials to your area. Review or customize if needed."
-        ),
-        "estimated_minutes": 2,
-        "action_type": "navigate",
-        "action_target": "/settings/inter-licensee-pricing",
-        "depends_on": '["setup_price_list"]',
-        "sort_order": 75,
-    },
     # 8. Financial accounts — NEW
     {
         "item_key": "setup_financial_accounts",
@@ -387,6 +371,22 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/team-intelligence",
         "depends_on": '["add_employees"]',
         "sort_order": 99,
+    },
+    # Inter-licensee pricing — auto-completes on first transfer
+    {
+        "item_key": "setup_inter_licensee_pricing",
+        "tier": "optional",
+        "category": "data_setup",
+        "title": "Review your transfer pricing",
+        "description": (
+            "Your standard retail prices are used by default when partner "
+            "licensees transfer burials to your area. Review or customize if needed."
+        ),
+        "estimated_minutes": 2,
+        "action_type": "navigate",
+        "action_target": "/settings/inter-licensee-pricing",
+        "depends_on": '["setup_price_list"]',
+        "sort_order": 75,
     },
     # SHOULD COMPLETE
     {
