@@ -60,6 +60,7 @@ from app.api.routes import (
     reconciliation,
     reports,
     tax,
+    inter_licensee_pricing,
     transfers,
     order_station,
     performance_notes,
@@ -256,6 +257,11 @@ v1_router.include_router(
     tax.router,
     prefix="/tax",
     tags=["Tax"],
+)
+v1_router.include_router(
+    inter_licensee_pricing.router,
+    prefix="/inter-licensee-pricing",
+    tags=["Inter-Licensee Pricing"],
 )
 v1_router.include_router(
     transfers.router,
