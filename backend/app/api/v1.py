@@ -41,6 +41,7 @@ from app.api.routes import (
     equipment,
     extensions,
     feature_flags,
+    financial_health,
     functional_areas,
     fh_portal,
     fh_price_list,
@@ -253,6 +254,11 @@ v1_router.include_router(
     network_intelligence.router,
     prefix="/network",
     tags=["Network Intelligence"],
+)
+v1_router.include_router(
+    financial_health.router,
+    prefix="/health",
+    tags=["Financial Health"],
 )
 v1_router.include_router(
     financials_board.router,

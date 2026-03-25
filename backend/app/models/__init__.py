@@ -67,6 +67,11 @@ from app.models.platform_fee import FeeRateConfig, PlatformFee
 from app.models.platform_user import PlatformUser
 from app.models.preset_module import PresetModule
 from app.models.invoice import Invoice, InvoiceLine
+from app.models.cross_system_intelligence import (
+    CrossSystemInsight,
+    FinancialHealthScore,
+    SeasonalReadinessReport,
+)
 from app.models.network_intelligence import (
     NetworkAnalyticsSnapshot,
     NetworkConnectionSuggestion,
