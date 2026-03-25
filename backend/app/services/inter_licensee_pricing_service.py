@@ -31,105 +31,273 @@ def get_area_price_list(db: Session, area_tenant_id: str) -> dict | None:
     if not pl:
         return None
 
+    result = {
+        "id": pl.id,
+        "name": pl.name,
+        "pricing_method": pl.pricing_method,
+        "retail_adjustment_percentage": float(pl.retail_adjustment_percentage) if pl.retail_adjustment_percentage else 0,
+        "auto_created": getattr(pl, "auto_created", False),
+    }
+
+    # For retail method, items are resolved dynamically — don't need price list items
+    if pl.pricing_method in ("retail", "retail_minus", "retail_plus"):
+        result["items"] = []
+        return result
+
     items = (
         db.query(InterLicenseePriceListItem)
         .filter(InterLicenseePriceListItem.price_list_id == pl.id, InterLicenseePriceListItem.is_active.is_(True))
         .all()
     )
-    return {
-        "id": pl.id,
-        "name": pl.name,
-        "pricing_method": pl.pricing_method,
-        "retail_adjustment_percentage": float(pl.retail_adjustment_percentage) if pl.retail_adjustment_percentage else 0,
-        "items": [
-            {
-                "id": i.id,
-                "product_name": i.product_name,
-                "product_code": i.product_code,
-                "unit_price": float(i.unit_price) if i.unit_price else None,
-                "unit": i.unit,
-                "notes": i.notes,
-            }
-            for i in items
-        ],
-    }
+    result["items"] = [
+        {
+            "id": i.id,
+            "product_name": i.product_name,
+            "product_code": i.product_code,
+            "unit_price": float(i.unit_price) if i.unit_price else None,
+            "unit": i.unit,
+            "notes": i.notes,
+        }
+        for i in items
+    ]
+    return result
 
 
 def lookup_transfer_pricing(db: Session, transfer_id: str) -> dict:
-    """Look up pricing for a transfer from the area licensee's price list."""
+    """Look up pricing for a transfer. Tries retail catalog first, then price list items, then sends request."""
     transfer = db.query(LicenseeTransfer).filter(LicenseeTransfer.id == transfer_id).first()
     if not transfer or not transfer.area_tenant_id:
         return {"found": False, "error": "Transfer not found or no area licensee"}
 
-    price_list = get_area_price_list(db, transfer.area_tenant_id)
+    price_list_data = get_area_price_list(db, transfer.area_tenant_id)
 
-    if price_list and price_list["items"]:
-        # Match transfer items to price list items
-        matched_prices = []
-        total = Decimal("0")
+    # If no price list exists, auto-create one from retail catalog
+    if not price_list_data:
+        price_list_data = _auto_create_retail_price_list(db, transfer.area_tenant_id)
 
-        for idx, item in enumerate(transfer.transfer_items or []):
-            desc = item.get("description", "").lower()
-            qty = item.get("quantity", 1)
-            best_match = None
-            best_score = 0
+    if price_list_data:
+        pricing_method = price_list_data.get("pricing_method", "fixed")
+        adjustment_pct = Decimal(str(price_list_data.get("retail_adjustment_percentage", 0)))
 
-            for pl_item in price_list["items"]:
-                # Simple matching: check if product names overlap
-                pl_name = pl_item["product_name"].lower()
-                if desc in pl_name or pl_name in desc:
-                    best_match = pl_item
-                    best_score = 0.9
-                    break
-                # Partial word match
-                desc_words = set(desc.split())
-                pl_words = set(pl_name.split())
-                overlap = len(desc_words & pl_words) / max(len(desc_words | pl_words), 1)
-                if overlap > best_score:
-                    best_match = pl_item
-                    best_score = overlap
+        # For 'retail' or 'retail_minus'/'retail_plus': resolve from product catalog
+        if pricing_method in ("retail", "retail_minus", "retail_plus"):
+            return _resolve_retail_pricing(db, transfer, pricing_method, adjustment_pct)
 
-            if best_match and best_match["unit_price"] and best_score >= 0.3:
-                line_total = Decimal(str(best_match["unit_price"])) * Decimal(str(qty))
-                matched_prices.append({
-                    "transfer_item_index": idx,
-                    "description": item.get("description"),
-                    "unit_price": best_match["unit_price"],
-                    "quantity": qty,
-                    "line_total": float(line_total),
-                    "price_source": "catalog",
-                    "price_list_item_id": best_match["id"],
-                    "match_confidence": round(best_score, 2),
-                })
-                total += line_total
-            else:
-                matched_prices.append({
-                    "transfer_item_index": idx,
-                    "description": item.get("description"),
-                    "unit_price": None,
-                    "quantity": qty,
-                    "line_total": 0,
-                    "price_source": "not_found",
-                    "price_list_item_id": None,
-                    "match_confidence": 0,
-                })
+        # For 'fixed': match against explicit price list items
+        if price_list_data.get("items"):
+            return _resolve_fixed_pricing(db, transfer, price_list_data["items"])
 
-        # Check if all items were priced
-        all_priced = all(p["unit_price"] is not None for p in matched_prices)
-
-        transfer.area_unit_prices = matched_prices
-        transfer.area_charge_amount = total if all_priced else None
-        transfer.pricing_status = "price_found" if all_priced else "price_requested"
-        db.commit()
-
-        if all_priced:
-            _create_pricing_alert(db, transfer, "price_found", float(total))
-
-        return {"found": all_priced, "prices": matched_prices, "total": float(total)}
-
-    # No price list — send price request
+    # No price list and no catalog — send price request
     send_price_request(db, transfer_id)
     return {"found": False, "request_sent": True}
+
+
+def _auto_create_retail_price_list(db: Session, area_tenant_id: str) -> dict | None:
+    """Auto-create an inter-licensee price list from the tenant's retail catalog."""
+    from app.models.product import Product
+
+    # Check if tenant has products with prices
+    product_count = (
+        db.query(Product)
+        .filter(Product.company_id == area_tenant_id, Product.is_active.is_(True))
+        .count()
+    )
+    if product_count == 0:
+        return None
+
+    # Auto-create price list with retail method
+    pl = InterLicenseePriceList(
+        id=str(uuid.uuid4()),
+        tenant_id=area_tenant_id,
+        name="Inter-Licensee Transfer Pricing",
+        pricing_method="retail",
+        is_active=True,
+        visible_to_all_licensees=True,
+        auto_created=True,
+        notes="Automatically created — uses your standard retail pricing. Adjust in Settings → Inter-Licensee Pricing.",
+    )
+    db.add(pl)
+    db.flush()
+
+    logger.info(f"Auto-created retail inter-licensee price list for tenant {area_tenant_id}")
+
+    return {
+        "id": pl.id,
+        "name": pl.name,
+        "pricing_method": "retail",
+        "retail_adjustment_percentage": 0,
+        "items": [],
+    }
+
+
+def _resolve_retail_pricing(
+    db: Session, transfer: LicenseeTransfer, pricing_method: str, adjustment_pct: Decimal,
+) -> dict:
+    """Resolve transfer pricing from the area licensee's product catalog."""
+    from app.models.product import Product
+
+    products = (
+        db.query(Product)
+        .filter(Product.company_id == transfer.area_tenant_id, Product.is_active.is_(True))
+        .all()
+    )
+
+    # Build lookup structures
+    product_by_code = {p.sku.lower(): p for p in products if getattr(p, "sku", None)}
+    product_by_name = {p.name.lower(): p for p in products}
+
+    matched_prices = []
+    total = Decimal("0")
+
+    for idx, item in enumerate(transfer.transfer_items or []):
+        desc = item.get("description", "").lower()
+        code = (item.get("product_code") or "").lower()
+        qty = item.get("quantity", 1)
+        matched_product = None
+        match_score = 0
+
+        # Step 1: exact code match
+        if code and code in product_by_code:
+            matched_product = product_by_code[code]
+            match_score = 1.0
+
+        # Step 2: name similarity
+        if not matched_product:
+            best_score = 0
+            for pname, prod in product_by_name.items():
+                if desc in pname or pname in desc:
+                    matched_product = prod
+                    match_score = 0.9
+                    break
+                desc_words = set(desc.split())
+                p_words = set(pname.split())
+                overlap = len(desc_words & p_words) / max(len(desc_words | p_words), 1)
+                if overlap > best_score and overlap >= 0.3:
+                    matched_product = prod
+                    best_score = overlap
+                    match_score = overlap
+
+        if matched_product and match_score >= 0.3:
+            # Get retail price
+            retail_price = getattr(matched_product, "base_price", None) or getattr(matched_product, "price", None) or Decimal("0")
+            retail_price = Decimal(str(retail_price))
+
+            # Apply adjustment
+            if pricing_method == "retail_minus":
+                unit_price = (retail_price * (Decimal("1") - adjustment_pct / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            elif pricing_method == "retail_plus":
+                unit_price = (retail_price * (Decimal("1") + adjustment_pct / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            else:
+                unit_price = retail_price
+
+            line_total = unit_price * Decimal(str(qty))
+            matched_prices.append({
+                "transfer_item_index": idx,
+                "description": item.get("description"),
+                "unit_price": float(unit_price),
+                "quantity": qty,
+                "line_total": float(line_total),
+                "price_source": "retail_catalog",
+                "product_id": matched_product.id,
+                "match_confidence": round(match_score, 2),
+            })
+            total += line_total
+        else:
+            matched_prices.append({
+                "transfer_item_index": idx,
+                "description": item.get("description"),
+                "unit_price": None,
+                "quantity": qty,
+                "line_total": 0,
+                "price_source": "not_found",
+                "needs_manual_price": True,
+                "match_confidence": 0,
+            })
+
+    all_priced = all(p["unit_price"] is not None for p in matched_prices)
+
+    transfer.area_unit_prices = matched_prices
+    transfer.area_charge_amount = total if all_priced else None
+    transfer.pricing_status = "price_found"
+    db.commit()
+
+    if all_priced:
+        _create_pricing_alert(db, transfer, "price_found", float(total))
+    else:
+        # Some items unresolved — alert area licensee
+        unresolved = [p for p in matched_prices if p["unit_price"] is None]
+        _create_alert(
+            db, transfer.area_tenant_id,
+            "transfer_pricing_incomplete",
+            f"Transfer {transfer.transfer_number} needs manual pricing",
+            f"{len(unresolved)} item(s) not found in your catalog. Complete pricing for this transfer.",
+            "Complete Pricing",
+            f"/transfers/{transfer.id}/submit-pricing",
+        )
+
+    return {"found": all_priced, "prices": matched_prices, "total": float(total), "pricing_method": "retail"}
+
+
+def _resolve_fixed_pricing(db: Session, transfer: LicenseeTransfer, price_list_items: list[dict]) -> dict:
+    """Resolve transfer pricing from explicit fixed price list items."""
+    matched_prices = []
+    total = Decimal("0")
+
+    for idx, item in enumerate(transfer.transfer_items or []):
+        desc = item.get("description", "").lower()
+        qty = item.get("quantity", 1)
+        best_match = None
+        best_score = 0
+
+        for pl_item in price_list_items:
+            pl_name = pl_item["product_name"].lower()
+            if desc in pl_name or pl_name in desc:
+                best_match = pl_item
+                best_score = 0.9
+                break
+            desc_words = set(desc.split())
+            pl_words = set(pl_name.split())
+            overlap = len(desc_words & pl_words) / max(len(desc_words | pl_words), 1)
+            if overlap > best_score:
+                best_match = pl_item
+                best_score = overlap
+
+        if best_match and best_match["unit_price"] and best_score >= 0.3:
+            line_total = Decimal(str(best_match["unit_price"])) * Decimal(str(qty))
+            matched_prices.append({
+                "transfer_item_index": idx,
+                "description": item.get("description"),
+                "unit_price": best_match["unit_price"],
+                "quantity": qty,
+                "line_total": float(line_total),
+                "price_source": "catalog",
+                "price_list_item_id": best_match["id"],
+                "match_confidence": round(best_score, 2),
+            })
+            total += line_total
+        else:
+            matched_prices.append({
+                "transfer_item_index": idx,
+                "description": item.get("description"),
+                "unit_price": None,
+                "quantity": qty,
+                "line_total": 0,
+                "price_source": "not_found",
+                "price_list_item_id": None,
+                "match_confidence": 0,
+            })
+
+    all_priced = all(p["unit_price"] is not None for p in matched_prices)
+
+    transfer.area_unit_prices = matched_prices
+    transfer.area_charge_amount = total if all_priced else None
+    transfer.pricing_status = "price_found" if all_priced else "price_requested"
+    db.commit()
+
+    if all_priced:
+        _create_pricing_alert(db, transfer, "price_found", float(total))
+
+    return {"found": all_priced, "prices": matched_prices, "total": float(total), "pricing_method": "fixed"}
 
 
 def send_price_request(db: Session, transfer_id: str) -> TransferPriceRequest | None:

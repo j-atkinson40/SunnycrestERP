@@ -22,6 +22,7 @@ class InterLicenseePriceList(Base):
     visible_to_all_licensees: Mapped[bool] = mapped_column(Boolean, server_default="true")
     pricing_method: Mapped[str] = mapped_column(String(20), server_default="fixed")
     retail_adjustment_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="0")
+    auto_created: Mapped[bool] = mapped_column(Boolean, server_default="false")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
