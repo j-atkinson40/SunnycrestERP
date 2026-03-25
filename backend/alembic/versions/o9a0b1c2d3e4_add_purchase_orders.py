@@ -16,34 +16,62 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add approval/matching columns to existing purchase_orders table
-    op.add_column("purchase_orders", sa.Column("requires_approval", sa.Boolean(), server_default="false"))
-    op.add_column("purchase_orders", sa.Column("approval_status", sa.String(20), nullable=True))
-    op.add_column("purchase_orders", sa.Column("submitted_for_approval_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("purchase_orders", sa.Column("submitted_by", sa.String(36), nullable=True))
-    op.add_column("purchase_orders", sa.Column("approved_by", sa.String(36), nullable=True))
-    op.add_column("purchase_orders", sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("purchase_orders", sa.Column("rejected_by", sa.String(36), nullable=True))
-    op.add_column("purchase_orders", sa.Column("rejected_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("purchase_orders", sa.Column("rejection_reason", sa.Text(), nullable=True))
-    op.add_column("purchase_orders", sa.Column("expected_delivery_date", sa.Date(), nullable=True))
-    op.add_column("purchase_orders", sa.Column("delivered_date", sa.Date(), nullable=True))
-    op.add_column("purchase_orders", sa.Column("shipping_amount", sa.Numeric(12, 2), server_default="0"))
-    op.add_column("purchase_orders", sa.Column("total_amount", sa.Numeric(12, 2), server_default="0"))
-    op.add_column("purchase_orders", sa.Column("match_status", sa.String(20), server_default="pending_receipt"))
-    op.add_column("purchase_orders", sa.Column("match_variance_amount", sa.Numeric(12, 2), nullable=True))
-    op.add_column("purchase_orders", sa.Column("match_notes", sa.Text(), nullable=True))
-    op.add_column("purchase_orders", sa.Column("internal_notes", sa.Text(), nullable=True))
+    from sqlalchemy import inspect
+    bind = op.get_bind()
+    inspector = inspect(bind)
 
-    # Add quantity tracking to existing purchase_order_lines
-    op.add_column("purchase_order_lines", sa.Column("quantity_received", sa.Numeric(12, 3), server_default="0"))
-    op.add_column("purchase_order_lines", sa.Column("quantity_invoiced", sa.Numeric(12, 3), server_default="0"))
-    op.add_column("purchase_order_lines", sa.Column("vendor_item_code", sa.String(100), nullable=True))
-    op.add_column("purchase_order_lines", sa.Column("gl_account_id", sa.String(36), nullable=True))
+    def safe_add_columns(table_name, columns):
+        """Add columns only if they don't already exist."""
+        if table_name not in inspector.get_table_names():
+            return
+        existing = {c["name"] for c in inspector.get_columns(table_name)}
+        for col_name, col_def in columns:
+            if col_name not in existing:
+                op.add_column(table_name, col_def)
 
-    # PO receipts — new table
-    op.create_table(
-        "purchase_order_receipts",
+    # Add approval/matching columns to purchase_orders (if they don't exist from creation)
+    safe_add_columns("purchase_orders", [
+        ("requires_approval", sa.Column("requires_approval", sa.Boolean(), server_default="false")),
+        ("approval_status", sa.Column("approval_status", sa.String(20), nullable=True)),
+        ("submitted_for_approval_at", sa.Column("submitted_for_approval_at", sa.DateTime(timezone=True), nullable=True)),
+        ("submitted_by", sa.Column("submitted_by", sa.String(36), nullable=True)),
+        ("approved_by", sa.Column("approved_by", sa.String(36), nullable=True)),
+        ("approved_at", sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True)),
+        ("rejected_by", sa.Column("rejected_by", sa.String(36), nullable=True)),
+        ("rejected_at", sa.Column("rejected_at", sa.DateTime(timezone=True), nullable=True)),
+        ("rejection_reason", sa.Column("rejection_reason", sa.Text(), nullable=True)),
+        ("expected_delivery_date", sa.Column("expected_delivery_date", sa.Date(), nullable=True)),
+        ("delivered_date", sa.Column("delivered_date", sa.Date(), nullable=True)),
+        ("shipping_amount", sa.Column("shipping_amount", sa.Numeric(12, 2), server_default="0")),
+        ("total_amount", sa.Column("total_amount", sa.Numeric(12, 2), server_default="0")),
+        ("match_status", sa.Column("match_status", sa.String(20), server_default="pending_receipt")),
+        ("match_variance_amount", sa.Column("match_variance_amount", sa.Numeric(12, 2), nullable=True)),
+        ("match_notes", sa.Column("match_notes", sa.Text(), nullable=True)),
+        ("internal_notes", sa.Column("internal_notes", sa.Text(), nullable=True)),
+    ])
+
+    # Add quantity tracking to purchase_order_lines
+    safe_add_columns("purchase_order_lines", [
+        ("quantity_received", sa.Column("quantity_received", sa.Numeric(12, 3), server_default="0")),
+        ("quantity_invoiced", sa.Column("quantity_invoiced", sa.Numeric(12, 3), server_default="0")),
+        ("vendor_item_code", sa.Column("vendor_item_code", sa.String(100), nullable=True)),
+        ("gl_account_id", sa.Column("gl_account_id", sa.String(36), nullable=True)),
+    ])
+
+    # Link vendor_bills to POs
+    safe_add_columns("vendor_bills", [
+        ("purchase_order_id", sa.Column("purchase_order_id", sa.String(36), sa.ForeignKey("purchase_orders.id"), nullable=True)),
+        ("po_match_status", sa.Column("po_match_status", sa.String(20), server_default="no_po")),
+        ("po_match_variance", sa.Column("po_match_variance", sa.Numeric(12, 2), nullable=True)),
+        ("po_match_notes", sa.Column("po_match_notes", sa.Text(), nullable=True)),
+    ])
+
+    table_names = inspector.get_table_names()
+
+    # PO receipts — new table (skip if already exists)
+    if "purchase_order_receipts" not in table_names:
+        op.create_table(
+            "purchase_order_receipts",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("tenant_id", sa.String(36), sa.ForeignKey("companies.id"), nullable=False),
         sa.Column("purchase_order_id", sa.String(36), sa.ForeignKey("purchase_orders.id"), nullable=False, index=True),
@@ -88,18 +116,14 @@ def upgrade() -> None:
         sa.Column("uploaded_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
-    # Link bills to POs
-    op.add_column("bills", sa.Column("purchase_order_id", sa.String(36), sa.ForeignKey("purchase_orders.id"), nullable=True))
-    op.add_column("bills", sa.Column("po_match_status", sa.String(20), server_default="no_po"))
-    op.add_column("bills", sa.Column("po_match_variance", sa.Numeric(12, 2), nullable=True))
-    op.add_column("bills", sa.Column("po_match_notes", sa.Text(), nullable=True))
+    # vendor_bills PO link columns handled by safe_add_columns above
 
 
 def downgrade() -> None:
-    op.drop_column("bills", "po_match_notes")
-    op.drop_column("bills", "po_match_variance")
-    op.drop_column("bills", "po_match_status")
-    op.drop_column("bills", "purchase_order_id")
+    op.drop_column("vendor_bills", "po_match_notes")
+    op.drop_column("vendor_bills", "po_match_variance")
+    op.drop_column("vendor_bills", "po_match_status")
+    op.drop_column("vendor_bills", "purchase_order_id")
     op.drop_table("purchase_order_documents")
     op.drop_table("purchase_order_receipt_lines")
     op.drop_table("purchase_order_receipts")

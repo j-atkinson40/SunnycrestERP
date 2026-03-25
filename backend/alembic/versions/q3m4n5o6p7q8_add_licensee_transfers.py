@@ -86,13 +86,13 @@ def upgrade() -> None:
     op.add_column("tenant_settings", sa.Column("transfer_number_next", sa.Integer(), server_default="1001"))
 
     # Order fields for transfer linkage
-    op.add_column("orders", sa.Column("out_of_area_self_handled", sa.Boolean(), server_default="false"))
-    op.add_column("orders", sa.Column("transfer_id", sa.String(36), nullable=True))
+    op.add_column("sales_orders", sa.Column("out_of_area_self_handled", sa.Boolean(), server_default="false"))
+    op.add_column("sales_orders", sa.Column("transfer_id", sa.String(36), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("orders", "transfer_id")
-    op.drop_column("orders", "out_of_area_self_handled")
+    op.drop_column("sales_orders", "transfer_id")
+    op.drop_column("sales_orders", "out_of_area_self_handled")
     op.drop_column("tenant_settings", "transfer_number_next")
     op.drop_column("tenant_settings", "transfer_number_prefix")
     op.drop_table("transfer_notifications")

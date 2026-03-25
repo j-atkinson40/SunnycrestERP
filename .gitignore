@@ -10,9 +10,12 @@ env/
 node_modules/
 dist/
 
-# Environment
+# Environment — NEVER commit credentials
 .env
+.env.*
 *.env.local
+.env.production
+.env.staging
 
 # IDE
 .vscode/

@@ -4,6 +4,66 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
+# ── Idempotent operation wrappers ──
+# Make add_column and create_table safe for both fresh and existing databases
+import sqlalchemy as _sa
+from alembic import op as _op
+
+_original_add_column = _op.add_column
+_original_create_table = _op.create_table
+_original_create_index = _op.create_index
+
+
+def _safe_add_column(table_name, column, **kw):
+    """add_column that silently skips if column already exists."""
+    try:
+        bind = _op.get_bind()
+        inspector = _sa.inspect(bind)
+        if table_name not in inspector.get_table_names():
+            return  # table doesn't exist yet, skip
+        existing = {c["name"] for c in inspector.get_columns(table_name)}
+        col_name = column.name if hasattr(column, "name") else str(column.key)
+        if col_name in existing:
+            return  # column already exists, skip
+    except Exception:
+        pass  # on error, try the original
+    return _original_add_column(table_name, column, **kw)
+
+
+def _safe_create_table(table_name, *args, **kw):
+    """create_table that silently skips if table already exists."""
+    try:
+        bind = _op.get_bind()
+        inspector = _sa.inspect(bind)
+        if table_name in inspector.get_table_names():
+            return None  # table already exists, skip
+    except Exception:
+        pass
+    return _original_create_table(table_name, *args, **kw)
+
+
+def _safe_create_index(index_name, table_name, columns, **kw):
+    """create_index that silently skips if index already exists."""
+    try:
+        bind = _op.get_bind()
+        inspector = _sa.inspect(bind)
+        if table_name not in inspector.get_table_names():
+            return
+        existing = {idx["name"] for idx in inspector.get_indexes(table_name)}
+        if index_name in existing:
+            return
+    except Exception:
+        pass
+    return _original_create_index(index_name, table_name, columns, **kw)
+
+
+# Apply monkey-patches
+_op.add_column = _safe_add_column
+_op.create_table = _safe_create_table
+_op.create_index = _safe_create_index
+# ── End idempotent wrappers ──
+
+
 from app.config import settings
 from app.database import Base
 from app.models import AuditLog, Company, EmployeeProfile, Notification, Role, RolePermission, User, UserPermissionOverride  # noqa: F401
