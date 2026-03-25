@@ -45,6 +45,8 @@ import {
   Wrench,
   Zap,
   type LucideIcon,
+  BarChart3,
+  PieChart,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { usePresetTheme } from "@/contexts/preset-theme-context";
@@ -56,6 +58,7 @@ import type { NavItem, NavSection } from "@/services/navigation-service";
 const ICON_MAP: Record<string, LucideIcon> = {
   AlertTriangle,
   Award,
+  BarChart3,
   Bell,
   BookOpen,
   BrainCircuit,
@@ -81,6 +84,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   MessageSquare,
   MoreHorizontal,
   Package,
+  PieChart,
   Plug,
   Plus,
   Puzzle,

@@ -232,7 +232,7 @@ function getManufacturingNav(
       {
         label: "Reports",
         href: "/reports",
-        icon: "BarChart3",
+        icon: "PieChart",
         functionalArea: "invoicing_ar",
       },
     ],
