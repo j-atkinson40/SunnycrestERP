@@ -253,7 +253,7 @@ export default function DataMigrationPage() {
     try {
       const token = localStorage.getItem("access_token");
       const baseURL = apiClient.defaults.baseURL ?? "";
-      const response = await fetch(`${baseURL}/api/v1/migration/run`, {
+      const response = await fetch(`${baseURL}/migration/run`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
