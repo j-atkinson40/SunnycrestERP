@@ -168,56 +168,23 @@ def update_checklist_item(
 MANUFACTURING_CHECKLIST_ITEMS = [
     # MUST COMPLETE — strict sequence
     # 1. Company info (implicit — handled by company setup)
-    # 2. Data migration — import existing data from previous system (no prerequisite)
+    # 2. Data migration — replaces connect_accounting + accounting_import_review
     {
         "item_key": "data_migration",
         "tier": "must_complete",
         "category": "integration",
         "title": "Import your existing data",
         "description": (
-            "Bring your customers, open invoices, vendors, chart of accounts, "
-            "and open bills from your previous system. Upload your Sage 100 or "
-            "QuickBooks exports and we'll map them automatically."
+            "Import your customers, open invoices, vendors, and chart of accounts "
+            "from Sage 100 or QuickBooks. Upload your exports and we'll map "
+            "everything automatically."
         ),
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/data-migration",
         "sort_order": 2,
     },
-    # 3. Review imported data
-    {
-        "item_key": "accounting_import_review",
-        "tier": "should_complete",
-        "category": "integration",
-        "title": "Review your imported data",
-        "description": (
-            "Confirm the GL account mappings, customers, and vendors we "
-            "found in your accounting system. High-confidence items are "
-            "pre-approved — you only review exceptions."
-        ),
-        "estimated_minutes": 5,
-        "action_type": "navigate",
-        "action_target": "/onboarding/accounting/review",
-        "depends_on": '["data_migration"]',
-        "sort_order": 3,
-    },
-    # Optional: Connect accounting software directly (QuickBooks Online sync)
-    {
-        "item_key": "connect_accounting",
-        "tier": "optional",
-        "category": "integration",
-        "title": "Connect QuickBooks Online (optional)",
-        "description": (
-            "Set up a live two-way sync with QuickBooks Online to keep invoices, "
-            "payments, and GL entries in sync automatically. Not required if you "
-            "imported your data using the Data Migration Center."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/onboarding/accounting",
-        "sort_order": 4,
-    },
-    # 4. Tax rates — NEW
+    # 3. Tax rates
     {
         "item_key": "setup_tax_rates",
         "tier": "must_complete",
@@ -231,9 +198,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/tax-rates",
         "depends_on": '["data_migration"]',
-        "sort_order": 5,
+        "sort_order": 3,
     },
-    # 5. Tax jurisdictions — NEW
+    # 4. Tax jurisdictions
     {
         "item_key": "setup_tax_jurisdictions",
         "tier": "must_complete",
@@ -247,7 +214,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/tax-jurisdictions",
         "depends_on": '["setup_tax_rates"]',
-        "sort_order": 5,
+        "sort_order": 4,
     },
     # 6. Product catalog
     {
