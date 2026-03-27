@@ -370,7 +370,7 @@ export default function AdminTenantDetail() {
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {tenant.slug}.yourerp.com
+                {tenant.slug}.{import.meta.env.VITE_APP_DOMAIN || "getbridgeable.com"}
               </p>
             </div>
           </div>

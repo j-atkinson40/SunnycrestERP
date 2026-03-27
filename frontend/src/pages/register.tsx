@@ -50,7 +50,7 @@ export default function RegisterPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Create Account</CardTitle>
           <CardDescription>
-            Register for {getCompanySlug() || "ERP Platform"}
+            {getCompanySlug() ? `Register for ${getCompanySlug()}` : `Create your ${import.meta.env.VITE_APP_NAME || "Bridgeable"} workspace`}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>

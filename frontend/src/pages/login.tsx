@@ -59,7 +59,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">
-            {companySlug ? companySlug.charAt(0).toUpperCase() + companySlug.slice(1) : "ERP Platform"}
+            {companySlug ? companySlug.charAt(0).toUpperCase() + companySlug.slice(1) : (import.meta.env.VITE_APP_NAME || "Bridgeable")}
           </CardTitle>
           <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>

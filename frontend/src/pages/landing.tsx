@@ -1,13 +1,15 @@
 import { Link } from "react-router-dom";
 import { buttonVariants } from "@/components/ui/button";
 
+const appName = import.meta.env.VITE_APP_NAME || "Bridgeable";
+
 export default function LandingPage() {
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
       <header className="border-b">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
-          <h1 className="text-xl font-bold">ERP Platform</h1>
+          <h1 className="text-xl font-bold">{appName}</h1>
           <Link
             to="/register-company"
             className={buttonVariants({ variant: "default" })}
@@ -25,8 +27,7 @@ export default function LandingPage() {
           <span className="text-primary">simplified.</span>
         </h2>
         <p className="mt-4 max-w-xl text-lg text-muted-foreground">
-          Manage users, track work, and stay organized — all in one place.
-          Each company gets its own secure workspace.
+          The platform built for the Wilbert licensee network.
         </p>
         <div className="mt-8 flex gap-4">
           <Link
@@ -40,7 +41,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t py-6 text-center text-sm text-muted-foreground">
-        ERP Platform
+        {appName}
       </footer>
     </div>
   );

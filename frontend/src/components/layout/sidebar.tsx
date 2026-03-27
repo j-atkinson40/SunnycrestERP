@@ -194,7 +194,7 @@ export function Sidebar() {
           to="/"
           className="truncate text-lg font-semibold text-sidebar-foreground"
         >
-          {company?.name || "ERP Platform"}
+          {company?.name || (import.meta.env.VITE_APP_NAME || "Bridgeable")}
         </Link>
       </div>
 

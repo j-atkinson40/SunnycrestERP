@@ -404,7 +404,7 @@ export default function AdminTenantList() {
                       )}
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
-                      {tenant.slug}.yourerp.com
+                      {tenant.slug}.{import.meta.env.VITE_APP_DOMAIN || "getbridgeable.com"}
                     </p>
                     {(tenant.facility_city || tenant.facility_state) && (
                       <p className="text-xs text-muted-foreground">
