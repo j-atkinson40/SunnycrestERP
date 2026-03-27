@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
+import { getCompanySlug } from "@/lib/tenant";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -252,10 +253,14 @@ export default function DataMigrationPage() {
 
     try {
       const token = localStorage.getItem("access_token");
+      const slug = getCompanySlug();
       const apiBase = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
+      const fetchHeaders: Record<string, string> = {};
+      if (token) fetchHeaders["Authorization"] = `Bearer ${token}`;
+      if (slug) fetchHeaders["X-Company-Slug"] = slug;
       const response = await fetch(`${apiBase}/api/v1/migration/run`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: fetchHeaders,
         body: form,
       });
 
