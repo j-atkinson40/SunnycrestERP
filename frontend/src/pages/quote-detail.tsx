@@ -5,7 +5,7 @@ import { salesService } from "@/services/sales-service";
 import { customerService } from "@/services/customer-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { Quote, QuoteLineCreate } from "@/types/sales";
-import type { Customer } from "@/types/customer";
+import type { CustomerListItem } from "@/types/customer";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -76,7 +76,7 @@ interface NewLineRow {
 
 function NewQuoteForm() {
   const navigate = useNavigate();
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().split("T")[0]);
   const [expiryDate, setExpiryDate] = useState("");
