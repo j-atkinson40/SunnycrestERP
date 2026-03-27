@@ -5,7 +5,37 @@ All new routes should be registered here. The bare /api/ prefix is
 kept as a deprecated alias that adds a Deprecation header.
 """
 
-from fastapi import APIRouter
+# TEMPORARY: test-email endpoint — remove after verifying Resend in production
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.api.deps import require_admin
+from app.database import get_db
+from app.models.user import User
+from app.services.email_service import email_service
+
+_temp_router = APIRouter()
+
+
+class _TestEmailRequest(BaseModel):
+    to: str
+
+
+@_temp_router.post("/admin/test-email", tags=["TEMP — Remove After Testing"])
+def test_email_endpoint(
+    body: _TestEmailRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """TEMPORARY: Verify Resend integration in production. Remove after confirmed working."""
+    result = email_service.send_email(
+        to=body.to,
+        subject="Bridgeable email test",
+        html_body="<p>Email delivery is working correctly for getbridgeable.com</p>",
+    )
+    return result
+# END TEMPORARY
 
 from app.api.routes import (
     accounting,
@@ -411,3 +441,4 @@ v1_router.include_router(
 v1_router.include_router(
     work_orders.router, prefix="/work-orders", tags=["Work Orders"]
 )
+v1_router.include_router(_temp_router)  # TEMPORARY — remove with test-email endpoint

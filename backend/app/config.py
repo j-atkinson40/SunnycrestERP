@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     QBO_CLIENT_SECRET: str = ""
     QBO_REDIRECT_URI: str = ""
 
+    # Email (optional — falls back to console logging when not set)
+    RESEND_API_KEY: str = ""
+    FROM_EMAIL: str = "noreply@getbridgeable.com"
+    FROM_NAME: str = "Bridgeable"
+
     # Twilio (optional — only needed for SMS notifications)
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""

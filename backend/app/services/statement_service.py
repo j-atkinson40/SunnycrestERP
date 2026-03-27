@@ -299,6 +299,11 @@ def send_all_digital(db: Session, run_id: str, tenant_id: str) -> dict:
         c.id: c for c in db.query(Customer).filter(Customer.id.in_(cust_ids)).all()
     } if cust_ids else {}
 
+    from app.models.company import Company
+    from app.services.email_service import email_service
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    tenant_name = company.name if company else "Your supplier"
+
     sent = 0
     failed = 0
     for stmt in stmts:
@@ -309,10 +314,23 @@ def send_all_digital(db: Session, run_id: str, tenant_id: str) -> dict:
             stmt.send_error = "No email address on file"
             failed += 1
             continue
-        stmt.status = "sent"
-        stmt.sent_at = datetime.now(timezone.utc)
-        stmt.email_sent_to = email
-        sent += 1
+
+        statement_month = f"{stmt.period_month}/{stmt.period_year}" if hasattr(stmt, "period_month") else "Monthly"
+        result = email_service.send_statement_email(
+            customer_email=email,
+            customer_name=cust.name if cust else "Valued Customer",
+            tenant_name=tenant_name,
+            statement_month=statement_month,
+        )
+        if result["success"]:
+            stmt.status = "sent"
+            stmt.sent_at = datetime.now(timezone.utc)
+            stmt.email_sent_to = email
+            sent += 1
+        else:
+            stmt.status = "failed"
+            stmt.send_error = "Email delivery failed"
+            failed += 1
 
     # Update run
     run = db.query(StatementRun).filter(StatementRun.id == run_id).first()

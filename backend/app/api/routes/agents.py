@@ -156,8 +156,21 @@ def send_collection(
     current = body.body or ""
     seq.sent_without_edit = (original.strip() == current.strip())
 
-    # TODO: integrate with email service to actually send
-    # For now, mark as sent and log
+    # Send via email service
+    from app.services.email_service import email_service
+    from app.models.company import Company
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    tenant_name = company.name if company else "Your supplier"
+    reply_to = company.email if (company and hasattr(company, "email") and company.email) else current_user.email
+    email_service.send_collections_email(
+        customer_email=body.recipient_email,
+        customer_name=seq.customer_name or "Valued Customer",
+        subject=body.subject,
+        body=current,
+        tenant_name=tenant_name,
+        reply_to_email=reply_to,
+    )
+
     from datetime import datetime, timezone
     seq.last_sent_at = datetime.now(timezone.utc)
     if seq.sequence_step < 3:

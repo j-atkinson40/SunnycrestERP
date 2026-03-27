@@ -301,8 +301,16 @@ def send_to_accountant(
     db.commit()
     db.refresh(conn)
 
-    # TODO: Send email to accountant with setup link
-    # For now, the token is generated and stored
+    # Send accountant invitation email
+    from app.services.email_service import email_service
+    migration_url = f"{settings.FRONTEND_URL}/accounting/setup?token={conn.accountant_token}"
+    tenant_name = company.name if company else "Your client"
+    email_service.send_accountant_invitation(
+        email=body.email,
+        tenant_name=tenant_name,
+        migration_url=migration_url,
+        expires_days=7,
+    )
 
     return _to_response(conn)
 

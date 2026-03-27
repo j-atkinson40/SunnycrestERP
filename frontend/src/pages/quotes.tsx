@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { salesService } from "@/services/sales-service";
 import type { Quote, SalesStats } from "@/types/sales";
@@ -64,6 +64,7 @@ function fmtDate(d: string | null) {
 }
 
 export default function QuotesPage() {
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const canCreate = hasPermission("ar.create_quote");
 
@@ -125,7 +126,7 @@ export default function QuotesPage() {
           <p className="text-muted-foreground">{total} quotes</p>
         </div>
         {canCreate && (
-          <Button onClick={() => { /* TODO: navigate to new quote form */ }}>
+          <Button onClick={() => navigate("/ar/quotes/new")}>
             New Quote
           </Button>
         )}
