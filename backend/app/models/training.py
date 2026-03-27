@@ -40,7 +40,7 @@ class TrainingCurriculumTrack(Base):
     __tablename__ = "training_curriculum_tracks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("companies.id"), nullable=True)
     track_name: Mapped[str] = mapped_column(String(100), nullable=False)
     training_role: Mapped[str] = mapped_column(String(30), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -78,7 +78,7 @@ class TrainingProcedure(Base):
     __table_args__ = (UniqueConstraint("tenant_id", "procedure_key", name="uq_procedure_key"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("companies.id"), nullable=True)
     procedure_key: Mapped[str] = mapped_column(String(100), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     applicable_roles: Mapped[list] = mapped_column(ARRAY(String(30)), nullable=False)

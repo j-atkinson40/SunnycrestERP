@@ -20,6 +20,7 @@ import PlatformFeatureFlagsPage from "@/pages/platform/feature-flags";
 import SystemHealthPage from "@/pages/platform/system-health";
 import ImpersonationLogPage from "@/pages/platform/impersonation-log";
 import PlatformUsersPage from "@/pages/platform/platform-users";
+import TrainingContentPage from "@/pages/admin/training-content";
 
 export default function PlatformApp() {
   return (
@@ -62,6 +63,7 @@ export default function PlatformApp() {
               element={<ImpersonationLogPage />}
             />
             <Route path="/users" element={<PlatformUsersPage />} />
+            <Route path="/training-content" element={<TrainingContentPage />} />
           </Route>
         </Route>
 

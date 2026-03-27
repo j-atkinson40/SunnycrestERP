@@ -1395,6 +1395,37 @@ def recalculate_progress(db: Session, tenant_id: str) -> None:
 
     db.flush()
 
+    # Auto-trigger shared training content generation if must-complete onboarding is done
+    # and shared procedures haven't been generated yet
+    if all_must_done:
+        _maybe_trigger_training_content(db)
+
+
+def _maybe_trigger_training_content(db: Session) -> None:
+    """If shared training procedures don't exist yet, generate them in a background thread."""
+    import threading
+    from app.models.training import TrainingProcedure
+    try:
+        count = db.query(TrainingProcedure).filter(TrainingProcedure.tenant_id.is_(None)).count()
+        if count > 0:
+            return  # Already generated
+        logger.info("Auto-triggering shared training content generation after onboarding completion")
+        # Run in background thread so it doesn't block the onboarding response
+        def _run():
+            from app.database import SessionLocal
+            from app.services.training_content_generation_service import generate_all_content
+            gen_db = SessionLocal()
+            try:
+                for _ in generate_all_content(gen_db):
+                    pass  # consume generator, ignore events
+            except Exception as e:
+                logger.error("Background training content generation failed: %s", e)
+            finally:
+                gen_db.close()
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception as e:
+        logger.warning("Could not check/trigger training content generation: %s", e)
+
 
 def get_checklist(db: Session, tenant_id: str) -> OnboardingChecklist | None:
     """Return the full checklist with items, sorted by tier then sort_order."""

@@ -28,6 +28,7 @@ def call_anthropic(
     system_prompt: str,
     user_message: str,
     context_data: dict | None = None,
+    max_tokens: int | None = None,
 ) -> dict:
     """
     Send a prompt to the Anthropic API and return parsed JSON.
@@ -58,7 +59,7 @@ def call_anthropic(
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         message = client.messages.create(
             model=AI_MODEL,
-            max_tokens=AI_MAX_TOKENS,
+            max_tokens=max_tokens or AI_MAX_TOKENS,
             system=wrapped_system,
             messages=[{"role": "user", "content": full_user_message}],
         )

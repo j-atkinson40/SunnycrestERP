@@ -33,8 +33,16 @@ def create_learning_profile(db: Session, tenant_id: str, user_id: str, training_
     profile = UserLearningProfile(id=str(uuid.uuid4()), tenant_id=tenant_id, user_id=user_id, training_role=training_role)
     db.add(profile)
 
-    # Assign curriculum track
-    track = db.query(TrainingCurriculumTrack).filter(TrainingCurriculumTrack.tenant_id == tenant_id, TrainingCurriculumTrack.training_role == training_role, TrainingCurriculumTrack.is_active.is_(True)).first()
+    # Assign curriculum track — prefer tenant-specific, fall back to shared (tenant_id IS NULL)
+    track = (
+        db.query(TrainingCurriculumTrack)
+        .filter(TrainingCurriculumTrack.tenant_id == tenant_id, TrainingCurriculumTrack.training_role == training_role, TrainingCurriculumTrack.is_active.is_(True))
+        .first()
+    ) or (
+        db.query(TrainingCurriculumTrack)
+        .filter(TrainingCurriculumTrack.tenant_id.is_(None), TrainingCurriculumTrack.training_role == training_role, TrainingCurriculumTrack.is_active.is_(True))
+        .first()
+    )
     if track:
         profile.curriculum_track_id = track.id
         progress = UserTrackProgress(id=str(uuid.uuid4()), tenant_id=tenant_id, user_id=user_id, track_id=track.id)
@@ -143,7 +151,11 @@ def complete_module(db: Session, tenant_id: str, user_id: str, module_key: str, 
 
 
 def get_procedures(db: Session, tenant_id: str, category: str | None = None, role: str | None = None) -> list[dict]:
-    query = db.query(TrainingProcedure).filter(TrainingProcedure.tenant_id == tenant_id, TrainingProcedure.is_active.is_(True))
+    from sqlalchemy import or_
+    query = db.query(TrainingProcedure).filter(
+        or_(TrainingProcedure.tenant_id == tenant_id, TrainingProcedure.tenant_id.is_(None)),
+        TrainingProcedure.is_active.is_(True),
+    )
     if category:
         query = query.filter(TrainingProcedure.category == category)
     procedures = query.order_by(TrainingProcedure.sort_order, TrainingProcedure.title).all()
@@ -166,7 +178,11 @@ def get_procedures(db: Session, tenant_id: str, category: str | None = None, rol
 
 
 def get_procedure(db: Session, tenant_id: str, procedure_key: str) -> dict | None:
-    p = db.query(TrainingProcedure).filter(TrainingProcedure.tenant_id == tenant_id, TrainingProcedure.procedure_key == procedure_key).first()
+    from sqlalchemy import or_
+    p = db.query(TrainingProcedure).filter(
+        or_(TrainingProcedure.tenant_id == tenant_id, TrainingProcedure.tenant_id.is_(None)),
+        TrainingProcedure.procedure_key == procedure_key,
+    ).order_by(TrainingProcedure.tenant_id.nulls_last()).first()
     if not p:
         return None
     return {

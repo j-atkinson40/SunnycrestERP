@@ -16,6 +16,7 @@ import {
   Puzzle,
   TrendingUp,
   ClipboardList,
+  BookOpen,
   Import,
   PhoneCall,
   StickyNote,
@@ -58,6 +59,7 @@ const sections: NavSection[] = [
       { label: "Extension Catalog", href: "/extensions/catalog", icon: Puzzle },
       { label: "Demand Signals", href: "/extensions/demand", icon: TrendingUp },
       { label: "Onboarding Templates", href: "/onboarding-templates", icon: ClipboardList },
+      { label: "Training Content", href: "/training-content", icon: BookOpen },
     ],
   },
   {

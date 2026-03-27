@@ -15,6 +15,7 @@ from app.api.routes import (
     platform_modules,
     platform_system,
     platform_tenants,
+    platform_training,
     platform_users_mgmt,
 )
 
@@ -51,4 +52,9 @@ platform_router.include_router(
     platform_extensions.router,
     prefix="/extensions",
     tags=["Platform Extensions"],
+)
+platform_router.include_router(
+    platform_training.router,
+    prefix="/training",
+    tags=["Platform Training Content"],
 )
