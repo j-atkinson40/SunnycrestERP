@@ -168,23 +168,7 @@ def update_checklist_item(
 MANUFACTURING_CHECKLIST_ITEMS = [
     # MUST COMPLETE — strict sequence
     # 1. Company info (implicit — handled by company setup)
-    # 2. Connect accounting — position 2, immediately after company
-    {
-        "item_key": "connect_accounting",
-        "tier": "must_complete",
-        "category": "integration",
-        "title": "Connect your accounting software",
-        "description": (
-            "Connect QuickBooks or upload your Sage chart of accounts. "
-            "We'll use it to pre-configure your GL mappings, import your "
-            "customers and vendors, and keep your financials in sync."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/onboarding/accounting",
-        "sort_order": 2,
-    },
-    # 3. Data migration — import existing data from previous system
+    # 2. Data migration — import existing data from previous system (no prerequisite)
     {
         "item_key": "data_migration",
         "tier": "must_complete",
@@ -198,10 +182,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/data-migration",
-        "depends_on": '["connect_accounting"]',
-        "sort_order": 3,
+        "sort_order": 2,
     },
-    # 4. Review imported data
+    # 3. Review imported data
     {
         "item_key": "accounting_import_review",
         "tier": "should_complete",
@@ -218,6 +201,22 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["data_migration"]',
         "sort_order": 3,
     },
+    # Optional: Connect accounting software directly (QuickBooks Online sync)
+    {
+        "item_key": "connect_accounting",
+        "tier": "optional",
+        "category": "integration",
+        "title": "Connect QuickBooks Online (optional)",
+        "description": (
+            "Set up a live two-way sync with QuickBooks Online to keep invoices, "
+            "payments, and GL entries in sync automatically. Not required if you "
+            "imported your data using the Data Migration Center."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/onboarding/accounting",
+        "sort_order": 4,
+    },
     # 4. Tax rates — NEW
     {
         "item_key": "setup_tax_rates",
@@ -231,8 +230,8 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/tax-rates",
-        "depends_on": '["accounting_import_review"]',
-        "sort_order": 4,
+        "depends_on": '["data_migration"]',
+        "sort_order": 5,
     },
     # 5. Tax jurisdictions — NEW
     {
