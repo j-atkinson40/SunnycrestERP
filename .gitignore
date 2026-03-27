@@ -29,3 +29,6 @@ Thumbs.db
 
 # Docker
 pgdata/
+
+# Claude Code internal
+.claude/worktrees/
