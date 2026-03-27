@@ -1082,18 +1082,42 @@ def fix_checklist_targets(db: Session) -> None:
         OnboardingChecklistItem.item_key == "configure_cross_tenant",
     ).update({"depends_on": None})
 
-    # Fix connect_accounting — must be position 2, updated description
+    # Remove connect_accounting and accounting_import_review — replaced by data_migration
     db.query(OnboardingChecklistItem).filter(
-        OnboardingChecklistItem.item_key == "connect_accounting",
+        OnboardingChecklistItem.item_key.in_(["connect_accounting", "accounting_import_review"]),
+        OnboardingChecklistItem.status.in_(["not_started", "in_progress"]),
+    ).delete(synchronize_session=False)
+
+    # Insert data_migration for tenants that don't have it yet (backfill)
+    # (Handled by the backfill loop below — no explicit insert needed here)
+
+    # Fix data_migration — sort_order 2, no dependency, updated description
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "data_migration",
     ).update({
         "sort_order": 2,
+        "depends_on": None,
+        "tier": "must_complete",
+        "action_target": "/onboarding/data-migration",
         "description": (
-            "Connect QuickBooks or upload your Sage chart of accounts. "
-            "We'll use it to pre-configure your GL mappings, import your "
-            "customers and vendors, and keep your financials in sync."
+            "Import your customers, open invoices, vendors, and chart of accounts "
+            "from Sage 100 or QuickBooks. Upload your exports and we'll map "
+            "everything automatically."
         ),
-        "estimated_minutes": 10,
     })
+
+    # Fix setup_tax_rates — sort_order 3, depends on data_migration
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "setup_tax_rates",
+    ).update({
+        "sort_order": 3,
+        "depends_on": '["data_migration"]',
+    })
+
+    # Fix setup_tax_jurisdictions — sort_order 4
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "setup_tax_jurisdictions",
+    ).update({"sort_order": 4})
 
     # Fix add_products — position 4
     db.query(OnboardingChecklistItem).filter(
