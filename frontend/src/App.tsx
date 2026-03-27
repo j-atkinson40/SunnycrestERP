@@ -66,6 +66,7 @@ import ProjectDetailPage from "@/pages/projects/project-detail";
 import QCMobilePage from "@/pages/qc/qc-mobile";
 import QCDashboardPage from "@/pages/qc/qc-dashboard";
 import QCInspectionDetailPage from "@/pages/qc/qc-inspection-detail";
+import NpcaAuditPrepPage from "@/pages/compliance/npca-audit-prep";
 import SafetyDashboardPage from "@/pages/safety/safety-dashboard";
 import SafetyInspectPage from "@/pages/safety/safety-inspect";
 import SafetyIncidentPage from "@/pages/safety/safety-incidents";
@@ -501,6 +502,7 @@ export default function App() {
                     <Route path="/safety/training/documents" element={<SafetyTrainingDocumentsPage />} />
                     <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
                     <Route path="/safety/osha-300/year-end/:year" element={<SafetyOSHA300YearEndPage />} />
+                    <Route path="/npca" element={<NpcaAuditPrepPage />} />
                   </Route>
 
                   {/* Production Log — requires daily_production_log module */}

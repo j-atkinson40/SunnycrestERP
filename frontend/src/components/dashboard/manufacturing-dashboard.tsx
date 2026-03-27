@@ -175,6 +175,7 @@ function ComplianceRing({
 
 export function ManufacturingDashboard() {
   const { user, hasModule } = useAuth();
+  const isNpcaEnabled = hasModule("npca_audit_prep");
 
   const [stats, setStats] = useState<DashboardStats>({
     deliveriesToday: 0,
@@ -384,18 +385,20 @@ export function ManufacturingDashboard() {
           icon={FileText}
           color="bg-blue-50 text-blue-600"
         />
-        <StatCard
-          label="NPCA Score"
-          value={`${stats.npcaScore}%`}
-          icon={ShieldCheck}
-          color={cn(
-            stats.npcaScore >= 90
-              ? "bg-green-50 text-green-600"
-              : stats.npcaScore >= 70
-                ? "bg-amber-50 text-amber-600"
-                : "bg-red-50 text-red-600",
-          )}
-        />
+        {isNpcaEnabled && (
+          <StatCard
+            label="NPCA Score"
+            value={`${stats.npcaScore}%`}
+            icon={ShieldCheck}
+            color={cn(
+              stats.npcaScore >= 90
+                ? "bg-green-50 text-green-600"
+                : stats.npcaScore >= 70
+                  ? "bg-amber-50 text-amber-600"
+                  : "bg-red-50 text-red-600",
+            )}
+          />
+        )}
       </div>
 
       {/* Main content grid */}
@@ -599,9 +602,11 @@ export function ManufacturingDashboard() {
               </Link>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-around mb-4">
-                <ComplianceRing score={stats.npcaScore} label="NPCA" />
-              </div>
+              {isNpcaEnabled && (
+                <div className="flex items-center justify-around mb-4">
+                  <ComplianceRing score={stats.npcaScore} label="NPCA" />
+                </div>
+              )}
 
               {/* Compliance alerts */}
               {complianceAlerts.length > 0 && (
