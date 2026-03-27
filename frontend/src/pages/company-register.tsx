@@ -114,7 +114,7 @@ export default function CompanyRegisterPage() {
               <p className="text-xs text-muted-foreground">
                 Your workspace will be accessible at{" "}
                 <span className="font-mono">
-                  {companySlug || "your-company"}.{import.meta.env.VITE_APP_DOMAIN || "platform.app"}
+                  {companySlug || "your-company"}.{import.meta.env.VITE_APP_DOMAIN || "getbridgeable.com"}
                 </span>
               </p>
             </div>

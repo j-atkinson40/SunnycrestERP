@@ -1,7 +1,7 @@
 /**
  * Extract the company slug from the current hostname.
  *
- * Production: acme.platform.app -> "acme"
+ * Production: acme.getbridgeable.com -> "acme"
  * Development: reads from localStorage fallback.
  *
  * Returns empty string if on the root domain (no tenant).
@@ -24,7 +24,7 @@ export function getCompanySlug(): string {
   }
 
   // Production: extract subdomain only if we know the base domain
-  // e.g., acme.platform.app -> "acme" (base domain = "platform.app")
+  // e.g., acme.getbridgeable.com -> "acme" (base domain = "getbridgeable.com")
   const baseDomain = import.meta.env.VITE_APP_DOMAIN;
   if (baseDomain && hostname.endsWith(`.${baseDomain}`)) {
     const slug = hostname.slice(0, -(baseDomain.length + 1));
@@ -57,7 +57,7 @@ export function getCompanyUrl(slug: string): string {
     return window.location.origin;
   }
 
-  const baseDomain = import.meta.env.VITE_APP_DOMAIN || "platform.app";
+  const baseDomain = import.meta.env.VITE_APP_DOMAIN || "getbridgeable.com";
   const protocol = window.location.protocol;
   return `${protocol}//${slug}.${baseDomain}`;
 }

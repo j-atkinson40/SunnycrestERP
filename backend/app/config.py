@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     GOOGLE_PLACES_API_KEY: str = ""
 
     # Branding / identity
-    APP_NAME: str = "Sunnycrest ERP"
-    SUPPORT_EMAIL: str = "support@sunnycrest.dev"
+    APP_NAME: str = "Bridgeable"
+    SUPPORT_EMAIL: str = "support@getbridgeable.com"
 
     # Environment: dev | staging | production
     ENVIRONMENT: str = "dev"
