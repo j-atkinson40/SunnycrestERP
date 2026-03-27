@@ -53,6 +53,7 @@ from app.api.routes import (
     hierarchy,
     inventory,
     job_queue,
+    migration,
     modules,
     network,
     agents,
@@ -228,6 +229,9 @@ v1_router.include_router(
     job_queue.router, prefix="/jobs", tags=["Job Queue"]
 )
 v1_router.include_router(modules.router, prefix="/modules", tags=["Modules"])
+v1_router.include_router(
+    migration.router, prefix="/migration", tags=["Data Migration"]
+)
 v1_router.include_router(
     network.router, prefix="/network", tags=["Network"]
 )

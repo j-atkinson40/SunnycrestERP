@@ -184,10 +184,27 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/accounting",
         "sort_order": 2,
     },
-    # 3. Review imported data
+    # 3. Data migration — import existing data from previous system
+    {
+        "item_key": "data_migration",
+        "tier": "must_complete",
+        "category": "integration",
+        "title": "Import your existing data",
+        "description": (
+            "Bring your customers, open invoices, vendors, chart of accounts, "
+            "and open bills from your previous system. Upload your Sage 100 or "
+            "QuickBooks exports and we'll map them automatically."
+        ),
+        "estimated_minutes": 15,
+        "action_type": "navigate",
+        "action_target": "/onboarding/data-migration",
+        "depends_on": '["connect_accounting"]',
+        "sort_order": 3,
+    },
+    # 4. Review imported data
     {
         "item_key": "accounting_import_review",
-        "tier": "must_complete",
+        "tier": "should_complete",
         "category": "integration",
         "title": "Review your imported data",
         "description": (
@@ -198,7 +215,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/accounting/review",
-        "depends_on": '["connect_accounting"]',
+        "depends_on": '["data_migration"]',
         "sort_order": 3,
     },
     # 4. Tax rates — NEW

@@ -220,6 +220,7 @@ from app.models.vendor_contact import VendorContact
 from app.models.vendor_note import VendorNote
 from app.models.vendor_payment import VendorPayment
 from app.models.vendor_payment_application import VendorPaymentApplication
+from app.models.data_migration import DataMigrationRun
 from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIntelligenceSuggestion
 
 __all__ = [
@@ -391,6 +392,7 @@ __all__ = [
     "VendorNote",
     "VendorPayment",
     "VendorPaymentApplication",
+    "DataMigrationRun",
     "TenantWebsiteIntelligence",
     "WebsiteIntelligenceSuggestion",
 ]

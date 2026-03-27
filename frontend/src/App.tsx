@@ -127,6 +127,7 @@ import ProcedureLibraryPage, { ProcedureDetailPage } from "@/pages/training/proc
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
+import DataMigrationPage from "@/pages/onboarding/data-migration";
 import AccountingReviewPage from "@/pages/onboarding/accounting-review";
 import AlertsPage from "@/pages/alerts";
 import JournalEntriesPage from "@/pages/journal-entries";
@@ -578,6 +579,8 @@ export default function App() {
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
+                  <Route path="/onboarding/data-migration" element={<DataMigrationPage />} />
+                  <Route path="/settings/data-migration" element={<DataMigrationPage />} />
                   <Route path="/onboarding/accounting/review" element={<AccountingReviewPage />} />
                   <Route path="/onboarding/scheduling" element={<SchedulingSetupPage />} />
                   <Route path="/onboarding/network-preferences" element={<NetworkPreferencesPage />} />
