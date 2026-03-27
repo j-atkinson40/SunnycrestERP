@@ -18,6 +18,7 @@ export interface Company {
   email_from_address: string | null;
   vertical: string | null;
   settings_json: string | null;
+  npca_certification_status: string | null;
   created_at: string;
 }
 

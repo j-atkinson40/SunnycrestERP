@@ -78,6 +78,7 @@ class CompanyResponse(BaseModel):
     email_from_name: str | None = None
     email_from_address: str | None = None
     settings_json: str | None = None
+    npca_certification_status: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
