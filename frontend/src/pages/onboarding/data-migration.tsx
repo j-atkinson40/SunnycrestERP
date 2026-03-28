@@ -82,16 +82,20 @@ interface ProgressEvent {
 }
 
 interface MigrationSummary {
-  status: string;
-  migration_date: string;
-  gl_accounts: { imported: number; skipped: number; errors: string[] };
-  customers: { imported: number; skipped: number; errors: string[] };
-  ar_invoices: { imported: number; skipped: number; errors: string[]; warnings?: string[] };
-  vendors: { imported: number; skipped: number; errors: string[] };
-  ap_bills: { imported: number; skipped: number; errors: string[] };
+  gl_accounts_imported: number;
+  gl_accounts_skipped: number;
+  customers_imported: number;
+  customers_skipped: number;
+  ar_invoices_imported: number;
+  ar_invoices_skipped: number;
+  vendors_imported: number;
+  vendors_skipped: number;
+  ap_bills_imported: number;
+  ap_bills_skipped: number;
   total_ar_balance: number;
   total_ap_balance: number;
-  warnings: string[];
+  warning_count: number;
+  error_count: number;
 }
 
 interface FileSlot {
@@ -289,7 +293,7 @@ export default function DataMigrationPage() {
             }
             if (event.status === "complete" && event.summary) {
               setSummary(event.summary);
-              setWarnings(event.summary.warnings ?? []);
+              setWarnings([]);
               setStep(4);
             }
           } catch {
@@ -784,11 +788,11 @@ export default function DataMigrationPage() {
 
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 {[
-                  ["GL Accounts", `${summary.gl_accounts.imported} imported`],
-                  ["Customers", `${summary.customers.imported} imported`],
-                  ["Open Invoices", summary.total_ar_balance ? `${fmtDec.format(summary.total_ar_balance)} across ${summary.ar_invoices.imported} items` : `${summary.ar_invoices.imported} imported`],
-                  ["Vendors", `${summary.vendors.imported} imported`],
-                  ["Open Bills", summary.total_ap_balance ? `${fmtDec.format(summary.total_ap_balance)} across ${summary.ap_bills.imported} items` : `${summary.ap_bills.imported} imported`],
+                  ["GL Accounts", `${summary.gl_accounts_imported} imported`],
+                  ["Customers", `${summary.customers_imported} imported`],
+                  ["Open Invoices", summary.total_ar_balance ? `${fmtDec.format(summary.total_ar_balance)} across ${summary.ar_invoices_imported} items` : `${summary.ar_invoices_imported} imported`],
+                  ["Vendors", `${summary.vendors_imported} imported`],
+                  ["Open Bills", summary.total_ap_balance ? `${fmtDec.format(summary.total_ap_balance)} across ${summary.ap_bills_imported} items` : `${summary.ap_bills_imported} imported`],
                 ].map(([label, val]) => (
                   <div key={label as string}>
                     <p className="text-green-600">{label as string}</p>
