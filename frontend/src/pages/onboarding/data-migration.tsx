@@ -96,6 +96,8 @@ interface MigrationSummary {
   total_ap_balance: number;
   warning_count: number;
   error_count: number;
+  errors?: string[];
+  warnings?: string[];
 }
 
 interface FileSlot {
@@ -788,15 +790,16 @@ export default function DataMigrationPage() {
 
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 {[
-                  ["GL Accounts", `${summary.gl_accounts_imported} imported`],
-                  ["Customers", `${summary.customers_imported} imported`],
-                  ["Open Invoices", summary.total_ar_balance ? `${fmtDec.format(summary.total_ar_balance)} across ${summary.ar_invoices_imported} items` : `${summary.ar_invoices_imported} imported`],
-                  ["Vendors", `${summary.vendors_imported} imported`],
-                  ["Open Bills", summary.total_ap_balance ? `${fmtDec.format(summary.total_ap_balance)} across ${summary.ap_bills_imported} items` : `${summary.ap_bills_imported} imported`],
-                ].map(([label, val]) => (
+                  ["GL Accounts", `${summary.gl_accounts_imported} imported`, summary.gl_accounts_skipped],
+                  ["Customers", `${summary.customers_imported} imported`, summary.customers_skipped],
+                  ["Open Invoices", summary.total_ar_balance ? `${fmtDec.format(summary.total_ar_balance)} across ${summary.ar_invoices_imported} items` : `${summary.ar_invoices_imported} imported`, summary.ar_invoices_skipped],
+                  ["Vendors", `${summary.vendors_imported} imported`, summary.vendors_skipped],
+                  ["Open Bills", summary.total_ap_balance ? `${fmtDec.format(summary.total_ap_balance)} across ${summary.ap_bills_imported} items` : `${summary.ap_bills_imported} imported`, summary.ap_bills_skipped],
+                ].map(([label, val, skipped]) => (
                   <div key={label as string}>
                     <p className="text-green-600">{label as string}</p>
                     <p className="font-semibold text-green-900">{val as string}</p>
+                    {(skipped as number) > 0 && <p className="text-xs text-green-600">{skipped as number} already existed, skipped</p>}
                   </div>
                 ))}
               </div>
@@ -815,6 +818,19 @@ export default function DataMigrationPage() {
             </div>
           </div>
         </div>
+
+        {(summary?.errors ?? []).length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-red-700 flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 text-red-500" /> {(summary?.errors ?? []).length} import error{(summary?.errors ?? []).length > 1 ? "s" : ""}
+            </p>
+            <ul className="space-y-1 rounded-lg border border-red-200 bg-red-50 p-4 max-h-48 overflow-y-auto">
+              {(summary?.errors ?? []).map((e, i) => (
+                <li key={i} className="text-xs text-red-800 font-mono">{e}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {warnings.length > 0 && (
           <div className="space-y-2">

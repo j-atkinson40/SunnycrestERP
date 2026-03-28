@@ -614,14 +614,28 @@ def import_gl_accounts(
                     provider_account_id=account_number,
                     is_active=(status == "active"),
                 )
-                db.add(mapping)
-                imported += 1
+                nested = db.begin_nested()
+                try:
+                    db.add(mapping)
+                    db.flush()
+                    nested.commit()
+                    imported += 1
+                except Exception as flush_err:
+                    nested.rollback()
+                    raise flush_err
             elif overwrite_existing:
                 existing.platform_category = acct["bridgeable_account_type"]
                 existing.account_name = acct["description"]
                 existing.provider_account_id = account_number
                 existing.is_active = status == "active"
-                imported += 1
+                nested = db.begin_nested()
+                try:
+                    db.flush()
+                    nested.commit()
+                    imported += 1
+                except Exception as flush_err:
+                    nested.rollback()
+                    raise flush_err
             else:
                 skipped += 1
 
@@ -735,11 +749,16 @@ def import_customers(
                 notes=notes,
                 is_active=(status != "Inactive"),
             )
-            db.add(customer)
-            db.flush()
-
-            customer_id_map[sage_customer_no] = customer.id
-            imported += 1
+            nested = db.begin_nested()
+            try:
+                db.add(customer)
+                db.flush()
+                nested.commit()
+                customer_id_map[sage_customer_no] = customer.id
+                imported += 1
+            except Exception as flush_err:
+                nested.rollback()
+                raise flush_err
 
         except Exception as e:
             errors.append(f"Customer {cust.get('sage_customer_no', '?')}: {str(e)}")
@@ -841,20 +860,26 @@ def import_open_invoices(
                 notes=cutover_note,
                 sage_invoice_id=invoice_number,
             )
-            db.add(invoice)
-            db.flush()
-
-            line = InvoiceLine(
-                id=str(uuid.uuid4()),
-                invoice_id=invoice.id,
-                description=cutover_note,
-                quantity=Decimal("1"),
-                unit_price=abs_balance,
-                line_total=abs_balance,
-                sort_order=0,
-            )
-            db.add(line)
-            imported += 1
+            nested = db.begin_nested()
+            try:
+                db.add(invoice)
+                db.flush()
+                line = InvoiceLine(
+                    id=str(uuid.uuid4()),
+                    invoice_id=invoice.id,
+                    description=cutover_note,
+                    quantity=Decimal("1"),
+                    unit_price=abs_balance,
+                    line_total=abs_balance,
+                    sort_order=0,
+                )
+                db.add(line)
+                db.flush()
+                nested.commit()
+                imported += 1
+            except Exception as flush_err:
+                nested.rollback()
+                raise flush_err
 
         except Exception as e:
             errors.append(f"Invoice {inv.get('invoice_number', '?')}: {str(e)}")
@@ -929,11 +954,16 @@ def import_vendors(
                 sage_vendor_id=sage_vendor_no,
                 is_active=(status == "Active"),
             )
-            db.add(vendor)
-            db.flush()
-
-            vendor_id_map[sage_vendor_no] = vendor.id
-            imported += 1
+            nested = db.begin_nested()
+            try:
+                db.add(vendor)
+                db.flush()
+                nested.commit()
+                vendor_id_map[sage_vendor_no] = vendor.id
+                imported += 1
+            except Exception as flush_err:
+                nested.rollback()
+                raise flush_err
 
         except Exception as e:
             errors.append(f"Vendor {vend.get('sage_vendor_no', '?')}: {str(e)}")
@@ -1024,20 +1054,26 @@ def import_open_bills(
                 source="sage_migration",
                 notes=cutover_note,
             )
-            db.add(bill)
-            db.flush()
-
-            line = VendorBillLine(
-                id=str(uuid.uuid4()),
-                bill_id=bill.id,
-                description=cutover_note,
-                quantity=Decimal("1"),
-                unit_cost=abs_balance,
-                amount=abs_balance,
-                sort_order=0,
-            )
-            db.add(line)
-            imported += 1
+            nested = db.begin_nested()
+            try:
+                db.add(bill)
+                db.flush()
+                line = VendorBillLine(
+                    id=str(uuid.uuid4()),
+                    bill_id=bill.id,
+                    description=cutover_note,
+                    quantity=Decimal("1"),
+                    unit_cost=abs_balance,
+                    amount=abs_balance,
+                    sort_order=0,
+                )
+                db.add(line)
+                db.flush()
+                nested.commit()
+                imported += 1
+            except Exception as flush_err:
+                nested.rollback()
+                raise flush_err
 
         except Exception as e:
             errors.append(f"Bill {bill_data.get('invoice_number', '?')}: {str(e)}")
@@ -1350,6 +1386,8 @@ def run_full_migration(
             "total_ap_balance": float(run.total_ap_balance) if run.total_ap_balance else 0,
             "warning_count": len(all_warnings),
             "error_count": len(all_errors),
+            "errors": all_errors[:50],
+            "warnings": all_warnings[:50],
         },
     }
 
