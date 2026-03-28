@@ -54,7 +54,12 @@ def _extract_csv(content: bytes) -> str:
 
 
 def _extract_pdf(content: bytes) -> str:
-    """Extract text from PDF."""
+    """Extract text from PDF.
+
+    Strategy 1: pdfplumber (fast, handles text-layer PDFs).
+    Strategy 2: Claude vision API (fallback for scanned/image-only PDFs).
+    """
+    # Strategy 1 — pdfplumber
     try:
         import io
 
@@ -62,13 +67,78 @@ def _extract_pdf(content: bytes) -> str:
 
         with pdfplumber.open(io.BytesIO(content)) as pdf:
             lines: list[str] = []
-            for page in pdf.pages[:20]:  # max 20 pages
+            for page in pdf.pages[:20]:
                 text = page.extract_text()
                 if text:
                     lines.append(text)
-            return "\n".join(lines)
+            text_result = "\n".join(lines)
+            if text_result.strip():
+                return text_result
+            logger.info("pdfplumber extracted no text — falling back to Claude vision")
     except ImportError:
-        logger.warning("pdfplumber not installed — PDF extraction unavailable")
+        logger.warning("pdfplumber not installed — trying Claude vision fallback")
+    except Exception as e:
+        logger.warning("pdfplumber failed (%s) — trying Claude vision fallback", e)
+
+    # Strategy 2 — Claude vision (handles scanned/image-based PDFs)
+    return _extract_pdf_via_claude(content)
+
+
+def _extract_pdf_via_claude(content: bytes) -> str:
+    """Send the PDF to Claude and ask it to extract all text content."""
+    import base64
+
+    try:
+        import anthropic
+
+        from app.config import settings
+
+        if not settings.ANTHROPIC_API_KEY:
+            logger.warning("No ANTHROPIC_API_KEY — cannot use Claude PDF fallback")
+            return ""
+
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        b64 = base64.standard_b64encode(content).decode("utf-8")
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8192,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Extract all text content from this price list PDF. "
+                                "Preserve the layout as accurately as possible — "
+                                "keep section headers, product names, prices, and "
+                                "any notes exactly as they appear. "
+                                "Return only the extracted text, no commentary."
+                            ),
+                        },
+                    ],
+                }
+            ],
+        )
+        extracted = message.content[0].text if message.content else ""
+        logger.info(
+            "Claude PDF extraction returned %d chars (tokens: in=%d out=%d)",
+            len(extracted),
+            message.usage.input_tokens,
+            message.usage.output_tokens,
+        )
+        return extracted
+    except Exception as e:
+        logger.error("Claude PDF extraction failed: %s", e)
         return ""
 
 

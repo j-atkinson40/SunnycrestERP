@@ -129,8 +129,11 @@ export default function PriceListUploadFlow({ onBack }: Props) {
       const result = await importService.uploadPriceList(file);
       setImportData(result);
       setStep("processing");
-    } catch {
-      toast.error("Failed to upload file. Please try again.");
+    } catch (err: unknown) {
+      // Surface the actual server error message if available
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail ?? "Failed to upload file. Please try again.");
     } finally {
       setUploading(false);
     }
