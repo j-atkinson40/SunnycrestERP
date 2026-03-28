@@ -487,6 +487,22 @@ def get_cashflow_forecast(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/debug/invoice-status")
+def debug_invoice_status(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Debug: return invoice counts by status for this tenant."""
+    tid = current_user.company_id
+    rows = db.query(Invoice.status, func.count(Invoice.id), func.sum(Invoice.total)).filter(
+        Invoice.company_id == tid,
+    ).group_by(Invoice.status).all()
+    return {
+        "company_id": tid,
+        "by_status": [{"status": r[0], "count": r[1], "total": float(r[2] or 0)} for r in rows],
+    }
+
+
 @router.get("/agent/activity-feed")
 def get_agent_activity_feed(
     days: int = Query(7, le=30),
