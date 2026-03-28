@@ -33,6 +33,7 @@ from app.services.product_service import (
     update_price_tier,
     update_product,
 )
+from app.services.sunnycrest_product_seeder import seed_sunnycrest_products
 
 router = APIRouter()
 
@@ -240,6 +241,17 @@ def delete_tier(
 # ---------------------------------------------------------------------------
 # CSV Import endpoint
 # ---------------------------------------------------------------------------
+
+
+@router.post("/seed-sunnycrest")
+def seed_sunnycrest(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("products.create")),
+):
+    """Seed all Sunnycrest products. Idempotent — safe to run multiple times."""
+    result = seed_sunnycrest_products(db)
+    db.commit()
+    return result
 
 
 @router.post("/import", response_model=ImportResult)

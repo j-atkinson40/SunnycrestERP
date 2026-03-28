@@ -103,6 +103,12 @@ function getManufacturingNav(
       functionalArea: "customer_management",
     },
     {
+      label: "Products",
+      href: "/products",
+      icon: "Package",
+      permission: "products.view",
+    },
+    {
       label: "Scheduling Board",
       href: "/scheduling",
       icon: "Kanban",

@@ -124,6 +124,9 @@ class ProductResponse(BaseModel):
     image_url: str | None = None
     is_active: bool
     is_direct_ship_product: bool = False
+    price_without_our_product: Decimal | None = None
+    has_conditional_pricing: bool = False
+    is_call_office: bool = False
     created_at: datetime
     updated_at: datetime
     price_tiers: list[PriceTierResponse] = []

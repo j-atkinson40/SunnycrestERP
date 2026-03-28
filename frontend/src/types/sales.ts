@@ -87,6 +87,9 @@ export interface SalesOrderLine {
   unit_price: string;
   line_total: string;
   sort_order: number;
+  has_conditional_pricing?: boolean;
+  is_call_office?: boolean;
+  price_without_our_product?: string | null;
 }
 
 export interface SalesOrderLineCreate {

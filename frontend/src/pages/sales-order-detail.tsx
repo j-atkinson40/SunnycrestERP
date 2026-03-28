@@ -6,6 +6,7 @@ import type { SalesOrder } from "@/types/sales";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Tag } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -295,7 +296,27 @@ function SalesOrderDetailView({ id }: { id: string }) {
                       <span className="ml-1 text-green-600">&check;</span>
                     )}
                   </TableCell>
-                  <TableCell>{fmtCurrency(line.unit_price)}</TableCell>
+                  <TableCell>
+                    {line.is_call_office ? (
+                      <span className="text-muted-foreground italic text-sm">Price on request</span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        {fmtCurrency(line.unit_price)}
+                        {line.has_conditional_pricing && (
+                          <span
+                            title={
+                              line.price_without_our_product
+                                ? `Includes vault discount. Standalone price: ${fmtCurrency(line.price_without_our_product)}`
+                                : "Conditional pricing applied"
+                            }
+                            className="text-blue-500 cursor-help"
+                          >
+                            <Tag size={12} />
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right font-medium">
                     {fmtCurrency(line.line_total)}
                   </TableCell>

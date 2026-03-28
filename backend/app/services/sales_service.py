@@ -402,6 +402,13 @@ def create_sales_order(
 
     db.flush()
 
+    # Apply conditional pricing after all lines are created
+    try:
+        from app.services.order_pricing_service import recalculate_order_line_prices
+        recalculate_order_line_prices(order.id, db)
+    except Exception as _exc:
+        logger.warning("Conditional pricing recalc failed for order %s: %s", order.id, _exc)
+
     audit_service.log_action(
         db,
         company_id,

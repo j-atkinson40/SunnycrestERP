@@ -49,6 +49,11 @@ class Product(Base):
     product_line: Mapped[str | None] = mapped_column(String(100), nullable=True)  # e.g. "Monticello"
     variant_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # e.g. "STD-1P"
 
+    # Conditional pricing
+    price_without_our_product: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    has_conditional_pricing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    is_call_office: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+
     # Direct ship flag
     is_direct_ship_product: Mapped[bool] = mapped_column(Boolean, default=False)
 

@@ -383,13 +383,23 @@ def confirm_import(
             company_id=company.id,
             name=item.final_product_name,
             sku=item.final_sku,
-            price=item.final_price,
             source="price_list_import",
             is_active=True,
             created_by=current_user.id,
             created_at=now,
             updated_at=now,
         )
+        # Apply conditional pricing logic
+        if item.extracted_price_with_vault is not None and item.extracted_price_standalone is not None:
+            product.price = item.extracted_price_with_vault
+            product.price_without_our_product = item.extracted_price_standalone
+            product.has_conditional_pricing = True
+        elif item.is_call_office:
+            product.price = None
+            product.is_call_office = True
+        else:
+            product.price = item.final_price
+            product.has_conditional_pricing = False
         db.add(product)
         item.product_id = product.id
         created += 1

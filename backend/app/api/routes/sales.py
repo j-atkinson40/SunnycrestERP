@@ -120,6 +120,9 @@ def _order_to_response(o) -> dict:
                 "unit_price": ln.unit_price,
                 "line_total": ln.line_total,
                 "sort_order": ln.sort_order,
+                "has_conditional_pricing": ln.product.has_conditional_pricing if ln.product else False,
+                "is_call_office": ln.product.is_call_office if ln.product else False,
+                "price_without_our_product": ln.product.price_without_our_product if ln.product else None,
             }
             for ln in (o.lines or [])
         ],

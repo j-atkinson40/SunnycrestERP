@@ -109,6 +109,9 @@ class PriceListImportItem(Base):
     price_variant_type: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True
     )
+    is_call_office: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
     # Charge matching fields
     charge_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     charge_key_suggestion: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
