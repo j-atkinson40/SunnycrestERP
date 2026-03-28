@@ -279,6 +279,17 @@ def get_migration_status(
             status_code=404,
             detail="No migration runs found for this tenant.",
         )
+
+    # If migration completed, ensure the onboarding checklist item is marked done
+    # (handles runs that completed before this auto-complete logic was added)
+    if status.get("status") in ("complete", "partial"):
+        try:
+            from app.services.onboarding_service import check_completion
+            check_completion(db, current_user.company_id, "data_migration")
+            db.commit()
+        except Exception:
+            pass
+
     return status
 
 

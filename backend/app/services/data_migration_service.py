@@ -1377,6 +1377,15 @@ def run_full_migration(
     run.errors = all_errors
     db.commit()
 
+    # Mark the onboarding checklist item as complete when migration succeeds
+    if final_status in ("complete", "partial"):
+        try:
+            from app.services.onboarding_service import check_completion
+            check_completion(db, tenant_id, "data_migration")
+            db.commit()
+        except Exception as oc_err:
+            print(f"WARNING: Could not mark data_migration checklist item complete — {oc_err}")
+
     yield {
         "status": "complete",
         "run_id": run.id,
