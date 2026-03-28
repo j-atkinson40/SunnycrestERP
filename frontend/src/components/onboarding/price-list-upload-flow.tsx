@@ -478,8 +478,10 @@ export default function PriceListUploadFlow({ onBack }: Props) {
 
       setConfirmResult(result);
       setStep("done");
-    } catch {
-      toast.error("Failed to build catalog. Please try again.");
+    } catch (err: unknown) {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail ?? "Failed to build catalog. Please try again.");
       setConfirmProgress([]);
     } finally {
       setConfirming(false);

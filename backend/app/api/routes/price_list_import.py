@@ -481,7 +481,12 @@ def confirm_import(
     imp.status = "confirmed"
     imp.confirmed_at = now
     imp.confirmed_by = current_user.id
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("confirm_import db.commit() failed for import %s", import_id)
+        raise HTTPException(status_code=500, detail=f"Database error: {exc}") from exc
 
     return PriceListConfirmResponse(
         import_id=import_id,
