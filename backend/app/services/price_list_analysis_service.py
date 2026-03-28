@@ -695,6 +695,47 @@ def _apply_billing_terms_to_settings(db: Session, tenant_id: str, billing_terms:
         logger.warning("Could not apply billing terms to settings: %s", exc)
 
 
+_DIMENSION_RE = re.compile(r'\d+\s*"')
+
+
+def _resolve_final_name(
+    extracted_name: str,
+    template_id: str | None,
+    template_map: dict[str, str],
+    match: dict,
+) -> str:
+    """Choose the best final product name.
+
+    Normally we prefer the canonical template name so products are named
+    consistently.  Exception: when the extracted name contains a dimension
+    suffix (e.g. 34\", 38\") that the template name doesn't have — that
+    means it's an oversize variant and we must keep the specific size.
+    In that case we build the name as "<base line> <dimension> Burial Vault".
+    """
+    canonical = template_map.get(template_id or "", "") or match.get("template_name") or ""
+    extracted = extracted_name or ""
+
+    # If extracted name has a dimension and canonical doesn't, it's an oversize variant
+    dim_in_extracted = _DIMENSION_RE.search(extracted)
+    dim_in_canonical = _DIMENSION_RE.search(canonical)
+
+    if dim_in_extracted and not dim_in_canonical:
+        # Build a proper name: strip generic suffixes from extracted, keep dimension
+        # e.g. "Graveliner 34\"" → "Graveliner 34\" Burial Vault"
+        name = extracted.strip()
+        # Append "Burial Vault" if neither name already has it
+        if "burial vault" not in name.lower() and "burial vault" in canonical.lower():
+            name = f"{name} Burial Vault"
+        logger.info(
+            "Preserving dimension variant name: '%s' (template: '%s')",
+            name, canonical,
+        )
+        return name
+
+    # Default: canonical template name wins
+    return canonical or extracted or "Unknown"
+
+
 def analyze_price_list(db: Session, import_id: str) -> None:
     """Run Claude analysis on an extracted price list."""
     imp = db.query(PriceListImport).filter(PriceListImport.id == import_id).first()
@@ -911,10 +952,12 @@ Examples of billing term text to look for:
                 ),
                 match_reasoning=_build_bundle_reasoning(match, status) if match else None,
                 final_product_name=(
-                    # Always prefer the canonical DB name over Claude's interpretation
-                    template_map.get(match.get("template_id", ""))
-                    or match.get("template_name")
-                    or item_data.get("extracted_name", "Unknown")
+                    _resolve_final_name(
+                        item_data.get("extracted_name", ""),
+                        match.get("template_id"),
+                        template_map,
+                        match,
+                    )
                 ) if match else item_data.get("extracted_name", "Unknown"),
                 final_price=(
                     Decimal(str(item_data["extracted_price"]))
