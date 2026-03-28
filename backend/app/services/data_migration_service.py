@@ -803,6 +803,15 @@ def import_open_invoices(
 
             customer_id = customer_id_map.get(sage_customer_no)
             if not customer_id:
+                # AR aging CSV stores bare IDs (e.g. "AAL001") while customer XLSX
+                # stores division-prefixed IDs (e.g. "00-AAL001").  Try prepending
+                # the division extracted from this invoice row, then fall back to "00-".
+                division = inv.get("division", "")
+                if division:
+                    customer_id = customer_id_map.get(f"{division}-{sage_customer_no}")
+                if not customer_id:
+                    customer_id = customer_id_map.get(f"00-{sage_customer_no}")
+            if not customer_id:
                 warnings.append(
                     f"Invoice {invoice_number}: customer {sage_customer_no} not found — skipped"
                 )
