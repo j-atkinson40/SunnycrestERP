@@ -832,13 +832,14 @@ def import_open_invoices(
             days_delinquent = inv.get("days_delinquent", 0)
             abs_balance = abs(balance)
 
-            # Determine status
+            # Determine status — use "sent" (not "open") so the financials board
+            # and AR aging queries find these invoices (they filter on sent/partial/overdue)
             if balance < 0:
-                status = "open"  # credit / overpayment
+                status = "sent"  # credit / overpayment — treat as sent with credit balance
             elif days_delinquent > 0:
                 status = "overdue"
             else:
-                status = "open"
+                status = "sent"
 
             number = f"SAGE-{invoice_number}"[:50]
             invoice_date = inv.get("invoice_date") or fallback_date
