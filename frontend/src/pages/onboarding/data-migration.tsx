@@ -805,7 +805,7 @@ export default function DataMigrationPage() {
               </div>
 
               <div className="mt-6 flex flex-wrap gap-3">
-                <button onClick={() => navigate("/ar")} className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-100">
+                <button onClick={() => navigate("/ar/aging")} className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-100">
                   View AR Aging
                 </button>
                 <button onClick={() => navigate("/customers")} className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-100">
