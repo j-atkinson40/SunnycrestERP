@@ -199,6 +199,39 @@ def run_data_seeders():
 
 
 @app.on_event("startup")
+def backfill_migration_checklist_completions():
+    """Mark data_migration checklist item complete for any tenant that has a
+    finished DataMigrationRun.  Idempotent — check_completion skips items that
+    are already completed."""
+    from app.database import SessionLocal
+    from sqlalchemy import text as _text
+
+    bfdb = SessionLocal()
+    try:
+        rows = bfdb.execute(_text(
+            "SELECT DISTINCT tenant_id FROM data_migration_runs "
+            "WHERE status IN ('complete', 'partial')"
+        )).fetchall()
+        if not rows:
+            return
+
+        from app.services.onboarding_service import check_completion
+        for (tenant_id,) in rows:
+            try:
+                check_completion(bfdb, tenant_id, "data_migration")
+            except Exception as exc:
+                print(f"WARNING: backfill check_completion failed for {tenant_id} — {exc}")
+                try:
+                    bfdb.rollback()
+                except Exception:
+                    pass
+    except Exception as exc:
+        print(f"WARNING: Migration checklist backfill failed — {exc}")
+    finally:
+        bfdb.close()
+
+
+@app.on_event("startup")
 def patch_migrated_invoice_statuses():
     """One-time patch: migrated invoices imported with status='open' must be 'sent'
     so the financials board (which queries sent/partial/overdue) can find them."""
