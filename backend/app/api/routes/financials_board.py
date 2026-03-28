@@ -45,12 +45,12 @@ def get_board_summary(
 
     # AR outstanding
     ar_total = db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0)).filter(
-        Invoice.company_id == tid, Invoice.status.in_(["sent", "partial", "overdue"]),
+        Invoice.company_id == tid, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
     ).scalar() or 0
 
     # AR overdue count + total
     overdue_invoices = db.query(Invoice).filter(
-        Invoice.company_id == tid, Invoice.status.in_(["sent", "partial", "overdue"]),
+        Invoice.company_id == tid, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
         Invoice.due_date < today,
     ).all()
     overdue_count = len(overdue_invoices)
@@ -128,7 +128,7 @@ def get_briefing(
         # Fallback — call the logic directly
         today = date.today()
         overdue_invoices = db.query(Invoice).filter(
-            Invoice.company_id == tid, Invoice.status.in_(["sent", "partial", "overdue"]),
+            Invoice.company_id == tid, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
             Invoice.due_date < today,
         ).all()
         summary = {
@@ -148,7 +148,7 @@ def get_briefing(
     overdue_by_customer = db.query(
         Customer.name, func.sum(Invoice.total - Invoice.amount_paid).label("owed"),
     ).join(Invoice, Invoice.customer_id == Customer.id).filter(
-        Invoice.company_id == tid, Invoice.status.in_(["sent", "partial", "overdue"]),
+        Invoice.company_id == tid, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
         Invoice.due_date < date.today(),
     ).group_by(Customer.name).order_by(func.sum(Invoice.total - Invoice.amount_paid).desc()).first()
     if overdue_by_customer:
@@ -207,7 +207,7 @@ def get_ar_overdue(
         db.query(Invoice)
         .filter(
             Invoice.company_id == tid,
-            Invoice.status.in_(["sent", "partial", "overdue"]),
+            Invoice.status.in_(["sent", "open", "partial", "overdue"]),
             Invoice.due_date < today,
         )
         .order_by(Invoice.due_date.asc())
@@ -330,7 +330,7 @@ def get_ar_credit(
     results = []
     for c in customers:
         balance = db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0)).filter(
-            Invoice.customer_id == c.id, Invoice.status.in_(["sent", "partial", "overdue"]),
+            Invoice.customer_id == c.id, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
         ).scalar() or 0
 
         pct = (float(balance) / float(c.credit_limit) * 100) if c.credit_limit else 0
@@ -454,7 +454,7 @@ def get_cashflow_forecast(
 
         # Expected AR collections (invoices due this week)
         ar = db.query(func.coalesce(func.sum(Invoice.total - Invoice.amount_paid), 0)).filter(
-            Invoice.company_id == tid, Invoice.status.in_(["sent", "partial", "overdue"]),
+            Invoice.company_id == tid, Invoice.status.in_(["sent", "open", "partial", "overdue"]),
             Invoice.due_date >= week_start, Invoice.due_date <= week_end,
         ).scalar() or 0
 

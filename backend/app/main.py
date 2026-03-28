@@ -194,21 +194,31 @@ def run_data_seeders():
         print(f"WARNING: Safety training topic seeding failed — {exc}")
         db.rollback()
 
-    # One-time patch: migrated invoices were imported with status="open" but the
-    # financials board queries for status IN ("sent","partial","overdue").
-    # Update all sage-migrated "open" invoices to "sent" so they appear on the board.
+    finally:
+        db.close()
+
+
+@app.on_event("startup")
+def patch_migrated_invoice_statuses():
+    """One-time patch: migrated invoices imported with status='open' must be 'sent'
+    so the financials board (which queries sent/partial/overdue) can find them."""
+    from app.database import SessionLocal
+    from sqlalchemy import text as _text
+    patch_db = SessionLocal()
     try:
-        from sqlalchemy import text as _text
-        db.execute(_text(
+        result = patch_db.execute(_text(
             "UPDATE invoices SET status = 'sent' "
             "WHERE status = 'open' AND sage_invoice_id IS NOT NULL"
         ))
-        db.commit()
+        patch_db.commit()
+        rows = result.rowcount if hasattr(result, "rowcount") else "?"
+        if rows:
+            print(f"INFO: Patched {rows} migrated invoice(s) from status=open to sent")
     except Exception as exc:
         print(f"WARNING: Invoice status patch failed — {exc}")
-        db.rollback()
+        patch_db.rollback()
     finally:
-        db.close()
+        patch_db.close()
 
 
 @app.on_event("startup")
