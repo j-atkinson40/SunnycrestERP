@@ -48,9 +48,15 @@ def upgrade() -> None:
             server_default="false",
         ),
     )
+    # Add billing_terms_json to price_list_imports
+    op.add_column(
+        "price_list_imports",
+        sa.Column("billing_terms_json", sa.Text(), nullable=True),
+    )
 
 
 def downgrade() -> None:
+    op.drop_column("price_list_imports", "billing_terms_json")
     op.drop_column("price_list_import_items", "is_call_office")
     op.drop_column("products", "has_conditional_pricing")
     op.drop_column("products", "is_call_office")

@@ -184,7 +184,22 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/data-migration",
         "sort_order": 2,
     },
-    # 3. Tax rates
+    # 3. Product catalog — no dependency, accessible immediately after migration
+    {
+        "item_key": "add_products",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Set up your product catalog",
+        "description": (
+            "Tell us which vault lines and equipment you carry — "
+            "we'll build your catalog automatically."
+        ),
+        "estimated_minutes": 15,
+        "action_type": "navigate",
+        "action_target": "/onboarding/catalog-builder",
+        "sort_order": 3,
+    },
+    # 4. Tax rates — depends on data_migration
     {
         "item_key": "setup_tax_rates",
         "tier": "must_complete",
@@ -198,9 +213,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/tax-rates",
         "depends_on": '["data_migration"]',
-        "sort_order": 3,
+        "sort_order": 4,
     },
-    # 4. Tax jurisdictions
+    # 5. Tax jurisdictions — depends on setup_tax_rates
     {
         "item_key": "setup_tax_jurisdictions",
         "tier": "must_complete",
@@ -214,24 +229,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/tax-jurisdictions",
         "depends_on": '["setup_tax_rates"]',
-        "sort_order": 4,
+        "sort_order": 5,
     },
-    # 6. Product catalog
-    {
-        "item_key": "add_products",
-        "tier": "must_complete",
-        "category": "data_setup",
-        "title": "Set up your product catalog",
-        "description": (
-            "Tell us which vault lines and equipment you carry — "
-            "we'll build your catalog automatically."
-        ),
-        "estimated_minutes": 15,
-        "action_type": "navigate",
-        "action_target": "/onboarding/catalog-builder",
-        "sort_order": 6,
-    },
-    # 7. Price list
+    # 6. Price list
     {
         "item_key": "setup_price_list",
         "tier": "should_complete",
@@ -246,7 +246,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/price-list",
         "depends_on": '["add_products"]',
-        "sort_order": 7,
+        "sort_order": 6,
     },
     # 8. Financial accounts — NEW
     {
@@ -1106,43 +1106,28 @@ def fix_checklist_targets(db: Session) -> None:
         ),
     })
 
-    # Fix setup_tax_rates — sort_order 3, depends on data_migration
+    # Fix add_products — sort_order 3, no dependency (independently accessible)
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "add_products",
+    ).update({"sort_order": 3, "depends_on": None})
+
+    # Fix setup_tax_rates — sort_order 4, depends on data_migration
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "setup_tax_rates",
     ).update({
-        "sort_order": 3,
+        "sort_order": 4,
         "depends_on": '["data_migration"]',
     })
 
-    # Fix setup_tax_jurisdictions — sort_order 4
+    # Fix setup_tax_jurisdictions — sort_order 5, depends on setup_tax_rates
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "setup_tax_jurisdictions",
-    ).update({"sort_order": 4})
+    ).update({"sort_order": 5, "depends_on": '["setup_tax_rates"]'})
 
-    # Fix add_products — position 4
+    # Fix setup_price_list — sort_order 6
     db.query(OnboardingChecklistItem).filter(
-        OnboardingChecklistItem.item_key == "add_products",
-    ).update({"sort_order": 4})
-
-    # Fix add_employees — position 6
-    db.query(OnboardingChecklistItem).filter(
-        OnboardingChecklistItem.item_key == "add_employees",
+        OnboardingChecklistItem.item_key == "setup_price_list",
     ).update({"sort_order": 6})
-
-    # Fix setup_safety_training — position 7
-    db.query(OnboardingChecklistItem).filter(
-        OnboardingChecklistItem.item_key == "setup_safety_training",
-    ).update({"sort_order": 7})
-
-    # Fix setup_scheduling_board — position 8
-    db.query(OnboardingChecklistItem).filter(
-        OnboardingChecklistItem.item_key == "setup_scheduling_board",
-    ).update({"sort_order": 8})
-
-    # Fix configure_cross_tenant — position 13
-    db.query(OnboardingChecklistItem).filter(
-        OnboardingChecklistItem.item_key == "configure_cross_tenant",
-    ).update({"sort_order": 13})
 
     # Fix add_employees — position 9
     db.query(OnboardingChecklistItem).filter(
@@ -1159,10 +1144,10 @@ def fix_checklist_targets(db: Session) -> None:
         OnboardingChecklistItem.item_key == "setup_scheduling_board",
     ).update({"sort_order": 11})
 
-    # Fix add_products — position 6
+    # Fix configure_cross_tenant — position 13
     db.query(OnboardingChecklistItem).filter(
-        OnboardingChecklistItem.item_key == "add_products",
-    ).update({"sort_order": 6})
+        OnboardingChecklistItem.item_key == "configure_cross_tenant",
+    ).update({"sort_order": 13})
 
     # --- Backfill missing checklist items for existing tenants ---
     # Get all existing checklists grouped by preset

@@ -1,3 +1,13 @@
+export interface BillingTerms {
+  payment_terms_days: number | null;
+  early_payment_discount_percent: number | null;
+  early_payment_discount_days: number | null;
+  finance_charge_rate_monthly: number | null;
+  finance_charge_basis: "past_due_only" | "total_balance" | null;
+  holidays: string[] | null;
+  raw_text: string;
+}
+
 export interface PriceListImport {
   id: string;
   file_name: string;
@@ -16,6 +26,7 @@ export interface PriceListImport {
   items_unmatched: number;
   error_message: string | null;
   created_at: string;
+  billing_terms_json: string | null;
 }
 
 export interface PriceListImportItem {

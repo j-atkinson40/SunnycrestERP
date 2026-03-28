@@ -32,6 +32,7 @@ class PriceListImport(Base):
     items_matched_high_confidence: Mapped[int] = mapped_column(Integer, default=0)
     items_matched_low_confidence: Mapped[int] = mapped_column(Integer, default=0)
     items_unmatched: Mapped[int] = mapped_column(Integer, default=0)
+    billing_terms_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

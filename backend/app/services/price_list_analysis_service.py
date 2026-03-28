@@ -654,6 +654,47 @@ def _promote_exact_matches(items: list[dict], templates: list) -> list[dict]:
     return items
 
 
+def _apply_billing_terms_to_settings(db: Session, tenant_id: str, billing_terms: dict) -> None:
+    """Auto-populate tenant settings from extracted billing terms.
+
+    Only fills in values that are currently null/unset — never overwrites
+    existing configuration.
+    """
+    try:
+        from app.models.company import Company
+
+        company = db.query(Company).filter(Company.id == tenant_id).first()
+        if not company:
+            return
+
+        settings_map = {
+            "early_payment_discount_percentage": billing_terms.get("early_payment_discount_percent"),
+            "early_payment_discount_cutoff_day": billing_terms.get("early_payment_discount_days"),
+            "finance_charge_rate_monthly": billing_terms.get("finance_charge_rate_monthly"),
+            "finance_charge_basis": billing_terms.get("finance_charge_basis"),
+        }
+
+        updated: list[str] = []
+        for key, value in settings_map.items():
+            if value is None:
+                continue
+            # Only set if not already configured
+            existing = company.settings.get(key) if company.settings else None
+            if existing is None:
+                company.set_setting(key, value)
+                updated.append(key)
+
+        if updated:
+            db.flush()
+            logger.info(
+                "Auto-populated billing settings for tenant %s: %s",
+                tenant_id,
+                ", ".join(updated),
+            )
+    except Exception as exc:
+        logger.warning("Could not apply billing terms to settings: %s", exc)
+
+
 def analyze_price_list(db: Session, import_id: str) -> None:
     """Run Claude analysis on an extracted price list."""
     imp = db.query(PriceListImport).filter(PriceListImport.id == import_id).first()
@@ -740,7 +781,27 @@ For each item in the price list, return:
 Confidence thresholds:
 - high_confidence (>= 0.85): clear match
 - low_confidence (0.60-0.84): likely match but needs confirmation
-- unmatched (< 0.60): no confident match"""
+- unmatched (< 0.60): no confident match
+
+Also look for and extract any billing or payment policy information present in the document.
+Return these in an additional top-level field alongside "items" and "summary":
+
+"billing_terms": {{
+  "payment_terms_days": <integer or null>,
+  "early_payment_discount_percent": <decimal or null>,
+  "early_payment_discount_days": <integer or null>,
+  "finance_charge_rate_monthly": <decimal or null>,
+  "finance_charge_basis": <"past_due_only" | "total_balance" | null>,
+  "holidays": <string[] or null>,
+  "raw_text": "<the exact text found in the document describing billing terms>"
+}} or null if no billing terms are found.
+
+Examples of billing term text to look for:
+- "Net 30", "Due on receipt", "Payment due within 30 days"
+- "5% discount if paid by the 15th", "2% 10 net 30"
+- "Finance charge of 2% per month on balances over 30 days"
+- "Observed holidays: New Year's Day, Memorial Day, July 4th, ..."
+- Any section titled "Terms", "Payment Terms", "Billing Policy" """
 
     try:
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -783,6 +844,13 @@ Confidence thresholds:
 
         # Store analysis
         imp.claude_analysis = json.dumps(parsed)
+
+        # Extract and store billing terms if found
+        billing_terms = parsed.get("billing_terms")
+        if billing_terms and isinstance(billing_terms, dict) and billing_terms.get("raw_text"):
+            imp.billing_terms_json = json.dumps(billing_terms)
+            _apply_billing_terms_to_settings(db, imp.tenant_id, billing_terms)
+
         imp.extraction_token_usage = json.dumps(
             {
                 "input_tokens": message.usage.input_tokens,

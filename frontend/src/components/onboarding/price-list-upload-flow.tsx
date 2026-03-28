@@ -32,6 +32,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import type {
+  BillingTerms,
   PriceListImport,
   PriceListImportItem,
   ReviewData,
@@ -1208,6 +1209,45 @@ export default function PriceListUploadFlow({ onBack }: Props) {
           )}
         </div>
       )}
+
+      {/* ── Billing Terms ─────────────────────────────────────────── */}
+      {(() => {
+        if (!importData?.billing_terms_json) return null;
+        let bt: BillingTerms | null = null;
+        try { bt = JSON.parse(importData.billing_terms_json); } catch { return null; }
+        if (!bt || !bt.raw_text) return null;
+        return (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
+            <div className="flex items-start gap-3">
+              <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+              <div className="flex-1 space-y-2">
+                <p className="font-semibold text-blue-900">Billing terms found in your price list</p>
+                <div className="space-y-1 text-sm text-blue-800">
+                  {bt.payment_terms_days != null && (
+                    <p>Payment terms: <span className="font-medium">Net {bt.payment_terms_days} days</span></p>
+                  )}
+                  {bt.early_payment_discount_percent != null && bt.early_payment_discount_days != null && (
+                    <p>Early payment discount: <span className="font-medium">{bt.early_payment_discount_percent}% if paid within {bt.early_payment_discount_days} days</span></p>
+                  )}
+                  {bt.finance_charge_rate_monthly != null && (
+                    <p>Finance charge: <span className="font-medium">{bt.finance_charge_rate_monthly}% per month</span>
+                      {bt.finance_charge_basis && (
+                        <span className="text-blue-600"> ({bt.finance_charge_basis === "past_due_only" ? "on past due balances" : "on total balance"})</span>
+                      )}
+                    </p>
+                  )}
+                  {bt.holidays && bt.holidays.length > 0 && (
+                    <p>Observed holidays: <span className="font-medium">{bt.holidays.join(", ")}</span></p>
+                  )}
+                </div>
+                <p className="text-xs text-blue-700">
+                  ✓ These will be applied to your account settings automatically.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Confirm progress (visible during confirm) ─────────────── */}
       {confirming && confirmProgress.length > 0 && (
