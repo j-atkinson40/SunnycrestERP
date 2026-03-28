@@ -16,6 +16,8 @@ from app.models.agent import AgentActivityLog, AgentAlert, AgentCollectionSequen
 from app.models.customer import Customer
 from app.models.invoice import Invoice
 from app.models.user import User
+from app.models.vendor import Vendor
+from app.models.vendor_bill import VendorBill
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -56,14 +58,13 @@ def get_board_summary(
 
     # AP due this week
     try:
-        from app.models.bill import Bill
-        ap_week = db.query(func.coalesce(func.sum(Bill.total_amount - Bill.amount_paid), 0)).filter(
-            Bill.tenant_id == tid, Bill.status.in_(["open", "partial", "overdue"]),
-            Bill.due_date <= week_end,
+        ap_week = db.query(func.coalesce(func.sum(VendorBill.total - VendorBill.amount_paid), 0)).filter(
+            VendorBill.company_id == tid, VendorBill.status.in_(["pending", "approved", "partial"]),
+            func.date(VendorBill.due_date) <= week_end,
         ).scalar() or 0
-        ap_due_today = db.query(func.coalesce(func.sum(Bill.total_amount - Bill.amount_paid), 0)).filter(
-            Bill.tenant_id == tid, Bill.status.in_(["open", "partial", "overdue"]),
-            Bill.due_date <= today,
+        ap_due_today = db.query(func.coalesce(func.sum(VendorBill.total - VendorBill.amount_paid), 0)).filter(
+            VendorBill.company_id == tid, VendorBill.status.in_(["pending", "approved", "partial"]),
+            func.date(VendorBill.due_date) <= today,
         ).scalar() or 0
     except Exception:
         ap_week = 0
@@ -232,7 +233,7 @@ def get_ar_overdue(
 
         results.append({
             "id": inv.id,
-            "invoice_number": inv.invoice_number,
+            "invoice_number": inv.number,
             "customer_id": inv.customer_id,
             "customer_name": customer.name if customer else "Unknown",
             "customer_type": getattr(customer, "customer_type", None),
@@ -359,26 +360,21 @@ def get_ap_due(
     db: Session = Depends(get_db),
 ):
     """Get all open bills grouped by urgency."""
-    try:
-        from app.models.bill import Bill
-        from app.models.vendor import Vendor
-    except ImportError:
-        return {"buckets": {}, "bills": []}
-
     tid = current_user.company_id
     today = date.today()
 
-    bills = db.query(Bill).filter(
-        Bill.tenant_id == tid, Bill.status.in_(["open", "partial", "overdue"]),
-    ).order_by(Bill.due_date.asc()).all()
+    bills = db.query(VendorBill).filter(
+        VendorBill.company_id == tid, VendorBill.status.in_(["pending", "approved", "partial"]),
+    ).order_by(VendorBill.due_date.asc()).all()
 
     results = []
     buckets = {"overdue": 0, "due_today": 0, "due_this_week": 0, "due_next_week": 0}
 
     for b in bills:
         vendor = db.query(Vendor).filter(Vendor.id == b.vendor_id).first() if b.vendor_id else None
-        balance = float(b.total_amount - (b.amount_paid or 0))
-        days_until = (b.due_date - today).days if b.due_date else 999
+        balance = float(b.total - (b.amount_paid or 0))
+        bill_due = b.due_date.date() if hasattr(b.due_date, "date") else b.due_date
+        days_until = (bill_due - today).days if bill_due else 999
 
         if days_until < 0:
             buckets["overdue"] += balance
@@ -391,11 +387,11 @@ def get_ap_due(
 
         results.append({
             "id": b.id,
-            "bill_number": b.bill_number,
-            "vendor_name": vendor.vendor_name if vendor else (b.vendor_name_raw or "Unknown"),
-            "amount": float(b.total_amount),
+            "bill_number": b.number,
+            "vendor_name": vendor.name if vendor else "Unknown",
+            "amount": float(b.total),
             "balance": balance,
-            "due_date": str(b.due_date) if b.due_date else None,
+            "due_date": str(bill_due) if bill_due else None,
             "days_until_due": days_until,
             "status": b.status,
         })
@@ -409,34 +405,29 @@ def get_suggested_payment_run(
     db: Session = Depends(get_db),
 ):
     """Get suggested bills for a payment run — all due within 10 days."""
-    try:
-        from app.models.bill import Bill
-        from app.models.vendor import Vendor
-    except ImportError:
-        return {"bills": [], "total": 0}
-
     tid = current_user.company_id
     today = date.today()
     cutoff = today + timedelta(days=10)
 
-    bills = db.query(Bill).filter(
-        Bill.tenant_id == tid, Bill.status.in_(["open", "partial", "overdue"]),
-        Bill.due_date <= cutoff,
-    ).order_by(Bill.due_date.asc()).all()
+    bills = db.query(VendorBill).filter(
+        VendorBill.company_id == tid, VendorBill.status.in_(["pending", "approved", "partial"]),
+        func.date(VendorBill.due_date) <= cutoff,
+    ).order_by(VendorBill.due_date.asc()).all()
 
     results = []
     total = 0
     for b in bills:
         vendor = db.query(Vendor).filter(Vendor.id == b.vendor_id).first() if b.vendor_id else None
-        balance = float(b.total_amount - (b.amount_paid or 0))
+        balance = float(b.total - (b.amount_paid or 0))
         total += balance
+        bill_due = b.due_date.date() if hasattr(b.due_date, "date") else b.due_date
         results.append({
             "id": b.id,
-            "bill_number": b.bill_number,
-            "vendor_name": vendor.vendor_name if vendor else "Unknown",
+            "bill_number": b.number,
+            "vendor_name": vendor.name if vendor else "Unknown",
             "amount": balance,
-            "due_date": str(b.due_date) if b.due_date else None,
-            "days_until_due": (b.due_date - today).days if b.due_date else 0,
+            "due_date": str(bill_due) if bill_due else None,
+            "days_until_due": (bill_due - today).days if bill_due else 0,
         })
 
     return {"bills": results, "total": total, "count": len(results)}
@@ -469,10 +460,10 @@ def get_cashflow_forecast(
 
         # Committed AP payments (bills due this week)
         try:
-            from app.models.bill import Bill
-            ap = db.query(func.coalesce(func.sum(Bill.total_amount - Bill.amount_paid), 0)).filter(
-                Bill.tenant_id == tid, Bill.status.in_(["open", "partial", "overdue"]),
-                Bill.due_date >= week_start, Bill.due_date <= week_end,
+            ap = db.query(func.coalesce(func.sum(VendorBill.total - VendorBill.amount_paid), 0)).filter(
+                VendorBill.company_id == tid, VendorBill.status.in_(["pending", "approved", "partial"]),
+                func.date(VendorBill.due_date) >= week_start,
+                func.date(VendorBill.due_date) <= week_end,
             ).scalar() or 0
         except Exception:
             ap = 0
