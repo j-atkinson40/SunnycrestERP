@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangleIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { AlertTriangleIcon, MapPin, PlusIcon, Trash2Icon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { customerService } from "@/services/customer-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -690,6 +690,27 @@ export default function CustomerDetailPage() {
           )}
         </div>
       </Card>
+
+      {/* Cemetery Delivery Settings link */}
+      {customerType === "cemetery" && (
+        <Card className="p-4">
+          <div className="flex items-start gap-3">
+            <MapPin className="size-5 text-muted-foreground mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-sm">Delivery Settings</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Configure which equipment this cemetery provides to ensure orders are pre-filled correctly.
+              </p>
+            </div>
+            <Link
+              to="/settings/cemeteries"
+              className="text-sm text-primary hover:underline shrink-0"
+            >
+              Open Cemetery Settings →
+            </Link>
+          </div>
+        </Card>
+      )}
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Customer Info */}

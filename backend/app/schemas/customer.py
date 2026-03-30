@@ -103,6 +103,8 @@ class CustomerCreate(BaseModel):
     tax_id: str | None = None
     notes: str | None = None
     sage_customer_id: str | None = None
+    # Classification
+    customer_type: str | None = None
 
 
 class CustomerUpdate(BaseModel):

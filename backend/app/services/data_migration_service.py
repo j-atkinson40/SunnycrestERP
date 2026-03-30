@@ -1641,7 +1641,10 @@ def detect_extension_content(
     Used by the parse endpoint so the frontend can show Step 2.5.
     """
     contractor_names = [
-        c["name"] for c in parsed_customers if c.get("customer_type") == "contractor"
+        c["name"]
+        for c in parsed_customers
+        # Use AI-predicted type if available, else raw parsed type
+        if (c.get("_predicted_customer_type") or c.get("customer_type")) == "contractor"
     ]
     wastewater_names = [
         p["name"] for p in parsed_products if _name_contains(p.get("name", ""), _WASTEWATER_TERMS)

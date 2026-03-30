@@ -294,7 +294,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
-        "action_target": "/onboarding/cemeteries",
+        "action_target": "/settings/cemeteries",
         "sort_order": 7,
     },
     # 8. Financial accounts — NEW

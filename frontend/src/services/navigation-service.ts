@@ -316,6 +316,11 @@ function getManufacturingNav(
           ...(hasSyncError ? { badge: "\u2022" } : {}),
         },
         {
+          label: "Cemeteries",
+          href: "/settings/cemeteries",
+          icon: "MapPin",
+        },
+        {
           label: "Charge Library",
           href: "/settings/charges",
           icon: "CircleDollarSign",

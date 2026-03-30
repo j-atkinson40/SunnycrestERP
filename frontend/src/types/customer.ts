@@ -186,6 +186,7 @@ export interface CustomerCreate {
   tax_exempt?: boolean;
   notes?: string;
   sage_customer_id?: string;
+  customer_type?: string;
 }
 
 export interface CustomerUpdate extends Partial<CustomerCreate> {
