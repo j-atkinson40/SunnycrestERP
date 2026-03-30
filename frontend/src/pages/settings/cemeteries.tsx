@@ -5,6 +5,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { cemeteryService } from "@/services/cemetery-service";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { Cemetery, CemeteryCreate } from "@/types/customer";
+import {
+  CemeteryNameAutocomplete,
+  type AutocompleteResult,
+} from "@/components/cemetery-name-autocomplete";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -200,11 +204,30 @@ function CemeteryDialog({ cemetery, open, onOpenChange, onSaved }: CemeteryDialo
           {/* Basic Info */}
           <div className="space-y-2">
             <Label>Cemetery Name *</Label>
-            <Input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. Oak Hill Cemetery"
-            />
+            {isEdit ? (
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Oak Hill Cemetery"
+              />
+            ) : (
+              <CemeteryNameAutocomplete
+                value={form.name}
+                onChange={(name) => setForm((f) => ({ ...f, name }))}
+                onSelect={(result: AutocompleteResult | null) => {
+                  if (!result) return;
+                  setForm((f) => ({
+                    ...f,
+                    name: result.name,
+                    city: result.city ?? f.city,
+                    state: result.state ?? f.state,
+                    county: result.county ?? f.county,
+                  }));
+                }}
+                placeholder="e.g. Oak Hill Cemetery"
+                showAlreadyAdded
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

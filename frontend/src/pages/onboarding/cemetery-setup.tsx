@@ -1,13 +1,12 @@
 /**
- * Cemetery Setup Wizard — 4-step onboarding flow for manufacturer cemeteries.
+ * Cemetery Setup Wizard — 3-step onboarding flow for manufacturer cemeteries.
  *
- * Step 0 — Platform:    Connect to cemetery tenants already on Bridgeable.
- * Step 1 — Discover:   Browse Google Places results, select cemeteries to add.
- * Step 2 — Add Missing: Manually enter cemeteries not found in the search.
- * Step 3 — Complete:   Configure equipment settings per cemetery, then submit.
+ * Step 0 — Platform:       Connect to cemetery tenants already on Bridgeable.
+ * Step 1 — Add Cemeteries: Search & add cemeteries with inline equipment config.
+ * Step 2 — Complete:       Review, amber county warnings, submit.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -18,21 +17,22 @@ import { Card } from "@/components/ui/card";
 import { ContextualExplanation } from "@/components/contextual-explanation";
 import { CemeteryInlineAddDemo } from "@/components/cemetery-inline-add-demo";
 import {
+  CemeteryNameAutocomplete,
+  type AutocompleteResult,
+} from "@/components/cemetery-name-autocomplete";
+import {
+  AlertTriangle,
+  ArrowRight,
   Check,
   ChevronDown,
   ChevronUp,
   Link2,
   Loader2,
-  MapPin,
   Plus,
-  RefreshCw,
-  Star,
   Trash2,
-  ArrowRight,
   X,
 } from "lucide-react";
 import type {
-  CemeteryDirectoryEntry,
   CemeteryEquipmentSettings,
   CemeteryManualEntry,
   CemeteryPlatformMatch,
@@ -44,9 +44,7 @@ import apiClient from "@/lib/api-client";
 // ── LocalStorage keys ────────────────────────────────────────────────────────
 
 const LS_STEP = "cem-onboard-step";
-const LS_RADIUS = "cem-onboard-radius";
-const LS_SELECTED = "cem-onboard-selected";
-const LS_MANUAL = "cem-onboard-manual";
+const LS_ENTRIES = "cem-onboard-entries";
 
 function safeParse<T>(key: string, fallback: T): T {
   try {
@@ -58,44 +56,52 @@ function safeParse<T>(key: string, fallback: T): T {
   }
 }
 
-const DEFAULT_EQUIPMENT: CemeteryEquipmentSettings = {
-  provides_lowering_device: false,
-  provides_grass: false,
-  provides_tent: false,
-  provides_chairs: false,
-};
+// ── Entry type (Step 1) ──────────────────────────────────────────────────────
 
-// ── Manual entry row (includes internal _id for React keys) ──────────────────
-
-interface ManualRow extends CemeteryManualEntry {
+interface CemeteryEntry {
+  /** React key */
   _id: string;
+  name: string;
+  city: string;
+  state: string;
+  county: string;
+  /** OSM place_id — null for manually typed entries */
+  place_id: string | null;
+  /** ID of an existing operational Cemetery record */
+  cemetery_id: string | null;
+  lat: number | null;
+  lng: number | null;
+  /** True if this cemetery is already in the operational cemeteries table */
+  already_added: boolean;
+  /** Whether the equipment/details section is expanded */
+  expanded: boolean;
+  /** Equipment flags */
+  provides_lowering_device: boolean;
+  provides_grass: boolean;
+  provides_tent: boolean;
+  provides_chairs: boolean;
+  equipment_note: string;
 }
 
-function emptyManualRow(defaultState: string): ManualRow {
+function emptyEntry(defaultState: string): CemeteryEntry {
   return {
     _id: Math.random().toString(36).slice(2),
     name: "",
-    city: null,
-    state: defaultState || null,
-    county: null,
-    equipment: { ...DEFAULT_EQUIPMENT },
-    equipment_note: null,
+    city: "",
+    state: defaultState,
+    county: "",
+    place_id: null,
+    cemetery_id: null,
+    lat: null,
+    lng: null,
+    already_added: false,
+    expanded: false,
+    provides_lowering_device: false,
+    provides_grass: false,
+    provides_tent: false,
+    provides_chairs: false,
+    equipment_note: "",
   };
-}
-
-// ── Cemetery config used in Step 3 ───────────────────────────────────────────
-
-interface CemeteryConfig {
-  /** Unique key within this wizard session — place_id or "m-{_id}" */
-  _key: string;
-  /** null for manual entries */
-  place_id: string | null;
-  name: string;
-  locationLabel: string;
-  equipment: CemeteryEquipmentSettings;
-  county: string;
-  equipment_note: string;
-  expanded: boolean;
 }
 
 // ── Equipment checkbox group ──────────────────────────────────────────────────
@@ -130,74 +136,10 @@ function EquipmentCheckboxes({
   );
 }
 
-// ── Cemetery card (Step 1) ────────────────────────────────────────────────────
-
-function CemeteryCard({
-  entry,
-  selected,
-  onToggle,
-}: {
-  entry: CemeteryDirectoryEntry;
-  selected: boolean;
-  onToggle: () => void;
-}) {
-  if (entry.already_added) {
-    return (
-      <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 opacity-80">
-        <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-green-800 truncate">{entry.name}</p>
-          <p className="text-xs text-green-600">Already in your list</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      onClick={onToggle}
-      className={cn(
-        "w-full text-left flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
-        selected
-          ? "border-blue-400 bg-blue-50"
-          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50",
-      )}
-    >
-      <div
-        className={cn(
-          "mt-0.5 h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center",
-          selected ? "border-blue-500 bg-blue-500" : "border-gray-300",
-        )}
-      >
-        {selected && <Check className="h-3 w-3 text-white" />}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium truncate">{entry.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {[entry.city, entry.state_code].filter(Boolean).join(", ")}
-          {entry.county ? ` · ${entry.county} County` : ""}
-        </p>
-        {entry.distance_miles !== null && entry.distance_miles !== undefined && (
-          <p className="text-xs text-muted-foreground">{entry.distance_miles.toFixed(1)} mi away</p>
-        )}
-        {entry.google_rating != null && (
-          <p className="text-xs text-muted-foreground flex items-center gap-0.5 mt-0.5">
-            <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-            {entry.google_rating.toFixed(1)}
-            {entry.google_review_count != null && (
-              <span className="ml-0.5">({entry.google_review_count})</span>
-            )}
-          </p>
-        )}
-      </div>
-    </button>
-  );
-}
-
 // ── Step indicator ────────────────────────────────────────────────────────────
 
 function StepDots({ current }: { current: number }) {
-  const STEPS = ["Platform", "Discover", "Add missing", "Equipment"];
+  const STEPS = ["Platform", "Add Cemeteries", "Complete"];
   return (
     <div className="flex items-center gap-2 mb-8 flex-wrap">
       {STEPS.map((label, i) => (
@@ -375,356 +317,217 @@ function PlatformStep({
   );
 }
 
+// ── STEP 1 — Add Cemeteries ───────────────────────────────────────────────────
 
-// ── STEP 1 — Discover ─────────────────────────────────────────────────────────
-
-function DiscoverStep({
-  entries,
-  loading,
-  radius,
-  selected,
-  toggleSelect,
-  onChangeRadius,
-  onRefresh,
-  onNext,
+function EntryCard({
+  entry,
+  onUpdate,
+  onRemove,
 }: {
-  entries: CemeteryDirectoryEntry[];
-  loading: boolean;
-  radius: number;
-  selected: Set<string>;
-  toggleSelect: (placeId: string) => void;
-  onChangeRadius: (r: number) => void;
-  onRefresh: (r: number) => void;
-  onNext: () => void;
+  entry: CemeteryEntry;
+  onUpdate: (id: string, patch: Partial<CemeteryEntry>) => void;
+  onRemove: (id: string) => void;
 }) {
-  const RADIUS_OPTIONS = [25, 50, 100];
-  const [nameFilter, setNameFilter] = useState("");
-  const [displayCount, setDisplayCount] = useState(30);
-  const [sortMode, setSortMode] = useState<"distance" | "alpha">("distance");
+  const equipment: CemeteryEquipmentSettings = {
+    provides_lowering_device: entry.provides_lowering_device,
+    provides_grass: entry.provides_grass,
+    provides_tent: entry.provides_tent,
+    provides_chairs: entry.provides_chairs,
+  };
 
-  // Reset displayCount when filter or radius changes
-  useEffect(() => {
-    setDisplayCount(30);
-  }, [nameFilter, radius]);
-
-  // Filter and sort entries
-  const filteredEntries = entries.filter((e) => {
-    if (!nameFilter.trim()) return true;
-    return e.name.toLowerCase().includes(nameFilter.toLowerCase().trim());
-  });
-
-  const sortedEntries = [...filteredEntries].sort((a, b) => {
-    if (sortMode === "distance") {
-      const da = a.distance_miles ?? 9999;
-      const db2 = b.distance_miles ?? 9999;
-      return da - db2;
-    }
-    return a.name.localeCompare(b.name);
-  });
-
-  const visibleEntries = sortedEntries.slice(0, displayCount);
-  const hasMore = sortedEntries.length > displayCount;
-
-  const selectable = filteredEntries.filter((e) => !e.already_added);
-
-  function selectAll() {
-    selectable.forEach((e) => {
-      if (!selected.has(e.place_id)) toggleSelect(e.place_id);
-    });
-  }
-  function deselectAll() {
-    selectable.forEach((e) => {
-      if (selected.has(e.place_id)) toggleSelect(e.place_id);
+  function handleAutocompleteSelect(result: AutocompleteResult | null) {
+    if (!result) return;
+    onUpdate(entry._id, {
+      name: result.name,
+      city: result.city ?? entry.city,
+      state: result.state ?? entry.state,
+      county: result.county ?? entry.county,
+      lat: result.latitude,
+      lng: result.longitude,
+      place_id: result.place_id,
+      cemetery_id: result.cemetery_id,
+      already_added: result.already_added,
     });
   }
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold">Find cemeteries in your area</h1>
-        <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-          We searched OpenStreetMap for cemeteries within {radius} miles of your facility.
-          Check the ones you deliver to.
-        </p>
-      </div>
-
-      {/* Radius selector */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm text-muted-foreground">Radius:</span>
-        {RADIUS_OPTIONS.map((r) => (
-          <button
-            key={r}
-            onClick={() => {
-              onChangeRadius(r);
-              onRefresh(r);
-            }}
-            className={cn(
-              "px-3 py-1 text-sm rounded-full border transition-colors",
-              radius === r
-                ? "border-blue-500 bg-blue-50 text-blue-700 font-medium"
-                : "border-gray-200 hover:border-gray-300 text-muted-foreground",
-            )}
-          >
-            {r} mi
-          </button>
-        ))}
-        <button
-          onClick={() => onRefresh(radius)}
-          disabled={loading}
-          className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
-          )}
-          Refresh
-        </button>
-      </div>
-
-      {/* Name filter */}
-      {entries.length > 0 && (
+    <Card className="overflow-hidden">
+      <div className="px-4 pt-3 pb-2 space-y-2">
+        {/* Name autocomplete */}
         <div>
-          <input
-            type="text"
-            placeholder="Filter by name..."
-            value={nameFilter}
-            onChange={(e) => setNameFilter(e.target.value)}
-            className="w-full max-w-sm rounded-md border border-gray-200 px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+          <Label className="text-xs">Cemetery name *</Label>
+          <CemeteryNameAutocomplete
+            value={entry.name}
+            onChange={(name) => onUpdate(entry._id, { name, already_added: false, place_id: null, cemetery_id: null })}
+            onSelect={handleAutocompleteSelect}
+            placeholder="Search or type cemetery name..."
+            className="mt-1"
           />
         </div>
-      )}
 
-      {/* Sort options */}
-      {entries.length > 0 && (
-        <div className="flex items-center gap-3 text-xs">
-          <span className="text-muted-foreground">Sort:</span>
-          <button
-            onClick={() => setSortMode("distance")}
-            className={cn("font-medium", sortMode === "distance" ? "text-blue-600" : "text-muted-foreground hover:text-foreground")}
-          >
-            Nearest first
-          </button>
-          <span className="text-muted-foreground">·</span>
-          <button
-            onClick={() => setSortMode("alpha")}
-            className={cn("font-medium", sortMode === "alpha" ? "text-blue-600" : "text-muted-foreground hover:text-foreground")}
-          >
-            A–Z
-          </button>
-        </div>
-      )}
-
-      {/* Batch controls */}
-      {selectable.length > 0 && (
-        <div className="flex items-center gap-3 text-sm">
-          <button onClick={selectAll} className="text-blue-600 hover:text-blue-700 font-medium">
-            Select all ({selectable.length})
-          </button>
-          <span className="text-muted-foreground">·</span>
-          <button onClick={deselectAll} className="text-muted-foreground hover:text-foreground">
-            Deselect all
-          </button>
-          {selected.size > 0 && (
-            <>
-              <span className="text-muted-foreground">·</span>
-              <span className="text-muted-foreground">{selected.size} selected</span>
-            </>
-          )}
-          {selectable.some((e) => (e.distance_miles ?? 9999) <= 25) && (
-            <>
-              <span className="text-muted-foreground">·</span>
-              <button
-                onClick={() => {
-                  selectable.filter((e) => (e.distance_miles ?? 9999) <= 25).forEach((e) => {
-                    if (!selected.has(e.place_id)) toggleSelect(e.place_id);
-                  });
-                }}
-                className="text-blue-600 hover:text-blue-700 font-medium"
-              >
-                Select within 25 mi
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Result count */}
-      {!loading && filteredEntries.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Showing {Math.min(displayCount, filteredEntries.length)} of {filteredEntries.length} cemeteries
-          {nameFilter ? ` matching "${nameFilter}"` : ` within ${radius} miles`}
-        </p>
-      )}
-
-      {/* Cemetery grid */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : filteredEntries.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <MapPin className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p className="text-sm">
-            {nameFilter ? `No cemeteries match "${nameFilter}".` : `No cemeteries found within ${radius} miles.`}
+        {/* Already-added notice */}
+        {entry.already_added && (
+          <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 flex items-center gap-1.5">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            Already in your cemetery list — equipment can be updated in Settings.
           </p>
-          {!nameFilter && (
-            <p className="text-xs mt-1">
-              Make sure your facility address is set in company settings, or try a larger radius.
-            </p>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {visibleEntries.map((entry) => (
-              <CemeteryCard
-                key={entry.place_id}
-                entry={entry}
-                selected={selected.has(entry.place_id)}
-                onToggle={() => toggleSelect(entry.place_id)}
-              />
-            ))}
-          </div>
-          {hasMore && (
-            <div className="text-center">
-              <button
-                onClick={() => setDisplayCount((n) => n + 30)}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium px-4 py-2 rounded-md border border-blue-200 hover:border-blue-300 transition-colors"
-              >
-                Show {Math.min(30, sortedEntries.length - displayCount)} more
-              </button>
+        )}
+
+        {/* Expand toggle */}
+        {!entry.already_added && entry.name.trim() && (
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => onUpdate(entry._id, { expanded: !entry.expanded })}
+          >
+            {entry.expanded ? (
+              <>
+                <ChevronUp className="h-3.5 w-3.5" /> Hide details
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3.5 w-3.5" /> Add details &amp; equipment
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Expanded section */}
+        {entry.expanded && !entry.already_added && (
+          <div className="space-y-3 pt-3 border-t">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <Label className="text-xs">City</Label>
+                <Input
+                  value={entry.city}
+                  onChange={(e) => onUpdate(entry._id, { city: e.target.value })}
+                  placeholder="Auburn"
+                  className="mt-1 h-8 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">State</Label>
+                <Input
+                  value={entry.state}
+                  onChange={(e) => onUpdate(entry._id, { state: e.target.value })}
+                  placeholder="NY"
+                  maxLength={2}
+                  className="mt-1 h-8 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">
+                  County{" "}
+                  <span className="font-normal text-muted-foreground">(tax)</span>
+                </Label>
+                <Input
+                  value={entry.county}
+                  onChange={(e) => onUpdate(entry._id, { county: e.target.value })}
+                  placeholder="Cayuga"
+                  className="mt-1 h-8 text-sm"
+                />
+              </div>
             </div>
-          )}
-        </>
-      )}
 
-      {/* Inline-add demo callout */}
-      <CemeteryInlineAddDemo />
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                This cemetery provides:
+              </p>
+              <EquipmentCheckboxes
+                value={equipment}
+                onChange={(v) =>
+                  onUpdate(entry._id, {
+                    provides_lowering_device: v.provides_lowering_device,
+                    provides_grass: v.provides_grass,
+                    provides_tent: v.provides_tent,
+                    provides_chairs: v.provides_chairs,
+                  })
+                }
+              />
+            </div>
 
-      <div className="flex items-center justify-between pt-2 border-t">
-        <button
-          onClick={onNext}
-          className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-        >
-          Skip this step
-        </button>
-        <Button onClick={onNext} disabled={loading}>
-          Next <ArrowRight className="ml-1.5 h-4 w-4" />
-        </Button>
+            <div>
+              <Label className="text-xs">
+                Equipment note{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                value={entry.equipment_note}
+                onChange={(e) => onUpdate(entry._id, { equipment_note: e.target.value })}
+                placeholder="e.g. Call ahead for gate code"
+                className="mt-1 h-8 text-sm"
+              />
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Remove button */}
+      <div className="px-4 pb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => onRemove(entry._id)}
+          className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Remove
+        </button>
+      </div>
+    </Card>
   );
 }
 
-// ── STEP 2 — Add Missing ──────────────────────────────────────────────────────
-
-function AddMissingStep({
-  rows,
-  setRows,
-  tenantState,
-  onBack,
+function AddCemeteriesStep({
+  entries,
+  onUpdate,
+  onAdd,
+  onRemove,
   onNext,
 }: {
-  rows: ManualRow[];
-  setRows: (r: ManualRow[]) => void;
-  tenantState: string;
-  onBack: () => void;
+  entries: CemeteryEntry[];
+  onUpdate: (id: string, patch: Partial<CemeteryEntry>) => void;
+  onAdd: () => void;
+  onRemove: (id: string) => void;
   onNext: () => void;
 }) {
-  function addRow() {
-    setRows([...rows, emptyManualRow(tenantState)]);
-  }
-
-  function update(id: string, patch: Partial<ManualRow>) {
-    setRows(rows.map((r) => (r._id === id ? { ...r, ...patch } : r)));
-  }
-
-  function remove(id: string) {
-    setRows(rows.filter((r) => r._id !== id));
-  }
-
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold">Any cemeteries we missed?</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Add cemeteries not found in our search. You can also add these anytime from{" "}
-          <strong>Customers → Cemeteries</strong>.
+        <h1 className="text-2xl font-bold">Add cemeteries you deliver to</h1>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+          Search by name — details like county and city auto-fill from OpenStreetMap. You can
+          always add more cemeteries later from the order form or Settings.
         </p>
       </div>
 
-      {rows.length > 0 && (
+      <ContextualExplanation explanationKey="cemetery_equipment_settings" />
+
+      {entries.length > 0 && (
         <div className="space-y-3">
-          {rows.map((row) => (
-            <Card key={row._id} className="p-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <Label className="text-xs">Cemetery name *</Label>
-                  <Input
-                    value={row.name}
-                    onChange={(e) => update(row._id, { name: e.target.value })}
-                    placeholder="Oak Hill Cemetery"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">City *</Label>
-                  <Input
-                    value={row.city ?? ""}
-                    onChange={(e) => update(row._id, { city: e.target.value || null })}
-                    placeholder="Auburn"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">State</Label>
-                  <Input
-                    value={row.state ?? ""}
-                    onChange={(e) => update(row._id, { state: e.target.value || null })}
-                    placeholder="NY"
-                    maxLength={2}
-                    className="mt-1"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">
-                    County{" "}
-                    <span className="text-muted-foreground font-normal">
-                      (optional — affects tax rate on orders)
-                    </span>
-                  </Label>
-                  <Input
-                    value={row.county ?? ""}
-                    onChange={(e) => update(row._id, { county: e.target.value || null })}
-                    placeholder="Cayuga"
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-              <div className="mt-3 flex justify-end">
-                <button
-                  onClick={() => remove(row._id)}
-                  className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Remove
-                </button>
-              </div>
-            </Card>
+          {entries.map((entry) => (
+            <EntryCard
+              key={entry._id}
+              entry={entry}
+              onUpdate={onUpdate}
+              onRemove={onRemove}
+            />
           ))}
         </div>
       )}
 
-      <Button variant="outline" size="sm" onClick={addRow}>
+      <Button variant="outline" size="sm" onClick={onAdd}>
         <Plus className="mr-1.5 h-4 w-4" />
         Add a cemetery
       </Button>
 
       <div className="flex items-center justify-between pt-2 border-t">
-        <Button variant="outline" onClick={onBack}>
-          ← Back
-        </Button>
+        <button
+          type="button"
+          onClick={onNext}
+          className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+        >
+          Skip this step
+        </button>
         <Button onClick={onNext}>
           Next <ArrowRight className="ml-1.5 h-4 w-4" />
         </Button>
@@ -733,110 +536,70 @@ function AddMissingStep({
   );
 }
 
-// ── STEP 3 — Equipment Settings ───────────────────────────────────────────────
+// ── STEP 2 — Complete ─────────────────────────────────────────────────────────
 
-function EquipmentStep({
-  configs,
-  onUpdate,
+function CompleteStep({
+  entries,
   submitting,
   onBack,
   onComplete,
 }: {
-  configs: CemeteryConfig[];
-  onUpdate: (key: string, patch: Partial<CemeteryConfig>) => void;
+  entries: CemeteryEntry[];
   submitting: boolean;
   onBack: () => void;
   onComplete: () => void;
 }) {
+  const newEntries = entries.filter((e) => e.name.trim() && !e.already_added);
+  const missingCounty = newEntries.filter((e) => !e.county.trim());
+
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold">Configure equipment settings</h1>
+        <h1 className="text-2xl font-bold">Ready to save</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-          Some cemeteries provide their own lowering devices or tents. Set that up now so orders
-          auto-fill correctly.
+          Review the cemeteries below, then click Complete Setup to add them to your list.
         </p>
       </div>
 
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        <strong>Most cemeteries provide nothing</strong> — leave all boxes unchecked for those.
-        Only check what the cemetery actually handles themselves.
-      </div>
-
-      <ContextualExplanation explanationKey="cemetery_equipment_settings" />
-
-      {configs.length === 0 ? (
+      {/* Summary list */}
+      {newEntries.length === 0 ? (
         <p className="text-sm text-muted-foreground italic py-4">
-          No cemeteries selected. Click Complete Setup to finish, or go back to select some.
+          No new cemeteries added. You can add them anytime from the order form or{" "}
+          <strong>Settings → Cemeteries</strong>.
         </p>
       ) : (
-        <div className="space-y-2">
-          {configs.map((cfg) => (
-            <Card key={cfg._key} className="overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
-                onClick={() => onUpdate(cfg._key, { expanded: !cfg.expanded })}
-              >
-                <div>
-                  <p className="font-medium text-sm">{cfg.name}</p>
-                  {cfg.locationLabel && (
-                    <p className="text-xs text-muted-foreground">{cfg.locationLabel}</p>
-                  )}
-                </div>
-                {cfg.expanded ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                )}
-              </button>
-
-              {cfg.expanded && (
-                <div className="px-4 pb-4 space-y-4 border-t">
-                  <div className="pt-3">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                      This cemetery provides:
-                    </p>
-                    <EquipmentCheckboxes
-                      value={cfg.equipment}
-                      onChange={(v) => onUpdate(cfg._key, { equipment: v })}
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs">
-                      County{" "}
-                      <span className="text-muted-foreground font-normal">
-                        (important for tax calculation)
-                      </span>
-                    </Label>
-                    <Input
-                      value={cfg.county}
-                      onChange={(e) => onUpdate(cfg._key, { county: e.target.value })}
-                      placeholder="e.g. Cayuga"
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs">
-                      Equipment note{" "}
-                      <span className="text-muted-foreground font-normal">
-                        (optional, e.g. "Call ahead")
-                      </span>
-                    </Label>
-                    <Input
-                      value={cfg.equipment_note}
-                      onChange={(e) => onUpdate(cfg._key, { equipment_note: e.target.value })}
-                      placeholder="Optional note for your team"
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-              )}
-            </Card>
+        <div className="rounded-md border divide-y">
+          {newEntries.map((e) => (
+            <div key={e._id} className="flex items-center justify-between px-3 py-2 text-sm">
+              <span className="font-medium">{e.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {[e.city, e.state].filter(Boolean).join(", ")}
+                {e.county ? ` · ${e.county} County` : ""}
+              </span>
+            </div>
           ))}
         </div>
       )}
+
+      {/* Missing county warning */}
+      {missingCounty.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 flex gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800">
+            <p className="font-medium">County not set for {missingCounty.length === 1 ? "1 cemetery" : `${missingCounty.length} cemeteries`}:</p>
+            <p className="mt-0.5 text-xs">
+              {missingCounty.map((e) => e.name).join(", ")}
+            </p>
+            <p className="mt-1 text-xs">
+              County determines the tax rate on orders. Go back to add counties, or update them
+              later in <strong>Settings → Cemeteries</strong>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Inline-add demo */}
+      <CemeteryInlineAddDemo />
 
       <div className="flex items-center justify-between pt-2 border-t">
         <Button variant="outline" onClick={onBack}>
@@ -873,7 +636,7 @@ function SuccessScreen({ created, onContinue }: { created: number; onContinue: (
         </h2>
         <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
           Equipment settings saved. You can update these anytime from{" "}
-          <strong>Customers → Cemeteries</strong>.
+          <strong>Settings → Cemeteries</strong>.
         </p>
       </div>
       <Button onClick={onContinue}>
@@ -897,22 +660,15 @@ export default function CemeterySetupWizard() {
   // Step 0 — Platform connections
   const [platformMatches, setPlatformMatches] = useState<CemeteryPlatformMatch[]>([]);
   const [platformLoading, setPlatformLoading] = useState(true);
-  const [platformDecisions, setPlatformDecisions] = useState<Record<string, "connected" | "skipped">>({});
+  const [platformDecisions, setPlatformDecisions] = useState<
+    Record<string, "connected" | "skipped">
+  >({});
   const [connecting, setConnecting] = useState<Set<string>>(new Set());
 
-  // Step 1
-  const [entries, setEntries] = useState<CemeteryDirectoryEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [radius, setRadius] = useState<number>(() => safeParse(LS_RADIUS, 50));
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set<string>(safeParse<string[]>(LS_SELECTED, [])),
+  // Step 1 — Cemetery entries
+  const [entries, setEntries] = useState<CemeteryEntry[]>(() =>
+    safeParse<CemeteryEntry[]>(LS_ENTRIES, []),
   );
-
-  // Step 2
-  const [manualRows, setManualRows] = useState<ManualRow[]>(() => safeParse(LS_MANUAL, []));
-
-  // Step 3 — equipment/county/note state keyed by _key (place_id or "m-{_id}")
-  const [configs, setConfigs] = useState<CemeteryConfig[]>([]);
 
   // ── Load tenant info ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -934,7 +690,7 @@ export default function CemeterySetupWizard() {
       .finally(() => setPlatformLoading(false));
   }, []);
 
-  // ── Connect a platform cemetery ───────────────────────────────────────────
+  // ── Platform step handlers ────────────────────────────────────────────────
   async function handlePlatformConnect(id: string) {
     setConnecting((prev) => new Set(prev).add(id));
     try {
@@ -963,146 +719,72 @@ export default function CemeterySetupWizard() {
     });
   }
 
-  // ── Load directory on Step 1 ───────────────────────────────────────────────
-  const loadDirectory = useCallback(async (r: number, forceRefresh = false) => {
-    setLoading(true);
-    try {
-      const data = forceRefresh
-        ? await cemeteryService.refreshCemeteryDirectory(r)
-        : await cemeteryService.getCemeteryDirectory(r);
-      setEntries(data);
-    } catch {
-      toast.error("Failed to load cemetery directory");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // ── Entry management ───────────────────────────────────────────────────────
+  function updateEntry(id: string, patch: Partial<CemeteryEntry>) {
+    setEntries((prev) => prev.map((e) => (e._id === id ? { ...e, ...patch } : e)));
+  }
 
+  function addEntry() {
+    setEntries((prev) => [...prev, emptyEntry(tenantState)]);
+  }
+
+  function removeEntry(id: string) {
+    setEntries((prev) => prev.filter((e) => e._id !== id));
+  }
+
+  // ── Persist step / entries ────────────────────────────────────────────────
   useEffect(() => {
-    if (step === 1) loadDirectory(radius);
-  }, [step, radius, loadDirectory]);
-
-  // ── Build step 3 configs when transitioning from step 2 ───────────────────
-  useEffect(() => {
-    if (step !== 3) return;
-
-    const entryMap = new Map(entries.map((e) => [e.place_id, e]));
-    const configMap = new Map(configs.map((c) => [c._key, c]));
-    const next: CemeteryConfig[] = [];
-
-    // Directory selections
-    for (const placeId of selected) {
-      const entry = entryMap.get(placeId);
-      if (!entry || entry.already_added) continue;
-      const key = placeId;
-      const existing = configMap.get(key);
-      next.push({
-        _key: key,
-        place_id: placeId,
-        name: entry.name,
-        locationLabel: [entry.city, entry.state_code].filter(Boolean).join(", "),
-        equipment: existing?.equipment ?? { ...DEFAULT_EQUIPMENT },
-        county: existing?.county ?? entry.county ?? "",
-        equipment_note: existing?.equipment_note ?? "",
-        expanded: existing?.expanded ?? false,
-      });
-    }
-
-    // Manual entries
-    for (const row of manualRows) {
-      if (!row.name.trim()) continue;
-      const key = `m-${row._id}`;
-      const existing = configMap.get(key);
-      next.push({
-        _key: key,
-        place_id: null,
-        name: row.name.trim(),
-        locationLabel: [row.city, row.state].filter(Boolean).join(", "),
-        equipment: existing?.equipment ?? { ...DEFAULT_EQUIPMENT },
-        county: existing?.county ?? row.county ?? "",
-        equipment_note: existing?.equipment_note ?? "",
-        expanded: existing?.expanded ?? false,
-      });
-    }
-
-    setConfigs(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    localStorage.setItem(LS_STEP, JSON.stringify(step));
   }, [step]);
 
-  // ── Persist step / radius / selected / manual ──────────────────────────────
-  useEffect(() => { localStorage.setItem(LS_STEP, JSON.stringify(step)); }, [step]);
-  useEffect(() => { localStorage.setItem(LS_RADIUS, JSON.stringify(radius)); }, [radius]);
-  useEffect(() => { localStorage.setItem(LS_SELECTED, JSON.stringify([...selected])); }, [selected]);
-  useEffect(() => { localStorage.setItem(LS_MANUAL, JSON.stringify(manualRows)); }, [manualRows]);
-
-  // ── Toggle selection ───────────────────────────────────────────────────────
-  function toggleSelect(placeId: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(placeId)) next.delete(placeId);
-      else next.add(placeId);
-      return next;
-    });
-  }
-
-  // ── Update a single config in step 3 ──────────────────────────────────────
-  function updateConfig(key: string, patch: Partial<CemeteryConfig>) {
-    setConfigs((prev) => prev.map((c) => (c._key === key ? { ...c, ...patch } : c)));
-  }
+  useEffect(() => {
+    localStorage.setItem(LS_ENTRIES, JSON.stringify(entries));
+  }, [entries]);
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   async function handleComplete() {
     setSubmitting(true);
     try {
-      const entryMap = new Map(entries.map((e) => [e.place_id, e]));
+      const newEntries = entries.filter((e) => e.name.trim() && !e.already_added);
 
-      const selections: CemeterySelectionItem[] = [];
+      // Directory entries with an OSM place_id → selections[]
+      const selections: CemeterySelectionItem[] = newEntries
+        .filter((e) => e.place_id !== null)
+        .map((e) => ({
+          place_id: e.place_id!,
+          name: e.name,
+          action: "add" as const,
+          equipment: {
+            provides_lowering_device: e.provides_lowering_device,
+            provides_grass: e.provides_grass,
+            provides_tent: e.provides_tent,
+            provides_chairs: e.provides_chairs,
+          },
+          county: e.county || null,
+          equipment_note: e.equipment_note || null,
+        }));
 
-      // "add" selections from step 3 configs (directory entries)
-      for (const cfg of configs) {
-        if (cfg.place_id === null) continue;
-        selections.push({
-          place_id: cfg.place_id,
-          name: cfg.name,
-          action: "add",
-          equipment: cfg.equipment,
-          county: cfg.county || entryMap.get(cfg.place_id)?.county || null,
-          equipment_note: cfg.equipment_note || null,
-        });
-      }
-
-      // "skip" selections for entries that were shown but not selected
-      for (const entry of entries) {
-        if (!selected.has(entry.place_id) && !entry.already_added) {
-          selections.push({
-            place_id: entry.place_id,
-            name: entry.name,
-            action: "skip",
-            equipment: { ...DEFAULT_EQUIPMENT },
-            county: null,
-            equipment_note: null,
-          });
-        }
-      }
-
-      // Manual entries from step 3 configs
-      const manual: CemeteryManualEntry[] = configs
-        .filter((c) => c.place_id === null)
-        .map((c) => ({
-          name: c.name,
-          city: null,
-          state: null,
-          county: c.county || null,
-          equipment: c.equipment,
-          equipment_note: c.equipment_note || null,
+      // Manually typed entries without a place_id → manual_entries[]
+      const manual: CemeteryManualEntry[] = newEntries
+        .filter((e) => e.place_id === null)
+        .map((e) => ({
+          name: e.name,
+          city: e.city || null,
+          state: e.state || null,
+          county: e.county || null,
+          equipment: {
+            provides_lowering_device: e.provides_lowering_device,
+            provides_grass: e.provides_grass,
+            provides_tent: e.provides_tent,
+            provides_chairs: e.provides_chairs,
+          },
+          equipment_note: e.equipment_note || null,
         }));
 
       const result = await cemeteryService.recordSelections(selections, manual);
 
       // Clear localStorage
-      [LS_STEP, LS_RADIUS, LS_SELECTED, LS_MANUAL].forEach((k) =>
-        localStorage.removeItem(k),
-      );
+      [LS_STEP, LS_ENTRIES].forEach((k) => localStorage.removeItem(k));
 
       setCreatedCount(result.created);
       setDone(true);
@@ -1143,34 +825,20 @@ export default function CemeterySetupWizard() {
       )}
 
       {step === 1 && (
-        <DiscoverStep
+        <AddCemeteriesStep
           entries={entries}
-          loading={loading}
-          radius={radius}
-          selected={selected}
-          toggleSelect={toggleSelect}
-          onChangeRadius={setRadius}
-          onRefresh={(r) => loadDirectory(r, true)}
+          onUpdate={updateEntry}
+          onAdd={addEntry}
+          onRemove={removeEntry}
           onNext={() => setStep(2)}
         />
       )}
 
       {step === 2 && (
-        <AddMissingStep
-          rows={manualRows}
-          setRows={setManualRows}
-          tenantState={tenantState}
-          onBack={() => setStep(1)}
-          onNext={() => setStep(3)}
-        />
-      )}
-
-      {step === 3 && (
-        <EquipmentStep
-          configs={configs}
-          onUpdate={updateConfig}
+        <CompleteStep
+          entries={entries}
           submitting={submitting}
-          onBack={() => setStep(2)}
+          onBack={() => setStep(1)}
           onComplete={handleComplete}
         />
       )}

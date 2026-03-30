@@ -115,6 +115,24 @@ def list_cemeteries(
     }
 
 
+@router.get("/autocomplete")
+def autocomplete_cemetery_names(
+    q: str = Query("", min_length=0),
+    limit: int = Query(8, ge=1, le=20),
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.view")),
+):
+    """Name autocomplete for cemetery pickers.
+
+    Returns existing operational cemeteries first, then OSM directory cache.
+    Suitable for search-as-you-type dropdowns in onboarding wizards and forms.
+    """
+    return cemetery_service.autocomplete_cemeteries(
+        db, current_user.company_id, q, limit
+    )
+
+
 @router.get("/geographic-shortlist")
 def geographic_shortlist(
     funeral_home_customer_id: str = Query(...),

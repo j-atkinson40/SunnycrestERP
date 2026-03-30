@@ -178,6 +178,96 @@ def delete_cemetery(db: Session, cemetery_id: str, company_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Autocomplete search (name picker — existing cemeteries + OSM directory)
+# ---------------------------------------------------------------------------
+
+
+def autocomplete_cemeteries(
+    db: Session,
+    company_id: str,
+    q: str,
+    limit: int = 8,
+) -> list[dict]:
+    """Return up to `limit` autocomplete suggestions.
+
+    Priority order:
+    1. Existing operational cemeteries (already_added=True)
+    2. OSM / Google Places directory cache (already_added=False)
+
+    Deduplicates by lowercased name so the same cemetery doesn't appear twice.
+    """
+    from app.models.cemetery_directory import CemeteryDirectory  # avoid circular
+
+    q = (q or "").strip()
+    results: list[dict] = []
+    seen_names: set[str] = set()
+
+    # ── 1. Existing operational cemeteries ─────────────────────────────────
+    existing_q = db.query(Cemetery).filter(
+        Cemetery.company_id == company_id,
+        Cemetery.is_active == True,  # noqa: E712
+    )
+    if q:
+        pattern = f"%{q}%"
+        existing_q = existing_q.filter(
+            or_(
+                Cemetery.name.ilike(pattern),
+                Cemetery.city.ilike(pattern),
+                Cemetery.county.ilike(pattern),
+            )
+        )
+    for c in existing_q.order_by(Cemetery.name).limit(limit).all():
+        seen_names.add(c.name.lower())
+        results.append(
+            {
+                "cemetery_id": c.id,
+                "place_id": None,
+                "name": c.name,
+                "city": c.city,
+                "state": c.state,
+                "county": c.county,
+                "latitude": float(c.latitude) if c.latitude is not None else None,
+                "longitude": float(c.longitude) if c.longitude is not None else None,
+                "already_added": True,
+                "source": "existing",
+            }
+        )
+
+    # ── 2. Directory cache (OSM / Google Places) ────────────────────────────
+    if q:
+        dir_q = (
+            db.query(CemeteryDirectory)
+            .filter(
+                CemeteryDirectory.company_id == company_id,
+                CemeteryDirectory.is_active == True,  # noqa: E712
+                CemeteryDirectory.name.ilike(f"%{q}%"),
+            )
+            .order_by(CemeteryDirectory.name)
+            .limit(limit)
+        )
+        for entry in dir_q:
+            if entry.name.lower() in seen_names:
+                continue
+            seen_names.add(entry.name.lower())
+            results.append(
+                {
+                    "cemetery_id": None,
+                    "place_id": entry.place_id,
+                    "name": entry.name,
+                    "city": entry.city,
+                    "state": entry.state_code,
+                    "county": entry.county,
+                    "latitude": float(entry.latitude) if entry.latitude is not None else None,
+                    "longitude": float(entry.longitude) if entry.longitude is not None else None,
+                    "already_added": False,
+                    "source": entry.source or "openstreetmap",
+                }
+            )
+
+    return results[:limit]
+
+
+# ---------------------------------------------------------------------------
 # Equipment Prefill (Part 4)
 # ---------------------------------------------------------------------------
 
