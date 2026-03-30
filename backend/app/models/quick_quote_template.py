@@ -41,6 +41,8 @@ class QuickQuoteTemplate(Base):
     quote_template_key: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )
+    # If True, this template is hidden outside its assigned season(s)
+    seasonal_only: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

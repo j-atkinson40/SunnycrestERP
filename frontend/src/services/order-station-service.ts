@@ -37,6 +37,20 @@ export async function updateQuoteStatus(
   await apiClient.patch(`/order-station/quotes/${quoteId}`, { status });
 }
 
+export interface ParsedOrder {
+  vault_product: string | null;
+  equipment: string | null;
+  cemetery_name: string | null;
+  service_date: string | null;
+  confidence: number;
+  error?: string;
+}
+
+export async function parseVoiceOrder(input: string): Promise<ParsedOrder> {
+  const { data } = await apiClient.post("/order-station/parse-order", { input });
+  return data as ParsedOrder;
+}
+
 export async function recordCemeteryHistory(
   customerId: string,
   cemeteryId: string,

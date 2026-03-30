@@ -135,6 +135,7 @@ from app.models.price_list_import import PriceListImport, PriceListImportItem
 from app.models.product_catalog_template import ProductCatalogTemplate
 from app.models.product_substitution_rule import ProductSubstitutionRule
 from app.models.quick_quote_template import QuickQuoteTemplate
+from app.models.template_season import TemplateSeason
 from app.models.performance_note import PerformanceNote
 from app.models.pour_event import PourEvent, PourEventWorkOrder
 from app.models.product import Product
@@ -323,6 +324,7 @@ __all__ = [
     "ProductCatalogTemplate",
     "ProductCategory",
     "QuickQuoteTemplate",
+    "TemplateSeason",
     "Project",
     "ProjectMilestone",
     "ProjectTask",

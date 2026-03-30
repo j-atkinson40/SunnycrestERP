@@ -340,6 +340,11 @@ function getManufacturingNav(
           icon: "Link",
         },
         {
+          label: "Seasonal Templates",
+          href: "/settings/seasonal-templates",
+          icon: "CalendarDays",
+        },
+        {
           label: "Notifications",
           href: "/notifications",
           icon: "Bell",

@@ -26,6 +26,7 @@ class QuickQuoteTemplateResponse(BaseModel):
     slide_over_width: int
     primary_action: str
     quote_template_key: str | None = None
+    seasonal_only: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

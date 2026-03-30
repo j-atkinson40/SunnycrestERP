@@ -127,6 +127,7 @@ import ProcedureLibraryPage, { ProcedureDetailPage } from "@/pages/training/proc
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import QuickOrdersOnboarding from "@/pages/onboarding/quick-orders";
+import SeasonalTemplatesSettings from "@/pages/settings/seasonal-templates";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import DataMigrationPage from "@/pages/onboarding/data-migration";
 import AccountingReviewPage from "@/pages/onboarding/accounting-review";
@@ -584,6 +585,7 @@ export default function App() {
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/onboarding/quick-orders" element={<QuickOrdersOnboarding />} />
+                  <Route path="/settings/seasonal-templates" element={<SeasonalTemplatesSettings />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
                   <Route path="/onboarding/data-migration" element={<DataMigrationPage />} />
                   <Route path="/settings/data-migration" element={<DataMigrationPage />} />

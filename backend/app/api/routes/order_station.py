@@ -1,7 +1,8 @@
-"""Order Entry Station routes — templates, quotes, activity feed."""
+"""Order Entry Station routes — templates, quotes, activity feed, voice parsing."""
 
 import json
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, func
@@ -22,8 +23,46 @@ from app.schemas.order_station import (
 )
 from app.services import quote_service
 from app.services import cemetery_service
+from app.services import template_season_service
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Voice-to-order parsing — system prompt for Claude
+# ---------------------------------------------------------------------------
+
+_PARSE_ORDER_SYSTEM_PROMPT = """You are parsing a natural language funeral order entry for a burial vault manufacturer.
+
+Extract these fields from the input:
+{
+  "vault_product": string or null,
+  "equipment": string or null,
+  "cemetery_name": string or null,
+  "service_date": string or null,
+  "confidence": float
+}
+
+vault_product — match to known vault names (use exact casing):
+Monticello, Venetian, Continental, Salute, Tribute, Monarch, Graveliner,
+Graveliner SS, Bronze Triune, Copper Triune, SST Triune, Cameo Rose,
+Veteran Triune, Wilbert Bronze, Loved & Cherished 19", Loved & Cherished 24",
+Loved & Cherished 31", Continental 34, Graveliner 34, Graveliner 38, Pine Box,
+Urn Vault (append line name if specified, e.g. "Urn Vault Monticello")
+
+equipment — one of: full_equipment, lowering_device_grass, lowering_device_only, tent_only, no_equipment, null
+
+cemetery_name — extract and expand shorthand:
+  "Oak Hill" → "Oak Hill Cemetery", "St Mary's" → "St. Mary's Cemetery",
+  "Lakeview" → "Lakeview Cemetery". If already a full name, return as-is.
+
+service_date — always YYYY-MM-DD. Resolve relative dates using today's date:
+  "tomorrow" → tomorrow, "Thursday" → next Thursday,
+  "March 31" → current or next year's March 31.
+  Current date: {today}
+
+confidence — 0.0 to 1.0, how confident you are in the overall parse.
+
+Return JSON only, no markdown. If a field cannot be determined, return null."""
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +96,14 @@ def list_templates(
         QuickQuoteTemplate.sort_order, QuickQuoteTemplate.display_label
     ).all()
 
+    # Seasonal filtering
+    active_season = template_season_service.get_active_season(db, current_user.company_id)
+    if active_season:
+        season_ids = set(active_season.active_template_ids or [])
+        templates = [t for t in templates if not t.seasonal_only or t.id in season_ids]
+    else:
+        templates = [t for t in templates if not t.seasonal_only]
+
     results = []
     for t in templates:
         results.append(
@@ -75,6 +122,7 @@ def list_templates(
                 slide_over_width=t.slide_over_width,
                 primary_action=t.primary_action,
                 quote_template_key=t.quote_template_key,
+                seasonal_only=t.seasonal_only,
             )
         )
     return results
@@ -349,3 +397,68 @@ def update_quote_status(
     return quote_service.update_quote_status(
         db, current_user.company_id, current_user.id, quote_id, data.status
     )
+
+
+# ---------------------------------------------------------------------------
+# Voice-to-order parsing
+# ---------------------------------------------------------------------------
+
+
+@router.post("/parse-order")
+def parse_order(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """Parse a natural language funeral order entry via Claude API.
+
+    Returns structured fields: vault_product, equipment, cemetery_name,
+    service_date, confidence (0-1).
+    """
+    import anthropic
+
+    from app.config import settings
+
+    input_text = (data.get("input") or "").strip()
+    if not input_text:
+        return {"vault_product": None, "equipment": None, "cemetery_name": None, "service_date": None, "confidence": 0.0}
+
+    if not settings.ANTHROPIC_API_KEY:
+        return {"error": "AI not configured", "confidence": 0.0}
+
+    today_str = date.today().isoformat()
+    system_prompt = _PARSE_ORDER_SYSTEM_PROMPT.replace("{today}", today_str)
+
+    try:
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system=system_prompt,
+            messages=[{"role": "user", "content": input_text}],
+        )
+        text = message.content[0].text.strip()
+        text = re.sub(r"^```(?:json)?\s*\n?", "", text)
+        text = re.sub(r"\n?```\s*$", "", text)
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        return {"error": f"Parse error: {exc}", "confidence": 0.0}
+    except Exception as exc:
+        return {"error": str(exc), "confidence": 0.0}
+
+
+# ---------------------------------------------------------------------------
+# Template season active check
+# ---------------------------------------------------------------------------
+
+
+@router.get("/active-season")
+def get_active_season(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the currently active season for today's date, or null."""
+    season = template_season_service.get_active_season(db, current_user.company_id)
+    if not season:
+        return None
+    from app.services.template_season_service import _to_dict
+    return _to_dict(season)

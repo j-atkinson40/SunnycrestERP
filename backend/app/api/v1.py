@@ -73,6 +73,7 @@ from app.api.routes import (
     inter_licensee_pricing,
     transfers,
     order_station,
+    template_seasons,
     performance_notes,
     platform_fees,
     price_list_import,
@@ -329,6 +330,11 @@ v1_router.include_router(
     order_station.router,
     prefix="/order-station",
     tags=["Order Entry Station"],
+)
+v1_router.include_router(
+    template_seasons.router,
+    prefix="/template-seasons",
+    tags=["Template Seasons"],
 )
 v1_router.include_router(
     performance_notes.router,
