@@ -4,7 +4,6 @@ import { AlertTriangle, CheckCircle, ClipboardCheck, RefreshCw } from "lucide-re
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -57,14 +56,6 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
-function ExceptionBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 text-xs font-medium">
-      <AlertTriangle className="w-3 h-3" />
-      Driver exception
-    </span>
-  );
-}
 
 interface InvoiceCardProps {
   invoice: ReviewInvoice;
