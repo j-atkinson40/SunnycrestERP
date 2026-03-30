@@ -28,6 +28,7 @@ export const customerService = {
     search?: string,
     accountStatus?: string,
     includeInactive = false,
+    customerType?: string,
   ): Promise<PaginatedCustomers> {
     const params = new URLSearchParams({
       page: String(page),
@@ -36,6 +37,7 @@ export const customerService = {
     if (search) params.set("search", search);
     if (accountStatus) params.set("account_status", accountStatus);
     if (includeInactive) params.set("include_inactive", "true");
+    if (customerType) params.set("customer_type", customerType);
     const response = await apiClient.get<PaginatedCustomers>(
       `/customers?${params.toString()}`,
     );

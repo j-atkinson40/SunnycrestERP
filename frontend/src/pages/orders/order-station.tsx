@@ -8,7 +8,10 @@ import {
   createQuote,
   convertQuoteToOrder,
   updateQuoteStatus,
+  recordCemeteryHistory,
 } from "@/services/order-station-service";
+import { cemeteryService } from "@/services/cemetery-service";
+import type { Cemetery, EquipmentPrefill } from "@/types/customer";
 import {
   resolveBundlePrices,
   type ResolvedBundlePrice,
@@ -147,6 +150,137 @@ function statusColor(status: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// CemeterySearchInput — searchable cemetery field with equipment prefill
+// ---------------------------------------------------------------------------
+function CemeterySearchInput({
+  value,
+  cemeteryId,
+  onChange,
+}: {
+  value: string;
+  cemeteryId: string;
+  onChange: (name: string, id: string, prefill: EquipmentPrefill | null) => void;
+}) {
+  const [results, setResults] = useState<Cemetery[]>([]);
+  const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [prefill, setPrefill] = useState<EquipmentPrefill | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function handleInput(text: string) {
+    onChange(text, "", null);
+    setPrefill(null);
+    setOpen(true);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!text.trim()) {
+      setResults([]);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const data = await cemeteryService.getCemeteries({ search: text, per_page: 8 });
+        setResults(data.items);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  }
+
+  async function selectCemetery(c: Cemetery) {
+    setOpen(false);
+    try {
+      const p = await cemeteryService.getEquipmentPrefill(c.id);
+      setPrefill(p);
+      onChange(c.name, c.id, p);
+    } catch {
+      onChange(c.name, c.id, null);
+    }
+  }
+
+  const notFound = value.trim().length > 1 && results.length === 0 && !searching;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1"
+        placeholder="Search cemetery..."
+        value={value}
+        onChange={(e) => handleInput(e.target.value)}
+        onFocus={() => value.trim() && setOpen(true)}
+        autoComplete="off"
+      />
+
+      {/* Dropdown */}
+      {open && (value.trim().length > 0) && (
+        <div className="absolute z-50 w-full mt-1 rounded-md border bg-white shadow-lg max-h-48 overflow-y-auto">
+          {searching && (
+            <div className="px-3 py-2 text-xs text-muted-foreground">Searching...</div>
+          )}
+          {!searching && results.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between"
+              onClick={() => selectCemetery(c)}
+            >
+              <span>{c.name}</span>
+              <span className="text-xs text-muted-foreground">{c.county ? `${c.county}, ` : ""}{c.state}</span>
+            </button>
+          ))}
+          {notFound && (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-accent"
+              onClick={() => {
+                setOpen(false);
+                onChange(value, "", null);
+              }}
+            >
+              + Use &ldquo;{value}&rdquo; as new cemetery
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Equipment prefill note */}
+      {prefill && (
+        <div className={`mt-1.5 rounded-md px-3 py-2 text-xs ${
+          prefill.nothing_needed
+            ? "bg-muted text-muted-foreground"
+            : "bg-blue-50 text-blue-700"
+        }`}>
+          {prefill.equipment_note}
+        </div>
+      )}
+
+      {/* Hidden cemetery_id indicator */}
+      {cemeteryId && (
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Linked to cemetery record
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // OrderSlideOver — slide-over form that adapts to product line & mode
 // ---------------------------------------------------------------------------
 function OrderSlideOver({
@@ -230,6 +364,16 @@ function OrderSlideOver({
         fields: formData,
       };
       await createQuote(payload);
+
+      // Record funeral home → cemetery history if both IDs are present
+      if (formData.customer_id && formData.cemetery_id) {
+        recordCemeteryHistory(
+          formData.customer_id,
+          formData.cemetery_id,
+          formData.delivery_date || undefined,
+        ).catch(() => {/* non-critical */});
+      }
+
       toast.success(
         isQuote ? "Quote created successfully" : "Order created successfully",
       );
@@ -332,12 +476,19 @@ function OrderSlideOver({
               </div>
               <div>
                 <Label htmlFor="cemetery">Cemetery</Label>
-                <Input
-                  id="cemetery"
-                  placeholder="Search cemetery..."
+                <CemeterySearchInput
                   value={formData.cemetery ?? ""}
-                  onChange={(e) => setField("cemetery", e.target.value)}
-                  className="mt-1"
+                  cemeteryId={formData.cemetery_id ?? ""}
+                  onChange={(name, id, prefill) => {
+                    setField("cemetery", name);
+                    setField("cemetery_id", id);
+                    // Auto-set equipment based on what cemetery provides
+                    if (prefill) {
+                      setField("tent", prefill.can_provide.includes("tent") ? "true" : "false");
+                      setField("lowering_device", prefill.can_provide.includes("lowering_device") ? "true" : "false");
+                      setField("greens", prefill.can_provide.includes("grass") ? "true" : "false");
+                    }
+                  }}
                 />
               </div>
               <div>

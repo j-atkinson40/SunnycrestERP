@@ -23,6 +23,7 @@ from app.api.routes import (
     bundles,
     carrier_portal,
     cases,
+    cemeteries,
     charge_library,
     companies,
     behavioral_analytics,
@@ -142,6 +143,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     cases.router, prefix="/cases", tags=["Funeral Home Cases"]
+)
+v1_router.include_router(
+    cemeteries.router, prefix="/cemeteries", tags=["Cemeteries"]
 )
 v1_router.include_router(
     charge_library.router, prefix="/charge-library", tags=["Charge Library"]

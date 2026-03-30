@@ -90,8 +90,76 @@ export interface CustomerListItem {
   current_balance: number;
   credit_limit: number | null;
   payment_terms: string | null;
+  customer_type: string | null;
+  billing_profile: string | null;
   is_active: boolean;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cemetery types
+// ---------------------------------------------------------------------------
+
+export interface Cemetery {
+  id: string;
+  company_id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  county: string | null;
+  zip_code: string | null;
+  phone: string | null;
+  contact_name: string | null;
+  cemetery_provides_lowering_device: boolean;
+  cemetery_provides_grass: boolean;
+  cemetery_provides_tent: boolean;
+  cemetery_provides_chairs: boolean;
+  equipment_note: string | null;
+  access_notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CemeteryCreate {
+  name: string;
+  state?: string;
+  county?: string;
+  city?: string;
+  address?: string;
+  zip_code?: string;
+  phone?: string;
+  contact_name?: string;
+  cemetery_provides_lowering_device?: boolean;
+  cemetery_provides_grass?: boolean;
+  cemetery_provides_tent?: boolean;
+  cemetery_provides_chairs?: boolean;
+  access_notes?: string;
+}
+
+export interface CemeteryUpdate extends Partial<CemeteryCreate> {}
+
+export interface PaginatedCemeteries {
+  items: Cemetery[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface EquipmentPrefill {
+  can_provide: string[];
+  cemetery_provides: string[];
+  equipment_note: string;
+  suggestion_label: string;
+  nothing_needed: boolean;
+}
+
+export interface CemeteryShortlistItem {
+  cemetery_id: string;
+  cemetery_name: string;
+  order_count: number;
+  last_order_date: string | null;
 }
 
 export interface CustomerCreate {

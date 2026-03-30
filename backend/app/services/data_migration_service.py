@@ -745,6 +745,7 @@ def import_customers(
                 account_status=account_status,
                 billing_profile=billing_profile,
                 payment_terms=payment_terms,
+                customer_type=customer_type,
                 sage_customer_id=sage_customer_no,
                 notes=notes,
                 is_active=(status != "Inactive"),

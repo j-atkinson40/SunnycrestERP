@@ -21,6 +21,7 @@ from app.schemas.order_station import (
     UpdateQuoteStatusRequest,
 )
 from app.services import quote_service
+from app.services import cemetery_service
 
 router = APIRouter()
 
@@ -303,6 +304,38 @@ def convert_quote(
     return quote_service.convert_quote_to_order(
         db, current_user.company_id, current_user.id, quote_id
     )
+
+
+@router.post("/record-cemetery-history")
+def record_cemetery_history(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record that a funeral home used a cemetery on an order."""
+    customer_id = data.get("customer_id")
+    cemetery_id = data.get("cemetery_id")
+    order_date_str = data.get("order_date")
+
+    if not customer_id or not cemetery_id:
+        return {"detail": "customer_id and cemetery_id required"}
+
+    from datetime import date
+    order_date = None
+    if order_date_str:
+        try:
+            order_date = date.fromisoformat(order_date_str)
+        except ValueError:
+            pass
+
+    cemetery_service.record_funeral_home_cemetery_usage(
+        db,
+        company_id=current_user.company_id,
+        customer_id=customer_id,
+        cemetery_id=cemetery_id,
+        order_date=order_date,
+    )
+    return {"detail": "recorded"}
 
 
 @router.patch("/quotes/{quote_id}")

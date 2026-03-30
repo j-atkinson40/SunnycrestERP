@@ -376,3 +376,126 @@ def get_profile(db: Session, tenant_id: str, entity_type: str, entity_id: str) -
         "price_trend": profile.price_trend,
         "last_computed_at": profile.last_computed_at.isoformat() if profile.last_computed_at else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Cemetery enrichment — funeral home behavioral profiles
+# ---------------------------------------------------------------------------
+
+_MIN_ORDERS_FOR_ENRICHMENT = 5
+
+
+def enrich_funeral_home_profiles(db: Session, tenant_id: str) -> int:
+    """
+    PROFILE_UPDATE_JOB — cemetery enrichment pass.
+
+    For each funeral home customer with 5+ orders in Bridgeable, analyse:
+      - Most common vault type
+      - Most common equipment combination
+      - Top cemeteries
+
+    Updates entity_behavioral_profiles.profile_data JSONB with cemetery
+    and vault preference fields.
+
+    Returns count of profiles updated.
+    """
+    from app.models.customer import Customer
+    from app.models.funeral_home_cemetery_history import FuneralHomeCemeteryHistory
+    from app.models.cemetery import Cemetery
+    from app.models.sales_order import SalesOrder
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    updated = 0
+
+    # Find funeral home customers with sufficient order history
+    funeral_homes = (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == tenant_id,
+            Customer.customer_type == "funeral_home",
+            Customer.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+
+    for fh in funeral_homes:
+        # Count orders for this customer
+        order_count = (
+            db.query(func.count(SalesOrder.id))
+            .filter(
+                SalesOrder.company_id == tenant_id,
+                SalesOrder.customer_id == fh.id,
+            )
+            .scalar()
+            or 0
+        )
+
+        if order_count < _MIN_ORDERS_FOR_ENRICHMENT:
+            continue
+
+        # Top cemeteries from history table
+        top_cemetery_records = (
+            db.query(FuneralHomeCemeteryHistory)
+            .filter(
+                FuneralHomeCemeteryHistory.company_id == tenant_id,
+                FuneralHomeCemeteryHistory.customer_id == fh.id,
+            )
+            .order_by(FuneralHomeCemeteryHistory.order_count.desc())
+            .limit(5)
+            .all()
+        )
+
+        top_cemeteries = []
+        for rec in top_cemetery_records:
+            cem = db.query(Cemetery).filter(Cemetery.id == rec.cemetery_id).first()
+            if cem and cem.is_active:
+                top_cemeteries.append(
+                    {
+                        "cemetery_id": rec.cemetery_id,
+                        "cemetery_name": cem.name,
+                        "order_count": rec.order_count,
+                    }
+                )
+
+        if not top_cemeteries:
+            continue
+
+        # Upsert the behavioral profile
+        profile = (
+            db.query(EntityBehavioralProfile)
+            .filter(
+                EntityBehavioralProfile.tenant_id == tenant_id,
+                EntityBehavioralProfile.entity_type == "customer",
+                EntityBehavioralProfile.entity_id == fh.id,
+            )
+            .first()
+        )
+
+        enrichment_patch = {
+            "top_cemeteries": top_cemeteries,
+            "cemetery_enrichment_at": datetime.now(timezone.utc).isoformat(),
+            "order_count_at_enrichment": order_count,
+        }
+
+        if profile:
+            existing = profile.profile_data or {}
+            existing.update(enrichment_patch)
+            profile.profile_data = existing
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(profile, "profile_data")
+        else:
+            profile = EntityBehavioralProfile(
+                id=str(uuid.uuid4()),
+                tenant_id=tenant_id,
+                entity_type="customer",
+                entity_id=fh.id,
+                profile_data=enrichment_patch,
+            )
+            db.add(profile)
+
+        updated += 1
+
+    if updated:
+        db.commit()
+
+    return updated

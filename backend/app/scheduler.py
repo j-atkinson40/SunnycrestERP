@@ -134,6 +134,12 @@ def job_network_snapshot():
     _run_global("NETWORK_SNAPSHOT", build_platform_health_snapshot)
 
 
+def job_profile_update():
+    """Cemetery enrichment pass for funeral home behavioral profiles."""
+    from app.services.behavioral_analytics_service import enrich_funeral_home_profiles
+    _run_per_tenant("PROFILE_UPDATE", enrich_funeral_home_profiles)
+
+
 def job_draft_invoice_generator():
     from app.services.draft_invoice_service import generate_draft_invoices
     _run_per_tenant("DRAFT_INVOICE_GENERATOR", generate_draft_invoices)
@@ -182,6 +188,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "cross_system_synthesis": job_cross_system_synthesis,
     "network_snapshot": job_network_snapshot,
     "onboarding_pattern": job_onboarding_pattern,
+    "profile_update": job_profile_update,
 }
 
 
@@ -272,6 +279,16 @@ def register_all_jobs():
         name="onboarding_pattern",
         replace_existing=True,
         misfire_grace_time=86400,
+    )
+
+    # WEEKLY Sunday at 3am — funeral home behavioral profile enrichment
+    scheduler.add_job(
+        job_profile_update,
+        CronTrigger(day_of_week="sun", hour=3, minute=17),
+        id="profile_update",
+        name="profile_update",
+        replace_existing=True,
+        misfire_grace_time=7200,
     )
 
     logger.info(f"Registered {len(scheduler.get_jobs())} scheduled jobs")

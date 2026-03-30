@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_module, require_permission
 from app.database import get_db
 from app.models.user import User
+from app.services import cemetery_service
 from app.schemas.customer import (
     BalanceAdjustmentCreate,
     BalanceAdjustmentResponse,
@@ -84,6 +85,7 @@ def list_customers(
     search: str | None = Query(None),
     account_status: str | None = Query(None),
     include_inactive: bool = Query(False),
+    customer_type: str | None = Query(None),
     db: Session = Depends(get_db),
     _module: User = Depends(require_module("sales")),
     current_user: User = Depends(require_permission("customers.view")),
@@ -96,6 +98,7 @@ def list_customers(
         search,
         account_status,
         include_inactive,
+        customer_type,
     )
     return {
         "items": [
@@ -175,6 +178,20 @@ def delete_customer(
         db, customer_id, current_user.company_id, actor_id=current_user.id
     )
     return {"detail": "Customer deactivated"}
+
+
+@router.get("/{customer_id}/cemetery-shortlist")
+def customer_cemetery_shortlist(
+    customer_id: str,
+    limit: int = Query(5, ge=1, le=10),
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.view")),
+):
+    """Return top cemeteries for a funeral home customer (order form shortlist)."""
+    return cemetery_service.get_fh_cemetery_shortlist(
+        db, current_user.company_id, customer_id, limit=limit
+    )
 
 
 # ---------------------------------------------------------------------------

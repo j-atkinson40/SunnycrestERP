@@ -176,6 +176,9 @@ class CustomerResponse(BaseModel):
     tax_id: str | None = None
     notes: str | None = None
     sage_customer_id: str | None = None
+    # Classification
+    customer_type: str | None = None
+    billing_profile: str | None = None
     # Meta
     is_active: bool
     created_at: datetime
@@ -202,6 +205,8 @@ class CustomerListItem(BaseModel):
     current_balance: Decimal
     credit_limit: Decimal | None = None
     payment_terms: str | None = None
+    customer_type: str | None = None
+    billing_profile: str | None = None
     is_active: bool
     created_at: datetime
 

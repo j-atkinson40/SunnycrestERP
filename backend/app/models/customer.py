@@ -114,6 +114,11 @@ class Customer(Base):
     payment_terms: Mapped[str] = mapped_column(String(20), server_default="cod")
     preferred_delivery_method: Mapped[str] = mapped_column(String(20), server_default="email")
 
+    # --- Customer classification ---
+    customer_type: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )  # 'funeral_home', 'contractor', 'cemetery', 'other'
+
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 

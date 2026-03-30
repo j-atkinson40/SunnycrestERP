@@ -35,6 +35,7 @@ def get_customers(
     search: str | None = None,
     account_status: str | None = None,
     include_inactive: bool = False,
+    customer_type: str | None = None,
 ) -> dict:
     query = db.query(Customer).filter(Customer.company_id == company_id)
 
@@ -54,6 +55,9 @@ def get_customers(
 
     if account_status:
         query = query.filter(Customer.account_status == account_status)
+
+    if customer_type:
+        query = query.filter(Customer.customer_type == customer_type)
 
     total = query.count()
     customers = (

@@ -248,6 +248,23 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["add_products"]',
         "sort_order": 6,
     },
+    # 7. Quick order templates
+    {
+        "item_key": "setup_quick_orders",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Set up your quick order templates",
+        "description": (
+            "Configure your most common order types so your team can enter "
+            "funeral orders in seconds, not minutes. Add your frequent "
+            "cemeteries while you're here."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/quick-orders",
+        "depends_on": '["add_products"]',
+        "sort_order": 7,
+    },
     # 8. Financial accounts — NEW
     {
         "item_key": "setup_financial_accounts",

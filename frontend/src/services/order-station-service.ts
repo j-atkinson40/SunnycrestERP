@@ -36,3 +36,15 @@ export async function updateQuoteStatus(
 ): Promise<void> {
   await apiClient.patch(`/order-station/quotes/${quoteId}`, { status });
 }
+
+export async function recordCemeteryHistory(
+  customerId: string,
+  cemeteryId: string,
+  orderDate?: string,
+): Promise<void> {
+  await apiClient.post("/order-station/record-cemetery-history", {
+    customer_id: customerId,
+    cemetery_id: cemeteryId,
+    order_date: orderDate,
+  });
+}
