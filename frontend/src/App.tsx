@@ -143,7 +143,6 @@ import NetworkPreferencesSettingsPage from "@/pages/admin/network-preferences";
 import SchedulingSettingsPage from "@/pages/admin/scheduling-settings";
 import UrnCatalogPage from "@/pages/products/urn-catalog";
 import UrnImportWizard from "@/pages/products/urn-import-wizard";
-import BundleManager from "@/pages/products/bundle-manager";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
