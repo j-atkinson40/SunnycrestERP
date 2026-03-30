@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { SparklesIcon, UploadIcon, XIcon } from "lucide-react";
+import BundleManager from "@/pages/products/bundle-manager";
 import { useAuth } from "@/contexts/auth-context";
 import { productService } from "@/services/product-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -74,6 +75,9 @@ export default function ProductsPage() {
   const canCreate = hasPermission("products.create");
   const canEdit = hasPermission("products.edit");
   const canDelete = hasPermission("products.delete");
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") === "bundles" ? "bundles" : "products";
 
   // Product list state
   const [products, setProducts] = useState<Product[]>([]);
@@ -352,8 +356,7 @@ export default function ProductsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Products</h1>
-          <p className="text-muted-foreground">{total} total products</p>
+          <h1 className="text-3xl font-bold">Product Catalog</h1>
         </div>
         <div className="flex gap-2">
           {canCreate && (
@@ -760,6 +763,34 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b">
+        <button
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "products"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          onClick={() => setSearchParams({})}
+        >
+          Vault Products
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "bundles"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          onClick={() => setSearchParams({ tab: "bundles" })}
+        >
+          Equipment Bundles
+        </button>
+      </div>
+
+      {activeTab === "bundles" && <BundleManager />}
+
+      {activeTab === "products" && <>
+
       {/* AI-powered natural language search */}
       <AICommandBar
         placeholder="Search products by description, category, or specifications..."
@@ -955,6 +986,8 @@ export default function ProductsPage() {
           </Button>
         </div>
       )}
+
+      </>}
     </div>
   );
 }

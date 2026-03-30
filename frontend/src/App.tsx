@@ -274,7 +274,7 @@ export default function App() {
                     />
                     <Route
                       path="settings/catalog/bundles"
-                      element={<BundleManager />}
+                      element={<Navigate to="/products?tab=bundles" replace />}
                     />
                   </Route>
 

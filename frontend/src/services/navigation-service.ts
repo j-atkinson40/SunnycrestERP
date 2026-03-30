@@ -316,12 +316,6 @@ function getManufacturingNav(
           ...(hasSyncError ? { badge: "\u2022" } : {}),
         },
         {
-          label: "Equipment Bundles",
-          href: "/settings/catalog/bundles",
-          icon: "Package",
-          permission: "products.view",
-        },
-        {
           label: "Charge Library",
           href: "/settings/charges",
           icon: "CircleDollarSign",
