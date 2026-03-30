@@ -1716,13 +1716,14 @@ def _apply_visibility_flags(db, tenant_id: str) -> None:
     ).all()
 
     for c in customers:
-        if c.customer_type == "funeral_home":
-            c.is_extension_hidden = False
-            c.visibility_requires_extension = None
-        elif c.customer_type == "contractor":
+        if c.customer_type == "contractor":
             c.visibility_requires_extension = "any_product_line"
             c.is_extension_hidden = not any_product_line_active
-        # other types: leave as-is (default false)
+        else:
+            # funeral homes, cemeteries, null-type — always visible
+            c.is_extension_hidden = False
+            if c.customer_type != "contractor":
+                c.visibility_requires_extension = None
 
     # ── Products ──────────────────────────────────────────────────────────────
     products = db.query(Product).filter(

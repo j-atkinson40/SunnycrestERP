@@ -235,7 +235,7 @@ def get_products(
         query = query.filter(Product.is_active == True)  # noqa: E712
 
     if not include_hidden:
-        query = query.filter(Product.is_extension_hidden.is_(False))
+        query = query.filter(Product.is_extension_hidden.isnot(True))
 
     if search:
         pattern = f"%{search}%"

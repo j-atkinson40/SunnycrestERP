@@ -44,7 +44,7 @@ def get_customers(
         query = query.filter(Customer.is_active == True)  # noqa: E712
 
     if not include_hidden:
-        query = query.filter(Customer.is_extension_hidden.is_(False))
+        query = query.filter(Customer.is_extension_hidden.isnot(True))
 
     if search:
         pattern = f"%{search}%"
