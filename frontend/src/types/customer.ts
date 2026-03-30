@@ -70,6 +70,10 @@ export interface Customer {
   tax_id: string | null;
   notes: string | null;
   sage_customer_id: string | null;
+  customer_type: string | null;
+  classification_confidence: number | null;
+  classification_method: string | null;
+  classification_reasoning: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

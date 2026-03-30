@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, HardHat, Info, Plus, UploadIcon } from "lucide-react";
+import { AlertTriangle, HardHat, Info, UploadIcon } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
 import { useExtensions } from "@/contexts/extension-context";
