@@ -126,6 +126,7 @@ import TransfersPage from "@/pages/transfers";
 import ProcedureLibraryPage, { ProcedureDetailPage } from "@/pages/training/procedure-library";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
+import CemeterySetupWizard from "@/pages/onboarding/cemetery-setup";
 import QuickOrdersOnboarding from "@/pages/onboarding/quick-orders";
 import SeasonalTemplatesSettings from "@/pages/settings/seasonal-templates";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
@@ -584,6 +585,7 @@ export default function App() {
                   <Route path="/onboarding/tax-jurisdictions" element={<TaxJurisdictionsOnboarding />} />
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
+                  <Route path="/onboarding/cemeteries" element={<CemeterySetupWizard />} />
                   <Route path="/onboarding/quick-orders" element={<QuickOrdersOnboarding />} />
                   <Route path="/settings/seasonal-templates" element={<SeasonalTemplatesSettings />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />

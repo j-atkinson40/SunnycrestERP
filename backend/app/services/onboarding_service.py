@@ -265,6 +265,21 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["add_products"]',
         "sort_order": 7,
     },
+    # 7b. Cemetery setup — should complete; independent of other items
+    {
+        "item_key": "setup_cemeteries",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Add your delivery cemeteries",
+        "description": (
+            "Find and add the cemeteries in your area. Set which ones provide "
+            "their own equipment so orders fill in correctly automatically."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/onboarding/cemeteries",
+        "sort_order": 7,
+    },
     # 8. Financial accounts — NEW
     {
         "item_key": "setup_financial_accounts",

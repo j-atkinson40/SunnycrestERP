@@ -49,6 +49,7 @@ from app.api.routes import (
     fh_portal,
     fh_price_list,
     ftc_compliance,
+    cemetery_directory,
     funeral_home_directory,
     funeral_kanban,
     hierarchy,
@@ -215,6 +216,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     ftc_compliance.router, prefix="/ftc", tags=["FTC Compliance"]
+)
+v1_router.include_router(
+    cemetery_directory.router,
+    prefix="/onboarding/cemeteries",
+    tags=["Cemetery Directory"],
 )
 v1_router.include_router(
     funeral_home_directory.router,

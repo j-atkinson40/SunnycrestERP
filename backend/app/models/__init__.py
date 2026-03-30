@@ -19,6 +19,9 @@ from app.models.bom import BillOfMaterials, BOMLine
 from app.models.company import Company
 from app.models.company_module import CompanyModule
 from app.models.cemetery import Cemetery
+from app.models.cemetery_directory import CemeteryDirectory
+from app.models.cemetery_directory_selection import CemeteryDirectorySelection
+from app.models.cemetery_directory_fetch_log import CemeteryDirectoryFetchLog
 from app.models.customer import Customer
 from app.models.customer_accounting_mapping import CustomerAccountingMapping
 from app.models.funeral_home_cemetery_history import FuneralHomeCemeteryHistory

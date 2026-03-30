@@ -55,6 +55,30 @@ PROCEDURE_DEFINITIONS = [
     {"key": "using_insights_page", "title": "Working with Behavioral Insights", "roles": ["accounting", "manager", "owner"], "category": "ai_workflows", "sort_order": 260},
     {"key": "overriding_agent_suggestion", "title": "When and How to Override an Agent Suggestion", "roles": ["accounting", "inside_sales", "operations", "manager"], "category": "ai_workflows", "sort_order": 270},
     {"key": "dismissing_vs_acting", "title": "Dismissing an Alert vs Taking Action", "roles": ["accounting", "inside_sales", "operations"], "category": "ai_workflows", "sort_order": 280},
+    {
+        "key": "managing_cemeteries",
+        "title": "Managing Your Cemetery List",
+        "roles": ["inside_sales", "operations", "manager"],
+        "category": "operations",
+        "sort_order": 88,
+        "user_msg": (
+            "Write a procedure for managing the cemetery list at a Wilbert burial vault manufacturing company using Bridgeable.\n\n"
+            "Cover:\n"
+            "- Where to find the cemetery list (Customers → Cemeteries tab)\n"
+            "- How to add a new cemetery manually from the customer list\n"
+            "- How to configure equipment settings on a cemetery record (what each flag means)\n"
+            "- What the equipment prefill does on new orders — explain that when a funeral home selects a cemetery "
+            "that provides its own lowering device, the lowering device charge is automatically removed from the order\n"
+            "- When to update equipment settings: cemetery bought new equipment, policy changed, seasonal variation\n"
+            "- How the county field on a cemetery affects which tax rate is applied to the order\n"
+            "- What to do when a new cemetery comes up during a call "
+            "(you can create it inline from the order form — you don't need to stop the call)\n"
+            "- The consequence of NOT keeping cemetery settings updated: you charge a funeral home for equipment "
+            "the cemetery provides, the funeral home pushes back, awkward call after the service\n\n"
+            "Write for inside sales staff who may be new to the death care industry. "
+            "Be specific about navigation paths and explain the real-world impact of each setting."
+        ),
+    },
 ]
 
 CURRICULUM_ROLES = ["accounting", "inside_sales", "operations"]
