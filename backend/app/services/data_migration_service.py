@@ -1786,6 +1786,10 @@ class DataMigrationService:
         return detect_extension_content(parsed_customers, parsed_products)
 
     @staticmethod
+    def apply_visibility_flags(db, tenant_id: str) -> None:
+        return _apply_visibility_flags(db, tenant_id)
+
+    @staticmethod
     def run_full_migration(
         db,
         tenant_id: str,

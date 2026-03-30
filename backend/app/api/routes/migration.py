@@ -338,3 +338,27 @@ def rollback_migration(
         "rolled_back_records": result["rolled_back_records"],
         "message": f"Successfully rolled back {result['rolled_back_records']} records.",
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /apply-visibility — backfill extension visibility flags (admin only)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/apply-visibility")
+def apply_visibility_backfill(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Re-apply is_extension_hidden flags for all sage-migrated customers and
+    products based on the tenant's currently active product-line extensions.
+
+    Safe to call multiple times — fully idempotent.
+    """
+    try:
+        DataMigrationService.apply_visibility_flags(db, current_user.company_id)
+        db.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Visibility backfill failed: {str(e)}")
+
+    return {"success": True, "message": "Extension visibility flags applied."}
