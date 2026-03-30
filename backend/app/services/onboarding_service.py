@@ -184,10 +184,10 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/data-migration",
         "sort_order": 2,
     },
-    # 2.5 — Import order history (should_complete; optional but high-value)
+    # 2.5 — Import order history (must_complete; essential for smart suggestions)
     {
         "item_key": "import_order_history",
-        "tier": "should_complete",
+        "tier": "must_complete",
         "category": "data_setup",
         "title": "Import your order history",
         "description": (

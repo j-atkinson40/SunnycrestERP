@@ -23,10 +23,8 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  Folder,
   Loader2,
   Lock,
-  SkipForward,
   Upload,
 } from "lucide-react";
 
@@ -116,51 +114,18 @@ function ChooseStep({ onHaveHistory, onSkip }: { onHaveHistory: () => void; onSk
       <div>
         <h1 className="text-2xl font-bold">Do you have historical funeral order records?</h1>
         <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-          If you track orders in a spreadsheet, Airtable, or any system you can export to CSV,
-          importing them makes your platform smarter from day one.
+          A spreadsheet, Airtable export, or CSV from another system — importing them pre-populates
+          your cemetery list, customer profiles, and smart suggestions from day one.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Have history */}
-        <button
-          type="button"
-          onClick={onHaveHistory}
-          className="text-left rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50/30 p-6 space-y-3 transition-all group"
-        >
-          <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-            <Folder className="h-5 w-5 text-blue-600" />
-          </div>
-          <div>
-            <p className="font-semibold text-base">Yes, I have order records</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Upload a CSV or Excel file from any system. We'll map the columns automatically.
-            </p>
-          </div>
-          <Button size="sm" className="mt-2">
-            Upload my order history
-          </Button>
-        </button>
-
-        {/* Skip */}
-        <button
-          type="button"
-          onClick={onSkip}
-          className="text-left rounded-xl border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 p-6 space-y-3 transition-all group"
-        >
-          <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
-            <SkipForward className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="font-semibold text-base">Skip for now</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your platform starts fresh. Smart suggestions build automatically as you take real orders.
-            </p>
-          </div>
-          <span className="inline-block mt-2 text-sm text-muted-foreground underline underline-offset-2">
-            Continue without history
-          </span>
-        </button>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button onClick={onHaveHistory}>
+          Yes, I have records to upload
+        </Button>
+        <Button variant="ghost" onClick={onSkip}>
+          No, skip this step
+        </Button>
       </div>
     </div>
   );
@@ -602,7 +567,7 @@ export default function HistoricalOrderImportPage() {
 
   async function handleSkip() {
     try {
-      await apiClient.post("/tenant-onboarding/checklist/items/import_order_history/skip");
+      await apiClient.patch("/tenant-onboarding/checklist/items/import_order_history", { status: "skipped" });
     } catch {
       // Non-critical
     }
