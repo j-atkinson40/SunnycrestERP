@@ -25,6 +25,7 @@ from app.schemas.price_list_import import (
     PriceListImportResponse,
     PriceListItemUpdate,
 )
+from app.services.onboarding_service import check_completion
 from app.services.price_list_extraction_service import extract_text_from_file
 
 logger = logging.getLogger(__name__)
@@ -502,6 +503,11 @@ def confirm_import(
         db.rollback()
         logger.exception("confirm_import db.commit() failed for import %s", import_id)
         raise HTTPException(status_code=500, detail=f"Database error: {exc}") from exc
+
+    # Mark onboarding steps complete — idempotent, safe to call even if already done
+    check_completion(db, company.id, "setup_price_list")
+    if created > 0:
+        check_completion(db, company.id, "add_products")
 
     return PriceListConfirmResponse(
         import_id=import_id,
