@@ -13,7 +13,6 @@ import {
   type ParsedOrder,
 } from "@/services/order-station-service";
 import { CemeteryPicker } from "@/components/cemetery-picker";
-import type { EquipmentPrefill } from "@/types/customer";
 import {
   resolveBundlePrices,
   type ResolvedBundlePrice,

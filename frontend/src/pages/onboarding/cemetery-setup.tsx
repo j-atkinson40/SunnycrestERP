@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { ContextualExplanation } from "@/components/contextual-explanation";
+import { CemeteryInlineAddDemo } from "@/components/cemetery-inline-add-demo";
 import {
   Check,
   ChevronDown,
@@ -495,6 +496,9 @@ function DiscoverStep({
           ))}
         </div>
       )}
+
+      {/* Inline-add demo callout */}
+      <CemeteryInlineAddDemo />
 
       <div className="flex items-center justify-between pt-2 border-t">
         <button
