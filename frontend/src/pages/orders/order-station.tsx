@@ -731,7 +731,7 @@ function OrderSlideOver({
               <div className="mt-3 space-y-0.5">
                 {template.line_items.map((item: Record<string, unknown>) => {
                   const resolved = resolvedPriceMap.get(item.product_name as string);
-                  const displayPrice = resolved?.resolved_price ?? (item.unit_price as number);
+                  const displayPrice = resolved?.price ?? (item.unit_price as number);
                   const priceChanged = resolved && displayPrice !== item.unit_price;
                   const isAnimating = pricesAnimating.has(item.product_name as string);
 
