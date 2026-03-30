@@ -36,7 +36,7 @@ interface CemeteryPickerProps {
 export function CemeteryPicker({
   customerId,
   value,
-  displayValue,
+  displayValue: _displayValue,
   onChange,
   onEquipmentPrefill,
   className,
