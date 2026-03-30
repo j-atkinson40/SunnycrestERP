@@ -249,10 +249,10 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Products — requires products module + products.view permission */}
+                  {/* Products — core feature, no module gate */}
                   <Route
                     element={
-                      <ProtectedRoute requiredPermission="products.view" requiredModule="products" />
+                      <ProtectedRoute requiredPermission="products.view" />
                     }
                   >
                     <Route
