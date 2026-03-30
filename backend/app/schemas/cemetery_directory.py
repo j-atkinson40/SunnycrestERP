@@ -23,6 +23,8 @@ class CemeteryDirectoryEntryResponse(BaseModel):
     longitude: float | None = None
     # True if this place_id already has a CemeteryDirectorySelection for this company
     already_added: bool = False
+    distance_miles: float | None = None
+    source: str = "google_places"
 
     model_config = {"from_attributes": True}
 

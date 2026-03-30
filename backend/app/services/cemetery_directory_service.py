@@ -1,6 +1,8 @@
-"""Cemetery Directory Service — Google Places integration with 90-day caching.
+"""Cemetery Directory Service — OpenStreetMap/Overpass API with Google Places fallback.
 
-Mirrors funeral_home_directory_service.py but targets cemeteries.
+Primary source: OpenStreetMap via Overpass API (free, comprehensive).
+Fallback: Google Places Text Search API.
+90-day cache — respects Overpass API usage policy.
 """
 
 import logging
@@ -17,6 +19,77 @@ logger = logging.getLogger(__name__)
 
 CACHE_DAYS = 90
 MAX_RESULTS_PER_QUERY = 20
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_FALLBACK_URL = "https://overpass.kumi.systems/api/interpreter"
+OVERPASS_USER_AGENT = "Bridgeable/1.0 (cemetery-discovery; contact: support@getbridgeable.com)"
+
+# Keywords that indicate a non-cemetery business (case-insensitive)
+_EXCLUSION_KEYWORDS = [
+    "funeral home",
+    "funeral service",
+    "cremation",
+    "mortuary",
+    "mausoleum sales",
+    "headstone",
+    "gravestone",
+    "monument",
+]
+
+
+def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Calculate distance in miles between two lat/lng points."""
+    import math
+    R = 3959
+    lat1, lng1, lat2, lng2 = map(math.radians, [lat1, lng1, lat2, lng2])
+    dlat = lat2 - lat1
+    dlng = lng2 - lng1
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng / 2) ** 2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+def _county_from_coords(lat: float, lng: float) -> tuple[str | None, str | None]:
+    """Find county and state from coordinates using nearest ZIP centroid in static dataset.
+    Returns (county, state) or (None, None) if no match within 50 miles.
+    """
+    try:
+        from app.services.county_geographic_service import _load_zip_mapping
+        zip_data = _load_zip_mapping()
+        if not zip_data:
+            return None, None
+
+        best_dist = float("inf")
+        best_county: str | None = None
+        best_state: str | None = None
+
+        for _zip, info in zip_data.items():
+            z_lat = info.get("lat")
+            z_lng = info.get("lng")
+            if z_lat is None or z_lng is None:
+                continue
+            dist = _haversine(lat, lng, float(z_lat), float(z_lng))
+            if dist < best_dist:
+                best_dist = dist
+                best_county = info.get("county")
+                best_state = info.get("state")
+
+        return (best_county, best_state) if best_dist <= 50 else (None, None)
+    except Exception:
+        return None, None
+
+
+def _is_valid_cemetery_name(name: str) -> bool:
+    """Return False if name indicates a non-cemetery business."""
+    lower = name.lower()
+    for kw in _EXCLUSION_KEYWORDS:
+        if kw in lower:
+            return False
+    # Skip 'memorial garden' unless it also contains 'cemetery'
+    if "memorial garden" in lower and "cemetery" not in lower:
+        return False
+    # Skip blank or very short names
+    if len(name.strip()) < 3:
+        return False
+    return True
 
 
 def get_directory_for_area(
@@ -26,12 +99,12 @@ def get_directory_for_area(
     longitude: float,
     radius_miles: int = 50,
 ) -> list[dict]:
-    """Get cemeteries in an area. Uses 90-day cache; fetches from Google Places if stale."""
+    """Get cemeteries in an area. Uses 90-day cache; fetches from Overpass if stale."""
     from app.models.cemetery_directory import CemeteryDirectory
     from app.models.cemetery_directory_fetch_log import CemeteryDirectoryFetchLog
     from app.models.cemetery_directory_selection import CemeteryDirectorySelection
 
-    # Check cache — if no recent fetch for this company, hit Google Places
+    # Check cache — if no recent fetch for this company, hit Overpass
     cache_cutoff = datetime.now(timezone.utc) - timedelta(days=CACHE_DAYS)
     recent_fetch = (
         db.query(CemeteryDirectoryFetchLog)
@@ -43,7 +116,7 @@ def get_directory_for_area(
     )
 
     if not recent_fetch:
-        _fetch_from_google_places(db, company_id, latitude, longitude, radius_miles)
+        _fetch_from_overpass(db, company_id, latitude, longitude, radius_miles)
 
     # Collect already-actioned place_ids so we can flag them
     actioned_place_ids = {
@@ -74,7 +147,10 @@ def get_directory_for_area(
         .all()
     )
 
-    return [_entry_to_dict(e, already_added=(e.place_id in actioned_place_ids)) for e in entries]
+    return [
+        _entry_to_dict(e, already_added=(e.place_id in actioned_place_ids), company_lat=latitude, company_lng=longitude)
+        for e in entries
+    ]
 
 
 def get_directory_for_company(
@@ -389,13 +465,167 @@ def connect_platform_cemetery(
 
 
 def clear_cache(db: Session, company_id: str) -> None:
-    """Delete fetch log records for this company to force a fresh Google Places pull."""
+    """Delete fetch log records for this company to force a fresh Overpass pull."""
     from app.models.cemetery_directory_fetch_log import CemeteryDirectoryFetchLog
 
     db.query(CemeteryDirectoryFetchLog).filter(
         CemeteryDirectoryFetchLog.company_id == company_id
     ).delete()
     db.flush()
+
+
+def _fetch_from_overpass(
+    db: Session,
+    company_id: str,
+    latitude: float,
+    longitude: float,
+    radius_miles: int,
+) -> list:
+    """Fetch cemeteries from OpenStreetMap via Overpass API. Falls back to Google Places on error."""
+    from app.models.cemetery_directory import CemeteryDirectory
+    from app.models.cemetery_directory_fetch_log import CemeteryDirectoryFetchLog
+
+    radius_meters = int(radius_miles * 1609.34)
+
+    query = f"""[out:json][timeout:30];
+(
+  node["amenity"="grave_yard"](around:{radius_meters},{latitude},{longitude});
+  way["amenity"="grave_yard"](around:{radius_meters},{latitude},{longitude});
+  node["landuse"="cemetery"](around:{radius_meters},{latitude},{longitude});
+  way["landuse"="cemetery"](around:{radius_meters},{latitude},{longitude});
+  relation["landuse"="cemetery"](around:{radius_meters},{latitude},{longitude});
+);
+out center tags;"""
+
+    now = datetime.now(timezone.utc)
+    results = []
+
+    try:
+        resp = requests.post(
+            OVERPASS_URL,
+            data=query,
+            headers={
+                "Content-Type": "text/plain",
+                "User-Agent": OVERPASS_USER_AGENT,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    except requests.exceptions.Timeout:
+        logger.warning("Overpass API timeout — falling back to Google Places")
+        return _fetch_from_google_places(db, company_id, latitude, longitude, radius_miles)
+    except Exception as exc:
+        logger.warning("Overpass API error (%s) — falling back to Google Places", exc)
+        return _fetch_from_google_places(db, company_id, latitude, longitude, radius_miles)
+
+    for element in data.get("elements", []):
+        tags = element.get("tags", {})
+        name = tags.get("name") or tags.get("name:en") or ""
+        if not name:
+            continue
+        if not _is_valid_cemetery_name(name):
+            continue
+
+        # Coordinates
+        el_type = element.get("type", "node")
+        if el_type == "node":
+            el_lat = element.get("lat")
+            el_lng = element.get("lon")
+        else:
+            center = element.get("center", {})
+            el_lat = center.get("lat")
+            el_lng = center.get("lon")
+
+        if el_lat is None or el_lng is None:
+            continue
+
+        osm_element_id = f"{el_type}/{element['id']}"
+        place_id = f"osm:{osm_element_id}"
+
+        # Address from tags
+        city = tags.get("addr:city") or tags.get("addr:town") or tags.get("addr:village")
+        state_code = tags.get("addr:state")
+        zip_code = tags.get("addr:postcode")
+        county = tags.get("addr:county")
+        street = tags.get("addr:street")
+        address = None
+        if street and city and state_code:
+            address = f"{street}, {city}, {state_code} {zip_code or ''}".strip().rstrip(",")
+
+        # Fill in county from static ZIP data if missing
+        if not county:
+            county, inferred_state = _county_from_coords(el_lat, el_lng)
+            if not state_code and inferred_state:
+                state_code = inferred_state
+
+        # Upsert by (company_id, place_id)
+        existing = (
+            db.query(CemeteryDirectory)
+            .filter(
+                CemeteryDirectory.company_id == company_id,
+                CemeteryDirectory.place_id == place_id,
+            )
+            .first()
+        )
+
+        if existing:
+            existing.name = name
+            existing.city = city or existing.city
+            existing.state_code = state_code or existing.state_code
+            existing.zip_code = zip_code or existing.zip_code
+            existing.county = county or existing.county
+            existing.latitude = Decimal(str(el_lat))
+            existing.longitude = Decimal(str(el_lng))
+            existing.source = "openstreetmap"
+            existing.osm_id = osm_element_id
+            existing.last_verified_at = now
+            existing.is_active = True
+            results.append(existing)
+        else:
+            entry = CemeteryDirectory(
+                company_id=company_id,
+                place_id=place_id,
+                osm_id=osm_element_id,
+                name=name,
+                address=address,
+                city=city,
+                state_code=state_code,
+                zip_code=zip_code,
+                county=county,
+                latitude=Decimal(str(el_lat)),
+                longitude=Decimal(str(el_lng)),
+                source="openstreetmap",
+                is_active=True,
+                first_fetched_at=now,
+                last_verified_at=now,
+            )
+            db.add(entry)
+            results.append(entry)
+
+    db.flush()
+
+    # Log the fetch
+    db.add(
+        CemeteryDirectoryFetchLog(
+            company_id=company_id,
+            center_lat=Decimal(str(latitude)),
+            center_lng=Decimal(str(longitude)),
+            search_radius_miles=radius_miles,
+            result_count=len(results),
+        )
+    )
+    db.flush()
+
+    logger.info(
+        "Overpass API returned %d cemeteries within %d miles of (%.4f, %.4f)",
+        len(results),
+        radius_miles,
+        latitude,
+        longitude,
+    )
+    return results
 
 
 def _fetch_from_google_places(
@@ -516,7 +746,20 @@ def _fetch_from_google_places(
     return results
 
 
-def _entry_to_dict(entry, already_added: bool = False) -> dict:
+def _entry_to_dict(
+    entry,
+    already_added: bool = False,
+    company_lat: float | None = None,
+    company_lng: float | None = None,
+) -> dict:
+    distance_miles = None
+    if company_lat is not None and company_lng is not None:
+        if entry.latitude and entry.longitude:
+            distance_miles = round(
+                _haversine(company_lat, company_lng, float(entry.latitude), float(entry.longitude)),
+                1,
+            )
+
     return {
         "id": entry.id,
         "place_id": entry.place_id,
@@ -531,4 +774,6 @@ def _entry_to_dict(entry, already_added: bool = False) -> dict:
         "latitude": float(entry.latitude) if entry.latitude else None,
         "longitude": float(entry.longitude) if entry.longitude else None,
         "already_added": already_added,
+        "distance_miles": distance_miles,
+        "source": getattr(entry, "source", "google_places"),
     }

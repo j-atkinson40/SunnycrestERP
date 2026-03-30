@@ -12,6 +12,8 @@ export interface CemeteryDirectoryEntry {
   latitude: number | null;
   longitude: number | null;
   already_added: boolean;
+  distance_miles: number | null;
+  source: string | null;
 }
 
 export interface CemeteryEquipmentSettings {

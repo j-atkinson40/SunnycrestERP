@@ -177,6 +177,9 @@ function CemeteryCard({
           {[entry.city, entry.state_code].filter(Boolean).join(", ")}
           {entry.county ? ` · ${entry.county} County` : ""}
         </p>
+        {entry.distance_miles !== null && entry.distance_miles !== undefined && (
+          <p className="text-xs text-muted-foreground">{entry.distance_miles.toFixed(1)} mi away</p>
+        )}
         {entry.google_rating != null && (
           <p className="text-xs text-muted-foreground flex items-center gap-0.5 mt-0.5">
             <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
@@ -395,7 +398,34 @@ function DiscoverStep({
   onNext: () => void;
 }) {
   const RADIUS_OPTIONS = [25, 50, 100];
-  const selectable = entries.filter((e) => !e.already_added);
+  const [nameFilter, setNameFilter] = useState("");
+  const [displayCount, setDisplayCount] = useState(30);
+  const [sortMode, setSortMode] = useState<"distance" | "alpha">("distance");
+
+  // Reset displayCount when filter or radius changes
+  useEffect(() => {
+    setDisplayCount(30);
+  }, [nameFilter, radius]);
+
+  // Filter and sort entries
+  const filteredEntries = entries.filter((e) => {
+    if (!nameFilter.trim()) return true;
+    return e.name.toLowerCase().includes(nameFilter.toLowerCase().trim());
+  });
+
+  const sortedEntries = [...filteredEntries].sort((a, b) => {
+    if (sortMode === "distance") {
+      const da = a.distance_miles ?? 9999;
+      const db2 = b.distance_miles ?? 9999;
+      return da - db2;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  const visibleEntries = sortedEntries.slice(0, displayCount);
+  const hasMore = sortedEntries.length > displayCount;
+
+  const selectable = filteredEntries.filter((e) => !e.already_added);
 
   function selectAll() {
     selectable.forEach((e) => {
@@ -413,8 +443,8 @@ function DiscoverStep({
       <div>
         <h1 className="text-2xl font-bold">Find cemeteries in your area</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-          We searched Google for cemeteries within {radius} miles of your facility. Check the ones
-          you deliver to.
+          We searched OpenStreetMap for cemeteries within {radius} miles of your facility.
+          Check the ones you deliver to.
         </p>
       </div>
 
@@ -452,6 +482,39 @@ function DiscoverStep({
         </button>
       </div>
 
+      {/* Name filter */}
+      {entries.length > 0 && (
+        <div>
+          <input
+            type="text"
+            placeholder="Filter by name..."
+            value={nameFilter}
+            onChange={(e) => setNameFilter(e.target.value)}
+            className="w-full max-w-sm rounded-md border border-gray-200 px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
+      {/* Sort options */}
+      {entries.length > 0 && (
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-muted-foreground">Sort:</span>
+          <button
+            onClick={() => setSortMode("distance")}
+            className={cn("font-medium", sortMode === "distance" ? "text-blue-600" : "text-muted-foreground hover:text-foreground")}
+          >
+            Nearest first
+          </button>
+          <span className="text-muted-foreground">·</span>
+          <button
+            onClick={() => setSortMode("alpha")}
+            className={cn("font-medium", sortMode === "alpha" ? "text-blue-600" : "text-muted-foreground hover:text-foreground")}
+          >
+            A–Z
+          </button>
+        </div>
+      )}
+
       {/* Batch controls */}
       {selectable.length > 0 && (
         <div className="flex items-center gap-3 text-sm">
@@ -468,7 +531,30 @@ function DiscoverStep({
               <span className="text-muted-foreground">{selected.size} selected</span>
             </>
           )}
+          {selectable.some((e) => (e.distance_miles ?? 9999) <= 25) && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <button
+                onClick={() => {
+                  selectable.filter((e) => (e.distance_miles ?? 9999) <= 25).forEach((e) => {
+                    if (!selected.has(e.place_id)) toggleSelect(e.place_id);
+                  });
+                }}
+                className="text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Select within 25 mi
+              </button>
+            </>
+          )}
         </div>
+      )}
+
+      {/* Result count */}
+      {!loading && filteredEntries.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Showing {Math.min(displayCount, filteredEntries.length)} of {filteredEntries.length} cemeteries
+          {nameFilter ? ` matching "${nameFilter}"` : ` within ${radius} miles`}
+        </p>
       )}
 
       {/* Cemetery grid */}
@@ -476,25 +562,41 @@ function DiscoverStep({
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : entries.length === 0 ? (
+      ) : filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <MapPin className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p className="text-sm">No cemeteries found within {radius} miles.</p>
-          <p className="text-xs mt-1">
-            Make sure your facility address is set in company settings, or try a larger radius.
+          <p className="text-sm">
+            {nameFilter ? `No cemeteries match "${nameFilter}".` : `No cemeteries found within ${radius} miles.`}
           </p>
+          {!nameFilter && (
+            <p className="text-xs mt-1">
+              Make sure your facility address is set in company settings, or try a larger radius.
+            </p>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {entries.map((entry) => (
-            <CemeteryCard
-              key={entry.place_id}
-              entry={entry}
-              selected={selected.has(entry.place_id)}
-              onToggle={() => toggleSelect(entry.place_id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {visibleEntries.map((entry) => (
+              <CemeteryCard
+                key={entry.place_id}
+                entry={entry}
+                selected={selected.has(entry.place_id)}
+                onToggle={() => toggleSelect(entry.place_id)}
+              />
+            ))}
+          </div>
+          {hasMore && (
+            <div className="text-center">
+              <button
+                onClick={() => setDisplayCount((n) => n + 30)}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium px-4 py-2 rounded-md border border-blue-200 hover:border-blue-300 transition-colors"
+              >
+                Show {Math.min(30, sortedEntries.length - displayCount)} more
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Inline-add demo callout */}

@@ -1,4 +1,4 @@
-"""Cemetery Directory model — Google Places-sourced cemetery entries."""
+"""Cemetery directory entries (OpenStreetMap or Google Places)."""
 
 import uuid
 from datetime import datetime, timezone
@@ -44,6 +44,12 @@ class CemeteryDirectory(Base):
     # Google Places metadata
     google_rating: Mapped[Decimal | None] = mapped_column(Numeric(3, 1), nullable=True)
     google_review_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Source tracking — 'google_places' or 'openstreetmap'
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="google_places", server_default="google_places"
+    )
+    osm_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Lifecycle
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
