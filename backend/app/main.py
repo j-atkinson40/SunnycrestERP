@@ -255,6 +255,31 @@ def patch_migrated_invoice_statuses():
 
 
 @app.on_event("startup")
+def backfill_default_modules():
+    """Ensure all companies have CompanyModule rows for default-enabled modules.
+
+    Companies created before a module was added to AVAILABLE_MODULES won't have
+    a row for it, causing get_enabled_module_keys() to exclude it even though
+    default_enabled=True.  This runs idempotently on every deploy.
+    """
+    try:
+        from app.database import SessionLocal
+        from app.models.company import Company
+        from app.services.module_service import seed_company_modules
+
+        db = SessionLocal()
+        try:
+            companies = db.query(Company).filter(Company.is_active == True).all()  # noqa: E712
+            for company in companies:
+                seed_company_modules(db, company.id)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        print(f"WARNING: Module backfill failed — {exc}")
+
+
+@app.on_event("startup")
 def start_job_scheduler():
     """Start the APScheduler background scheduler for all agent jobs."""
     try:
