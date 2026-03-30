@@ -6,7 +6,7 @@
  * Step 3 — Done summary
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
