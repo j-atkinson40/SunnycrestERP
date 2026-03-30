@@ -38,3 +38,11 @@ export interface CemeteryManualEntry {
   equipment: CemeteryEquipmentSettings;
   equipment_note: string | null;
 }
+
+export interface CemeteryPlatformMatch {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  connected: boolean;
+}

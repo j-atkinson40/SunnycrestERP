@@ -230,6 +230,164 @@ def create_cemeteries_from_selections(
     return {"created": created, "skipped": skipped, "errors": errors}
 
 
+def get_platform_cemetery_matches(
+    db: Session,
+    company_id: str,
+    radius_miles: int = 100,
+) -> list[dict]:
+    """Get cemetery tenants on the platform that are geographically near this manufacturer.
+
+    Excludes cemeteries the manufacturer has already connected to.
+    Returns a list of dicts: {id, name, city, state, connected}.
+    """
+    from app.models.company import Company
+    from app.models.platform_tenant_relationship import PlatformTenantRelationship
+
+    # Get manufacturer's lat/lng
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        return []
+
+    lat = float(company.facility_latitude) if company.facility_latitude else None
+    lng = float(company.facility_longitude) if company.facility_longitude else None
+    if not lat or not lng:
+        return []
+
+    lat_range = radius_miles / 69.0
+    lng_range = radius_miles / 54.6
+
+    # IDs already connected as cemetery_network
+    connected_ids = {
+        r[0]
+        for r in db.query(PlatformTenantRelationship.supplier_tenant_id)
+        .filter(
+            PlatformTenantRelationship.tenant_id == company_id,
+            PlatformTenantRelationship.relationship_type == "cemetery_network",
+            PlatformTenantRelationship.status == "active",
+        )
+        .all()
+    }
+
+    # Cemetery tenants within bounding box
+    from decimal import Decimal
+
+    cemetery_tenants = (
+        db.query(Company)
+        .filter(
+            Company.vertical == "cemetery",
+            Company.is_active.is_(True),
+            Company.id != company_id,
+            Company.facility_latitude.between(
+                Decimal(str(lat - lat_range)),
+                Decimal(str(lat + lat_range)),
+            ),
+            Company.facility_longitude.between(
+                Decimal(str(lng - lng_range)),
+                Decimal(str(lng + lng_range)),
+            ),
+        )
+        .order_by(Company.name)
+        .all()
+    )
+
+    return [
+        {
+            "id": t.id,
+            "name": t.name,
+            "city": getattr(t, "facility_city", None) or getattr(t, "address_city", None),
+            "state": getattr(t, "facility_state", None) or getattr(t, "address_state", None),
+            "connected": t.id in connected_ids,
+        }
+        for t in cemetery_tenants
+    ]
+
+
+def connect_platform_cemetery(
+    db: Session,
+    company_id: str,
+    cemetery_tenant_id: str,
+    connected_by: str | None = None,
+) -> dict:
+    """Create a PlatformTenantRelationship + Cemetery record for a platform cemetery tenant.
+
+    Idempotent — safe to call again if already connected.
+    Returns {connected: bool, cemetery_id: str | None}.
+    """
+    from datetime import datetime, timezone
+
+    from app.models.cemetery import Cemetery
+    from app.models.cemetery_directory_selection import CemeteryDirectorySelection
+    from app.models.company import Company
+    from app.models.platform_tenant_relationship import PlatformTenantRelationship
+
+    # Look up cemetery tenant
+    cemetery_company = db.query(Company).filter(Company.id == cemetery_tenant_id).first()
+    if not cemetery_company:
+        return {"connected": False, "cemetery_id": None}
+
+    place_id = f"platform:{cemetery_tenant_id}"
+
+    # Idempotent — skip if already connected
+    existing_rel = (
+        db.query(PlatformTenantRelationship)
+        .filter(
+            PlatformTenantRelationship.tenant_id == company_id,
+            PlatformTenantRelationship.supplier_tenant_id == cemetery_tenant_id,
+            PlatformTenantRelationship.relationship_type == "cemetery_network",
+        )
+        .first()
+    )
+    if existing_rel:
+        # Find existing cemetery record if any
+        existing_sel = (
+            db.query(CemeteryDirectorySelection)
+            .filter(
+                CemeteryDirectorySelection.company_id == company_id,
+                CemeteryDirectorySelection.place_id == place_id,
+            )
+            .first()
+        )
+        return {"connected": True, "cemetery_id": existing_sel.cemetery_id if existing_sel else None}
+
+    # Create the relationship
+    rel = PlatformTenantRelationship(
+        tenant_id=company_id,
+        supplier_tenant_id=cemetery_tenant_id,
+        relationship_type="cemetery_network",
+        status="active",
+        connected_by=connected_by,
+        connected_at=datetime.now(timezone.utc),
+    )
+    db.add(rel)
+
+    # Create Cemetery record from platform tenant data
+    city = getattr(cemetery_company, "facility_city", None) or getattr(cemetery_company, "address_city", None)
+    state = getattr(cemetery_company, "facility_state", None) or getattr(cemetery_company, "address_state", None)
+
+    cemetery = Cemetery(
+        company_id=company_id,
+        name=cemetery_company.name,
+        city=city,
+        state=state,
+    )
+    db.add(cemetery)
+    db.flush()
+
+    # Audit record
+    db.add(
+        CemeteryDirectorySelection(
+            company_id=company_id,
+            place_id=place_id,
+            name=cemetery_company.name,
+            action="connected",
+            cemetery_id=cemetery.id,
+        )
+    )
+    db.flush()
+
+    return {"connected": True, "cemetery_id": cemetery.id}
+
+
 def clear_cache(db: Session, company_id: str) -> None:
     """Delete fetch log records for this company to force a fresh Google Places pull."""
     from app.models.cemetery_directory_fetch_log import CemeteryDirectoryFetchLog

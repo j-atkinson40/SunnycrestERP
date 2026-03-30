@@ -84,3 +84,30 @@ class CemeterySelectionResponse(BaseModel):
 
 class CemeteryRefreshRequest(BaseModel):
     radius_miles: int = Field(default=50, ge=1, le=200)
+
+
+# ---------------------------------------------------------------------------
+# Platform cemetery matches (Step 0 of wizard)
+# ---------------------------------------------------------------------------
+
+
+class CemeteryPlatformMatchResponse(BaseModel):
+    id: str
+    name: str
+    city: str | None = None
+    state: str | None = None
+    connected: bool = False
+
+
+class CemeteryPlatformMatchListResponse(BaseModel):
+    matches: list[CemeteryPlatformMatchResponse]
+    total: int
+
+
+class CemeteryPlatformConnectRequest(BaseModel):
+    cemetery_tenant_id: str
+
+
+class CemeteryPlatformConnectResponse(BaseModel):
+    connected: bool
+    cemetery_id: str | None = None

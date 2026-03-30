@@ -265,6 +265,98 @@ def accept_suggestion(db: Session, suggestion_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Cemetery Network Readiness — suggest connections for new cemetery tenants
+# ---------------------------------------------------------------------------
+
+
+def suggest_cemetery_connections_for_new_tenants(db: Session) -> dict:
+    """Find recently-joined cemetery tenants and create NetworkConnectionSuggestions
+    for manufacturer tenants within 100 miles.
+
+    Called weekly by job_network_readiness(). Idempotent — uses ON CONFLICT DO NOTHING
+    logic (checks for existing suggestion before inserting).
+    """
+    from decimal import Decimal
+
+    RADIUS_MILES = 100
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
+
+    # Cemetery tenants created in the last 14 days with known location
+    new_cemeteries = (
+        db.query(Company)
+        .filter(
+            Company.vertical == "cemetery",
+            Company.is_active.is_(True),
+            Company.created_at >= cutoff,
+            Company.facility_latitude.isnot(None),
+            Company.facility_longitude.isnot(None),
+        )
+        .all()
+    )
+
+    created = 0
+    skipped = 0
+
+    for cemetery in new_cemeteries:
+        c_lat = float(cemetery.facility_latitude)
+        c_lng = float(cemetery.facility_longitude)
+        lat_range = RADIUS_MILES / 69.0
+        lng_range = RADIUS_MILES / 54.6
+
+        # Manufacturer tenants within bounding box
+        manufacturers = (
+            db.query(Company)
+            .filter(
+                Company.vertical == "manufacturing",
+                Company.is_active.is_(True),
+                Company.id != cemetery.id,
+                Company.facility_latitude.between(
+                    Decimal(str(c_lat - lat_range)),
+                    Decimal(str(c_lat + lat_range)),
+                ),
+                Company.facility_longitude.between(
+                    Decimal(str(c_lng - lng_range)),
+                    Decimal(str(c_lng + lng_range)),
+                ),
+            )
+            .all()
+        )
+
+        for mfr in manufacturers:
+            # Idempotent — skip if suggestion already exists
+            existing = (
+                db.query(NetworkConnectionSuggestion)
+                .filter(
+                    NetworkConnectionSuggestion.tenant_id == mfr.id,
+                    NetworkConnectionSuggestion.suggested_tenant_id == cemetery.id,
+                    NetworkConnectionSuggestion.connection_type == "cemetery_network",
+                )
+                .first()
+            )
+            if existing:
+                skipped += 1
+                continue
+
+            db.add(
+                NetworkConnectionSuggestion(
+                    tenant_id=mfr.id,
+                    suggested_tenant_id=cemetery.id,
+                    connection_type="cemetery_network",
+                    reason=f"{cemetery.name} recently joined the platform and is in your area",
+                    status="pending",
+                )
+            )
+            created += 1
+
+    db.commit()
+    logger.info(
+        "suggest_cemetery_connections: %d created, %d skipped (existing)", created, skipped
+    )
+    return {"created": created, "skipped": skipped}
+
+
+# ---------------------------------------------------------------------------
 # Admin Network Health
 # ---------------------------------------------------------------------------
 

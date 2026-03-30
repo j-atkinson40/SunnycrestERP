@@ -1,6 +1,7 @@
 /**
- * Cemetery Setup Wizard — 3-step onboarding flow for manufacturer cemeteries.
+ * Cemetery Setup Wizard — 4-step onboarding flow for manufacturer cemeteries.
  *
+ * Step 0 — Platform:    Connect to cemetery tenants already on Bridgeable.
  * Step 1 — Discover:   Browse Google Places results, select cemeteries to add.
  * Step 2 — Add Missing: Manually enter cemeteries not found in the search.
  * Step 3 — Complete:   Configure equipment settings per cemetery, then submit.
@@ -19,6 +20,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Link2,
   Loader2,
   MapPin,
   Plus,
@@ -26,11 +28,13 @@ import {
   Star,
   Trash2,
   ArrowRight,
+  X,
 } from "lucide-react";
 import type {
   CemeteryDirectoryEntry,
   CemeteryEquipmentSettings,
   CemeteryManualEntry,
+  CemeteryPlatformMatch,
   CemeterySelectionItem,
 } from "@/types/cemetery-directory";
 import * as cemeteryService from "@/services/cemetery-directory-service";
@@ -189,27 +193,27 @@ function CemeteryCard({
 // ── Step indicator ────────────────────────────────────────────────────────────
 
 function StepDots({ current }: { current: number }) {
-  const STEPS = ["Discover", "Add missing", "Equipment"];
+  const STEPS = ["Platform", "Discover", "Add missing", "Equipment"];
   return (
-    <div className="flex items-center gap-2 mb-8">
+    <div className="flex items-center gap-2 mb-8 flex-wrap">
       {STEPS.map((label, i) => (
         <div key={label} className="flex items-center gap-2">
           <div
             className={cn(
               "h-6 w-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0",
-              i + 1 < current
+              i < current
                 ? "bg-green-500 text-white"
-                : i + 1 === current
+                : i === current
                   ? "bg-blue-600 text-white"
                   : "bg-gray-100 text-muted-foreground",
             )}
           >
-            {i + 1 < current ? <Check className="h-3.5 w-3.5" /> : i + 1}
+            {i < current ? <Check className="h-3.5 w-3.5" /> : i + 1}
           </div>
           <span
             className={cn(
               "text-sm whitespace-nowrap",
-              i + 1 === current ? "font-medium" : "text-muted-foreground",
+              i === current ? "font-medium" : "text-muted-foreground",
             )}
           >
             {label}
@@ -220,6 +224,153 @@ function StepDots({ current }: { current: number }) {
     </div>
   );
 }
+
+// ── STEP 0 — Platform Connections ────────────────────────────────────────────
+
+function PlatformStep({
+  matches,
+  decisions,
+  loading,
+  connecting,
+  onConnect,
+  onSkip,
+  onUndo,
+  onNext,
+}: {
+  matches: CemeteryPlatformMatch[];
+  decisions: Record<string, "connected" | "skipped">;
+  loading: boolean;
+  connecting: Set<string>;
+  onConnect: (id: string) => void;
+  onSkip: (id: string) => void;
+  onUndo: (id: string) => void;
+  onNext: () => void;
+}) {
+  const undecided = matches.filter((m) => !decisions[m.id] && !m.connected);
+  const decided = matches.filter((m) => decisions[m.id] || m.connected);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold">Cemeteries already on Bridgeable</h1>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+          These cemetery businesses are already using Bridgeable in your area. Connect with them to
+          enable future integrations.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-16 animate-pulse rounded-lg border bg-muted" />
+          ))}
+        </div>
+      ) : matches.length === 0 ? (
+        <div className="py-8 text-center">
+          <Link2 className="mx-auto h-10 w-10 text-muted-foreground opacity-40" />
+          <p className="mt-3 text-sm text-muted-foreground">
+            No cemeteries in your area are on the platform yet.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Undecided */}
+          {undecided.map((match) => (
+            <div
+              key={match.id}
+              className="flex items-center justify-between rounded-lg border p-4"
+            >
+              <div>
+                <p className="font-medium text-sm">{match.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {[match.city, match.state].filter(Boolean).join(", ")} · Already on Bridgeable
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => onSkip(match.id)}>
+                  Skip
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => onConnect(match.id)}
+                  disabled={connecting.has(match.id)}
+                >
+                  {connecting.has(match.id) ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Connect"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          {/* Decided */}
+          {decided.length > 0 && (
+            <div className="space-y-2">
+              {decided.length > 0 && undecided.length > 0 && (
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground pt-1">
+                  Decided
+                </p>
+              )}
+              {decided.map((match) => {
+                const decision = decisions[match.id];
+                const isConnected = decision === "connected" || match.connected;
+                return (
+                  <div
+                    key={match.id}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg border p-3",
+                      isConnected
+                        ? "border-l-4 border-l-green-500 bg-green-50/50"
+                        : "bg-gray-50",
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isConnected ? (
+                        <Check className="h-4 w-4 text-green-600 shrink-0" />
+                      ) : (
+                        <X className="h-4 w-4 text-muted-foreground shrink-0" />
+                      )}
+                      <div>
+                        <span
+                          className={cn(
+                            "text-sm",
+                            !isConnected && "text-muted-foreground",
+                          )}
+                        >
+                          {match.name}
+                        </span>
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {isConnected ? "Connected" : "Skipped"}
+                        </span>
+                      </div>
+                    </div>
+                    {!match.connected && (
+                      <button
+                        onClick={() => onUndo(match.id)}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Undo
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex justify-end pt-2 border-t">
+        <Button onClick={onNext}>
+          Next <ArrowRight className="ml-1.5 h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 
 // ── STEP 1 — Discover ─────────────────────────────────────────────────────────
 
@@ -631,11 +782,17 @@ function SuccessScreen({ created, onContinue }: { created: number; onContinue: (
 export default function CemeterySetupWizard() {
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<number>(() => safeParse(LS_STEP, 1));
+  const [step, setStep] = useState<number>(() => safeParse(LS_STEP, 0));
   const [done, setDone] = useState(false);
   const [createdCount, setCreatedCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [tenantState, setTenantState] = useState("");
+
+  // Step 0 — Platform connections
+  const [platformMatches, setPlatformMatches] = useState<CemeteryPlatformMatch[]>([]);
+  const [platformLoading, setPlatformLoading] = useState(true);
+  const [platformDecisions, setPlatformDecisions] = useState<Record<string, "connected" | "skipped">>({});
+  const [connecting, setConnecting] = useState<Set<string>>(new Set());
 
   // Step 1
   const [entries, setEntries] = useState<CemeteryDirectoryEntry[]>([]);
@@ -661,6 +818,44 @@ export default function CemeterySetupWizard() {
       })
       .catch(() => {});
   }, []);
+
+  // ── Load platform matches on mount ────────────────────────────────────────
+  useEffect(() => {
+    cemeteryService
+      .getPlatformMatches()
+      .then(setPlatformMatches)
+      .catch(() => {})
+      .finally(() => setPlatformLoading(false));
+  }, []);
+
+  // ── Connect a platform cemetery ───────────────────────────────────────────
+  async function handlePlatformConnect(id: string) {
+    setConnecting((prev) => new Set(prev).add(id));
+    try {
+      await cemeteryService.connectPlatformCemetery(id);
+      setPlatformDecisions((prev) => ({ ...prev, [id]: "connected" }));
+    } catch {
+      toast.error("Failed to connect. Please try again.");
+    } finally {
+      setConnecting((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  function handlePlatformSkip(id: string) {
+    setPlatformDecisions((prev) => ({ ...prev, [id]: "skipped" }));
+  }
+
+  function handlePlatformUndo(id: string) {
+    setPlatformDecisions((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
 
   // ── Load directory on Step 1 ───────────────────────────────────────────────
   const loadDirectory = useCallback(async (r: number, forceRefresh = false) => {
@@ -827,6 +1022,19 @@ export default function CemeterySetupWizard() {
   return (
     <div className="max-w-2xl mx-auto p-6">
       <StepDots current={step} />
+
+      {step === 0 && (
+        <PlatformStep
+          matches={platformMatches}
+          decisions={platformDecisions}
+          loading={platformLoading}
+          connecting={connecting}
+          onConnect={handlePlatformConnect}
+          onSkip={handlePlatformSkip}
+          onUndo={handlePlatformUndo}
+          onNext={() => setStep(1)}
+        />
+      )}
 
       {step === 1 && (
         <DiscoverStep

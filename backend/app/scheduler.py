@@ -145,6 +145,12 @@ def job_draft_invoice_generator():
     _run_per_tenant("DRAFT_INVOICE_GENERATOR", generate_draft_invoices)
 
 
+def job_network_readiness():
+    """Weekly: find new cemetery tenants and create connection suggestions for nearby manufacturers."""
+    from app.services.network_intelligence_service import suggest_cemetery_connections_for_new_tenants
+    _run_global("NETWORK_READINESS", suggest_cemetery_connections_for_new_tenants)
+
+
 def job_onboarding_pattern():
     """Run onboarding timeline prediction for all tenants."""
     from app.models.company import Company
@@ -175,6 +181,7 @@ def job_onboarding_pattern():
 
 JOB_REGISTRY: dict[str, callable] = {
     "draft_invoice_generator": job_draft_invoice_generator,
+    "network_readiness": job_network_readiness,
     "ar_aging_monitor": job_ar_aging_monitor,
     "collections_sequence": job_collections_sequence,
     "ap_upcoming_payments": job_ap_upcoming_payments,
@@ -287,6 +294,16 @@ def register_all_jobs():
         CronTrigger(day_of_week="sun", hour=3, minute=17),
         id="profile_update",
         name="profile_update",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+
+    # WEEKLY Sunday at 3:30am — cemetery network readiness (new tenant connection suggestions)
+    scheduler.add_job(
+        job_network_readiness,
+        CronTrigger(day_of_week="sun", hour=3, minute=30),
+        id="network_readiness",
+        name="network_readiness",
         replace_existing=True,
         misfire_grace_time=7200,
     )

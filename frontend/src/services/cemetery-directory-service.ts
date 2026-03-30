@@ -1,6 +1,7 @@
 import apiClient from "@/lib/api-client";
 import type {
   CemeteryDirectoryEntry,
+  CemeteryPlatformMatch,
   CemeterySelectionItem,
   CemeteryManualEntry,
 } from "@/types/cemetery-directory";
@@ -34,4 +35,22 @@ export async function refreshCemeteryDirectory(
     radius_miles: radiusMiles,
   });
   return data.entries as CemeteryDirectoryEntry[];
+}
+
+export async function getPlatformMatches(
+  radiusMiles: number = 100,
+): Promise<CemeteryPlatformMatch[]> {
+  const { data } = await apiClient.get(`${BASE}/cemetery-directory/platform-matches`, {
+    params: { radius_miles: radiusMiles },
+  });
+  return data.matches as CemeteryPlatformMatch[];
+}
+
+export async function connectPlatformCemetery(
+  cemeteryTenantId: string,
+): Promise<{ connected: boolean; cemetery_id: string | null }> {
+  const { data } = await apiClient.post(`${BASE}/cemetery-directory/platform-connect`, {
+    cemetery_tenant_id: cemeteryTenantId,
+  });
+  return data;
 }
