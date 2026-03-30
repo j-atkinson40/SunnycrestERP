@@ -583,7 +583,10 @@ export default function CustomersPage() {
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const customerType = activeTab === "contractors" ? "contractor" : "funeral_home";
+      const customerType =
+        activeTab === "contractors" ? "contractor"
+        : activeTab === "cemeteries" ? "cemetery"
+        : "funeral_home";
       const data = await customerService.getCustomers(
         page,
         20,
@@ -609,7 +612,7 @@ export default function CustomersPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "funeral_homes" || activeTab === "contractors") {
+    if (activeTab === "funeral_homes" || activeTab === "contractors" || activeTab === "cemeteries") {
       loadCustomers();
     }
   }, [loadCustomers, activeTab]);
@@ -687,7 +690,7 @@ export default function CustomersPage() {
               ? `${total} funeral home${total !== 1 ? "s" : ""}`
               : activeTab === "contractors"
               ? `${total} contractor${total !== 1 ? "s" : ""}`
-              : "Cemetery management"}
+              : `${total} cemetery account${total !== 1 ? "s" : ""}`}
           </p>
         </div>
         {activeTab === "funeral_homes" && canCreate && (
@@ -1280,9 +1283,85 @@ export default function CustomersPage() {
         </>
       )}
 
-      {/* Tab: Cemeteries */}
+      {/* Tab: Cemeteries — cemetery-type billing accounts from migration */}
       {activeTab === "cemeteries" && (
-        <CemeteriesTab canCreate={canCreate} />
+        <>
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              placeholder="Search cemeteries..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="max-w-sm"
+            />
+            <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(e) => { setIncludeInactive(e.target.checked); setPage(1); }}
+                className="size-4 rounded border-input"
+              />
+              Include inactive
+            </label>
+          </div>
+
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Account #</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>City / State</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead>Terms</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={7} className="text-center">Loading...</TableCell></TableRow>
+                ) : customers.length === 0 ? (
+                  <TableRow><TableCell colSpan={7} className="text-center">No cemetery accounts found</TableCell></TableRow>
+                ) : (
+                  customers.map((customer) => (
+                    <TableRow key={customer.id}>
+                      <TableCell className="font-medium">
+                        <Link to={`/customers/${customer.id}`} className="hover:underline">{customer.name}</Link>
+                        {!customer.is_active && <Badge variant="destructive" className="ml-2">Inactive</Badge>}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{customer.account_number || "—"}</TableCell>
+                      <TableCell>
+                        <div>{customer.contact_name || "—"}</div>
+                        {customer.email && <div className="text-xs text-muted-foreground">{customer.email}</div>}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.city && customer.state ? `${customer.city}, ${customer.state}` : customer.city || customer.state || "—"}
+                      </TableCell>
+                      <TableCell>{statusBadge(customer.account_status)}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {customer.credit_limit !== null && customer.current_balance > customer.credit_limit ? (
+                          <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                            <AlertTriangle className="size-3.5" />{formatCurrency(customer.current_balance)}
+                          </span>
+                        ) : formatCurrency(customer.current_balance)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{customer.payment_terms || "—"}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
+              <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

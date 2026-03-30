@@ -415,3 +415,48 @@ def reclassify_contractors(
         "reclassified": reclassified,
         "message": f"Reclassified {len(reclassified)} customers to contractor type and applied visibility flags.",
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /reclassify-cemeteries — fix customers misclassified as funeral_home
+# ---------------------------------------------------------------------------
+
+_CEMETERY_TERMS = [
+    "cemetery", "cemeteries", "cemetary", "memorial park",
+    "burial ground", "mausoleum", "columbarium", "memorial gardens",
+    "memorial chapel", "sacred heart", "st. marys", "st marys",
+    "holy cross", "holy name", "holy trinity", "calvary cemetery",
+    "gate of heaven", "resurrection cemetery", "assumption cemetery",
+]
+
+
+@router.post("/reclassify-cemeteries")
+def reclassify_cemeteries(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Reclassify funeral_home customers with cemetery-sounding names to
+    customer_type='cemetery'.
+    """
+    from app.models.customer import Customer as _Cust
+
+    customers = db.query(_Cust).filter(
+        _Cust.company_id == current_user.company_id,
+        _Cust.customer_type == "funeral_home",
+    ).all()
+
+    reclassified = []
+    for c in customers:
+        name_lower = (c.name or "").lower()
+        if any(term in name_lower for term in _CEMETERY_TERMS):
+            c.customer_type = "cemetery"
+            reclassified.append(c.name)
+
+    db.commit()
+
+    return {
+        "success": True,
+        "reclassified_count": len(reclassified),
+        "reclassified": reclassified,
+        "message": f"Reclassified {len(reclassified)} customers to cemetery type.",
+    }
