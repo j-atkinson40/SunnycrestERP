@@ -520,6 +520,14 @@ function AddCemeteriesStep({
         Add a cemetery
       </Button>
 
+      {/* Reassurance callout */}
+      <div>
+        <p className="text-sm font-medium text-muted-foreground mb-2">
+          Don&apos;t worry about adding every cemetery now
+        </p>
+        <CemeteryInlineAddDemo />
+      </div>
+
       <div className="flex items-center justify-between pt-2 border-t">
         <button
           type="button"
