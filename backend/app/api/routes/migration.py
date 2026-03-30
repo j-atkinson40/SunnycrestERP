@@ -362,3 +362,56 @@ def apply_visibility_backfill(
         raise HTTPException(status_code=500, detail=f"Visibility backfill failed: {str(e)}")
 
     return {"success": True, "message": "Extension visibility flags applied."}
+
+
+# ---------------------------------------------------------------------------
+# POST /reclassify-contractors — fix customers misclassified as funeral_home
+# ---------------------------------------------------------------------------
+
+_CONTRACTOR_TERMS = [
+    "excavat", "construct", "landscap", "septic", "sewer", "drain",
+    "well drilling", "plumb", "masonry", "concrete", "grading",
+    "site work", "site dev", "civil", "electric", "utilities",
+    "contracting", "builder", "greenhouse", "tractor", "equipment",
+    "property maintenance", "lawn", "snow", "pond", "irrigation",
+    "piping", "mechanical", "installation", "waterproof",
+    "basement tech", "environmental", "earthwork",
+]
+
+
+@router.post("/reclassify-contractors")
+def reclassify_contractors(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Reclassify funeral_home customers with contractor-sounding names to
+    customer_type='contractor', then re-apply visibility flags.
+
+    Safe to call multiple times — idempotent.
+    """
+    from app.models.customer import Customer as _Cust
+
+    customers = db.query(_Cust).filter(
+        _Cust.company_id == current_user.company_id,
+        _Cust.customer_type == "funeral_home",
+    ).all()
+
+    reclassified = []
+    for c in customers:
+        name_lower = (c.name or "").lower()
+        if any(term in name_lower for term in _CONTRACTOR_TERMS):
+            c.customer_type = "contractor"
+            reclassified.append(c.name)
+
+    db.flush()
+
+    # Re-apply visibility so newly reclassified contractors get hidden
+    DataMigrationService.apply_visibility_flags(db, current_user.company_id)
+    db.commit()
+
+    return {
+        "success": True,
+        "reclassified_count": len(reclassified),
+        "reclassified": reclassified,
+        "message": f"Reclassified {len(reclassified)} customers to contractor type and applied visibility flags.",
+    }

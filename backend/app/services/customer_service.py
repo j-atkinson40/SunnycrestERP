@@ -269,6 +269,8 @@ def get_customer_stats(db: Session, company_id: str) -> dict:
     base = db.query(Customer).filter(
         Customer.company_id == company_id,
         Customer.is_active == True,  # noqa: E712
+        Customer.customer_type == "funeral_home",
+        Customer.is_extension_hidden.isnot(True),
     )
     total = base.count()
     active = base.filter(Customer.account_status == "active").count()
