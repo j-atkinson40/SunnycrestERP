@@ -271,6 +271,17 @@ def order_station_activity(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/cemetery-tax-preview")
+def cemetery_tax_preview(
+    cemetery_id: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get tax rate preview for a cemetery — used in order station UI."""
+    from app.services.tax_service import get_tax_preview
+    return get_tax_preview(db, current_user.company_id, cemetery_id)
+
+
 @router.post("/quotes", response_model=QuoteResponse, status_code=201)
 def create_quote(
     data: CreateQuoteRequest,
@@ -296,6 +307,8 @@ def create_quote(
         contact_phone=data.contact_phone,
         notes=data.notes,
         delivery_charge=data.delivery_charge,
+        cemetery_id=data.cemetery_id,
+        cemetery_name=data.cemetery_name,
     )
     return QuoteResponse(
         id=result["id"],
@@ -305,6 +318,8 @@ def create_quote(
         total=result["total"],
         status=result["status"],
         created_at=result["created_at"],
+        cemetery_id=result.get("cemetery_id"),
+        cemetery_name=result.get("cemetery_name"),
     )
 
 

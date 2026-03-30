@@ -40,6 +40,10 @@ class CreateQuoteRequest(BaseModel):
     template_id: str | None = None
     customer_name: str
     customer_id: str | None = None
+    cemetery_id: str | None = None
+    cemetery_name: str | None = None
+    mode: str = "order"  # "order" or "quote"
+    fields: dict | None = None  # raw formData from order station (ignored in processing, kept for future)
     product_line: str
     line_items: list[dict]
     permit_number: str | None = None
@@ -61,6 +65,8 @@ class QuoteResponse(BaseModel):
     total: float
     status: str
     created_at: datetime
+    cemetery_id: str | None = None
+    cemetery_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

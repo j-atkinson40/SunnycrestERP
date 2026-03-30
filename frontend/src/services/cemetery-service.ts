@@ -111,3 +111,17 @@ export const cemeteryService = {
     return res.data;
   },
 };
+
+export async function getCemeteryTaxPreview(cemeteryId: string): Promise<{
+  configured: boolean;
+  rate_percentage: number | null;
+  rate_name: string | null;
+  county: string | null;
+  state: string | null;
+  jurisdiction_name: string | null;
+}> {
+  const res = await apiClient.get("/order-station/cemetery-tax-preview", {
+    params: { cemetery_id: cemeteryId },
+  });
+  return res.data;
+}

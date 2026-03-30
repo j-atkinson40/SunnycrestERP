@@ -21,6 +21,8 @@ interface CemeteryPickerProps {
   customerId: string | null;
   /** Currently selected cemetery_id */
   value: string | null;
+  /** Display value to show in the input (cemetery name) */
+  displayValue?: string;
   /** Called when selection changes */
   onChange: (cemeteryId: string | null, cemetery: Cemetery | null) => void;
   /** Called when equipment prefill fires (parent applies to order lines) */
@@ -34,6 +36,7 @@ interface CemeteryPickerProps {
 export function CemeteryPicker({
   customerId,
   value,
+  displayValue,
   onChange,
   onEquipmentPrefill,
   className,

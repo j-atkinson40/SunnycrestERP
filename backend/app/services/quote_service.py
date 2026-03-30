@@ -102,6 +102,8 @@ def create_quote(
     contact_phone: str | None = None,
     notes: str | None = None,
     delivery_charge: float | None = None,
+    cemetery_id: str | None = None,
+    cemetery_name: str | None = None,
 ) -> dict:
     """Create a quote record. Returns the quote with generated quote number."""
     now = datetime.now(timezone.utc)
@@ -176,6 +178,44 @@ def create_quote(
     for ql in quote_lines:
         ql.quote_id = quote.id
         db.add(ql)
+
+    db.flush()
+
+    # --- Cemetery ---
+    if cemetery_id:
+        from app.models.cemetery import Cemetery
+        cem = db.query(Cemetery).filter(
+            Cemetery.id == cemetery_id,
+            Cemetery.company_id == tenant_id,
+        ).first()
+        if cem:
+            quote.cemetery_id = cem.id
+            quote.cemetery_name = cem.name
+            # Record funeral home → cemetery usage history
+            if customer_id:
+                try:
+                    from app.services import cemetery_service
+                    cemetery_service.record_funeral_home_cemetery_usage(
+                        db, tenant_id, customer_id, cemetery_id
+                    )
+                except Exception:
+                    pass  # Non-critical
+
+    # --- Tax ---
+    if cemetery_id or customer_id:
+        try:
+            from app.services.tax_service import get_jurisdiction_for_order, compute_tax
+            from app.models.customer import Customer as CustomerModel
+            jur, rate_obj = get_jurisdiction_for_order(db, tenant_id, cemetery_id, customer_id)
+            if jur and rate_obj:
+                cust = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first() if customer_id else None
+                tax_exempt = bool(cust and cust.tax_exempt) if cust else False
+                tax_amount, effective_rate = compute_tax(quote.subtotal, rate_obj.rate_percentage, tax_exempt)
+                quote.tax_amount = tax_amount
+                quote.tax_rate = effective_rate
+                quote.total = quote.subtotal + tax_amount + (quote.delivery_charge or Decimal("0.00"))
+        except Exception as exc:
+            logger.warning("Tax calculation failed: %s", exc)
 
     db.commit()
     db.refresh(quote)
@@ -379,6 +419,8 @@ def _quote_to_dict(q: Quote) -> dict:
         "notes": q.notes,
         "created_at": q.created_at,
         "expiry_date": q.expiry_date,
+        "cemetery_id": q.cemetery_id if hasattr(q, "cemetery_id") else None,
+        "cemetery_name": q.cemetery_name if hasattr(q, "cemetery_name") else None,
         "lines": [
             {
                 "id": ln.id,

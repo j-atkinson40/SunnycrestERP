@@ -72,6 +72,13 @@ class Quote(Base):
     template_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
+
+    # Cemetery reference (for funeral vault orders)
+    cemetery_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("cemeteries.id"), nullable=True, index=True
+    )
+    cemetery_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     permit_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     permit_jurisdiction: Mapped[str | None] = mapped_column(
         String(100), nullable=True
@@ -108,6 +115,7 @@ class Quote(Base):
     # Relationships
     company = relationship("Company")
     customer = relationship("Customer")
+    cemetery = relationship("Cemetery", foreign_keys=[cemetery_id])
     lines = relationship(
         "QuoteLine", back_populates="quote", order_by="QuoteLine.sort_order"
     )

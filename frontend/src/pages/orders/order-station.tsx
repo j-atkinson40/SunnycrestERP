@@ -24,6 +24,7 @@ import type {
 } from "@/types/order-station";
 import { getApiErrorMessage } from "@/lib/api-error";
 import apiClient from "@/lib/api-client";
+import { getCemeteryTaxPreview } from "@/services/cemetery-service";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -367,6 +368,23 @@ function OrderSlideOver({
   const [resolvedPrices, setResolvedPrices] = useState<ResolvedBundlePrice[]>([]);
   const [pricesAnimating, setPricesAnimating] = useState<Set<string>>(new Set());
   const panelRef = useRef<HTMLDivElement>(null);
+  const [taxPreview, setTaxPreview] = useState<{
+    configured: boolean;
+    rate_percentage: number | null;
+    rate_name: string | null;
+    county: string | null;
+    state: string | null;
+    jurisdiction_name: string | null;
+  } | null>(null);
+  const [equipmentNote, setEquipmentNote] = useState<string | null>(null);
+  const [equipmentNoteTimer, setEquipmentNoteTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup equipment note timer on unmount
+  useEffect(() => {
+    return () => {
+      if (equipmentNoteTimer) clearTimeout(equipmentNoteTimer);
+    };
+  }, [equipmentNoteTimer]);
 
   const width = template.slide_over_width || 480;
   const isQuote = mode === "quote";
@@ -509,19 +527,91 @@ function OrderSlideOver({
                 <Label htmlFor="cemetery">Cemetery</Label>
                 <CemeteryPicker
                   value={formData.cemetery_id || null}
+                  displayValue={formData.cemetery || ""}
                   customerId={formData.customer_id || null}
                   onChange={(cemeteryId, cemetery) => {
                     setField("cemetery_id", cemeteryId || "");
                     setField("cemetery", cemetery?.name || "");
+                    // Fetch tax preview
+                    if (cemeteryId) {
+                      getCemeteryTaxPreview(cemeteryId)
+                        .then((preview) => setTaxPreview(preview))
+                        .catch(() => setTaxPreview(null));
+                    } else {
+                      setTaxPreview(null);
+                    }
                   }}
                   onEquipmentPrefill={(prefill) => {
+                    // Set equipment flags (existing behavior — correct)
                     setField("tent", prefill.can_provide.includes("tent") ? "true" : "false");
                     setField("lowering_device", prefill.can_provide.includes("lowering_device") ? "true" : "false");
                     setField("greens", prefill.can_provide.includes("grass") ? "true" : "false");
+
+                    // Show equipment notification
+                    if (equipmentNoteTimer) clearTimeout(equipmentNoteTimer);
+                    if (prefill.nothing_needed) {
+                      setEquipmentNote("This cemetery provides all equipment — no equipment charges added.");
+                    } else if (prefill.cemetery_provides.length > 0) {
+                      const items = prefill.cemetery_provides.join(", ");
+                      setEquipmentNote(`Cemetery provides: ${items}. Those charges are not included.`);
+                    } else if (prefill.suggestion_label) {
+                      setEquipmentNote(prefill.suggestion_label);
+                      // Auto-dismiss after 8s for suggestions (not charge removals)
+                      const t = setTimeout(() => setEquipmentNote(null), 8000);
+                      setEquipmentNoteTimer(t);
+                    }
                   }}
                   guidedKey="cemetery-select"
                   className="mt-1"
                 />
+
+                {/* Tax preview */}
+                {taxPreview && (
+                  <div className={cn(
+                    "mt-2 rounded-md px-3 py-2 text-xs flex items-center gap-2",
+                    taxPreview.configured
+                      ? "bg-blue-50 border border-blue-200 text-blue-800"
+                      : "bg-amber-50 border border-amber-200 text-amber-800",
+                  )}>
+                    {taxPreview.configured ? (
+                      <>
+                        <span>🏛</span>
+                        <span>
+                          {taxPreview.county} County tax: {taxPreview.rate_percentage?.toFixed(1)}%
+                          {taxPreview.rate_name ? ` (${taxPreview.rate_name})` : ""}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>⚠</span>
+                        <span>
+                          No tax rate configured for {taxPreview.county || "this county"}.{" "}
+                          <a href="/settings/tax-rates" className="underline underline-offset-2 hover:opacity-80">
+                            Configure →
+                          </a>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Equipment prefill notification */}
+                {equipmentNote && (
+                  <div className="mt-2 flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+                    <span className="shrink-0">🏕</span>
+                    <span className="flex-1">{equipmentNote}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (equipmentNoteTimer) clearTimeout(equipmentNoteTimer);
+                        setEquipmentNote(null);
+                      }}
+                      className="text-green-600 hover:text-green-800 shrink-0"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div data-guided="service-date">
                 <Label htmlFor="delivery_date">Delivery Date</Label>
