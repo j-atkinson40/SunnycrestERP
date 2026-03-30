@@ -908,10 +908,13 @@ Examples of billing term text to look for:
             match = item_data.get("match") or {}
             status = item_data.get("match_status", "unmatched")
 
-            # Charge items always default to create_custom (add to library)
+            # Charge items always go to the library regardless of match confidence
             is_charge = bool(item_data.get("charge_category"))
 
-            if status == "high_confidence":
+            if is_charge:
+                unmatched += 1
+                action = "create_custom"
+            elif status == "high_confidence":
                 high += 1
                 action = "create_product"
             elif status == "low_confidence":
@@ -920,9 +923,6 @@ Examples of billing term text to look for:
             elif status == "bundle":
                 low += 1
                 action = "create_bundle"
-            elif is_charge:
-                unmatched += 1
-                action = "create_custom"
             else:
                 unmatched += 1
                 action = "skip"
