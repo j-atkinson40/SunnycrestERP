@@ -82,6 +82,12 @@ class SalesOrder(Base):
     driver_exceptions: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     has_driver_exception: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # Delivery confirmation tracking
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_auto_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # True = system marked delivered at 6 PM batch; False = driver explicitly confirmed
+    delivered_by_driver_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     # Spring burial
     is_spring_burial: Mapped[bool] = mapped_column(Boolean, default=False)
     spring_burial_added_at: Mapped[datetime | None] = mapped_column(

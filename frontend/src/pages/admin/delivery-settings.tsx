@@ -272,6 +272,33 @@ export default function DeliverySettingsPage() {
 
       <Separator />
 
+      {/* Driver Delivery Confirmation */}
+      <div>
+        <h2 className="mb-1 text-lg font-semibold">Driver Delivery Confirmation</h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          Controls whether draft invoices are generated only when drivers mark orders complete, or automatically at 6 PM.
+        </p>
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1 pr-4">
+              <p className="text-sm font-medium">Require drivers to mark deliveries complete in the app</p>
+              <p className="text-xs text-muted-foreground">
+                {settings.require_driver_status_updates
+                  ? "Draft invoices are only generated for services that drivers have explicitly marked as delivered. Unconfirmed services will be flagged for review."
+                  : "All funeral services scheduled for today will be automatically marked as delivered when draft invoices are generated at 6 PM. Drivers do not need to update order status."}
+              </p>
+            </div>
+            <Switch
+              checked={settings.require_driver_status_updates}
+              onCheckedChange={(checked: boolean) => handleToggle("require_driver_status_updates", checked)}
+              disabled={!canEdit || saving}
+            />
+          </div>
+        </Card>
+      </div>
+
+      <Separator />
+
       {/* Invoice Generation Mode */}
       <div>
         <h2 className="mb-1 text-lg font-semibold">Invoice Generation</h2>

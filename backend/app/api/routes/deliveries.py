@@ -578,7 +578,8 @@ def complete_delivery(
         has_exceptions = True
 
     # Store exceptions on the linked sales order
-    if has_exceptions and delivery.order_id:
+    # Update the linked sales order with driver confirmation details
+    if delivery.order_id:
         order = (
             db.query(SalesOrder)
             .filter(
@@ -588,8 +589,13 @@ def complete_delivery(
             .first()
         )
         if order:
-            order.driver_exceptions = exceptions_data
-            order.has_driver_exception = True
+            order.delivered_at = now
+            order.delivery_auto_confirmed = False
+            driver_name = getattr(current_user, "full_name", None) or current_user.email
+            order.delivered_by_driver_name = driver_name
+            if has_exceptions:
+                order.driver_exceptions = exceptions_data
+                order.has_driver_exception = True
 
     db.commit()
     db.refresh(delivery)

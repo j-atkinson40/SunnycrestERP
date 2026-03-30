@@ -195,6 +195,13 @@ def _build_funeral_scheduling_context(
         }
 
 
+def _order_is_auto_confirmed(db: Session, order_id: str) -> bool:
+    """Return True if the linked sales order was auto-confirmed by the system."""
+    from app.models.sales_order import SalesOrder
+    row = db.query(SalesOrder.delivery_auto_confirmed).filter(SalesOrder.id == order_id).first()
+    return bool(row and row[0])
+
+
 def _build_draft_invoice_context(db: Session, company_id: str) -> dict:
     """Return summary of draft invoices pending morning review."""
     try:
@@ -223,15 +230,21 @@ def _build_draft_invoice_context(db: Session, company_id: str) -> dict:
                     pass
             customers.append(name or "Unknown")
 
+        auto_confirmed_count = sum(
+            1 for inv in pending
+            if inv.sales_order_id and _order_is_auto_confirmed(db, inv.sales_order_id)
+        )
+
         return {
             "count": len(pending),
             "total_amount": str(total),
             "exception_count": exception_count,
+            "auto_confirmed_count": auto_confirmed_count,
             "customers": customers,
         }
     except Exception as e:
         logger.warning("Error building draft invoice context: %s", e)
-        return {"count": 0, "total_amount": "0", "exception_count": 0, "customers": []}
+        return {"count": 0, "total_amount": "0", "exception_count": 0, "auto_confirmed_count": 0, "customers": []}
 
 
 def _build_invoicing_ar_context(
@@ -343,7 +356,7 @@ def _build_invoicing_ar_context(
             "uninvoiced_completed_orders": 0,
             "sync_errors_24h": [],
             "sync_error_count": 0,
-            "draft_invoices_pending": {"count": 0, "total_amount": "0", "exception_count": 0, "customers": []},
+            "draft_invoices_pending": {"count": 0, "total_amount": "0", "exception_count": 0, "auto_confirmed_count": 0, "customers": []},
         }
 
 
@@ -923,8 +936,14 @@ def _serialize_context_to_text(
         if dp_count > 0:
             dp_total = dp.get("total_amount", "0")
             dp_exc = dp.get("exception_count", 0)
+            dp_auto = dp.get("auto_confirmed_count", 0)
             dp_customers = dp.get("customers", [])
             lines.append(f"DRAFT INVOICES PENDING REVIEW: {dp_count} (${dp_total} total)")
+            if dp_auto > 0:
+                lines.append(
+                    f"  🤖 {dp_auto} deliveries were auto-confirmed — "
+                    "review for any exceptions before approving."
+                )
             if dp_exc > 0:
                 lines.append(f"  ⚠ {dp_exc} have driver exceptions — require individual review")
             lines.append(f"  Customers: {', '.join(dp_customers[:5])}")

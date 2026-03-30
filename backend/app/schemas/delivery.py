@@ -269,6 +269,8 @@ class DeliverySettingsUpdate(BaseModel):
     enable_delivery_portal: bool | None = None
     auto_create_delivery_from_order: bool | None = None
     auto_invoice_on_complete: bool | None = None
+    invoice_generation_mode: str | None = None
+    require_driver_status_updates: bool | None = None
     sms_carrier_updates: bool | None = None
     carrier_portal: bool | None = None
     max_stops_per_route: int | None = None
@@ -297,6 +299,8 @@ class DeliverySettingsResponse(BaseModel):
     enable_delivery_portal: bool
     auto_create_delivery_from_order: bool
     auto_invoice_on_complete: bool
+    invoice_generation_mode: str = "end_of_day"
+    require_driver_status_updates: bool = False
     sms_carrier_updates: bool
     carrier_portal: bool
     max_stops_per_route: int | None = None

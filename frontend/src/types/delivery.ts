@@ -157,6 +157,7 @@ export interface DeliverySettings {
   auto_create_delivery_from_order: boolean;
   auto_invoice_on_complete: boolean;
   invoice_generation_mode: string;
+  require_driver_status_updates: boolean;
   sms_carrier_updates: boolean;
   carrier_portal: boolean;
   max_stops_per_route: number | null;
@@ -186,6 +187,7 @@ export interface DeliverySettingsUpdate {
   auto_create_delivery_from_order?: boolean;
   auto_invoice_on_complete?: boolean;
   invoice_generation_mode?: string;
+  require_driver_status_updates?: boolean;
   sms_carrier_updates?: boolean;
   carrier_portal?: boolean;
   max_stops_per_route?: number | null;

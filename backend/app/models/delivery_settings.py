@@ -50,6 +50,10 @@ class DeliverySettings(Base):
     )
     # 'manual' | 'end_of_day' | 'immediate'
 
+    # Invoice / confirmation workflow
+    require_driver_status_updates: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # False = system auto-confirms delivery at 6 PM batch; True = require driver to mark delivered
+
     # Carrier toggles
     sms_carrier_updates: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     carrier_portal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

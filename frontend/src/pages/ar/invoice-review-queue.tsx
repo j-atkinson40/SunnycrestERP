@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, CheckCircle, ClipboardCheck, RefreshCw } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle, ClipboardCheck, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -37,6 +37,9 @@ interface ReviewInvoice {
   order_number: string | null;
   scheduled_date: string | null;
   driver_exceptions: Array<{ product_id?: string; reason: string; notes?: string }> | null;
+  delivery_auto_confirmed: boolean;
+  delivered_at: string | null;
+  delivered_by_driver_name: string | null;
   lines: InvoiceLine[];
 }
 
@@ -45,6 +48,14 @@ function formatCurrency(amount: number): string {
     style: "currency",
     currency: "USD",
   }).format(amount);
+}
+
+function formatTime(isoStr: string | null): string {
+  if (!isoStr) return "";
+  return new Date(isoStr).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function formatDate(dateStr: string | null): string {
@@ -86,6 +97,31 @@ function InvoiceCard({ invoice, onApprove, approving }: InvoiceCardProps) {
               <div className="text-xs text-muted-foreground">{invoice.order_number}</div>
             )}
           </div>
+        </div>
+
+        {/* Confirmation status row */}
+        <div className="mt-1.5">
+          {invoice.has_exceptions ? (
+            <span className="inline-flex items-center gap-1.5 text-amber-700 text-xs font-medium">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Exception
+              {invoice.delivered_by_driver_name
+                ? ` — ${invoice.delivered_by_driver_name}`
+                : ""}
+              {invoice.delivered_at ? `, ${formatTime(invoice.delivered_at)}` : ""}
+            </span>
+          ) : invoice.delivery_auto_confirmed ? (
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground text-xs">
+              <Bot className="w-3.5 h-3.5" />
+              Auto-confirmed delivery
+            </span>
+          ) : invoice.delivered_by_driver_name ? (
+            <span className="inline-flex items-center gap-1.5 text-green-700 text-xs font-medium">
+              <CheckCircle className="w-3.5 h-3.5" />
+              Delivered by {invoice.delivered_by_driver_name}
+              {invoice.delivered_at ? `, ${formatTime(invoice.delivered_at)}` : ""}
+            </span>
+          ) : null}
         </div>
 
         {invoice.has_exceptions && (

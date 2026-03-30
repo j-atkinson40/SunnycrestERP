@@ -1,9 +1,22 @@
 """End-of-day draft invoice generation for funeral service orders.
 
 Runs at 6 PM daily.  For each manufacturing tenant with
-invoice_generation_mode = 'end_of_day', finds all completed sales orders
-for today that have no invoice yet and creates a draft invoice that requires
-morning review before being posted to AR.
+invoice_generation_mode = 'end_of_day', finds all qualifying sales orders
+for today and creates draft invoices that require morning review.
+
+Two modes, controlled by require_driver_status_updates on DeliverySettings:
+
+  False (default — auto-confirm):
+    Query every funeral order scheduled today that is not cancelled/postponed
+    and not yet invoiced.  Orders that are not already marked delivered are
+    automatically confirmed by the system (delivery_auto_confirmed = True,
+    delivered_at = now(), status → 'delivered').  A draft invoice is created
+    for every such order.
+
+  True (require driver):
+    Only create draft invoices for orders that drivers have already marked
+    delivered/completed/shipped.  Orders that are still unconfirmed are
+    gathered into a warning alert so dispatch staff can follow up.
 """
 
 import logging
@@ -19,8 +32,11 @@ from app.models.sales_order import SalesOrder
 
 logger = logging.getLogger(__name__)
 
-# Statuses that indicate a funeral service order was fulfilled today
-COMPLETED_STATUSES = {"completed", "shipped", "delivered"}
+# Statuses that count as driver-confirmed delivery
+DRIVER_CONFIRMED_STATUSES = {"completed", "shipped", "delivered"}
+
+# Statuses that mean the order is cancelled / won't be invoiced
+SKIP_STATUSES = {"canceled", "cancelled", "postponed"}
 
 
 # ---------------------------------------------------------------------------
@@ -42,14 +58,13 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
     if mode != "end_of_day":
         return
 
+    require_driver = getattr(settings, "require_driver_status_updates", False)
+
     today = date.today()
     tomorrow = today + timedelta(days=1)
+    now = datetime.now(timezone.utc)
 
-    # Find qualifying orders:
-    #   - completed/shipped today (scheduled_date = today OR required_date::date = today)
-    #   - order_type = 'funeral' OR order_type IS NULL (manufacturing vertical: all are funeral)
-    #   - no invoice yet
-    #   - not cancelled
+    # IDs of orders that already have an invoice
     already_invoiced_order_ids = set(
         row[0]
         for row in db.query(Invoice.sales_order_id)
@@ -60,35 +75,31 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
         .all()
     )
 
-    orders_query = (
+    # Base query: funeral orders scheduled today, not cancelled, not yet invoiced
+    base_q = (
         db.query(SalesOrder)
         .filter(
             SalesOrder.company_id == tenant_id,
-            SalesOrder.status.in_(COMPLETED_STATUSES),
-            SalesOrder.status != "canceled",
+            ~SalesOrder.status.in_(SKIP_STATUSES),
         )
         .filter(
-            # Scheduled_date populated → filter by it; otherwise fall back to required_date
             (SalesOrder.scheduled_date == today)
             | (
                 SalesOrder.scheduled_date.is_(None)
                 & (func.date(SalesOrder.required_date) == today)
             )
         )
+        .filter(
+            (SalesOrder.order_type == "funeral") | (SalesOrder.order_type.is_(None))
+        )
     )
 
-    # Funeral-type filter: include explicit 'funeral' orders OR untyped orders
-    # (all orders in manufacturing vertical are implicitly funeral-related)
-    orders_query = orders_query.filter(
-        (SalesOrder.order_type == "funeral") | (SalesOrder.order_type.is_(None))
-    )
+    all_today = base_q.all()
+    uninvoiced = [o for o in all_today if o.id not in already_invoiced_order_ids]
 
-    all_orders = orders_query.all()
-    qualifying = [o for o in all_orders if o.id not in already_invoiced_order_ids]
-
-    if not qualifying:
+    if not uninvoiced:
         logger.info(
-            "[DRAFT_INVOICE_GENERATOR] Tenant %s: no qualifying orders for %s",
+            "[DRAFT_INVOICE_GENERATOR] Tenant %s: no uninvoiced orders for %s",
             tenant_id,
             today,
         )
@@ -97,23 +108,55 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
     from app.services import sales_service
     from app.services.agent_service import create_alert, log_activity
 
+    if require_driver:
+        _generate_require_driver_mode(
+            db, tenant_id, uninvoiced, today, tomorrow, now,
+            sales_service, create_alert, log_activity,
+        )
+    else:
+        _generate_auto_confirm_mode(
+            db, tenant_id, uninvoiced, today, tomorrow, now,
+            sales_service, create_alert, log_activity,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Mode: auto-confirm  (require_driver_status_updates = False)
+# ---------------------------------------------------------------------------
+
+
+def _generate_auto_confirm_mode(
+    db, tenant_id, uninvoiced, today, tomorrow, now,
+    sales_service, create_alert, log_activity,
+):
+    """Auto-mark unconfirmed orders as delivered, then generate draft invoices."""
     created_invoices: list[Invoice] = []
     exception_count = 0
+    auto_confirmed_count = 0
 
-    for order in qualifying:
+    for order in uninvoiced:
+        # Auto-confirm if driver hasn't marked it delivered
+        if order.status not in DRIVER_CONFIRMED_STATUSES:
+            order.status = "delivered"
+            order.delivered_at = now
+            order.delivery_auto_confirmed = True
+            auto_confirmed_count += 1
+            logger.debug(
+                "[DRAFT_INVOICE_GENERATOR] Auto-confirmed order %s for tenant %s",
+                order.number, tenant_id,
+            )
+
         try:
             invoice = sales_service.create_invoice_from_order(
                 db, tenant_id, "system", order.id
             )
 
-            # Mark as draft review invoice
             invoice.status = "draft"
             invoice.requires_review = True
             invoice.review_due_date = tomorrow
             invoice.auto_generated = True
             invoice.generation_reason = "end_of_day_batch"
 
-            # Carry over driver exceptions if any
             if order.has_driver_exception and order.driver_exceptions:
                 invoice.has_exceptions = True
                 exception_notes = "; ".join(
@@ -126,11 +169,9 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
             db.add(invoice)
             created_invoices.append(invoice)
 
-            # Log activity
             customer_name = order.customer.name if order.customer else order.customer_id
             log_activity(
-                db,
-                tenant_id,
+                db, tenant_id,
                 action_type="draft_invoice_created",
                 description=(
                     f"Draft invoice auto-created for {customer_name} "
@@ -144,8 +185,7 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
         except Exception as exc:
             logger.error(
                 "[DRAFT_INVOICE_GENERATOR] Failed to create draft invoice for order %s: %s",
-                order.id,
-                exc,
+                order.id, exc,
             )
 
     if not created_invoices:
@@ -153,27 +193,23 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
 
     db.commit()
 
-    # Build customer list for alert message
-    customer_names: list[str] = []
-    for inv in created_invoices:
-        try:
-            order = next((o for o in qualifying if o.id == inv.sales_order_id), None)
-            name = order.customer.name if (order and order.customer) else "Unknown"
-            customer_names.append(name)
-        except Exception:
-            customer_names.append("Unknown")
-
+    customer_names = _collect_customer_names(db, created_invoices, uninvoiced)
     count = len(created_invoices)
     total_amount = sum(inv.total for inv in created_invoices)
 
     severity = "warning" if exception_count > 0 else "info"
     title = f"{count} draft invoice{'s' if count != 1 else ''} ready for morning review"
+
     lines = [
         f"End-of-day batch created {count} draft invoice{'s' if count != 1 else ''} "
         f"for {today} services totaling ${total_amount:,.2f}.",
-        "",
-        "Services:",
-    ] + [f"  • {name}" for name in customer_names]
+    ]
+    if auto_confirmed_count > 0:
+        lines.append(
+            f"{auto_confirmed_count} of {count} service{'s were' if auto_confirmed_count != 1 else ' was'} "
+            "auto-confirmed (drivers did not update status in the app)."
+        )
+    lines += ["", "Services:"] + [f"  • {name}" for name in customer_names]
 
     if exception_count > 0:
         lines.append(
@@ -182,8 +218,7 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
         )
 
     create_alert(
-        db,
-        tenant_id,
+        db, tenant_id,
         alert_type="draft_invoices_ready",
         severity=severity,
         title=title,
@@ -193,11 +228,148 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
     )
 
     logger.info(
-        "[DRAFT_INVOICE_GENERATOR] Tenant %s: created %d draft invoices (%d with exceptions)",
-        tenant_id,
-        count,
-        exception_count,
+        "[DRAFT_INVOICE_GENERATOR] Tenant %s: created %d draft invoices "
+        "(%d auto-confirmed, %d with exceptions)",
+        tenant_id, count, auto_confirmed_count, exception_count,
     )
+
+
+# ---------------------------------------------------------------------------
+# Mode: require driver  (require_driver_status_updates = True)
+# ---------------------------------------------------------------------------
+
+
+def _generate_require_driver_mode(
+    db, tenant_id, uninvoiced, today, tomorrow, now,
+    sales_service, create_alert, log_activity,
+):
+    """Only invoice driver-confirmed orders; alert on unconfirmed ones."""
+    confirmed = [o for o in uninvoiced if o.status in DRIVER_CONFIRMED_STATUSES]
+    unconfirmed = [o for o in uninvoiced if o.status not in DRIVER_CONFIRMED_STATUSES]
+
+    created_invoices: list[Invoice] = []
+    exception_count = 0
+
+    for order in confirmed:
+        try:
+            invoice = sales_service.create_invoice_from_order(
+                db, tenant_id, "system", order.id
+            )
+
+            invoice.status = "draft"
+            invoice.requires_review = True
+            invoice.review_due_date = tomorrow
+            invoice.auto_generated = True
+            invoice.generation_reason = "end_of_day_batch"
+
+            if order.has_driver_exception and order.driver_exceptions:
+                invoice.has_exceptions = True
+                exception_notes = "; ".join(
+                    f"{e.get('reason', 'issue')} — {e.get('notes', '')}"
+                    for e in order.driver_exceptions
+                )
+                invoice.review_notes = f"Driver exception(s): {exception_notes}"
+                exception_count += 1
+
+            db.add(invoice)
+            created_invoices.append(invoice)
+
+            customer_name = order.customer.name if order.customer else order.customer_id
+            log_activity(
+                db, tenant_id,
+                action_type="draft_invoice_created",
+                description=(
+                    f"Draft invoice auto-created for {customer_name} "
+                    f"(order {order.number}, service {today})"
+                ),
+                record_type="invoice",
+                record_id=invoice.id,
+                autonomous=True,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "[DRAFT_INVOICE_GENERATOR] Failed to create draft invoice for order %s: %s",
+                order.id, exc,
+            )
+
+    if created_invoices:
+        db.commit()
+
+        customer_names = _collect_customer_names(db, created_invoices, confirmed)
+        count = len(created_invoices)
+        total_amount = sum(inv.total for inv in created_invoices)
+
+        severity = "warning" if exception_count > 0 else "info"
+        title = f"{count} draft invoice{'s' if count != 1 else ''} ready for morning review"
+        lines = [
+            f"End-of-day batch created {count} draft invoice{'s' if count != 1 else ''} "
+            f"for {today} services totaling ${total_amount:,.2f}.",
+            "", "Services:",
+        ] + [f"  • {name}" for name in customer_names]
+        if exception_count > 0:
+            lines.append(
+                f"\n⚠ {exception_count} invoice{'s have' if exception_count != 1 else ' has'} "
+                "driver exceptions flagged — review before approving."
+            )
+
+        create_alert(
+            db, tenant_id,
+            alert_type="draft_invoices_ready",
+            severity=severity,
+            title=title,
+            message="\n".join(lines),
+            action_label="Review invoices",
+            action_url="/ar/invoices/review",
+        )
+
+    # Warn about unconfirmed orders
+    if unconfirmed:
+        _create_unconfirmed_alert(db, tenant_id, unconfirmed, today, create_alert)
+
+    logger.info(
+        "[DRAFT_INVOICE_GENERATOR] Tenant %s: created %d draft invoices, "
+        "%d unconfirmed services flagged",
+        tenant_id, len(created_invoices), len(unconfirmed),
+    )
+
+
+def _create_unconfirmed_alert(db, tenant_id, unconfirmed, today, create_alert):
+    count = len(unconfirmed)
+    details = []
+    for order in unconfirmed:
+        cust = order.customer.name if order.customer else "Unknown"
+        dest = order.ship_to_name or order.ship_to_address or "—"
+        details.append(f"  • {cust} — {dest}")
+
+    create_alert(
+        db, tenant_id,
+        alert_type="unconfirmed_deliveries",
+        severity="warning",
+        title=f"{count} service{'s' if count != 1 else ''} today not marked delivered",
+        message=(
+            f"These funeral services were scheduled for {today} but drivers have "
+            "not confirmed delivery. Verify completion before approving draft invoices "
+            "tomorrow morning.\n\n"
+            + "\n".join(details)
+        ),
+        action_label="Review orders",
+        action_url=f"/orders?date={today}&status=unconfirmed",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+
+
+def _collect_customer_names(db, invoices, orders) -> list[str]:
+    names: list[str] = []
+    for inv in invoices:
+        order = next((o for o in orders if o.id == inv.sales_order_id), None)
+        name = order.customer.name if (order and order.customer) else "Unknown"
+        names.append(name)
+    return names
 
 
 # ---------------------------------------------------------------------------
@@ -254,13 +426,17 @@ def get_review_queue(db: Session, company_id: str) -> list[dict]:
             "order_number": order.number if order else None,
             "scheduled_date": str(order.scheduled_date) if order and order.scheduled_date else None,
             "driver_exceptions": order.driver_exceptions if order else None,
+            # Delivery confirmation
+            "delivery_auto_confirmed": order.delivery_auto_confirmed if order else False,
+            "delivered_at": order.delivered_at.isoformat() if (order and order.delivered_at) else None,
+            "delivered_by_driver_name": order.delivered_by_driver_name if order else None,
             "lines": [
                 {
                     "id": ln.id,
                     "description": ln.description,
-                    "quantity": ln.quantity,
-                    "unit_price": ln.unit_price,
-                    "line_total": ln.line_total,
+                    "quantity": float(ln.quantity),
+                    "unit_price": float(ln.unit_price),
+                    "line_total": float(ln.line_total),
                     "product_id": ln.product_id,
                 }
                 for ln in (inv.lines or [])
@@ -321,10 +497,7 @@ def approve_invoice(
 def approve_all_no_exceptions(
     db: Session, company_id: str, user_id: str
 ) -> dict:
-    """Approve all draft review invoices that have no driver exceptions.
-
-    Returns summary with count approved.
-    """
+    """Approve all draft review invoices that have no driver exceptions."""
     pending = (
         db.query(Invoice)
         .filter(
@@ -359,10 +532,7 @@ def approve_all_no_exceptions(
 
     logger.info(
         "Bulk approved %d invoices ($%.2f) for tenant %s by user %s",
-        approved_count,
-        total_amount,
-        company_id,
-        user_id,
+        approved_count, total_amount, company_id, user_id,
     )
     return {
         "approved_count": approved_count,
