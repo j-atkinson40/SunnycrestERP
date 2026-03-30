@@ -135,6 +135,7 @@ import AccountingReviewPage from "@/pages/onboarding/accounting-review";
 import AlertsPage from "@/pages/alerts";
 import JournalEntriesPage from "@/pages/journal-entries";
 import TaxSettingsPage from "@/pages/settings/tax-settings";
+import CustomerTypesPage from "@/pages/settings/customer-types";
 import ReportsPage from "@/pages/reports";
 import FinancialsBoardPage from "@/pages/financials-board";
 import CollectionsReviewPage from "@/pages/ar/collections-review";
@@ -591,6 +592,7 @@ export default function App() {
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
                   <Route path="/onboarding/data-migration" element={<DataMigrationPage />} />
                   <Route path="/settings/data-migration" element={<DataMigrationPage />} />
+                  <Route path="/settings/data/customer-types" element={<CustomerTypesPage />} />
                   <Route path="/onboarding/accounting/review" element={<AccountingReviewPage />} />
                   <Route path="/onboarding/scheduling" element={<SchedulingSetupPage />} />
                   <Route path="/onboarding/network-preferences" element={<NetworkPreferencesPage />} />

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Building2, HardHat, Info, Plus, UploadIcon } from "lucide-react";
+import apiClient from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
 import { useExtensions } from "@/contexts/extension-context";
 import { customerService } from "@/services/customer-service";
@@ -518,6 +519,7 @@ function CemeteriesTab({ canCreate }: { canCreate: boolean }) {
 // ---------------------------------------------------------------------------
 
 export default function CustomersPage() {
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const { isExtensionEnabled } = useExtensions();
   const canCreate = hasPermission("customers.create");
@@ -557,6 +559,12 @@ export default function CustomersPage() {
 
   // Stats
   const [stats, setStats] = useState<CustomerStats | null>(null);
+
+  // Unknown-classification banner
+  const [unknownCount, setUnknownCount] = useState(0);
+  const [unknownBannerDismissed, setUnknownBannerDismissed] = useState(
+    () => localStorage.getItem("unknown_classification_banner_dismissed") === "true"
+  );
 
   // Create customer dialog
   const [createOpen, setCreateOpen] = useState(false);
@@ -620,6 +628,13 @@ export default function CustomersPage() {
   useEffect(() => {
     loadStats();
   }, [loadStats]);
+
+  useEffect(() => {
+    // Check if there are any unknown-type customers (once on mount)
+    apiClient.get("/customers", { params: { customer_type: "unknown", per_page: 1, include_hidden: true } })
+      .then((res) => setUnknownCount(res.data.total ?? 0))
+      .catch(() => {/* non-critical */});
+  }, []);
 
   async function handleCreateCustomer() {
     setCreateError("");
@@ -957,6 +972,33 @@ export default function CustomersPage() {
             <p className="text-sm text-muted-foreground">Total Outstanding</p>
             <p className="text-2xl font-bold">{formatCurrency(stats.total_outstanding)}</p>
           </Card>
+        </div>
+      )}
+
+      {/* Unknown customers banner */}
+      {unknownCount > 0 && !unknownBannerDismissed && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+          <p className="text-sm text-amber-800 flex-1">
+            <strong>{unknownCount}</strong> customer{unknownCount > 1 ? "s" : ""} couldn't be automatically classified.
+            {" "}Review and assign their type to ensure correct visibility.
+          </p>
+          <button
+            onClick={() => navigate("/settings/data/customer-types?tab=needs_review")}
+            className="shrink-0 text-sm font-medium text-amber-800 underline hover:text-amber-900"
+          >
+            Review →
+          </button>
+          <button
+            onClick={() => {
+              localStorage.setItem("unknown_classification_banner_dismissed", "true");
+              setUnknownBannerDismissed(true);
+            }}
+            className="shrink-0 text-amber-500 hover:text-amber-700"
+            title="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 

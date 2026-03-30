@@ -199,7 +199,24 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/catalog-builder",
         "sort_order": 3,
     },
-    # 4. Tax rates — depends on data_migration
+    # 3.5 — Review customer types (should_complete; surfaces after migration)
+    {
+        "item_key": "review_customer_types",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Review customer classifications",
+        "description": (
+            "After importing from Sage, verify that each customer is classified "
+            "correctly as a funeral home, cemetery, or contractor. "
+            "Misclassified customers may appear in the wrong tab or be hidden."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/settings/data/customer-types",
+        "depends_on": '["data_migration"]',
+        "sort_order": 4,
+    },
+    # 5. Tax rates — depends on data_migration
     {
         "item_key": "setup_tax_rates",
         "tier": "must_complete",
@@ -213,9 +230,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/tax-rates",
         "depends_on": '["data_migration"]',
-        "sort_order": 4,
+        "sort_order": 5,
     },
-    # 5. Tax jurisdictions — depends on setup_tax_rates
+    # 6. Tax jurisdictions — depends on setup_tax_rates
     {
         "item_key": "setup_tax_jurisdictions",
         "tier": "must_complete",
@@ -229,9 +246,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/tax-jurisdictions",
         "depends_on": '["setup_tax_rates"]',
-        "sort_order": 5,
+        "sort_order": 6,
     },
-    # 6. Price list
+    # 7. Price list
     {
         "item_key": "setup_price_list",
         "tier": "should_complete",
@@ -246,9 +263,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/price-list",
         "depends_on": '["add_products"]',
-        "sort_order": 6,
+        "sort_order": 7,
     },
-    # 7. Quick order templates
+    # 8. Quick order templates
     {
         "item_key": "setup_quick_orders",
         "tier": "should_complete",
@@ -263,7 +280,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/quick-orders",
         "depends_on": '["add_products"]',
-        "sort_order": 7,
+        "sort_order": 8,
     },
     # 7b. Cemetery setup — should complete; independent of other items
     {
@@ -1143,23 +1160,23 @@ def fix_checklist_targets(db: Session) -> None:
         OnboardingChecklistItem.item_key == "add_products",
     ).update({"sort_order": 3, "depends_on": None})
 
-    # Fix setup_tax_rates — sort_order 4, depends on data_migration
+    # Fix setup_tax_rates — sort_order 5, depends on data_migration
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "setup_tax_rates",
     ).update({
-        "sort_order": 4,
+        "sort_order": 5,
         "depends_on": '["data_migration"]',
     })
 
-    # Fix setup_tax_jurisdictions — sort_order 5, depends on setup_tax_rates
+    # Fix setup_tax_jurisdictions — sort_order 6, depends on setup_tax_rates
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "setup_tax_jurisdictions",
-    ).update({"sort_order": 5, "depends_on": '["setup_tax_rates"]'})
+    ).update({"sort_order": 6, "depends_on": '["setup_tax_rates"]'})
 
-    # Fix setup_price_list — sort_order 6
+    # Fix setup_price_list — sort_order 7
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "setup_price_list",
-    ).update({"sort_order": 6})
+    ).update({"sort_order": 7})
 
     # Fix add_employees — position 9
     db.query(OnboardingChecklistItem).filter(
@@ -1363,6 +1380,39 @@ def check_completion(
         except Exception:
             pass
         return False
+
+
+def check_customer_types_reviewed(db: Session, tenant_id: str) -> None:
+    """Auto-complete 'review_customer_types' when all customers have high-confidence classification.
+
+    Called after any manual reclassification. Safe to call repeatedly — idempotent.
+    """
+    try:
+        from app.models.customer import Customer
+        from sqlalchemy import func
+
+        # Count customers with unknown type or low confidence
+        unreviewed = (
+            db.query(func.count(Customer.id))
+            .filter(
+                Customer.company_id == tenant_id,
+                Customer.is_active == True,  # noqa: E712
+                (
+                    (Customer.customer_type == "unknown")
+                    | (Customer.customer_type == None)  # noqa: E711
+                    | (
+                        (Customer.classification_confidence != None)  # noqa: E711
+                        & (Customer.classification_confidence < 0.75)
+                    )
+                ),
+            )
+            .scalar()
+        )
+        if unreviewed == 0:
+            # All classified — mark the checklist item complete
+            check_completion(db, tenant_id, "review_customer_types")
+    except Exception:
+        logger.exception("check_customer_types_reviewed failed for tenant=%s", tenant_id)
 
 
 def recalculate_progress(db: Session, tenant_id: str) -> None:

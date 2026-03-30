@@ -94,6 +94,11 @@ export interface CustomerListItem {
   billing_profile: string | null;
   is_active: boolean;
   created_at: string;
+  // Classification metadata (added in r19)
+  classification_confidence: number | null;
+  classification_method: string | null;
+  classification_reasoning: string | null;
+  is_extension_hidden: boolean;
 }
 
 // ---------------------------------------------------------------------------

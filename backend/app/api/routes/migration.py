@@ -1,6 +1,7 @@
 """Data Migration API routes — Sage 100 → Bridgeable import pipeline."""
 
 import json
+import logging
 from datetime import date
 from typing import Optional
 
@@ -11,6 +12,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_admin
 from app.models.user import User
 from app.services.data_migration_service import DataMigrationService
+from app.services import customer_classification_service as classification_svc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -65,6 +69,23 @@ async def parse_migration_files(
             "by_division": by_division,
             "sample": _parsed_customers[:10],
         }
+
+        # ── AI-assisted classification ────────────────────────────────────────
+        try:
+            classification_result = classification_svc.classify_customers(_parsed_customers)
+            result["classification_summary"] = classification_result["summary"]
+            result["needs_review_customers"] = classification_result["needs_review"][:100]  # cap at 100 for payload size
+            # Attach customer_type predictions to each parsed customer (used by /run)
+            for i, cls in enumerate(classification_result["classifications"]):
+                if cls:
+                    _parsed_customers[i]["_predicted_type"] = cls["customer_type"]
+                    _parsed_customers[i]["_predicted_confidence"] = cls["confidence"]
+                    _parsed_customers[i]["_predicted_method"] = cls["method"]
+                    _parsed_customers[i]["_predicted_reasoning"] = cls.get("reasoning")
+        except Exception as exc:
+            logger.warning(f"Classification failed during parse: {exc}")
+            result["classification_summary"] = None
+            result["needs_review_customers"] = []
 
     # AR Aging
     if ar_aging_file and ar_aging_file.filename:
@@ -250,6 +271,12 @@ async def run_migration(
     tenant_id = current_user.company_id
     initiated_by = opts.get("initiated_by", "owner")
     extension_decisions = opts.get("extension_decisions") or {}
+    # classification_overrides: dict mapping customer index (str) → customer_type
+    # e.g. {"3": "funeral_home", "17": "contractor"}
+    # These are applied during import to override the AI-predicted type.
+    classification_overrides: dict[str, str] = {
+        str(k): v for k, v in (opts.get("classification_overrides") or {}).items()
+    }
 
     def event_generator():
         try:
@@ -261,6 +288,7 @@ async def run_migration(
                 cutover_date=cutover_date,
                 initiated_by=initiated_by,
                 extension_decisions=extension_decisions,
+                classification_overrides=classification_overrides,
             )
             for event in gen:
                 yield json.dumps(event) + "\n"

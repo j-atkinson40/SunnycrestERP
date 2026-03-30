@@ -25,6 +25,7 @@ from app.schemas.customer import (
     PaginatedCustomers,
 )
 from app.services import customer_service
+from app.services import customer_classification_service as classification_svc
 
 router = APIRouter()
 
@@ -76,6 +77,104 @@ def customer_stats(
     current_user: User = Depends(require_permission("customers.view")),
 ):
     return customer_service.get_customer_stats(db, current_user.company_id)
+
+
+# ---------------------------------------------------------------------------
+# Classification endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/classify")
+def classify_customer_name(
+    data: dict,
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.view")),
+):
+    """Classify a customer name using the rule + AI engine.
+
+    Body: { "name": str, "city"?: str, "state"?: str }
+    Returns: { customer_type, confidence, matched_pattern, method, reasoning }
+    """
+    name = (data.get("name") or "").strip()
+    if not name:
+        return {
+            "customer_type": "unknown",
+            "confidence": 0.0,
+            "matched_pattern": None,
+            "method": "name_rules",
+            "reasoning": "Name is required",
+        }
+    return classification_svc.classify_single(
+        name=name,
+        city=data.get("city"),
+        state=data.get("state"),
+    )
+
+
+@router.patch("/{customer_id}/reclassify")
+def reclassify_customer(
+    customer_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.edit")),
+):
+    """Manually set a customer's type and update visibility flags.
+
+    Body: { "customer_type": str }
+    Valid types: funeral_home, contractor, cemetery, individual, unknown
+    """
+    from datetime import datetime, timezone
+    from app.models.customer import Customer
+    from app.services.data_migration_service import DataMigrationService
+
+    valid_types = {"funeral_home", "contractor", "cemetery", "individual", "unknown"}
+    new_type = data.get("customer_type", "").strip()
+    if new_type not in valid_types:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Invalid customer_type '{new_type}'. Must be one of: {', '.join(sorted(valid_types))}")
+
+    customer = db.query(Customer).filter(
+        Customer.id == customer_id,
+        Customer.company_id == current_user.company_id,
+    ).first()
+    if not customer:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    customer.customer_type = new_type
+    customer.classification_method = "manual"
+    customer.classification_confidence = 1.0
+    customer.classification_reasoning = f"Manually set to {new_type} by user"
+    customer.classification_reviewed_by = current_user.id
+    customer.classification_reviewed_at = datetime.now(timezone.utc)
+
+    db.flush()
+
+    # Re-apply extension visibility for this company
+    try:
+        DataMigrationService.apply_visibility_flags(db, current_user.company_id)
+    except Exception:
+        pass
+
+    db.commit()
+
+    # Check if all customers are now classified → auto-complete onboarding item
+    try:
+        from app.services.onboarding_service import check_customer_types_reviewed
+        check_customer_types_reviewed(db, current_user.company_id)
+    except Exception:
+        pass
+
+    db.refresh(customer)
+    return {
+        "id": customer.id,
+        "name": customer.name,
+        "customer_type": customer.customer_type,
+        "is_extension_hidden": customer.is_extension_hidden,
+        "classification_confidence": customer.classification_confidence,
+        "classification_method": customer.classification_method,
+    }
 
 
 @router.get("", response_model=PaginatedCustomers)

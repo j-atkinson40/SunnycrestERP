@@ -130,6 +130,12 @@ export default function CustomerDetailPage() {
   // Sage
   const [sageCustomerId, setSageCustomerId] = useState("");
 
+  // Classification
+  const [customerType, setCustomerType] = useState<string | null>(null);
+  const [classificationConfidence, setClassificationConfidence] = useState<number | null>(null);
+  const [classificationMethod, setClassificationMethod] = useState<string | null>(null);
+  const [classificationReasoning, setClassificationReasoning] = useState<string | null>(null);
+
   // Notes
   const [customerNotes, setCustomerNotes] = useState("");
 
@@ -214,6 +220,10 @@ export default function CustomerDetailPage() {
       setPaymentTerms(customer.payment_terms || "");
       setSageCustomerId(customer.sage_customer_id || "");
       setCustomerNotes(customer.notes || "");
+      setCustomerType(customer.customer_type ?? null);
+      setClassificationConfidence(customer.classification_confidence ?? null);
+      setClassificationMethod(customer.classification_method ?? null);
+      setClassificationReasoning(customer.classification_reasoning ?? null);
 
       setContacts(customer.contacts || []);
       setNotes(customer.recent_notes || []);
@@ -510,10 +520,40 @@ export default function CustomerDetailPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold">{name || "Customer Details"}</h1>
           {statusBadge(accountStatus)}
           {!isActive && <Badge variant="destructive">Inactive</Badge>}
+          {/* Customer type badge */}
+          {customerType && customerType !== "unknown" && (
+            <Badge variant="outline" className="capitalize text-xs">
+              {customerType.replace("_", " ")}
+            </Badge>
+          )}
+          {/* Classification confidence */}
+          {classificationConfidence !== null && (
+            <span
+              className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${
+                classificationConfidence >= 0.85
+                  ? "bg-green-50 text-green-700 border-green-200"
+                  : classificationConfidence >= 0.70
+                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                  : "bg-red-50 text-red-600 border-red-200"
+              }`}
+              title={`Classification method: ${classificationMethod ?? "unknown"}${classificationReasoning ? ` — ${classificationReasoning}` : ""}`}
+            >
+              {Math.round(classificationConfidence * 100)}% confidence
+              {(customerType === "unknown" || classificationConfidence < 0.75) && (
+                <a
+                  href="/settings/data/customer-types"
+                  className="ml-1 underline"
+                  onClick={(e) => { e.preventDefault(); window.location.href = "/settings/data/customer-types"; }}
+                >
+                  [Change type]
+                </a>
+              )}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {canDelete && isActive && (

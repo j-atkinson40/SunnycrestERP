@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
+  Brain,
   CheckCircle2,
   ChevronRight,
   CircleDot,
@@ -83,6 +84,22 @@ interface ParsedPreview {
     sample: Array<{ invoice_number: string; vendor_name: string; invoice_balance: number }>;
   };
   extension_content?: ExtensionContent;
+  classification_summary?: {
+    total: number;
+    by_type: Record<string, number>;
+    needs_review_count: number;
+    rule_classified: number;
+    ai_classified: number;
+  };
+  needs_review_customers?: Array<{
+    index: number;
+    name: string;
+    city?: string | null;
+    state?: string | null;
+    current_type: string;
+    confidence: number;
+    reasoning?: string | null;
+  }>;
 }
 
 interface ProgressEvent {
@@ -194,10 +211,13 @@ const fmtDec = new Intl.NumberFormat("en-US", { style: "currency", currency: "US
 export default function DataMigrationPage() {
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<1 | 2 | 2.5 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 1.5 | 2 | 2.5 | 3 | 4>(1);
   const [files, setFiles] = useState<Record<string, File>>({});
   const [parsing, setParsing] = useState(false);
   const [preview, setPreview] = useState<ParsedPreview | null>(null);
+
+  // Step 1.5 classification overrides: { customerIndex: customer_type }
+  const [classificationOverrides, setClassificationOverrides] = useState<Record<number, string>>({});
 
   // Step 2.5 extension decisions
   const [extensionDecisions, setExtensionDecisions] = useState<ExtensionDecisions>({
@@ -259,14 +279,151 @@ export default function DataMigrationPage() {
       else if (res.data.ar_invoices) setActiveTab("ar");
       else if (res.data.vendors) setActiveTab("vendors");
       else if (res.data.ap_bills) setActiveTab("ap");
-      setStep(2);
-      // Reset extension decisions each new parse
+      // Reset extension decisions + classification overrides each new parse
       setExtensionDecisions({ enable_wastewater: false, enable_redi_rock: false, enable_rosetta: false });
+      setClassificationOverrides({});
+      // If AI found ambiguous customers, show classification review step first
+      if ((res.data.needs_review_customers ?? []).length > 0) {
+        setStep(1.5);
+      } else {
+        setStep(2);
+      }
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed to parse files.");
     } finally {
       setParsing(false);
     }
+  }
+
+  // ─── Step 1.5: Classification review ─────────────────────────────────────
+
+  function renderClassificationStep() {
+    const needsReview = preview?.needs_review_customers ?? [];
+    const summary = preview?.classification_summary;
+    const TYPES = [
+      { key: "funeral_home", label: "Funeral Home", shortcut: "F", color: "bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200" },
+      { key: "cemetery", label: "Cemetery", shortcut: "C", color: "bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200" },
+      { key: "contractor", label: "Contractor", shortcut: "M", color: "bg-orange-100 text-orange-700 border-orange-200 hover:bg-orangege-200" },
+      { key: "individual", label: "Individual", shortcut: "I", color: "bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200" },
+      { key: "unknown", label: "Skip", shortcut: "S", color: "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200" },
+    ];
+
+    const reviewedCount = needsReview.filter((c) => classificationOverrides[c.index] !== undefined).length;
+    const total = needsReview.length;
+    const allDone = reviewedCount === total;
+
+    function setType(idx: number, type: string) {
+      setClassificationOverrides((prev) => ({ ...prev, [idx]: type }));
+    }
+
+    function markAllAs(type: string) {
+      const updates: Record<number, string> = {};
+      needsReview.forEach((c) => { updates[c.index] = type; });
+      setClassificationOverrides((prev) => ({ ...prev, ...updates }));
+    }
+
+    function proceedToPreview() {
+      setStep(2);
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Brain className="h-5 w-5 text-blue-500" />
+              <h2 className="text-xl font-semibold text-slate-900">Review Customer Classifications</h2>
+            </div>
+            <p className="text-sm text-slate-500">
+              Our AI classified most customers automatically. These {total} couldn't be classified with high confidence — please confirm their type.
+            </p>
+          </div>
+          <button onClick={() => setStep(1)} className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1 shrink-0">
+            ← Back
+          </button>
+        </div>
+
+        {/* Summary bar */}
+        {summary && (
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 flex flex-wrap gap-4 text-sm text-slate-600">
+            <span>✓ <strong>{(summary.by_type.funeral_home ?? 0).toLocaleString()}</strong> funeral homes</span>
+            <span>✓ <strong>{(summary.by_type.cemetery ?? 0).toLocaleString()}</strong> cemeteries</span>
+            <span>✓ <strong>{(summary.by_type.contractor ?? 0).toLocaleString()}</strong> contractors</span>
+            {(summary.by_type.unknown ?? 0) > 0 && (
+              <span className="text-amber-600 font-medium">⚠ {summary.by_type.unknown.toLocaleString()} unclassified</span>
+            )}
+          </div>
+        )}
+
+        {/* Progress counter */}
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500">
+            {reviewedCount} of {total} reviewed
+            {allDone && <span className="ml-2 text-green-600 font-medium">✓ All done!</span>}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => markAllAs("funeral_home")}
+              className="text-xs px-2.5 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100"
+            >
+              All → Funeral Home
+            </button>
+            <button
+              onClick={() => markAllAs("unknown")}
+              className="text-xs px-2.5 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100"
+            >
+              Skip All
+            </button>
+          </div>
+        </div>
+
+        {/* Customer rows */}
+        <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
+          {needsReview.map((customer) => {
+            const selected = classificationOverrides[customer.index];
+            return (
+              <div key={customer.index} className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-slate-900 truncate">{customer.name}</p>
+                  <p className="text-xs text-slate-400">
+                    {[customer.city, customer.state].filter(Boolean).join(", ")}
+                    {customer.reasoning && <span className="ml-2 italic">· {customer.reasoning}</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {TYPES.map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setType(customer.index, t.key)}
+                      title={`${t.label} (${t.shortcut})`}
+                      className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium transition-all ${
+                        selected === t.key
+                          ? t.color + " ring-2 ring-offset-1 ring-current font-bold"
+                          : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {selected === t.key ? "✓ " : ""}{t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-xs text-slate-400">
+            Unreviewed customers will be imported as "unknown" and can be reclassified later in Settings.
+          </p>
+          <button
+            onClick={proceedToPreview}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Continue to Preview →
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // ─── Step 2.5: Extension content ─────────────────────────────────────────
@@ -436,6 +593,7 @@ export default function DataMigrationPage() {
         include_inactive_vendors: includeInactiveVendors,
         cutover_date: cutoverDate,
         extension_decisions: extensionDecisions,
+        classification_overrides: classificationOverrides,
       })
     );
 
@@ -496,8 +654,9 @@ export default function DataMigrationPage() {
 
   function StepIndicator() {
     const steps = ["Upload Files", "Preview & Confirm", "Importing", "Complete"];
-    // step 2.5 is sub-step of "Preview & Confirm" — show step 2 as active, not done
-    const effectiveStep = step === 2.5 ? 2 : step;
+    // 1.5 is a sub-step of "Upload Files" (classification review before preview)
+    // 2.5 is a sub-step of "Preview & Confirm" (extension decisions)
+    const effectiveStep = step === 1.5 ? 1 : step === 2.5 ? 2 : step;
     return (
       <div className="flex items-center gap-2 mb-8">
         {steps.map((label, i) => {
@@ -1079,6 +1238,7 @@ export default function DataMigrationPage() {
       <StepIndicator />
 
       {step === 1 && renderUpload()}
+      {step === 1.5 && renderClassificationStep()}
       {step === 2 && renderPreview()}
       {step === 2.5 && renderExtensionStep()}
       {step === 3 && renderProgress()}

@@ -117,7 +117,22 @@ class Customer(Base):
     # --- Customer classification ---
     customer_type: Mapped[str | None] = mapped_column(
         String(30), nullable=True
-    )  # 'funeral_home', 'contractor', 'cemetery', 'other'
+    )  # 'funeral_home', 'contractor', 'cemetery', 'individual', 'unknown'
+    classification_confidence: Mapped[float | None] = mapped_column(
+        nullable=True
+    )
+    classification_method: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )  # 'name_rules', 'ai', 'manual', 'migration_import'
+    classification_reasoning: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    classification_reviewed_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    classification_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # --- Extension visibility ---
     visibility_requires_extension: Mapped[str | None] = mapped_column(
