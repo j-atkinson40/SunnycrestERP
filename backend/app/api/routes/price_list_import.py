@@ -407,57 +407,59 @@ def confirm_import(
     # Process charge-type items
     charges_created = 0
     charges_updated = 0
+    # Track keys processed in this batch to prevent within-batch duplicates colliding at commit
+    _batch_charge_keys: dict[str, ChargeLibraryItem] = {}
+
+    def _apply_charge_fields(target: ChargeLibraryItem, item: "PriceListImportItem") -> None:
+        """Update a charge record's fields from an import item."""
+        if item.has_conditional_pricing:
+            target.has_conditional_pricing = True
+            target.with_vault_price = item.extracted_price_with_vault
+            target.standalone_price = item.extracted_price_standalone
+            target.fixed_amount = item.extracted_price_standalone
+        elif item.extracted_price is not None:
+            target.fixed_amount = item.extracted_price
+        if item.pricing_type_suggestion:
+            target.pricing_type = item.pricing_type_suggestion
+        target.is_enabled = item.enable_on_import
+        target.updated_at = now
 
     for item in items:
         if item.action not in ("create_custom",) or not item.charge_category:
             continue  # Only process charge-type items with create_custom action
 
         if item.matched_charge_id:
-            # Update existing charge
+            # Update existing charge by explicit match ID
             existing_charge = db.query(ChargeLibraryItem).filter(
                 ChargeLibraryItem.id == item.matched_charge_id,
             ).first()
             if existing_charge:
-                if item.has_conditional_pricing:
-                    existing_charge.has_conditional_pricing = True
-                    existing_charge.with_vault_price = item.extracted_price_with_vault
-                    existing_charge.standalone_price = item.extracted_price_standalone
-                    existing_charge.fixed_amount = item.extracted_price_standalone
-                elif item.extracted_price is not None:
-                    existing_charge.fixed_amount = item.extracted_price
-
-                if item.pricing_type_suggestion:
-                    existing_charge.pricing_type = item.pricing_type_suggestion
-                existing_charge.is_enabled = item.enable_on_import
-                existing_charge.updated_at = now
+                _apply_charge_fields(existing_charge, item)
                 charges_updated += 1
+                _batch_charge_keys[existing_charge.charge_key] = existing_charge
                 continue
 
-        # Create new charge
+        # Resolve charge key
         charge_key = item.charge_key_to_use or item.charge_key_suggestion
         if not charge_key:
-            # Generate from name
             base_key = re.sub(r"[^a-z0-9]+", "_", (item.final_product_name or item.extracted_name).lower()).strip("_")
             charge_key = f"{base_key}_custom"
 
-        # Check for key collision — update in place rather than creating a duplicate
+        # Check within-batch duplicates first (handles case where two import items share the same key)
+        if charge_key in _batch_charge_keys:
+            _apply_charge_fields(_batch_charge_keys[charge_key], item)
+            charges_updated += 1
+            continue
+
+        # Check DB for existing record with this key (handles re-imports)
         existing = db.query(ChargeLibraryItem).filter(
             ChargeLibraryItem.tenant_id == company.id,
             ChargeLibraryItem.charge_key == charge_key,
         ).first()
         if existing:
-            if item.has_conditional_pricing:
-                existing.has_conditional_pricing = True
-                existing.with_vault_price = item.extracted_price_with_vault
-                existing.standalone_price = item.extracted_price_standalone
-                existing.fixed_amount = item.extracted_price_standalone
-            elif item.extracted_price is not None:
-                existing.fixed_amount = item.extracted_price
-            if item.pricing_type_suggestion:
-                existing.pricing_type = item.pricing_type_suggestion
-            existing.is_enabled = item.enable_on_import
-            existing.updated_at = now
+            _apply_charge_fields(existing, item)
             charges_updated += 1
+            _batch_charge_keys[charge_key] = existing
             continue
 
         # Get next sort_order
@@ -488,6 +490,7 @@ def confirm_import(
             updated_at=now,
         )
         db.add(new_charge)
+        _batch_charge_keys[charge_key] = new_charge
         charges_created += 1
 
     imp.status = "confirmed"
