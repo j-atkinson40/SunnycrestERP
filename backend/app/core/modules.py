@@ -16,19 +16,19 @@ AVAILABLE_MODULES: dict[str, dict] = {
         "label": "Product Catalog",
         "description": "Product database with categories, pricing tiers, and bulk import capabilities.",
         "default_enabled": True,
-        "locked": False,
+        "locked": True,  # Core module — cannot be disabled
     },
     "inventory": {
         "label": "Inventory Management",
         "description": "Track stock levels, record transactions, set reorder points, and manage warehouse locations.",
         "default_enabled": True,
-        "locked": False,
+        "locked": True,  # Core module — cannot be disabled
     },
     "sales": {
         "label": "Sales & Customers",
         "description": "Customer database, charge accounts, quotes, sales orders, invoices, and accounts receivable.",
         "default_enabled": True,
-        "locked": False,
+        "locked": True,  # Core module — cannot be disabled
     },
     "hr_time": {
         "label": "HR & Time Tracking",

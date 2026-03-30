@@ -57,8 +57,8 @@ def get_company_modules(db: Session, company_id: str) -> list[dict]:
 def get_enabled_module_keys(db: Session, company_id: str) -> list[str]:
     """Return just the list of enabled module keys for a company.
 
-    Falls back to AVAILABLE_MODULES default_enabled for modules that have
-    no explicit CompanyModule record (i.e. the company pre-dates that module).
+    Locked modules are always included regardless of DB state.
+    Falls back to default_enabled for modules with no CompanyModule row.
     """
     records = (
         db.query(CompanyModule)
@@ -69,7 +69,9 @@ def get_enabled_module_keys(db: Session, company_id: str) -> list[str]:
 
     enabled = []
     for module_key, meta in AVAILABLE_MODULES.items():
-        if module_key in record_map:
+        if meta.get("locked"):
+            enabled.append(module_key)  # always on
+        elif module_key in record_map:
             if record_map[module_key]:
                 enabled.append(module_key)
         elif meta.get("default_enabled"):
@@ -78,7 +80,13 @@ def get_enabled_module_keys(db: Session, company_id: str) -> list[str]:
 
 
 def is_module_enabled(db: Session, company_id: str, module: str) -> bool:
-    """Check if a specific module is enabled for a company."""
+    """Check if a specific module is enabled for a company.
+
+    Locked modules are always enabled regardless of DB state.
+    """
+    meta = AVAILABLE_MODULES.get(module)
+    if meta and meta.get("locked"):
+        return True
     record = (
         db.query(CompanyModule)
         .filter(
@@ -88,8 +96,6 @@ def is_module_enabled(db: Session, company_id: str, module: str) -> bool:
         .first()
     )
     if not record:
-        # If no record exists, check default
-        meta = AVAILABLE_MODULES.get(module)
         return meta["default_enabled"] if meta else False
     return record.enabled
 
