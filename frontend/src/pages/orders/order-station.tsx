@@ -50,7 +50,11 @@ import {
   Snowflake,
   RefreshCw,
   BadgeCheck,
+  Mail,
+  MessageSquare,
   Mic,
+  Phone,
+  Wrench,
   ChevronRight,
   ChevronLeft,
 } from "lucide-react";
@@ -368,6 +372,13 @@ function OrderSlideOver({
   const [resolvedPrices, setResolvedPrices] = useState<ResolvedBundlePrice[]>([]);
   const [pricesAnimating, setPricesAnimating] = useState<Set<string>>(new Set());
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Funeral home preferences (fetched when customer_id changes)
+  const [fhPreferences, setFhPreferences] = useState<{
+    prefers_placer: boolean;
+    preferred_confirmation_method: string | null;
+  } | null>(null);
+
   const [taxPreview, setTaxPreview] = useState<{
     configured: boolean;
     rate_percentage: number | null;
@@ -385,6 +396,24 @@ function OrderSlideOver({
       if (equipmentNoteTimer) clearTimeout(equipmentNoteTimer);
     };
   }, [equipmentNoteTimer]);
+
+  // Fetch funeral home preferences when customer changes
+  useEffect(() => {
+    const customerId = formData.customer_id;
+    if (!customerId) {
+      setFhPreferences(null);
+      return;
+    }
+    apiClient
+      .get(`/customers/${customerId}`)
+      .then((res) => {
+        setFhPreferences({
+          prefers_placer: res.data.prefers_placer ?? false,
+          preferred_confirmation_method: res.data.preferred_confirmation_method ?? null,
+        });
+      })
+      .catch(() => setFhPreferences(null));
+  }, [formData.customer_id]);
 
   const width = template.slide_over_width || 480;
   const isQuote = mode === "quote";
@@ -701,6 +730,19 @@ function OrderSlideOver({
             </div>
           ))}
 
+          {/* Funeral home confirmation method hint */}
+          {fhPreferences?.preferred_confirmation_method && fhPreferences.preferred_confirmation_method !== "any" && (
+            <div className="flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              {fhPreferences.preferred_confirmation_method === "phone" && <Phone className="h-3.5 w-3.5 shrink-0" />}
+              {fhPreferences.preferred_confirmation_method === "email" && <Mail className="h-3.5 w-3.5 shrink-0" />}
+              {fhPreferences.preferred_confirmation_method === "text" && <MessageSquare className="h-3.5 w-3.5 shrink-0" />}
+              <span>
+                Confirm via{" "}
+                <strong>{fhPreferences.preferred_confirmation_method}</strong> after placing order
+              </span>
+            </div>
+          )}
+
           {/* Line items preview */}
           {template.line_items && template.line_items.length > 0 && (
             <div>
@@ -747,6 +789,20 @@ function OrderSlideOver({
                   Vault order pricing applied — equipment price reduced because order includes a vault.
                 </p>
               )}
+
+              {/* Placer auto-add indicator */}
+              {fhPreferences?.prefers_placer &&
+                template.line_items?.some((item: Record<string, unknown>) =>
+                  /lowering|device|full\s*equipment/i.test(String(item.product_name ?? ""))
+                ) && (
+                  <div className="mt-2 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                    <Wrench className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+                    <span>
+                      Vault Placer will be auto-added{" "}
+                      <span className="text-gray-500">· Funeral home preference · $0.00</span>
+                    </span>
+                  </div>
+                )}
             </div>
           )}
 

@@ -223,16 +223,28 @@ def seed_sunnycrest_products(db: Session) -> dict:
             "has_conditional_pricing": True,
             "price_without_our_product": Decimal("600.00"),
             "pricing_type": "rental",
+            "is_lowering_device": True,
         }),
         ("Lowering Device & Grass", cat_graveside, Decimal("185.00"), {
             "has_conditional_pricing": True,
             "price_without_our_product": Decimal("487.00"),
             "pricing_type": "rental",
+            "is_lowering_device": True,
         }),
         ("Lowering Device Only", cat_graveside, Decimal("140.00"), {
             "has_conditional_pricing": True,
             "price_without_our_product": Decimal("487.00"),
             "pricing_type": "rental",
+            "is_lowering_device": True,
+        }),
+        # Vault Placer — $0.00, added automatically for funeral homes that prefer it
+        ("Vault Placer", cat_graveside, Decimal("0.00"), {
+            "sku": "PLACER-01",
+            "description": "Vault placement device for lowering device service",
+            "unit_of_measure": "each",
+            "pricing_type": "sale",
+            "is_placer": True,
+            "is_inventory_tracked": False,
         }),
         ("Tent Only", cat_graveside, Decimal("225.00"), {
             "has_conditional_pricing": True,
@@ -283,4 +295,45 @@ def seed_sunnycrest_products(db: Session) -> dict:
             errors.append(f"{name}: {exc}")
 
     db.flush()
+
+    # Ensure product flags are set correctly (idempotent — safe to run after seeding)
+    flag_placer_and_lowering_products(db, company_id)
+
     return {"created": created, "skipped": skipped, "errors": errors}
+
+
+def flag_placer_and_lowering_products(db: Session, company_id: str) -> dict:
+    """Idempotent: set is_lowering_device and is_placer flags on existing products.
+
+    Safe to call multiple times — only updates products that need it.
+    Returns {"updated": N}
+    """
+    updated = 0
+
+    lowering_device_names = ["Full Equipment", "Lowering Device & Grass", "Lowering Device Only"]
+    placer_names = ["Vault Placer"]
+
+    for name in lowering_device_names:
+        product = (
+            db.query(Product)
+            .filter(Product.company_id == company_id, Product.name == name)
+            .first()
+        )
+        if product and not product.is_lowering_device:
+            product.is_lowering_device = True
+            updated += 1
+
+    for name in placer_names:
+        product = (
+            db.query(Product)
+            .filter(Product.company_id == company_id, Product.name == name)
+            .first()
+        )
+        if product and not product.is_placer:
+            product.is_placer = True
+            updated += 1
+
+    if updated:
+        db.flush()
+
+    return {"updated": updated}

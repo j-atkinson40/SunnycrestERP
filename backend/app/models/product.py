@@ -57,6 +57,14 @@ class Product(Base):
     # Direct ship flag
     is_direct_ship_product: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Placer / lowering device flags (used for funeral home preference auto-add)
+    is_placer: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )  # True only on the Vault Placer product
+    is_lowering_device: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )  # True on Full Equipment, Lowering Device & Grass, Lowering Device Only
+
     # Extension visibility
     visibility_requires_extension: Mapped[str | None] = mapped_column(
         String(30), nullable=True

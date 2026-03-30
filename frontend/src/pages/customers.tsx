@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, HardHat, Info, UploadIcon } from "lucide-react";
+import { AlertTriangle, HardHat, Info, Mail, MessageSquare, Phone, UploadIcon, Wrench } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
 import { useExtensions } from "@/contexts/extension-context";
@@ -663,16 +663,17 @@ export default function CustomersPage() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead>Terms</TableHead>
+                  <TableHead className="w-16 text-center">Prefs</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center">Loading...</TableCell>
+                    <TableCell colSpan={8} className="text-center">Loading...</TableCell>
                   </TableRow>
                 ) : customers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center">No funeral homes found</TableCell>
+                    <TableCell colSpan={8} className="text-center">No funeral homes found</TableCell>
                   </TableRow>
                 ) : (
                   customers.map((customer) => (
@@ -722,6 +723,30 @@ export default function CustomersPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {customer.payment_terms || "—"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {customer.prefers_placer && (
+                            <span title="Auto-adds vault placer on lowering device orders">
+                              <Wrench className="size-3.5 text-blue-500" />
+                            </span>
+                          )}
+                          {customer.preferred_confirmation_method === "phone" && (
+                            <span title="Prefers phone confirmation">
+                              <Phone className="size-3.5 text-muted-foreground" />
+                            </span>
+                          )}
+                          {customer.preferred_confirmation_method === "email" && (
+                            <span title="Prefers email confirmation">
+                              <Mail className="size-3.5 text-muted-foreground" />
+                            </span>
+                          )}
+                          {customer.preferred_confirmation_method === "text" && (
+                            <span title="Prefers text confirmation">
+                              <MessageSquare className="size-3.5 text-muted-foreground" />
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

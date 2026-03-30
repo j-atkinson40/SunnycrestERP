@@ -145,6 +145,14 @@ class Customer(Base):
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # --- Funeral home order preferences ---
+    prefers_placer: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )  # auto-add vault placer on lowering-device orders
+    preferred_confirmation_method: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # 'phone', 'email', 'text', 'any', or None
+
     # --- Quick-create tracking ---
     setup_complete: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"

@@ -74,6 +74,9 @@ export interface Customer {
   classification_confidence: number | null;
   classification_method: string | null;
   classification_reasoning: string | null;
+  // Funeral home order preferences
+  prefers_placer: boolean;
+  preferred_confirmation_method: string | null;
   is_active: boolean;
   setup_complete: boolean;
   created_at: string;
@@ -105,6 +108,9 @@ export interface CustomerListItem {
   classification_method: string | null;
   classification_reasoning: string | null;
   is_extension_hidden: boolean;
+  // Funeral home order preferences (r25)
+  prefers_placer: boolean;
+  preferred_confirmation_method: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +218,9 @@ export interface CustomerUpdate extends Partial<CustomerCreate> {
   billing_country?: string;
   tax_id?: string;
   address_line2?: string;
+  // Funeral home order preferences
+  prefers_placer?: boolean;
+  preferred_confirmation_method?: string | null;
 }
 
 export interface PaginatedCustomers {

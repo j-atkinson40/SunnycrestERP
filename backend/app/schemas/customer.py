@@ -135,6 +135,9 @@ class CustomerUpdate(BaseModel):
     notes: str | None = None
     sage_customer_id: str | None = None
     is_active: bool | None = None
+    # Funeral home order preferences
+    prefers_placer: bool | None = None
+    preferred_confirmation_method: str | None = None
 
     @field_validator("*", mode="before")
     @classmethod
@@ -181,6 +184,12 @@ class CustomerResponse(BaseModel):
     # Classification
     customer_type: str | None = None
     billing_profile: str | None = None
+    classification_confidence: float | None = None
+    classification_method: str | None = None
+    classification_reasoning: str | None = None
+    # Funeral home order preferences
+    prefers_placer: bool = False
+    preferred_confirmation_method: str | None = None
     # Meta
     is_active: bool
     setup_complete: bool = True
@@ -213,6 +222,9 @@ class CustomerListItem(BaseModel):
     is_active: bool
     setup_complete: bool = True
     created_at: datetime
+    # Funeral home order preferences (shown as indicators in list)
+    prefers_placer: bool = False
+    preferred_confirmation_method: str | None = None
 
     model_config = {"from_attributes": True}
 

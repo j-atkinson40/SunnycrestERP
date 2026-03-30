@@ -93,6 +93,9 @@ class SalesOrder(Base):
     # True = system marked delivered at 6 PM batch; False = driver explicitly confirmed
     delivered_by_driver_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    # Funeral home confirmation method (defaults from customer preference, can be overridden)
+    confirmation_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     # Spring burial
     is_spring_burial: Mapped[bool] = mapped_column(Boolean, default=False)
     spring_burial_added_at: Mapped[datetime | None] = mapped_column(
@@ -159,6 +162,12 @@ class SalesOrderLine(Base):
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Auto-add tracking (for placer preference lines)
+    is_auto_added: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    auto_add_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     sales_order = relationship("SalesOrder", back_populates="lines")
     product = relationship("Product")

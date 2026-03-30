@@ -1278,7 +1278,36 @@ def enrich_from_historical_orders(
         except Exception as exc:
             logger.warning("Could not store seasonal pattern: %s", exc)
 
-    return {"pairs_created": pairs_created}
+    # ── STEP 6: Placer preference detection ──────────────────────────────────
+    placer_summary: dict = {"auto_set": [], "suggested": []}
+    try:
+        from app.services.funeral_home_preference_service import (
+            detect_placer_preferences_from_history,
+        )
+        placer_summary = detect_placer_preferences_from_history(db, company_id, import_id)
+
+        if placer_summary["auto_set"]:
+            auto_names = [r["name"] for r in placer_summary["auto_set"]]
+            existing_warnings = list(import_record.warnings or [])
+            import_record.warnings = existing_warnings + [
+                f"Placer preference auto-enabled for {len(auto_names)} funeral "
+                f"home(s) based on order history: {', '.join(auto_names[:5])}"
+                + (" and more." if len(auto_names) > 5 else ".")
+            ]
+
+        if placer_summary["suggested"]:
+            existing_warnings = list(import_record.warnings or [])
+            import_record.warnings = existing_warnings + [
+                f"{r['name']} uses a placer on {r['placer_rate']}% of lowering device orders — "
+                "consider enabling the placer preference."
+                for r in placer_summary["suggested"][:5]
+            ]
+
+        db.flush()
+    except Exception as exc:
+        logger.warning("Placer detection failed: %s", exc)
+
+    return {"pairs_created": pairs_created, "placer_auto_set": len(placer_summary.get("auto_set", []))}
 
 
 # ---------------------------------------------------------------------------

@@ -409,6 +409,18 @@ def create_sales_order(
     except Exception as _exc:
         logger.warning("Conditional pricing recalc failed for order %s: %s", order.id, _exc)
 
+    # Apply funeral home preferences (placer auto-add + confirmation method)
+    try:
+        from app.services.funeral_home_preference_service import (
+            apply_placer_to_order_lines,
+            set_order_confirmation_method,
+        )
+        db.refresh(order)
+        apply_placer_to_order_lines(db, company_id, data.customer_id, order, SalesOrderLine)
+        set_order_confirmation_method(db, company_id, data.customer_id, order)
+    except Exception as _exc:
+        logger.warning("Funeral home preferences failed for order %s: %s", order.id, _exc)
+
     audit_service.log_action(
         db,
         company_id,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangleIcon, MapPin, PlusIcon, Trash2Icon } from "lucide-react";
+import { AlertTriangleIcon, MapPin, PlusIcon, Trash2Icon, Wrench } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { customerService } from "@/services/customer-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -136,6 +137,11 @@ export default function CustomerDetailPage() {
   const [classificationMethod, setClassificationMethod] = useState<string | null>(null);
   const [classificationReasoning, setClassificationReasoning] = useState<string | null>(null);
 
+  // Funeral home order preferences
+  const [prefersplacer, setPrefersplacer] = useState(false);
+  const [preferredConfirmationMethod, setPreferredConfirmationMethod] = useState<string>("");
+  const [preferencesSaving, setPreferencesSaving] = useState(false);
+
   // Notes
   const [customerNotes, setCustomerNotes] = useState("");
 
@@ -224,6 +230,8 @@ export default function CustomerDetailPage() {
       setClassificationConfidence(customer.classification_confidence ?? null);
       setClassificationMethod(customer.classification_method ?? null);
       setClassificationReasoning(customer.classification_reasoning ?? null);
+      setPrefersplacer(customer.prefers_placer ?? false);
+      setPreferredConfirmationMethod(customer.preferred_confirmation_method ?? "");
 
       setContacts(customer.contacts || []);
       setNotes(customer.recent_notes || []);
@@ -479,6 +487,35 @@ export default function CustomerDetailPage() {
     }
   }
 
+  // ------- Funeral home preferences -------
+
+  async function handlePlacerToggle(newValue: boolean) {
+    if (!customerId) return;
+    setPrefersplacer(newValue);
+    try {
+      await customerService.updateCustomer(customerId, { prefers_placer: newValue });
+      toast.success(newValue ? "Vault placer preference enabled" : "Vault placer preference disabled");
+    } catch (err: unknown) {
+      setPrefersplacer(!newValue); // revert
+      toast.error(getApiErrorMessage(err, "Failed to save preference"));
+    }
+  }
+
+  async function handleSavePreferences() {
+    if (!customerId) return;
+    setPreferencesSaving(true);
+    try {
+      await customerService.updateCustomer(customerId, {
+        preferred_confirmation_method: preferredConfirmationMethod || null,
+      });
+      toast.success("Preferences saved");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to save preferences"));
+    } finally {
+      setPreferencesSaving(false);
+    }
+  }
+
   // ------- Deactivate -------
 
   async function handleDeactivate() {
@@ -708,6 +745,84 @@ export default function CustomerDetailPage() {
             >
               Open Cemetery Settings →
             </Link>
+          </div>
+        </Card>
+      )}
+
+      {/* Order Preferences — funeral home customers only */}
+      {customerType === "funeral_home" && (
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Wrench className="size-4 text-muted-foreground" />
+            <h2 className="text-lg font-semibold">Order Preferences</h2>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            Preferences auto-applied when creating orders for this funeral home.
+          </p>
+          <Separator className="mb-5" />
+
+          {/* Vault Placer toggle */}
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-sm font-medium">Vault placer</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Automatically add a vault placer to every order that includes a lowering device.
+                  When enabled, the placer is added at $0.00 and marked as a funeral home preference.
+                </p>
+              </div>
+              <Switch
+                checked={prefersplacer}
+                onCheckedChange={handlePlacerToggle}
+                disabled={!canEdit}
+              />
+            </div>
+
+            <Separator />
+
+            {/* Confirmation method */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Preferred confirmation method</p>
+              <p className="text-xs text-muted-foreground">
+                How does this funeral home prefer to confirm orders?
+              </p>
+              <div className="space-y-2 mt-2">
+                {[
+                  { value: "", label: "No preference" },
+                  { value: "phone", label: "Phone" },
+                  { value: "email", label: "Email" },
+                  { value: "text", label: "Text" },
+                  { value: "any", label: "Any method" },
+                ].map(({ value, label }) => (
+                  <label key={value} className="flex items-center gap-2.5 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="confirmation_method"
+                      value={value}
+                      checked={preferredConfirmationMethod === value}
+                      onChange={() => setPreferredConfirmationMethod(value)}
+                      disabled={!canEdit}
+                      className="size-4"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {canEdit && (
+              <div className="pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSavePreferences}
+                  disabled={preferencesSaving}
+                >
+                  {preferencesSaving ? "Saving..." : "Save preferences"}
+                </Button>
+              </div>
+            )}
           </div>
         </Card>
       )}

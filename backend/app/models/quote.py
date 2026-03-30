@@ -146,5 +146,11 @@ class QuoteLine(Base):
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Auto-add tracking (mirrors sales_order_lines)
+    is_auto_added: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    auto_add_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     quote = relationship("Quote", back_populates="lines")
     product = relationship("Product")

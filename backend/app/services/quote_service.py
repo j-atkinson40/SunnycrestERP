@@ -217,6 +217,17 @@ def create_quote(
         except Exception as exc:
             logger.warning("Tax calculation failed: %s", exc)
 
+    # --- Funeral home preferences (placer auto-add) ---
+    if customer_id:
+        try:
+            from app.services.funeral_home_preference_service import apply_placer_to_quote_lines
+            from app.models.quote import QuoteLine as QuoteLineModel
+            # Reload lines after flush so the list is current
+            db.refresh(quote)
+            apply_placer_to_quote_lines(db, tenant_id, customer_id, quote, QuoteLineModel)
+        except Exception as exc:
+            logger.warning("Placer auto-add failed for quote: %s", exc)
+
     db.commit()
     db.refresh(quote)
 
@@ -268,7 +279,7 @@ def convert_quote_to_order(
     )
     db.add(order)
 
-    # Copy lines
+    # Copy lines (preserve auto-add tracking from quote)
     for ql in quote.lines or []:
         order_line = SalesOrderLine(
             id=str(uuid.uuid4()),
@@ -279,6 +290,8 @@ def convert_quote_to_order(
             unit_price=ql.unit_price,
             line_total=ql.line_total,
             sort_order=ql.sort_order,
+            is_auto_added=getattr(ql, "is_auto_added", False),
+            auto_add_reason=getattr(ql, "auto_add_reason", None),
         )
         db.add(order_line)
 
