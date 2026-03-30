@@ -322,6 +322,12 @@ function getManufacturingNav(
           permission: "products.view",
         },
         {
+          label: "Charge Library",
+          href: "/settings/charges",
+          icon: "CircleDollarSign",
+          permission: "products.view",
+        },
+        {
           label: "Tax Configuration",
           href: "/settings/tax",
           icon: "Percent",
