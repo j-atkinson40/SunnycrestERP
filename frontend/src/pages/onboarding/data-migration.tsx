@@ -35,6 +35,21 @@ import { getCompanySlug } from "@/lib/tenant";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface ExtensionGroup {
+  count: number;
+  sample_names: string[];
+  suggested_extensions?: string[];
+  suggested_extension?: string;
+}
+
+interface ExtensionContent {
+  contractor_customers: ExtensionGroup;
+  wastewater_products: ExtensionGroup;
+  redi_rock_products: ExtensionGroup;
+  rosetta_products: ExtensionGroup;
+  has_extension_content: boolean;
+}
+
 interface ParsedPreview {
   coa?: {
     count: number;
@@ -67,6 +82,7 @@ interface ParsedPreview {
     by_aging_bucket: { current: number; one_month: number; two_months: number; three_months: number; four_months: number };
     sample: Array<{ invoice_number: string; vendor_name: string; invoice_balance: number }>;
   };
+  extension_content?: ExtensionContent;
 }
 
 interface ProgressEvent {
@@ -98,6 +114,14 @@ interface MigrationSummary {
   error_count: number;
   errors?: string[];
   warnings?: string[];
+  hidden_contractors?: number;
+  hidden_products?: number;
+}
+
+interface ExtensionDecisions {
+  enable_wastewater: boolean;
+  enable_redi_rock: boolean;
+  enable_rosetta: boolean;
 }
 
 interface FileSlot {
@@ -170,10 +194,17 @@ const fmtDec = new Intl.NumberFormat("en-US", { style: "currency", currency: "US
 export default function DataMigrationPage() {
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 2.5 | 3 | 4>(1);
   const [files, setFiles] = useState<Record<string, File>>({});
   const [parsing, setParsing] = useState(false);
   const [preview, setPreview] = useState<ParsedPreview | null>(null);
+
+  // Step 2.5 extension decisions
+  const [extensionDecisions, setExtensionDecisions] = useState<ExtensionDecisions>({
+    enable_wastewater: false,
+    enable_redi_rock: false,
+    enable_rosetta: false,
+  });
 
   // Step 2 options
   const [includeInactiveAccounts, setIncludeInactiveAccounts] = useState(false);
@@ -229,11 +260,161 @@ export default function DataMigrationPage() {
       else if (res.data.vendors) setActiveTab("vendors");
       else if (res.data.ap_bills) setActiveTab("ap");
       setStep(2);
+      // Reset extension decisions each new parse
+      setExtensionDecisions({ enable_wastewater: false, enable_redi_rock: false, enable_rosetta: false });
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed to parse files.");
     } finally {
       setParsing(false);
     }
+  }
+
+  // ─── Step 2.5: Extension content ─────────────────────────────────────────
+
+  function renderExtensionStep() {
+    const ec = preview?.extension_content;
+    if (!ec) return null;
+
+    const toggleExt = (key: keyof ExtensionDecisions) => {
+      setExtensionDecisions((prev) => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    const ExtButton = ({
+      extKey,
+      label,
+      price,
+    }: {
+      extKey: keyof ExtensionDecisions;
+      label: string;
+      price: string;
+    }) => {
+      const enabled = extensionDecisions[extKey];
+      return (
+        <button
+          onClick={() => toggleExt(extKey)}
+          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium border transition-colors ${
+            enabled
+              ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+              : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+          }`}
+        >
+          {enabled ? `✓ ${label} — will be enabled` : `+ ${label}  ${price}`}
+        </button>
+      );
+    };
+
+    const hasContractors = ec.contractor_customers.count > 0;
+    const hasWastewater = ec.wastewater_products.count > 0;
+    const hasRediRock = ec.redi_rock_products.count > 0;
+    const hasRosetta = ec.rosetta_products.count > 0;
+
+    function sampleStr(names: string[], total: number): string {
+      const shown = names.slice(0, 3).join(", ");
+      const rest = total - names.slice(0, 3).length;
+      return rest > 0 ? `${shown} and ${rest} more` : shown;
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">We found content for additional features</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Everything will be imported. Choose which extensions to enable now, or enable them later from Settings.
+            </p>
+          </div>
+          <button onClick={() => setStep(2)} className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1">
+            ← Back to Preview
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Contractor customers card */}
+          {hasContractors && (
+            <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">👷</span>
+                <div>
+                  <p className="font-semibold text-slate-900">{ec.contractor_customers.count.toLocaleString()} Contractor Customers</p>
+                  <p className="text-sm text-slate-500 mt-0.5">{sampleStr(ec.contractor_customers.sample_names, ec.contractor_customers.count)}</p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600">
+                These customers work with product lines beyond burial vaults. They'll be hidden until you enable a product line extension.
+              </p>
+              <div>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Enable now:</p>
+                <div className="flex flex-wrap gap-2">
+                  <ExtButton extKey="enable_wastewater" label="Wastewater Extension" price="$49/mo" />
+                  <ExtButton extKey="enable_redi_rock" label="Redi-Rock Extension" price="$49/mo" />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400">All content is imported regardless of your choices. Extensions only control visibility.</p>
+            </div>
+          )}
+
+          {/* Wastewater products card */}
+          {hasWastewater && (
+            <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">🚰</span>
+                <div>
+                  <p className="font-semibold text-slate-900">{ec.wastewater_products.count.toLocaleString()} Wastewater Products</p>
+                  <p className="text-sm text-slate-500 mt-0.5">{sampleStr(ec.wastewater_products.sample_names, ec.wastewater_products.count)}</p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600">Requires Wastewater extension.</p>
+              <ExtButton extKey="enable_wastewater" label="Enable Wastewater Extension" price="$49/mo" />
+              <p className="text-xs text-slate-400">All content is imported regardless of your choices. Extensions only control visibility.</p>
+            </div>
+          )}
+
+          {/* Redi-Rock products card */}
+          {hasRediRock && (
+            <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">🪨</span>
+                <div>
+                  <p className="font-semibold text-slate-900">{ec.redi_rock_products.count.toLocaleString()} Redi-Rock Products</p>
+                  <p className="text-sm text-slate-500 mt-0.5">{sampleStr(ec.redi_rock_products.sample_names, ec.redi_rock_products.count)}</p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600">Requires Redi-Rock extension.</p>
+              <ExtButton extKey="enable_redi_rock" label="Enable Redi-Rock Extension" price="$49/mo" />
+              <p className="text-xs text-slate-400">All content is imported regardless of your choices. Extensions only control visibility.</p>
+            </div>
+          )}
+
+          {/* Rosetta products card */}
+          {hasRosetta && (
+            <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">🏗</span>
+                <div>
+                  <p className="font-semibold text-slate-900">{ec.rosetta_products.count.toLocaleString()} Rosetta Products</p>
+                  <p className="text-sm text-slate-500 mt-0.5">{sampleStr(ec.rosetta_products.sample_names, ec.rosetta_products.count)}</p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600">Requires Rosetta extension.</p>
+              <ExtButton extKey="enable_rosetta" label="Enable Rosetta Extension" price="$49/mo" />
+              <p className="text-xs text-slate-400">All content is imported regardless of your choices. Extensions only control visibility.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-between pt-2">
+          <button onClick={() => setStep(2)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            ← Back to Preview
+          </button>
+          <button
+            onClick={() => setShowConfirmModal(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Continue to Import →
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // ─── Step 3: Run import ───────────────────────────────────────────────────
@@ -254,6 +435,7 @@ export default function DataMigrationPage() {
         include_inactive_customers: includeInactiveCustomers,
         include_inactive_vendors: includeInactiveVendors,
         cutover_date: cutoverDate,
+        extension_decisions: extensionDecisions,
       })
     );
 
@@ -314,12 +496,14 @@ export default function DataMigrationPage() {
 
   function StepIndicator() {
     const steps = ["Upload Files", "Preview & Confirm", "Importing", "Complete"];
+    // step 2.5 is sub-step of "Preview & Confirm" — show step 2 as active, not done
+    const effectiveStep = step === 2.5 ? 2 : step;
     return (
       <div className="flex items-center gap-2 mb-8">
         {steps.map((label, i) => {
           const num = i + 1;
-          const active = step === num;
-          const done = step > num;
+          const active = effectiveStep === num;
+          const done = effectiveStep > num;
           return (
             <div key={num} className="flex items-center gap-2">
               <div className={`flex items-center gap-1.5 text-sm font-medium ${active ? "text-blue-600" : done ? "text-green-600" : "text-slate-400"}`}>
@@ -690,10 +874,16 @@ export default function DataMigrationPage() {
           </div>
           <div className="sm:ml-auto">
             <button
-              onClick={() => setShowConfirmModal(true)}
+              onClick={() => {
+                if (preview?.extension_content?.has_extension_content) {
+                  setStep(2.5);
+                } else {
+                  setShowConfirmModal(true);
+                }
+              }}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
             >
-              Import All Data →
+              {preview?.extension_content?.has_extension_content ? "Continue →" : "Import All Data →"}
             </button>
           </div>
         </div>
@@ -819,6 +1009,30 @@ export default function DataMigrationPage() {
           </div>
         </div>
 
+        {/* Hidden content notice */}
+        {((summary?.hidden_contractors ?? 0) > 0 || (summary?.hidden_products ?? 0) > 0) && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1">
+              <p className="text-sm font-medium text-amber-900">Some content is hidden until extensions are enabled</p>
+              <ul className="text-sm text-amber-800 space-y-0.5">
+                {(summary?.hidden_contractors ?? 0) > 0 && (
+                  <li>· {summary!.hidden_contractors} contractor customer{summary!.hidden_contractors! > 1 ? "s" : ""} — hidden until a product-line extension is active</li>
+                )}
+                {(summary?.hidden_products ?? 0) > 0 && (
+                  <li>· {summary!.hidden_products} product{summary!.hidden_products! > 1 ? "s" : ""} — hidden until the matching extension is active</li>
+                )}
+              </ul>
+            </div>
+            <button
+              onClick={() => navigate("/settings/extensions")}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100"
+            >
+              Enable Extensions <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         {(summary?.errors ?? []).length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-red-700 flex items-center gap-1.5">
@@ -866,6 +1080,7 @@ export default function DataMigrationPage() {
 
       {step === 1 && renderUpload()}
       {step === 2 && renderPreview()}
+      {step === 2.5 && renderExtensionStep()}
       {step === 3 && renderProgress()}
       {step === 4 && renderComplete()}
     </div>

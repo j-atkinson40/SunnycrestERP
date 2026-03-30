@@ -50,19 +50,20 @@ async def parse_migration_files(
         }
 
     # Customers
+    _parsed_customers: list[dict] = []
     if customers_file and customers_file.filename:
         content = await customers_file.read()
-        parsed = DataMigrationService.parse_customers(content)
-        active = [c for c in parsed if c["status"] != "Inactive"]
+        _parsed_customers = DataMigrationService.parse_customers(content)
+        active = [c for c in _parsed_customers if c["status"] != "Inactive"]
         by_division: dict[str, int] = {}
-        for c in parsed:
+        for c in _parsed_customers:
             div = c.get("division", "?")
             by_division[div] = by_division.get(div, 0) + 1
         result["customers"] = {
-            "count": len(parsed),
+            "count": len(_parsed_customers),
             "active_count": len(active),
             "by_division": by_division,
-            "sample": parsed[:10],
+            "sample": _parsed_customers[:10],
         }
 
     # AR Aging
@@ -174,6 +175,14 @@ async def parse_migration_files(
             detail="No files were provided. Upload at least one file to parse.",
         )
 
+    # Extension content detection — runs if we have customers or products parsed
+    # Products are not parsed at this stage (they come from a separate catalog import),
+    # so we detect from customers only for now.
+    result["extension_content"] = DataMigrationService.detect_extension_content(
+        _parsed_customers,
+        [],  # products not available at parse time
+    )
+
     return result
 
 
@@ -240,6 +249,7 @@ async def run_migration(
 
     tenant_id = current_user.company_id
     initiated_by = opts.get("initiated_by", "owner")
+    extension_decisions = opts.get("extension_decisions") or {}
 
     def event_generator():
         try:
@@ -250,6 +260,7 @@ async def run_migration(
                 options=opts,
                 cutover_date=cutover_date,
                 initiated_by=initiated_by,
+                extension_decisions=extension_decisions,
             )
             for event in gen:
                 yield json.dumps(event) + "\n"

@@ -1115,6 +1115,7 @@ def run_full_migration(
     options: dict,
     cutover_date: date,
     initiated_by: str = "owner",
+    extension_decisions: dict | None = None,
 ) -> Generator[dict, None, None]:
     """Run the full Sage 100 → Bridgeable migration pipeline.
 
@@ -1367,6 +1368,47 @@ def run_full_migration(
     else:
         yield {"step": "ap_bills", "status": "skipped", "message": "No AP aging file provided"}
 
+    # ---- Apply extension decisions + visibility flags ----
+    if extension_decisions:
+        from app.services import extension_service as ext_svc
+        ext_map = {
+            "enable_wastewater": "wastewater",
+            "enable_redi_rock": "redi_rock",
+            "enable_rosetta": "rosetta",
+        }
+        for opt_key, ext_key in ext_map.items():
+            if extension_decisions.get(opt_key):
+                try:
+                    ext_svc.enable_extension(db, tenant_id, ext_key)
+                except Exception:
+                    pass  # Extension may not exist in this env — non-fatal
+
+    # Apply visibility flags to all sage-migrated records
+    try:
+        _apply_visibility_flags(db, tenant_id)
+        db.commit()
+    except Exception as vf_err:
+        # Non-fatal — visibility can be corrected later
+        all_warnings.append(f"Visibility flags not applied: {vf_err}")
+
+    # Compute hidden counts for summary
+    _hidden_contractors = 0
+    _hidden_products = 0
+    try:
+        from app.models.customer import Customer as _Cust
+        from app.models.product import Product as _Prod
+        _hidden_contractors = db.query(_Cust).filter(
+            _Cust.company_id == tenant_id,
+            _Cust.is_extension_hidden.is_(True),
+            _Cust.customer_type == "contractor",
+        ).count()
+        _hidden_products = db.query(_Prod).filter(
+            _Prod.company_id == tenant_id,
+            _Prod.is_extension_hidden.is_(True),
+        ).count()
+    except Exception:
+        pass
+
     # ---- Finalize ----
     final_status = "complete"
     if all_errors:
@@ -1408,6 +1450,8 @@ def run_full_migration(
             "error_count": len(all_errors),
             "errors": all_errors[:50],
             "warnings": all_warnings[:50],
+            "hidden_contractors": _hidden_contractors,
+            "hidden_products": _hidden_products,
         },
     }
 
@@ -1567,6 +1611,142 @@ def rollback_migration(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Extension Content Detection
+# ---------------------------------------------------------------------------
+
+_WASTEWATER_TERMS = [
+    "septic", "tank", "wastewater", "distribution box", "pump chamber",
+    "riser", "filter", "leach", "cesspool", "1000 gal", "1500 gal", "2000 gal",
+]
+_REDI_ROCK_TERMS = [
+    "redi-rock", "redi rock", "retaining", "wall block", "standard block", "large block",
+]
+_ROSETTA_TERMS = [
+    "rosetta", "hardscape", "paver", "decorative concrete",
+]
+
+
+def _name_contains(name: str, terms: list[str]) -> bool:
+    low = name.lower()
+    return any(t in low for t in terms)
+
+
+def detect_extension_content(
+    parsed_customers: list[dict],
+    parsed_products: list[dict],
+) -> dict:
+    """Scan parsed records and return a summary of extension-requiring content.
+
+    Used by the parse endpoint so the frontend can show Step 2.5.
+    """
+    contractor_names = [
+        c["name"] for c in parsed_customers if c.get("customer_type") == "contractor"
+    ]
+    wastewater_names = [
+        p["name"] for p in parsed_products if _name_contains(p.get("name", ""), _WASTEWATER_TERMS)
+    ]
+    redi_rock_names = [
+        p["name"] for p in parsed_products if _name_contains(p.get("name", ""), _REDI_ROCK_TERMS)
+    ]
+    rosetta_names = [
+        p["name"] for p in parsed_products if _name_contains(p.get("name", ""), _ROSETTA_TERMS)
+    ]
+
+    has_content = bool(contractor_names or wastewater_names or redi_rock_names or rosetta_names)
+
+    suggested = []
+    if contractor_names or wastewater_names:
+        suggested.append("wastewater")
+    if contractor_names or redi_rock_names:
+        suggested.append("redi_rock")
+
+    return {
+        "contractor_customers": {
+            "count": len(contractor_names),
+            "sample_names": contractor_names[:5],
+            "suggested_extensions": suggested if contractor_names else [],
+        },
+        "wastewater_products": {
+            "count": len(wastewater_names),
+            "sample_names": wastewater_names[:5],
+            "suggested_extension": "wastewater",
+        },
+        "redi_rock_products": {
+            "count": len(redi_rock_names),
+            "sample_names": redi_rock_names[:5],
+            "suggested_extension": "redi_rock",
+        },
+        "rosetta_products": {
+            "count": len(rosetta_names),
+            "sample_names": rosetta_names[:5],
+            "suggested_extension": "rosetta",
+        },
+        "has_extension_content": has_content,
+    }
+
+
+def _apply_visibility_flags(db, tenant_id: str) -> None:
+    """After import, apply is_extension_hidden to all imported customers and products.
+
+    Checks which product-line extensions are now active and sets flags accordingly.
+    Called at the end of run_full_migration after extension_decisions are applied.
+    """
+    from app.models.customer import Customer
+    from app.models.product import Product
+    from app.models.tenant_extension import TenantExtension
+
+    PRODUCT_LINE_KEYS = ("wastewater", "redi_rock", "rosetta")
+
+    active_exts = {
+        te.extension_key
+        for te in db.query(TenantExtension).filter(
+            TenantExtension.tenant_id == tenant_id,
+            TenantExtension.extension_key.in_(PRODUCT_LINE_KEYS),
+            TenantExtension.status == "active",
+        ).all()
+    }
+    any_product_line_active = bool(active_exts)
+
+    # ── Customers ─────────────────────────────────────────────────────────────
+    customers = db.query(Customer).filter(
+        Customer.company_id == tenant_id,
+        Customer.source == "sage_migration",
+    ).all()
+
+    for c in customers:
+        if c.customer_type == "funeral_home":
+            c.is_extension_hidden = False
+            c.visibility_requires_extension = None
+        elif c.customer_type == "contractor":
+            c.visibility_requires_extension = "any_product_line"
+            c.is_extension_hidden = not any_product_line_active
+        # other types: leave as-is (default false)
+
+    # ── Products ──────────────────────────────────────────────────────────────
+    products = db.query(Product).filter(
+        Product.company_id == tenant_id,
+        Product.source == "sage_migration",
+    ).all()
+
+    for p in products:
+        name = p.name or ""
+        if _name_contains(name, _WASTEWATER_TERMS):
+            p.visibility_requires_extension = "wastewater"
+            p.is_extension_hidden = "wastewater" not in active_exts
+        elif _name_contains(name, _REDI_ROCK_TERMS):
+            p.visibility_requires_extension = "redi_rock"
+            p.is_extension_hidden = "redi_rock" not in active_exts
+        elif _name_contains(name, _ROSETTA_TERMS):
+            p.visibility_requires_extension = "rosetta"
+            p.is_extension_hidden = "rosetta" not in active_exts
+        else:
+            p.visibility_requires_extension = None
+            p.is_extension_hidden = False
+
+    db.flush()
+
+
 class DataMigrationService:
     """Thin facade so route code can call DataMigrationService.parse_coa() etc."""
 
@@ -1599,6 +1779,13 @@ class DataMigrationService:
         return rollback_migration(db, tenant_id, run_id, rolled_back_by)
 
     @staticmethod
+    def detect_extension_content(
+        parsed_customers: list[dict],
+        parsed_products: list[dict],
+    ) -> dict:
+        return detect_extension_content(parsed_customers, parsed_products)
+
+    @staticmethod
     def run_full_migration(
         db,
         tenant_id: str,
@@ -1606,5 +1793,8 @@ class DataMigrationService:
         options: dict,
         cutover_date: date,
         initiated_by: str = "owner",
+        extension_decisions: dict | None = None,
     ) -> Generator[dict, None, None]:
-        return run_full_migration(db, tenant_id, files, options, cutover_date, initiated_by)
+        return run_full_migration(
+            db, tenant_id, files, options, cutover_date, initiated_by, extension_decisions
+        )

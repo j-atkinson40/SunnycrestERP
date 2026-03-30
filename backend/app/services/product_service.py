@@ -227,11 +227,15 @@ def get_products(
     search: str | None = None,
     category_id: str | None = None,
     include_inactive: bool = False,
+    include_hidden: bool = False,
 ) -> dict:
     query = db.query(Product).filter(Product.company_id == company_id)
 
     if not include_inactive:
         query = query.filter(Product.is_active == True)  # noqa: E712
+
+    if not include_hidden:
+        query = query.filter(Product.is_extension_hidden.is_(False))
 
     if search:
         pattern = f"%{search}%"

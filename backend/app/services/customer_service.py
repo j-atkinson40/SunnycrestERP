@@ -36,11 +36,15 @@ def get_customers(
     account_status: str | None = None,
     include_inactive: bool = False,
     customer_type: str | None = None,
+    include_hidden: bool = False,
 ) -> dict:
     query = db.query(Customer).filter(Customer.company_id == company_id)
 
     if not include_inactive:
         query = query.filter(Customer.is_active == True)  # noqa: E712
+
+    if not include_hidden:
+        query = query.filter(Customer.is_extension_hidden.is_(False))
 
     if search:
         pattern = f"%{search}%"

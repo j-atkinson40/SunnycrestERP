@@ -119,6 +119,14 @@ class Customer(Base):
         String(30), nullable=True
     )  # 'funeral_home', 'contractor', 'cemetery', 'other'
 
+    # --- Extension visibility ---
+    visibility_requires_extension: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )  # 'any_product_line' for contractors, null = always visible
+    is_extension_hidden: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )  # true = hidden until extension enabled; separate from is_active
+
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 

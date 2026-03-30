@@ -120,6 +120,7 @@ def list_products(
     search: str | None = Query(None),
     category_id: str | None = Query(None),
     include_inactive: bool = Query(False),
+    include_hidden: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("products.view")),
 ):
@@ -131,6 +132,7 @@ def list_products(
         search,
         category_id,
         include_inactive,
+        include_hidden,
     )
     return {
         "items": [_product_to_response(p) for p in result["items"]],

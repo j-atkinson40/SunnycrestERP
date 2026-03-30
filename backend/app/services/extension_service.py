@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.extension_activity_log import ExtensionActivityLog
@@ -242,6 +243,63 @@ def get_active_extension_keys(db: Session, tenant_id: str) -> list[str]:
 # Install / disable / configure
 # ---------------------------------------------------------------------------
 
+_PRODUCT_LINE_EXTENSIONS: frozenset[str] = frozenset({"wastewater", "redi_rock", "rosetta"})
+
+
+def _update_extension_visibility(
+    db: Session, tenant_id: str, extension_key: str, enabling: bool
+) -> None:
+    """Sync is_extension_hidden on sage-migrated customers/products when an extension is toggled."""
+    if extension_key not in _PRODUCT_LINE_EXTENSIONS:
+        return
+
+    if enabling:
+        # Unhide products that belong to this extension
+        db.execute(
+            text(
+                "UPDATE products SET is_extension_hidden = false "
+                "WHERE company_id = :tid AND visibility_requires_extension = :ext"
+            ),
+            {"tid": tenant_id, "ext": extension_key},
+        )
+        # Unhide contractors — any product-line extension is now active
+        db.execute(
+            text(
+                "UPDATE customers SET is_extension_hidden = false "
+                "WHERE company_id = :tid AND visibility_requires_extension = 'any_product_line'"
+            ),
+            {"tid": tenant_id},
+        )
+    else:
+        # Hide products for this extension
+        db.execute(
+            text(
+                "UPDATE products SET is_extension_hidden = true "
+                "WHERE company_id = :tid AND visibility_requires_extension = :ext"
+            ),
+            {"tid": tenant_id, "ext": extension_key},
+        )
+        # Hide contractors only when no product-line extensions remain active
+        active_count = db.execute(
+            text(
+                "SELECT COUNT(*) FROM tenant_extensions "
+                "WHERE tenant_id = :tid "
+                "AND extension_key IN ('wastewater', 'redi_rock', 'rosetta') "
+                "AND status = 'active'"
+            ),
+            {"tid": tenant_id},
+        ).scalar() or 0
+        if active_count == 0:
+            db.execute(
+                text(
+                    "UPDATE customers SET is_extension_hidden = true "
+                    "WHERE company_id = :tid AND visibility_requires_extension = 'any_product_line'"
+                ),
+                {"tid": tenant_id},
+            )
+    db.flush()
+
+
 def install_extension(
     db: Session,
     tenant_id: str,
@@ -291,6 +349,7 @@ def install_extension(
         db.add(te)
 
     _log_activity(db, tenant_id, ext.id, "enabled", actor_id, {"extension_key": extension_key})
+    _update_extension_visibility(db, tenant_id, extension_key, True)
 
     db.commit()
     db.refresh(te)
@@ -359,6 +418,7 @@ def disable_extension(
     _log_activity(db, tenant_id, te.extension_id or "", "disabled", actor_id, {
         "extension_key": extension_key,
     })
+    _update_extension_visibility(db, tenant_id, extension_key, False)
 
     db.commit()
     return True
@@ -449,6 +509,7 @@ def enable_extension(
         )
         db.add(te)
 
+    _update_extension_visibility(db, tenant_id, extension_key, True)
     db.commit()
     db.refresh(te)
     return te

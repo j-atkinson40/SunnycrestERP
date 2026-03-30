@@ -86,6 +86,7 @@ def list_customers(
     account_status: str | None = Query(None),
     include_inactive: bool = Query(False),
     customer_type: str | None = Query(None),
+    include_hidden: bool = Query(False),
     db: Session = Depends(get_db),
     _module: User = Depends(require_module("sales")),
     current_user: User = Depends(require_permission("customers.view")),
@@ -99,6 +100,7 @@ def list_customers(
         account_status,
         include_inactive,
         customer_type,
+        include_hidden,
     )
     return {
         "items": [

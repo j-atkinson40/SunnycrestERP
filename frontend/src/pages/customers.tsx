@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Building2, Plus, UploadIcon } from "lucide-react";
+import { AlertTriangle, Building2, HardHat, Info, Plus, UploadIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { useExtensions } from "@/contexts/extension-context";
 import { customerService } from "@/services/customer-service";
 import { cemeteryService } from "@/services/cemetery-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -518,14 +519,31 @@ function CemeteriesTab({ canCreate }: { canCreate: boolean }) {
 
 export default function CustomersPage() {
   const { hasPermission } = useAuth();
+  const { isExtensionEnabled } = useExtensions();
   const canCreate = hasPermission("customers.create");
 
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get("tab") as "funeral_homes" | "cemeteries") ?? "funeral_homes";
+  const hasProductLineExtension =
+    isExtensionEnabled("wastewater") ||
+    isExtensionEnabled("redi_rock") ||
+    isExtensionEnabled("rosetta");
 
-  function setTab(tab: "funeral_homes" | "cemeteries") {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab =
+    (searchParams.get("tab") as "funeral_homes" | "contractors" | "cemeteries") ??
+    "funeral_homes";
+
+  function setTab(tab: "funeral_homes" | "contractors" | "cemeteries") {
     setSearchParams({ tab }, { replace: true });
     setPage(1);
+  }
+
+  // First-time contractors banner
+  const [contractorsBannerDismissed, setContractorsBannerDismissed] = useState(
+    () => localStorage.getItem("contractors_tab_seen") === "true"
+  );
+  function dismissContractorsBanner() {
+    localStorage.setItem("contractors_tab_seen", "true");
+    setContractorsBannerDismissed(true);
   }
 
   // Customer list state
@@ -565,20 +583,21 @@ export default function CustomersPage() {
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
+      const customerType = activeTab === "contractors" ? "contractor" : "funeral_home";
       const data = await customerService.getCustomers(
         page,
         20,
         search || undefined,
         filterStatus || undefined,
         includeInactive,
-        "funeral_home",
+        customerType,
       );
       setCustomers(data.items);
       setTotal(data.total);
     } finally {
       setLoading(false);
     }
-  }, [page, search, filterStatus, includeInactive]);
+  }, [page, search, filterStatus, includeInactive, activeTab]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -590,7 +609,7 @@ export default function CustomersPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "funeral_homes") {
+    if (activeTab === "funeral_homes" || activeTab === "contractors") {
       loadCustomers();
     }
   }, [loadCustomers, activeTab]);
@@ -666,6 +685,8 @@ export default function CustomersPage() {
           <p className="text-muted-foreground">
             {activeTab === "funeral_homes"
               ? `${total} funeral home${total !== 1 ? "s" : ""}`
+              : activeTab === "contractors"
+              ? `${total} contractor${total !== 1 ? "s" : ""}`
               : "Cemetery management"}
           </p>
         </div>
@@ -948,6 +969,19 @@ export default function CustomersPage() {
         >
           Funeral Homes
         </button>
+        {hasProductLineExtension && (
+          <button
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
+              activeTab === "contractors"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setTab("contractors")}
+          >
+            <HardHat className="h-3.5 w-3.5" />
+            Contractors
+          </button>
+        )}
         <button
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
             activeTab === "cemeteries"
@@ -1094,6 +1128,151 @@ export default function CustomersPage() {
                 disabled={page >= totalPages}
                 onClick={() => setPage(page + 1)}
               >
+                Next
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Tab: Contractors */}
+      {activeTab === "contractors" && (
+        <>
+          {!contractorsBannerDismissed && (
+            <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+              <div className="flex-1 text-sm text-blue-800">
+                <p className="font-medium">Contractors are now visible</p>
+                <p className="mt-0.5">These customers work with product lines beyond burial vaults. They appear here because you have at least one product-line extension active.</p>
+              </div>
+              <button
+                onClick={dismissContractorsBanner}
+                className="shrink-0 text-blue-400 hover:text-blue-600"
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              placeholder="Search contractors..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="max-w-sm"
+            />
+            <select
+              className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+              value={filterStatus}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="hold">On Hold</option>
+              <option value="suspended">Suspended</option>
+            </select>
+            <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(e) => {
+                  setIncludeInactive(e.target.checked);
+                  setPage(1);
+                }}
+                className="size-4 rounded border-input"
+              />
+              Include inactive
+            </label>
+          </div>
+
+          {/* Contractor Table */}
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Account #</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>City / State</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead>Terms</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center">Loading...</TableCell>
+                  </TableRow>
+                ) : customers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center">No contractors found</TableCell>
+                  </TableRow>
+                ) : (
+                  customers.map((customer) => (
+                    <TableRow key={customer.id}>
+                      <TableCell className="font-medium">
+                        <Link to={`/customers/${customer.id}`} className="hover:underline">
+                          {customer.name}
+                        </Link>
+                        {!customer.is_active && (
+                          <Badge variant="destructive" className="ml-2">Inactive</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.account_number || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div>{customer.contact_name || "—"}</div>
+                        {customer.email && (
+                          <div className="text-xs text-muted-foreground">{customer.email}</div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.city && customer.state
+                          ? `${customer.city}, ${customer.state}`
+                          : customer.city || customer.state || "—"}
+                      </TableCell>
+                      <TableCell>{statusBadge(customer.account_status)}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {customer.credit_limit !== null &&
+                        customer.current_balance > customer.credit_limit ? (
+                          <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                            <AlertTriangle className="size-3.5" />
+                            {formatCurrency(customer.current_balance)}
+                          </span>
+                        ) : (
+                          formatCurrency(customer.current_balance)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.payment_terms || "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
                 Next
               </Button>
             </div>
