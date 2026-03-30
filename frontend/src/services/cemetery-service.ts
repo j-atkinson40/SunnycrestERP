@@ -60,4 +60,54 @@ export const cemeteryService = {
     );
     return response.data;
   },
+
+  async getGeographicShortlist(
+    funeralHomeCustomerId: string,
+    limit = 5,
+  ): Promise<Array<{
+    cemetery_id: string;
+    cemetery_name: string;
+    distance_miles: number | null;
+    county: string | null;
+    state: string | null;
+    city: string | null;
+  }>> {
+    const res = await apiClient.get("/cemeteries/geographic-shortlist", {
+      params: { funeral_home_customer_id: funeralHomeCustomerId, limit },
+    });
+    return res.data;
+  },
+
+  async getOrderHistory(cemeteryId: string, limit = 10): Promise<Array<{
+    order_id: string;
+    order_number: string;
+    customer_name: string | null;
+    order_date: string | null;
+    scheduled_date: string | null;
+    status: string;
+    total: number;
+  }>> {
+    const res = await apiClient.get(`/cemeteries/${cemeteryId}/order-history`, { params: { limit } });
+    return res.data;
+  },
+
+  async getFuneralHomes(cemeteryId: string): Promise<Array<{
+    customer_id: string;
+    customer_name: string;
+    order_count: number;
+    last_order_date: string | null;
+  }>> {
+    const res = await apiClient.get(`/cemeteries/${cemeteryId}/funeral-homes`);
+    return res.data;
+  },
+
+  async linkBillingCustomer(cemeteryId: string, customerId: string): Promise<{ cemetery_id: string; customer_id: string }> {
+    const res = await apiClient.post(`/cemeteries/${cemeteryId}/link-customer`, { customer_id: customerId });
+    return res.data;
+  },
+
+  async createBillingAccount(cemeteryId: string): Promise<{ customer_id: string; customer_name: string; cemetery_id: string }> {
+    const res = await apiClient.post(`/cemeteries/${cemeteryId}/create-billing-account`);
+    return res.data;
+  },
 };

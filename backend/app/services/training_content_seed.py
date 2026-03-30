@@ -404,6 +404,145 @@ SEED_EXPLANATIONS = [
             "discrepancies. Addressing these before the rush prevents them from becoming crises during it."
         ),
     },
+    {
+        "explanation_key": "cemetery_equipment_settings",
+        "trigger_context": "When viewing Settings → Cemeteries",
+        "headline": "Why configure cemetery equipment settings?",
+        "explanation": (
+            "Every burial service involves equipment — a lowering device to place the vault, grass mats "
+            "to keep the grave site clean, a tent for the graveside service, and chairs for the family. "
+            "Some cemeteries own this equipment themselves and provide it at no charge. Others expect "
+            "you to bring everything.\n\n"
+            "If you charge a funeral home for a tent when the cemetery already provides one, the funeral "
+            "home will push back — and they'll be right. Getting equipment wrong means inaccurate invoices, "
+            "awkward conversations, and eroded trust.\n\n"
+            "When you configure a cemetery's equipment settings here, every new order to that cemetery "
+            "automatically pre-fills the correct equipment charges. The platform removes charges for "
+            "equipment the cemetery provides and suggests what you need to bring. You set it once; "
+            "every order gets it right automatically.\n\n"
+            "The county setting matters too. Burial vaults are taxed at the rate of the county where "
+            "the interment happens — not the funeral home's county. Oak Hill Cemetery in Cayuga County "
+            "means Cayuga County tax applies, regardless of where the funeral home is located. "
+            "Getting the county right here ensures every invoice has the correct tax amount."
+        ),
+    },
+    {
+        "explanation_key": "cemetery_shortlist",
+        "trigger_context": "When selecting a cemetery on an order",
+        "headline": "How does the cemetery shortlist work?",
+        "explanation": (
+            "Each funeral home tends to use the same cemeteries repeatedly — they serve specific "
+            "geographic areas and build relationships with the cemeteries in their region.\n\n"
+            "After you've taken three or more orders for a funeral home, the platform tracks which "
+            "cemeteries they use most often and shows those at the top of the cemetery picker when "
+            "you're taking a new order from that funeral home. This means less typing — you can select "
+            "the cemetery in one click instead of searching for it.\n\n"
+            "Until you've built up that history, the platform shows nearby cemeteries based on the "
+            "funeral home's address. Either way, you can always search the full cemetery list or "
+            "add a new cemetery inline if you encounter one that isn't in your system yet."
+        ),
+    },
+]
+
+SEED_PROCEDURES = [
+    {
+        "procedure_key": "managing_cemetery_settings",
+        "title": "Configuring Cemetery Delivery Settings",
+        "applicable_roles": ["inside_sales", "operations", "manager"],
+        "category": "operations",
+        "sort_order": 20,
+        "overview": (
+            "Cemetery delivery settings control what equipment appears on funeral orders and which "
+            "tax rate applies. Keeping these settings accurate ensures every order is billed correctly "
+            "without manual adjustments."
+        ),
+        "steps": [
+            {
+                "step_number": 1,
+                "title": "Find Settings → Cemeteries",
+                "instruction": (
+                    "In the left navigation, open Settings (collapsed at the bottom) and click "
+                    "'Cemeteries'. This page lists all the cemeteries you service. Click any cemetery "
+                    "to open its full profile."
+                ),
+            },
+            {
+                "step_number": 2,
+                "title": "Add a new cemetery",
+                "instruction": (
+                    "Click '+ Add Cemetery' in the top right. Enter the name (required), county, "
+                    "city, and state. The county is the most important field — it determines which "
+                    "tax rate applies to orders at this cemetery. Click 'Add Cemetery' to save and "
+                    "open the profile page."
+                ),
+            },
+            {
+                "step_number": 3,
+                "title": "Set equipment flags correctly",
+                "instruction": (
+                    "In the 'Delivery Settings' card, toggle on any equipment the cemetery provides "
+                    "themselves. If Oak Hill Cemetery brings their own lowering device and grass mats, "
+                    "toggle both on. The live preview below the toggles shows what you'll be prompted "
+                    "to bring on orders — this is what appears on the order form."
+                ),
+            },
+            {
+                "step_number": 4,
+                "title": "Understand the equipment preview",
+                "instruction": (
+                    "The preview reads: 'When selected on an order we suggest: [label]'. "
+                    "'Full Equipment' means you provide everything. 'No equipment needed' means the "
+                    "cemetery handles it all. 'Lowering Device & Grass' means you bring those two "
+                    "items. This suggestion appears on the order form automatically when this cemetery "
+                    "is selected."
+                ),
+            },
+            {
+                "step_number": 5,
+                "title": "Confirm the county for tax",
+                "instruction": (
+                    "Set the County field to the county where this cemetery is located. Check the "
+                    "'Confirmed for tax calculation' box once you've verified the county is correct. "
+                    "Unconfirmed counties will prompt a reminder when the cemetery is selected on an "
+                    "order. Getting this right means every invoice calculates tax at the correct "
+                    "county rate."
+                ),
+            },
+            {
+                "step_number": 6,
+                "title": "Link to a billing customer (if applicable)",
+                "instruction": (
+                    "Some cemeteries are also your customers — they pay for vault placements directly. "
+                    "If this cemetery has an account with you, scroll to the 'Billing' card and either "
+                    "link their existing customer record or create a new one. This connects their "
+                    "billing account to their delivery settings in one place."
+                ),
+            },
+            {
+                "step_number": 7,
+                "title": "Update settings when policy changes",
+                "instruction": (
+                    "Cemeteries sometimes change their equipment policies — they might purchase a "
+                    "lowering device one year, or stop providing grass mats. When this happens, "
+                    "return to Settings → Cemeteries, open the cemetery's profile, and update the "
+                    "equipment toggles. Every future order to that cemetery will reflect the change "
+                    "automatically."
+                ),
+            },
+            {
+                "step_number": 8,
+                "title": "Check order history if settings seem wrong",
+                "instruction": (
+                    "If a funeral home calls about wrong equipment charges on an old order, open the "
+                    "cemetery's profile and check the 'Order History' card. You can see recent orders "
+                    "and verify when the settings last changed. If charges were wrong, the billing "
+                    "adjustment can be made on the customer's account."
+                ),
+            },
+        ],
+        "related_procedure_keys": ["taking_a_funeral_order"],
+        "related_feature_urls": ["/settings/cemeteries"],
+    },
 ]
 
 

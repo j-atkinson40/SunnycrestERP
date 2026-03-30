@@ -1,10 +1,12 @@
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -59,6 +61,18 @@ class Cemetery(Base):
     equipment_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Billing link — NULL = operational only, no billing customer record
+    customer_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("customers.id"), nullable=True, index=True
+    )
+
+    # Geographic coordinates (populated from Google Places during onboarding)
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+
+    # Tax county confirmation
+    tax_county_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     # Status / metadata
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -77,3 +91,4 @@ class Cemetery(Base):
         back_populates="cemetery",
         cascade="all, delete-orphan",
     )
+    billing_customer = relationship("Customer", foreign_keys=[customer_id])

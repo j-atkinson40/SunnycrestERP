@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.cemetery import Cemetery
@@ -325,6 +325,227 @@ def get_fh_cemetery_shortlist(
 # ---------------------------------------------------------------------------
 # History upsert (called when a funeral order is saved)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Geographic Shortlist (cold-start)
+# ---------------------------------------------------------------------------
+
+
+def get_geographic_shortlist(
+    db: Session,
+    company_id: str,
+    customer_id: str,
+    limit: int = 5,
+) -> list[dict]:
+    """Return cemeteries geographically near a funeral home's address.
+
+    Used when the funeral home has < MIN_HISTORY_RECORDS in their usage history.
+    Falls back to county/state match when cemetery lat/lng not available.
+    Returns empty list if history threshold is already met.
+    """
+    # Check if history threshold already met
+    history_count = (
+        db.query(func.count(FuneralHomeCemeteryHistory.id))
+        .filter(
+            FuneralHomeCemeteryHistory.company_id == company_id,
+            FuneralHomeCemeteryHistory.customer_id == customer_id,
+        )
+        .scalar()
+        or 0
+    )
+    if history_count >= _MIN_HISTORY_RECORDS:
+        return []
+
+    # Load funeral home address for geographic matching
+    customer = (
+        db.query(Customer)
+        .filter(Customer.id == customer_id, Customer.company_id == company_id)
+        .first()
+    )
+    if not customer:
+        return []
+
+    # Load active cemeteries
+    cemeteries = (
+        db.query(Cemetery)
+        .filter(Cemetery.company_id == company_id, Cemetery.is_active.is_(True))
+        .order_by(Cemetery.name)
+        .all()
+    )
+
+    results = []
+    for c in cemeteries:
+        # State-based match as primary filter
+        if c.state and customer.state:
+            if c.state.upper() == (customer.state or "").upper():
+                results.append({
+                    "cemetery_id": c.id,
+                    "cemetery_name": c.name,
+                    "distance_miles": None,
+                    "county": c.county,
+                    "state": c.state,
+                    "city": c.city,
+                })
+        elif c.state is None and customer.state is None:
+            results.append({
+                "cemetery_id": c.id,
+                "cemetery_name": c.name,
+                "distance_miles": None,
+                "county": c.county,
+                "state": c.state,
+                "city": c.city,
+            })
+
+    # Deduplicate and limit
+    seen: set[str] = set()
+    unique = []
+    for r in results:
+        if r["cemetery_id"] not in seen:
+            seen.add(r["cemetery_id"])
+            unique.append(r)
+
+    return unique[:limit]
+
+
+# ---------------------------------------------------------------------------
+# Cemetery Order History
+# ---------------------------------------------------------------------------
+
+
+def get_cemetery_order_history(
+    db: Session,
+    company_id: str,
+    cemetery_id: str,
+    limit: int = 10,
+) -> list[dict]:
+    """Return recent sales orders for a cemetery (by cemetery_id FK)."""
+    from app.models.sales_order import SalesOrder
+
+    # Verify cemetery belongs to company
+    get_cemetery(db, cemetery_id, company_id)
+
+    orders = (
+        db.query(SalesOrder)
+        .filter(
+            SalesOrder.company_id == company_id,
+            SalesOrder.cemetery_id == cemetery_id,
+        )
+        .order_by(SalesOrder.order_date.desc())
+        .limit(limit)
+        .all()
+    )
+
+    results = []
+    for o in orders:
+        customer_name = None
+        if o.customer:
+            customer_name = o.customer.name
+        results.append({
+            "order_id": o.id,
+            "order_number": o.number,
+            "customer_name": customer_name,
+            "order_date": o.order_date.isoformat() if o.order_date else None,
+            "scheduled_date": o.scheduled_date.isoformat() if o.scheduled_date else None,
+            "status": o.status,
+            "total": float(o.total),
+        })
+    return results
+
+
+def get_cemetery_funeral_homes(
+    db: Session,
+    company_id: str,
+    cemetery_id: str,
+) -> list[dict]:
+    """Return funeral homes that have used this cemetery, ordered by usage."""
+    get_cemetery(db, cemetery_id, company_id)
+
+    history = (
+        db.query(FuneralHomeCemeteryHistory)
+        .filter(
+            FuneralHomeCemeteryHistory.company_id == company_id,
+            FuneralHomeCemeteryHistory.cemetery_id == cemetery_id,
+        )
+        .order_by(FuneralHomeCemeteryHistory.order_count.desc())
+        .all()
+    )
+
+    results = []
+    for h in history:
+        customer = (
+            db.query(Customer)
+            .filter(Customer.id == h.customer_id)
+            .first()
+        )
+        results.append({
+            "customer_id": h.customer_id,
+            "customer_name": customer.name if customer else "Unknown",
+            "order_count": h.order_count,
+            "last_order_date": h.last_order_date.isoformat() if h.last_order_date else None,
+        })
+    return results
+
+
+def link_billing_customer(
+    db: Session,
+    company_id: str,
+    cemetery_id: str,
+    customer_id: str,
+) -> dict:
+    """Link a billing customer record to an operational cemetery."""
+    cemetery = get_cemetery(db, cemetery_id, company_id)
+    customer = (
+        db.query(Customer)
+        .filter(Customer.id == customer_id, Customer.company_id == company_id)
+        .first()
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    cemetery.customer_id = customer_id
+    db.commit()
+    db.refresh(cemetery)
+    return {"cemetery_id": cemetery.id, "customer_id": cemetery.customer_id}
+
+
+def create_billing_account(
+    db: Session,
+    company_id: str,
+    cemetery_id: str,
+    actor_id: str | None = None,
+) -> dict:
+    """Create a billing customer for this cemetery and link it."""
+    import uuid as _uuid
+    cemetery = get_cemetery(db, cemetery_id, company_id)
+
+    new_customer = Customer(
+        id=str(_uuid.uuid4()),
+        company_id=company_id,
+        name=cemetery.name,
+        customer_type="cemetery",
+        payment_terms="net_30",
+        account_status="active",
+        address_line1=cemetery.address,
+        city=cemetery.city,
+        state=cemetery.state,
+        zip_code=cemetery.zip_code,
+        phone=cemetery.phone,
+        contact_name=cemetery.contact_name,
+        created_by=actor_id,
+    )
+    db.add(new_customer)
+    db.flush()
+
+    cemetery.customer_id = new_customer.id
+    db.commit()
+    db.refresh(cemetery)
+
+    return {
+        "customer_id": new_customer.id,
+        "customer_name": new_customer.name,
+        "cemetery_id": cemetery.id,
+    }
 
 
 def record_funeral_home_cemetery_usage(

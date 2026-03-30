@@ -12,8 +12,8 @@ import {
   parseVoiceOrder,
   type ParsedOrder,
 } from "@/services/order-station-service";
-import { cemeteryService } from "@/services/cemetery-service";
-import type { Cemetery, EquipmentPrefill } from "@/types/customer";
+import { CemeteryPicker } from "@/components/cemetery-picker";
+import type { EquipmentPrefill } from "@/types/customer";
 import {
   resolveBundlePrices,
   type ResolvedBundlePrice,
@@ -184,123 +184,6 @@ function statusColor(status: string): string {
     case "cancelled": return "bg-red-100 text-red-700";
     default: return "bg-gray-100 text-gray-700";
   }
-}
-
-// ---------------------------------------------------------------------------
-// CemeterySearchInput
-// ---------------------------------------------------------------------------
-function CemeterySearchInput({
-  value,
-  cemeteryId,
-  onChange,
-}: {
-  value: string;
-  cemeteryId: string;
-  onChange: (name: string, id: string, prefill: EquipmentPrefill | null) => void;
-}) {
-  const [results, setResults] = useState<Cemetery[]>([]);
-  const [open, setOpen] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [prefill, setPrefill] = useState<EquipmentPrefill | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  function handleInput(text: string) {
-    onChange(text, "", null);
-    setPrefill(null);
-    setOpen(true);
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!text.trim()) { setResults([]); return; }
-
-    debounceRef.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const data = await cemeteryService.getCemeteries({ search: text, per_page: 8 });
-        setResults(data.items);
-      } catch {
-        setResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
-  }
-
-  async function selectCemetery(c: Cemetery) {
-    setOpen(false);
-    try {
-      const p = await cemeteryService.getEquipmentPrefill(c.id);
-      setPrefill(p);
-      onChange(c.name, c.id, p);
-    } catch {
-      onChange(c.name, c.id, null);
-    }
-  }
-
-  const notFound = value.trim().length > 1 && results.length === 0 && !searching;
-
-  return (
-    <div ref={containerRef} className="relative" data-guided="cemetery-select">
-      <input
-        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1"
-        placeholder="Search cemetery..."
-        value={value}
-        onChange={(e) => handleInput(e.target.value)}
-        onFocus={() => value.trim() && setOpen(true)}
-        autoComplete="off"
-      />
-
-      {open && value.trim().length > 0 && (
-        <div className="absolute z-50 w-full mt-1 rounded-md border bg-white shadow-lg max-h-48 overflow-y-auto">
-          {searching && (
-            <div className="px-3 py-2 text-xs text-muted-foreground">Searching...</div>
-          )}
-          {!searching && results.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between"
-              onClick={() => selectCemetery(c)}
-            >
-              <span>{c.name}</span>
-              <span className="text-xs text-muted-foreground">{c.county ? `${c.county}, ` : ""}{c.state}</span>
-            </button>
-          ))}
-          {notFound && (
-            <button
-              type="button"
-              className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-accent"
-              onClick={() => { setOpen(false); onChange(value, "", null); }}
-            >
-              + Use &ldquo;{value}&rdquo; as new cemetery
-            </button>
-          )}
-        </div>
-      )}
-
-      {prefill && (
-        <div className={`mt-1.5 rounded-md px-3 py-2 text-xs ${
-          prefill.nothing_needed ? "bg-muted text-muted-foreground" : "bg-blue-50 text-blue-700"
-        }`}>
-          {prefill.equipment_note}
-        </div>
-      )}
-
-      {cemeteryId && (
-        <p className="mt-0.5 text-xs text-muted-foreground">Linked to cemetery record</p>
-      )}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -622,18 +505,20 @@ function OrderSlideOver({
               </div>
               <div>
                 <Label htmlFor="cemetery">Cemetery</Label>
-                <CemeterySearchInput
-                  value={formData.cemetery ?? ""}
-                  cemeteryId={formData.cemetery_id ?? ""}
-                  onChange={(name, id, prefill) => {
-                    setField("cemetery", name);
-                    setField("cemetery_id", id);
-                    if (prefill) {
-                      setField("tent", prefill.can_provide.includes("tent") ? "true" : "false");
-                      setField("lowering_device", prefill.can_provide.includes("lowering_device") ? "true" : "false");
-                      setField("greens", prefill.can_provide.includes("grass") ? "true" : "false");
-                    }
+                <CemeteryPicker
+                  value={formData.cemetery_id || null}
+                  customerId={formData.customer_id || null}
+                  onChange={(cemeteryId, cemetery) => {
+                    setField("cemetery_id", cemeteryId || "");
+                    setField("cemetery", cemetery?.name || "");
                   }}
+                  onEquipmentPrefill={(prefill) => {
+                    setField("tent", prefill.can_provide.includes("tent") ? "true" : "false");
+                    setField("lowering_device", prefill.can_provide.includes("lowering_device") ? "true" : "false");
+                    setField("greens", prefill.can_provide.includes("grass") ? "true" : "false");
+                  }}
+                  guidedKey="cemetery-select"
+                  className="mt-1"
                 />
               </div>
               <div data-guided="service-date">

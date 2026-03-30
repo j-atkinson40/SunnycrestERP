@@ -51,6 +51,7 @@ class CemeteryUpdate(BaseModel):
     cemetery_provides_tent: bool | None = None
     cemetery_provides_chairs: bool | None = None
     access_notes: str | None = None
+    tax_county_confirmed: bool | None = None
 
 
 def _serialize(cemetery) -> dict:
@@ -71,6 +72,10 @@ def _serialize(cemetery) -> dict:
         "cemetery_provides_chairs": cemetery.cemetery_provides_chairs,
         "equipment_note": cemetery.equipment_note,
         "access_notes": cemetery.access_notes,
+        "customer_id": cemetery.customer_id,
+        "latitude": float(cemetery.latitude) if cemetery.latitude is not None else None,
+        "longitude": float(cemetery.longitude) if cemetery.longitude is not None else None,
+        "tax_county_confirmed": cemetery.tax_county_confirmed,
         "is_active": cemetery.is_active,
         "created_at": cemetery.created_at.isoformat() if cemetery.created_at else None,
         "updated_at": cemetery.updated_at.isoformat() if cemetery.updated_at else None,
@@ -108,6 +113,20 @@ def list_cemeteries(
         "page": result["page"],
         "per_page": result["per_page"],
     }
+
+
+@router.get("/geographic-shortlist")
+def geographic_shortlist(
+    funeral_home_customer_id: str = Query(...),
+    limit: int = Query(5, ge=1, le=10),
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.view")),
+):
+    """Geographic shortlist for cold-start (no usage history yet)."""
+    return cemetery_service.get_geographic_shortlist(
+        db, current_user.company_id, funeral_home_customer_id, limit
+    )
 
 
 @router.get("/{cemetery_id}")
@@ -176,3 +195,61 @@ def equipment_prefill(
     """Return equipment suggestion for a cemetery selection on an order form."""
     cemetery = get_cemetery(db, cemetery_id, current_user.company_id)
     return cemetery_service.get_equipment_prefill(cemetery)
+
+
+@router.get("/{cemetery_id}/order-history")
+def cemetery_order_history(
+    cemetery_id: str,
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.view")),
+):
+    """Recent orders for a cemetery (from cemetery_id FK on sales_orders)."""
+    return cemetery_service.get_cemetery_order_history(
+        db, current_user.company_id, cemetery_id, limit
+    )
+
+
+@router.get("/{cemetery_id}/funeral-homes")
+def cemetery_funeral_homes(
+    cemetery_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.view")),
+):
+    """Funeral homes that have used this cemetery, ordered by usage count."""
+    return cemetery_service.get_cemetery_funeral_homes(
+        db, current_user.company_id, cemetery_id
+    )
+
+
+@router.post("/{cemetery_id}/link-customer")
+def link_billing_customer(
+    cemetery_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.edit")),
+):
+    """Link an existing billing customer to this operational cemetery."""
+    from fastapi import HTTPException
+    customer_id = data.get("customer_id")
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="customer_id required")
+    return cemetery_service.link_billing_customer(
+        db, current_user.company_id, cemetery_id, customer_id
+    )
+
+
+@router.post("/{cemetery_id}/create-billing-account", status_code=201)
+def create_billing_account(
+    cemetery_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.create")),
+):
+    """Create a new billing Customer for this cemetery and link it."""
+    return cemetery_service.create_billing_account(
+        db, current_user.company_id, cemetery_id, current_user.id
+    )

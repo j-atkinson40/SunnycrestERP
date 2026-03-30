@@ -42,6 +42,10 @@ class LicenseeTransfer(Base):
     cemetery_county: Mapped[str | None] = mapped_column(String(100), nullable=True)
     cemetery_zip: Mapped[str | None] = mapped_column(String(10), nullable=True)
     cemetery_place_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Hard FK link to cemeteries table (when cemetery is in system)
+    cemetery_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("cemeteries.id"), nullable=True
+    )
     # Items
     transfer_items: Mapped[list] = mapped_column(JSONB, server_default="[]")
     special_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)

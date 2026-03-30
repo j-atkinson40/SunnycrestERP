@@ -72,6 +72,11 @@ class SalesOrder(Base):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Cemetery reference — hard FK for funeral orders
+    cemetery_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("cemeteries.id"), nullable=True
+    )
+
     # Order classification
     order_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # 'funeral' | 'retail' | 'wholesale' — used by end-of-day invoice batch
@@ -118,6 +123,7 @@ class SalesOrder(Base):
     company = relationship("Company")
     customer = relationship("Customer")
     quote = relationship("Quote")
+    cemetery = relationship("Cemetery")
     lines = relationship(
         "SalesOrderLine",
         back_populates="sales_order",

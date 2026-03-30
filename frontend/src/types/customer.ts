@@ -122,6 +122,11 @@ export interface Cemetery {
   cemetery_provides_chairs: boolean;
   equipment_note: string | null;
   access_notes: string | null;
+  // New fields from r20_cemetery_experience
+  customer_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  tax_county_confirmed: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -143,7 +148,9 @@ export interface CemeteryCreate {
   access_notes?: string;
 }
 
-export interface CemeteryUpdate extends Partial<CemeteryCreate> {}
+export interface CemeteryUpdate extends Partial<CemeteryCreate> {
+  tax_county_confirmed?: boolean;
+}
 
 export interface PaginatedCemeteries {
   items: Cemetery[];

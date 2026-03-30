@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Building2, MapPin, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { cemeteryService } from "@/services/cemetery-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -98,7 +99,7 @@ interface CemeteryDialogProps {
   cemetery?: Cemetery | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: () => void;
+  onSaved: (createdId?: string) => void;
 }
 
 function CemeteryDialog({ cemetery, open, onOpenChange, onSaved }: CemeteryDialogProps) {
@@ -161,11 +162,12 @@ function CemeteryDialog({ cemetery, open, onOpenChange, onSaved }: CemeteryDialo
       if (isEdit && cemetery) {
         await cemeteryService.updateCemetery(cemetery.id, form);
         toast.success("Cemetery updated");
+        onSaved();
       } else {
-        await cemeteryService.createCemetery(form);
+        const created = await cemeteryService.createCemetery(form);
         toast.success("Cemetery created");
+        onSaved(created.id);
       }
-      onSaved();
       onOpenChange(false);
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Failed to save cemetery"));
@@ -336,13 +338,13 @@ function CemeteryDialog({ cemetery, open, onOpenChange, onSaved }: CemeteryDialo
 export default function CemeteryDeliverySettingsPage() {
   const { hasPermission } = useAuth();
   const canCreate = hasPermission("customers.create");
+  const navigate = useNavigate();
 
   const [cemeteries, setCemeteries] = useState<Cemetery[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selected, setSelected] = useState<Cemetery | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -365,12 +367,6 @@ export default function CemeteryDeliverySettingsPage() {
   }, [load]);
 
   function openCreate() {
-    setSelected(null);
-    setDialogOpen(true);
-  }
-
-  function openEdit(cemetery: Cemetery) {
-    setSelected(cemetery);
     setDialogOpen(true);
   }
 
@@ -476,7 +472,7 @@ export default function CemeteryDeliverySettingsPage() {
                 <TableRow
                   key={c.id}
                   className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => openEdit(c)}
+                  onClick={() => navigate(`/settings/cemeteries/${c.id}`)}
                 >
                   <TableCell className="font-medium">{c.name}</TableCell>
                   <TableCell className="text-muted-foreground">{c.county || "—"}</TableCell>
@@ -514,7 +510,7 @@ export default function CemeteryDeliverySettingsPage() {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          openEdit(c);
+                          navigate(`/settings/cemeteries/${c.id}`);
                         }}
                       >
                         Edit
@@ -529,10 +525,16 @@ export default function CemeteryDeliverySettingsPage() {
       </div>
 
       <CemeteryDialog
-        cemetery={selected}
+        cemetery={null}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onSaved={load}
+        onSaved={(id) => {
+          if (id) {
+            navigate(`/settings/cemeteries/${id}`);
+          } else {
+            load();
+          }
+        }}
       />
     </div>
   );

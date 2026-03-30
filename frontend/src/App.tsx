@@ -137,6 +137,7 @@ import JournalEntriesPage from "@/pages/journal-entries";
 import TaxSettingsPage from "@/pages/settings/tax-settings";
 import CustomerTypesPage from "@/pages/settings/customer-types";
 import CemeteryDeliverySettingsPage from "@/pages/settings/cemeteries";
+import CemeteryProfilePage from "@/pages/settings/cemetery-profile";
 import ReportsPage from "@/pages/reports";
 import FinancialsBoardPage from "@/pages/financials-board";
 import CollectionsReviewPage from "@/pages/ar/collections-review";
@@ -594,6 +595,7 @@ export default function App() {
                   <Route path="/onboarding/data-migration" element={<DataMigrationPage />} />
                   <Route path="/settings/data-migration" element={<DataMigrationPage />} />
                   <Route path="/settings/data/customer-types" element={<CustomerTypesPage />} />
+                  <Route path="/settings/cemeteries/:cemeteryId" element={<CemeteryProfilePage />} />
                   <Route path="/settings/cemeteries" element={<CemeteryDeliverySettingsPage />} />
                   <Route path="/onboarding/accounting/review" element={<AccountingReviewPage />} />
                   <Route path="/onboarding/scheduling" element={<SchedulingSetupPage />} />
