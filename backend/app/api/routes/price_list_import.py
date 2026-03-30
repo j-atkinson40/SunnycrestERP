@@ -440,13 +440,25 @@ def confirm_import(
             base_key = re.sub(r"[^a-z0-9]+", "_", (item.final_product_name or item.extracted_name).lower()).strip("_")
             charge_key = f"{base_key}_custom"
 
-        # Check for key collision
+        # Check for key collision — update in place rather than creating a duplicate
         existing = db.query(ChargeLibraryItem).filter(
             ChargeLibraryItem.tenant_id == company.id,
             ChargeLibraryItem.charge_key == charge_key,
         ).first()
         if existing:
-            charge_key = f"{charge_key}_{uuid.uuid4().hex[:6]}"
+            if item.has_conditional_pricing:
+                existing.has_conditional_pricing = True
+                existing.with_vault_price = item.extracted_price_with_vault
+                existing.standalone_price = item.extracted_price_standalone
+                existing.fixed_amount = item.extracted_price_standalone
+            elif item.extracted_price is not None:
+                existing.fixed_amount = item.extracted_price
+            if item.pricing_type_suggestion:
+                existing.pricing_type = item.pricing_type_suggestion
+            existing.is_enabled = item.enable_on_import
+            existing.updated_at = now
+            charges_updated += 1
+            continue
 
         # Get next sort_order
         max_sort = db.query(func.max(ChargeLibraryItem.sort_order)).filter(
