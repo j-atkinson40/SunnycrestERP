@@ -53,6 +53,7 @@ from app.api.routes import (
     funeral_home_directory,
     funeral_kanban,
     hierarchy,
+    historical_order_import,
     inventory,
     job_queue,
     migration,
@@ -232,6 +233,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     hierarchy.router, prefix="/hierarchy", tags=["Org Hierarchy"]
+)
+v1_router.include_router(
+    historical_order_import.router,
+    prefix="/historical-orders",
+    tags=["Historical Order Import"],
 )
 v1_router.include_router(
     inventory.router, prefix="/inventory", tags=["Inventory"]

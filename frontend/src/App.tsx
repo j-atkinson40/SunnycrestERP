@@ -128,6 +128,7 @@ import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import CemeterySetupWizard from "@/pages/onboarding/cemetery-setup";
 import QuickOrdersOnboarding from "@/pages/onboarding/quick-orders";
+import HistoricalOrderImportPage from "@/pages/onboarding/historical-order-import";
 import SeasonalTemplatesSettings from "@/pages/settings/seasonal-templates";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import DataMigrationPage from "@/pages/onboarding/data-migration";
@@ -590,6 +591,7 @@ export default function App() {
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/onboarding/cemeteries" element={<CemeterySetupWizard />} />
                   <Route path="/onboarding/quick-orders" element={<QuickOrdersOnboarding />} />
+                  <Route path="/onboarding/historical-orders" element={<HistoricalOrderImportPage />} />
                   <Route path="/settings/seasonal-templates" element={<SeasonalTemplatesSettings />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />
                   <Route path="/onboarding/data-migration" element={<DataMigrationPage />} />

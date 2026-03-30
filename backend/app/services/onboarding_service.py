@@ -184,6 +184,23 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/data-migration",
         "sort_order": 2,
     },
+    # 2.5 — Import order history (should_complete; optional but high-value)
+    {
+        "item_key": "import_order_history",
+        "tier": "should_complete",
+        "category": "data_setup",
+        "title": "Import your order history",
+        "description": (
+            "Upload historical funeral orders from a CSV or spreadsheet to "
+            "pre-populate your cemetery list, customer profiles, and smart "
+            "suggestions — before your first real order."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/historical-orders",
+        "sort_order": 3,
+        "depends_on": '["data_migration"]',
+    },
     # 3. Product catalog — no dependency, accessible immediately after migration
     {
         "item_key": "add_products",

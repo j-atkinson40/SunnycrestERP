@@ -6,9 +6,9 @@
  * Step 3 — Done summary
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Plus, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { cemeteryService } from "@/services/cemetery-service";
@@ -30,6 +30,14 @@ interface TemplateCard {
   products: string[];
   basePrice?: string;
   enabled: boolean;
+}
+
+interface HistoricalTemplate {
+  product_name: string;
+  equipment: string;
+  order_count: number;
+  pct_of_total: number;
+  suggested_template_name: string;
 }
 
 interface CemeteryRow {
@@ -99,14 +107,16 @@ const RECOMMENDED_TEMPLATES: Omit<TemplateCard, "enabled">[] = [
 function TemplatesStep({
   templates,
   onToggle,
+  historicalTemplates,
 }: {
   templates: TemplateCard[];
   onToggle: (key: string) => void;
+  historicalTemplates: HistoricalTemplate[];
 }) {
   const enabledCount = templates.filter((t) => t.enabled).length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
         <h2 className="text-xl font-semibold">Your most common order types</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -115,7 +125,47 @@ function TemplatesStep({
         </p>
       </div>
 
+      {/* Data-driven recommendations from historical import */}
+      {historicalTemplates.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Star className="size-4 text-amber-500 fill-amber-500" />
+            <p className="text-sm font-medium">Based on your order history</p>
+          </div>
+          <div className="space-y-2">
+            {historicalTemplates.slice(0, 5).map((ht, i) => (
+              <div
+                key={`hist-${i}`}
+                className="rounded-lg border border-amber-200 bg-amber-50/50 p-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{ht.suggested_template_name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {ht.order_count.toLocaleString()} orders ·{" "}
+                      {ht.pct_of_total.toFixed(1)}% of your history
+                    </p>
+                  </div>
+                  {i === 0 && (
+                    <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-medium shrink-0">
+                      #1 order type
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Enable the Wilbert templates below that best match these combinations. Custom templates
+            can be added after setup.
+          </p>
+          <div className="border-t" />
+        </div>
+      )}
+
+      {/* Standard recommended Wilbert templates */}
       <div className="space-y-3">
+        {historicalTemplates.length === 0 && null}
         {templates.map((t) => (
           <div
             key={t.key}
@@ -335,6 +385,23 @@ export default function QuickOrdersOnboarding() {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
+  // Historical import data
+  const [historicalTemplates, setHistoricalTemplates] = useState<HistoricalTemplate[]>([]);
+
+  useEffect(() => {
+    apiClient
+      .get("/historical-orders/status")
+      .then((res) => {
+        const recommended = res.data?.recommended_templates;
+        if (Array.isArray(recommended) && recommended.length > 0) {
+          setHistoricalTemplates(recommended as HistoricalTemplate[]);
+        }
+      })
+      .catch(() => {
+        // No historical import — silent fallback to standard templates
+      });
+  }, []);
+
   // Step 1 — templates
   const [templates, setTemplates] = useState<TemplateCard[]>(
     RECOMMENDED_TEMPLATES.map((t) => ({ ...t, enabled: false })),
@@ -462,7 +529,11 @@ export default function QuickOrdersOnboarding() {
 
       {/* Content */}
       {step === 1 && (
-        <TemplatesStep templates={templates} onToggle={toggleTemplate} />
+        <TemplatesStep
+          templates={templates}
+          onToggle={toggleTemplate}
+          historicalTemplates={historicalTemplates}
+        />
       )}
       {step === 2 && (
         <CemeteriesStep

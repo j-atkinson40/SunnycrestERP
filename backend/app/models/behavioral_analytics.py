@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB as _JSONB
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -100,6 +101,8 @@ class EntityBehavioralProfile(Base):
     avg_price_variance_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     price_trend: Mapped[str | None] = mapped_column(String(10), nullable=True)
     discrepancy_resolution_days: Mapped[Decimal | None] = mapped_column(Numeric(5, 1), nullable=True)
+    # Flexible profile data from historical imports / behavioral analysis
+    profile_data: Mapped[dict] = mapped_column(_JSONB, server_default="{}")
     last_computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

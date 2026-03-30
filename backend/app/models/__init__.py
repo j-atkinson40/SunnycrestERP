@@ -25,6 +25,7 @@ from app.models.cemetery_directory_fetch_log import CemeteryDirectoryFetchLog
 from app.models.customer import Customer
 from app.models.customer_accounting_mapping import CustomerAccountingMapping
 from app.models.funeral_home_cemetery_history import FuneralHomeCemeteryHistory
+from app.models.historical_order_import import HistoricalOrder, HistoricalOrderImport
 from app.models.customer_contact import CustomerContact
 from app.models.customer_note import CustomerNote
 from app.models.carrier import Carrier
@@ -404,4 +405,6 @@ __all__ = [
     "DataMigrationRun",
     "TenantWebsiteIntelligence",
     "WebsiteIntelligenceSuggestion",
+    "HistoricalOrderImport",
+    "HistoricalOrder",
 ]

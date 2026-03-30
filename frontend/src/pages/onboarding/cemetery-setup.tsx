@@ -81,6 +81,8 @@ interface CemeteryEntry {
   provides_tent: boolean;
   provides_chairs: boolean;
   equipment_note: string;
+  /** Historical order count — populated when pre-filled from import history */
+  order_count?: number;
 }
 
 function emptyEntry(defaultState: string): CemeteryEntry {
@@ -353,6 +355,14 @@ function EntryCard({
   return (
     <Card className="overflow-hidden">
       <div className="px-4 pt-3 pb-2 space-y-2">
+        {/* Order count badge (from history pre-population) */}
+        {entry.order_count !== undefined && entry.order_count > 0 && (
+          <div className="flex items-center justify-between">
+            <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
+              {entry.order_count.toLocaleString()} historical orders
+            </span>
+          </div>
+        )}
         {/* Name autocomplete */}
         <div>
           <Label className="text-xs">Cemetery name *</Label>
@@ -483,21 +493,35 @@ function AddCemeteriesStep({
   onAdd,
   onRemove,
   onNext,
+  fromHistory,
 }: {
   entries: CemeteryEntry[];
   onUpdate: (id: string, patch: Partial<CemeteryEntry>) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onNext: () => void;
+  fromHistory: boolean;
 }) {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold">Add cemeteries you deliver to</h1>
-        <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-          Search by name — details like county and city auto-fill from OpenStreetMap. You can
-          always add more cemeteries later from the order form or Settings.
-        </p>
+        {fromHistory ? (
+          <>
+            <h1 className="text-2xl font-bold">Review cemeteries from your history</h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+              These are the cemeteries from your imported order history, ranked by order count.
+              Review equipment settings, remove any you don&apos;t need, and add others.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-2xl font-bold">Add cemeteries you deliver to</h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+              Search by name — details like county and city auto-fill from OpenStreetMap. You can
+              always add more cemeteries later from the order form or Settings.
+            </p>
+          </>
+        )}
       </div>
 
       <ContextualExplanation explanationKey="cemetery_equipment_settings" />
@@ -677,6 +701,7 @@ export default function CemeterySetupWizard() {
   const [entries, setEntries] = useState<CemeteryEntry[]>(() =>
     safeParse<CemeteryEntry[]>(LS_ENTRIES, []),
   );
+  const [fromHistory, setFromHistory] = useState(false);
 
   // ── Load tenant info ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -696,6 +721,54 @@ export default function CemeterySetupWizard() {
       .then(setPlatformMatches)
       .catch(() => {})
       .finally(() => setPlatformLoading(false));
+  }, []);
+
+  // ── Pre-populate from historical import (when no entries saved yet) ───────
+  useEffect(() => {
+    const savedEntries = safeParse<CemeteryEntry[]>(LS_ENTRIES, []);
+    if (savedEntries.length > 0) return; // Don't overwrite existing user work
+    apiClient
+      .get("/historical-orders/top-cemeteries", { params: { limit: 20 } })
+      .then((res) => {
+        const list = res.data as Array<{
+          name: string;
+          raw_name?: string;
+          cemetery_id?: string;
+          city?: string;
+          state?: string;
+          county?: string;
+          order_count: number;
+        }>;
+        if (!Array.isArray(list) || list.length === 0) return;
+        const prePopulated: CemeteryEntry[] = list
+          .filter((c) => c.name && c.name.trim())
+          .map((c) => ({
+            _id: Math.random().toString(36).slice(2),
+            name: c.name.trim(),
+            city: c.city ?? "",
+            state: c.state ?? "",
+            county: c.county ?? "",
+            place_id: null,
+            cemetery_id: c.cemetery_id ?? null,
+            lat: null,
+            lng: null,
+            already_added: !!c.cemetery_id,
+            expanded: false,
+            provides_lowering_device: false,
+            provides_grass: false,
+            provides_tent: false,
+            provides_chairs: false,
+            equipment_note: "",
+            order_count: c.order_count,
+          }));
+        if (prePopulated.length > 0) {
+          setEntries(prePopulated);
+          setFromHistory(true);
+        }
+      })
+      .catch(() => {
+        // No historical import — user starts with blank entries
+      });
   }, []);
 
   // ── Platform step handlers ────────────────────────────────────────────────
@@ -839,6 +912,7 @@ export default function CemeterySetupWizard() {
           onAdd={addEntry}
           onRemove={removeEntry}
           onNext={() => setStep(2)}
+          fromHistory={fromHistory}
         />
       )}
 

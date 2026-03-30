@@ -598,6 +598,88 @@ CONTEXT_BUILDERS = {
 
 
 # ---------------------------------------------------------------------------
+# Historical order context (appended to briefing context when available)
+# ---------------------------------------------------------------------------
+
+
+def _get_historical_context(db: Session, company_id: str) -> dict | None:
+    """Return seasonal intelligence from historical order data if available.
+
+    Returns None if no historical import exists.
+    """
+    try:
+        from app.models.historical_order_import import HistoricalOrder, HistoricalOrderImport
+        from sqlalchemy import func as _func
+
+        # Check if any historical data exists
+        count = (
+            db.query(_func.count(HistoricalOrder.id))
+            .filter(HistoricalOrder.company_id == company_id)
+            .scalar()
+            or 0
+        )
+        if count == 0:
+            return None
+
+        today = date.today()
+        current_month = today.month
+
+        # Compute average daily orders from history (exclude current month if limited data)
+        month_rows = (
+            db.query(
+                _func.extract("month", HistoricalOrder.scheduled_date).label("mo"),
+                _func.count().label("cnt"),
+            )
+            .filter(
+                HistoricalOrder.company_id == company_id,
+                HistoricalOrder.scheduled_date.isnot(None),
+            )
+            .group_by("mo")
+            .all()
+        )
+
+        if not month_rows:
+            return None
+
+        month_counts = {int(row.mo): row.cnt for row in month_rows}
+        avg_count = sum(month_counts.values()) / len(month_counts)
+        avg_daily = round(avg_count / 30.0, 1)
+
+        current_month_count = month_counts.get(current_month, 0)
+        is_peak = current_month_count > avg_count * 1.3
+
+        # Read seasonal pattern from company settings if available
+        peak_months: list[int] = []
+        try:
+            from app.models.company import Company as _Company
+            company = db.query(_Company).filter(_Company.id == company_id).first()
+            if company:
+                seasonal = company.settings.get("seasonal_pattern", {})
+                peak_months = seasonal.get("peak_months", [])
+        except Exception:
+            pass
+
+        month_names = [
+            "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        ]
+        peak_month_names = [month_names[m] for m in peak_months if 1 <= m <= 12]
+
+        return {
+            "avg_daily_orders": avg_daily,
+            "total_historical_orders": count,
+            "peak_season_alert": is_peak,
+            "peak_month_names": peak_month_names,
+            "current_month_name": month_names[current_month],
+            "current_month_avg_orders": round(current_month_count / 30.0, 1),
+        }
+
+    except Exception as exc:
+        logger.debug("Could not build historical context: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # C) Secondary area critical items
 # ---------------------------------------------------------------------------
 
@@ -1034,6 +1116,22 @@ def generate_functional_area_briefing(
         user_prompt += "\n\nCRITICAL ITEMS FROM OTHER AREAS:"
         for item in secondary_items:
             user_prompt += f"\n- [{item['priority'].upper()}] {item['text']}"
+
+    # Inject historical seasonal context if available
+    hist = _get_historical_context(db, user.company_id)
+    if hist:
+        user_prompt += "\n\nHISTORICAL CONTEXT (from imported order history):"
+        user_prompt += f"\n  Avg daily orders (historical): {hist['avg_daily_orders']}"
+        if hist.get("peak_season_alert"):
+            user_prompt += (
+                f"\n  PEAK SEASON: {hist['current_month_name']} is historically one of your "
+                f"busiest months — averaging {hist['current_month_avg_orders']} orders/day."
+            )
+        if hist.get("peak_month_names"):
+            user_prompt += f"\n  Historical peak months: {', '.join(hist['peak_month_names'])}"
+        user_prompt += (
+            "\n  Note: If current month is a historical peak, mention it naturally in the briefing."
+        )
 
     user_prompt += "\n\nGenerate today's briefing."
 
