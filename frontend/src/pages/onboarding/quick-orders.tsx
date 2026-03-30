@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { OrderEntryInlineAddDemo } from "@/components/order-entry-inline-add-demo";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -476,6 +477,13 @@ export default function QuickOrdersOnboarding() {
           templateCount={enabledCount}
           cemeteryCount={savedCemeteryCount}
         />
+      )}
+
+      {/* Inline add demo — shown on step 2 (cemeteries) */}
+      {step === 2 && (
+        <div className="mt-6">
+          <OrderEntryInlineAddDemo />
+        </div>
       )}
 
       {/* Footer */}

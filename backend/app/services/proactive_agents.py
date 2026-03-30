@@ -392,6 +392,38 @@ def generate_year_end_checklist(db: Session, tenant_id: str) -> list[dict]:
     return items
 
 
+def run_incomplete_customer_profile_job(db: Session, tenant_id: str) -> dict:
+    """Alert when quick-created customers haven't been completed after 7 days."""
+    from app.services.customer_service import get_incomplete_customer_count
+
+    count = get_incomplete_customer_count(db, tenant_id, older_than_days=7)
+    if count == 0:
+        return {"alerted": False}
+
+    try:
+        from app.services.behavioral_analytics_service import generate_insight
+        generate_insight(
+            db=db,
+            company_id=tenant_id,
+            insight_type="agent_alert",
+            title=f"{count} customer{'s' if count != 1 else ''} created during order entry need their profiles completed.",
+            description=(
+                f"{count} customer{'s' if count != 1 else ''} {'were' if count != 1 else 'was'} "
+                "created inline during order entry more than 7 days ago and still "
+                f"{'have' if count != 1 else 'has'} "
+                "incomplete profiles. Adding contact info, credit limits, and billing settings "
+                "ensures accurate statements and credit checking."
+            ),
+            action_url="/customers?filter=incomplete",
+            severity="info",
+            metadata={"incomplete_count": count},
+        )
+    except Exception:
+        pass
+
+    return {"alerted": True, "count": count}
+
+
 # ---------------------------------------------------------------------------
 # Job Registry — maps job names to functions
 # ---------------------------------------------------------------------------
@@ -403,4 +435,5 @@ PROACTIVE_JOBS = {
     "tax_filing_prep": run_tax_filing_prep,
     "missing_entry_detector": run_missing_entry_detector,
     "uncleared_check_monitor": run_uncleared_check_monitor,
+    "incomplete_customer_profile_job": run_incomplete_customer_profile_job,
 }

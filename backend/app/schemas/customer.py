@@ -183,6 +183,7 @@ class CustomerResponse(BaseModel):
     billing_profile: str | None = None
     # Meta
     is_active: bool
+    setup_complete: bool = True
     created_at: datetime
     updated_at: datetime
     # Nested
@@ -210,6 +211,7 @@ class CustomerListItem(BaseModel):
     customer_type: str | None = None
     billing_profile: str | None = None
     is_active: bool
+    setup_complete: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}

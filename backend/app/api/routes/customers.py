@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_module, require_permission
@@ -223,6 +224,29 @@ def create_customer(
         db, data, current_user.company_id, actor_id=current_user.id
     )
     db.refresh(customer)
+    return _customer_to_response(customer)
+
+
+class QuickCreateRequest(BaseModel):
+    name: str
+    customer_type: str = "funeral_home"
+
+
+@router.post("/quick-create", status_code=201)
+def quick_create_customer(
+    data: QuickCreateRequest,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("customers.create")),
+):
+    """Create a minimal customer record from inline order entry."""
+    customer = customer_service.quick_create_customer(
+        db,
+        company_id=current_user.company_id,
+        name=data.name,
+        customer_type=data.customer_type,
+        actor_id=current_user.id,
+    )
     return _customer_to_response(customer)
 
 

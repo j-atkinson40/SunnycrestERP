@@ -842,3 +842,88 @@ def import_customers_from_csv(
     db.commit()
 
     return {"created": created, "skipped": skipped, "errors": errors}
+
+
+def quick_create_customer(
+    db: Session,
+    company_id: str,
+    name: str,
+    customer_type: str = "funeral_home",
+    actor_id: str | None = None,
+) -> Customer:
+    """Create a minimal customer record from inline order entry."""
+    import uuid
+    from datetime import datetime, timezone
+
+    # Intelligent defaults per customer type
+    if customer_type == "funeral_home":
+        billing_profile = "monthly_statement"
+        payment_terms = "net_30"
+        is_extension_hidden = False
+    elif customer_type == "contractor":
+        billing_profile = "invoice_on_order"
+        payment_terms = "net_30"
+        is_extension_hidden = True  # hidden until extension active
+    else:  # cemetery
+        billing_profile = "invoice_on_order"
+        payment_terms = "net_30"
+        is_extension_hidden = False
+
+    customer = Customer(
+        id=str(uuid.uuid4()),
+        company_id=company_id,
+        name=name,
+        customer_type=customer_type,
+        billing_profile=billing_profile,
+        payment_terms=payment_terms,
+        is_extension_hidden=is_extension_hidden,
+        account_status="active",
+        classification_method="inline_order_entry",
+        classification_confidence=0.95,
+        setup_complete=False,
+        is_active=True,
+        created_by=actor_id,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(customer)
+    db.flush()
+
+    # Coaching observation
+    try:
+        from app.services.behavioral_analytics_service import record_event
+        record_event(
+            db=db,
+            company_id=company_id,
+            event_type="customer_created_inline",
+            entity_type="customer",
+            entity_id=customer.id,
+            data={
+                "customer_name": name,
+                "customer_type": customer_type,
+                "context": "order_entry",
+            },
+            user_id=actor_id,
+        )
+    except Exception:
+        pass
+
+    db.commit()
+    db.refresh(customer)
+    return customer
+
+
+def get_incomplete_customer_count(db: Session, company_id: str, older_than_days: int = 7) -> int:
+    """Count quick-created customers that still need their profiles completed."""
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    return (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == company_id,
+            Customer.setup_complete == False,  # noqa: E712
+            Customer.is_active == True,  # noqa: E712
+            Customer.created_at < cutoff,
+        )
+        .count()
+    )

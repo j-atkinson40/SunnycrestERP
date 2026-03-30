@@ -13,6 +13,7 @@ import {
   type ParsedOrder,
 } from "@/services/order-station-service";
 import { CemeteryPicker } from "@/components/cemetery-picker";
+import { FuneralHomePicker } from "@/components/funeral-home-picker";
 import {
   resolveBundlePrices,
   type ResolvedBundlePrice,
@@ -74,7 +75,7 @@ const FLOW_STEPS = [
     key: "funeral-home-select",
     title: "Select the funeral home",
     instruction:
-      "Start by selecting the funeral home that's calling. Type the first few letters of their name. Once selected, their recent cemeteries will appear as a shortlist for the next field.",
+      "Start by selecting the funeral home that's calling. Type the first few letters of their name. Once selected, their recent cemeteries will appear as a shortlist for the next field.\n\nIf the funeral home isn't in your system yet, type their name and select '+ Add as new funeral home'. They'll be created instantly and you can complete their profile later.",
   },
   {
     key: "cemetery-select",
@@ -478,15 +479,17 @@ function OrderSlideOver({
           <Separator />
 
           {/* Customer field */}
-          <div data-guided="funeral-home-select">
-            <Label htmlFor="customer_name">Customer</Label>
-            <Input
-              id="customer_name"
-              placeholder="Search customer..."
-              value={formData.customer_name ?? ""}
-              onChange={(e) => setField("customer_name", e.target.value)}
+          <div>
+            <Label>Customer</Label>
+            <FuneralHomePicker
+              value={formData.customer_id || null}
+              displayValue={formData.customer_name ?? ""}
+              onChange={(id, name) => {
+                setField("customer_id", id || "");
+                setField("customer_name", name);
+              }}
               className="mt-1"
-              required
+              guidedKey="funeral-home-select"
             />
           </div>
 

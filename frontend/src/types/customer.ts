@@ -75,6 +75,7 @@ export interface Customer {
   classification_method: string | null;
   classification_reasoning: string | null;
   is_active: boolean;
+  setup_complete: boolean;
   created_at: string;
   updated_at: string;
   contacts: CustomerContact[];
@@ -97,6 +98,7 @@ export interface CustomerListItem {
   customer_type: string | null;
   billing_profile: string | null;
   is_active: boolean;
+  setup_complete: boolean;
   created_at: string;
   // Classification metadata (added in r19)
   classification_confidence: number | null;

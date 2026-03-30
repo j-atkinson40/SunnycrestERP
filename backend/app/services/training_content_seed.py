@@ -222,7 +222,10 @@ SEED_EXPLANATIONS = [
             "Net 30), a credit limit, and whether they receive monthly statements. The platform tracks "
             "everything — orders, invoices, payments, aging — so you always know where each account stands.\n\n"
             "Not every customer needs a charge account. Walk-in purchases, one-time orders, and contractors "
-            "may be better suited to COD (cash on delivery) or invoice-on-order billing."
+            "may be better suited to COD (cash on delivery) or invoice-on-order billing.\n\n"
+            "New funeral homes can be added directly from the order form — type their name and select "
+            "'+ Add as new funeral home'. Their full charge account details (credit limit, contact info, "
+            "billing preferences) can be completed later from the Customers page."
         ),
     },
     {

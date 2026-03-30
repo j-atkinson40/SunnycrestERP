@@ -687,6 +687,12 @@ export default function CustomersPage() {
                         {!customer.is_active && (
                           <Badge variant="destructive" className="ml-2">Inactive</Badge>
                         )}
+                        {!customer.setup_complete && (
+                          <span
+                            title="Customer profile incomplete — created during order entry"
+                            className="inline-block h-2 w-2 rounded-full bg-amber-400 ml-1.5 align-middle shrink-0"
+                          />
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {customer.account_number || "—"}

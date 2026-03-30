@@ -54,6 +54,14 @@ export const customerService = {
     return response.data;
   },
 
+  async quickCreate(name: string, customerType: string = "funeral_home"): Promise<Customer> {
+    const res = await apiClient.post<Customer>("/customers/quick-create", {
+      name,
+      customer_type: customerType,
+    });
+    return res.data;
+  },
+
   async updateCustomer(id: string, data: CustomerUpdate): Promise<Customer> {
     const response = await apiClient.patch<Customer>(`/customers/${id}`, data);
     return response.data;

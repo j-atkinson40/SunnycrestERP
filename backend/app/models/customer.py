@@ -145,6 +145,11 @@ class Customer(Base):
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # --- Quick-create tracking ---
+    setup_complete: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )  # false for customers created via inline order entry quick-create
+
     # --- Relationships ---
     company = relationship("Company")
     contacts = relationship(
