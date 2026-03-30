@@ -42,8 +42,10 @@ PROCEDURE_DEFINITIONS = [
     {"key": "audit_package_generation", "title": "Generating an Audit Package", "roles": ["accounting", "manager"], "category": "accounting", "sort_order": 130},
     {"key": "new_vendor_setup", "title": "Setting Up a New Vendor", "roles": ["accounting", "operations"], "category": "accounting", "sort_order": 140},
     {"key": "statement_generation", "title": "Running Month-End Statements", "roles": ["accounting"], "category": "accounting", "sort_order": 150},
+    {"key": "morning_invoice_review", "title": "Morning Invoice Review and Approval", "roles": ["accounting", "manager"], "category": "accounting", "sort_order": 160},
     # AI workflow procedures
     {"key": "reviewing_collections_draft", "title": "How to Review and Send a Collections Email Draft", "roles": ["accounting", "manager"], "category": "ai_workflows", "sort_order": 200},
+    {"key": "acting_on_draft_invoice_alerts", "title": "Acting on Draft Invoice Alerts from the Morning Briefing", "roles": ["accounting", "manager"], "category": "ai_workflows", "sort_order": 205},
     {"key": "resolving_payment_match", "title": "Resolving an Unmatched Payment Suggestion", "roles": ["accounting"], "category": "ai_workflows", "sort_order": 210},
     {"key": "handling_po_discrepancy", "title": "Investigating a PO Match Discrepancy", "roles": ["accounting", "operations"], "category": "ai_workflows", "sort_order": 220},
     {"key": "approving_transfer_pricing", "title": "Reviewing and Approving Transfer Pricing", "roles": ["inside_sales", "manager"], "category": "ai_workflows", "sort_order": 230},
@@ -63,6 +65,8 @@ CURRICULUM_ROLES = ["accounting", "inside_sales", "operations"]
 PROCEDURE_SYSTEM_PROMPT = """You are generating training content for employees at a Wilbert burial vault manufacturing company using the Bridgeable business management platform.
 
 The company manufactures concrete burial vaults and sells them to funeral homes on charge accounts. Funeral homes order throughout the month and receive a consolidated monthly statement. The company also handles cross-licensee transfers (shipping vaults to other Wilbert licensees in other territories).
+
+End-of-day invoice workflow: At 6 PM each day, the system automatically generates draft invoices for all funeral service orders scheduled for that day. These drafts appear in the Invoice Review Queue (AR Command Center → Invoice Review tab). Accounting staff review and approve the drafts each morning before they are posted to AR. If the company has "require driver status updates" enabled, only orders explicitly confirmed by drivers appear as drafts — unconfirmed orders are flagged separately. Invoices with driver exceptions (shortages, refusals, damage) require individual review before approval. Clean invoices can be batch-approved with one click. This replaces manual invoice entry for recurring funeral service charges.
 
 Bridgeable platform navigation conventions:
 - Financials Board → [zone name] (e.g., Financials Board → AR Zone)
@@ -309,6 +313,131 @@ def generate_curriculum_tracks(db: Session, force: bool = False) -> Generator[di
         yield {"type": "progress", "section": "curriculum_tracks", "index": i, "total": total, "item": role, "status": "done"}
 
     yield {"type": "section_complete", "section": "curriculum_tracks", "created": created, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Targeted re-generation — specific procedure keys only
+# ---------------------------------------------------------------------------
+
+# Keys that reference the invoice workflow and must be re-generated to reflect it
+INVOICE_WORKFLOW_PROCEDURE_KEYS = [
+    "statement_generation",
+    "reviewing_collections_draft",
+    "payment_application",
+    "month_end_close",
+    "morning_invoice_review",
+    "acting_on_draft_invoice_alerts",
+]
+
+
+def regenerate_specific_procedures(db: Session, keys: list[str]) -> Generator[dict, None, None]:
+    """Force-regenerate specific procedure keys regardless of whether they exist."""
+    definitions_by_key = {d["key"]: d for d in PROCEDURE_DEFINITIONS}
+    target_keys = [k for k in keys if k in definitions_by_key]
+    total = len(target_keys)
+    yield {"type": "section_start", "section": "procedures", "total": total}
+
+    created = 0
+    errors = []
+
+    for i, key in enumerate(target_keys, 1):
+        defn = definitions_by_key[key]
+        title = defn["title"]
+        yield {"type": "progress", "section": "procedures", "index": i, "total": total, "item": key, "status": "generating"}
+
+        user_msg = f"Generate a complete procedure document for: {title}\nRoles: {', '.join(defn['roles'])}\nCategory: {defn['category']}"
+        result, error = _call_claude(PROCEDURE_SYSTEM_PROMPT, user_msg, max_tokens=3000)
+
+        if error or not result:
+            errors.append(f"{key}: {error}")
+            yield {"type": "progress", "section": "procedures", "index": i, "total": total, "item": key, "status": "error", "error": error}
+            continue
+
+        now = datetime.now(timezone.utc)
+        existing = db.query(TrainingProcedure).filter(
+            TrainingProcedure.tenant_id.is_(None),
+            TrainingProcedure.procedure_key == key,
+        ).first()
+
+        if existing:
+            existing.title = title
+            existing.applicable_roles = defn["roles"]
+            existing.category = defn["category"]
+            existing.overview = result.get("overview", "")
+            existing.steps = result.get("steps", [])
+            existing.related_procedure_keys = result.get("related_procedure_keys", [])
+            existing.content_generated = True
+            existing.content_generated_at = now
+            existing.sort_order = defn["sort_order"]
+        else:
+            proc = TrainingProcedure(
+                id=str(uuid.uuid4()),
+                tenant_id=None,
+                procedure_key=key,
+                title=title,
+                applicable_roles=defn["roles"],
+                category=defn["category"],
+                overview=result.get("overview", ""),
+                steps=result.get("steps", []),
+                related_procedure_keys=result.get("related_procedure_keys", []),
+                content_generated=True,
+                content_generated_at=now,
+                sort_order=defn["sort_order"],
+            )
+            db.add(proc)
+
+        db.commit()
+        created += 1
+        yield {"type": "progress", "section": "procedures", "index": i, "total": total, "item": key, "status": "done"}
+
+    yield {"type": "section_complete", "section": "procedures", "created": created, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Curriculum module patch — update accounting track invoice modules
+# ---------------------------------------------------------------------------
+
+
+def patch_accounting_invoice_modules(db: Session) -> dict:
+    """Update the accounting curriculum track's invoice-related module guided_task
+    to reference the Invoice Review Queue (/ar/invoices/review).
+
+    Returns a summary dict with patched/skipped counts.
+    """
+    track = db.query(TrainingCurriculumTrack).filter(
+        TrainingCurriculumTrack.tenant_id.is_(None),
+        TrainingCurriculumTrack.training_role == "accounting",
+    ).first()
+
+    if not track:
+        return {"status": "no_track", "patched": 0}
+
+    modules: list[dict] = list(track.modules or [])
+    patched = 0
+    INVOICE_KEYWORDS = ("invoice", "ar review", "draft invoice", "morning review", "billing")
+
+    for module in modules:
+        title_lower = (module.get("title") or "").lower()
+        key_lower = (module.get("module_key") or "").lower()
+        if any(kw in title_lower or kw in key_lower for kw in INVOICE_KEYWORDS):
+            guided = module.get("guided_task")
+            if isinstance(guided, dict):
+                action = guided.get("platform_action", "")
+                if "/ar/invoices/review" not in action:
+                    guided["platform_action"] = (
+                        "AR Command Center → Invoice Review tab → review draft invoices generated overnight → "
+                        "approve clean invoices individually or use 'Approve All' for invoices with no exceptions"
+                    )
+                    module["guided_task"] = guided
+                    patched += 1
+
+    if patched:
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(track, "modules")
+        track.modules = modules
+        db.commit()
+
+    return {"status": "ok", "patched": patched, "track_role": "accounting"}
 
 
 # ---------------------------------------------------------------------------
