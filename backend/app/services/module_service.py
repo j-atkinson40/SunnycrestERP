@@ -55,16 +55,26 @@ def get_company_modules(db: Session, company_id: str) -> list[dict]:
 
 
 def get_enabled_module_keys(db: Session, company_id: str) -> list[str]:
-    """Return just the list of enabled module keys for a company."""
+    """Return just the list of enabled module keys for a company.
+
+    Falls back to AVAILABLE_MODULES default_enabled for modules that have
+    no explicit CompanyModule record (i.e. the company pre-dates that module).
+    """
     records = (
-        db.query(CompanyModule.module)
-        .filter(
-            CompanyModule.company_id == company_id,
-            CompanyModule.enabled == True,  # noqa: E712
-        )
+        db.query(CompanyModule)
+        .filter(CompanyModule.company_id == company_id)
         .all()
     )
-    return [r[0] for r in records]
+    record_map = {r.module: r.enabled for r in records}
+
+    enabled = []
+    for module_key, meta in AVAILABLE_MODULES.items():
+        if module_key in record_map:
+            if record_map[module_key]:
+                enabled.append(module_key)
+        elif meta.get("default_enabled"):
+            enabled.append(module_key)
+    return enabled
 
 
 def is_module_enabled(db: Session, company_id: str, module: str) -> bool:
