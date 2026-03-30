@@ -236,6 +236,13 @@ function getManufacturingNav(
         ...(hasSyncError ? { badge: "!" } : {}),
       },
       {
+        label: "Invoice Review",
+        href: "/ar/invoices/review",
+        icon: "ClipboardCheck",
+        permission: "ar.create_invoice",
+        functionalArea: "invoicing_ar",
+      },
+      {
         label: "Vendors & Bills",
         href: "/ap/bills",
         icon: "Receipt",

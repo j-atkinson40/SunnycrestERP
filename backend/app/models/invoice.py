@@ -1,8 +1,10 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -68,6 +70,27 @@ class Invoice(Base):
     )
     qbo_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True, index=True
+    )
+
+    # Review workflow — set on auto-generated drafts
+    requires_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    review_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    auto_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    generation_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # 'end_of_day_batch' | 'immediate' | 'manual'
+    has_exceptions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    approved_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Audit

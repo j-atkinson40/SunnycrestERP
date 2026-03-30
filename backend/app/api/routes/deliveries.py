@@ -1,9 +1,11 @@
 """Delivery dispatch management routes — deliveries, routes, stops,
 vehicles, drivers, carriers, and stats."""
 
-from datetime import date
+from datetime import date, datetime, timezone
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_module, require_permission
@@ -512,3 +514,133 @@ def remove_stop(
         raise HTTPException(status_code=404, detail="Route not found")
     if not delivery_service.remove_stop(db, route, stop_id):
         raise HTTPException(status_code=404, detail="Stop not found")
+
+
+# ---------------------------------------------------------------------------
+# Delivery completion with optional driver exceptions
+# ---------------------------------------------------------------------------
+
+
+class DeliveryExceptionItem(BaseModel):
+    product_id: Optional[str] = None
+    reason: str  # 'weather' | 'access_issue' | 'family_request' | 'equipment_failure' | 'other'
+    notes: Optional[str] = None
+
+
+class DeliveryCompleteRequest(BaseModel):
+    completed_at: Optional[datetime] = None
+    exceptions: Optional[list[DeliveryExceptionItem]] = None
+
+
+@router.post("/{delivery_id}/complete", status_code=200)
+def complete_delivery(
+    delivery_id: str,
+    data: DeliveryCompleteRequest,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module(MODULE)),
+    current_user: User = Depends(require_permission("delivery.edit")),
+):
+    """Mark a delivery as completed.
+
+    Optionally report driver exceptions (items that could not be fulfilled).
+    Exceptions are stored on the linked sales order and will be flagged on
+    tonight's draft invoice for morning review.
+    """
+    from app.models.delivery import Delivery
+    from app.models.sales_order import SalesOrder
+
+    delivery = (
+        db.query(Delivery)
+        .filter(
+            Delivery.id == delivery_id,
+            Delivery.company_id == current_user.company_id,
+        )
+        .first()
+    )
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+
+    if delivery.status in ("cancelled", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot complete a delivery with status '{delivery.status}'",
+        )
+
+    now = data.completed_at or datetime.now(timezone.utc)
+    delivery.status = "completed"
+    delivery.completed_at = now
+
+    exceptions_data = None
+    has_exceptions = False
+
+    if data.exceptions:
+        exceptions_data = [e.model_dump() for e in data.exceptions]
+        has_exceptions = True
+
+    # Store exceptions on the linked sales order
+    if has_exceptions and delivery.order_id:
+        order = (
+            db.query(SalesOrder)
+            .filter(
+                SalesOrder.id == delivery.order_id,
+                SalesOrder.company_id == current_user.company_id,
+            )
+            .first()
+        )
+        if order:
+            order.driver_exceptions = exceptions_data
+            order.has_driver_exception = True
+
+    db.commit()
+    db.refresh(delivery)
+
+    # Trigger immediate-mode invoice hook (no-op for end_of_day / manual)
+    try:
+        from app.services.order_integration_service import on_delivery_completed
+        on_delivery_completed(db, delivery)
+    except Exception as exc:
+        # Non-fatal — log and continue
+        import logging
+        logging.getLogger(__name__).error(
+            "on_delivery_completed hook error for delivery %s: %s", delivery_id, exc
+        )
+
+    # Create real-time alert if exceptions were reported
+    if has_exceptions:
+        try:
+            from app.models.customer import Customer
+            from app.services.agent_service import create_alert
+
+            customer_name = "Unknown"
+            if delivery.customer_id:
+                cust = db.query(Customer.name).filter(
+                    Customer.id == delivery.customer_id
+                ).first()
+                if cust:
+                    customer_name = cust[0]
+
+            reason_list = ", ".join(
+                e.get("reason", "issue") for e in (exceptions_data or [])
+            )
+            create_alert(
+                db,
+                current_user.company_id,
+                alert_type="delivery_exception",
+                severity="warning",
+                title=f"Delivery exception — {customer_name} service today",
+                message=(
+                    f"Driver reported exception(s) for {customer_name}: {reason_list}. "
+                    "This will be flagged on tonight's draft invoice for review."
+                ),
+                action_label="View draft invoices",
+                action_url="/ar/invoices/review",
+            )
+        except Exception:
+            pass
+
+    return {
+        "status": "completed",
+        "delivery_id": delivery_id,
+        "completed_at": now.isoformat(),
+        "exceptions_recorded": len(exceptions_data) if exceptions_data else 0,
+    }

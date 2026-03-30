@@ -85,15 +85,24 @@ def on_order_confirmed(db: Session, order: SalesOrder) -> Delivery | None:
 def on_delivery_completed(db: Session, delivery: Delivery) -> None:
     """Auto-create an invoice when a delivery is completed.
 
-    Only fires if:
-      1. The tenant has ``auto_invoice_on_complete`` enabled.
-      2. The delivery is linked to a sales order (order_id is set).
+    Behaviour depends on ``invoice_generation_mode``:
+      - 'immediate': create an open invoice right now (original behaviour)
+      - 'end_of_day': skip — the nightly batch job handles it
+      - 'manual': skip entirely
+      - Legacy fallback: if ``auto_invoice_on_complete`` is True and mode
+        hasn't been set, treat as 'immediate'.
     """
     from app.services.delivery_settings_service import get_settings
 
     settings = get_settings(db, delivery.company_id)
-    if not settings.auto_invoice_on_complete:
-        return
+
+    mode = getattr(settings, "invoice_generation_mode", None)
+    # Legacy: if mode not set, fall back to the old boolean
+    if not mode:
+        mode = "immediate" if settings.auto_invoice_on_complete else "manual"
+
+    if mode != "immediate":
+        return  # 'end_of_day' handled by batch job; 'manual' never auto-invoices
 
     if not delivery.order_id:
         logger.debug(

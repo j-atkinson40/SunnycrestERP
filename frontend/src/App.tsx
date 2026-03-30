@@ -135,6 +135,7 @@ import TaxSettingsPage from "@/pages/settings/tax-settings";
 import ReportsPage from "@/pages/reports";
 import FinancialsBoardPage from "@/pages/financials-board";
 import CollectionsReviewPage from "@/pages/ar/collections-review";
+import InvoiceReviewQueuePage from "@/pages/ar/invoice-review-queue";
 import SyncHealthDashboardPage from "@/pages/admin/sync-health-dashboard";
 import SchedulingSetupPage from "@/pages/onboarding/scheduling-setup";
 import NetworkPreferencesPage from "@/pages/onboarding/network-preferences";
@@ -336,6 +337,10 @@ export default function App() {
                     <Route
                       path="/billing/received"
                       element={<Navigate to="/ap/bills?tab=received" replace />}
+                    />
+                    <Route
+                      path="/ar/invoices/review"
+                      element={<InvoiceReviewQueuePage />}
                     />
                     <Route
                       path="/ar/invoices"

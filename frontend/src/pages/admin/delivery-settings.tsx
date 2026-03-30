@@ -128,6 +128,22 @@ export default function DeliverySettingsPage() {
     }
   };
 
+  const handleStringChange = async (key: string, value: string) => {
+    if (!settings || !canEdit) return;
+    const prev = { ...settings };
+    setSettings({ ...settings, [key]: value } as DeliverySettings);
+    try {
+      setSaving(true);
+      const updated = await deliveryService.updateSettings({ [key]: value } as DeliverySettingsUpdate);
+      setSettings(updated);
+    } catch (err) {
+      setSettings(prev);
+      toast.error(getApiErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleNumberChange = async (key: string, value: number | null) => {
     if (!settings || !canEdit) return;
     const prev = { ...settings };
@@ -252,6 +268,65 @@ export default function DeliverySettingsPage() {
             </Card>
           </div>
         ))}
+      </div>
+
+      <Separator />
+
+      {/* Invoice Generation Mode */}
+      <div>
+        <h2 className="mb-1 text-lg font-semibold">Invoice Generation</h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          How should invoices be created for funeral service orders?
+        </p>
+        <Card className="p-4 space-y-3">
+          {(
+            [
+              {
+                value: "manual",
+                label: "Manual",
+                description: "Staff creates invoices individually from completed orders.",
+              },
+              {
+                value: "end_of_day",
+                label: "End of day (recommended)",
+                description:
+                  "Draft invoices are created automatically at 6 PM for same-day services. They appear in the morning briefing for review and approval before posting to AR.",
+              },
+              {
+                value: "immediate",
+                label: "Immediate",
+                description:
+                  "An invoice is created as soon as a delivery is marked complete. Posts directly to AR with no review step.",
+              },
+            ] as { value: string; label: string; description: string }[]
+          ).map((option) => {
+            const isSelected = (settings.invoice_generation_mode ?? "end_of_day") === option.value;
+            return (
+              <label
+                key={option.value}
+                className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
+                  isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
+                } ${!canEdit || saving ? "opacity-60 pointer-events-none" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="invoice_generation_mode"
+                  value={option.value}
+                  checked={isSelected}
+                  onChange={() => {
+                    if (!canEdit || saving) return;
+                    handleStringChange("invoice_generation_mode", option.value);
+                  }}
+                  className="mt-0.5"
+                />
+                <div>
+                  <p className="text-sm font-medium">{option.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{option.description}</p>
+                </div>
+              </label>
+            );
+          })}
+        </Card>
       </div>
 
       <Separator />

@@ -195,6 +195,45 @@ def _build_funeral_scheduling_context(
         }
 
 
+def _build_draft_invoice_context(db: Session, company_id: str) -> dict:
+    """Return summary of draft invoices pending morning review."""
+    try:
+        pending = (
+            db.query(Invoice)
+            .filter(
+                Invoice.company_id == company_id,
+                Invoice.status == "draft",
+                Invoice.requires_review.is_(True),
+            )
+            .all()
+        )
+        if not pending:
+            return {"count": 0, "total_amount": "0", "exception_count": 0, "customers": []}
+
+        total = sum(inv.total for inv in pending)
+        exception_count = sum(1 for inv in pending if inv.has_exceptions)
+        customers: list[str] = []
+        for inv in pending:
+            name = None
+            if inv.customer_id:
+                try:
+                    cust = db.query(Customer.name).filter(Customer.id == inv.customer_id).first()
+                    name = cust[0] if cust else None
+                except Exception:
+                    pass
+            customers.append(name or "Unknown")
+
+        return {
+            "count": len(pending),
+            "total_amount": str(total),
+            "exception_count": exception_count,
+            "customers": customers,
+        }
+    except Exception as e:
+        logger.warning("Error building draft invoice context: %s", e)
+        return {"count": 0, "total_amount": "0", "exception_count": 0, "customers": []}
+
+
 def _build_invoicing_ar_context(
     db: Session, company_id: str
 ) -> dict:
@@ -270,6 +309,9 @@ def _build_invoicing_ar_context(
             .all()
         )
 
+        # Draft invoices pending morning review
+        draft_invoices_pending = _build_draft_invoice_context(db, company_id)
+
         return {
             "overdue_total": str(total_overdue),
             "overdue_0_30": str(bucket_30),
@@ -287,6 +329,7 @@ def _build_invoicing_ar_context(
                 for s in sync_errors[:5]
             ],
             "sync_error_count": len(sync_errors),
+            "draft_invoices_pending": draft_invoices_pending,
         }
     except Exception as e:
         logger.warning("Error building invoicing AR context: %s", e)
@@ -300,6 +343,7 @@ def _build_invoicing_ar_context(
             "uninvoiced_completed_orders": 0,
             "sync_errors_24h": [],
             "sync_error_count": 0,
+            "draft_invoices_pending": {"count": 0, "total_amount": "0", "exception_count": 0, "customers": []},
         }
 
 
@@ -874,6 +918,18 @@ def _serialize_context_to_text(
         lines.append(f"PAYMENTS RECEIVED TODAY: {context.get('payments_today_count', 0)}")
         lines.append(f"UNINVOICED COMPLETED ORDERS: {context.get('uninvoiced_completed_orders', 0)}")
         lines.append("")
+        dp = context.get("draft_invoices_pending", {})
+        dp_count = dp.get("count", 0) if dp else 0
+        if dp_count > 0:
+            dp_total = dp.get("total_amount", "0")
+            dp_exc = dp.get("exception_count", 0)
+            dp_customers = dp.get("customers", [])
+            lines.append(f"DRAFT INVOICES PENDING REVIEW: {dp_count} (${dp_total} total)")
+            if dp_exc > 0:
+                lines.append(f"  ⚠ {dp_exc} have driver exceptions — require individual review")
+            lines.append(f"  Customers: {', '.join(dp_customers[:5])}")
+            lines.append(f"  Action: Review at /ar/invoices/review")
+            lines.append("")
         se = context.get("sync_error_count", 0)
         lines.append(f"ACCOUNTING SYNC ERRORS (24H): {se}")
         for err in context.get("sync_errors_24h", []):

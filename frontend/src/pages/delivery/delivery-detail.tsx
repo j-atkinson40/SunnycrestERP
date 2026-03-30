@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AlertTriangle, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { deliveryService } from "@/services/delivery-service";
+import apiClient from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +21,21 @@ import {
 import { toast } from "sonner";
 import { getDeliveryTypeBadgeClass, getDeliveryTypeName } from "@/lib/delivery-types";
 import type { Delivery, DeliveryEvent } from "@/types/delivery";
+
+type ExceptionReason = "weather" | "access_issue" | "family_request" | "equipment_failure" | "other";
+
+interface ExceptionItem {
+  reason: ExceptionReason;
+  notes: string;
+}
+
+const EXCEPTION_REASONS: { value: ExceptionReason; label: string }[] = [
+  { value: "weather", label: "Weather conditions" },
+  { value: "access_issue", label: "Access issue" },
+  { value: "family_request", label: "Family request" },
+  { value: "equipment_failure", label: "Equipment failure" },
+  { value: "other", label: "Other" },
+];
 
 function statusBadge(status: string) {
   const map: Record<string, { className: string; label: string }> = {
@@ -90,6 +108,14 @@ export default function DeliveryDetailPage() {
   const [statusNotes, setStatusNotes] = useState("");
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
+  // Exception confirmation flow (shown when completing a delivery)
+  const [showExceptionConfirm, setShowExceptionConfirm] = useState(false);
+  const [showExceptionForm, setShowExceptionForm] = useState(false);
+  const [exceptions, setExceptions] = useState<ExceptionItem[]>([
+    { reason: "other", notes: "" },
+  ]);
+  const [submittingComplete, setSubmittingComplete] = useState(false);
+
   const loadData = useCallback(async () => {
     if (!id) return;
     try {
@@ -113,6 +139,14 @@ export default function DeliveryDetailPage() {
 
   const handleStatusUpdate = async () => {
     if (!delivery || !newStatus) return;
+
+    // Intercept "completed" → show exception confirmation flow
+    if (newStatus === "completed") {
+      setShowStatusDialog(false);
+      setShowExceptionConfirm(true);
+      return;
+    }
+
     try {
       setUpdatingStatus(true);
       if (delivery.carrier_id) {
@@ -128,6 +162,46 @@ export default function DeliveryDetailPage() {
       toast.error(getApiErrorMessage(err));
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  const handleCompleteNoExceptions = async () => {
+    if (!delivery) return;
+    setSubmittingComplete(true);
+    try {
+      await apiClient.post(`/delivery/${delivery.id}/complete`, {
+        completed_at: new Date().toISOString(),
+        exceptions: [],
+      });
+      toast.success("Delivery marked complete");
+      setShowExceptionConfirm(false);
+      loadData();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) ?? "Failed to complete delivery");
+    } finally {
+      setSubmittingComplete(false);
+    }
+  };
+
+  const handleCompleteWithExceptions = async () => {
+    if (!delivery) return;
+    const valid = exceptions.filter((e) => e.reason);
+    if (valid.length === 0) return;
+    setSubmittingComplete(true);
+    try {
+      await apiClient.post(`/delivery/${delivery.id}/complete`, {
+        completed_at: new Date().toISOString(),
+        exceptions: valid,
+      });
+      toast.success("Delivery completed — exception flagged for tonight's invoice review");
+      setShowExceptionForm(false);
+      setShowExceptionConfirm(false);
+      setExceptions([{ reason: "other", notes: "" }]);
+      loadData();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) ?? "Failed to complete delivery");
+    } finally {
+      setSubmittingComplete(false);
     }
   };
 
@@ -306,6 +380,130 @@ export default function DeliveryDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Exception confirmation — "Was everything delivered as planned?" */}
+      <Dialog open={showExceptionConfirm} onOpenChange={setShowExceptionConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              Mark Delivery Complete
+            </DialogTitle>
+            <DialogDescription>
+              Was everything delivered as planned?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 py-2">
+            <Button
+              size="lg"
+              onClick={handleCompleteNoExceptions}
+              disabled={submittingComplete}
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Yes, all complete
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={() => {
+                setShowExceptionConfirm(false);
+                setShowExceptionForm(true);
+              }}
+            >
+              <AlertTriangle className="w-4 h-4 mr-2 text-amber-500" />
+              Report an issue
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Exception form */}
+      <Dialog open={showExceptionForm} onOpenChange={setShowExceptionForm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Report Delivery Exception
+            </DialogTitle>
+            <DialogDescription>
+              Describe what could not be completed. This will be flagged on tonight's draft invoice for review.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            {exceptions.map((ex, idx) => (
+              <div key={idx} className="rounded-md border p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Issue {exceptions.length > 1 ? idx + 1 : ""}</span>
+                  {exceptions.length > 1 && (
+                    <button
+                      onClick={() => setExceptions((prev) => prev.filter((_, i) => i !== idx))}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Reason</Label>
+                  <select
+                    value={ex.reason}
+                    onChange={(e) =>
+                      setExceptions((prev) =>
+                        prev.map((item, i) =>
+                          i === idx ? { ...item, reason: e.target.value as ExceptionReason } : item
+                        )
+                      )
+                    }
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  >
+                    {EXCEPTION_REASONS.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Notes (optional)</Label>
+                  <input
+                    type="text"
+                    value={ex.notes}
+                    onChange={(e) =>
+                      setExceptions((prev) =>
+                        prev.map((item, i) =>
+                          i === idx ? { ...item, notes: e.target.value } : item
+                        )
+                      )
+                    }
+                    placeholder="e.g. High winds prevented tent setup"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExceptions((prev) => [...prev, { reason: "other", notes: "" }])}
+            >
+              <Plus className="w-4 h-4 mr-1" /> Add another issue
+            </Button>
+          </div>
+          <Separator />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowExceptionForm(false);
+                setShowExceptionConfirm(true);
+              }}
+            >
+              Back
+            </Button>
+            <Button onClick={handleCompleteWithExceptions} disabled={submittingComplete}>
+              Submit & Complete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Status Update Dialog */}
       <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>

@@ -134,6 +134,11 @@ def job_network_snapshot():
     _run_global("NETWORK_SNAPSHOT", build_platform_health_snapshot)
 
 
+def job_draft_invoice_generator():
+    from app.services.draft_invoice_service import generate_draft_invoices
+    _run_per_tenant("DRAFT_INVOICE_GENERATOR", generate_draft_invoices)
+
+
 def job_onboarding_pattern():
     """Run onboarding timeline prediction for all tenants."""
     from app.models.company import Company
@@ -163,6 +168,7 @@ def job_onboarding_pattern():
 # ---------------------------------------------------------------------------
 
 JOB_REGISTRY: dict[str, callable] = {
+    "draft_invoice_generator": job_draft_invoice_generator,
     "ar_aging_monitor": job_ar_aging_monitor,
     "collections_sequence": job_collections_sequence,
     "ap_upcoming_payments": job_ap_upcoming_payments,
@@ -186,6 +192,16 @@ JOB_REGISTRY: dict[str, callable] = {
 
 def register_all_jobs():
     """Register all jobs with their cron schedules."""
+
+    # DAILY at 6pm ET — end-of-day draft invoice generation
+    scheduler.add_job(
+        job_draft_invoice_generator,
+        CronTrigger(hour=18, minute=0),
+        id="draft_invoice_generator",
+        name="draft_invoice_generator",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
 
     # NIGHTLY at 11pm ET — core agent monitoring
     nightly_jobs = [

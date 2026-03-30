@@ -45,6 +45,10 @@ class DeliverySettings(Base):
     enable_delivery_portal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     auto_create_delivery_from_order: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     auto_invoice_on_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    invoice_generation_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="end_of_day"
+    )
+    # 'manual' | 'end_of_day' | 'immediate'
 
     # Carrier toggles
     sms_carrier_updates: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

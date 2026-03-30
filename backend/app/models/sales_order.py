@@ -1,9 +1,11 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -11,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -68,6 +71,16 @@ class SalesOrder(Base):
     )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Order classification
+    order_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # 'funeral' | 'retail' | 'wholesale' — used by end-of-day invoice batch
+    scheduled_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The service/delivery date for this order (distinct from required_date timestamp)
+
+    # Driver exception tracking (populated when delivery is completed with issues)
+    driver_exceptions: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    has_driver_exception: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Spring burial
     is_spring_burial: Mapped[bool] = mapped_column(Boolean, default=False)

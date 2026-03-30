@@ -513,3 +513,46 @@ def ar_aging(
     current_user: User = Depends(require_permission("ar.view")),
 ):
     return sales_service.get_ar_aging(db, current_user.company_id)
+
+
+# ---------------------------------------------------------------------------
+# Invoice review queue — draft invoices awaiting morning approval
+# ---------------------------------------------------------------------------
+
+
+@router.get("/invoices/review")
+def get_invoice_review_queue(
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.view")),
+):
+    """Return all draft invoices pending review, exceptions first."""
+    from app.services.draft_invoice_service import get_review_queue
+    return get_review_queue(db, current_user.company_id)
+
+
+@router.post("/invoices/{invoice_id}/approve")
+def approve_invoice(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.create_invoice")),
+):
+    """Approve a single draft invoice — posts it to AR (status → 'sent')."""
+    from app.services.draft_invoice_service import approve_invoice as _approve
+    invoice = _approve(db, current_user.company_id, invoice_id, current_user.id)
+    return {"id": invoice.id, "number": invoice.number, "status": invoice.status}
+
+
+@router.post("/invoices/approve-batch")
+def approve_invoices_batch(
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.create_invoice")),
+):
+    """Approve all draft review invoices with no exceptions (bulk action).
+
+    Invoices with driver exceptions are left for individual review.
+    """
+    from app.services.draft_invoice_service import approve_all_no_exceptions
+    return approve_all_no_exceptions(db, current_user.company_id, current_user.id)
