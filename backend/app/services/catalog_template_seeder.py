@@ -26,6 +26,7 @@ WILBERT_BURIAL_VAULTS = [
     ("White Venetian Burial Vault", "BV-WVEN", "White finish Venetian air-sealed vault"),
     ("Gold Venetian Burial Vault", "BV-GVEN", "Gold finish Venetian air-sealed vault"),
     ("Continental Burial Vault", "BV-CON", "Continental reinforced concrete vault"),
+    ("Monticello Burial Vault", "BV-MON", "Monticello reinforced concrete burial vault"),
     ("Salute Burial Vault", "BV-SAL", "Salute reinforced concrete vault"),
     ("Monarch Burial Vault", "BV-MRC", "Monarch reinforced concrete vault"),
     ("Graveliner", "GL-STD", "Standard concrete grave liner"),
