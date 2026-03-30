@@ -1709,9 +1709,10 @@ def _apply_visibility_flags(db, tenant_id: str) -> None:
     any_product_line_active = bool(active_exts)
 
     # ── Customers ─────────────────────────────────────────────────────────────
+    # Scope to sage-migrated customers (identified by sage_customer_id being set)
     customers = db.query(Customer).filter(
         Customer.company_id == tenant_id,
-        Customer.source == "sage_migration",
+        Customer.sage_customer_id.isnot(None),
     ).all()
 
     for c in customers:
