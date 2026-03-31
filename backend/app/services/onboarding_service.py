@@ -201,7 +201,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "sort_order": 3,
         "depends_on": '["data_migration"]',
     },
-    # 3. Product catalog — no dependency, accessible immediately after migration
+    # 4. Product catalog — no dependency, accessible immediately after migration
     {
         "item_key": "add_products",
         "tier": "must_complete",
@@ -214,7 +214,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/catalog-builder",
-        "sort_order": 3,
+        "sort_order": 4,
     },
     # 3.5 — Review customer types (should_complete; surfaces after migration)
     {
@@ -1172,10 +1172,15 @@ def fix_checklist_targets(db: Session) -> None:
         ),
     })
 
-    # Fix add_products — sort_order 3, no dependency (independently accessible)
+    # Fix import_order_history — sort_order 3 (between data_migration and add_products)
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "import_order_history",
+    ).update({"sort_order": 3, "tier": "must_complete"})
+
+    # Fix add_products — sort_order 4 (import_order_history takes slot 3)
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "add_products",
-    ).update({"sort_order": 3, "depends_on": None})
+    ).update({"sort_order": 4, "depends_on": None})
 
     # Fix setup_tax_rates — sort_order 5, depends on data_migration
     db.query(OnboardingChecklistItem).filter(
