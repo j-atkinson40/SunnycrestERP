@@ -91,6 +91,12 @@ import ConsoleSelectPage from "@/pages/console/console-select";
 import DeliveryConsolePage from "@/pages/console/delivery-console";
 import OperationsBoardPage from "@/pages/console/operations-board";
 import ProductionConsolePage from "@/pages/console/production-console";
+import LogProductionPage from "@/pages/console/mobile/log-production";
+import SafetyLogPage from "@/pages/console/mobile/safety-log";
+import QCCheckPage from "@/pages/console/mobile/qc-check";
+import ReceiveDeliveryPage from "@/pages/console/mobile/receive-delivery";
+import EndOfDayPage from "@/pages/console/mobile/end-of-day";
+import EquipmentInspectionPage from "@/pages/console/mobile/equipment-inspection";
 import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
 import StopDetailPage from "@/pages/driver/stop-detail";
@@ -730,6 +736,14 @@ export default function App() {
                   <Route path="/console/delivery" element={<DeliveryConsolePage />} />
                   <Route path="/console/operations" element={<OperationsBoardPage />} />
                   <Route path="/console/production" element={<ProductionConsolePage />} />
+                  <Route path="/console/operations/product-entry" element={<LogProductionPage />} />
+                  <Route path="/console/operations/incident" element={<SafetyLogPage />} />
+                  <Route path="/console/operations/observation" element={<SafetyLogPage />} />
+                  <Route path="/console/operations/qc" element={<QCCheckPage />} />
+                  <Route path="/console/operations/receive" element={<ReceiveDeliveryPage />} />
+                  <Route path="/console/operations/receive/:poId" element={<ReceiveDeliveryPage />} />
+                  <Route path="/console/operations/end-of-day" element={<EndOfDayPage />} />
+                  <Route path="/console/operations/inspection" element={<EquipmentInspectionPage />} />
                 </Route>
               </Route>
 
