@@ -167,24 +167,31 @@ def extract_branding(html_content: str, page_url: str) -> dict:
             h = "".join(c * 2 for c in h)
         return f"#{h.upper()}"
 
-    SKIP = {"#FFFFFF", "#000000", "#FEFEFE", "#F0F0F0", "#EEEEEE", "#DDDDDD", "#CCCCCC"}
+    def _is_neutral(hex_color: str) -> bool:
+        """Return True if the color is near-black, near-white, or unsaturated gray."""
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16) / 255, int(h[2:4], 16) / 255, int(h[4:6], 16) / 255
+        cmax, cmin = max(r, g, b), min(r, g, b)
+        lightness = (cmax + cmin) / 2
+        saturation = 0.0 if cmax == cmin else (cmax - cmin) / (1 - abs(2 * lightness - 1))
+        return lightness < 0.12 or lightness > 0.90 or saturation < 0.08
 
     for style_tag in soup.find_all("style"):
         css_text = style_tag.get_text() or ""
         for m in CSS_VAR_RE.finditer(css_text):
             color = _norm(m.group(2))
-            if color not in SKIP and color not in all_colors:
+            if not _is_neutral(color) and color not in all_colors:
                 all_colors.insert(0, color)
         for m in HEX_RE.finditer(css_text):
             color = _norm(m.group(0))
-            if color not in SKIP and color not in all_colors:
+            if not _is_neutral(color) and color not in all_colors:
                 all_colors.append(color)
 
     for tag in soup.select("header, nav, button, a[class*='btn'], [class*='cta']"):
         style = tag.get("style", "")
         for m in HEX_RE.finditer(style):
             color = _norm(m.group(0))
-            if color not in SKIP and color not in all_colors:
+            if not _is_neutral(color) and color not in all_colors:
                 all_colors.append(color)
 
     primary_color = all_colors[0] if all_colors else None
