@@ -410,3 +410,35 @@ def update_tenant(
     db.commit()
     db.refresh(company)
     return {"id": company.id, "name": company.name, "is_active": company.is_active}
+
+
+@router.post("/{tenant_id}/rescrape-website")
+def rescrape_website(
+    tenant_id: str,
+    _user: PlatformUser = Depends(require_platform_role("super_admin")),
+    db: Session = Depends(get_db),
+):
+    """Re-run website intelligence scrape for a tenant."""
+    import threading
+    from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIntelligenceSuggestion
+
+    intel = db.query(TenantWebsiteIntelligence).filter(
+        TenantWebsiteIntelligence.tenant_id == tenant_id
+    ).first()
+    if not intel:
+        raise HTTPException(status_code=404, detail="No website intelligence record found for this tenant")
+
+    db.query(WebsiteIntelligenceSuggestion).filter(
+        WebsiteIntelligenceSuggestion.tenant_id == tenant_id
+    ).delete()
+    intel.scrape_status = "pending"
+    intel.error_message = None
+    intel.applied_to_onboarding = False
+    db.commit()
+
+    def _run():
+        from app.services.website_intelligence_job import run_website_intelligence
+        run_website_intelligence(None, tenant_id, intel.website_url)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "rescrape_started", "tenant_id": tenant_id}

@@ -289,7 +289,7 @@ export async function onboardTenant(payload: OnboardTenantRequest) {
 
 export async function rescrapeWebsiteIntelligence(tenantId: string) {
   const { data } = await platformClient.post<{ status: string; tenant_id: string }>(
-    `/website-intelligence/admin/website-intelligence/${tenantId}/rescrape`
+    `/tenants/${tenantId}/rescrape-website`
   );
   return data;
 }
