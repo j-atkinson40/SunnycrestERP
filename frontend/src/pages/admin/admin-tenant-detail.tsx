@@ -19,7 +19,7 @@ import {
   getTenantModules,
   setTenantModule,
   listModuleDefinitionsFlat,
-  rescrapeWebsiteIntelligence,
+  extractBrandingSync,
 } from "@/services/platform-service";
 import type { TenantDetail, TenantModuleConfig, ModuleDefinition } from "@/types/platform";
 import { cn } from "@/lib/utils";
@@ -530,10 +530,17 @@ function OverviewTab({
   async function handleRescrape() {
     setRescraping(true);
     try {
-      await rescrapeWebsiteIntelligence(tenantId);
-      toast.success("Website scrape started — takes ~30 seconds");
-    } catch {
-      toast.error("Failed to start rescrape");
+      const result = await extractBrandingSync(tenantId);
+      if (result.logo_url) {
+        toast.success(`Logo detected (${Math.round(result.logo_confidence * 100)}% confidence) — reload the branding wizard to see it`);
+      } else {
+        toast.warning(`No logo found on ${result.url_used} — tenant may need to upload manually`);
+      }
+    } catch (err: unknown) {
+      const msg = err && typeof err === "object" && "response" in err
+        ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? "Failed"
+        : "Failed";
+      toast.error(msg);
     } finally {
       setRescraping(false);
     }

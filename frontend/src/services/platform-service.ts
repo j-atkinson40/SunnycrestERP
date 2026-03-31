@@ -293,3 +293,16 @@ export async function rescrapeWebsiteIntelligence(tenantId: string) {
   );
   return data;
 }
+
+export async function extractBrandingSync(tenantId: string) {
+  const { data } = await platformClient.post<{
+    url_used: string;
+    logo_url: string | null;
+    logo_confidence: number;
+    primary_color: string | null;
+    secondary_color: string | null;
+    colors_found: string[];
+    stored_in_settings: boolean;
+  }>(`/tenants/${tenantId}/extract-branding`);
+  return data;
+}

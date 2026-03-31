@@ -441,4 +441,55 @@ def rescrape_website(
         run_website_intelligence(None, tenant_id, intel.website_url)
 
     threading.Thread(target=_run, daemon=True).start()
-    return {"status": "rescrape_started", "tenant_id": tenant_id}
+    return {"status": "rescrape_started", "tenant_id": tenant_id, "website_url": intel.website_url}
+
+
+@router.post("/{tenant_id}/extract-branding")
+def extract_branding_sync(
+    tenant_id: str,
+    _user: PlatformUser = Depends(require_platform_role("super_admin")),
+    db: Session = Depends(get_db),
+):
+    """Synchronously fetch homepage and extract branding — returns result immediately."""
+    import requests as _req
+    import warnings
+    from app.models.company import Company
+    from app.models.website_intelligence import TenantWebsiteIntelligence
+    from app.services.website_scraper_service import extract_branding
+
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    intel = db.query(TenantWebsiteIntelligence).filter(
+        TenantWebsiteIntelligence.tenant_id == tenant_id
+    ).first()
+
+    url = (intel.website_url if intel else None) or company.website or getattr(company, "website", None)
+    if not url:
+        raise HTTPException(status_code=400, detail="No website URL on file for this tenant")
+
+    warnings.filterwarnings("ignore")
+    resp = _req.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"}, verify=False)
+    branding = extract_branding(resp.text, url)
+
+    if branding["logo_url"]:
+        company.set_setting("detected_logo_url", branding["logo_url"])
+        company.set_setting("detected_logo_confidence", branding["logo_confidence"])
+    if branding["primary_color"]:
+        company.set_setting("detected_primary_color", branding["primary_color"])
+    if branding["secondary_color"]:
+        company.set_setting("detected_secondary_color", branding["secondary_color"])
+    if branding["colors_found"]:
+        company.set_setting("detected_colors", branding["colors_found"])
+    db.commit()
+
+    return {
+        "url_used": url,
+        "logo_url": branding["logo_url"],
+        "logo_confidence": branding["logo_confidence"],
+        "primary_color": branding["primary_color"],
+        "secondary_color": branding["secondary_color"],
+        "colors_found": branding["colors_found"],
+        "stored_in_settings": True,
+    }
