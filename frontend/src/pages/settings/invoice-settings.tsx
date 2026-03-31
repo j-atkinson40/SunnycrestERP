@@ -342,8 +342,15 @@ export default function InvoiceSettingsPage() {
               <iframe
                 key={previewBlobUrl}
                 src={previewBlobUrl}
-                className="w-full h-full border-0"
+                className="border-0"
                 title="Invoice preview"
+                style={{
+                  width: 800,
+                  height: 1400,
+                  transform: "scale(0.5)",
+                  transformOrigin: "top left",
+                  pointerEvents: "none",
+                }}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground">

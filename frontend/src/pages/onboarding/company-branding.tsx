@@ -194,8 +194,15 @@ function TemplateCard({
           {previewUrl ? (
             <iframe
               src={previewUrl}
-              className="w-full h-full border-0"
+              className="border-0"
               title={`${template.label} preview`}
+              style={{
+                width: 800,
+                height: 1100,
+                transform: "scale(0.25)",
+                transformOrigin: "top left",
+                pointerEvents: "none",
+              }}
             />
           ) : previewError ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground text-xs text-center px-4">
@@ -687,8 +694,15 @@ export default function CompanyBrandingPage() {
                   <iframe
                     key={previewBlobUrl}
                     src={previewBlobUrl}
-                    className="w-full h-full border-0"
+                    className="border-0"
                     title="Invoice preview"
+                    style={{
+                      width: 800,
+                      height: 1280,
+                      transform: "scale(0.5)",
+                      transformOrigin: "top left",
+                      pointerEvents: "none",
+                    }}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
