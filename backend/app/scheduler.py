@@ -309,14 +309,14 @@ def register_all_jobs():
         misfire_grace_time=3600,
     )
 
-    # WEEKLY Monday at 6am — reorder suggestions
+    # DAILY at 7:00am — vault reorder suggestions (delivery-aware)
     scheduler.add_job(
         job_reorder_suggestion,
-        CronTrigger(day_of_week="mon", hour=6, minute=12),
+        CronTrigger(hour=7, minute=0),
         id="reorder_suggestion",
         name="reorder_suggestion",
         replace_existing=True,
-        misfire_grace_time=7200,
+        misfire_grace_time=3600,
     )
 
     # MONTHLY 1st at 2am — network snapshot

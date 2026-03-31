@@ -1,5 +1,6 @@
 """Service layer for Purchase Orders — CRUD, receiving, status transitions."""
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -7,6 +8,8 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload
+
+logger = logging.getLogger(__name__)
 
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_transaction import InventoryTransaction
@@ -306,6 +309,7 @@ def receive_purchase_order(
                 db, company_id, line.product_id,
                 int(item.quantity_received), po.number, actor_id,
             )
+            _check_and_queue_reorder(db, company_id, line.product_id)
 
     # Auto-update PO status
     all_received = all(
@@ -452,3 +456,14 @@ def _update_inventory(
     )
     db.add(txn)
     db.flush()
+
+
+def _check_and_queue_reorder(db: Session, company_id: str, product_id: str | None) -> None:
+    """Check if a reorder is needed after inventory changes. No-op if vault_inventory_service unavailable."""
+    if not product_id:
+        return
+    try:
+        from app.services.vault_inventory_service import check_reorder_needed
+        check_reorder_needed(db, company_id, product_id)
+    except Exception as e:
+        logger.debug("Reorder check skipped: %s", e)

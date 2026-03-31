@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { VaultStockProjectionSection } from "@/components/inventory/vault-stock-projection";
 import { inventoryService } from "@/services/inventory-service";
 import { aiService } from "@/services/ai-service";
 import type { InventoryItem } from "@/types/inventory";
@@ -344,6 +345,9 @@ export default function InventoryPage() {
           )}
         </div>
       )}
+
+      {/* Vault stock projection — only shown for purchase/hybrid tenants */}
+      <VaultStockProjectionSection />
 
       <div className="flex items-center gap-2">
         <Input

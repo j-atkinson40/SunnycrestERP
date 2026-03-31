@@ -79,6 +79,9 @@ class Company(Base):
     )
     npca_certification_set_by: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
+    # Vault fulfillment mode: produce, purchase, hybrid
+    vault_fulfillment_mode: Mapped[str | None] = mapped_column(String(20), default="produce", server_default="produce", nullable=True)
+
     # Spring burials
     spring_burials_known_at_creation: Mapped[bool] = mapped_column(
         Boolean, default=False

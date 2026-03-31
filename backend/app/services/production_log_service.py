@@ -131,7 +131,9 @@ def create_entry(
     db.add(entry)
 
     # Update inventory -- synchronous, same transaction
-    _adjust_inventory(db, tenant_id, product_id, quantity_produced, entry.id, "add")
+    # Skip if entry is excluded from inventory (e.g. display models, scrap, internal use)
+    if not getattr(entry, "is_excluded_from_inventory", False):
+        _adjust_inventory(db, tenant_id, product_id, quantity_produced, entry.id, "add")
 
     db.flush()
 

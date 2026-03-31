@@ -20,96 +20,101 @@ logger = logging.getLogger(__name__)
 
 
 def run_reorder_suggestion_job(db: Session, tenant_id: str) -> dict:
-    """Detect vendors/products overdue for reorder based on historical PO patterns."""
-    from app.models.purchase_order import PurchaseOrder
-    from app.services.behavioral_analytics_service import generate_insight, record_event
+    """Daily: check vault replenishment needs for buyer/hybrid tenants."""
+    from app.models import Company, VaultSupplier, PurchaseOrder, AgentAlert
+    from app.services.vault_inventory_service import build_suggested_order
 
-    now = date.today()
-    results = {"suggestions": 0, "alerts": 0}
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    if not company:
+        return {"suggestions": 0}
 
-    # Get all vendors with at least 3 completed POs
-    vendor_po_counts = (
-        db.query(PurchaseOrder.vendor_id, func.count(PurchaseOrder.id).label("po_count"))
-        .filter(
-            PurchaseOrder.tenant_id == tenant_id,
-            PurchaseOrder.status.in_(["fully_received", "matched", "closed"]),
-        )
-        .group_by(PurchaseOrder.vendor_id)
-        .having(func.count(PurchaseOrder.id) >= 3)
-        .all()
+    mode = company.vault_fulfillment_mode or "produce"
+
+    # Producers handle replenishment through production scheduling
+    if mode == "produce":
+        return {"suggestions": 0, "mode": "produce"}
+
+    supplier = db.query(VaultSupplier).filter(
+        VaultSupplier.company_id == tenant_id,
+        VaultSupplier.is_primary == True,
+        VaultSupplier.is_active == True,
+    ).first()
+
+    if not supplier:
+        try:
+            alert = AgentAlert(
+                tenant_id=tenant_id,
+                alert_type="vault_supplier_missing",
+                severity="warning",
+                title="No vault supplier configured",
+                message=(
+                    "Your vault fulfillment mode is set to purchase or hybrid, "
+                    "but no vault supplier has been configured. "
+                    "Set up your supplier in Settings → Vault Supplier."
+                ),
+            )
+            db.add(alert)
+            db.commit()
+        except Exception as e:
+            logger.warning("Could not create supplier missing alert: %s", e)
+        return {"suggestions": 0, "error": "no_supplier"}
+
+    suggestion = build_suggested_order(db, tenant_id)
+    if not suggestion:
+        return {"suggestions": 0}
+
+    any_needs_reorder = any(item["reason"] in ("below_reorder_point", "urgent") for item in suggestion["suggested_items"])
+    if not any_needs_reorder and not suggestion.get("urgent"):
+        return {"suggestions": 0, "status": "stock_ok"}
+
+    # Check if PO already exists for this delivery window
+    existing_po = db.query(PurchaseOrder).filter(
+        PurchaseOrder.company_id == tenant_id,
+        PurchaseOrder.vendor_id == supplier.vendor_id,
+        PurchaseOrder.status.in_(["draft", "sent"]),
+    ).first()
+    if existing_po:
+        return {"suggestions": 0, "status": "po_exists"}
+
+    # Build message
+    import json
+    items_text = ", ".join(f"{item['quantity']}x {item['product_name']}" for item in suggestion["suggested_items"])
+    stock_lines = "\n".join(
+        f"  {item['product_name']}: {item['current_stock']} on hand, reorder point {item['reorder_point']}"
+        for item in suggestion["suggested_items"]
     )
+    severity = "action_required" if suggestion["urgent"] else "warning"
+    title = (
+        f"Vault order needed TODAY — delivery {suggestion['next_delivery']}"
+        if suggestion["urgent"]
+        else f"Vault reorder needed by {suggestion['order_deadline']}"
+    )
+    message = (
+        f"Suggested order: {items_text}\n"
+        f"Total: {suggestion['total_units']} vaults\n\n"
+        f"Next delivery: {suggestion['next_delivery']}\n"
+        f"Order deadline: {suggestion['order_deadline']}\n\n"
+        f"Stock levels:\n{stock_lines}"
+    )
+    suggested_json = json.dumps({"items": suggestion["suggested_items"], "vendor_id": supplier.vendor_id})
 
-    for vendor_id, po_count in vendor_po_counts:
-        # Get last 6 POs for this vendor to calculate average interval
-        recent_pos = (
-            db.query(PurchaseOrder)
-            .filter(
-                PurchaseOrder.tenant_id == tenant_id,
-                PurchaseOrder.vendor_id == vendor_id,
-                PurchaseOrder.status.in_(["fully_received", "matched", "closed"]),
-            )
-            .order_by(PurchaseOrder.order_date.desc())
-            .limit(6)
-            .all()
-        )
-
-        if len(recent_pos) < 3:
-            continue
-
-        # Calculate average days between orders
-        intervals = []
-        for i in range(len(recent_pos) - 1):
-            delta = (recent_pos[i].order_date - recent_pos[i + 1].order_date).days
-            if delta > 0:
-                intervals.append(delta)
-
-        if not intervals:
-            continue
-
-        avg_interval = sum(intervals) / len(intervals)
-        last_order_date = recent_pos[0].order_date
-        days_since = (now - last_order_date).days
-        overdue_by = days_since - avg_interval
-
-        if overdue_by <= 7:
-            continue
-
-        # Check if open PO already exists for this vendor
-        open_po = (
-            db.query(PurchaseOrder)
-            .filter(
-                PurchaseOrder.tenant_id == tenant_id,
-                PurchaseOrder.vendor_id == vendor_id,
-                PurchaseOrder.status.not_in(["cancelled", "closed", "fully_received", "matched"]),
-            )
-            .first()
-        )
-        if open_po:
-            continue
-
-        vendor_name = getattr(recent_pos[0], "vendor_name", None) or "vendor"
-
-        insight = generate_insight(
-            db=db,
+    try:
+        alert = AgentAlert(
             tenant_id=tenant_id,
-            insight_type="reorder_suggestion",
-            headline=f"Order from {vendor_name} — {int(overdue_by)} days past your usual cycle",
-            detail=f"You typically order from {vendor_name} every {int(avg_interval)} days. Last order was {days_since} days ago with no new PO open.",
-            scope="vendor",
-            scope_entity_type="vendor",
-            scope_entity_id=vendor_id,
-            supporting_data={"avg_interval_days": avg_interval, "days_since_last": days_since, "overdue_by": overdue_by, "po_count": po_count},
-            confidence=min(0.90, 0.70 + (po_count / 30)),
-            action_type="configure",
-            action_label="Create PO",
-            action_url=f"/orders?tab=purchase-orders&action=new&vendorId={vendor_id}",
-            generated_by_job="reorder_suggestion_job",
+            alert_type="vault_reorder_needed",
+            severity=severity,
+            title=title,
+            message=message,
+            action_label="Create Purchase Order",
+            action_url=f"/purchasing/po/new?vendor={supplier.vendor_id}&suggested={suggested_json}",
         )
+        db.add(alert)
+        db.commit()
+    except Exception as e:
+        logger.warning("Could not create reorder alert: %s", e)
+        return {"suggestions": 0, "error": str(e)}
 
-        if insight:
-            results["suggestions"] += 1
-
-    return results
+    return {"suggestions": 1, "urgent": suggestion["urgent"]}
 
 
 def run_receiving_discrepancy_monitor(db: Session, tenant_id: str) -> dict:

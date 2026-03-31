@@ -384,6 +384,44 @@ def _build_invoicing_ar_context(
             },
         }
 
+        # Vault inventory status for purchase/hybrid tenants
+        vault_inventory_status = None
+        try:
+            from app.models.company import Company as CompanyModel
+            from app.models.vault_supplier import VaultSupplier
+            from app.services.vault_inventory_service import build_suggested_order
+
+            company_obj = db.query(CompanyModel).filter(CompanyModel.id == company_id).first()
+            vault_mode = (company_obj.vault_fulfillment_mode or "produce") if company_obj else "produce"
+
+            if vault_mode in ("purchase", "hybrid"):
+                suggestion = build_suggested_order(db, company_id)
+                active_pos_count = (
+                    db.query(func.count(SalesOrder.id)).filter(
+                        SalesOrder.company_id == company_id,
+                        SalesOrder.status.in_(["sent", "partial"]),
+                    ).scalar()
+                    or 0
+                )
+
+                vault_inventory_status = {
+                    "needs_order_today": suggestion.get("urgent", False) if suggestion else False,
+                    "needs_order_this_week": (
+                        any(
+                            item.get("reason") in ("below_reorder_point", "urgent")
+                            for item in (suggestion.get("suggested_items") or [])
+                        )
+                        if suggestion
+                        else False
+                    ),
+                    "active_pos": active_pos_count,
+                    "next_delivery": suggestion.get("next_delivery") if suggestion else None,
+                    "order_deadline": suggestion.get("order_deadline") if suggestion else None,
+                }
+        except Exception as e:
+            logger.debug("Could not build vault inventory context: %s", e)
+            vault_inventory_status = None
+
         return {
             "overdue_total": str(total_overdue),
             "overdue_0_30": str(bucket_30),
@@ -404,6 +442,7 @@ def _build_invoicing_ar_context(
             ],
             "sync_error_count": len(sync_errors),
             "draft_invoices_pending": draft_invoices_pending,
+            "vault_inventory_status": vault_inventory_status,
         }
     except Exception as e:
         logger.warning("Error building invoicing AR context: %s", e)
@@ -423,6 +462,7 @@ def _build_invoicing_ar_context(
             "sync_errors_24h": [],
             "sync_error_count": 0,
             "draft_invoices_pending": {"count": 0, "total_amount": "0", "exception_count": 0, "auto_confirmed_count": 0, "customers": []},
+            "vault_inventory_status": None,
         }
 
 
