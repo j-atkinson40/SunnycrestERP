@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_module, require_permission
+from app.api.deps import require_module, require_permission, get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.sales import (
@@ -710,7 +710,7 @@ def template_preview(
     format: str = Query("pdf"),
     options: str | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("ar.create_invoice")),
+    current_user: User = Depends(get_current_user),
 ):
     """Render a sample invoice preview for the given template key.
 
