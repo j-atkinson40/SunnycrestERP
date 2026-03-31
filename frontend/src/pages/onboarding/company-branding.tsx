@@ -155,7 +155,6 @@ function TemplateCard({
   onSelect: () => void;
 }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewType, setPreviewType] = useState<"pdf" | "html" | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -171,7 +170,6 @@ function TemplateCard({
       .then((res) => {
         objectUrl = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
         setPreviewUrl(objectUrl);
-        setPreviewType("pdf");
       })
       .catch(() =>
         apiClient
@@ -180,7 +178,6 @@ function TemplateCard({
             const blob = new Blob([res.data], { type: "text/html" });
             objectUrl = URL.createObjectURL(blob);
             setPreviewUrl(objectUrl);
-            setPreviewType("html");
           })
           .catch(() => setPreviewError(true))
       );
