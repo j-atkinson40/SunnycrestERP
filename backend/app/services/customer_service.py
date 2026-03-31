@@ -198,6 +198,14 @@ def update_customer(
 
     db.commit()
     db.refresh(customer)
+
+    # Onboarding hook — auto-complete setup_charge_accounts when applicable
+    try:
+        from app.services.onboarding_hooks import on_charge_account_configured
+        on_charge_account_configured(db, company_id, customer)
+    except Exception:
+        pass
+
     return customer
 
 

@@ -166,9 +166,23 @@ def update_checklist_item(
 # ===================================================================
 
 MANUFACTURING_CHECKLIST_ITEMS = [
-    # MUST COMPLETE — strict sequence
-    # 1. Company info (implicit — handled by company setup)
-    # 2. Data migration — replaces connect_accounting + accounting_import_review
+    # ── MUST COMPLETE ─────────────────────────────────────────────────────────
+    # Sort 2: Vault setup — determines operations board layout; very early
+    {
+        "item_key": "vault_production_setup",
+        "tier": "must_complete",
+        "category": "operations",
+        "title": "How do you stock your vaults?",
+        "description": (
+            "Tell us how you manage your vault inventory so we can "
+            "configure the right workflow for your operations."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/vault-setup",
+        "sort_order": 2,
+    },
+    # Sort 3: Data migration — core import; unlocks customer/invoice/order data
     {
         "item_key": "data_migration",
         "tier": "must_complete",
@@ -182,25 +196,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/data-migration",
-        "sort_order": 2,
-    },
-    # 3 — Vault fulfillment mode setup
-    {
-        "item_key": "vault_production_setup",
-        "tier": "must_complete",
-        "category": "operations",
-        "title": "How do you stock your vaults?",
-        "description": (
-            "Tell us how you manage your vault inventory so we can "
-            "configure the right workflow for your operations."
-        ),
-        "estimated_minutes": 5,
-        "action_type": "navigate",
-        "action_target": "/onboarding/vault-setup",
         "sort_order": 3,
-        "depends_on": None,
     },
-    # 3.5 — Import order history (must_complete; essential for smart suggestions)
+    # Sort 4: Import order history — depends on data_migration; enriches platform
     {
         "item_key": "import_order_history",
         "tier": "must_complete",
@@ -214,10 +212,27 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/historical-orders",
-        "sort_order": 4,
         "depends_on": '["data_migration"]',
+        "sort_order": 4,
     },
-    # 4. Product catalog — no dependency, accessible immediately after migration
+    # Sort 5: Review customer types — depends on data_migration
+    {
+        "item_key": "review_customer_types",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Review customer classifications",
+        "description": (
+            "After importing from Sage, verify that each customer is classified "
+            "correctly as a funeral home, cemetery, or contractor. "
+            "Misclassified customers may appear in the wrong tab or be hidden."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/settings/data/customer-types",
+        "depends_on": '["data_migration"]',
+        "sort_order": 5,
+    },
+    # Sort 6: Product catalog — required before quick orders
     {
         "item_key": "add_products",
         "tier": "must_complete",
@@ -230,26 +245,24 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/catalog-builder",
-        "sort_order": 4,
+        "sort_order": 6,
     },
-    # 3.5 — Review customer types (should_complete; surfaces after migration)
+    # Sort 7: Company branding — logo and invoice template; done before first invoice
     {
-        "item_key": "review_customer_types",
-        "tier": "should_complete",
+        "item_key": "company_branding",
+        "tier": "must_complete",
         "category": "data_setup",
-        "title": "Review customer classifications",
+        "title": "Set up your brand and invoice template",
         "description": (
-            "After importing from Sage, verify that each customer is classified "
-            "correctly as a funeral home, cemetery, or contractor. "
-            "Misclassified customers may appear in the wrong tab or be hidden."
+            "Add your logo, choose your invoice style, and configure what appears "
+            "on invoices sent to funeral homes."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 10,
         "action_type": "navigate",
-        "action_target": "/settings/data/customer-types",
-        "depends_on": '["data_migration"]',
-        "sort_order": 4,
+        "action_target": "/onboarding/branding",
+        "sort_order": 7,
     },
-    # 5. Tax rates — depends on data_migration
+    # Sort 8: Tax rates — depends on data_migration; needed before first invoice
     {
         "item_key": "setup_tax_rates",
         "tier": "must_complete",
@@ -261,11 +274,11 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         ),
         "estimated_minutes": 5,
         "action_type": "navigate",
-        "action_target": "/onboarding/tax-rates",
+        "action_target": "/settings/tax-settings",
         "depends_on": '["data_migration"]',
-        "sort_order": 5,
+        "sort_order": 8,
     },
-    # 6. Tax jurisdictions — depends on setup_tax_rates
+    # Sort 9: Tax jurisdictions — depends on setup_tax_rates
     {
         "item_key": "setup_tax_jurisdictions",
         "tier": "must_complete",
@@ -279,29 +292,43 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/tax-jurisdictions",
         "depends_on": '["setup_tax_rates"]',
-        "sort_order": 6,
+        "sort_order": 9,
     },
-    # 7. Price list
+    # Sort 10: Charge accounts — credit limits before first billing run
     {
-        "item_key": "setup_price_list",
-        "tier": "should_complete",
+        "item_key": "setup_charge_accounts",
+        "tier": "must_complete",
         "category": "data_setup",
-        "title": "Upload your price list",
+        "title": "Set up charge account terms",
         "description": (
-            "Upload your current price list. Products on your price list "
-            "will be automatically approved from your imported catalog. "
-            "Items not on your price list will be flagged for review."
+            "Configure credit limits and billing terms for your funeral home "
+            "customers before you start billing them."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 10,
         "action_type": "navigate",
-        "action_target": "/onboarding/price-list",
-        "depends_on": '["add_products"]',
-        "sort_order": 7,
+        "action_target": "/customers",
+        "depends_on": '["data_migration"]',
+        "sort_order": 10,
     },
-    # 8. Quick order templates
+    # Sort 11: Cemeteries — wizard is more appropriate for onboarding than settings page
+    {
+        "item_key": "setup_cemeteries",
+        "tier": "must_complete",
+        "category": "data_setup",
+        "title": "Add your delivery cemeteries",
+        "description": (
+            "Find and add the cemeteries in your area. Set which ones provide "
+            "their own equipment so orders fill in correctly automatically."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/onboarding/cemeteries",
+        "sort_order": 11,
+    },
+    # Sort 12: Quick orders — depends on add_products
     {
         "item_key": "setup_quick_orders",
-        "tier": "should_complete",
+        "tier": "must_complete",
         "category": "data_setup",
         "title": "Set up your quick order templates",
         "description": (
@@ -313,69 +340,39 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_type": "navigate",
         "action_target": "/onboarding/quick-orders",
         "depends_on": '["add_products"]',
-        "sort_order": 8,
+        "sort_order": 12,
     },
-    # 7b. Cemetery setup — should complete; independent of other items
-    {
-        "item_key": "setup_cemeteries",
-        "tier": "should_complete",
-        "category": "data_setup",
-        "title": "Add your delivery cemeteries",
-        "description": (
-            "Find and add the cemeteries in your area. Set which ones provide "
-            "their own equipment so orders fill in correctly automatically."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/settings/cemeteries",
-        "sort_order": 7,
-    },
-    # 8. Financial accounts — NEW
-    {
-        "item_key": "setup_financial_accounts",
-        "tier": "should_complete",
-        "category": "data_setup",
-        "title": "Add your bank and credit card accounts",
-        "description": (
-            "Add your checking accounts and credit cards so you can "
-            "reconcile your statements each month and keep your books accurate."
-        ),
-        "estimated_minutes": 3,
-        "action_type": "navigate",
-        "action_target": "/onboarding/financial-accounts",
-        "sort_order": 8,
-    },
-    # 9. Add team
+    # Sort 13: Add team members — profiles for delivery, QC, production logs
     {
         "item_key": "add_employees",
         "tier": "must_complete",
         "category": "team",
-        "title": "Add your team",
+        "title": "Add your team members",
         "description": (
-            "Add the people who work here so you can assign deliveries, "
-            "track QC inspections, and manage access."
+            "Create profiles for your drivers, office staff, and management. "
+            "Profiles are used for delivery assignments, QC tracking, and production logs."
         ),
         "estimated_minutes": 15,
         "action_type": "navigate",
         "action_target": "/onboarding/team",
-        "sort_order": 9,
+        "sort_order": 13,
     },
-    # 10. Safety training
+    # Sort 14: Safety training — depends on add_employees
     {
         "item_key": "setup_safety_training",
         "tier": "must_complete",
         "category": "team",
         "title": "Set up your safety training program",
         "description": (
-            "Choose your training documents and personalize them "
-            "with your facility details."
+            "Configure OSHA training topics, toolbox talks, and training schedules "
+            "for your team. Required for compliance tracking."
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/onboarding/safety-training",
-        "sort_order": 10,
+        "sort_order": 14,
     },
-    # 11. Scheduling board
+    # Sort 15: Scheduling board
     {
         "item_key": "setup_scheduling_board",
         "tier": "must_complete",
@@ -388,24 +385,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/scheduling",
-        "sort_order": 11,
+        "sort_order": 15,
     },
-    # 12. Purchasing settings — NEW
-    {
-        "item_key": "setup_purchasing_settings",
-        "tier": "optional",
-        "category": "workflow",
-        "title": "Configure purchasing settings",
-        "description": (
-            "Set up purchase order numbering and approval thresholds "
-            "for your purchasing workflow."
-        ),
-        "estimated_minutes": 2,
-        "action_type": "navigate",
-        "action_target": "/settings/purchasing",
-        "sort_order": 12,
-    },
-    # 13. Network preferences
+    # Sort 16: Network preferences
     {
         "item_key": "configure_cross_tenant",
         "tier": "must_complete",
@@ -418,9 +400,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/network-preferences",
-        "sort_order": 13,
+        "sort_order": 16,
     },
-    # 10. Team intelligence — last must_complete
+    # Sort 99: Team intelligence — intentionally last; most useful when everything else done
     {
         "item_key": "setup_team_intelligence",
         "tier": "must_complete",
@@ -437,36 +419,20 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["add_employees"]',
         "sort_order": 99,
     },
-    # Inter-licensee pricing — auto-completes on first transfer
+    # ── SHOULD COMPLETE ───────────────────────────────────────────────────────
     {
-        "item_key": "setup_inter_licensee_pricing",
-        "tier": "optional",
-        "category": "data_setup",
-        "title": "Review your transfer pricing",
-        "description": (
-            "Your standard retail prices are used by default when partner "
-            "licensees transfer burials to your area. Review or customize if needed."
-        ),
-        "estimated_minutes": 2,
-        "action_type": "navigate",
-        "action_target": "/settings/inter-licensee-pricing",
-        "depends_on": '["setup_price_list"]',
-        "sort_order": 75,
-    },
-    # SHOULD COMPLETE
-    {
-        "item_key": "run_vault_scenario",
+        "item_key": "set_inventory_minimums",
         "tier": "should_complete",
-        "category": "workflow",
-        "title": "Walk through a vault order (5 min)",
+        "category": "data_setup",
+        "title": "Set stock minimums",
         "description": (
-            "See exactly what happens when a funeral home calls to order a "
-            "vault — from order to delivery."
+            "Tell the system how much of each product you want to keep on "
+            "hand — it'll alert you when you're running low."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 10,
         "action_type": "navigate",
-        "action_target": "/onboarding/scenarios/vault_order_walkthrough",
-        "sort_order": 101,
+        "action_target": "/inventory",
+        "sort_order": 201,
     },
     {
         "item_key": "setup_charges",
@@ -480,7 +446,21 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/onboarding/charges",
-        "sort_order": 102,
+        "sort_order": 202,
+    },
+    {
+        "item_key": "invite_team",
+        "tier": "should_complete",
+        "category": "team",
+        "title": "Invite your team to log in",
+        "description": (
+            "Send login invitations to team members who need access to Bridgeable. "
+            "They'll receive an email to set their password and get started."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/admin/users",
+        "sort_order": 203,
     },
     {
         "item_key": "setup_sms_confirmation",
@@ -494,7 +474,21 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/delivery/settings",
-        "sort_order": 103,
+        "sort_order": 204,
+    },
+    {
+        "item_key": "run_vault_scenario",
+        "tier": "should_complete",
+        "category": "workflow",
+        "title": "Walk through a vault order (5 min)",
+        "description": (
+            "See exactly what happens when a funeral home calls to order a "
+            "vault — from order to delivery."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/scenarios/vault_order_walkthrough",
+        "sort_order": 205,
     },
     {
         "item_key": "run_production_log_scenario",
@@ -508,49 +502,22 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 2,
         "action_type": "navigate",
         "action_target": "/onboarding/scenarios/production_log_walkthrough",
-        "sort_order": 104,
+        "sort_order": 206,
     },
-    {
-        "item_key": "set_inventory_minimums",
-        "tier": "should_complete",
-        "category": "data_setup",
-        "title": "Set stock minimums",
-        "description": (
-            "Tell the system how much of each product you want to keep on "
-            "hand — it'll alert you when you're running low."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/inventory",
-        "sort_order": 105,
-    },
-    {
-        "item_key": "invite_team",
-        "tier": "should_complete",
-        "category": "team",
-        "title": "Invite your team to log in",
-        "description": (
-            "Send login invitations to your dispatcher, foreman, and office staff."
-        ),
-        "estimated_minutes": 5,
-        "action_type": "navigate",
-        "action_target": "/admin/users",
-        "sort_order": 106,
-    },
-    # OPTIONAL
+    # ── OPTIONAL ──────────────────────────────────────────────────────────────
     {
         "item_key": "setup_safety",
         "tier": "optional",
         "category": "explore",
-        "title": "Set up safety management",
+        "title": "Explore safety management",
         "description": (
-            "Get your OSHA records, inspection checklists, and safety programs "
-            "into the system."
+            "Set up equipment inspection checklists, OSHA 300 logs, and incident "
+            "reporting. Expand your safety program beyond the basics."
         ),
         "estimated_minutes": 30,
         "action_type": "navigate",
         "action_target": "/safety",
-        "sort_order": 201,
+        "sort_order": 301,
     },
     {
         "item_key": "explore_extensions",
@@ -561,35 +528,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/extensions",
-        "sort_order": 202,
-    },
-    {
-        "item_key": "run_month_end_scenario",
-        "tier": "optional",
-        "category": "workflow",
-        "title": "Walk through month-end reporting (5 min)",
-        "description": (
-            "See how to close out a month — sync review, outstanding invoices, "
-            "and production summary."
-        ),
-        "estimated_minutes": 5,
-        "action_type": "navigate",
-        "action_target": "/onboarding/scenarios/month_end_walkthrough",
-        "sort_order": 203,
-    },
-    {
-        "item_key": "company_branding",
-        "tier": "must_complete",
-        "category": "data_setup",
-        "title": "Set up your brand and invoice template",
-        "description": (
-            "Add your logo, choose your invoice style, and configure what appears "
-            "on invoices sent to funeral homes."
-        ),
-        "estimated_minutes": 10,
-        "action_type": "navigate",
-        "action_target": "/onboarding/branding",
-        "sort_order": 2,
+        "sort_order": 302,
     },
     {
         "item_key": "complete_urn_catalog",
@@ -603,7 +542,21 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 10,
         "action_type": "navigate",
         "action_target": "/products/urns",
-        "sort_order": 205,
+        "sort_order": 303,
+    },
+    {
+        "item_key": "run_month_end_scenario",
+        "tier": "optional",
+        "category": "workflow",
+        "title": "Walk through month-end reporting (5 min)",
+        "description": (
+            "See how to close out a month — sync review, outstanding invoices, "
+            "and production summary."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/scenarios/month_end_walkthrough",
+        "sort_order": 304,
     },
 ]
 

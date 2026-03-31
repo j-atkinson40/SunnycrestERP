@@ -61,6 +61,7 @@ def on_scenario_completed(db: Session, tenant_id: str, scenario_key: str) -> Non
         "month_end_walkthrough": "run_month_end_scenario",
         "case_walkthrough": "run_case_scenario",
         "fh_vault_order_walkthrough": "run_vault_order_scenario",
+        "production_log_walkthrough": "run_production_log_scenario",
     }
     item_key = SCENARIO_TO_ITEM.get(scenario_key)
     if item_key:
@@ -110,3 +111,24 @@ def on_safety_training_configured(db: Session, tenant_id: str) -> None:
         check_completion(db, tenant_id, "setup_safety_training")
     except Exception:
         logger.exception("Onboarding hook failed: on_safety_training_configured")
+
+
+def on_charge_account_configured(db: Session, tenant_id: str, customer) -> None:
+    """Auto-complete setup_charge_accounts when any funeral home customer has
+    credit_limit > 0 or invoice_delivery_preference set."""
+    try:
+        from decimal import Decimal
+
+        is_funeral_home = getattr(customer, "customer_type", None) == "funeral_home"
+        has_credit_limit = (
+            getattr(customer, "credit_limit", None) is not None
+            and customer.credit_limit > Decimal("0")
+        )
+        has_delivery_pref = bool(getattr(customer, "invoice_delivery_preference", None))
+
+        if is_funeral_home and (has_credit_limit or has_delivery_pref):
+            from app.services.onboarding_service import check_completion
+
+            check_completion(db, tenant_id, "setup_charge_accounts")
+    except Exception:
+        logger.exception("Onboarding hook failed: on_charge_account_configured")
