@@ -689,7 +689,7 @@ export default function CompanyBrandingPage() {
             {/* Right: live preview */}
             <div className="sticky top-4 space-y-2">
               <div className="text-sm font-medium text-muted-foreground">Live preview</div>
-              <div className="rounded-lg border overflow-hidden bg-white" style={{ height: 640 }}>
+              <div className="rounded-lg border overflow-hidden bg-white relative" style={{ height: 640 }}>
                 {previewBlobUrl ? (
                   <iframe
                     key={previewBlobUrl}
