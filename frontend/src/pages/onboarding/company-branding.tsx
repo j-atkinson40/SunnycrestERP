@@ -5,7 +5,6 @@ import apiClient from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import {
   CheckCircle,
   ChevronRight,
@@ -248,7 +247,6 @@ export default function CompanyBrandingPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [primaryColor, setPrimaryColor] = useState("#1B4F8A");
   const [secondaryColor, setSecondaryColor] = useState("#2D9B8A");
-  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Template + settings
   const [templateKey, setTemplateKey] = useState("professional");
@@ -304,7 +302,6 @@ export default function CompanyBrandingPage() {
   }, [settings, step]);
 
   const handleLogoUpload = useCallback(async (file: File) => {
-    setUploadingLogo(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -315,8 +312,6 @@ export default function CompanyBrandingPage() {
       toast.success("Logo uploaded");
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Upload failed"));
-    } finally {
-      setUploadingLogo(false);
     }
   }, []);
 
