@@ -621,8 +621,7 @@ function InvoiceRow({
   isPrimary,
   earlyPayment,
 }: InvoiceRowProps) {
-  const isOverdue =
-    inv.status === "overdue" || new Date(inv.due_date) < new Date();
+  const isOverdue = new Date(inv.due_date) < new Date();
   const enteredAmt = parseFloat(inv.amount) || 0;
   const overApplied = enteredAmt > inv.balance_remaining + 0.005;
 
