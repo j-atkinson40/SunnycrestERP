@@ -90,6 +90,8 @@ export default function InvoiceSettingsPage() {
   });
   const [defaultDelivery, setDefaultDelivery] = useState("statement_only");
   const [previewKey, setPreviewKey] = useState(0);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const previewBlobRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -113,6 +115,25 @@ export default function InvoiceSettingsPage() {
     debounceRef.current = setTimeout(() => setPreviewKey((k) => k + 1), 1200);
   }, [settings, loading]);
 
+  // Fetch preview PDF as blob whenever previewKey changes
+  useEffect(() => {
+    if (loading) return;
+    const params = new URLSearchParams({
+      template: settings.template_key,
+      format: "pdf",
+      options: JSON.stringify(settings),
+    });
+    apiClient
+      .get(`/sales/invoices/template-preview?${params.toString()}`, { responseType: "blob" })
+      .then((res) => {
+        const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+        if (previewBlobRef.current) URL.revokeObjectURL(previewBlobRef.current);
+        previewBlobRef.current = url;
+        setPreviewBlobUrl(url);
+      })
+      .catch(() => {});
+  }, [previewKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleToggle = useCallback((key: keyof InvoiceSettings) => {
     setSettings((s) => ({ ...s, [key]: !s[key as keyof typeof s] }));
   }, []);
@@ -128,10 +149,6 @@ export default function InvoiceSettingsPage() {
       setSaving(false);
     }
   }, [settings]);
-
-  const previewUrl = `/api/v1/sales/invoices/template-preview?template=${settings.template_key}&format=pdf&options=${encodeURIComponent(
-    JSON.stringify(settings)
-  )}&_k=${previewKey}`;
 
   const groupedOptions = CONTENT_OPTIONS.reduce<Record<string, typeof CONTENT_OPTIONS>>(
     (acc, opt) => {
@@ -308,8 +325,8 @@ export default function InvoiceSettingsPage() {
               <Save className="w-4 h-4 mr-1.5" />
               {saving ? "Saving..." : "Save settings"}
             </Button>
-            <a href={previewUrl} target="_blank" rel="noreferrer">
-              <Button variant="outline">
+            <a href={previewBlobUrl ?? "#"} target="_blank" rel="noreferrer">
+              <Button variant="outline" disabled={!previewBlobUrl}>
                 <ExternalLink className="w-4 h-4 mr-1.5" />
                 Preview invoice PDF
               </Button>
@@ -321,15 +338,21 @@ export default function InvoiceSettingsPage() {
         <div className="sticky top-4 space-y-2">
           <div className="text-sm font-medium text-muted-foreground">Live preview</div>
           <div className="rounded-lg border overflow-hidden bg-muted" style={{ height: 700 }}>
-            <iframe
-              key={previewUrl}
-              src={previewUrl}
-              className="w-full h-full border-0"
-              title="Invoice preview"
-            />
+            {previewBlobUrl ? (
+              <iframe
+                key={previewBlobUrl}
+                src={previewBlobUrl}
+                className="w-full h-full border-0"
+                title="Invoice preview"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin" />
+              </div>
+            )}
           </div>
           <a
-            href={previewUrl}
+            href={previewBlobUrl ?? "#"}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground justify-end"

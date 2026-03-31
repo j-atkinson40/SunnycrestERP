@@ -158,9 +158,21 @@ function TemplateCard({
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
-    // Lazy load preview URL
-    const url = `/api/v1/sales/invoices/template-preview?template=${template.key}&format=pdf`;
-    setPdfUrl(url);
+    let objectUrl: string | null = null;
+    apiClient
+      .get(`/sales/invoices/template-preview?template=${template.key}&format=pdf`, {
+        responseType: "blob",
+      })
+      .then((res) => {
+        objectUrl = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+        setPdfUrl(objectUrl);
+      })
+      .catch(() => {
+        // Leave pdfUrl null — spinner stays, doesn't crash
+      });
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [template.key]);
 
   return (
@@ -294,12 +306,39 @@ export default function CompanyBrandingPage() {
     load();
   }, []);
 
-  // Debounce preview refresh on settings change
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const previewBlobRef = useRef<string | null>(null);
+
+  // Debounce preview refresh on settings change (step 2)
   useEffect(() => {
     if (step !== 2) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setPreviewKey((k) => k + 1), 1000);
   }, [settings, step]);
+
+  // Fetch preview PDF as blob whenever previewKey changes (step 2)
+  useEffect(() => {
+    if (step !== 2) return;
+    const params = new URLSearchParams({
+      template: templateKey,
+      format: "pdf",
+      options: JSON.stringify({
+        ...settings,
+        template_key: templateKey,
+        primary_color: primaryColor,
+        secondary_color: secondaryColor,
+      }),
+    });
+    apiClient
+      .get(`/sales/invoices/template-preview?${params.toString()}`, { responseType: "blob" })
+      .then((res) => {
+        const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+        if (previewBlobRef.current) URL.revokeObjectURL(previewBlobRef.current);
+        previewBlobRef.current = url;
+        setPreviewBlobUrl(url);
+      })
+      .catch(() => {});
+  }, [previewKey, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogoUpload = useCallback(async (file: File) => {
     try {
@@ -377,15 +416,6 @@ export default function CompanyBrandingPage() {
     }
   }, [settings, templateKey, primaryColor, secondaryColor, navigate]);
 
-  // Build preview URL for live preview in step 2
-  const previewUrl = `/api/v1/sales/invoices/template-preview?template=${templateKey}&format=pdf&options=${encodeURIComponent(
-    JSON.stringify({
-      ...settings,
-      template_key: templateKey,
-      primary_color: primaryColor,
-      secondary_color: secondaryColor,
-    })
-  )}&_k=${previewKey}`;
 
   if (loading) {
     return (
@@ -666,16 +696,22 @@ export default function CompanyBrandingPage() {
                 Live preview
               </div>
               <div className="rounded-lg border overflow-hidden bg-muted" style={{ height: 600 }}>
-                <iframe
-                  key={previewUrl}
-                  src={previewUrl}
-                  className="w-full h-full border-0"
-                  title="Invoice preview"
-                />
+                {previewBlobUrl ? (
+                  <iframe
+                    key={previewBlobUrl}
+                    src={previewBlobUrl}
+                    className="w-full h-full border-0"
+                    title="Invoice preview"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  </div>
+                )}
               </div>
               <div className="flex justify-end">
                 <a
-                  href={previewUrl}
+                  href={previewBlobUrl ?? "#"}
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
