@@ -210,6 +210,23 @@ export const salesService = {
     return r.data;
   },
 
+  async getPayment(id: string): Promise<Record<string, unknown>> {
+    const r = await apiClient.get(`/sales/payments/${id}`);
+    return r.data;
+  },
+
+  async voidPayment(id: string): Promise<{ message: string; payment_id: string }> {
+    const r = await apiClient.post<{ message: string; payment_id: string }>(
+      `/sales/payments/${id}/void`,
+    );
+    return r.data;
+  },
+
+  async getInvoicePayments(invoiceId: string): Promise<Record<string, unknown>[]> {
+    const r = await apiClient.get(`/sales/invoices/${invoiceId}/payments`);
+    return r.data;
+  },
+
   // -----------------------------------------------------------------------
   // AR Aging
   // -----------------------------------------------------------------------

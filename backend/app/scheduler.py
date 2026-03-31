@@ -145,6 +145,12 @@ def job_draft_invoice_generator():
     _run_per_tenant("DRAFT_INVOICE_GENERATOR", generate_draft_invoices)
 
 
+def job_ar_balance_reconciliation():
+    """Daily: reconcile stored customer AR balances against actual invoice totals."""
+    from app.services.proactive_agents import run_ar_balance_reconciliation
+    _run_per_tenant("AR_BALANCE_RECONCILIATION", run_ar_balance_reconciliation)
+
+
 def job_network_readiness():
     """Weekly: find new cemetery tenants and create connection suggestions for nearby manufacturers."""
     from app.services.network_intelligence_service import suggest_cemetery_connections_for_new_tenants
@@ -183,6 +189,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "draft_invoice_generator": job_draft_invoice_generator,
     "network_readiness": job_network_readiness,
     "ar_aging_monitor": job_ar_aging_monitor,
+    "ar_balance_reconciliation": job_ar_balance_reconciliation,
     "collections_sequence": job_collections_sequence,
     "ap_upcoming_payments": job_ap_upcoming_payments,
     "reorder_suggestion": job_reorder_suggestion,
@@ -237,6 +244,16 @@ def register_all_jobs():
             replace_existing=True,
             misfire_grace_time=3600,
         )
+
+    # DAILY at 2am ET — AR balance reconciliation (drift detection)
+    scheduler.add_job(
+        job_ar_balance_reconciliation,
+        CronTrigger(hour=2, minute=0),
+        id="ar_balance_reconciliation",
+        name="ar_balance_reconciliation",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
 
     # DAILY at 5am — financial health score
     scheduler.add_job(

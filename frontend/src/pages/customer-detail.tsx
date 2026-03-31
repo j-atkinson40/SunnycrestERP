@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangleIcon, MapPin, PlusIcon, Trash2Icon, Wrench } from "lucide-react";
+import { AlertTriangleIcon, CreditCard, MapPin, PlusIcon, Trash2Icon, Wrench } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { customerService } from "@/services/customer-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { RecordPaymentDialog } from "@/components/record-payment-dialog";
 
 function statusBadge(status: string) {
   switch (status) {
@@ -173,6 +174,9 @@ export default function CustomerDetailPage() {
   const [creditCheckResult, setCreditCheckResult] =
     useState<CreditCheckResult | null>(null);
   const [creditCheckLoading, setCreditCheckLoading] = useState(false);
+
+  // Payment dialog (invoice-level payment recording)
+  const [invoicePaymentDialogOpen, setInvoicePaymentDialogOpen] = useState(false);
 
   // Balance adjustments
   const [adjustments, setAdjustments] = useState<BalanceAdjustment[]>([]);
@@ -1186,6 +1190,13 @@ export default function CustomerDetailPage() {
                 size="sm"
                 onClick={() => openAdjustmentDialog("payment")}
               >
+                Balance Adjustment
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setInvoicePaymentDialogOpen(true)}
+              >
+                <CreditCard className="w-4 h-4 mr-1.5" />
                 Record Payment
               </Button>
             </div>
@@ -1682,6 +1693,20 @@ export default function CustomerDetailPage() {
           </div>
         )}
       </Card>
+
+      {/* Invoice payment dialog */}
+      {customerId && (
+        <RecordPaymentDialog
+          open={invoicePaymentDialogOpen}
+          onClose={() => setInvoicePaymentDialogOpen(false)}
+          onSuccess={() => {
+            loadData();
+            setInvoicePaymentDialogOpen(false);
+          }}
+          customerId={customerId}
+          customerName={name}
+        />
+      )}
     </div>
   );
 }

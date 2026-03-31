@@ -501,6 +501,39 @@ async def import_payments_csv(
     return result
 
 
+@router.get("/payments/{payment_id}")
+def get_payment(
+    payment_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.view")),
+):
+    """Get a single payment with its applications."""
+    return sales_service.get_payment_detail(db, payment_id, current_user.company_id)
+
+
+@router.post("/payments/{payment_id}/void")
+def void_payment(
+    payment_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.record_payment")),
+):
+    """Void a payment and reverse all applications."""
+    return sales_service.void_payment(db, payment_id, current_user.company_id, current_user.id)
+
+
+@router.get("/invoices/{invoice_id}/payments")
+def get_invoice_payments(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.view")),
+):
+    """Get payment history for a specific invoice."""
+    return sales_service.get_invoice_payment_history(db, invoice_id, current_user.company_id)
+
+
 # ---------------------------------------------------------------------------
 # AR Aging
 # ---------------------------------------------------------------------------

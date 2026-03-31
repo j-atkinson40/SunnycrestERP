@@ -17,7 +17,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { ExternalLink, Send } from "lucide-react";
+import { CheckCircle2, CreditCard, ExternalLink, Send } from "lucide-react";
+import { RecordPaymentDialog } from "@/components/record-payment-dialog";
+
+interface InvoicePaymentRecord {
+  payment_id: string;
+  payment_date: string | null;
+  payment_method: string;
+  reference_number: string | null;
+  amount_applied: number;
+  notes: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -81,10 +91,27 @@ export default function InvoiceDetailPage() {
   const { hasPermission } = useAuth();
 
   const canVoid = hasPermission("ar.void");
+  const canRecordPayment = hasPermission("ar.record_payment");
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<InvoicePaymentRecord[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  const loadPaymentHistory = useCallback(async () => {
+    if (!id) return;
+    setLoadingPayments(true);
+    try {
+      const r = await apiClient.get(`/sales/invoices/${id}/payments`);
+      setPaymentHistory(r.data);
+    } catch {
+      // non-critical — silently ignore
+    } finally {
+      setLoadingPayments(false);
+    }
+  }, [id]);
 
   const loadInvoice = useCallback(async () => {
     if (!id) return;
@@ -101,7 +128,8 @@ export default function InvoiceDetailPage() {
 
   useEffect(() => {
     loadInvoice();
-  }, [loadInvoice]);
+    loadPaymentHistory();
+  }, [loadInvoice, loadPaymentHistory]);
 
   async function handleMarkSent() {
     if (!id) return;
@@ -157,6 +185,18 @@ export default function InvoiceDetailPage() {
     !hasPayments &&
     canVoid;
 
+  const canShowRecordPayment =
+    canRecordPayment &&
+    ["sent", "partial", "overdue", "open"].includes(invoice.status) &&
+    balanceNum > 0;
+
+  const daysOverdue = isOverdue
+    ? Math.floor(
+        (new Date().getTime() - new Date(invoice.due_date).getTime()) /
+          (1000 * 60 * 60 * 24)
+      )
+    : 0;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -192,6 +232,12 @@ export default function InvoiceDetailPage() {
           {invoice.status === "draft" && (
             <Button variant="outline" onClick={handleMarkSent}>
               Mark as Sent
+            </Button>
+          )}
+          {canShowRecordPayment && (
+            <Button onClick={() => setPaymentDialogOpen(true)}>
+              <CreditCard className="w-4 h-4 mr-1.5" />
+              Record Payment
             </Button>
           )}
           {canShowVoid && (
@@ -246,10 +292,13 @@ export default function InvoiceDetailPage() {
           </div>
           <div>
             <dt className="text-sm text-muted-foreground">Due Date</dt>
-            <dd
-              className={`font-medium ${isOverdue ? "text-red-600" : ""}`}
-            >
+            <dd className={`font-medium flex items-center gap-2 ${isOverdue ? "text-red-600" : ""}`}>
               {fmtDate(invoice.due_date)}
+              {isOverdue && daysOverdue > 0 && (
+                <span className="text-xs font-normal text-red-500">
+                  ({daysOverdue} day{daysOverdue !== 1 ? "s" : ""} overdue)
+                </span>
+              )}
             </dd>
           </div>
           <div>
@@ -327,6 +376,14 @@ export default function InvoiceDetailPage() {
               <span className="font-semibold">Total</span>
               <span className="font-semibold">{fmtCurrency(invoice.total)}</span>
             </div>
+            {Number((invoice as Invoice & { discount_amount?: string }).discount_amount) > 0 && (
+              <div className="flex justify-between gap-8">
+                <span className="text-sm text-green-600 dark:text-green-400">Early payment discount</span>
+                <span className="text-sm text-green-600 dark:text-green-400">
+                  -{fmtCurrency((invoice as Invoice & { discount_amount?: string }).discount_amount ?? "0")}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between gap-8">
               <span className="text-sm text-muted-foreground">Amount Paid</span>
               <span className="text-sm">{fmtCurrency(invoice.amount_paid)}</span>
@@ -343,16 +400,68 @@ export default function InvoiceDetailPage() {
         </div>
       </Card>
 
+      {/* Paid status callout */}
+      {invoice.status === "paid" && (
+        <div className="flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 px-4 py-3">
+          <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
+          <span className="text-sm font-medium text-green-800 dark:text-green-300">
+            Paid in full
+            {(invoice as Invoice & { paid_at?: string }).paid_at && (
+              <> on {fmtDate((invoice as Invoice & { paid_at?: string }).paid_at ?? null)}</>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Payment history */}
-      {hasPayments && (
+      {(hasPayments || paymentHistory.length > 0) && (
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Payment History</h2>
-          <p className="text-sm text-muted-foreground">
-            Total paid:{" "}
-            <span className="font-medium text-foreground">
-              {fmtCurrency(invoice.amount_paid)}
-            </span>
-          </p>
+          {loadingPayments ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : paymentHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Total paid:{" "}
+              <span className="font-medium text-foreground">
+                {fmtCurrency(invoice.amount_paid)}
+              </span>
+            </p>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead>Reference</TableHead>
+                    <TableHead className="text-right">Amount Applied</TableHead>
+                    <TableHead>Notes</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paymentHistory.map((p) => (
+                    <TableRow key={p.payment_id}>
+                      <TableCell className="text-muted-foreground whitespace-nowrap">
+                        {fmtDate(p.payment_date)}
+                      </TableCell>
+                      <TableCell className="capitalize">
+                        {p.payment_method.replace("_", " ")}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {p.reference_number ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
+                        {fmtCurrency(p.amount_applied)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {p.notes ?? "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </Card>
       )}
 
@@ -374,6 +483,19 @@ export default function InvoiceDetailPage() {
           <p>Last modified: {new Date(invoice.modified_at).toLocaleString()}</p>
         )}
       </div>
+
+      {/* Record Payment dialog */}
+      <RecordPaymentDialog
+        open={paymentDialogOpen}
+        onClose={() => setPaymentDialogOpen(false)}
+        onSuccess={() => {
+          loadInvoice();
+          loadPaymentHistory();
+        }}
+        customerId={invoice.customer_id}
+        customerName={invoice.customer_name ?? ""}
+        defaultInvoiceId={id}
+      />
     </div>
   );
 }

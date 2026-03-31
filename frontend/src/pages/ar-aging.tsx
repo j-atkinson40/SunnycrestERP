@@ -10,6 +10,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { CreditCard } from "lucide-react";
+import { RecordPaymentDialog } from "@/components/record-payment-dialog";
 
 function fmtCurrency(n: string | number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n));
@@ -18,6 +21,10 @@ function fmtCurrency(n: string | number) {
 export default function ARAgingPage() {
   const [report, setReport] = useState<ARAgingReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paymentCustomer, setPaymentCustomer] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const fetchReport = useCallback(async () => {
     try {
@@ -98,6 +105,7 @@ export default function ARAgingPage() {
                 <TableHead className="text-right">61-90</TableHead>
                 <TableHead className="text-right">90+</TableHead>
                 <TableHead className="text-right">Total</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -111,6 +119,22 @@ export default function ARAgingPage() {
                   <TableCell className="text-right">{fmtCurrency(customer.buckets.days_61_90)}</TableCell>
                   <TableCell className="text-right">{fmtCurrency(customer.buckets.days_over_90)}</TableCell>
                   <TableCell className="text-right font-medium">{fmtCurrency(customer.buckets.total)}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() =>
+                        setPaymentCustomer({
+                          id: customer.customer_id,
+                          name: customer.customer_name,
+                        })
+                      }
+                    >
+                      <CreditCard className="w-3.5 h-3.5 mr-1" />
+                      Pay
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
 
@@ -123,10 +147,25 @@ export default function ARAgingPage() {
                 <TableCell className="text-right">{fmtCurrency(report.company_summary.days_61_90)}</TableCell>
                 <TableCell className="text-right">{fmtCurrency(report.company_summary.days_over_90)}</TableCell>
                 <TableCell className="text-right">{fmtCurrency(report.company_summary.total)}</TableCell>
+                <TableCell />
               </TableRow>
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {/* Per-customer payment dialog */}
+      {paymentCustomer && (
+        <RecordPaymentDialog
+          open={!!paymentCustomer}
+          onClose={() => setPaymentCustomer(null)}
+          onSuccess={() => {
+            fetchReport();
+            setPaymentCustomer(null);
+          }}
+          customerId={paymentCustomer.id}
+          customerName={paymentCustomer.name}
+        />
       )}
     </div>
   );

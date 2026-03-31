@@ -66,6 +66,12 @@ class Invoice(Base):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Payment tracking
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), server_default="0.00")
+    discount_deadline: Mapped[date | None] = mapped_column(Date(), nullable=True)
+    discounted_total: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+
     # Deceased name — copied from order at invoice creation, shown on PDF
     deceased_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 

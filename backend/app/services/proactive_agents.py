@@ -425,6 +425,87 @@ def run_incomplete_customer_profile_job(db: Session, tenant_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# AR Balance Reconciliation
+# ---------------------------------------------------------------------------
+
+
+def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
+    """Reconcile stored customer AR balances against actual invoice totals.
+
+    Detects and corrects balance drift caused by failed transactions,
+    import edge cases, or manual adjustments that bypassed the normal flow.
+    """
+    from app.models import Customer, Invoice
+    from app.services.behavioral_analytics_service import generate_insight
+
+    customers = (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == tenant_id,
+            Customer.is_active == True,
+        )
+        .all()
+    )
+
+    corrected = 0
+    for customer in customers:
+        calculated = (
+            db.query(func.sum(Invoice.total - Invoice.amount_paid))
+            .filter(
+                Invoice.company_id == tenant_id,
+                Invoice.customer_id == customer.id,
+                Invoice.status.notin_(["paid", "void", "draft"]),
+            )
+            .scalar()
+            or Decimal("0.00")
+        )
+
+        stored = customer.current_balance or Decimal("0.00")
+        diff = abs(float(calculated) - float(stored))
+
+        if diff > 0.01:
+            logger.warning(
+                "AR balance drift for customer %s (%s): stored=%.2f calculated=%.2f diff=%.2f",
+                customer.id,
+                customer.name,
+                float(stored),
+                float(calculated),
+                diff,
+            )
+            customer.current_balance = calculated
+            corrected += 1
+
+            try:
+                generate_insight(
+                    db=db,
+                    company_id=tenant_id,
+                    insight_type="agent_alert",
+                    title=f"AR balance corrected for {customer.name}",
+                    description=(
+                        f"Stored balance was ${float(stored):.2f} but open invoice total was "
+                        f"${float(calculated):.2f} (difference: ${diff:.2f}). "
+                        "Automatically corrected. If this recurs, investigate recent "
+                        "payment imports or manual adjustments for this account."
+                    ),
+                    action_url=f"/customers/{customer.id}",
+                    severity="warning",
+                    metadata={
+                        "customer_id": customer.id,
+                        "stored_balance": float(stored),
+                        "calculated_balance": float(calculated),
+                        "difference": diff,
+                    },
+                )
+            except Exception:
+                pass
+
+    if corrected > 0:
+        db.commit()
+
+    return {"customers_checked": len(customers), "balances_corrected": corrected}
+
+
+# ---------------------------------------------------------------------------
 # Job Registry — maps job names to functions
 # ---------------------------------------------------------------------------
 
@@ -436,4 +517,5 @@ PROACTIVE_JOBS = {
     "missing_entry_detector": run_missing_entry_detector,
     "uncleared_check_monitor": run_uncleared_check_monitor,
     "incomplete_customer_profile_job": run_incomplete_customer_profile_job,
+    "ar_balance_reconciliation": run_ar_balance_reconciliation,
 }

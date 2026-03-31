@@ -836,6 +836,7 @@ def create_customer_payment(
         # Update invoice status
         if invoice.amount_paid >= invoice.total:
             invoice.status = "paid"
+            invoice.paid_at = datetime.now(timezone.utc)
         elif invoice.amount_paid > Decimal("0.00"):
             invoice.status = "partial"
 
@@ -1426,3 +1427,162 @@ def import_sage_payments_from_csv(
     db.commit()
 
     return {"created": created, "skipped": skipped, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Payment detail and void
+# ---------------------------------------------------------------------------
+
+
+def get_payment_detail(db: Session, payment_id: str, company_id: str) -> dict:
+    """Return a single payment with its applications."""
+    payment = (
+        db.query(CustomerPayment)
+        .filter(
+            CustomerPayment.id == payment_id,
+            CustomerPayment.company_id == company_id,
+            CustomerPayment.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    apps = []
+    for app in payment.applications:
+        inv = db.query(Invoice).filter(Invoice.id == app.invoice_id).first()
+        apps.append(
+            {
+                "invoice_id": app.invoice_id,
+                "invoice_number": inv.number if inv else "",
+                "invoice_date": (
+                    inv.invoice_date.isoformat()
+                    if inv and inv.invoice_date
+                    else None
+                ),
+                "amount_applied": float(app.amount_applied),
+                "notes": app.notes,
+            }
+        )
+
+    return {
+        "id": payment.id,
+        "customer_id": payment.customer_id,
+        "payment_date": (
+            payment.payment_date.isoformat() if payment.payment_date else None
+        ),
+        "total_amount": float(payment.total_amount),
+        "payment_method": payment.payment_method,
+        "reference_number": payment.reference_number,
+        "notes": payment.notes,
+        "applications": apps,
+        "created_by": payment.created_by,
+        "created_at": (
+            payment.created_at.isoformat() if payment.created_at else None
+        ),
+    }
+
+
+def void_payment(
+    db: Session, payment_id: str, company_id: str, voided_by: str
+) -> dict:
+    """Void a payment and reverse all invoice applications."""
+    payment = (
+        db.query(CustomerPayment)
+        .filter(
+            CustomerPayment.id == payment_id,
+            CustomerPayment.company_id == company_id,
+            CustomerPayment.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    customer = (
+        db.query(Customer).filter(Customer.id == payment.customer_id).first()
+    )
+
+    # Reverse each application
+    for app in payment.applications:
+        inv = db.query(Invoice).filter(Invoice.id == app.invoice_id).first()
+        if inv:
+            inv.amount_paid = max(
+                Decimal("0.00"), inv.amount_paid - app.amount_applied
+            )
+            inv.discount_amount = Decimal("0.00")
+            inv.paid_at = None
+            # Recalculate status
+            if inv.amount_paid <= Decimal("0.00"):
+                inv.status = "sent"
+            elif inv.amount_paid < inv.total:
+                inv.status = "partial"
+
+    # Restore customer balance
+    if customer:
+        customer.current_balance += payment.total_amount
+
+    # Soft delete the payment
+    payment.deleted_at = datetime.now(timezone.utc)
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "voided",
+        "customer_payment",
+        payment.id,
+        user_id=voided_by,
+        changes={"total_amount": str(payment.total_amount)},
+    )
+
+    db.commit()
+    return {"message": "Payment voided", "payment_id": payment_id}
+
+
+def get_invoice_payment_history(
+    db: Session, invoice_id: str, company_id: str
+) -> list[dict]:
+    """Return all payments applied to an invoice."""
+    inv = (
+        db.query(Invoice)
+        .filter(
+            Invoice.id == invoice_id,
+            Invoice.company_id == company_id,
+        )
+        .first()
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    apps = (
+        db.query(CustomerPaymentApplication)
+        .filter(CustomerPaymentApplication.invoice_id == invoice_id)
+        .all()
+    )
+
+    result = []
+    for app in apps:
+        pmt = (
+            db.query(CustomerPayment)
+            .filter(
+                CustomerPayment.id == app.payment_id,
+                CustomerPayment.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if pmt:
+            result.append(
+                {
+                    "payment_id": pmt.id,
+                    "payment_date": (
+                        pmt.payment_date.isoformat()
+                        if pmt.payment_date
+                        else None
+                    ),
+                    "payment_method": pmt.payment_method,
+                    "reference_number": pmt.reference_number,
+                    "amount_applied": float(app.amount_applied),
+                    "notes": app.notes,
+                }
+            )
+    return result

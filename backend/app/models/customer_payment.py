@@ -91,6 +91,7 @@ class CustomerPaymentApplication(Base):
     amount_applied: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False
     )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     payment = relationship("CustomerPayment", back_populates="applications")
     invoice = relationship("Invoice", back_populates="payment_applications")
