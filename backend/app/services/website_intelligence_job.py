@@ -99,8 +99,7 @@ def run_website_intelligence(db_session, tenant_id: str, url: str) -> None:
             from app.models.company import Company
             company = db.query(Company).filter(Company.id == tenant_id).first()
             if company:
-                # Only store detected logo if company doesn't already have one set
-                if branding["logo_url"] and not company.logo_url:
+                if branding["logo_url"]:
                     company.set_setting("detected_logo_url", branding["logo_url"])
                     company.set_setting("detected_logo_confidence", branding["logo_confidence"])
                 if branding["primary_color"]:
