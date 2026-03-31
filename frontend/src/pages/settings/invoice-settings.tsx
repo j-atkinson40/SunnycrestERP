@@ -120,13 +120,13 @@ export default function InvoiceSettingsPage() {
     if (loading) return;
     const params = new URLSearchParams({
       template: settings.template_key,
-      format: "pdf",
+      format: "html",
       options: JSON.stringify(settings),
     });
     apiClient
-      .get(`/sales/invoice-templates/preview?${params.toString()}`, { responseType: "blob" })
+      .get(`/sales/invoice-templates/preview?${params.toString()}`)
       .then((res) => {
-        const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+        const url = URL.createObjectURL(new Blob([res.data], { type: "text/html" }));
         if (previewBlobRef.current) URL.revokeObjectURL(previewBlobRef.current);
         previewBlobRef.current = url;
         setPreviewBlobUrl(url);
@@ -328,7 +328,7 @@ export default function InvoiceSettingsPage() {
             <a href={previewBlobUrl ?? "#"} target="_blank" rel="noreferrer">
               <Button variant="outline" disabled={!previewBlobUrl}>
                 <ExternalLink className="w-4 h-4 mr-1.5" />
-                Preview invoice PDF
+                Preview invoice
               </Button>
             </a>
           </div>

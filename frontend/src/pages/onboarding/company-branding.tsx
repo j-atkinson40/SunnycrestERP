@@ -162,25 +162,15 @@ function TemplateCard({
     let objectUrl: string | null = null;
     setPreviewError(false);
 
-    // Try PDF first; fall back to HTML if unavailable (e.g. WeasyPrint not installed)
+    // Use HTML for card thumbnails — avoids browser PDF viewer toolbar/popups
     apiClient
-      .get(`/sales/invoice-templates/preview?template=${template.key}&format=pdf`, {
-        responseType: "blob",
-      })
+      .get(`/sales/invoice-templates/preview?template=${template.key}&format=html`)
       .then((res) => {
-        objectUrl = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+        const blob = new Blob([res.data], { type: "text/html" });
+        objectUrl = URL.createObjectURL(blob);
         setPreviewUrl(objectUrl);
       })
-      .catch(() =>
-        apiClient
-          .get(`/sales/invoice-templates/preview?template=${template.key}&format=html`)
-          .then((res) => {
-            const blob = new Blob([res.data], { type: "text/html" });
-            objectUrl = URL.createObjectURL(blob);
-            setPreviewUrl(objectUrl);
-          })
-          .catch(() => setPreviewError(true))
-      );
+      .catch(() => setPreviewError(true));
 
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -350,17 +340,12 @@ export default function CompanyBrandingPage() {
       setPreviewBlobUrl(url);
     };
 
-    const pdfParams = new URLSearchParams({ template: templateKey, format: "pdf", options: optionsJson });
+    // Use HTML for live preview — avoids browser PDF viewer toolbar/popups
+    const htmlParams = new URLSearchParams({ template: templateKey, format: "html", options: optionsJson });
     apiClient
-      .get(`/sales/invoice-templates/preview?${pdfParams.toString()}`, { responseType: "blob" })
-      .then((res) => setBlob(res.data, "application/pdf"))
-      .catch(() => {
-        const htmlParams = new URLSearchParams({ template: templateKey, format: "html", options: optionsJson });
-        apiClient
-          .get(`/sales/invoice-templates/preview?${htmlParams.toString()}`)
-          .then((res) => setBlob(res.data, "text/html"))
-          .catch(() => {});
-      });
+      .get(`/sales/invoice-templates/preview?${htmlParams.toString()}`)
+      .then((res) => setBlob(res.data, "text/html"))
+      .catch(() => {});
   }, [previewKey, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogoUpload = useCallback(async (file: File) => {
