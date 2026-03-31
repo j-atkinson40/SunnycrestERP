@@ -154,22 +154,37 @@ function TemplateCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<"pdf" | "html" | null>(null);
+  const [previewError, setPreviewError] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
+    setPreviewError(false);
+
+    // Try PDF first; fall back to HTML if unavailable (e.g. WeasyPrint not installed)
     apiClient
       .get(`/sales/invoices/template-preview?template=${template.key}&format=pdf`, {
         responseType: "blob",
       })
       .then((res) => {
         objectUrl = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
-        setPdfUrl(objectUrl);
+        setPreviewUrl(objectUrl);
+        setPreviewType("pdf");
       })
-      .catch(() => {
-        // Leave pdfUrl null — spinner stays, doesn't crash
-      });
+      .catch(() =>
+        apiClient
+          .get(`/sales/invoices/template-preview?template=${template.key}&format=html`)
+          .then((res) => {
+            const blob = new Blob([res.data], { type: "text/html" });
+            objectUrl = URL.createObjectURL(blob);
+            setPreviewUrl(objectUrl);
+            setPreviewType("html");
+          })
+          .catch(() => setPreviewError(true))
+      );
+
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
@@ -182,19 +197,24 @@ function TemplateCard({
           selected ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-border"
         }`}
       >
-        {/* PDF preview iframe */}
+        {/* Preview iframe */}
         <div
           className="relative bg-muted border-b"
           style={{ height: 280 }}
-          onClick={() => setModalOpen(true)}
-          title="Click to view full size"
+          onClick={() => !previewError && setModalOpen(true)}
+          title={previewError ? undefined : "Click to view full size"}
         >
-          {pdfUrl ? (
+          {previewUrl ? (
             <iframe
-              src={pdfUrl}
+              src={previewUrl}
               className="w-full h-full border-0"
               title={`${template.label} preview`}
             />
+          ) : previewError ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground text-xs text-center px-4">
+              <span>Preview unavailable</span>
+              <span className="text-xs opacity-60">Select this template to use it</span>
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -220,7 +240,7 @@ function TemplateCard({
       </Card>
 
       {/* Full-size modal */}
-      {modalOpen && pdfUrl && (
+      {modalOpen && previewUrl && (
         <div
           className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
           onClick={() => setModalOpen(false)}
@@ -234,7 +254,7 @@ function TemplateCard({
               <span className="font-medium text-sm">{template.label} — Preview</span>
               <Button variant="ghost" size="sm" onClick={() => setModalOpen(false)}>Close</Button>
             </div>
-            <iframe src={pdfUrl} className="w-full border-0" style={{ height: "calc(100% - 40px)" }} title="Full preview" />
+            <iframe src={previewUrl} className="w-full border-0" style={{ height: "calc(100% - 40px)" }} title="Full preview" />
           </div>
         </div>
       )}
@@ -316,28 +336,34 @@ export default function CompanyBrandingPage() {
     debounceRef.current = setTimeout(() => setPreviewKey((k) => k + 1), 1000);
   }, [settings, step]);
 
-  // Fetch preview PDF as blob whenever previewKey changes (step 1)
+  // Fetch preview (PDF → HTML fallback) whenever previewKey changes (step 1)
   useEffect(() => {
     if (step !== 1) return;
-    const params = new URLSearchParams({
-      template: templateKey,
-      format: "pdf",
-      options: JSON.stringify({
-        ...settings,
-        template_key: templateKey,
-        primary_color: primaryColor,
-        secondary_color: secondaryColor,
-      }),
+    const optionsJson = JSON.stringify({
+      ...settings,
+      template_key: templateKey,
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
     });
+
+    const setBlob = (data: BlobPart, mime: string) => {
+      const url = URL.createObjectURL(new Blob([data], { type: mime }));
+      if (previewBlobRef.current) URL.revokeObjectURL(previewBlobRef.current);
+      previewBlobRef.current = url;
+      setPreviewBlobUrl(url);
+    };
+
+    const pdfParams = new URLSearchParams({ template: templateKey, format: "pdf", options: optionsJson });
     apiClient
-      .get(`/sales/invoices/template-preview?${params.toString()}`, { responseType: "blob" })
-      .then((res) => {
-        const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
-        if (previewBlobRef.current) URL.revokeObjectURL(previewBlobRef.current);
-        previewBlobRef.current = url;
-        setPreviewBlobUrl(url);
-      })
-      .catch(() => {});
+      .get(`/sales/invoices/template-preview?${pdfParams.toString()}`, { responseType: "blob" })
+      .then((res) => setBlob(res.data, "application/pdf"))
+      .catch(() => {
+        const htmlParams = new URLSearchParams({ template: templateKey, format: "html", options: optionsJson });
+        apiClient
+          .get(`/sales/invoices/template-preview?${htmlParams.toString()}`)
+          .then((res) => setBlob(res.data, "text/html"))
+          .catch(() => {});
+      });
   }, [previewKey, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogoUpload = useCallback(async (file: File) => {
