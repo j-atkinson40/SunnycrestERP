@@ -10,13 +10,18 @@ export interface VoiceInputService {
   stopListening(): void
 }
 
-const SpeechRecognitionAPI =
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySpeechRecognition = any
+
+const SpeechRecognitionAPI: AnySpeechRecognition =
   typeof window !== 'undefined'
-    ? window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     : undefined
 
 function createVoiceInputService(): VoiceInputService {
-  let recognition: SpeechRecognition | null = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let recognition: any = null
   let currentState: VoiceState = 'idle'
   let finalTranscript = ''
 
@@ -46,7 +51,8 @@ function createVoiceInputService(): VoiceInputService {
       finalTranscript = ''
       currentState = 'listening'
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onresult = (event: any) => {
         let interimText = ''
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -70,7 +76,8 @@ function createVoiceInputService(): VoiceInputService {
         recognition = null
       }
 
-      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onerror = (event: any) => {
         currentState = 'error'
         const message = event.error ? `ERROR: ${event.error}` : 'ERROR: Speech recognition failed.'
         onFinal(message)

@@ -73,7 +73,7 @@ export default function LogProduction() {
   // ─── Voice result handler ──────────────────────────────────────────────────
 
   function handleVoiceResult(raw: Record<string, unknown>) {
-    const result = raw as VoiceResult
+    const result = raw as unknown as VoiceResult
     setVoiceEntries(result.entries ?? [])
     setUnrecognized(result.unrecognized ?? [])
     setStep('confirm')

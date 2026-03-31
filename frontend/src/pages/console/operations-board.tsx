@@ -7,7 +7,7 @@
  * new features — new contributors register themselves and the board picks them up.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
@@ -16,10 +16,8 @@ import { toast } from "sonner"
 import {
   AlertTriangle,
   CheckCircle,
-  Package,
   ClipboardList,
   Wrench,
-  Search,
   RefreshCw,
   PackageCheck,
   ChevronRight,
@@ -41,28 +39,6 @@ import "@/services/board-contributors"
 
 import type { OperationsBoardSettings } from "@/types/operations-board"
 import { VaultReplenishmentWidget } from "@/components/dashboard/vault-replenishment-widget"
-
-// ── Icon map — resolves contributor icon strings to Lucide components ──
-
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  "alert-triangle": AlertTriangle,
-  search: Search,
-  "check-circle": CheckCircle,
-  package: Package,
-  "clipboard-list": ClipboardList,
-  wrench: Wrench,
-  "check-square": CheckSquare,
-}
-
-const ICON_COLORS: Record<string, string> = {
-  "alert-triangle": "text-red-600",
-  search: "text-amber-600",
-  "check-circle": "text-blue-600",
-  package: "text-green-600",
-  "clipboard-list": "text-purple-600",
-  wrench: "text-gray-600",
-  "check-square": "text-indigo-600",
-}
 
 // ── Overview panel components — contributors reference by string key ──
 
