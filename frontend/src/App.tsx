@@ -50,6 +50,7 @@ import BillingPage from "@/pages/billing/billing-page";
 import { ReceivedStatementDetail } from "@/pages/billing/received-statements";
 import InvoiceDetailPage from "@/pages/invoice-detail";
 import CustomerPaymentsPage from "@/pages/customer-payments";
+import PaymentDetailPage from "@/pages/payment-detail";
 import ARAgingPage2 from "@/pages/ar-aging";
 import ModulesPage from "@/pages/admin/modules";
 import DeliverySettingsPage from "@/pages/admin/delivery-settings";
@@ -361,6 +362,10 @@ export default function App() {
                     <Route
                       path="/ar/payments"
                       element={<CustomerPaymentsPage />}
+                    />
+                    <Route
+                      path="/ar/payments/:id"
+                      element={<PaymentDetailPage />}
                     />
                     <Route
                       path="/ar/aging"

@@ -89,6 +89,9 @@ class Customer(Base):
     current_balance: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=0
     )
+    credit_balance: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=True, default=Decimal("0.00"), server_default="0.00"
+    )
 
     # --- Other ---
     tax_exempt: Mapped[bool] = mapped_column(Boolean, default=False)

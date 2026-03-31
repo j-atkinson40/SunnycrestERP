@@ -108,6 +108,7 @@ export default function CustomerDetailPage() {
   const [accountStatus, setAccountStatus] = useState("active");
   const [isActive, setIsActive] = useState(true);
   const [currentBalance, setCurrentBalance] = useState(0);
+  const [creditBalance, setCreditBalance] = useState(0);
 
   // Shipping address
   const [addressLine1, setAddressLine1] = useState("");
@@ -210,6 +211,7 @@ export default function CustomerDetailPage() {
       setAccountStatus(customer.account_status);
       setIsActive(customer.is_active);
       setCurrentBalance(customer.current_balance);
+      setCreditBalance(Number(customer.credit_balance ?? 0));
 
       setAddressLine1(customer.address_line1 || "");
       setAddressLine2(customer.address_line2 || "");
@@ -639,6 +641,16 @@ export default function CustomerDetailPage() {
               {formatCurrency(parseFloat(creditLimit))}.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Credit Balance Banner */}
+      {creditBalance > 0 && (
+        <div className="rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 flex items-center gap-2">
+          <span className="text-green-600 font-bold">$</span>
+          <span>
+            <strong>{formatCurrency(creditBalance)}</strong> credit on account — will apply to next invoice
+          </span>
         </div>
       )}
 

@@ -506,6 +506,206 @@ def run_ar_balance_reconciliation(db: Session, tenant_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Payment pattern learning
+# ---------------------------------------------------------------------------
+
+
+def enrich_payment_patterns(db: Session, company_id: str) -> dict:
+    """Calculate and store payment behavioral patterns per customer."""
+    import statistics
+    from datetime import date as _date
+    from decimal import Decimal as _Decimal
+
+    from app.models.behavioral_analytics import EntityBehavioralProfile
+    from app.models.customer import Customer
+    from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
+    from app.models.invoice import Invoice
+
+    customers = (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == company_id,
+            Customer.is_active.is_(True),
+        )
+        .all()
+    )
+
+    updated = 0
+    for customer in customers:
+        payments = (
+            db.query(CustomerPayment)
+            .filter(
+                CustomerPayment.company_id == company_id,
+                CustomerPayment.customer_id == customer.id,
+                CustomerPayment.deleted_at.is_(None),
+            )
+            .all()
+        )
+
+        if not payments:
+            continue
+
+        # Calculate avg days to pay
+        days_to_pay = []
+        for p in payments:
+            for app in p.applications:
+                inv = db.query(Invoice).filter(Invoice.id == app.invoice_id).first()
+                if inv and inv.invoice_date and p.payment_date:
+                    pay_date = p.payment_date if isinstance(p.payment_date, _date) else p.payment_date.date()
+                    inv_date = inv.invoice_date if isinstance(inv.invoice_date, _date) else inv.invoice_date.date()
+                    delta = (pay_date - inv_date).days
+                    if 0 <= delta <= 120:
+                        days_to_pay.append(delta)
+
+        avg_days = statistics.mean(days_to_pay) if days_to_pay else None
+
+        methods = [p.payment_method for p in payments if p.payment_method]
+        typical_method = max(set(methods), key=methods.count) if methods else None
+
+        payment_days = [p.payment_date.day for p in payments if p.payment_date]
+        typical_day = max(set(payment_days), key=payment_days.count) if payment_days else None
+
+        last_payment = max(payments, key=lambda p: p.payment_date) if payments else None
+
+        try:
+            profile = (
+                db.query(EntityBehavioralProfile)
+                .filter(
+                    EntityBehavioralProfile.tenant_id == company_id,
+                    EntityBehavioralProfile.entity_type == "customer",
+                    EntityBehavioralProfile.entity_id == customer.id,
+                )
+                .first()
+            )
+
+            if not profile:
+                profile = EntityBehavioralProfile(
+                    tenant_id=company_id,
+                    entity_type="customer",
+                    entity_id=customer.id,
+                )
+                db.add(profile)
+
+            if avg_days is not None:
+                profile.avg_days_to_pay = _Decimal(str(round(avg_days, 1)))
+
+            existing = profile.profile_data or {}
+            existing.update(
+                {
+                    "typical_payment_method": typical_method,
+                    "typical_payment_day": typical_day,
+                    "last_payment_date": (
+                        last_payment.payment_date.isoformat()
+                        if last_payment and last_payment.payment_date
+                        else None
+                    ),
+                    "last_payment_amount": (
+                        float(last_payment.total_amount) if last_payment else None
+                    ),
+                }
+            )
+            profile.profile_data = existing
+            updated += 1
+        except Exception as e:
+            logger.warning(
+                "Could not update behavioral profile for customer %s: %s", customer.id, e
+            )
+
+    if updated > 0:
+        db.commit()
+
+    return {"customers_updated": updated}
+
+
+# ---------------------------------------------------------------------------
+# Discount expiry monitor
+# ---------------------------------------------------------------------------
+
+
+def run_discount_expiry_monitor(db: Session, company_id: str) -> dict:
+    """Alert on early payment discounts expiring within 3 days."""
+    from collections import defaultdict
+    from datetime import date, timedelta
+
+    from app.models.agent import AgentAlert
+    from app.models.customer import Customer
+    from app.models.invoice import Invoice
+
+    today = date.today()
+    cutoff = today + timedelta(days=3)
+
+    expiring = (
+        db.query(Invoice)
+        .filter(
+            Invoice.company_id == company_id,
+            Invoice.discount_deadline.isnot(None),
+            Invoice.discount_deadline >= today,
+            Invoice.discount_deadline <= cutoff,
+            Invoice.status.notin_(["paid", "void"]),
+        )
+        .all()
+    )
+
+    if not expiring:
+        return {"alerts_created": 0}
+
+    by_date = defaultdict(list)
+    for inv in expiring:
+        by_date[inv.discount_deadline].append(inv)
+
+    alerts_created = 0
+    for expiry_date, invoices in by_date.items():
+        days_until = (expiry_date - today).days
+        urgency = (
+            "TODAY" if days_until == 0 else ("tomorrow" if days_until == 1 else f"in {days_until} days")
+        )
+
+        total_discount = sum(float(inv.total) * 0.05 for inv in invoices if inv.total)
+
+        if len(invoices) == 1:
+            inv = invoices[0]
+            customer = db.query(Customer).filter(Customer.id == inv.customer_id).first()
+            cust_name = customer.name if customer else "Unknown"
+            discount_val = float(inv.total) * 0.05
+            title = f"Discount expires {urgency}: {cust_name}"
+            message = (
+                f"Invoice #{inv.number} for ${float(inv.total):.2f} has an early payment "
+                f"discount of ${discount_val:.2f} expiring {urgency}. "
+                f"If {cust_name} pays ${float(inv.discounted_total or inv.total * 0.95):.2f} "
+                f"by {expiry_date.strftime('%B %d')}, they save ${discount_val:.2f}."
+            )
+        else:
+            customer_names = []
+            for inv in invoices[:3]:
+                c = db.query(Customer).filter(Customer.id == inv.customer_id).first()
+                if c:
+                    customer_names.append(c.name)
+            title = f"{len(invoices)} discounts expire {urgency}"
+            message = (
+                f"{len(invoices)} early payment discounts expire {urgency} "
+                f"totaling ${total_discount:.2f} in savings for customers. "
+                f"Customers: {', '.join(customer_names)}{'...' if len(invoices) > 3 else ''}."
+            )
+
+        try:
+            alert = AgentAlert(
+                tenant_id=company_id,
+                alert_type="discount_expiring",
+                severity="warning" if days_until == 0 else "info",
+                title=title,
+                message=message,
+            )
+            db.add(alert)
+            alerts_created += 1
+        except Exception as e:
+            logger.warning("Could not create discount expiry alert: %s", e)
+
+    if alerts_created > 0:
+        db.commit()
+    return {"alerts_created": alerts_created, "invoices_expiring": len(expiring)}
+
+
+# ---------------------------------------------------------------------------
 # Job Registry — maps job names to functions
 # ---------------------------------------------------------------------------
 

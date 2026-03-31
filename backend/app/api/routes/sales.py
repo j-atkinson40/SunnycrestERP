@@ -487,6 +487,34 @@ def create_payment(
     return _payment_to_response(payment)
 
 
+@router.post("/payments/scan-check")
+async def scan_check(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(get_current_user),
+):
+    """Scan a check image and extract payment information using Claude Vision."""
+    return await sales_service.scan_check_image(db, file, current_user.company_id)
+
+
+@router.post("/payments/suggest-application")
+def suggest_payment_application(
+    data: dict,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(get_current_user),
+):
+    """Suggest invoice applications for a given payment amount."""
+    return sales_service.suggest_payment_application(
+        db,
+        customer_id=data.get("customer_id"),
+        amount=data.get("amount"),
+        payment_date=data.get("payment_date"),
+        company_id=current_user.company_id,
+    )
+
+
 @router.post("/payments/import", response_model=PaymentImportResult)
 async def import_payments_csv(
     file: UploadFile,
@@ -521,6 +549,17 @@ def void_payment(
 ):
     """Void a payment and reverse all applications."""
     return sales_service.void_payment(db, payment_id, current_user.company_id, current_user.id)
+
+
+@router.post("/invoices/{invoice_id}/honor-discount")
+def honor_discount(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.record_payment")),
+):
+    """Retroactively apply early payment discount to a partially-paid invoice."""
+    return sales_service.honor_early_payment_discount(db, invoice_id, current_user.company_id)
 
 
 @router.get("/invoices/{invoice_id}/payments")

@@ -151,6 +151,18 @@ def job_ar_balance_reconciliation():
     _run_per_tenant("AR_BALANCE_RECONCILIATION", run_ar_balance_reconciliation)
 
 
+def job_discount_expiry_monitor():
+    """Daily at 8am: alert on early payment discounts expiring within 3 days."""
+    from app.services.proactive_agents import run_discount_expiry_monitor
+    _run_per_tenant("DISCOUNT_EXPIRY_MONITOR", run_discount_expiry_monitor)
+
+
+def job_payment_pattern_enrichment():
+    """Weekly: enrich customer behavioral profiles with payment patterns."""
+    from app.services.proactive_agents import enrich_payment_patterns
+    _run_per_tenant("PAYMENT_PATTERN_ENRICHMENT", enrich_payment_patterns)
+
+
 def job_network_readiness():
     """Weekly: find new cemetery tenants and create connection suggestions for nearby manufacturers."""
     from app.services.network_intelligence_service import suggest_cemetery_connections_for_new_tenants
@@ -190,6 +202,8 @@ JOB_REGISTRY: dict[str, callable] = {
     "network_readiness": job_network_readiness,
     "ar_aging_monitor": job_ar_aging_monitor,
     "ar_balance_reconciliation": job_ar_balance_reconciliation,
+    "discount_expiry_monitor": job_discount_expiry_monitor,
+    "payment_pattern_enrichment": job_payment_pattern_enrichment,
     "collections_sequence": job_collections_sequence,
     "ap_upcoming_payments": job_ap_upcoming_payments,
     "reorder_suggestion": job_reorder_suggestion,
@@ -253,6 +267,26 @@ def register_all_jobs():
         name="ar_balance_reconciliation",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+
+    # DAILY at 8am ET — discount expiry alerts
+    scheduler.add_job(
+        job_discount_expiry_monitor,
+        CronTrigger(hour=8, minute=0),
+        id="discount_expiry_monitor",
+        name="discount_expiry_monitor",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # WEEKLY Saturday at 2am ET — payment pattern enrichment
+    scheduler.add_job(
+        job_payment_pattern_enrichment,
+        CronTrigger(day_of_week="sat", hour=2, minute=0),
+        id="payment_pattern_enrichment",
+        name="payment_pattern_enrichment",
+        replace_existing=True,
+        misfire_grace_time=7200,
     )
 
     # DAILY at 5am — financial health score

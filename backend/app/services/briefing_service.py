@@ -21,6 +21,7 @@ from app.models.customer import Customer
 from app.models.delivery import Delivery
 from app.models.employee_briefing import EmployeeBriefing
 from app.models.employee_profile import EmployeeProfile
+from app.models.customer_payment import CustomerPayment
 from app.models.invoice import Invoice
 from app.models.production_log_entry import ProductionLogEntry
 from app.models.sales_order import SalesOrder
@@ -325,6 +326,64 @@ def _build_invoicing_ar_context(
         # Draft invoices pending morning review
         draft_invoices_pending = _build_draft_invoice_context(db, company_id)
 
+        # Payments yesterday
+        yesterday_start = today_start - timedelta(days=1)
+        yesterday_end = today_start
+        recent_payments = (
+            db.query(CustomerPayment)
+            .filter(
+                CustomerPayment.company_id == company_id,
+                CustomerPayment.payment_date >= yesterday_start.date(),
+                CustomerPayment.payment_date < yesterday_end.date(),
+                CustomerPayment.deleted_at.is_(None),
+            )
+            .all()
+        )
+        payments_yesterday = {
+            "count": len(recent_payments),
+            "total_amount": sum(float(p.total_amount) for p in recent_payments),
+        }
+
+        # Outstanding discounts expiring
+        week_end = today + timedelta(days=7)
+        expiring_today_invoices = (
+            db.query(Invoice)
+            .filter(
+                Invoice.company_id == company_id,
+                Invoice.discount_deadline == today,
+                Invoice.status.notin_(["paid", "void"]),
+            )
+            .all()
+        )
+        expiring_week_invoices = (
+            db.query(Invoice)
+            .filter(
+                Invoice.company_id == company_id,
+                Invoice.discount_deadline > today,
+                Invoice.discount_deadline <= week_end,
+                Invoice.status.notin_(["paid", "void"]),
+            )
+            .all()
+        )
+        outstanding_discounts = {
+            "expiring_today": {
+                "count": len(expiring_today_invoices),
+                "total_discount_value": sum(
+                    float(inv.total) * 0.05
+                    for inv in expiring_today_invoices
+                    if inv.total
+                ),
+            },
+            "expiring_this_week": {
+                "count": len(expiring_week_invoices),
+                "total_discount_value": sum(
+                    float(inv.total) * 0.05
+                    for inv in expiring_week_invoices
+                    if inv.total
+                ),
+            },
+        }
+
         return {
             "overdue_total": str(total_overdue),
             "overdue_0_30": str(bucket_30),
@@ -332,6 +391,8 @@ def _build_invoicing_ar_context(
             "overdue_90_plus": str(bucket_90_plus),
             "overdue_invoice_count": len(overdue_invoices),
             "payments_today_count": payments_today,
+            "payments_yesterday": payments_yesterday,
+            "outstanding_discounts": outstanding_discounts,
             "uninvoiced_completed_orders": uninvoiced_orders,
             "sync_errors_24h": [
                 {
@@ -353,6 +414,11 @@ def _build_invoicing_ar_context(
             "overdue_90_plus": "0",
             "overdue_invoice_count": 0,
             "payments_today_count": 0,
+            "payments_yesterday": {"count": 0, "total_amount": 0},
+            "outstanding_discounts": {
+                "expiring_today": {"count": 0, "total_discount_value": 0},
+                "expiring_this_week": {"count": 0, "total_discount_value": 0},
+            },
             "uninvoiced_completed_orders": 0,
             "sync_errors_24h": [],
             "sync_error_count": 0,
@@ -1011,6 +1077,26 @@ def _serialize_context_to_text(
         lines.append(f"  Total overdue: ${context.get('overdue_total', '0')} ({context.get('overdue_invoice_count', 0)} invoices)")
         lines.append("")
         lines.append(f"PAYMENTS RECEIVED TODAY: {context.get('payments_today_count', 0)}")
+        py = context.get("payments_yesterday", {})
+        if py.get("count", 0) > 0:
+            lines.append(
+                f"PAYMENTS YESTERDAY: {py['count']} payments totaling "
+                f"${py.get('total_amount', 0):.2f}"
+            )
+        disc = context.get("outstanding_discounts", {})
+        exp_today = disc.get("expiring_today", {})
+        exp_week = disc.get("expiring_this_week", {})
+        if exp_today.get("count", 0) > 0:
+            lines.append(
+                f"DISCOUNT EXPIRY URGENT: {exp_today['count']} early payment discount(s) "
+                f"expire TODAY — ${exp_today.get('total_discount_value', 0):.2f} in savings "
+                "for customers. Consider reaching out."
+            )
+        if exp_week.get("count", 0) > 0:
+            lines.append(
+                f"DISCOUNTS EXPIRING THIS WEEK: {exp_week['count']} more discount(s) "
+                f"expiring — ${exp_week.get('total_discount_value', 0):.2f} total."
+            )
         lines.append(f"UNINVOICED COMPLETED ORDERS: {context.get('uninvoiced_completed_orders', 0)}")
         lines.append("")
         dp = context.get("draft_invoices_pending", {})

@@ -729,6 +729,55 @@ def void_invoice(
 
 
 # ---------------------------------------------------------------------------
+# Customer Payments — helper functions
+# ---------------------------------------------------------------------------
+
+
+def _create_short_pay_alert(db, company_id, customer, invoice, amount_paid, difference, days_late):
+    """Create an agent alert for a short pay that looks like a late discount attempt."""
+    try:
+        from app.models.agent import AgentAlert
+        alert = AgentAlert(
+            tenant_id=company_id,
+            alert_type="short_pay_late_discount",
+            severity="warning",
+            title=f"Short pay — late discount: {customer.name}",
+            message=(
+                f"{customer.name} paid ${float(amount_paid):.2f} on invoice "
+                f"#{invoice.number} but the 5% early payment window expired "
+                f"{days_late} day{'s' if days_late != 1 else ''} ago. "
+                f"Balance remaining: ${difference:.2f}. "
+                f"Decide whether to honor the discount."
+            ),
+            action_label="Honor discount",
+            action_url=f"/api/v1/sales/invoices/{invoice.id}/honor-discount",
+        )
+        db.add(alert)
+    except Exception as e:
+        logger.warning("Could not create short pay alert: %s", e)
+
+
+def _create_overpayment_alert(db, company_id, customer, total_amount, applied, overpayment):
+    """Create an agent alert for an overpayment."""
+    try:
+        from app.models.agent import AgentAlert
+        alert = AgentAlert(
+            tenant_id=company_id,
+            alert_type="overpayment",
+            severity="info",
+            title=f"Overpayment: {customer.name}",
+            message=(
+                f"{customer.name} paid ${float(total_amount):.2f} but only "
+                f"${applied:.2f} was applied to open invoices. "
+                f"${overpayment:.2f} credit added to their account."
+            ),
+        )
+        db.add(alert)
+    except Exception as e:
+        logger.warning("Could not create overpayment alert: %s", e)
+
+
+# ---------------------------------------------------------------------------
 # Customer Payments
 # ---------------------------------------------------------------------------
 
@@ -819,6 +868,11 @@ def create_customer_payment(
     db.flush()
 
     # Create applications and update invoices
+    payment_date_only = (
+        data.payment_date.date()
+        if hasattr(data.payment_date, "date")
+        else data.payment_date
+    )
     for app_data in data.applications:
         pa = CustomerPaymentApplication(
             id=str(uuid.uuid4()),
@@ -840,8 +894,35 @@ def create_customer_payment(
         elif invoice.amount_paid > Decimal("0.00"):
             invoice.status = "partial"
 
+        # Short pay late discount detection
+        if (
+            invoice.discount_deadline
+            and invoice.discounted_total
+            and payment_date_only > invoice.discount_deadline
+            and float(app_data.amount_applied) >= float(invoice.discounted_total) * 0.99
+            and float(app_data.amount_applied) < float(invoice.total)
+        ):
+            difference = float(invoice.total) - float(app_data.amount_applied)
+            days_late = (payment_date_only - invoice.discount_deadline).days
+            _create_short_pay_alert(
+                db, company_id, customer, invoice, app_data.amount_applied, difference, days_late
+            )
+
     # Subtract payment from customer balance
     customer.current_balance -= data.total_amount
+
+    # Overpayment detection — any unmatched amount becomes customer credit
+    total_applied = sum(
+        float(app_data.amount_applied) for app_data in data.applications
+    )
+    if total_applied < float(data.total_amount) - 0.01:
+        overpayment = float(data.total_amount) - total_applied
+        customer.credit_balance = (customer.credit_balance or Decimal("0.00")) + Decimal(
+            str(round(overpayment, 2))
+        )
+        _create_overpayment_alert(
+            db, company_id, customer, data.total_amount, total_applied, overpayment
+        )
 
     db.flush()
 
@@ -1586,3 +1667,293 @@ def get_invoice_payment_history(
                 }
             )
     return result
+
+
+def honor_early_payment_discount(db: Session, invoice_id: str, company_id: str) -> dict:
+    """Apply early payment discount retroactively."""
+    inv = (
+        db.query(Invoice)
+        .filter(
+            Invoice.id == invoice_id,
+            Invoice.company_id == company_id,
+        )
+        .first()
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv.status == "paid":
+        raise HTTPException(status_code=400, detail="Invoice already paid")
+
+    discount = float(inv.total) - float(inv.amount_paid)
+    inv.discount_amount = Decimal(str(round(discount, 2)))
+    inv.amount_paid = inv.total
+    inv.status = "paid"
+    inv.paid_at = datetime.now(timezone.utc)
+
+    # Adjust customer balance
+    customer = db.query(Customer).filter(Customer.id == inv.customer_id).first()
+    if customer:
+        customer.current_balance -= Decimal(str(round(discount, 2)))
+
+    db.commit()
+    db.refresh(inv)
+    return {
+        "message": "Discount honored",
+        "invoice_id": invoice_id,
+        "discount_applied": round(discount, 2),
+    }
+
+
+def suggest_payment_application(
+    db: Session, customer_id: str, amount, payment_date, company_id: str
+) -> dict:
+    """Intelligently suggest how to apply a payment to open invoices."""
+    from itertools import combinations
+
+    amount = Decimal(str(amount))
+
+    open_invoices = (
+        db.query(Invoice)
+        .filter(
+            Invoice.company_id == company_id,
+            Invoice.customer_id == customer_id,
+            Invoice.status.in_(["sent", "partial", "overdue"]),
+        )
+        .order_by(Invoice.invoice_date.asc())
+        .all()
+    )
+
+    if not open_invoices:
+        return {
+            "scenario": "no_open_invoices",
+            "message": "No open invoices found",
+            "applications": [],
+        }
+
+    total_open = sum(float(inv.total) - float(inv.amount_paid) for inv in open_invoices)
+    amt = float(amount)
+
+    def make_app(inv, amount_to_apply):
+        return {
+            "invoice_id": inv.id,
+            "invoice_number": inv.number,
+            "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+            "balance_remaining": float(inv.total) - float(inv.amount_paid),
+            "amount_to_apply": round(amount_to_apply, 2),
+            "covers_fully": amount_to_apply >= (float(inv.total) - float(inv.amount_paid)) - 0.01,
+        }
+
+    # Exact match — covers all open invoices
+    if abs(amt - total_open) < 0.02:
+        return {
+            "scenario": "exact_match",
+            "message": "This payment covers the full open balance",
+            "confidence": 0.99,
+            "applications": [
+                make_app(inv, float(inv.total) - float(inv.amount_paid))
+                for inv in open_invoices
+            ],
+        }
+
+    # Overpayment
+    if amt > total_open + 0.01:
+        return {
+            "scenario": "overpayment",
+            "message": (
+                f"This payment is ${amt - total_open:.2f} more than the open balance. "
+                "The excess will be held as customer credit."
+            ),
+            "confidence": 0.95,
+            "applications": [
+                make_app(inv, float(inv.total) - float(inv.amount_paid))
+                for inv in open_invoices
+            ],
+        }
+
+    # Check for early payment discount match on single invoice
+    for inv in open_invoices:
+        if inv.discounted_total and abs(amt - float(inv.discounted_total)) < 0.02:
+            return {
+                "scenario": "early_pay_discount",
+                "message": f"This matches the early payment discount amount for invoice #{inv.number}",
+                "confidence": 0.97,
+                "applications": [make_app(inv, float(inv.discounted_total))],
+            }
+
+    # Check subset match (up to 5 invoices)
+    for r in range(1, min(6, len(open_invoices) + 1)):
+        for combo in combinations(open_invoices, r):
+            combo_total = sum(float(inv.total) - float(inv.amount_paid) for inv in combo)
+            if abs(combo_total - amt) < 0.02:
+                nums = ", ".join(f"#{inv.number}" for inv in combo)
+                return {
+                    "scenario": "invoice_subset",
+                    "message": (
+                        f"This covers invoice{'s' if len(combo) > 1 else ''} {nums} exactly"
+                    ),
+                    "confidence": 0.95,
+                    "applications": [
+                        make_app(inv, float(inv.total) - float(inv.amount_paid))
+                        for inv in combo
+                    ],
+                }
+
+    # FIFO partial
+    remaining = amt
+    applications = []
+    for inv in open_invoices:
+        if remaining <= 0:
+            break
+        bal = float(inv.total) - float(inv.amount_paid)
+        apply = min(remaining, bal)
+        applications.append(make_app(inv, apply))
+        remaining -= apply
+
+    return {
+        "scenario": "fifo_partial",
+        "message": "Applied oldest-first until payment is exhausted",
+        "confidence": 0.8,
+        "applications": applications,
+    }
+
+
+async def scan_check_image(db: Session, file, company_id: str) -> dict:
+    """Use Claude Vision to extract payment info from a check image."""
+    import base64
+    import json as _json
+
+    # Read image
+    content = await file.read()
+    b64_image = base64.b64encode(content).decode()
+    content_type = file.content_type or "image/jpeg"
+
+    prompt = """Extract payment information from this check image. Return JSON only:
+{
+  "payer_name": "string or null",
+  "amount": "decimal number or null",
+  "check_number": "string or null",
+  "check_date": "YYYY-MM-DD or null",
+  "memo": "string or null",
+  "bank_name": "string or null",
+  "confidence": {
+    "payer_name": 0.0,
+    "amount": 0.0,
+    "check_number": 0.0,
+    "check_date": 0.0
+  }
+}
+Return only valid JSON. If a field is not clearly visible, return null."""
+
+    extracted = {}
+    try:
+        import anthropic
+        from app.config import settings
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=500,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": content_type,
+                                "data": b64_image,
+                            },
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+        )
+        extracted = _json.loads(response.content[0].text)
+    except Exception as e:
+        logger.error("Check scan failed: %s", e)
+        return {
+            "extracted": {},
+            "matched_customer": None,
+            "suggested_applications": [],
+            "error": str(e),
+        }
+
+    # Fuzzy match payer_name against customers
+    matched_customer = None
+    suggested_applications = []
+
+    if extracted.get("payer_name"):
+        customers = (
+            db.query(Customer)
+            .filter(
+                Customer.company_id == company_id,
+                Customer.is_active.is_(True),
+            )
+            .all()
+        )
+
+        payer = extracted["payer_name"].lower().strip()
+        best_match = None
+        best_score = 0.0
+
+        for cust in customers:
+            name = cust.name.lower().strip()
+            payer_tokens = set(payer.split())
+            name_tokens = set(name.split())
+            stop = {"funeral", "home", "homes", "chapel", "memorial", "inc", "llc", "the", "and", "&"}
+            payer_tokens -= stop
+            name_tokens -= stop
+            if not payer_tokens or not name_tokens:
+                continue
+            overlap = len(payer_tokens & name_tokens)
+            union = len(payer_tokens | name_tokens)
+            score = overlap / union if union else 0.0
+            if score > best_score:
+                best_score = score
+                best_match = cust
+
+        if best_match and best_score >= 0.6:
+            matched_customer = {
+                "customer_id": best_match.id,
+                "name": best_match.name,
+                "match_confidence": best_score,
+                "match_method": "payer_name",
+            }
+
+            open_invoices = (
+                db.query(Invoice)
+                .filter(
+                    Invoice.company_id == company_id,
+                    Invoice.customer_id == best_match.id,
+                    Invoice.status.in_(["sent", "partial", "overdue"]),
+                )
+                .order_by(Invoice.invoice_date.asc())
+                .all()
+            )
+
+            remaining = float(extracted.get("amount") or 0)
+            for inv in open_invoices:
+                bal = float(inv.total) - float(inv.amount_paid)
+                if remaining <= 0:
+                    break
+                apply = min(remaining, bal)
+                suggested_applications.append(
+                    {
+                        "invoice_id": inv.id,
+                        "invoice_number": inv.number,
+                        "invoice_date": (
+                            inv.invoice_date.isoformat() if inv.invoice_date else None
+                        ),
+                        "balance_remaining": bal,
+                        "amount_to_apply": apply,
+                        "covers_fully": apply >= bal - 0.01,
+                    }
+                )
+                remaining -= apply
+
+    return {
+        "extracted": extracted,
+        "matched_customer": matched_customer,
+        "suggested_applications": suggested_applications,
+    }

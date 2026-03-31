@@ -66,6 +66,7 @@ export interface Customer {
   payment_terms: string | null;
   account_status: string;
   current_balance: number;
+  credit_balance?: number | null;
   tax_exempt: boolean;
   tax_id: string | null;
   notes: string | null;

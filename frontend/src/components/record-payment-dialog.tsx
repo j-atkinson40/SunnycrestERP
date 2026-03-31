@@ -4,7 +4,8 @@ import apiClient from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, Loader2, Wand2, X } from "lucide-react";
+import { CheckCircle, ChevronDown, ChevronUp, Loader2, Wand2, X } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,6 +27,7 @@ export interface OpenInvoice {
 interface InvoiceApplication {
   invoice_id: string;
   invoice_number: string;
+  invoice_date: string;
   balance_remaining: number;
   due_date: string;
   discount_deadline?: string | null;
@@ -103,6 +105,23 @@ export function RecordPaymentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // --- Smart suggestion state ---
+  const [suggestion, setSuggestion] = useState<{
+    scenario: string;
+    message: string;
+    confidence: number;
+    applications: Array<{
+      invoice_id: string;
+      invoice_number: string;
+      invoice_date: string | null;
+      balance_remaining: number;
+      amount_to_apply: number;
+      covers_fully: boolean;
+    }>;
+  } | null>(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const suggestionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Load open invoices for customer
   const loadInvoices = useCallback(async () => {
     if (!customerId) return;
@@ -156,6 +175,7 @@ export function RecordPaymentDialog({
     const apps: InvoiceApplication[] = sorted.map((inv) => ({
       invoice_id: inv.id,
       invoice_number: inv.number,
+      invoice_date: inv.invoice_date,
       balance_remaining: inv.balance_remaining,
       due_date: inv.due_date,
       discount_deadline: inv.discount_deadline,
@@ -220,10 +240,10 @@ export function RecordPaymentDialog({
   // Auto-apply FIFO
   function handleAutoApply() {
     setInvoices((prev) => {
-      // Use sorted (oldest first) order
+      // Use sorted (oldest invoice_date first) order
       const sorted = [...prev].sort(
         (a, b) =>
-          new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+          new Date(a.invoice_date).getTime() - new Date(b.invoice_date).getTime()
       );
       return prev.map((inv) => {
         const sortedInv = sorted.find((s) => s.invoice_id === inv.invoice_id);
@@ -282,6 +302,48 @@ export function RecordPaymentDialog({
         )
       );
     }
+  }
+
+  // Fetch smart suggestion when applied total changes
+  function fetchSuggestion(amount: number) {
+    if (suggestionTimerRef.current) clearTimeout(suggestionTimerRef.current);
+    if (amount <= 0 || !customerId) return;
+    suggestionTimerRef.current = setTimeout(async () => {
+      setSuggestionLoading(true);
+      try {
+        const r = await apiClient.post("/sales/payments/suggest-application", {
+          customer_id: customerId,
+          amount,
+          payment_date: paymentDate,
+        });
+        setSuggestion(r.data);
+      } catch {
+        setSuggestion(null);
+      } finally {
+        setSuggestionLoading(false);
+      }
+    }, 600);
+  }
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        const match = suggestion.applications.find(
+          (a) => a.invoice_id === inv.invoice_id
+        );
+        if (match) {
+          return {
+            ...inv,
+            selected: true,
+            amount: match.amount_to_apply.toFixed(2),
+          };
+        }
+        return { ...inv, selected: false, amount: "" };
+      })
+    );
+    setShowAllInvoices(true);
+    setSuggestion(null);
   }
 
   async function handleSubmit() {
@@ -428,6 +490,66 @@ export function RecordPaymentDialog({
           {/* Divider */}
           <div className="border-t" />
 
+          {/* Smart Matching — total amount input for suggestion */}
+          {invoices.length > 0 && !defaultInvoiceId && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">
+                Payment Amount
+                <span className="text-xs text-muted-foreground font-normal ml-1">
+                  (for smart matching)
+                </span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                  $
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  className="w-full rounded-md border border-input bg-background pl-6 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  onChange={(e) => {
+                    const amt = parseFloat(e.target.value);
+                    if (!isNaN(amt) && amt > 0) {
+                      fetchSuggestion(amt);
+                    } else {
+                      setSuggestion(null);
+                    }
+                  }}
+                />
+              </div>
+              {suggestionLoading && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Finding best match...
+                </p>
+              )}
+              {suggestion && !suggestionLoading && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-2">
+                  <p className="text-xs font-medium text-blue-800">{suggestion.message}</p>
+                  <div className="space-y-1">
+                    {suggestion.applications.slice(0, 4).map((app) => (
+                      <div key={app.invoice_id} className="flex justify-between text-xs text-blue-700">
+                        <span>Invoice #{app.invoice_number}</span>
+                        <span>${app.amount_to_apply.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs w-full border-blue-300 text-blue-700 hover:bg-blue-100"
+                    onClick={applySuggestion}
+                  >
+                    Use this
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Early Payment Discount Option */}
           {hasDiscountOption && defaultInvoice && (
             <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800 p-4 space-y-3">
@@ -479,6 +601,27 @@ export function RecordPaymentDialog({
                   </span>
                 </label>
               </div>
+
+              {earlyPayment && defaultInvoice && (
+                <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-1.5 text-green-700 font-medium text-sm mb-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Early payment discount applied
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Payment amount</span>
+                      <span className="font-medium text-foreground">${defaultInvoice.discounted_total?.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-green-700">
+                      <span>Discount (5%)</span>
+                      <span>-${(defaultInvoice.balance_remaining - (defaultInvoice.discounted_total ?? 0)).toFixed(2)}</span>
+                    </div>
+                    <Separator className="my-1" />
+                    <div className="text-xs text-muted-foreground">Invoice will be marked as paid in full</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
