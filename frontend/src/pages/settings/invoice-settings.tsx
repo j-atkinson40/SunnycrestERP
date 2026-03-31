@@ -337,7 +337,7 @@ export default function InvoiceSettingsPage() {
         {/* Right column: live preview */}
         <div className="sticky top-4 space-y-2">
           <div className="text-sm font-medium text-muted-foreground">Live preview</div>
-          <div className="rounded-lg border overflow-hidden bg-muted" style={{ height: 700 }}>
+          <div className="rounded-lg border overflow-hidden bg-white" style={{ height: 700 }}>
             {previewBlobUrl ? (
               <iframe
                 key={previewBlobUrl}

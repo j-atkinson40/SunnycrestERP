@@ -186,7 +186,7 @@ function TemplateCard({
       >
         {/* Preview iframe */}
         <div
-          className="relative bg-muted border-b"
+          className="relative bg-white border-b"
           style={{ height: 280 }}
           onClick={() => !previewError && setModalOpen(true)}
           title={previewError ? undefined : "Click to view full size"}
@@ -199,7 +199,7 @@ function TemplateCard({
               style={{
                 width: 800,
                 height: 1100,
-                transform: "scale(0.25)",
+                transform: "scale(0.22)",
                 transformOrigin: "top left",
                 pointerEvents: "none",
               }}
@@ -689,7 +689,7 @@ export default function CompanyBrandingPage() {
             {/* Right: live preview */}
             <div className="sticky top-4 space-y-2">
               <div className="text-sm font-medium text-muted-foreground">Live preview</div>
-              <div className="rounded-lg border overflow-hidden bg-muted" style={{ height: 640 }}>
+              <div className="rounded-lg border overflow-hidden bg-white" style={{ height: 640 }}>
                 {previewBlobUrl ? (
                   <iframe
                     key={previewBlobUrl}
