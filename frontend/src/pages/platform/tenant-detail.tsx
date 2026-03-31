@@ -3,10 +3,12 @@ import { useParams, Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { Loader2, RefreshCw } from "lucide-react";
 import {
   getTenant,
   impersonateTenant,
   updateTenant,
+  rescrapeWebsiteIntelligence,
 } from "@/services/platform-service";
 import type { TenantDetail } from "@/types/platform";
 
@@ -14,6 +16,7 @@ export default function TenantDetailPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rescraping, setRescraping] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -65,6 +68,19 @@ export default function TenantDetailPage() {
             `HTTP ${(err as { response?: { status?: number } }).response?.status}`
           : String(err);
       toast.error(`Impersonation failed: ${detail}`);
+    }
+  }
+
+  async function handleRescrape() {
+    if (!tenantId) return;
+    setRescraping(true);
+    try {
+      await rescrapeWebsiteIntelligence(tenantId);
+      toast.success("Website scrape started — takes ~30 seconds");
+    } catch {
+      toast.error("Failed to start rescrape");
+    } finally {
+      setRescraping(false);
     }
   }
 
@@ -243,6 +259,22 @@ export default function TenantDetailPage() {
           ) : (
             <p className="text-sm text-muted-foreground">No sync history</p>
           )}
+        </Card>
+        {/* Website Intelligence */}
+        <Card className="p-4">
+          <h3 className="mb-1 font-semibold">Website Intelligence</h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Re-runs the website scrape to detect logo and brand colors for the branding wizard.
+          </p>
+          <button
+            onClick={handleRescrape}
+            disabled={rescraping}
+            className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+          >
+            {rescraping
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Scraping...</>
+              : <><RefreshCw className="w-4 h-4" /> Re-run website scrape</>}
+          </button>
         </Card>
       </div>
     </div>

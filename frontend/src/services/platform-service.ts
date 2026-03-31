@@ -286,3 +286,10 @@ export async function onboardTenant(payload: OnboardTenantRequest) {
   );
   return data;
 }
+
+export async function rescrapeWebsiteIntelligence(tenantId: string) {
+  const { data } = await platformClient.post<{ status: string; tenant_id: string }>(
+    `/website-intelligence/admin/website-intelligence/${tenantId}/rescrape`
+  );
+  return data;
+}
