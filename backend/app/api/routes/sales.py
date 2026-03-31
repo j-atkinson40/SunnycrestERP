@@ -704,7 +704,7 @@ def send_invoice(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/invoices/template-preview")
+@router.get("/invoice-templates/preview")
 def template_preview(
     template: str = Query("professional"),
     format: str = Query("pdf"),
@@ -761,7 +761,7 @@ def template_preview(
     )
 
 
-@router.get("/invoices/preview-debug")
+@router.get("/invoice-templates/preview-debug")
 def preview_debug(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

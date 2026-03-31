@@ -124,7 +124,7 @@ export default function InvoiceSettingsPage() {
       options: JSON.stringify(settings),
     });
     apiClient
-      .get(`/sales/invoices/template-preview?${params.toString()}`, { responseType: "blob" })
+      .get(`/sales/invoice-templates/preview?${params.toString()}`, { responseType: "blob" })
       .then((res) => {
         const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
         if (previewBlobRef.current) URL.revokeObjectURL(previewBlobRef.current);

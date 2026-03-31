@@ -164,7 +164,7 @@ function TemplateCard({
 
     // Try PDF first; fall back to HTML if unavailable (e.g. WeasyPrint not installed)
     apiClient
-      .get(`/sales/invoices/template-preview?template=${template.key}&format=pdf`, {
+      .get(`/sales/invoice-templates/preview?template=${template.key}&format=pdf`, {
         responseType: "blob",
       })
       .then((res) => {
@@ -173,7 +173,7 @@ function TemplateCard({
       })
       .catch(() =>
         apiClient
-          .get(`/sales/invoices/template-preview?template=${template.key}&format=html`)
+          .get(`/sales/invoice-templates/preview?template=${template.key}&format=html`)
           .then((res) => {
             const blob = new Blob([res.data], { type: "text/html" });
             objectUrl = URL.createObjectURL(blob);
@@ -352,12 +352,12 @@ export default function CompanyBrandingPage() {
 
     const pdfParams = new URLSearchParams({ template: templateKey, format: "pdf", options: optionsJson });
     apiClient
-      .get(`/sales/invoices/template-preview?${pdfParams.toString()}`, { responseType: "blob" })
+      .get(`/sales/invoice-templates/preview?${pdfParams.toString()}`, { responseType: "blob" })
       .then((res) => setBlob(res.data, "application/pdf"))
       .catch(() => {
         const htmlParams = new URLSearchParams({ template: templateKey, format: "html", options: optionsJson });
         apiClient
-          .get(`/sales/invoices/template-preview?${htmlParams.toString()}`)
+          .get(`/sales/invoice-templates/preview?${htmlParams.toString()}`)
           .then((res) => setBlob(res.data, "text/html"))
           .catch(() => {});
       });
