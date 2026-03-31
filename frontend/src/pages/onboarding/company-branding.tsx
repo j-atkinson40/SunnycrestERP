@@ -186,7 +186,7 @@ function TemplateCard({
       >
         {/* Preview iframe */}
         <div
-          className="relative bg-white border-b"
+          className="relative bg-white border-b overflow-hidden"
           style={{ height: 280 }}
           onClick={() => !previewError && setModalOpen(true)}
           title={previewError ? undefined : "Click to view full size"}
@@ -194,11 +194,11 @@ function TemplateCard({
           {previewUrl ? (
             <iframe
               src={previewUrl}
-              className="border-0"
+              className="border-0 absolute top-0 left-0"
               title={`${template.label} preview`}
               style={{
-                width: 800,
-                height: 1100,
+                width: "455%",
+                height: "455%",
                 transform: "scale(0.22)",
                 transformOrigin: "top left",
                 pointerEvents: "none",
@@ -694,11 +694,11 @@ export default function CompanyBrandingPage() {
                   <iframe
                     key={previewBlobUrl}
                     src={previewBlobUrl}
-                    className="border-0"
+                    className="border-0 absolute top-0 left-0"
                     title="Invoice preview"
                     style={{
-                      width: 800,
-                      height: 1280,
+                      width: "200%",
+                      height: "200%",
                       transform: "scale(0.5)",
                       transformOrigin: "top left",
                       pointerEvents: "none",
