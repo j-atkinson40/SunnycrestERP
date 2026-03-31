@@ -19,6 +19,7 @@ import {
   getTenantModules,
   setTenantModule,
   listModuleDefinitionsFlat,
+  rescrapeWebsiteIntelligence,
 } from "@/services/platform-service";
 import type { TenantDetail, TenantModuleConfig, ModuleDefinition } from "@/types/platform";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,8 @@ import {
   MapPin,
   Globe,
   Save,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -475,6 +478,7 @@ export default function AdminTenantDetail() {
       {activeTab === "overview" && (
         <OverviewTab
           tenant={tenant}
+          tenantId={tenantId!}
           checklist={checklist}
           onboardingPercent={onboardingPercent}
         />
@@ -512,13 +516,29 @@ export default function AdminTenantDetail() {
 
 function OverviewTab({
   tenant,
+  tenantId,
   checklist,
   onboardingPercent,
 }: {
   tenant: TenantDetail;
+  tenantId: string;
   checklist: ChecklistItem[];
   onboardingPercent: number;
 }) {
+  const [rescraping, setRescraping] = useState(false);
+
+  async function handleRescrape() {
+    setRescraping(true);
+    try {
+      await rescrapeWebsiteIntelligence(tenantId);
+      toast.success("Website scrape started — takes ~30 seconds");
+    } catch {
+      toast.error("Failed to start rescrape");
+    } finally {
+      setRescraping(false);
+    }
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       {/* Onboarding checklist */}
@@ -600,6 +620,30 @@ function OverviewTab({
             </div>
             <Button variant="outline" size="xs" className="mt-2">
               Schedule Call
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Website Intelligence</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Re-detect logo and brand colors from the tenant's website.
+            </p>
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleRescrape}
+              disabled={rescraping}
+              className="w-full"
+            >
+              {rescraping ? (
+                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Scraping...</>
+              ) : (
+                <><RefreshCw className="mr-1.5 h-3.5 w-3.5" />Re-run website scrape</>
+              )}
             </Button>
           </CardContent>
         </Card>
