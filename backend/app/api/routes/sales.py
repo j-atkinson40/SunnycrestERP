@@ -761,6 +761,39 @@ def template_preview(
     )
 
 
+@router.get("/invoices/preview-debug")
+def preview_debug(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Debug endpoint — returns raw error from preview generation."""
+    import traceback
+    import os
+    from app.services.pdf_generation_service import _build_preview_context, _get_jinja_env, _TEMPLATE_DIR
+    result = {}
+    result["template_dir"] = _TEMPLATE_DIR
+    result["template_dir_exists"] = os.path.isdir(_TEMPLATE_DIR)
+    try:
+        result["template_files"] = os.listdir(_TEMPLATE_DIR)
+    except Exception as e:
+        result["template_files_error"] = str(e)
+    try:
+        ctx = _build_preview_context(db, current_user.company_id)
+        result["context_keys"] = list(ctx.keys())
+    except Exception as e:
+        result["context_error"] = traceback.format_exc()
+        return result
+    try:
+        env = _get_jinja_env()
+        tpl = env.get_template("professional.html")
+        html = tpl.render(**ctx)
+        result["html_length"] = len(html)
+        result["html_preview"] = html[:200]
+    except Exception as e:
+        result["html_error"] = traceback.format_exc()
+    return result
+
+
 @router.post("/invoices/analyze-existing-template")
 async def analyze_existing_template(
     file: UploadFile,
