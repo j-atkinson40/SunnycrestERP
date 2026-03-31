@@ -274,3 +274,30 @@ OperationsBoardRegistry.register({
     },
   ],
 })
+
+// ─── VAULT PURCHASE MODE CONTRIBUTOR ────────────────────────────────────────
+// Only active when company.vault_fulfillment_mode is 'purchase' or 'hybrid'.
+// The operations-board page pushes "vault_purchase_mode" into activeExtensions
+// when that condition is met — so this contributor behaves like a conditional
+// feature without being a true extension.
+
+OperationsBoardRegistry.register({
+  contributor_key: "vault_replenishment",
+  requires_extension: "vault_purchase_mode",
+  sort_order: 0, // top of board, above all other panels
+  overview_panel: {
+    key: "vault_replenishment",
+    label: "Vault Replenishment",
+    component: "VaultReplenishmentWidget",
+    sort_order: 0,
+  },
+  settings_items: [
+    {
+      key: "zone_vault_replenishment_visible",
+      label: "Vault Replenishment panel",
+      type: "zone_toggle",
+      default_value: true,
+      group: "sections",
+    },
+  ],
+})

@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { MorningBriefingCard } from "@/components/morning-briefing-card"
+import { VaultReplenishmentWidget } from "@/components/dashboard/vault-replenishment-widget"
 import apiClient from "@/lib/api-client"
 
 // Import registry and register all contributors
@@ -106,6 +107,7 @@ const PANEL_COMPONENTS: Record<string, React.ComponentType> = {
   SafetyStatusPanel,
   DriverSchedulePanel,
   WorkOrdersOverviewPanel,
+  VaultReplenishmentWidget,
 }
 
 // ── Production entry type ──
@@ -126,7 +128,7 @@ interface ProductionEntry {
 // ── Component ──
 
 export default function OperationsBoardPage() {
-  const { hasModule } = useAuth()
+  const { hasModule, company } = useAuth()
   const navigate = useNavigate()
   const [settings, setSettings] = useState<OperationsBoardSettings | null>(null)
   const [entries, setEntries] = useState<ProductionEntry[]>([])
@@ -137,6 +139,14 @@ export default function OperationsBoardPage() {
   const activeExtensions: string[] = []
   if (hasModule("work_orders")) activeExtensions.push("work_orders")
   if (hasModule("qc_module_full")) activeExtensions.push("qc_module_full")
+  // Vault purchase mode is a company setting, not a module — push a pseudo-key
+  // so the vault_replenishment contributor is gated correctly.
+  if (
+    company?.vault_fulfillment_mode === "purchase" ||
+    company?.vault_fulfillment_mode === "hybrid"
+  ) {
+    activeExtensions.push("vault_purchase_mode")
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true)

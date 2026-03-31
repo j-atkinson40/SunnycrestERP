@@ -184,7 +184,23 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/data-migration",
         "sort_order": 2,
     },
-    # 2.5 — Import order history (must_complete; essential for smart suggestions)
+    # 3 — Vault fulfillment mode setup
+    {
+        "item_key": "vault_production_setup",
+        "tier": "must_complete",
+        "category": "operations",
+        "title": "How do you stock your vaults?",
+        "description": (
+            "Tell us how you manage your vault inventory so we can "
+            "configure the right workflow for your operations."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/vault-setup",
+        "sort_order": 3,
+        "depends_on": None,
+    },
+    # 3.5 — Import order history (must_complete; essential for smart suggestions)
     {
         "item_key": "import_order_history",
         "tier": "must_complete",
@@ -198,7 +214,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/historical-orders",
-        "sort_order": 3,
+        "sort_order": 4,
         "depends_on": '["data_migration"]',
     },
     # 4. Product catalog — no dependency, accessible immediately after migration

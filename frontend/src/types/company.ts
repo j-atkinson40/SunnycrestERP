@@ -19,6 +19,7 @@ export interface Company {
   vertical: string | null;
   settings_json: string | null;
   npca_certification_status: string | null;
+  vault_fulfillment_mode: string | null;
   created_at: string;
 }
 
