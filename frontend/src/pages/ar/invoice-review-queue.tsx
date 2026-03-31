@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Bot, CheckCircle, ClipboardCheck, RefreshCw } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle, ClipboardCheck, ExternalLink, Mail, FileText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -40,6 +40,8 @@ interface ReviewInvoice {
   delivery_auto_confirmed: boolean;
   delivered_at: string | null;
   delivered_by_driver_name: string | null;
+  deceased_name: string | null;
+  invoice_delivery_preference: string;
   lines: InvoiceLine[];
 }
 
@@ -169,6 +171,29 @@ function InvoiceCard({ invoice, onApprove, approving }: InvoiceCardProps) {
           <span className="tabular-nums">{formatCurrency(invoice.total)}</span>
         </div>
 
+        {/* Deceased name */}
+        {invoice.deceased_name && (
+          <div className="mt-3 mb-1 text-xs text-muted-foreground">
+            <span className="font-semibold uppercase tracking-wide">RE</span>{" "}
+            <span className="font-medium text-foreground">{invoice.deceased_name}</span>
+          </div>
+        )}
+
+        {/* Delivery preference indicator */}
+        <div className="mt-2 mb-0.5">
+          {invoice.invoice_delivery_preference === "statement_only" ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <FileText className="w-3.5 h-3.5" />
+              Statement only — no email on approval
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 font-medium">
+              <Mail className="w-3.5 h-3.5" />
+              Will email invoice on approval
+            </span>
+          )}
+        </div>
+
         <div className="flex gap-2 mt-4">
           <Button
             variant="outline"
@@ -176,6 +201,14 @@ function InvoiceCard({ invoice, onApprove, approving }: InvoiceCardProps) {
             onClick={() => navigate(`/ar/invoices/${invoice.id}`)}
           >
             Edit Invoice
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(`/api/v1/sales/invoices/${invoice.id}/preview?format=pdf`, "_blank")}
+          >
+            <ExternalLink className="w-3.5 h-3.5 mr-1" />
+            Preview PDF
           </Button>
           <Button
             size="sm"

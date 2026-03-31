@@ -556,3 +556,145 @@ def approve_invoices_batch(
     """
     from app.services.draft_invoice_service import approve_all_no_exceptions
     return approve_all_no_exceptions(db, current_user.company_id, current_user.id)
+
+
+# ---------------------------------------------------------------------------
+# Invoice Settings
+# ---------------------------------------------------------------------------
+
+
+@router.get("/invoice-settings")
+def get_invoice_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("ar.create_invoice")),
+):
+    """Return invoice PDF settings for this tenant (with defaults filled in)."""
+    from app.services.invoice_settings_service import get_invoice_settings as _get
+    return _get(db, current_user.company_id)
+
+
+@router.patch("/invoice-settings")
+def update_invoice_settings(
+    updates: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("ar.create_invoice")),
+):
+    """Merge updates into invoice settings."""
+    from app.services.invoice_settings_service import update_invoice_settings as _update
+    return _update(db, current_user.company_id, updates)
+
+
+# ---------------------------------------------------------------------------
+# Invoice Preview / PDF
+# ---------------------------------------------------------------------------
+
+
+@router.get("/invoices/{invoice_id}/preview")
+def preview_invoice(
+    invoice_id: str,
+    format: str = "pdf",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("ar.create_invoice")),
+):
+    """Generate and return invoice as HTML or PDF.
+
+    ?format=html  — Returns rendered HTML (for browser preview).
+    ?format=pdf   — Returns PDF bytes inline (opens in browser PDF viewer).
+    """
+    from fastapi.responses import HTMLResponse, Response
+    from app.services.pdf_generation_service import generate_invoice_pdf, generate_invoice_html
+
+    if format == "html":
+        html = generate_invoice_html(db, invoice_id, current_user.company_id)
+        return HTMLResponse(content=html)
+
+    pdf_bytes = generate_invoice_pdf(db, invoice_id, current_user.company_id)
+    if pdf_bytes is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="PDF generation unavailable — WeasyPrint not installed")
+
+    # Fetch invoice number for filename
+    from app.models.invoice import Invoice
+    inv = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.company_id == current_user.company_id,
+    ).first()
+    filename = f"Invoice-{inv.number}.pdf" if inv else "Invoice.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Manual Invoice Send
+# ---------------------------------------------------------------------------
+
+
+@router.post("/invoices/{invoice_id}/send")
+def send_invoice(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("ar.create_invoice")),
+):
+    """Manually generate PDF and send invoice email regardless of delivery preference."""
+    from app.services.pdf_generation_service import generate_invoice_pdf
+    from app.services.email_service import email_service
+    from app.models.invoice import Invoice
+    from app.models.customer import Customer
+    import logging
+    from datetime import datetime, timezone
+
+    _log = logging.getLogger(__name__)
+
+    inv = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.company_id == current_user.company_id,
+    ).first()
+    if not inv:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    customer = db.query(Customer).filter(Customer.id == inv.customer_id).first()
+    to_email = (customer.billing_email or customer.email) if customer else None
+    if not to_email:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Customer has no email address configured")
+
+    pdf_bytes = generate_invoice_pdf(db, invoice_id, current_user.company_id)
+    if pdf_bytes is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="PDF generation unavailable")
+
+    from app.models.company import Company
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    company_name = company.name if company else "Your supplier"
+
+    result = email_service.send_invoice_email(
+        to_email=to_email,
+        to_name=customer.name if customer else "",
+        company_name=company_name,
+        invoice_number=inv.number,
+        invoice_date=inv.invoice_date.strftime("%B %d, %Y"),
+        due_date=inv.due_date.strftime("%B %d, %Y"),
+        total_amount=f"${inv.total:,.2f}",
+        balance_due=f"${inv.balance_remaining:,.2f}",
+        deceased_name=inv.deceased_name,
+        pdf_attachment=pdf_bytes,
+        reply_to=company.email if company else None,
+    )
+
+    if result.get("success"):
+        now = datetime.now(timezone.utc)
+        inv.sent_at = now
+        inv.sent_to_email = to_email
+        if inv.status == "draft":
+            inv.status = "sent"
+        db.commit()
+        _log.info("Invoice %s manually sent to %s", inv.number, to_email)
+        return {"success": True, "sent_to": to_email}
+
+    return {"success": False, "error": "Email delivery failed"}
+

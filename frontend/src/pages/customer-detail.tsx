@@ -140,6 +140,7 @@ export default function CustomerDetailPage() {
   // Funeral home order preferences
   const [prefersplacer, setPrefersplacer] = useState(false);
   const [preferredConfirmationMethod, setPreferredConfirmationMethod] = useState<string>("");
+  const [invoiceDeliveryPreference, setInvoiceDeliveryPreference] = useState<string>("statement_only");
   const [preferencesSaving, setPreferencesSaving] = useState(false);
 
   // Notes
@@ -232,6 +233,7 @@ export default function CustomerDetailPage() {
       setClassificationReasoning(customer.classification_reasoning ?? null);
       setPrefersplacer(customer.prefers_placer ?? false);
       setPreferredConfirmationMethod(customer.preferred_confirmation_method ?? "");
+      setInvoiceDeliveryPreference(customer.invoice_delivery_preference ?? "statement_only");
 
       setContacts(customer.contacts || []);
       setNotes(customer.recent_notes || []);
@@ -507,6 +509,7 @@ export default function CustomerDetailPage() {
     try {
       await customerService.updateCustomer(customerId, {
         preferred_confirmation_method: preferredConfirmationMethod || null,
+        invoice_delivery_preference: invoiceDeliveryPreference,
       });
       toast.success("Preferences saved");
     } catch (err: unknown) {
@@ -805,6 +808,39 @@ export default function CustomerDetailPage() {
                       className="size-4"
                     />
                     {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Invoice delivery preference */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Invoice delivery</p>
+              <p className="text-xs text-muted-foreground">
+                When should invoices be sent to this funeral home?
+              </p>
+              <div className="space-y-2 mt-2">
+                {[
+                  { value: "statement_only", label: "Statement only", description: "Invoices appear on the monthly statement — no individual emails" },
+                  { value: "invoice_immediately", label: "Email invoice immediately", description: "Send a PDF invoice by email when each order is approved" },
+                  { value: "both", label: "Both", description: "Email the invoice and include it on the monthly statement" },
+                ].map(({ value, label, description }) => (
+                  <label key={value} className="flex items-start gap-2.5 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="invoice_delivery_preference"
+                      value={value}
+                      checked={invoiceDeliveryPreference === value}
+                      onChange={() => setInvoiceDeliveryPreference(value)}
+                      disabled={!canEdit}
+                      className="size-4 mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium">{label}</span>
+                      <span className="block text-xs text-muted-foreground">{description}</span>
+                    </span>
                   </label>
                 ))}
               </div>

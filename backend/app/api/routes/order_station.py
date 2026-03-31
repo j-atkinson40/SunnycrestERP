@@ -309,6 +309,7 @@ def create_quote(
         delivery_charge=data.delivery_charge,
         cemetery_id=data.cemetery_id,
         cemetery_name=data.cemetery_name,
+        deceased_name=data.deceased_name,
     )
     return QuoteResponse(
         id=result["id"],

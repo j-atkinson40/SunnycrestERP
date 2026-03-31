@@ -104,6 +104,7 @@ def create_quote(
     delivery_charge: float | None = None,
     cemetery_id: str | None = None,
     cemetery_name: str | None = None,
+    deceased_name: str | None = None,
 ) -> dict:
     """Create a quote record. Returns the quote with generated quote number."""
     now = datetime.now(timezone.utc)
@@ -170,6 +171,7 @@ def create_quote(
         contact_name=contact_name,
         contact_phone=contact_phone,
         delivery_charge=Decimal(str(delivery_charge)) if delivery_charge else None,
+        deceased_name=deceased_name,
         created_by=user_id,
         created_at=now,
     )
@@ -274,6 +276,7 @@ def convert_quote_to_order(
         notes=quote.notes,
         ship_to_name=quote.contact_name or quote.customer_name,
         ship_to_address=quote.installation_address,
+        deceased_name=getattr(quote, "deceased_name", None),
         created_by=user_id,
         created_at=now,
     )

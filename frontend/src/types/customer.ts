@@ -77,6 +77,7 @@ export interface Customer {
   // Funeral home order preferences
   prefers_placer: boolean;
   preferred_confirmation_method: string | null;
+  invoice_delivery_preference: string;
   is_active: boolean;
   setup_complete: boolean;
   created_at: string;
@@ -111,6 +112,7 @@ export interface CustomerListItem {
   // Funeral home order preferences (r25)
   prefers_placer: boolean;
   preferred_confirmation_method: string | null;
+  invoice_delivery_preference: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +223,7 @@ export interface CustomerUpdate extends Partial<CustomerCreate> {
   // Funeral home order preferences
   prefers_placer?: boolean;
   preferred_confirmation_method?: string | null;
+  invoice_delivery_preference?: string;
 }
 
 export interface PaginatedCustomers {

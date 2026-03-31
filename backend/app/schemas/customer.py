@@ -138,6 +138,7 @@ class CustomerUpdate(BaseModel):
     # Funeral home order preferences
     prefers_placer: bool | None = None
     preferred_confirmation_method: str | None = None
+    invoice_delivery_preference: str | None = None
 
     @field_validator("*", mode="before")
     @classmethod
@@ -190,6 +191,7 @@ class CustomerResponse(BaseModel):
     # Funeral home order preferences
     prefers_placer: bool = False
     preferred_confirmation_method: str | None = None
+    invoice_delivery_preference: str = "statement_only"
     # Meta
     is_active: bool
     setup_complete: bool = True

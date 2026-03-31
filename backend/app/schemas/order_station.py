@@ -55,6 +55,7 @@ class CreateQuoteRequest(BaseModel):
     contact_phone: str | None = None
     notes: str | None = None
     delivery_charge: float | None = None
+    deceased_name: str | None = None
 
 
 class QuoteResponse(BaseModel):

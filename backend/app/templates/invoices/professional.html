@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Invoice {{ invoice_number }}</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0.6in 0.65in 0.6in 0.65in;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 9.5pt;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+
+  /* ── Header band ─────────────────────────────────────── */
+  .header {
+    background: {{ primary_color }};
+    color: #ffffff;
+    padding: 18pt 20pt 14pt;
+    margin-bottom: 18pt;
+  }
+  .header-inner {
+    width: 100%;
+    display: table;
+  }
+  .header-left {
+    display: table-cell;
+    vertical-align: middle;
+    width: 55%;
+  }
+  .header-right {
+    display: table-cell;
+    vertical-align: middle;
+    text-align: right;
+    width: 45%;
+  }
+  .company-logo {
+    max-height: 44pt;
+    max-width: 160pt;
+    display: block;
+    margin-bottom: 6pt;
+  }
+  .company-name {
+    font-size: 14pt;
+    font-weight: bold;
+    letter-spacing: 0.3pt;
+  }
+  .company-contact {
+    font-size: 8pt;
+    opacity: 0.85;
+    margin-top: 3pt;
+    line-height: 1.5;
+  }
+  .invoice-label {
+    font-size: 22pt;
+    font-weight: bold;
+    letter-spacing: 1pt;
+    opacity: 0.95;
+  }
+  .invoice-number {
+    font-size: 10pt;
+    opacity: 0.85;
+    margin-top: 3pt;
+  }
+
+  /* ── Bill-to / Invoice details block ─────────────────── */
+  .meta-section {
+    display: table;
+    width: 100%;
+    margin-bottom: 16pt;
+  }
+  .bill-to {
+    display: table-cell;
+    width: 52%;
+    vertical-align: top;
+    padding-right: 12pt;
+  }
+  .invoice-details {
+    display: table-cell;
+    width: 48%;
+    vertical-align: top;
+  }
+  .section-label {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.8pt;
+    color: #888;
+    margin-bottom: 4pt;
+    font-weight: bold;
+  }
+  .bill-to-name {
+    font-size: 11pt;
+    font-weight: bold;
+    margin-bottom: 2pt;
+  }
+  .bill-to-address {
+    font-size: 8.5pt;
+    color: #444;
+    white-space: pre-line;
+  }
+  .detail-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .detail-table td {
+    padding: 2pt 0;
+    font-size: 8.5pt;
+  }
+  .detail-table td.label {
+    color: #666;
+    width: 38%;
+    padding-right: 6pt;
+  }
+  .detail-table td.value {
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+
+  /* ── RE / Deceased Name callout ──────────────────────── */
+  .re-box {
+    background: #f0f4f8;
+    border-left: 3pt solid {{ primary_color }};
+    padding: 6pt 10pt;
+    margin-bottom: 10pt;
+    font-size: 9pt;
+  }
+  .re-box .re-label {
+    font-weight: bold;
+    color: {{ primary_color }};
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+  }
+  .re-box .re-name {
+    font-size: 10pt;
+    font-weight: bold;
+    margin-top: 1pt;
+  }
+  .re-box .re-sub {
+    font-size: 8pt;
+    color: #555;
+    margin-top: 2pt;
+  }
+
+  /* ── Line items table ────────────────────────────────── */
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14pt;
+    page-break-inside: auto;
+  }
+  .items-table thead tr {
+    background: {{ primary_color }};
+    color: #ffffff;
+  }
+  .items-table thead th {
+    padding: 6pt 8pt;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    font-weight: 600;
+    text-align: left;
+  }
+  .items-table thead th.right { text-align: right; }
+  .items-table tbody tr {
+    page-break-inside: avoid;
+  }
+  .items-table tbody tr:nth-child(even) {
+    background: #f7f8fa;
+  }
+  .items-table tbody td {
+    padding: 5pt 8pt;
+    font-size: 9pt;
+    border-bottom: 0.5pt solid #e8e8e8;
+    vertical-align: top;
+  }
+  .items-table tbody td.right { text-align: right; }
+  .items-table tbody td.zero-price {
+    color: #888;
+    font-style: italic;
+  }
+  .item-note {
+    font-size: 7.5pt;
+    color: #999;
+    display: block;
+    margin-top: 1pt;
+  }
+
+  /* ── Totals ──────────────────────────────────────────── */
+  .totals-wrapper {
+    width: 100%;
+    display: table;
+    margin-bottom: 14pt;
+  }
+  .totals-spacer { display: table-cell; width: 55%; }
+  .totals-block {
+    display: table-cell;
+    width: 45%;
+    vertical-align: top;
+  }
+  .totals-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .totals-table td {
+    padding: 3pt 6pt;
+    font-size: 9pt;
+  }
+  .totals-table td.t-label { color: #555; text-align: left; }
+  .totals-table td.t-value { text-align: right; font-weight: 600; }
+  .totals-table tr.total-row td {
+    border-top: 1.5pt solid {{ primary_color }};
+    font-size: 10.5pt;
+    font-weight: bold;
+    padding-top: 5pt;
+  }
+  .totals-table tr.balance-row td {
+    border-top: 0.5pt solid #ddd;
+    font-size: 11pt;
+    font-weight: bold;
+    color: {{ primary_color }};
+    padding-top: 4pt;
+  }
+
+  /* ── Terms ───────────────────────────────────────────── */
+  .terms-block {
+    border-top: 0.5pt solid #ddd;
+    padding-top: 8pt;
+    margin-bottom: 10pt;
+    font-size: 7.5pt;
+    color: #666;
+    line-height: 1.5;
+  }
+  .terms-block p { margin-bottom: 2pt; }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  .footer {
+    border-top: 0.5pt solid #ccc;
+    padding-top: 6pt;
+    font-size: 7.5pt;
+    color: #888;
+    text-align: center;
+  }
+  .remit-section {
+    margin-bottom: 4pt;
+    text-align: center;
+  }
+
+  /* ── Remittance stub ─────────────────────────────────── */
+  .cut-line {
+    border-top: 1pt dashed #aaa;
+    margin: 18pt 0 12pt;
+    text-align: center;
+    font-size: 7pt;
+    color: #aaa;
+  }
+  .stub {
+    display: table;
+    width: 100%;
+    border: 0.5pt solid #ccc;
+    padding: 8pt 12pt;
+  }
+  .stub-left { display: table-cell; width: 60%; vertical-align: middle; }
+  .stub-right { display: table-cell; width: 40%; text-align: right; vertical-align: middle; }
+  .stub-label { font-size: 7pt; color: #888; text-transform: uppercase; }
+  .stub-value { font-size: 9pt; font-weight: bold; }
+  .stub-amount {
+    font-size: 14pt;
+    font-weight: bold;
+    color: {{ primary_color }};
+  }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────── -->
+<div class="header">
+  <div class="header-inner">
+    <div class="header-left">
+      {% if company_logo_url %}
+        <img src="{{ company_logo_url }}" class="company-logo" alt="{{ company_name }}">
+      {% else %}
+        <div class="company-name">{{ company_name }}</div>
+      {% endif %}
+      <div class="company-contact">
+        {{ company_address | replace('\n', ' &bull; ') | safe }}
+        {% if show_phone and company_phone %} &bull; {{ company_phone }}{% endif %}
+        {% if show_email and company_email %} &bull; {{ company_email }}{% endif %}
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="invoice-label">INVOICE</div>
+      <div class="invoice-number">{{ invoice_number }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── RE / DECEASED NAME ──────────────────────────────── -->
+{% if show_deceased_name and deceased_name %}
+<div class="re-box">
+  <div class="re-label">RE</div>
+  <div class="re-name">{{ deceased_name }}</div>
+  {% if show_cemetery_on_invoice and cemetery_name %}
+  <div class="re-sub">
+    {{ cemetery_name }}{% if show_service_date and service_date %} &mdash; {{ service_date }}{% endif %}
+  </div>
+  {% elif show_service_date and service_date %}
+  <div class="re-sub">Service date: {{ service_date }}</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ── BILL-TO / INVOICE DETAILS ──────────────────────── -->
+<div class="meta-section">
+  <div class="bill-to">
+    <div class="section-label">Bill To</div>
+    <div class="bill-to-name">{{ customer_name }}</div>
+    {% if billing_contact %}<div class="bill-to-address">{{ billing_contact }}</div>{% endif %}
+    <div class="bill-to-address">{{ billing_address }}</div>
+  </div>
+  <div class="invoice-details">
+    <div class="section-label">Invoice Details</div>
+    <table class="detail-table">
+      <tr>
+        <td class="label">Invoice #</td>
+        <td class="value">{{ invoice_number }}</td>
+      </tr>
+      <tr>
+        <td class="label">Date</td>
+        <td class="value">{{ invoice_date }}</td>
+      </tr>
+      <tr>
+        <td class="label">Due Date</td>
+        <td class="value">{{ due_date }}</td>
+      </tr>
+      {% if show_payment_terms and payment_terms %}
+      <tr>
+        <td class="label">Terms</td>
+        <td class="value">{{ payment_terms }}</td>
+      </tr>
+      {% endif %}
+      {% if show_order_number and order_number %}
+      <tr>
+        <td class="label">Order #</td>
+        <td class="value">{{ order_number }}</td>
+      </tr>
+      {% endif %}
+      {% if show_cemetery_on_invoice and cemetery_name and not show_deceased_name %}
+      <tr>
+        <td class="label">Cemetery</td>
+        <td class="value">{{ cemetery_name }}</td>
+      </tr>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+<!-- ── LINE ITEMS ──────────────────────────────────────── -->
+<table class="items-table">
+  <thead>
+    <tr>
+      <th style="width:50%">Description</th>
+      <th style="width:12%" class="right">Qty</th>
+      <th style="width:19%" class="right">Unit Price</th>
+      <th style="width:19%" class="right">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in line_items %}
+    <tr>
+      <td>{{ line.description }}
+        {% if line.is_placer %}<span class="item-note">Vault placement service</span>{% endif %}
+      </td>
+      <td class="right">{{ line.quantity }}</td>
+      <td class="right {% if line.is_zero_price %}zero-price{% endif %}">{{ line.unit_price }}</td>
+      <td class="right {% if line.is_zero_price %}zero-price{% endif %}">{{ line.line_total }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ── TOTALS ──────────────────────────────────────────── -->
+<div class="totals-wrapper">
+  <div class="totals-spacer"></div>
+  <div class="totals-block">
+    <table class="totals-table">
+      <tr>
+        <td class="t-label">Subtotal</td>
+        <td class="t-value">{{ subtotal }}</td>
+      </tr>
+      {% if has_tax %}
+      <tr>
+        <td class="t-label">Tax{% if tax_rate %} ({{ "%.2f"|format(tax_rate) }}%){% endif %}</td>
+        <td class="t-value">{{ tax_amount }}</td>
+      </tr>
+      {% endif %}
+      <tr class="total-row">
+        <td class="t-label">Invoice Total</td>
+        <td class="t-value">{{ total }}</td>
+      </tr>
+      {% if has_payments %}
+      <tr>
+        <td class="t-label">Amount Paid</td>
+        <td class="t-value">{{ amount_paid }}</td>
+      </tr>
+      {% endif %}
+      <tr class="balance-row">
+        <td class="t-label">Balance Due</td>
+        <td class="t-value">{{ balance_due }}</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ── TERMS ───────────────────────────────────────────── -->
+{% if show_payment_terms or show_early_payment_discount or show_finance_charge_notice %}
+<div class="terms-block">
+  {% if show_payment_terms %}<p><strong>Payment Terms:</strong> {{ payment_terms_text }}</p>{% endif %}
+  {% if show_early_payment_discount %}<p><strong>Early Payment Discount:</strong> {{ early_payment_text }}</p>{% endif %}
+  {% if show_finance_charge_notice %}<p><strong>Finance Charges:</strong> {{ finance_charge_text }}</p>{% endif %}
+  {% if custom_footer_text %}<p>{{ custom_footer_text }}</p>{% endif %}
+</div>
+{% endif %}
+
+<!-- ── FOOTER ──────────────────────────────────────────── -->
+<div class="footer">
+  {% if remit_to_name %}
+  <div class="remit-section">
+    Please make checks payable to <strong>{{ remit_to_name }}</strong>
+    {% if remit_to_address %}&nbsp;&bull;&nbsp;{{ remit_to_address | replace('\n', ' ') }}{% endif %}
+  </div>
+  {% endif %}
+  <div>{{ company_name }} &mdash; Thank you for your business.</div>
+</div>
+
+<!-- ── REMITTANCE STUB ─────────────────────────────────── -->
+{% if show_remittance_stub %}
+<div class="cut-line">&#9988; Cut here and return with payment</div>
+<div class="stub">
+  <div class="stub-left">
+    <div class="stub-label">Invoice #</div>
+    <div class="stub-value">{{ invoice_number }}</div>
+    <div style="margin-top:4pt">
+      <div class="stub-label">Bill To</div>
+      <div class="stub-value">{{ customer_name }}</div>
+    </div>
+    {% if show_deceased_name and deceased_name %}
+    <div style="margin-top:4pt">
+      <div class="stub-label">RE</div>
+      <div class="stub-value">{{ deceased_name }}</div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="stub-right">
+    <div class="stub-label">Amount Due</div>
+    <div class="stub-amount">{{ balance_due }}</div>
+    <div style="margin-top:4pt">
+      <div class="stub-label">Due Date</div>
+      <div class="stub-value">{{ due_date }}</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+</body>
+</html>

@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { salesService } from "@/services/sales-service";
 import { getApiErrorMessage } from "@/lib/api-error";
+import apiClient from "@/lib/api-client";
 import type { Invoice } from "@/types/sales";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { ExternalLink, Send } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,6 +114,21 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  async function handleSendInvoice() {
+    if (!id) return;
+    try {
+      await apiClient.post(`/sales/invoices/${id}/send`);
+      toast.success("Invoice emailed successfully");
+      loadInvoice();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to send invoice"));
+    }
+  }
+
+  function handlePreviewPdf() {
+    window.open(`/api/v1/sales/invoices/${id}/preview?format=pdf`, "_blank");
+  }
+
   async function handleVoid() {
     if (!id) return;
     if (!window.confirm("Void this invoice? This cannot be undone.")) return;
@@ -164,6 +181,14 @@ export default function InvoiceDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handlePreviewPdf}>
+            <ExternalLink className="w-4 h-4 mr-1.5" />
+            Preview PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleSendInvoice}>
+            <Send className="w-4 h-4 mr-1.5" />
+            Send Invoice
+          </Button>
           {invoice.status === "draft" && (
             <Button variant="outline" onClick={handleMarkSent}>
               Mark as Sent
@@ -176,6 +201,21 @@ export default function InvoiceDetailPage() {
           )}
         </div>
       </div>
+
+      {/* RE — deceased name callout */}
+      {invoice.deceased_name && (
+        <div className="rounded-md border-l-4 border-primary bg-muted/40 px-4 py-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">RE</p>
+          <p className="font-semibold text-base">{invoice.deceased_name}</p>
+        </div>
+      )}
+
+      {/* Sent status */}
+      {invoice.sent_at && (
+        <div className="text-sm text-muted-foreground">
+          Emailed to <span className="font-medium">{invoice.sent_to_email}</span> on {new Date(invoice.sent_at).toLocaleDateString()}
+        </div>
+      )}
 
       {/* Invoice info */}
       <Card className="p-6">

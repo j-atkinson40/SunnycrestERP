@@ -311,6 +311,63 @@ class EmailService:
             reply_to=settings.SUPPORT_EMAIL,
         )
 
+    def send_invoice_email(
+        self,
+        to_email: str,
+        to_name: str,
+        company_name: str,
+        invoice_number: str,
+        invoice_date: str,
+        due_date: str,
+        total_amount: str,
+        balance_due: str,
+        pdf_attachment: bytes,
+        deceased_name: str | None = None,
+        reply_to: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a PDF invoice email to a funeral home customer."""
+        if deceased_name:
+            subject = f"Invoice {invoice_number} \u2014 RE: {deceased_name} \u2014 {company_name}"
+        else:
+            subject = f"Invoice {invoice_number} \u2014 {company_name}"
+
+        re_line = f"<p><strong>RE:</strong> {deceased_name}</p>" if deceased_name else ""
+        body_content = f"""
+          <p>Dear {to_name},</p>
+          <p><strong>{company_name}</strong> has sent you an invoice.</p>
+          <div class="highlight-box">
+            <p><strong>Invoice number:</strong> {invoice_number}</p>
+            <p><strong>Invoice date:</strong> {invoice_date}</p>
+            <p><strong>Due date:</strong> {due_date}</p>
+            {re_line}
+            <p style="margin-top:8px;font-size:16px;font-weight:700;">Amount due: {balance_due}</p>
+          </div>
+          <p>Please find your invoice attached to this email.</p>
+          <p>If you have any questions about this invoice, please contact {company_name} directly.</p>
+        """
+        html = _wrap_html(
+            subject=subject,
+            header_sub=f"Invoice from {company_name}",
+            body_content=body_content,
+            footer_text=f"This invoice was sent on behalf of {company_name} via Bridgeable.",
+        )
+
+        import base64
+        attachments = [{
+            "filename": f"Invoice-{invoice_number}.pdf",
+            "content": base64.b64encode(pdf_attachment).decode(),
+            "content_type": "application/pdf",
+        }]
+
+        return self.send_email(
+            to=to_email,
+            subject=subject,
+            html_body=html,
+            from_name=f"{company_name} via Bridgeable",
+            reply_to=reply_to,
+            attachments=attachments,
+        )
+
     def send_agent_alert_digest(
         self,
         email: str,

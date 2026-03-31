@@ -510,6 +510,7 @@ def create_invoice_from_order(
         tax_amount=order.tax_amount,
         total=order.total,
         notes=order.notes,
+        deceased_name=order.deceased_name,
         created_by=user_id,
     )
     db.add(invoice)

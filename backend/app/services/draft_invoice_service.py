@@ -32,6 +32,55 @@ from app.models.sales_order import SalesOrder
 
 logger = logging.getLogger(__name__)
 
+
+def _try_send_invoice_email(db: Session, inv: Invoice) -> None:
+    """Attempt to generate PDF and send invoice email. Logs errors but never raises."""
+    try:
+        from app.services.pdf_generation_service import generate_invoice_pdf
+        from app.services.email_service import email_service
+        from app.models.company import Company
+        from datetime import datetime, timezone
+
+        customer = inv.customer
+        to_email = (customer.billing_email or customer.email) if customer else None
+        if not to_email:
+            logger.warning("Invoice %s: no email on customer — skipping email delivery", inv.number)
+            return
+
+        company = db.query(Company).filter(Company.id == inv.company_id).first()
+        company_name = company.name if company else "Your supplier"
+
+        pdf_bytes = generate_invoice_pdf(db, inv.id, inv.company_id)
+        if pdf_bytes is None:
+            logger.warning("Invoice %s: PDF generation unavailable — email not sent", inv.number)
+            return
+
+        result = email_service.send_invoice_email(
+            to_email=to_email,
+            to_name=customer.name if customer else "",
+            company_name=company_name,
+            invoice_number=inv.number,
+            invoice_date=inv.invoice_date.strftime("%B %d, %Y") if inv.invoice_date else "",
+            due_date=inv.due_date.strftime("%B %d, %Y") if inv.due_date else "",
+            total_amount=f"${inv.total:,.2f}",
+            balance_due=f"${inv.balance_remaining:,.2f}",
+            deceased_name=inv.deceased_name,
+            pdf_attachment=pdf_bytes,
+            reply_to=company.email if company else None,
+        )
+
+        if result.get("success"):
+            now = datetime.now(timezone.utc)
+            inv.sent_at = now
+            inv.sent_to_email = to_email
+            db.commit()
+            logger.info("Invoice %s emailed to %s", inv.number, to_email)
+        else:
+            logger.error("Invoice %s email delivery failed", inv.number)
+    except Exception as exc:
+        logger.error("Invoice %s email send error: %s", getattr(inv, "number", "?"), exc)
+
+
 # Statuses that count as driver-confirmed delivery
 DRIVER_CONFIRMED_STATUSES = {"completed", "shipped", "delivered"}
 
@@ -430,6 +479,8 @@ def get_review_queue(db: Session, company_id: str) -> list[dict]:
             "delivery_auto_confirmed": order.delivery_auto_confirmed if order else False,
             "delivered_at": order.delivered_at.isoformat() if (order and order.delivered_at) else None,
             "delivered_by_driver_name": order.delivered_by_driver_name if order else None,
+            "deceased_name": inv.deceased_name,
+            "invoice_delivery_preference": getattr(inv.customer, "invoice_delivery_preference", "statement_only") if inv.customer else "statement_only",
             "lines": [
                 {
                     "id": ln.id,
@@ -470,7 +521,6 @@ def approve_invoice(
         )
 
     now = datetime.now(timezone.utc)
-    inv.status = "sent"
     inv.requires_review = False
     inv.reviewed_by = user_id
     inv.reviewed_at = now
@@ -482,10 +532,24 @@ def approve_invoice(
     if inv.customer:
         inv.customer.current_balance = (inv.customer.current_balance or Decimal("0")) + inv.total
 
+    # Determine delivery preference and whether to email
+    customer = inv.customer
+    delivery_pref = getattr(customer, "invoice_delivery_preference", "statement_only") if customer else "statement_only"
+    should_email = delivery_pref in ("invoice_immediately", "both")
+
+    if should_email:
+        inv.status = "sent"
+    else:
+        inv.status = "open"
+
     db.commit()
     db.refresh(inv)
 
-    logger.info("Invoice %s approved by user %s", inv.number, user_id)
+    # Send email after commit so invoice is fully persisted
+    if should_email:
+        _try_send_invoice_email(db, inv)
+
+    logger.info("Invoice %s approved by user %s (delivery=%s)", inv.number, user_id, delivery_pref)
     return inv
 
 
@@ -513,8 +577,9 @@ def approve_all_no_exceptions(
     approved_count = 0
     total_amount = Decimal("0")
 
+    to_email_after: list[Invoice] = []
+
     for inv in pending:
-        inv.status = "sent"
         inv.requires_review = False
         inv.reviewed_by = user_id
         inv.reviewed_at = now
@@ -525,10 +590,19 @@ def approve_all_no_exceptions(
             inv.customer.current_balance = (
                 inv.customer.current_balance or Decimal("0")
             ) + inv.total
+        delivery_pref = getattr(inv.customer, "invoice_delivery_preference", "statement_only") if inv.customer else "statement_only"
+        if delivery_pref in ("invoice_immediately", "both"):
+            inv.status = "sent"
+            to_email_after.append(inv)
+        else:
+            inv.status = "open"
         approved_count += 1
         total_amount += inv.total
 
     db.commit()
+
+    for inv in to_email_after:
+        _try_send_invoice_email(db, inv)
 
     logger.info(
         "Bulk approved %d invoices ($%.2f) for tenant %s by user %s",

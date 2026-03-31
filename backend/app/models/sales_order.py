@@ -96,6 +96,9 @@ class SalesOrder(Base):
     # Funeral home confirmation method (defaults from customer preference, can be overridden)
     confirmation_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # Deceased name — shown on invoice/PDF when invoice settings enable it
+    deceased_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     # Spring burial
     is_spring_burial: Mapped[bool] = mapped_column(Boolean, default=False)
     spring_burial_added_at: Mapped[datetime | None] = mapped_column(

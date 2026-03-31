@@ -65,6 +65,14 @@ class Invoice(Base):
     )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Deceased name — copied from order at invoice creation, shown on PDF
+    deceased_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # Email delivery tracking
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_to_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     sage_invoice_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )

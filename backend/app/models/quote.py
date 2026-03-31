@@ -94,6 +94,10 @@ class Quote(Base):
     )
     contact_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Deceased name — carried through to order and invoice
+    deceased_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     delivery_charge: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True
     )

@@ -280,6 +280,18 @@ def backfill_default_modules():
 
 
 @app.on_event("startup")
+def check_weasyprint():
+    """Log WeasyPrint availability — PDF generation degrades gracefully if absent."""
+    import logging
+    _log = logging.getLogger(__name__)
+    try:
+        from weasyprint import HTML  # noqa: F401
+        _log.info("WeasyPrint available — PDF generation enabled")
+    except ImportError:
+        _log.warning("WeasyPrint not available — PDF generation will be disabled")
+
+
+@app.on_event("startup")
 def start_job_scheduler():
     """Start the APScheduler background scheduler for all agent jobs."""
     try:

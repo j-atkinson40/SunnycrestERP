@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Invoice {{ invoice_number }}</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 9.5pt;
+    color: #1a1a1a;
+    line-height: 1.45;
+  }
+
+  /* ── Hero block ──────────────────────────────────────── */
+  .hero {
+    background: {{ primary_color }};
+    padding: 28pt 36pt 22pt;
+    color: #fff;
+    position: relative;
+  }
+  .hero-inner {
+    display: table;
+    width: 100%;
+  }
+  .hero-left {
+    display: table-cell;
+    vertical-align: bottom;
+    width: 60%;
+  }
+  .hero-right {
+    display: table-cell;
+    vertical-align: bottom;
+    text-align: right;
+    width: 40%;
+  }
+  .company-logo {
+    max-height: 40pt;
+    max-width: 150pt;
+    display: block;
+    margin-bottom: 8pt;
+    filter: brightness(0) invert(1);
+  }
+  .company-name-hero {
+    font-size: 15pt;
+    font-weight: bold;
+    letter-spacing: 0.3pt;
+  }
+  .company-sub {
+    font-size: 8pt;
+    opacity: 0.75;
+    margin-top: 3pt;
+    line-height: 1.5;
+  }
+  .invoice-word-hero {
+    font-size: 11pt;
+    font-weight: 300;
+    text-transform: uppercase;
+    letter-spacing: 2pt;
+    opacity: 0.8;
+  }
+  .invoice-num-hero {
+    font-size: 20pt;
+    font-weight: bold;
+    letter-spacing: 0.5pt;
+    margin-top: 2pt;
+  }
+
+  /* ── Accent strip ────────────────────────────────────── */
+  .accent-strip {
+    background: {{ secondary_color }};
+    height: 4pt;
+  }
+
+  /* ── Content area ────────────────────────────────────── */
+  .content {
+    padding: 22pt 36pt 20pt;
+  }
+
+  /* ── Cards row (bill-to + invoice details) ───────────── */
+  .cards-row {
+    display: table;
+    width: 100%;
+    margin-bottom: 18pt;
+  }
+  .card {
+    display: table-cell;
+    vertical-align: top;
+    width: 47%;
+    padding: 10pt 12pt;
+    border: 0.5pt solid #e0e0e0;
+    border-radius: 2pt;
+  }
+  .card-gap { display: table-cell; width: 6%; }
+  .card-label {
+    font-size: 7pt;
+    text-transform: uppercase;
+    letter-spacing: 1pt;
+    color: {{ secondary_color }};
+    font-weight: bold;
+    margin-bottom: 5pt;
+  }
+  .card-name {
+    font-size: 10.5pt;
+    font-weight: bold;
+    margin-bottom: 2pt;
+  }
+  .card-sub {
+    font-size: 8.5pt;
+    color: #555;
+    white-space: pre-line;
+  }
+  .detail-line {
+    display: table;
+    width: 100%;
+    margin-bottom: 2.5pt;
+  }
+  .dl-key {
+    display: table-cell;
+    font-size: 8pt;
+    color: #999;
+    width: 42%;
+  }
+  .dl-val {
+    display: table-cell;
+    font-size: 8.5pt;
+    font-weight: 600;
+    width: 58%;
+  }
+
+  /* ── Deceased pill/badge ─────────────────────────────── */
+  .re-badge {
+    display: inline-block;
+    background: {{ primary_color }};
+    color: #fff;
+    border-radius: 20pt;
+    padding: 3pt 10pt;
+    font-size: 8pt;
+    font-weight: bold;
+    letter-spacing: 0.3pt;
+    margin-bottom: 4pt;
+  }
+  .re-block {
+    margin-bottom: 14pt;
+    padding: 8pt 12pt;
+    background: #f5f7fb;
+    border-radius: 2pt;
+  }
+  .re-name-lg {
+    font-size: 11pt;
+    font-weight: bold;
+    margin-top: 4pt;
+  }
+  .re-sub-text {
+    font-size: 8.5pt;
+    color: #666;
+    margin-top: 2pt;
+  }
+
+  /* ── Line items ──────────────────────────────────────── */
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 16pt;
+    page-break-inside: auto;
+  }
+  .items-table thead tr {
+    background: #f0f0f0;
+    border-bottom: 1pt solid #ddd;
+  }
+  .items-table thead th {
+    padding: 5pt 8pt;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.6pt;
+    color: #555;
+    font-weight: bold;
+    text-align: left;
+  }
+  .items-table thead th.right { text-align: right; }
+  .items-table tbody tr {
+    border-bottom: 0.5pt solid #ececec;
+    page-break-inside: avoid;
+  }
+  .items-table tbody td {
+    padding: 6pt 8pt;
+    font-size: 9pt;
+    vertical-align: top;
+  }
+  .items-table tbody td.right { text-align: right; }
+  .items-table tbody td.zero { color: #aaa; font-style: italic; }
+  .item-note {
+    font-size: 7.5pt;
+    color: #bbb;
+    display: block;
+    margin-top: 1pt;
+  }
+
+  /* ── Totals ──────────────────────────────────────────── */
+  .totals-area {
+    display: table;
+    width: 100%;
+    margin-bottom: 18pt;
+  }
+  .totals-gap { display: table-cell; width: 52%; }
+  .totals-col {
+    display: table-cell;
+    width: 48%;
+    vertical-align: top;
+    padding: 10pt 12pt;
+    background: #f8f9fb;
+    border-radius: 2pt;
+  }
+  .t-row {
+    display: table;
+    width: 100%;
+    margin-bottom: 3pt;
+  }
+  .t-lbl {
+    display: table-cell;
+    font-size: 8.5pt;
+    color: #666;
+    width: 55%;
+  }
+  .t-val {
+    display: table-cell;
+    font-size: 9pt;
+    font-weight: 600;
+    text-align: right;
+    width: 45%;
+  }
+  .total-divider {
+    border-top: 1pt solid #ddd;
+    margin: 6pt 0;
+  }
+  .balance-amt {
+    font-size: 16pt;
+    font-weight: bold;
+    color: {{ primary_color }};
+    text-align: right;
+    margin-top: 4pt;
+  }
+  .balance-lbl {
+    font-size: 8pt;
+    color: #999;
+    text-align: right;
+    margin-bottom: 2pt;
+  }
+
+  /* ── Terms ───────────────────────────────────────────── */
+  .terms {
+    font-size: 7.5pt;
+    color: #888;
+    line-height: 1.55;
+    margin-bottom: 12pt;
+  }
+  .terms p { margin-bottom: 2pt; }
+
+  /* ── Footer band ─────────────────────────────────────── */
+  .footer-band {
+    background: #f5f5f5;
+    padding: 8pt 36pt;
+    font-size: 7.5pt;
+    color: #aaa;
+    text-align: center;
+  }
+
+  /* ── Remittance stub ─────────────────────────────────── */
+  .cut-line {
+    border-top: 1pt dashed #ccc;
+    margin: 16pt 36pt 10pt;
+    text-align: center;
+    font-size: 7pt;
+    color: #ccc;
+  }
+  .stub {
+    margin: 0 36pt;
+    display: table;
+    width: calc(100% - 72pt);
+    border: 0.5pt solid #ddd;
+    padding: 8pt 14pt;
+  }
+  .stub-l { display: table-cell; width: 60%; vertical-align: middle; }
+  .stub-r { display: table-cell; width: 40%; text-align: right; vertical-align: middle; }
+  .slbl { font-size: 7pt; color: #bbb; text-transform: uppercase; }
+  .sval { font-size: 9pt; font-weight: bold; }
+  .samt { font-size: 15pt; font-weight: bold; color: {{ primary_color }}; }
+</style>
+</head>
+<body>
+
+<!-- ── HERO ────────────────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-inner">
+    <div class="hero-left">
+      {% if company_logo_url %}
+        <img src="{{ company_logo_url }}" class="company-logo" alt="{{ company_name }}">
+      {% else %}
+        <div class="company-name-hero">{{ company_name }}</div>
+      {% endif %}
+      <div class="company-sub">
+        {{ company_address | replace('\n', ' &bull; ') | safe }}
+        {% if show_phone and company_phone %}&bull; {{ company_phone }}{% endif %}
+        {% if show_email and company_email %}&bull; {{ company_email }}{% endif %}
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="invoice-word-hero">Invoice</div>
+      <div class="invoice-num-hero">{{ invoice_number }}</div>
+    </div>
+  </div>
+</div>
+<div class="accent-strip"></div>
+
+<!-- ── CONTENT ─────────────────────────────────────────── -->
+<div class="content">
+
+  <!-- ── RE / Deceased ─────────────────────────────────── -->
+  {% if show_deceased_name and deceased_name %}
+  <div class="re-block">
+    <div class="re-badge">RE</div>
+    <div class="re-name-lg">{{ deceased_name }}</div>
+    {% if show_cemetery_on_invoice and cemetery_name %}
+    <div class="re-sub-text">{{ cemetery_name }}{% if show_service_date and service_date %} &mdash; {{ service_date }}{% endif %}</div>
+    {% elif show_service_date and service_date %}
+    <div class="re-sub-text">Service date: {{ service_date }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ── Cards row ─────────────────────────────────────── -->
+  <div class="cards-row">
+    <div class="card">
+      <div class="card-label">Bill To</div>
+      <div class="card-name">{{ customer_name }}</div>
+      {% if billing_contact %}<div class="card-sub">{{ billing_contact }}</div>{% endif %}
+      <div class="card-sub">{{ billing_address }}</div>
+    </div>
+    <div class="card-gap"></div>
+    <div class="card">
+      <div class="card-label">Invoice Details</div>
+      <div class="detail-line">
+        <div class="dl-key">Invoice #</div>
+        <div class="dl-val">{{ invoice_number }}</div>
+      </div>
+      <div class="detail-line">
+        <div class="dl-key">Date</div>
+        <div class="dl-val">{{ invoice_date }}</div>
+      </div>
+      <div class="detail-line">
+        <div class="dl-key">Due</div>
+        <div class="dl-val">{{ due_date }}</div>
+      </div>
+      {% if show_payment_terms and payment_terms %}
+      <div class="detail-line">
+        <div class="dl-key">Terms</div>
+        <div class="dl-val">{{ payment_terms }}</div>
+      </div>
+      {% endif %}
+      {% if show_order_number and order_number %}
+      <div class="detail-line">
+        <div class="dl-key">Order #</div>
+        <div class="dl-val">{{ order_number }}</div>
+      </div>
+      {% endif %}
+      {% if show_cemetery_on_invoice and cemetery_name and not show_deceased_name %}
+      <div class="detail-line">
+        <div class="dl-key">Cemetery</div>
+        <div class="dl-val">{{ cemetery_name }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Line items ────────────────────────────────────── -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th style="width:50%">Description</th>
+        <th class="right" style="width:12%">Qty</th>
+        <th class="right" style="width:19%">Unit Price</th>
+        <th class="right" style="width:19%">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in line_items %}
+      <tr>
+        <td>{{ line.description }}
+          {% if line.is_placer %}<span class="item-note">Vault placement service</span>{% endif %}
+        </td>
+        <td class="right">{{ line.quantity }}</td>
+        <td class="right {% if line.is_zero_price %}zero{% endif %}">{{ line.unit_price }}</td>
+        <td class="right {% if line.is_zero_price %}zero{% endif %}">{{ line.line_total }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- ── Totals ────────────────────────────────────────── -->
+  <div class="totals-area">
+    <div class="totals-gap"></div>
+    <div class="totals-col">
+      <div class="t-row">
+        <div class="t-lbl">Subtotal</div>
+        <div class="t-val">{{ subtotal }}</div>
+      </div>
+      {% if has_tax %}
+      <div class="t-row">
+        <div class="t-lbl">Tax{% if tax_rate %} ({{ "%.2f"|format(tax_rate) }}%){% endif %}</div>
+        <div class="t-val">{{ tax_amount }}</div>
+      </div>
+      {% endif %}
+      <div class="t-row">
+        <div class="t-lbl">Invoice Total</div>
+        <div class="t-val">{{ total }}</div>
+      </div>
+      {% if has_payments %}
+      <div class="t-row">
+        <div class="t-lbl">Amount Paid</div>
+        <div class="t-val">{{ amount_paid }}</div>
+      </div>
+      {% endif %}
+      <div class="total-divider"></div>
+      <div class="balance-lbl">Balance Due</div>
+      <div class="balance-amt">{{ balance_due }}</div>
+    </div>
+  </div>
+
+  <!-- ── Terms ─────────────────────────────────────────── -->
+  {% if show_payment_terms or show_early_payment_discount or show_finance_charge_notice %}
+  <div class="terms">
+    {% if show_payment_terms %}<p>{{ payment_terms_text }}</p>{% endif %}
+    {% if show_early_payment_discount %}<p>{{ early_payment_text }}</p>{% endif %}
+    {% if show_finance_charge_notice %}<p>{{ finance_charge_text }}</p>{% endif %}
+    {% if custom_footer_text %}<p>{{ custom_footer_text }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+</div><!-- /content -->
+
+<!-- ── FOOTER BAND ──────────────────────────────────────── -->
+<div class="footer-band">
+  {% if remit_to_name %}Remit to: <strong>{{ remit_to_name }}</strong>{% if remit_to_address %} &mdash; {{ remit_to_address | replace('\n', ' ') }}{% endif %} &nbsp;&bull;&nbsp; {% endif %}{{ company_name }} &mdash; Thank you for your business.
+</div>
+
+<!-- ── REMITTANCE STUB ─────────────────────────────────── -->
+{% if show_remittance_stub %}
+<div class="cut-line">&#9988; Cut here and return with payment</div>
+<div class="stub">
+  <div class="stub-l">
+    <div class="slbl">Invoice #</div><div class="sval">{{ invoice_number }}</div>
+    <div style="margin-top:5pt"><div class="slbl">Bill To</div><div class="sval">{{ customer_name }}</div></div>
+    {% if show_deceased_name and deceased_name %}
+    <div style="margin-top:5pt"><div class="slbl">RE</div><div class="sval">{{ deceased_name }}</div></div>
+    {% endif %}
+  </div>
+  <div class="stub-r">
+    <div class="slbl">Amount Due</div><div class="samt">{{ balance_due }}</div>
+    <div style="margin-top:5pt"><div class="slbl">Due Date</div><div class="sval">{{ due_date }}</div></div>
+  </div>
+</div>
+{% endif %}
+
+</body>
+</html>

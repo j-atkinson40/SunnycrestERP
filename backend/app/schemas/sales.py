@@ -132,6 +132,7 @@ class SalesOrderCreate(BaseModel):
     ship_to_name: str | None = None
     ship_to_address: str | None = None
     notes: str | None = None
+    deceased_name: str | None = None
     lines: list[SalesOrderLineCreate] = []
 
 
@@ -140,6 +141,7 @@ class SalesOrderUpdate(BaseModel):
     required_date: datetime | None = None
     shipped_date: datetime | None = None
     notes: str | None = None
+    deceased_name: str | None = None
 
 
 class SalesOrderResponse(BaseModel):
@@ -161,6 +163,7 @@ class SalesOrderResponse(BaseModel):
     ship_to_name: str | None = None
     ship_to_address: str | None = None
     notes: str | None = None
+    deceased_name: str | None = None
     created_by: str | None = None
     created_by_name: str | None = None
     created_at: datetime
@@ -219,6 +222,7 @@ class InvoiceCreate(BaseModel):
     payment_terms: str | None = None
     tax_rate: Decimal = Decimal("0.00")
     notes: str | None = None
+    deceased_name: str | None = None
     lines: list[InvoiceLineCreate] = []
 
 
@@ -245,6 +249,9 @@ class InvoiceResponse(BaseModel):
     amount_paid: Decimal
     balance_remaining: Decimal
     notes: str | None = None
+    deceased_name: str | None = None
+    sent_at: datetime | None = None
+    sent_to_email: str | None = None
     created_by: str | None = None
     created_by_name: str | None = None
     created_at: datetime

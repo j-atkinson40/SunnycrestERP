@@ -152,6 +152,9 @@ class Customer(Base):
     preferred_confirmation_method: Mapped[str | None] = mapped_column(
         String(20), nullable=True
     )  # 'phone', 'email', 'text', 'any', or None
+    invoice_delivery_preference: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="statement_only", server_default="statement_only"
+    )  # 'statement_only' | 'invoice_immediately' | 'both'
 
     # --- Quick-create tracking ---
     setup_complete: Mapped[bool] = mapped_column(

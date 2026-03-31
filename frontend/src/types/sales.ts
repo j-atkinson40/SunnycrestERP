@@ -203,6 +203,9 @@ export interface Invoice {
   amount_paid: string;
   balance_remaining: string;
   notes: string | null;
+  deceased_name: string | null;
+  sent_at: string | null;
+  sent_to_email: string | null;
   created_by: string | null;
   created_by_name: string | null;
   created_at: string;

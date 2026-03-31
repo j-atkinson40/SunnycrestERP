@@ -563,11 +563,11 @@ MANUFACTURING_CHECKLIST_ITEMS = [
     },
     {
         "item_key": "customize_invoice_template",
-        "tier": "optional",
+        "tier": "must_complete",
         "category": "data_setup",
-        "title": "Customize your invoice",
+        "title": "Set up your invoice template",
         "description": (
-            "Add your logo and adjust the layout of invoices sent to customers."
+            "Choose your invoice style and configure what information appears on invoices sent to funeral homes."
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
@@ -1219,6 +1219,19 @@ def fix_checklist_targets(db: Session) -> None:
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "configure_cross_tenant",
     ).update({"sort_order": 13})
+
+    # Promote customize_invoice_template to must_complete with updated copy
+    db.query(OnboardingChecklistItem).filter(
+        OnboardingChecklistItem.item_key == "customize_invoice_template",
+        OnboardingChecklistItem.tier != "must_complete",
+    ).update({
+        "tier": "must_complete",
+        "title": "Set up your invoice template",
+        "description": (
+            "Choose your invoice style and configure what information appears "
+            "on invoices sent to funeral homes."
+        ),
+    })
 
     # --- Backfill missing checklist items for existing tenants ---
     # Get all existing checklists grouped by preset
