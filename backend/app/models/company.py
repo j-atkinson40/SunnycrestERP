@@ -34,6 +34,7 @@ class Company(Base):
     # Contact
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Configuration
     timezone: Mapped[str | None] = mapped_column(

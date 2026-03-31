@@ -562,17 +562,18 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "sort_order": 203,
     },
     {
-        "item_key": "customize_invoice_template",
+        "item_key": "company_branding",
         "tier": "must_complete",
         "category": "data_setup",
-        "title": "Set up your invoice template",
+        "title": "Set up your brand and invoice template",
         "description": (
-            "Choose your invoice style and configure what information appears on invoices sent to funeral homes."
+            "Add your logo, choose your invoice style, and configure what appears "
+            "on invoices sent to funeral homes."
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
-        "action_target": "/admin/settings",
-        "sort_order": 204,
+        "action_target": "/onboarding/branding",
+        "sort_order": 2,
     },
     {
         "item_key": "complete_urn_catalog",
@@ -731,17 +732,18 @@ FUNERAL_HOME_CHECKLIST_ITEMS = [
         "sort_order": 10,
     },
     {
-        "item_key": "customize_invoice_template",
-        "tier": "optional",
+        "item_key": "company_branding",
+        "tier": "must_complete",
         "category": "data_setup",
-        "title": "Customize your invoice",
+        "title": "Set up your brand and invoice template",
         "description": (
-            "Add your logo and adjust the layout of statement of goods and services."
+            "Add your logo, choose your invoice style, and configure what appears "
+            "on invoices and statements."
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
-        "action_target": "/admin/settings",
-        "sort_order": 11,
+        "action_target": "/onboarding/branding",
+        "sort_order": 2,
     },
     {
         "item_key": "setup_cremation_preferences",
@@ -1220,17 +1222,19 @@ def fix_checklist_targets(db: Session) -> None:
         OnboardingChecklistItem.item_key == "configure_cross_tenant",
     ).update({"sort_order": 13})
 
-    # Promote customize_invoice_template to must_complete with updated copy
+    # Rename customize_invoice_template → company_branding (r27)
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "customize_invoice_template",
-        OnboardingChecklistItem.tier != "must_complete",
     ).update({
+        "item_key": "company_branding",
         "tier": "must_complete",
-        "title": "Set up your invoice template",
+        "title": "Set up your brand and invoice template",
         "description": (
-            "Choose your invoice style and configure what information appears "
+            "Add your logo, choose your invoice style, and configure what appears "
             "on invoices sent to funeral homes."
         ),
+        "action_target": "/onboarding/branding",
+        "sort_order": 2,
     })
 
     # --- Backfill missing checklist items for existing tenants ---

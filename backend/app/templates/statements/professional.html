@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Statement — {{ customer_name }}</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0.6in 0.65in 0.6in 0.65in;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 9.5pt;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+
+  /* ── Header band ─────────────────────────────────────────────── */
+  .header {
+    background: {{ primary_color }};
+    color: #ffffff;
+    padding: 18pt 20pt 14pt;
+    margin-bottom: 18pt;
+  }
+  .header-inner { width: 100%; display: table; }
+  .header-left  { display: table-cell; vertical-align: middle; width: 55%; }
+  .header-right { display: table-cell; vertical-align: middle; text-align: right; width: 45%; }
+  .header-logo  { max-height: 44pt; max-width: 200pt; }
+  .header-company-name { font-size: 16pt; font-weight: 700; letter-spacing: 0.02em; }
+  .statement-label { font-size: 22pt; font-weight: 700; letter-spacing: 0.06em; opacity: 0.92; }
+  .statement-number { font-size: 9pt; opacity: 0.75; margin-top: 3pt; }
+
+  /* ── Meta row ────────────────────────────────────────────────── */
+  .meta-row { width: 100%; display: table; margin-bottom: 14pt; }
+  .meta-left  { display: table-cell; width: 55%; vertical-align: top; }
+  .meta-right { display: table-cell; width: 45%; vertical-align: top; text-align: right; }
+  .label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 1pt; }
+  .value { font-size: 9.5pt; font-weight: 600; color: #1a1a1a; }
+  .bill-to-name { font-size: 10.5pt; font-weight: 700; }
+  .bill-to-addr { font-size: 8.5pt; color: #444; white-space: pre-line; margin-top: 2pt; }
+
+  /* ── Summary boxes ───────────────────────────────────────────── */
+  .summary-row { width: 100%; display: table; margin-bottom: 16pt; border-collapse: collapse; }
+  .summary-box {
+    display: table-cell;
+    width: 25%;
+    border: 1.2pt solid #e0e0e0;
+    padding: 8pt 10pt;
+    text-align: center;
+    vertical-align: top;
+  }
+  .summary-box + .summary-box { border-left: none; }
+  .summary-box .box-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.07em; color: #888; }
+  .summary-box .box-amount { font-size: 13pt; font-weight: 700; color: {{ primary_color }}; margin-top: 3pt; }
+  .summary-box.balance .box-amount { color: #c0392b; }
+
+  /* ── Invoice table ───────────────────────────────────────────── */
+  .section-title {
+    font-size: 8.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #666;
+    margin-bottom: 6pt;
+    padding-bottom: 3pt;
+    border-bottom: 1pt solid #e0e0e0;
+  }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16pt; }
+  thead tr { background: {{ primary_color }}; color: #fff; }
+  thead th {
+    padding: 6pt 8pt;
+    text-align: left;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  thead th.right { text-align: right; }
+  tbody tr { border-bottom: 0.5pt solid #e8e8e8; }
+  tbody tr:nth-child(even) { background: #f9f9f9; }
+  td { padding: 5pt 8pt; font-size: 8.5pt; vertical-align: top; }
+  td.right { text-align: right; }
+  td.mono { font-family: 'Courier New', monospace; }
+  .overdue-row td { color: #c0392b; }
+  .status-badge {
+    display: inline-block;
+    padding: 1pt 5pt;
+    border-radius: 2pt;
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .status-open    { background: #e8f4fd; color: #1a6fa8; }
+  .status-overdue { background: #fde8e8; color: #c0392b; }
+  .status-partial { background: #fff3e0; color: #b07600; }
+  .status-paid    { background: #e8f5e9; color: #2e7d32; }
+
+  /* ── Totals ──────────────────────────────────────────────────── */
+  .totals-wrap { display: table; width: 100%; margin-top: 4pt; }
+  .totals-spacer { display: table-cell; width: 55%; }
+  .totals-block  { display: table-cell; width: 45%; vertical-align: top; }
+  .totals-inner  { border: 1.5pt solid {{ primary_color }}; }
+  .totals-row { width: 100%; display: table; padding: 5pt 10pt; border-bottom: 0.5pt solid #e0e0e0; }
+  .totals-row:last-child { border-bottom: none; }
+  .t-label { display: table-cell; font-size: 8.5pt; color: #555; }
+  .t-value { display: table-cell; text-align: right; font-size: 8.5pt; font-weight: 600; }
+  .totals-row.balance-row { background: {{ primary_color }}; }
+  .totals-row.balance-row .t-label,
+  .totals-row.balance-row .t-value { color: #fff; font-size: 10pt; font-weight: 700; }
+
+  /* ── Terms & footer ──────────────────────────────────────────── */
+  .terms { margin-top: 14pt; font-size: 7.5pt; color: #666; }
+  .terms p + p { margin-top: 3pt; }
+  .footer-bar {
+    margin-top: 18pt;
+    padding-top: 8pt;
+    border-top: 1pt solid #ddd;
+    font-size: 7.5pt;
+    color: #888;
+    display: table;
+    width: 100%;
+  }
+  .footer-left  { display: table-cell; width: 50%; }
+  .footer-right { display: table-cell; width: 50%; text-align: right; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-inner">
+    <div class="header-left">
+      {% if company_logo_url %}
+        <img class="header-logo" src="{{ company_logo_url }}" alt="{{ company_name }}">
+      {% else %}
+        <div class="header-company-name">{{ company_name }}</div>
+      {% endif %}
+    </div>
+    <div class="header-right">
+      <div class="statement-label">STATEMENT</div>
+      <div class="statement-number">Period: {{ period_start }} – {{ period_end }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Meta -->
+<div class="meta-row">
+  <div class="meta-left">
+    <div class="label">Bill To</div>
+    <div class="bill-to-name">{{ customer_name }}</div>
+    {% if billing_address %}<div class="bill-to-addr">{{ billing_address }}</div>{% endif %}
+  </div>
+  <div class="meta-right">
+    <div style="margin-bottom:6pt;">
+      <div class="label">Statement Date</div>
+      <div class="value">{{ statement_date }}</div>
+    </div>
+    <div>
+      <div class="label">Account #</div>
+      <div class="value">{{ account_number or '—' }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Summary boxes -->
+<div class="summary-row">
+  <div class="summary-box">
+    <div class="box-label">Opening Balance</div>
+    <div class="box-amount">{{ opening_balance }}</div>
+  </div>
+  <div class="summary-box">
+    <div class="box-label">Charges</div>
+    <div class="box-amount">{{ charges_total }}</div>
+  </div>
+  <div class="summary-box">
+    <div class="box-label">Payments</div>
+    <div class="box-amount">{{ payments_total }}</div>
+  </div>
+  <div class="summary-box balance">
+    <div class="box-label">Balance Due</div>
+    <div class="box-amount">{{ closing_balance }}</div>
+  </div>
+</div>
+
+<!-- Invoices -->
+<div class="section-title">Invoice Detail</div>
+<table>
+  <thead>
+    <tr>
+      <th>Invoice #</th>
+      <th>Date</th>
+      <th>Due Date</th>
+      <th>Description</th>
+      <th class="right">Charges</th>
+      <th class="right">Payments</th>
+      <th class="right">Balance</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for inv in invoices %}
+    <tr{% if inv.is_overdue %} class="overdue-row"{% endif %}>
+      <td class="mono">{{ inv.number }}</td>
+      <td>{{ inv.invoice_date }}</td>
+      <td>{{ inv.due_date }}</td>
+      <td>{{ inv.description or '' }}</td>
+      <td class="right">{{ inv.total }}</td>
+      <td class="right">{{ inv.amount_paid }}</td>
+      <td class="right">{{ inv.balance }}</td>
+      <td>
+        <span class="status-badge status-{{ inv.status }}">{{ inv.status_label }}</span>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" style="text-align:center;color:#999;padding:10pt;">No invoices this period</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- Totals -->
+<div class="totals-wrap">
+  <div class="totals-spacer"></div>
+  <div class="totals-block">
+    <div class="totals-inner">
+      <div class="totals-row">
+        <div class="t-label">Opening Balance</div>
+        <div class="t-value">{{ opening_balance }}</div>
+      </div>
+      <div class="totals-row">
+        <div class="t-label">Charges This Period</div>
+        <div class="t-value">{{ charges_total }}</div>
+      </div>
+      {% if finance_charges_total and finance_charges_total != '$0.00' %}
+      <div class="totals-row">
+        <div class="t-label">Finance Charges</div>
+        <div class="t-value">{{ finance_charges_total }}</div>
+      </div>
+      {% endif %}
+      <div class="totals-row">
+        <div class="t-label">Payments Received</div>
+        <div class="t-value">({{ payments_total }})</div>
+      </div>
+      <div class="totals-row balance-row">
+        <div class="t-label">Amount Due</div>
+        <div class="t-value">{{ closing_balance }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Terms -->
+{% if payment_terms_text or early_payment_text or finance_charge_text %}
+<div class="terms">
+  {% if payment_terms_text %}<p>{{ payment_terms_text }}</p>{% endif %}
+  {% if early_payment_text %}<p>{{ early_payment_text }}</p>{% endif %}
+  {% if finance_charge_text %}<p>{{ finance_charge_text }}</p>{% endif %}
+</div>
+{% endif %}
+
+<!-- Footer -->
+<div class="footer-bar">
+  <div class="footer-left">
+    {{ company_name }}{% if company_phone %} · {{ company_phone }}{% endif %}{% if company_email %} · {{ company_email }}{% endif %}
+  </div>
+  <div class="footer-right">
+    {% if remit_to_name %}Remit to: {{ remit_to_name }}{% endif %}
+  </div>
+</div>
+
+</body>
+</html>

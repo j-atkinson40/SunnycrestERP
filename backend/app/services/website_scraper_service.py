@@ -72,6 +72,133 @@ def _find_nav_links(html: str, base_url: str) -> list[str]:
     return links
 
 
+def extract_branding(html_content: str, page_url: str) -> dict:
+    """Extract logo URL and brand colors from a homepage's HTML.
+
+    Returns:
+        {
+            logo_url: str | None,
+            logo_confidence: float,
+            primary_color: str | None,
+            secondary_color: str | None,
+            colors_found: list[str],
+        }
+    """
+    soup = BeautifulSoup(html_content, "html.parser")
+    parsed_base = urlparse(page_url)
+
+    def _abs(src: str) -> str:
+        if not src:
+            return src
+        if src.startswith("//"):
+            return f"{parsed_base.scheme}:{src}"
+        if src.startswith("http"):
+            return src
+        return urljoin(page_url, src)
+
+    # ── Logo detection ────────────────────────────────────────────────────────
+    logo_url: str | None = None
+    logo_confidence: float = 0.0
+
+    # 1. Open Graph image
+    og = soup.find("meta", property="og:image")
+    if og and og.get("content"):
+        logo_url = _abs(og["content"])
+        logo_confidence = 0.7
+
+    # 2. Header/nav img with meaningful size
+    if logo_confidence < 0.9:
+        for container_selector in [
+            "header", "nav",
+            "[class*='header']", "[class*='navbar']",
+            "[class*='logo']", "[class*='brand']",
+        ]:
+            try:
+                containers = soup.select(container_selector)
+            except Exception:
+                continue
+            for container in containers:
+                for img in container.find_all("img"):
+                    src = img.get("src", "")
+                    if not src:
+                        continue
+                    try:
+                        w = int(img.get("width", 0))
+                        h = int(img.get("height", 0))
+                        if w and h and (w < 100 or h < 50):
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+                    logo_url = _abs(src)
+                    logo_confidence = 0.9
+                    break
+                if logo_confidence >= 0.9:
+                    break
+            if logo_confidence >= 0.9:
+                break
+
+    # 3. Apple touch icon
+    if logo_confidence < 0.8:
+        ati = soup.find("link", rel=lambda r: r and "apple-touch-icon" in r)
+        if ati and ati.get("href"):
+            logo_url = _abs(ati["href"])
+            logo_confidence = 0.8
+
+    # 4. Favicon as last resort (skip generic /favicon.ico)
+    if logo_confidence < 0.4:
+        fav = soup.find("link", rel=lambda r: r and "icon" in r)
+        if fav and fav.get("href"):
+            href = fav["href"]
+            if href not in ("/favicon.ico", "favicon.ico"):
+                logo_url = _abs(href)
+                logo_confidence = 0.4
+
+    # ── Color extraction ──────────────────────────────────────────────────────
+    HEX_RE = re.compile(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b")
+    CSS_VAR_RE = re.compile(
+        r"--(primary|brand|main|accent|header|nav)[-\w]*\s*:\s*(#[0-9a-fA-F]{3,6})",
+        re.IGNORECASE,
+    )
+    all_colors: list[str] = []
+
+    def _norm(h: str) -> str:
+        h = h.lstrip("#")
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        return f"#{h.upper()}"
+
+    SKIP = {"#FFFFFF", "#000000", "#FEFEFE", "#F0F0F0", "#EEEEEE", "#DDDDDD", "#CCCCCC"}
+
+    for style_tag in soup.find_all("style"):
+        css_text = style_tag.get_text() or ""
+        for m in CSS_VAR_RE.finditer(css_text):
+            color = _norm(m.group(2))
+            if color not in SKIP and color not in all_colors:
+                all_colors.insert(0, color)
+        for m in HEX_RE.finditer(css_text):
+            color = _norm(m.group(0))
+            if color not in SKIP and color not in all_colors:
+                all_colors.append(color)
+
+    for tag in soup.select("header, nav, button, a[class*='btn'], [class*='cta']"):
+        style = tag.get("style", "")
+        for m in HEX_RE.finditer(style):
+            color = _norm(m.group(0))
+            if color not in SKIP and color not in all_colors:
+                all_colors.append(color)
+
+    primary_color = all_colors[0] if all_colors else None
+    secondary_color = all_colors[1] if len(all_colors) > 1 else None
+
+    return {
+        "logo_url": logo_url,
+        "logo_confidence": logo_confidence,
+        "primary_color": primary_color,
+        "secondary_color": secondary_color,
+        "colors_found": all_colors[:10],
+    }
+
+
 def scrape_website(url: str, max_pages: int = 5) -> dict:
     """Scrape a website and extract text content.
 

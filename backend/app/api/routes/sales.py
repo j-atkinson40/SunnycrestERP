@@ -698,3 +698,201 @@ def send_invoice(
 
     return {"success": False, "error": "Email delivery failed"}
 
+
+# ---------------------------------------------------------------------------
+# Template Preview (for onboarding wizard)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/invoices/template-preview")
+def template_preview(
+    template: str = Query("professional"),
+    format: str = Query("pdf"),
+    options: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("ar.create_invoice")),
+):
+    """Render a sample invoice preview for the given template key.
+
+    ?template=professional|clean_minimal|modern|custom
+    ?format=pdf|html
+    ?options=JSON string of invoice_settings overrides (optional)
+    """
+    import json as _json
+    from fastapi.responses import HTMLResponse, Response
+    from app.services.pdf_generation_service import (
+        generate_template_preview_html,
+        generate_template_preview_pdf,
+    )
+
+    VALID_TEMPLATES = {"professional", "clean_minimal", "modern", "custom"}
+    if template not in VALID_TEMPLATES:
+        template = "professional"
+
+    overrides: dict | None = None
+    if options:
+        try:
+            overrides = _json.loads(options)
+        except Exception:
+            overrides = None
+
+    cache_key = f"{current_user.company_id}:{template}:{options or ''}"
+
+    if format == "html":
+        html = generate_template_preview_html(
+            db, current_user.company_id, template, overrides
+        )
+        return HTMLResponse(content=html)
+
+    pdf_bytes = generate_template_preview_pdf(
+        db, current_user.company_id, template, overrides, cache_key=cache_key
+    )
+    if pdf_bytes is None:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail="PDF generation unavailable — WeasyPrint not installed",
+        )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="Preview-{template}.pdf"'},
+    )
+
+
+@router.post("/invoices/analyze-existing-template")
+async def analyze_existing_template(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("ar.create_invoice")),
+):
+    """Analyze an uploaded invoice PDF and generate a matching HTML template.
+
+    Note: Requires pdfplumber + Claude vision. Returns 501 if unavailable.
+    """
+    from fastapi import HTTPException
+    raise HTTPException(
+        status_code=501,
+        detail="Invoice template analysis is not yet available. Please choose one of the three built-in templates.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Logo upload endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.post("/company/logo-upload")
+async def upload_company_logo(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("settings.edit")),
+):
+    """Upload a company logo. Stores the file and updates company.logo_url.
+
+    Accepts: .png, .jpg, .jpeg, .svg, .webp
+    On Railway: stored at /app/static/logos/. Otherwise falls back to base64 data URL.
+    """
+    import base64
+    import os
+    from fastapi import HTTPException
+    from app.models.company import Company
+
+    ALLOWED = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
+    _, ext = os.path.splitext((file.filename or "").lower())
+    if ext not in ALLOWED:
+        raise HTTPException(status_code=400, detail=f"File type {ext} not allowed. Use: {', '.join(ALLOWED)}")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    # Try to save to static directory
+    static_dir = "/app/static/logos"
+    logo_url: str | None = None
+
+    if os.path.isdir("/app/static"):
+        os.makedirs(static_dir, exist_ok=True)
+        safe_name = f"{current_user.company_id}{ext}"
+        path = os.path.join(static_dir, safe_name)
+        with open(path, "wb") as f:
+            f.write(content)
+        logo_url = f"/static/logos/{safe_name}"
+    else:
+        # Fallback: store as base64 data URL in settings_json
+        mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".svg": "image/svg+xml", ".webp": "image/webp"}.get(ext, "image/png")
+        b64 = base64.b64encode(content).decode()
+        logo_url = f"data:{mime};base64,{b64}"
+
+    company.logo_url = logo_url
+    db.commit()
+
+    return {"logo_url": logo_url}
+
+
+# ---------------------------------------------------------------------------
+# Company branding settings endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.get("/company/branding")
+def get_company_branding(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("settings.edit")),
+):
+    """Return current branding settings for the company branding wizard."""
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        return {}
+
+    return {
+        "logo_url": company.logo_url,
+        "website": company.website,
+        "detected_logo_url": company.get_setting("detected_logo_url"),
+        "detected_logo_confidence": company.get_setting("detected_logo_confidence"),
+        "detected_primary_color": company.get_setting("detected_primary_color"),
+        "detected_secondary_color": company.get_setting("detected_secondary_color"),
+        "detected_colors": company.get_setting("detected_colors") or [],
+    }
+
+
+@router.patch("/company/branding")
+def update_company_branding(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("settings.edit")),
+):
+    """Save confirmed logo URL and brand colors to company record."""
+    from app.models.company import Company
+    from app.services.invoice_settings_service import update_invoice_settings
+
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    if "logo_url" in data:
+        company.logo_url = data["logo_url"]
+    if "website" in data:
+        company.website = data["website"]
+
+    # Save colors to invoice settings
+    color_updates: dict = {}
+    if "primary_color" in data:
+        color_updates["primary_color"] = data["primary_color"]
+    if "secondary_color" in data:
+        color_updates["secondary_color"] = data["secondary_color"]
+    if color_updates:
+        update_invoice_settings(db, current_user.company_id, color_updates)
+
+    db.commit()
+    return {"success": True}
+

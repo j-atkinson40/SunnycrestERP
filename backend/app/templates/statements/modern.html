@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Statement — {{ customer_name }}</title>
+<style>
+  @page { size: letter; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #222; line-height: 1.4; }
+
+  /* Hero header */
+  .hero {
+    background: {{ primary_color }};
+    padding: 20pt 30pt 18pt;
+    color: #fff;
+    display: table;
+    width: 100%;
+  }
+  .hero-left  { display: table-cell; vertical-align: middle; width: 55%; }
+  .hero-right { display: table-cell; vertical-align: middle; text-align: right; width: 45%; }
+  .hero-logo { max-height: 42pt; max-width: 180pt; filter: brightness(0) invert(1); }
+  .hero-company { font-size: 16pt; font-weight: 800; }
+  .hero-title { font-size: 11pt; font-weight: 300; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.85; }
+  .hero-period { font-size: 8.5pt; opacity: 0.7; margin-top: 3pt; }
+
+  /* Accent strip */
+  .accent-strip { background: {{ secondary_color }}; height: 4pt; width: 100%; }
+
+  /* Content area */
+  .content { padding: 18pt 30pt; }
+
+  /* Address / meta row */
+  .meta { display: table; width: 100%; margin-bottom: 14pt; }
+  .meta-left  { display: table-cell; width: 55%; vertical-align: top; }
+  .meta-right { display: table-cell; width: 45%; vertical-align: top; text-align: right; }
+  .label { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: {{ secondary_color }}; margin-bottom: 2pt; }
+  .customer-name { font-size: 12pt; font-weight: 800; }
+  .addr-text { font-size: 8.5pt; color: #555; white-space: pre-line; margin-top: 2pt; }
+  .meta-val { font-size: 9.5pt; font-weight: 600; }
+
+  /* Summary cards */
+  .cards { display: table; width: 100%; margin-bottom: 14pt; border-collapse: separate; }
+  .card { display: table-cell; width: 25%; padding: 8pt 10pt; background: #f5f5f5; border-radius: 2pt; }
+  .card + .card { padding-left: 8pt; }
+  .card-label { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #888; }
+  .card-value { font-size: 13pt; font-weight: 800; color: #222; margin-top: 3pt; }
+  .card.accent  { background: {{ primary_color }}; }
+  .card.accent .card-label,
+  .card.accent .card-value { color: #fff; }
+
+  /* Table */
+  .section-hdr { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: {{ secondary_color }}; margin-bottom: 5pt; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14pt; }
+  th { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #fff; background: {{ primary_color }}; padding: 5pt 7pt; text-align: left; }
+  th.right { text-align: right; }
+  td { font-size: 8.5pt; padding: 5pt 7pt; border-bottom: 0.5pt solid #eee; vertical-align: top; }
+  td.right { text-align: right; }
+  td.mono { font-family: 'Courier New', monospace; font-size: 8pt; }
+  .overdue-row td { color: #c0392b; }
+  .status-pill { font-size: 7pt; font-weight: 700; text-transform: uppercase; padding: 1.5pt 5pt; border-radius: 8pt; }
+  .status-open    { background: #e3f2fd; color: #1565c0; }
+  .status-overdue { background: #ffebee; color: #c62828; }
+  .status-partial { background: #fff8e1; color: #e65100; }
+  .status-paid    { background: #e8f5e9; color: #2e7d32; }
+
+  /* Totals */
+  .totals-wrap { display: table; width: 100%; }
+  .totals-gap  { display: table-cell; width: 55%; }
+  .totals      { display: table-cell; width: 45%; }
+  .t-row { display: table; width: 100%; padding: 4pt 8pt; }
+  .t-lbl { display: table-cell; font-size: 8.5pt; color: #666; }
+  .t-val { display: table-cell; text-align: right; font-size: 8.5pt; font-weight: 600; }
+  .t-row.final { background: {{ primary_color }}; border-radius: 2pt; padding: 7pt 8pt; margin-top: 4pt; }
+  .t-row.final .t-lbl, .t-row.final .t-val { color: #fff; font-size: 11pt; font-weight: 800; }
+
+  /* Terms & footer */
+  .terms { margin-top: 12pt; font-size: 7.5pt; color: #888; }
+  .terms p + p { margin-top: 3pt; }
+  .footer-bar { background: {{ primary_color }}; color: rgba(255,255,255,0.7); font-size: 7.5pt; padding: 7pt 30pt; margin-top: 14pt; display: table; width: 100%; }
+  .f-left  { display: table-cell; width: 50%; }
+  .f-right { display: table-cell; width: 50%; text-align: right; color: rgba(255,255,255,0.9); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-left">
+    {% if company_logo_url %}
+      <img class="hero-logo" src="{{ company_logo_url }}" alt="{{ company_name }}">
+    {% else %}
+      <div class="hero-company">{{ company_name }}</div>
+    {% endif %}
+  </div>
+  <div class="hero-right">
+    <div class="hero-title">Account Statement</div>
+    <div style="font-size:16pt;font-weight:800;margin-top:4pt;">{{ period_start }} – {{ period_end }}</div>
+    {% if account_number %}<div class="hero-period">Account #{{ account_number }}</div>{% endif %}
+  </div>
+</div>
+<div class="accent-strip"></div>
+
+<div class="content">
+
+  <div class="meta">
+    <div class="meta-left">
+      <div class="label">Prepared For</div>
+      <div class="customer-name">{{ customer_name }}</div>
+      {% if billing_address %}<div class="addr-text">{{ billing_address }}</div>{% endif %}
+    </div>
+    <div class="meta-right">
+      <div class="label">Statement Date</div>
+      <div class="meta-val">{{ statement_date }}</div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="card-label">Opening Balance</div><div class="card-value">{{ opening_balance }}</div></div>
+    <div class="card"><div class="card-label">Charges</div><div class="card-value">{{ charges_total }}</div></div>
+    <div class="card"><div class="card-label">Payments</div><div class="card-value">{{ payments_total }}</div></div>
+    <div class="card accent"><div class="card-label">Amount Due</div><div class="card-value">{{ closing_balance }}</div></div>
+  </div>
+
+  <div class="section-hdr">Invoice Detail</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Invoice #</th><th>Date</th><th>Due</th><th>Description</th>
+        <th class="right">Charges</th><th class="right">Payments</th><th class="right">Balance</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inv in invoices %}
+      <tr{% if inv.is_overdue %} class="overdue-row"{% endif %}>
+        <td class="mono">{{ inv.number }}</td>
+        <td>{{ inv.invoice_date }}</td>
+        <td>{{ inv.due_date }}</td>
+        <td>{{ inv.description or '' }}</td>
+        <td class="right">{{ inv.total }}</td>
+        <td class="right">{{ inv.amount_paid }}</td>
+        <td class="right">{{ inv.balance }}</td>
+        <td><span class="status-pill status-{{ inv.status }}">{{ inv.status_label }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="text-align:center;color:#bbb;padding:10pt;">No invoices this period</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals-wrap">
+    <div class="totals-gap"></div>
+    <div class="totals">
+      <div class="t-row"><div class="t-lbl">Opening Balance</div><div class="t-val">{{ opening_balance }}</div></div>
+      <div class="t-row"><div class="t-lbl">Charges</div><div class="t-val">{{ charges_total }}</div></div>
+      {% if finance_charges_total and finance_charges_total != '$0.00' %}
+      <div class="t-row"><div class="t-lbl">Finance Charges</div><div class="t-val">{{ finance_charges_total }}</div></div>
+      {% endif %}
+      <div class="t-row"><div class="t-lbl">Payments Received</div><div class="t-val">({{ payments_total }})</div></div>
+      <div class="t-row final"><div class="t-lbl">Amount Due</div><div class="t-val">{{ closing_balance }}</div></div>
+    </div>
+  </div>
+
+  {% if payment_terms_text or early_payment_text or finance_charge_text %}
+  <div class="terms">
+    {% if payment_terms_text %}<p>{{ payment_terms_text }}</p>{% endif %}
+    {% if early_payment_text %}<p>{{ early_payment_text }}</p>{% endif %}
+    {% if finance_charge_text %}<p>{{ finance_charge_text }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+</div>
+
+<div class="footer-bar">
+  <div class="f-left">{{ company_name }}{% if company_phone %} · {{ company_phone }}{% endif %}{% if company_email %} · {{ company_email }}{% endif %}</div>
+  <div class="f-right">{% if remit_to_name %}Remit to: {{ remit_to_name }}{% endif %}</div>
+</div>
+
+</body>
+</html>

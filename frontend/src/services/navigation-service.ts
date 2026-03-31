@@ -345,6 +345,12 @@ function getManufacturingNav(
           icon: "Link",
         },
         {
+          label: "Invoice & Statements",
+          href: "/settings/invoice",
+          icon: "FileText",
+          functionalArea: "invoicing_ar",
+        },
+        {
           label: "Seasonal Templates",
           href: "/settings/seasonal-templates",
           icon: "CalendarDays",

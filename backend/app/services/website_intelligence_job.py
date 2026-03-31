@@ -8,7 +8,7 @@ from decimal import Decimal
 from app.database import SessionLocal
 from app.models.website_intelligence import TenantWebsiteIntelligence
 from app.services.website_analysis_service import analyze_website_content
-from app.services.website_scraper_service import scrape_website
+from app.services.website_scraper_service import scrape_website, extract_branding
 from app.services.website_suggestion_service import generate_suggestions
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,37 @@ def run_website_intelligence(db_session, tenant_id: str, url: str) -> None:
         # 4. Generate suggestions
         logger.info(f"Generating suggestions for tenant {tenant_id}")
         generate_suggestions(db, tenant_id, analysis_data)
+
+        # 4b. Extract branding from homepage HTML
+        try:
+            homepage_html = intel.raw_content or ""
+            # raw_content is text-stripped; re-fetch just the homepage for branding
+            # (scrape_website already fetched it; use stored pages to get raw HTML)
+            import requests as _req
+            _resp = _req.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"}, verify=False)
+            branding = extract_branding(_resp.text, url)
+            logger.info(
+                f"Branding extracted for tenant {tenant_id}: "
+                f"logo={branding['logo_url']} conf={branding['logo_confidence']:.2f} "
+                f"primary={branding['primary_color']}"
+            )
+
+            from app.models.company import Company
+            company = db.query(Company).filter(Company.id == tenant_id).first()
+            if company:
+                # Only store detected logo if company doesn't already have one set
+                if branding["logo_url"] and not company.logo_url:
+                    company.set_setting("detected_logo_url", branding["logo_url"])
+                    company.set_setting("detected_logo_confidence", branding["logo_confidence"])
+                if branding["primary_color"]:
+                    company.set_setting("detected_primary_color", branding["primary_color"])
+                if branding["secondary_color"]:
+                    company.set_setting("detected_secondary_color", branding["secondary_color"])
+                if branding["colors_found"]:
+                    company.set_setting("detected_colors", branding["colors_found"])
+                db.commit()
+        except Exception as _be:
+            logger.warning(f"Branding extraction failed for tenant {tenant_id}: {_be}")
 
         # 5. Mark completed
         intel.scrape_status = "completed"

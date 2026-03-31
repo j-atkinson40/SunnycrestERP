@@ -230,6 +230,167 @@ def generate_invoice_html(db: Session, invoice_id: str, company_id: str) -> str:
             return "<html><body><p>Invoice render error.</p></body></html>"
 
 
+_PREVIEW_CACHE: dict[str, bytes] = {}  # simple in-process cache
+
+
+def _build_preview_context(db: Session, company_id: str, settings_overrides: dict | None = None) -> dict[str, Any]:
+    """Build template context using company data + sample invoice data."""
+    from datetime import date, timedelta
+    from app.models.company import Company
+    from app.services.invoice_settings_service import get_invoice_settings, build_terms_text
+
+    company = db.query(Company).filter(Company.id == company_id).first()
+    settings = get_invoice_settings(db, company_id)
+    if settings_overrides:
+        settings = {**settings, **settings_overrides}
+
+    today = date.today()
+    due = today + timedelta(days=30)
+
+    addr_parts = []
+    if company:
+        if company.address_street:
+            addr_parts.append(company.address_street)
+        city_line = ", ".join(filter(None, [company.address_city, company.address_state]))
+        if city_line:
+            if company.address_zip:
+                city_line += f" {company.address_zip}"
+            addr_parts.append(city_line)
+    company_address = "\n".join(addr_parts)
+
+    remit_name = settings.get("remit_to_name") or (company.company_legal_name or company.name if company else "")
+    remit_address = settings.get("remit_to_address") or company_address
+    terms = build_terms_text(settings, company)
+
+    # Use detected colors if no custom ones set yet
+    primary = settings["primary_color"]
+    secondary = settings["secondary_color"]
+    if company and primary == "#1B4F8A":
+        det = company.get_setting("detected_primary_color")
+        if det:
+            primary = det
+    if company and secondary == "#2D9B8A":
+        det = company.get_setting("detected_secondary_color")
+        if det:
+            secondary = det
+
+    logo = company.logo_url if company else ""
+    if not logo and company:
+        logo = company.get_setting("detected_logo_url") or ""
+
+    return {
+        "company_name": company.name if company else "Your Company",
+        "company_legal_name": (company.company_legal_name or company.name) if company else "Your Company",
+        "company_address": company_address,
+        "company_phone": (company.phone or company.company_phone or "") if company else "",
+        "company_email": (company.email or "") if company else "",
+        "company_website": (company.website or "") if company else "",
+        "company_logo_url": logo,
+        "primary_color": primary,
+        "secondary_color": secondary,
+        # Sample invoice
+        "invoice_number": "PREVIEW-001",
+        "invoice_date": today.strftime("%B %d, %Y"),
+        "due_date": due.strftime("%B %d, %Y"),
+        "payment_terms": "Net 30",
+        # Sample customer
+        "customer_name": "Johnson Funeral Home",
+        "billing_address": "123 Main Street\nSomewhere, NY 13021",
+        "billing_contact": "Robert Johnson",
+        "billing_email": "billing@johnsonfh.com",
+        # Service details
+        "deceased_name": "Smith, John",
+        "cemetery_name": "Oak Hill Cemetery",
+        "service_date": today.strftime("%m/%d/%Y"),
+        "order_number": "SO-2026-0042",
+        # Line items
+        "line_items": [
+            {"description": "Monticello Vault", "quantity": 1, "unit_price": "$1,405.00", "line_total": "$1,405.00", "is_zero_price": False, "is_placer": False},
+            {"description": "Full Equipment", "quantity": 1, "unit_price": "$300.00", "line_total": "$300.00", "is_zero_price": False, "is_placer": False},
+            {"description": "Vault Placer", "quantity": 1, "unit_price": "$0.00", "line_total": "$0.00", "is_zero_price": True, "is_placer": True},
+        ],
+        # Totals
+        "subtotal": "$1,705.00",
+        "tax_amount": "$0.00",
+        "tax_rate": 0.0,
+        "total": "$1,705.00",
+        "amount_paid": "$0.00",
+        "balance_due": "$1,705.00",
+        "has_tax": False,
+        "has_payments": False,
+        # Toggles from settings
+        "show_deceased_name": settings.get("show_deceased_name", True),
+        "show_payment_terms": settings.get("show_payment_terms", True),
+        "show_early_payment_discount": settings.get("show_early_payment_discount", True),
+        "show_finance_charge_notice": settings.get("show_finance_charge_notice", True),
+        "show_cemetery_on_invoice": settings.get("show_cemetery_on_invoice", True),
+        "show_service_date": settings.get("show_service_date", True),
+        "show_order_number": settings.get("show_order_number", True),
+        "show_phone": settings.get("show_phone", True),
+        "show_email": settings.get("show_email", True),
+        "show_website": settings.get("show_website", False),
+        "show_remittance_stub": settings.get("show_remittance_stub", False),
+        **terms,
+        "custom_footer_text": settings.get("custom_footer_text") or "",
+        "remit_to_name": remit_name,
+        "remit_to_address": remit_address,
+        "template_key": settings["template_key"],
+    }
+
+
+def generate_template_preview_html(
+    db: Session,
+    company_id: str,
+    template_key: str,
+    settings_overrides: dict | None = None,
+) -> str:
+    """Render a sample invoice as HTML for the given template key."""
+    context = _build_preview_context(db, company_id, settings_overrides)
+    context["template_key"] = template_key
+    try:
+        env = _get_jinja_env()
+        template = env.get_template(f"{template_key}.html")
+        return template.render(**context)
+    except Exception as exc:
+        logger.error("Preview HTML render failed for template %s: %s", template_key, exc)
+        try:
+            env = _get_jinja_env()
+            return env.get_template("professional.html").render(**context)
+        except Exception:
+            return "<html><body><p>Preview unavailable.</p></body></html>"
+
+
+def generate_template_preview_pdf(
+    db: Session,
+    company_id: str,
+    template_key: str,
+    settings_overrides: dict | None = None,
+    cache_key: str | None = None,
+) -> bytes | None:
+    """Render a sample invoice as PDF for the given template key."""
+    if cache_key and cache_key in _PREVIEW_CACHE:
+        return _PREVIEW_CACHE[cache_key]
+
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        return None
+
+    html_content = generate_template_preview_html(db, company_id, template_key, settings_overrides)
+    try:
+        pdf_bytes: bytes = HTML(string=html_content, base_url=_TEMPLATE_DIR).write_pdf()
+        if cache_key:
+            _PREVIEW_CACHE[cache_key] = pdf_bytes
+            # Evict old entries if cache grows large
+            if len(_PREVIEW_CACHE) > 50:
+                oldest = next(iter(_PREVIEW_CACHE))
+                del _PREVIEW_CACHE[oldest]
+        return pdf_bytes
+    except Exception as exc:
+        logger.error("Preview PDF generation failed for template %s: %s", template_key, exc)
+        return None
+
+
 def generate_invoice_pdf(db: Session, invoice_id: str, company_id: str) -> bytes | None:
     """Render invoice to PDF bytes. Returns None if WeasyPrint unavailable."""
     try:
