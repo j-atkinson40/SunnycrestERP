@@ -90,7 +90,7 @@ const CONTENT_OPTIONS: Array<{
 function StepDots({ step }: { step: number }) {
   return (
     <div className="flex items-center gap-2 mb-8">
-      {["Logo & Colors", "Template", "Content"].map((label, i) => (
+      {["Logo & Colors", "Template & Content"].map((label, i) => (
         <div key={i} className="flex items-center gap-2">
           <div
             className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
@@ -108,7 +108,7 @@ function StepDots({ step }: { step: number }) {
           >
             {label}
           </span>
-          {i < 2 && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          {i < 1 && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
         </div>
       ))}
     </div>
@@ -309,16 +309,16 @@ export default function CompanyBrandingPage() {
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const previewBlobRef = useRef<string | null>(null);
 
-  // Debounce preview refresh on settings change (step 2)
+  // Debounce preview refresh on settings change (step 1)
   useEffect(() => {
-    if (step !== 2) return;
+    if (step !== 1) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setPreviewKey((k) => k + 1), 1000);
   }, [settings, step]);
 
-  // Fetch preview PDF as blob whenever previewKey changes (step 2)
+  // Fetch preview PDF as blob whenever previewKey changes (step 1)
   useEffect(() => {
-    if (step !== 2) return;
+    if (step !== 1) return;
     const params = new URLSearchParams({
       template: templateKey,
       format: "pdf",
@@ -387,7 +387,6 @@ export default function CompanyBrandingPage() {
   const handleSelectTemplate = useCallback((key: string) => {
     setTemplateKey(key);
     setSettings((s) => ({ ...s, template_key: key }));
-    setStep(2);
   }, []);
 
   const handleToggleSetting = useCallback((key: keyof InvoiceSettings) => {
@@ -616,56 +615,38 @@ export default function CompanyBrandingPage() {
         </div>
       )}
 
-      {/* ── STEP 1: Template Selection ──────────────────────────────── */}
+      {/* ── STEP 1: Template & Content ─────────────────────────────── */}
       {step === 1 && (
         <div className="space-y-6">
           <div>
             <h2 className="text-lg font-semibold">Choose your invoice style</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Select a template. You can customize the content in the next step.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            {TEMPLATES.map((t) => (
-              <TemplateCard
-                key={t.key}
-                template={t}
-                selected={templateKey === t.key}
-                onSelect={() => handleSelectTemplate(t.key)}
-              />
-            ))}
-          </div>
-
-          {/* Back */}
-          <Button variant="ghost" onClick={() => setStep(0)}>
-            &larr; Back
-          </Button>
-        </div>
-      )}
-
-      {/* ── STEP 2: Content Customization ──────────────────────────── */}
-      {step === 2 && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-lg font-semibold">Customize your invoice</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Configure what appears on invoices and statements sent to funeral homes.
+              Select a template and configure what appears on invoices sent to funeral homes.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
-            {/* Left: checkboxes */}
+            {/* Left: templates + checkboxes */}
             <div className="space-y-6">
+              {/* Template cards */}
+              <div className="grid grid-cols-3 gap-3">
+                {TEMPLATES.map((t) => (
+                  <TemplateCard
+                    key={t.key}
+                    template={t}
+                    selected={templateKey === t.key}
+                    onSelect={() => handleSelectTemplate(t.key)}
+                  />
+                ))}
+              </div>
+
+              {/* Content options */}
               {Object.entries(optionGroups).map(([group, opts]) => (
                 <Card key={group} className="p-4">
                   <h3 className="text-sm font-semibold mb-3">{group}</h3>
                   <div className="space-y-2.5">
                     {opts.map((opt) => (
-                      <label
-                        key={opt.key}
-                        className="flex items-center gap-2.5 cursor-pointer"
-                      >
+                      <label key={opt.key} className="flex items-center gap-2.5 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={Boolean(settings[opt.key])}
@@ -684,7 +665,7 @@ export default function CompanyBrandingPage() {
                   {saving ? "Saving..." : "Save and finish"}
                   <CheckCircle className="w-4 h-4 ml-1.5" />
                 </Button>
-                <Button variant="ghost" onClick={() => setStep(1)}>
+                <Button variant="ghost" onClick={() => setStep(0)}>
                   &larr; Back
                 </Button>
               </div>
@@ -692,10 +673,8 @@ export default function CompanyBrandingPage() {
 
             {/* Right: live preview */}
             <div className="sticky top-4 space-y-2">
-              <div className="text-sm font-medium text-muted-foreground">
-                Live preview
-              </div>
-              <div className="rounded-lg border overflow-hidden bg-muted" style={{ height: 600 }}>
+              <div className="text-sm font-medium text-muted-foreground">Live preview</div>
+              <div className="rounded-lg border overflow-hidden bg-muted" style={{ height: 640 }}>
                 {previewBlobUrl ? (
                   <iframe
                     key={previewBlobUrl}
