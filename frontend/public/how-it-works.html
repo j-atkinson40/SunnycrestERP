@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How Bridgeable Works | From First Call to Closed Account</title>
+<meta name="description" content="See how a vault order moves through Bridgeable — order entry, scheduling, invoicing, billing, collections, payment, and completion.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--teal:#1D9E75;--teal-light:#E1F5EE;--teal-dark:#167A5B;--navy:#0F2137;--text:#1a1a1a;--muted:#666;--border:#e5e5e5;--bg:#ffffff;--max-w:1100px}
+body{font-family:'Inter',system-ui,sans-serif;color:var(--text);background:var(--bg);line-height:1.7;-webkit-font-smoothing:antialiased}
+a{color:var(--teal);text-decoration:none}
+
+/* Header */
+.hdr{position:sticky;top:0;z-index:50;background:var(--bg);transition:border-color .2s}
+.hdr.scrolled{border-bottom:1px solid var(--border)}
+.hdr-inner{max-width:var(--max-w);margin:0 auto;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:20px;font-weight:600;color:var(--navy);display:flex;align-items:center;gap:8px}
+.logo svg{width:28px;height:28px}
+.btn-demo{background:var(--teal);color:#fff;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:500;border:none;cursor:pointer;transition:background .2s}
+.btn-demo:hover{background:var(--teal-dark)}
+
+/* Hero */
+.hero{text-align:center;padding:100px 24px 80px;max-width:800px;margin:0 auto}
+.eyebrow{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:16px}
+.hero h1{font-size:48px;font-weight:600;color:var(--navy);line-height:1.15;margin-bottom:20px}
+.hero p{font-size:18px;color:var(--muted);max-width:640px;margin:0 auto 32px}
+.btn-scroll{display:inline-flex;align-items:center;gap:6px;background:var(--navy);color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:500;border:none;cursor:pointer;transition:background .2s}
+.btn-scroll:hover{background:#1a3050}
+
+/* Section */
+.section{padding:80px 24px;max-width:var(--max-w);margin:0 auto}
+.section-label{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:12px}
+.section h2{font-size:32px;font-weight:600;color:var(--navy);margin-bottom:8px}
+
+/* Stage Nav Pills */
+.stage-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.stage-pill{padding:8px 16px;border-radius:999px;font-size:13px;font-weight:500;border:1px solid var(--border);background:#fff;color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
+.stage-pill.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+.stage-pill:hover:not(.active){border-color:var(--teal);color:var(--teal)}
+
+/* Stage Content */
+.stage{display:none}
+.stage.active{display:block}
+.stage-title{font-size:28px;font-weight:600;color:var(--navy);margin-bottom:16px}
+.benefit-callout{background:var(--teal-light);border-radius:12px;padding:24px;margin-bottom:28px;font-size:17px;color:var(--navy);line-height:1.6}
+.stats-row{display:flex;gap:16px;margin-bottom:28px;flex-wrap:wrap}
+.stat-card{flex:1;min-width:120px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.stat-value{font-size:24px;font-weight:600;color:var(--teal)}
+.stat-label{font-size:12px;color:var(--muted);margin-top:4px}
+.detail-list{list-style:none;margin-bottom:28px}
+.detail-list li{padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:15px;display:flex;align-items:flex-start;gap:10px}
+.detail-list li:last-child{border-bottom:none}
+.detail-list .check{color:var(--teal);font-size:16px;flex-shrink:0;margin-top:2px}
+.badge-ai{display:inline-block;background:var(--teal-light);color:var(--teal-dark);font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle}
+
+/* Mockup */
+.mockup-area{background:#fafafa;border:1px solid var(--border);border-radius:12px;padding:32px;margin-bottom:28px;min-height:200px}
+.mockup-steps{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.mockup-step{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:500;background:#fff;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s}
+.mockup-step.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+.mockup-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:24px;min-height:120px}
+.mockup-card h4{font-size:14px;font-weight:600;color:var(--navy);margin-bottom:8px}
+.mockup-card p{font-size:13px;color:var(--muted);line-height:1.5}
+.mockup-card .field{background:#f5f5f5;border-radius:6px;padding:8px 12px;margin-top:8px;font-size:13px;color:#888}
+.mockup-card .field-label{font-size:11px;font-weight:500;color:var(--muted);margin-top:12px;margin-bottom:4px}
+.mockup-card .btn-mock{display:inline-block;background:var(--teal);color:#fff;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:500;margin-top:12px}
+.mockup-card .card-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.mockup-card .mini-card{background:#f9f9f9;border:1px solid #eee;border-radius:8px;padding:10px;font-size:12px}
+.mockup-card .mini-card strong{display:block;font-size:13px;color:var(--navy)}
+.mockup-card .time-badge{display:inline-block;background:var(--teal-light);color:var(--teal-dark);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;margin-left:4px}
+
+/* Nav buttons */
+.stage-nav-btns{display:flex;justify-content:space-between;align-items:center;margin-top:32px;padding-top:20px;border-top:1px solid var(--border)}
+.nav-btn{padding:10px 24px;border-radius:8px;font-size:14px;font-weight:500;border:1px solid var(--border);background:#fff;color:var(--text);cursor:pointer;transition:all .2s}
+.nav-btn:hover{border-color:var(--teal);color:var(--teal)}
+.nav-btn.primary{background:var(--teal);color:#fff;border-color:var(--teal)}
+.nav-btn.primary:hover{background:var(--teal-dark)}
+.pips{display:flex;gap:6px}
+.pip{width:8px;height:8px;border-radius:50%;background:var(--border)}
+.pip.active{background:var(--teal)}
+
+/* Coming soon */
+.coming-soon{text-align:center;padding:60px 24px;background:#fafafa;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-top:40px}
+.coming-soon h3{font-size:20px;font-weight:600;color:var(--navy);margin-bottom:8px}
+.coming-soon p{color:var(--muted);margin-bottom:20px}
+.coming-soon .tags{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
+.coming-soon .tag{background:var(--teal-light);color:var(--teal-dark);padding:6px 14px;border-radius:999px;font-size:13px;font-weight:500}
+
+/* Footer */
+.footer{text-align:center;padding:40px 24px;color:var(--muted);font-size:13px}
+.footer .logo-sm{font-size:16px;font-weight:600;color:var(--navy);margin-bottom:8px}
+
+/* Responsive */
+@media(max-width:768px){
+  .hero h1{font-size:32px}
+  .hero p{font-size:16px}
+  .stage-title{font-size:22px}
+  .benefit-callout{font-size:15px;padding:18px}
+  .stat-card{min-width:100px}
+  .stat-value{font-size:20px}
+  .mockup-card .card-grid{grid-template-columns:1fr}
+  .stage-nav{gap:4px}
+  .stage-pill{padding:6px 12px;font-size:12px}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="hdr" id="hdr">
+  <div class="hdr-inner">
+    <div class="logo">
+      <svg viewBox="0 0 28 28" fill="none"><path d="M4 18C4 18 8 10 14 10C20 10 24 18 24 18" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round"/><circle cx="14" cy="10" r="2" fill="#1D9E75"/><line x1="4" y1="20" x2="24" y2="20" stroke="#0F2137" stroke-width="2" stroke-linecap="round"/></svg>
+      Bridgeable
+    </div>
+    <a href="mailto:hello@getbridgeable.com" class="btn-demo">Schedule a Demo</a>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="eyebrow">How Bridgeable works</div>
+  <h1>From first call to closed account</h1>
+  <p>See how a vault order moves through Bridgeable &mdash; order entry, scheduling, invoicing, billing, collections, payment, and completion. Fully automated where it can be. Human where it should be.</p>
+  <button class="btn-scroll" onclick="document.getElementById('lifecycle').scrollIntoView({behavior:'smooth'})">Walk through the lifecycle &rarr;</button>
+</section>
+
+<!-- LIFECYCLE -->
+<div class="section" id="lifecycle">
+  <div class="section-label">Vault order lifecycle</div>
+
+  <nav class="stage-nav" id="stageNav"></nav>
+
+  <div id="stageContent"></div>
+
+  <div class="stage-nav-btns">
+    <button class="nav-btn" id="prevBtn" onclick="prev()">&larr; Previous</button>
+    <div class="pips" id="pips"></div>
+    <button class="nav-btn primary" id="nextBtn" onclick="next()">Next &rarr;</button>
+  </div>
+</div>
+
+<!-- COMING SOON -->
+<div class="coming-soon">
+  <h3>More coming soon</h3>
+  <p>The vault order lifecycle is just the beginning.</p>
+  <div class="tags">
+    <span class="tag">Production day</span>
+    <span class="tag">Monthly billing</span>
+    <span class="tag">Vault replenishment</span>
+    <span class="tag">Cross-licensee transfers</span>
+  </div>
+  <a href="mailto:hello@getbridgeable.com" class="btn-demo" style="display:inline-block">Get notified</a>
+</div>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="logo-sm">Bridgeable</div>
+  <p>&copy; 2026 Able Holdings &middot; getbridgeable.com</p>
+</footer>
+
+<script>
+const STAGES=[
+{id:1,pill:"Order Entry",title:"Order entry in under 30 seconds",
+benefit:"Templates sit ready before the phone rings. Tap, search the funeral home, fill three fields, and the order is in the system before the call ends.",
+stats:[{v:"< 30s",l:"Average order"},{v:"3",l:"Steps to save"}],
+details:[
+["Template-first flow &mdash; tap the right vault and equipment combo",""],
+["Funeral home pop-up with recent history &mdash; one tap for repeat callers","ai"],
+["Cemetery shortlist with city labels &mdash; prevents wrong-cemetery mistakes","ai"],
+["Equipment auto-prefill from cemetery settings","ai"],
+["ETA field for procession arrival &mdash; Church, Funeral Home, or Graveside",""],
+["Soft inventory check &mdash; flags low stock without blocking the order","ai"],
+["Credit hold banner &mdash; staff sees the situation, order still saves",""]
+],
+mockupSteps:["Template grid","FH pop-up","Slide-over","Review & save"],
+mockups:[
+{h:"Template grid",p:"Pre-configured vault + equipment combos. Tap to start.",fields:["Monticello &middot; Full Equipment","Venetian &middot; Full Equipment","Continental &middot; Lowering Device","Graveliner &middot; LD & Grass"]},
+{h:"Who is this for?",p:"Search or tap a recent funeral home. Inline create if new.",fields:["Johnson Funeral Home","White Chapel Funeral Home","Farone & Son Funeral Home"]},
+{h:"Order details",p:"Cemetery shortlist, service location, time, ETA, deceased name.",fields:["St. Mary's Cemetery &middot; DeWitt, NY","Oak Hill Cemetery &middot; Syracuse, NY"],extra:"Service: Church &rarr; Oak Hill &middot; 10:00 AM &middot; ETA 11:15 AM"},
+{h:"Review and save",p:"Order summary with live pricing. One tap to save.",btn:"Save Order &mdash; $1,705.00"}
+]},
+
+{id:2,pill:"Scheduling",title:"Scheduling and delivery &mdash; connected",
+benefit:"Your dispatcher, drivers, and office are looking at the same information in real time.",
+stats:[{v:"0",l:"Phone calls needed"},{v:"Real time",l:"Status updates"}],
+details:[
+["Drag-and-drop scheduling board &mdash; assign orders to driver routes",""],
+["Driver portal on any phone &mdash; today's route, stop details, photos",""],
+["Cards show vault, equipment, service location, time, and ETA",""],
+["ETA TBD shown in amber so dispatchers know what's missing",""],
+["Driver exception reporting at delivery completion",""],
+["Auto-confirm at 6 PM for tenants that don't require driver updates","ai"]
+],
+mockupSteps:["Scheduling board","Driver portal"],
+mockups:[
+{h:"Scheduling board",p:"Kanban view with driver lanes. Drag to assign.",cards:[
+{fh:"Johnson FH",re:"Smith, Robert",vault:"Monticello &middot; Full Equipment",loc:"Church &rarr; Oak Hill",time:"Service: 10:00 AM",eta:"ETA: 11:15 AM"},
+{fh:"White Chapel FH",re:"Miller, Dorothy",vault:"Graveliner &middot; LD & Grass",loc:"Graveside &middot; St. Mary's",time:"1:00 PM",eta:""}
+]},
+{h:"Driver portal",p:"Today's route with all the info your driver needs at each stop.",fields:["Stop 1: Johnson FH &rarr; Oak Hill Cemetery","Stop 2: White Chapel FH &rarr; St. Mary's Cemetery"]}
+]},
+
+{id:3,pill:"Invoicing",title:"Invoices that create themselves",
+benefit:"Staff spend 5&ndash;10 minutes each morning approving invoices the platform generated overnight.",
+stats:[{v:"6 PM",l:"Auto-draft nightly"},{v:"5 min",l:"Morning review"}],
+details:[
+["6 PM batch job creates draft invoices for all completed funeral orders","ai"],
+["Morning briefing surfaces draft count, total, and any exceptions","ai"],
+["Review queue shows each draft with driver exception flags",""],
+["Bulk approve for clean deliveries &mdash; one-by-one for exceptions",""],
+["Auto-generated, requires_review, never sent without human approval",""]
+],
+mockupSteps:["Morning review"],
+mockups:[
+{h:"Invoice review queue",p:"Drafts generated overnight, ready for morning approval.",cards:[
+{fh:"Johnson FH &mdash; Smith",vault:"Monticello &middot; Full Equip",loc:"$1,705.00",time:"Auto-confirmed",eta:""},
+{fh:"White Chapel FH &mdash; Miller",vault:"Graveliner &middot; LD & Grass",loc:"$485.00",time:"Driver exception",eta:"Weather delay"}
+]}
+]},
+
+{id:4,pill:"Billing",title:"Bills go out automatically",
+benefit:"Billing settings work the way your funeral home relationships work.",
+stats:[{v:"Auto",l:"PDF + email"},{v:"Auto",l:"Statement generation"}],
+details:[
+["Per-order invoicing &mdash; PDF sent immediately after approval",""],
+["Monthly statement billing &mdash; invoices stay open until statement run",""],
+["PDF includes deceased name, cemetery, service date",""],
+["Early payment discount shown on invoice &mdash; discounted vs. full amount","ai"],
+["Statements auto-generate at month end with all open invoices","ai"]
+],
+mockupSteps:["Invoice PDF"],
+mockups:[
+{h:"Invoice with discount option",p:"Funeral homes see both payment options clearly.",fields:["Invoice #SO-2026-0142","Johnson Funeral Home","RE: Smith, Robert","Monticello Vault &mdash; $1,405.00","Full Equipment &mdash; $300.00","Total: $1,705.00","Pay by Apr 15: $1,619.75 (5% discount)"]}
+]},
+
+{id:5,pill:"Collections",title:"Collections that run themselves",
+benefit:"Most reminder emails go out without any staff action.",
+stats:[{v:"Nightly",l:"Overdue detection"},{v:"AI-drafted",l:"Email reminders"}],
+details:[
+["Nightly job detects overdue invoices and triggers collection sequences","ai"],
+["AI drafts reminder emails in your tone &mdash; review before sending","ai"],
+["Escalation steps from friendly reminder to firm final notice",""],
+["Auto-pause collections when payment is received","ai"],
+["Credit hold applied when balance exceeds limit",""],
+["Morning briefing shows collection status and amounts at risk","ai"]
+],
+mockupSteps:["Collections view"],
+mockups:[
+{h:"Morning briefing &mdash; collections",p:"AI surfaces what needs attention today.",fields:["3 accounts past 30 days &mdash; $4,210 at risk","1 account past 60 days &mdash; $1,890 (escalated)","Draft reminder ready for Johnson FH","White Chapel FH paid yesterday &mdash; collections paused"]}
+]},
+
+{id:6,pill:"Payment",title:"Payment processing in seconds",
+benefit:"Scan a check. Confirm the suggested application. Done.",
+stats:[{v:"< 10s",l:"Check processing"},{v:"Auto",l:"FIFO application"}],
+details:[
+["Check scanning with Claude Vision &mdash; extracts payer, amount, check number","ai"],
+["Smart customer matching from check payer name","ai"],
+["FIFO payment suggestion &mdash; oldest invoices first","ai"],
+["Early payment discount auto-applied within window","ai"],
+["Short-pay detection with honor-discount option","ai"],
+["Customer balance updated immediately on payment",""]
+],
+mockupSteps:["Check scan","Payment confirm"],
+mockups:[
+{h:"Check scan",p:"Drop a check image. Claude reads it in seconds.",fields:["Payer: Johnson Funeral Home","Amount: $1,619.75","Check #: 4892","Date: April 10, 2026","Matched to: Johnson Funeral Home (98% confidence)"]},
+{h:"Suggested application",p:"System suggests which invoices to apply payment to.",fields:["Invoice #SO-2026-0142 &mdash; $1,705.00","Discount applied: -$85.25 (5% early)","Amount to apply: $1,619.75","Status after: Paid in full"],btn:"Confirm Payment"}
+]},
+
+{id:7,pill:"Completion",title:"The platform gets smarter with every order",
+benefit:"After 90 days on Bridgeable, your team will spend significantly less time on every part of this lifecycle.",
+stats:[{v:"Auto",l:"Order completion"},{v:"Improves",l:"With every order"}],
+details:[
+["Invoice fully paid &rarr; order auto-completes","ai"],
+["Cemetery shortlist updates from completed orders","ai"],
+["Payment timing patterns tracked per funeral home","ai"],
+["Vault preference and equipment patterns learned","ai"],
+["Collections auto-pause and credit hold auto-release on zero balance","ai"],
+["Every order makes the next order faster",""]
+],
+mockupSteps:["Intelligence view"],
+mockups:[
+{h:"Account intelligence",p:"Bridgeable learns from every interaction with each funeral home.",fields:["Johnson Funeral Home","Avg. payment: 12 days (within discount window)","Preferred vault: Monticello (78% of orders)","Top cemeteries: Oak Hill (45%), St. Mary's (30%), Assumption (15%)","Credit status: Good standing &mdash; $0 balance","Last order: April 1, 2026"]}
+]}
+];
+
+let current=0;
+const nav=document.getElementById('stageNav');
+const content=document.getElementById('stageContent');
+const pipsEl=document.getElementById('pips');
+
+function render(){
+  // Pills
+  nav.innerHTML=STAGES.map((s,i)=>`<button class="stage-pill${i===current?' active':''}" onclick="go(${i})">${s.pill}</button>`).join('');
+  // Pips
+  pipsEl.innerHTML=STAGES.map((_,i)=>`<span class="pip${i===current?' active':''}"></span>`).join('');
+  // Content
+  const s=STAGES[current];
+  let html=`<div class="stage active">`;
+  html+=`<h3 class="stage-title">${s.title}</h3>`;
+  html+=`<div class="benefit-callout">${s.benefit}</div>`;
+  html+=`<div class="stats-row">${s.stats.map(st=>`<div class="stat-card"><div class="stat-value">${st.v}</div><div class="stat-label">${st.l}</div></div>`).join('')}</div>`;
+  html+=`<ul class="detail-list">${s.details.map(d=>`<li><span class="check">&#10003;</span><span>${d[0]}${d[1]==='ai'?'<span class="badge-ai">Bridgeable intelligence</span>':''}</span></li>`).join('')}</ul>`;
+  // Mockup
+  html+=`<div class="mockup-area">`;
+  html+=`<div class="mockup-steps">${s.mockupSteps.map((ms,i)=>`<button class="mockup-step${i===0?' active':''}" onclick="showMockup(${current},${i},this)">${ms}</button>`).join('')}</div>`;
+  html+=`<div id="mockup-${current}">${renderMockup(s.mockups[0])}</div>`;
+  html+=`</div>`;
+  html+=`</div>`;
+  content.innerHTML=html;
+  // Nav buttons
+  document.getElementById('prevBtn').style.visibility=current===0?'hidden':'visible';
+  const nb=document.getElementById('nextBtn');
+  if(current===STAGES.length-1){nb.textContent='Schedule a Demo \u2192';nb.onclick=function(){window.location='mailto:hello@getbridgeable.com'}}
+  else{nb.textContent='Next \u2192';nb.onclick=next}
+}
+
+function renderMockup(m){
+  let h=`<div class="mockup-card"><h4>${m.h}</h4><p>${m.p}</p>`;
+  if(m.cards){
+    h+=`<div class="card-grid">${m.cards.map(c=>`<div class="mini-card"><strong>${c.fh}</strong>${c.re?`<div style="color:#666;font-size:11px">RE: ${c.re}</div>`:''}<div style="margin-top:4px">${c.vault}</div><div style="color:#666;margin-top:2px">${c.loc}</div><div>${c.time}${c.eta?`<span class="time-badge">${c.eta}</span>`:''}</div></div>`).join('')}</div>`;
+  }
+  if(m.fields){
+    h+=m.fields.map(f=>`<div class="field">${f}</div>`).join('');
+  }
+  if(m.extra){h+=`<div class="field" style="background:var(--teal-light);color:var(--teal-dark);font-weight:500;margin-top:12px">${m.extra}</div>`}
+  if(m.btn){h+=`<div class="btn-mock">${m.btn}</div>`}
+  h+=`</div>`;
+  return h;
+}
+
+function showMockup(stageIdx,mockupIdx,el){
+  const s=STAGES[stageIdx];
+  document.getElementById('mockup-'+stageIdx).innerHTML=renderMockup(s.mockups[mockupIdx]);
+  el.parentElement.querySelectorAll('.mockup-step').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function go(i){current=i;render();document.getElementById('lifecycle').scrollIntoView({behavior:'smooth',block:'start'})}
+function next(){if(current<STAGES.length-1){current++;render()}}
+function prev(){if(current>0){current--;render()}}
+
+render();
+
+// Sticky header border
+window.addEventListener('scroll',()=>{
+  document.getElementById('hdr').classList.toggle('scrolled',window.scrollY>20);
+});
+</script>
+</body>
+</html>
