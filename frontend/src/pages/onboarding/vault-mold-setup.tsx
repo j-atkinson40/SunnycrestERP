@@ -5,7 +5,6 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
-import { useAuth } from "@/contexts/auth-context"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { ChevronLeft, Minus, Plus, Factory, Loader2 } from "lucide-react"
@@ -38,10 +37,6 @@ interface ProductConfig {
 
 export default function VaultMoldSetupPage() {
   const navigate = useNavigate()
-  const { company } = useAuth()
-
-  const [products, setProducts] = useState<Product[]>([])
-  const [existingConfigs, setExistingConfigs] = useState<MoldConfig[]>([])
   const [configs, setConfigs] = useState<Map<string, ProductConfig>>(new Map())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

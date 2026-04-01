@@ -2,7 +2,7 @@
 // Route: /console/operations/product-entry
 // Mobile-first production logging with mold-aware capacity tiles + partial pour support.
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ChevronLeft,
@@ -11,8 +11,6 @@ import {
   Plus,
   Zap,
   AlertTriangle,
-  ChevronDown,
-  ChevronUp,
   Mic,
 } from "lucide-react"
 import { toast } from "sonner"

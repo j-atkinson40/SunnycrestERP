@@ -87,6 +87,7 @@ const PANEL_COMPONENTS: Record<string, React.ComponentType> = {
 
 interface ProductionEntry {
   id: string
+  product_id?: string | null
   product_name_raw: string
   product_name?: string
   quantity: number
@@ -255,13 +256,11 @@ function ReceivingCard({
   navigate,
   vaultDeliveryToday,
   vaultPoToday,
-  vaultSupplierVendorId,
 }: {
   expectedPOs: ExpectedPO[]
   navigate: (p: string) => void
   vaultDeliveryToday?: boolean
   vaultPoToday?: DailyContext["vault_po_today"]
-  vaultSupplierVendorId?: string | null
 }) {
   const todayStr = new Date().toISOString().split("T")[0]
   const hasContent = expectedPOs.length > 0 || vaultDeliveryToday
@@ -698,7 +697,6 @@ export default function OperationsBoardPage() {
         navigate={navigate}
         vaultDeliveryToday={dailyContext?.vault_delivery_today}
         vaultPoToday={dailyContext?.vault_po_today}
-        vaultSupplierVendorId={dailyContext?.vault_supplier_vendor_id}
       />
 
       {/* QUICK ACTION GRID — 2x2 */}
