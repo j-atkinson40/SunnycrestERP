@@ -418,10 +418,15 @@ export interface DeliveryStats {
 export interface KanbanCard {
   delivery_id: string;
   family_name: string;
+  deceased_name?: string;
   cemetery_name: string;
   funeral_home_name: string;
   service_time: string;
   service_time_display: string;
+  service_location?: string;
+  service_location_other?: string;
+  eta_display?: string;
+  equipment_summary?: string;
   vault_type: string;
   vault_personalization: string;
   requested_date: string | null;

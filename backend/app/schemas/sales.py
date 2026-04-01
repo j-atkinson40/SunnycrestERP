@@ -1,6 +1,6 @@
 """Pydantic schemas for the Sales / Accounts Receivable system."""
 
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -142,6 +142,10 @@ class SalesOrderUpdate(BaseModel):
     shipped_date: datetime | None = None
     notes: str | None = None
     deceased_name: str | None = None
+    service_location: str | None = None
+    service_location_other: str | None = None
+    service_time: time | None = None
+    eta: time | None = None
 
 
 class SalesOrderResponse(BaseModel):
@@ -164,6 +168,10 @@ class SalesOrderResponse(BaseModel):
     ship_to_address: str | None = None
     notes: str | None = None
     deceased_name: str | None = None
+    service_location: str | None = None
+    service_location_other: str | None = None
+    service_time: time | None = None
+    eta: time | None = None
     created_by: str | None = None
     created_by_name: str | None = None
     created_at: datetime

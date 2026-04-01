@@ -452,7 +452,9 @@ def update_sales_order(
             detail=f"Cannot modify order in '{order.status}' status",
         )
 
-    for field in ("status", "required_date", "shipped_date", "notes"):
+    for field in ("status", "required_date", "shipped_date", "notes",
+                   "deceased_name", "service_location", "service_location_other",
+                   "service_time", "eta"):
         val = getattr(data, field, None)
         if val is not None:
             setattr(order, field, val)

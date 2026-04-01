@@ -27,7 +27,7 @@ def _require_funeral_kanban(db: Session, tenant_id: str) -> dict:
     return extension_service.get_extension_config(db, tenant_id, "funeral_kanban_scheduling")
 
 
-def _serialize_delivery_card(delivery: Delivery, config: dict, sequence: int | None = None) -> dict:
+def _serialize_delivery_card(delivery: Delivery, config: dict, sequence: int | None = None, db=None) -> dict:
     """Convert a delivery to a Kanban card."""
     tc = delivery.type_config or {}
     service_time_raw = tc.get("service_time", "")
@@ -103,6 +103,64 @@ def _serialize_delivery_card(delivery: Delivery, config: dict, sequence: int | N
 
     if sequence is not None:
         card["scheduled_sequence"] = sequence
+
+    # Enrich from SalesOrder — service fields + deceased name + equipment
+    if db and delivery.order_id:
+        try:
+            from app.models.sales_order import SalesOrder, SalesOrderLine
+            from app.models.product import Product
+
+            order = db.query(SalesOrder).filter(SalesOrder.id == delivery.order_id).first()
+            if order:
+                card["deceased_name"] = order.deceased_name or ""
+                card["service_location"] = order.service_location or ""
+                card["service_location_other"] = order.service_location_other or ""
+
+                # Format ETA
+                if order.eta:
+                    h = order.eta.hour
+                    m = order.eta.minute
+                    ampm = "AM" if h < 12 else "PM"
+                    dh = h if h <= 12 else h - 12
+                    if dh == 0:
+                        dh = 12
+                    card["eta_display"] = f"{dh}:{m:02d} {ampm}"
+                else:
+                    card["eta_display"] = ""
+
+                # Equipment summary from order lines
+                lines = (
+                    db.query(SalesOrderLine)
+                    .join(Product, SalesOrderLine.product_id == Product.id, isouter=True)
+                    .filter(SalesOrderLine.sales_order_id == order.id)
+                    .all()
+                )
+                equipment_names = []
+                for line in lines:
+                    if line.product_id:
+                        prod = db.query(Product).filter(Product.id == line.product_id).first()
+                        if prod and (
+                            getattr(prod, "is_lowering_device", False)
+                            or getattr(prod, "is_placer", False)
+                            or "equipment" in (prod.name or "").lower()
+                            or "tent" in (prod.name or "").lower()
+                            or "lowering" in (prod.name or "").lower()
+                            or "grass" in (prod.name or "").lower()
+                        ):
+                            equipment_names.append(prod.name)
+                card["equipment_summary"] = " · ".join(equipment_names) if equipment_names else ""
+        except Exception:
+            card.setdefault("deceased_name", "")
+            card.setdefault("service_location", "")
+            card.setdefault("service_location_other", "")
+            card.setdefault("eta_display", "")
+            card.setdefault("equipment_summary", "")
+    else:
+        card["deceased_name"] = tc.get("family_name", "")
+        card["service_location"] = ""
+        card["service_location_other"] = ""
+        card["eta_display"] = ""
+        card["equipment_summary"] = ""
 
     return card
 
@@ -234,7 +292,7 @@ def get_schedule(
         items = driver_deliveries.get(driver.id, [])
         cards = []
         for stop, delivery in items:
-            cards.append(_serialize_delivery_card(delivery, config, sequence=stop.sequence_number))
+            cards.append(_serialize_delivery_card(delivery, config, sequence=stop.sequence_number, db=db))
 
         # Get driver display name from employee
         driver_name = f"Driver {driver.id[:8]}"
@@ -254,7 +312,7 @@ def get_schedule(
     return {
         "date": schedule_date.isoformat(),
         "config": config,
-        "unscheduled": [_serialize_delivery_card(d, config) for d in truly_unscheduled],
+        "unscheduled": [_serialize_delivery_card(d, config, db=db) for d in truly_unscheduled],
         "drivers": driver_lanes,
     }
 

@@ -134,6 +134,10 @@ export interface SalesOrder {
   inventory_warning_notes?: string | null;
   has_driver_exception?: boolean;
   delivered_at?: string | null;
+  service_location?: string | null;
+  service_location_other?: string | null;
+  service_time?: string | null;
+  eta?: string | null;
 }
 
 export interface SalesOrderCreate {

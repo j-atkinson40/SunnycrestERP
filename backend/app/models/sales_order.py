@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -12,6 +12,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -105,6 +106,14 @@ class SalesOrder(Base):
 
     # Funeral home confirmation method (defaults from customer preference, can be overridden)
     confirmation_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Service details — set during order entry, shown on scheduling board
+    service_location: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # 'church', 'funeral_home', 'graveside', 'other'
+    service_location_other: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    service_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    eta: Mapped[time | None] = mapped_column(Time, nullable=True)
+    # Estimated cemetery arrival (procession ETA); null for graveside
 
     # Deceased name — shown on invoice/PDF when invoice settings enable it
     deceased_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

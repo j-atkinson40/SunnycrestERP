@@ -56,6 +56,10 @@ class CreateQuoteRequest(BaseModel):
     notes: str | None = None
     delivery_charge: float | None = None
     deceased_name: str | None = None
+    service_location: str | None = None
+    service_location_other: str | None = None
+    service_time: str | None = None  # "HH:MM" format
+    eta: str | None = None  # "HH:MM" format
 
 
 class QuoteResponse(BaseModel):
@@ -85,6 +89,7 @@ class OrderStationActivityResponse(BaseModel):
     todays_orders: list[dict]
     pending_quotes: list[dict]
     recent_orders: list[dict]
+    recent_funeral_homes: list[dict] = []
     spring_burial_count: int
     pending_quote_count: int
     pending_quote_value: float

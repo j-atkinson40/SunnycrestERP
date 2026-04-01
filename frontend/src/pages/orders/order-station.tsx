@@ -72,27 +72,27 @@ const FLOW_STEPS = [
   },
   {
     key: "quick-order-templates",
-    title: "Pick a template or start fresh",
+    title: "Pick a template",
     instruction:
-      "Quick order templates are your most common order types — pre-configured with the right vault and equipment. Click a template and most of the order fills in automatically. For unusual orders you can also start from scratch.",
+      "Quick order templates are waiting for you. Tap one to start an order — you'll be asked who it's for next. Each template has the right vault and equipment pre-configured.",
   },
   {
     key: "funeral-home-select",
-    title: "Select the funeral home",
+    title: "Search for the funeral home",
     instruction:
-      "Start by selecting the funeral home that's calling. Type the first few letters of their name. Once selected, their recent cemeteries will appear as a shortlist for the next field.\n\nIf the funeral home isn't in your system yet, type their name and select '+ Add as new funeral home'. They'll be created instantly and you can complete their profile later.",
+      "After selecting a template, search for the funeral home that called. Recent funeral homes appear so you can tap without typing.\n\nIf the funeral home isn't in your system yet, type their name and select '+ Add as new funeral home'. They'll be created instantly.",
   },
   {
     key: "cemetery-select",
-    title: "Pick the cemetery",
+    title: "Fill in the order details",
     instruction:
-      "Select the cemetery where the service will be held. If this funeral home has ordered before, their most common cemeteries appear at the top. Important: the county of the cemetery determines the tax rate, and if the cemetery has their own equipment we'll automatically remove those charges for you.",
+      "Enter the cemetery, service location, and time. For Church and Funeral Home services, add the ETA when you know it — this is when the procession will arrive at the cemetery, not when the service starts.\n\nThe county of the cemetery determines the tax rate, and if the cemetery has their own equipment we'll automatically remove those charges.",
   },
   {
     key: "service-date",
     title: "Set the service date",
     instruction:
-      "Enter the date of the graveside service — not the funeral, the burial. This is what your driver will be scheduled for.",
+      "Enter the date of the service. This is what your driver will be scheduled for.",
   },
   {
     key: "order-save-button",
@@ -189,6 +189,53 @@ function statusColor(status: string): string {
     case "cancelled": return "bg-red-100 text-red-700";
     default: return "bg-gray-100 text-gray-700";
   }
+}
+
+// ---------------------------------------------------------------------------
+// FuneralHomePopup — shown when a template is tapped, before the slide-over
+// ---------------------------------------------------------------------------
+
+function FuneralHomePopup({
+  recentFuneralHomes,
+  onSelect,
+  onCancel,
+}: {
+  recentFuneralHomes: { id: string; name: string }[];
+  onSelect: (id: string, name: string) => void;
+  onCancel: () => void;
+}) {
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Auto-focus search field
+    setTimeout(() => searchRef.current?.focus(), 100);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 mx-4">
+        <h2 className="text-lg font-bold text-gray-900 mb-4">
+          Who is this order for?
+        </h2>
+        <FuneralHomePicker
+          ref={searchRef}
+          value={null}
+          displayValue=""
+          onChange={(id, name) => {
+            if (id) onSelect(id, name);
+          }}
+          className="mb-3"
+          recentItems={recentFuneralHomes}
+        />
+        <button
+          onClick={onCancel}
+          className="w-full mt-2 py-2 text-sm text-gray-500 hover:text-gray-700"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -360,12 +407,16 @@ function OrderSlideOver({
   onClose,
   onSuccess,
   initialFormData,
+  onChangeTemplate,
+  onChangeFuneralHome,
 }: {
   template: QuickQuoteTemplate;
   mode: "order" | "quote";
   onClose: () => void;
   onSuccess: () => void;
   initialFormData?: Record<string, string>;
+  onChangeTemplate?: () => void;
+  onChangeFuneralHome?: () => void;
 }) {
   const [formData, setFormData] = useState<Record<string, string>>(initialFormData ?? {});
   const [submitting, setSubmitting] = useState(false);
@@ -481,7 +532,16 @@ function OrderSlideOver({
     e.preventDefault();
     setSubmitting(true);
     try {
-      const payload = { template_id: template.id, mode, fields: formData };
+      const payload = {
+        template_id: template.id,
+        mode,
+        fields: formData,
+        // Service fields at top level for backend processing
+        service_location: formData.service_location || null,
+        service_location_other: formData.service_location_other || null,
+        service_time: formData.service_time || null,
+        eta: formData.eta || null,
+      };
       await createQuote(payload);
 
       if (formData.customer_id && formData.cemetery_id) {
@@ -516,9 +576,21 @@ function OrderSlideOver({
             <h2 className="text-lg font-semibold text-gray-900">
               {isQuote ? "New Quote" : "New Order"} &mdash; {template.display_label}
             </h2>
-            {template.display_description && (
-              <p className="text-sm text-gray-500 mt-0.5">{template.display_description}</p>
+            {formData.customer_name && (
+              <p className="text-sm text-gray-700 mt-0.5">{formData.customer_name}</p>
             )}
+            <div className="flex gap-3 mt-1">
+              {onChangeTemplate && (
+                <button onClick={onChangeTemplate} className="text-xs text-blue-600 hover:text-blue-800">
+                  Change template
+                </button>
+              )}
+              {onChangeFuneralHome && (
+                <button onClick={onChangeFuneralHome} className="text-xs text-blue-600 hover:text-blue-800">
+                  Change funeral home
+                </button>
+              )}
+            </div>
           </div>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100">
             <X className="h-5 w-5 text-gray-400" />
@@ -689,6 +761,68 @@ function OrderSlideOver({
                   className="mt-1"
                 />
               </div>
+
+              {/* Service location */}
+              <div>
+                <Label className="text-xs text-gray-500 uppercase tracking-wider">Service Location</Label>
+                <div className="grid grid-cols-4 gap-1.5 mt-1">
+                  {(["church", "funeral_home", "graveside", "other"] as const).map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      onClick={() => setField("service_location", loc)}
+                      className={cn(
+                        "py-2 text-xs font-medium rounded-lg border transition-colors",
+                        formData.service_location === loc
+                          ? "bg-gray-900 text-white border-gray-900"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                      )}
+                    >
+                      {loc === "church" ? "Church" : loc === "funeral_home" ? "Funeral Home" : loc === "graveside" ? "Graveside" : "Other"}
+                    </button>
+                  ))}
+                </div>
+                {formData.service_location === "other" && (
+                  <Input
+                    placeholder="Describe: Synagogue, Temple, Pavilion..."
+                    value={formData.service_location_other ?? ""}
+                    onChange={(e) => setField("service_location_other", e.target.value)}
+                    className="mt-1.5"
+                  />
+                )}
+              </div>
+
+              {/* Service time */}
+              <div>
+                <Label htmlFor="service_time">
+                  {formData.service_location === "graveside" ? "Graveside Time" : "Service Time"}
+                </Label>
+                <Input
+                  id="service_time"
+                  type="time"
+                  value={formData.service_time ?? ""}
+                  onChange={(e) => setField("service_time", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+
+              {/* ETA — hidden for graveside */}
+              {formData.service_location !== "graveside" && (
+                <div>
+                  <Label htmlFor="eta">Estimated Cemetery Arrival</Label>
+                  <Input
+                    id="eta"
+                    type="time"
+                    value={formData.eta ?? ""}
+                    onChange={(e) => setField("eta", e.target.value)}
+                    placeholder="Enter if known"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Not sure yet? You can add this later from the order detail.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -889,6 +1023,14 @@ export default function OrderStation() {
     mode: "order" | "quote";
     initialFormData?: Record<string, string>;
   } | null>(null);
+
+  // Funeral home popup state (template-first flow)
+  const [pendingTemplate, setPendingTemplate] = useState<{
+    template: QuickQuoteTemplate;
+    mode: "order" | "quote";
+  } | null>(null);
+  const [rememberedFormData, setRememberedFormData] = useState<Record<string, string>>({});
+  const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
   // Voice-to-order state
   const [voiceInput, setVoiceInput] = useState("");
@@ -1101,7 +1243,45 @@ export default function OrderStation() {
   // ---- Handlers ----
 
   function openSlideOver(template: QuickQuoteTemplate, mode: "order" | "quote") {
+    // Funeral vault templates go through the FH popup first
+    if (template.product_line === "funeral_vaults" && mode === "order") {
+      setPendingTemplate({ template, mode });
+      return;
+    }
     setActiveSlideOver({ template, mode });
+  }
+
+  function handleFHSelected(customerId: string, customerName: string) {
+    if (!pendingTemplate) return;
+    const initial: Record<string, string> = {
+      ...rememberedFormData,
+      customer_id: customerId,
+      customer_name: customerName,
+    };
+    setActiveSlideOver({
+      template: pendingTemplate.template,
+      mode: pendingTemplate.mode,
+      initialFormData: initial,
+    });
+    setPendingTemplate(null);
+  }
+
+  function handleChangeTemplate() {
+    // Save current form data (minus template-specific fields) for restoration
+    if (activeSlideOver) {
+      const saved = { ...activeSlideOver.initialFormData };
+      // These will come from the new template, don't preserve
+      delete saved.vault_product;
+      delete saved.equipment;
+      setRememberedFormData(saved);
+    }
+    setActiveSlideOver(null);
+  }
+
+  function handleOrderSuccess(customerName: string) {
+    setOrderSuccess(`Order saved for ${customerName}`);
+    setTimeout(() => setOrderSuccess(null), 2000);
+    fetchActivity();
   }
 
   function handleSlideOverSuccess() { fetchActivity(); }
@@ -1211,88 +1391,102 @@ export default function OrderStation() {
         )}
       </div>
 
-      {/* ---- Sticky Quick Orders Bar ---- */}
-      <div className="sticky top-0 z-20 bg-white border-b shadow-sm mt-3">
-        <div className="px-6 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2" data-guided="quick-order-templates">
-              <Zap className="h-4 w-4 text-amber-500" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Quick Orders
-              </span>
-            </div>
-            <button
-              onClick={refreshAll}
-              disabled={refreshing}
-              className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            </button>
+      {/* ---- Template Grid (Landing State) ---- */}
+      <div className="px-6 pt-4 pb-2" data-guided="quick-order-templates">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-500" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Quick Orders
+            </span>
           </div>
-
-          <div className="flex gap-6 overflow-x-auto pb-1">
-            {funeralVaultTemplates.length > 0 && (
-              <div className="flex-shrink-0">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500 mb-1 block">
-                  Funeral Vaults
-                </span>
-                <div className="flex gap-2">
-                  {funeralVaultTemplates.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => openSlideOver(t, "order")}
-                      className="px-3 py-1.5 text-sm font-medium rounded-md bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors whitespace-nowrap"
-                    >
-                      {t.display_label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {funeralVaultTemplates.length > 0 && wastewaterTemplates.length > 0 && (
-              <div className="w-px bg-gray-200 self-stretch flex-shrink-0" />
-            )}
-
-            {wastewaterTemplates.length > 0 && (
-              <div className="flex-shrink-0">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-500 mb-1 block">
-                  Wastewater
-                </span>
-                <div className="flex gap-2">
-                  {wastewaterTemplates.map((t) => (
-                    <SplitActionButton key={t.id} template={t} onAction={openSlideOver} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {otherTemplates.length > 0 && (
-              <>
-                {(funeralVaultTemplates.length > 0 || wastewaterTemplates.length > 0) && (
-                  <div className="w-px bg-gray-200 self-stretch flex-shrink-0" />
-                )}
-                <div className="flex-shrink-0">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1 block">
-                    Other
-                  </span>
-                  <div className="flex gap-2">
-                    {otherTemplates.map((t) => (
-                      <SplitActionButton key={t.id} template={t} onAction={openSlideOver} />
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {templates.length === 0 && (
-              <p className="text-sm text-gray-400 italic py-1">
-                No quick order templates configured yet.
-              </p>
-            )}
-          </div>
+          <button
+            onClick={refreshAll}
+            disabled={refreshing}
+            className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
         </div>
+
+        {/* Order success overlay */}
+        {orderSuccess && (
+          <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800 font-medium flex items-center gap-2">
+            <BadgeCheck className="h-4 w-4 text-green-600" />
+            {orderSuccess}
+          </div>
+        )}
+
+        {/* Funeral vault templates as grid */}
+        {funeralVaultTemplates.length > 0 && (
+          <div className="mb-4">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500 mb-2 block">
+              Funeral Vaults
+            </span>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {funeralVaultTemplates.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => openSlideOver(t, "order")}
+                  className="p-4 min-h-[80px] text-left rounded-xl border border-stone-200 bg-white hover:bg-stone-50 hover:border-stone-300 transition-colors"
+                >
+                  <div className="font-semibold text-sm text-gray-900">{t.display_label}</div>
+                  {t.display_description && (
+                    <div className="text-xs text-gray-500 mt-1 line-clamp-2">{t.display_description}</div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Wastewater templates as grid */}
+        {wastewaterTemplates.length > 0 && (
+          <div className="mb-4">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-500 mb-2 block">
+              Wastewater
+            </span>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {wastewaterTemplates.map((t) => (
+                <SplitActionButton key={t.id} template={t} onAction={openSlideOver} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Other templates */}
+        {otherTemplates.length > 0 && (
+          <div className="mb-4">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-2 block">
+              Other
+            </span>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {otherTemplates.map((t) => (
+                <SplitActionButton key={t.id} template={t} onAction={openSlideOver} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {templates.length === 0 && (
+          <p className="text-sm text-gray-400 italic py-2">
+            No quick order templates configured yet.
+          </p>
+        )}
+
+        {/* Start from scratch */}
+        <button
+          onClick={() => {
+            // Open slide-over with blank template
+            if (funeralVaultTemplates.length > 0) {
+              openSlideOver(funeralVaultTemplates[0], "order");
+            }
+          }}
+          className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+        >
+          Start from scratch
+        </button>
       </div>
 
       {/* ---- Activity Feed ---- */}
@@ -1511,6 +1705,15 @@ export default function OrderStation() {
       </>}
       </>}
 
+      {/* ---- Funeral Home Popup ---- */}
+      {pendingTemplate && (
+        <FuneralHomePopup
+          recentFuneralHomes={activity?.recent_funeral_homes ?? []}
+          onSelect={handleFHSelected}
+          onCancel={() => setPendingTemplate(null)}
+        />
+      )}
+
       {/* ---- Slide-Over ---- */}
       {activeSlideOver && (
         <OrderSlideOver
@@ -1519,6 +1722,12 @@ export default function OrderStation() {
           initialFormData={activeSlideOver.initialFormData}
           onClose={() => setActiveSlideOver(null)}
           onSuccess={handleSlideOverSuccess}
+          onChangeTemplate={handleChangeTemplate}
+          onChangeFuneralHome={() => {
+            const t = activeSlideOver;
+            setActiveSlideOver(null);
+            setPendingTemplate({ template: t.template, mode: t.mode });
+          }}
         />
       )}
 

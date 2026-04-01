@@ -255,10 +255,42 @@ def order_station_activity(
         for q in expiring_quotes
     ]
 
+    # Recent funeral homes — last 10 distinct FHs that had funeral orders
+    from app.models.customer import Customer
+
+    recent_fh_subq = (
+        db.query(SalesOrder.customer_id)
+        .filter(
+            SalesOrder.company_id == tenant_id,
+            SalesOrder.order_type == "funeral",
+            SalesOrder.customer_id.isnot(None),
+        )
+        .order_by(SalesOrder.created_at.desc())
+        .limit(50)
+        .subquery()
+    )
+    recent_fh_ids = db.query(recent_fh_subq.c.customer_id).distinct().limit(10).all()
+    recent_fh_ids = [r[0] for r in recent_fh_ids]
+
+    recent_funeral_homes = []
+    if recent_fh_ids:
+        customers = (
+            db.query(Customer)
+            .filter(Customer.id.in_(recent_fh_ids))
+            .all()
+        )
+        id_to_cust = {c.id: c for c in customers}
+        # Preserve order from query
+        for fh_id in recent_fh_ids:
+            c = id_to_cust.get(fh_id)
+            if c:
+                recent_funeral_homes.append({"id": c.id, "name": c.name})
+
     return OrderStationActivityResponse(
         todays_orders=todays_orders,
         pending_quotes=pending_quotes,
         recent_orders=recent_orders,
+        recent_funeral_homes=recent_funeral_homes,
         spring_burial_count=spring_burial_count,
         pending_quote_count=pending_quote_count,
         pending_quote_value=pending_quote_value,
@@ -311,6 +343,38 @@ def create_quote(
         cemetery_name=data.cemetery_name,
         deceased_name=data.deceased_name,
     )
+
+    # For mode="order", auto-convert to SalesOrder and apply service fields
+    if data.mode == "order" and result.get("id"):
+        try:
+            from datetime import time as _time
+
+            order_result = quote_service.convert_quote_to_order(
+                db, current_user.company_id, current_user.id, result["id"]
+            )
+            # Apply service fields to the new SalesOrder
+            order = db.query(SalesOrder).filter(SalesOrder.id == order_result["id"]).first()
+            if order:
+                if data.service_location:
+                    order.service_location = data.service_location
+                if data.service_location_other:
+                    order.service_location_other = data.service_location_other
+                if data.service_time:
+                    try:
+                        parts = data.service_time.split(":")
+                        order.service_time = _time(int(parts[0]), int(parts[1]))
+                    except (ValueError, IndexError):
+                        pass
+                if data.eta:
+                    try:
+                        parts = data.eta.split(":")
+                        order.eta = _time(int(parts[0]), int(parts[1]))
+                    except (ValueError, IndexError):
+                        pass
+                db.commit()
+        except Exception:
+            pass  # Quote was created; conversion failure is not fatal
+
     return QuoteResponse(
         id=result["id"],
         quote_number=result["quote_number"],

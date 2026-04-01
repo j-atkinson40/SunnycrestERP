@@ -91,65 +91,80 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
               "border-amber-400 bg-amber-50",
           )}
         >
-          <div className="flex items-start justify-between gap-2">
-            {config.card_show_family_name && card.family_name && (
-              <span className="text-sm font-semibold text-slate-900 leading-tight">
-                {card.family_name}
-              </span>
-            )}
-            {config.card_show_service_time && card.service_time_display && (
-              <Badge
-                variant="outline"
-                className={cn(
-                  "shrink-0 text-xs font-medium",
-                  card.is_critical
-                    ? "border-red-400 bg-red-100 text-red-800"
-                    : card.is_warning
-                      ? "border-amber-400 bg-amber-100 text-amber-800"
-                      : "border-slate-300",
-                )}
-              >
-                {card.service_time_display}
-              </Badge>
-            )}
-          </div>
-
-          <div className="mt-1.5 space-y-0.5 text-xs text-slate-600">
-            {config.card_show_cemetery && card.cemetery_name && (
-              <div className="flex items-center gap-1">
-                <span className="text-slate-400">Cemetery:</span>
-                <span className="truncate">{card.cemetery_name}</span>
-              </div>
-            )}
-            {config.card_show_funeral_home && card.funeral_home_name && (
-              <div className="flex items-center gap-1">
-                <span className="text-slate-400">FH:</span>
-                <span className="truncate">{card.funeral_home_name}</span>
-              </div>
-            )}
-            {config.card_show_vault_type && card.vault_type && (
-              <div className="flex items-center gap-1">
-                <span className="text-slate-400">Vault:</span>
-                <span>{card.vault_type}</span>
-                {card.vault_personalization && (
-                  <Badge
-                    variant="secondary"
-                    className="ml-1 text-[10px] px-1 py-0"
-                  >
-                    Custom
-                  </Badge>
-                )}
-              </div>
-            )}
-          </div>
-
-          {(card.required_window_start || card.required_window_end) && (
-            <div className="mt-1.5 text-[11px] text-slate-500">
-              Window: {card.required_window_start || "?"} –{" "}
-              {card.required_window_end || "?"}
+          {/* Funeral home name */}
+          {config.card_show_funeral_home && card.funeral_home_name && (
+            <div className="text-sm font-semibold text-slate-900 leading-tight">
+              {card.funeral_home_name}
             </div>
           )}
 
+          {/* Deceased name */}
+          {card.deceased_name && (
+            <div className="text-xs text-slate-500 mt-0.5">
+              RE: {card.deceased_name}
+            </div>
+          )}
+
+          {/* Vault · Equipment */}
+          {(card.vault_type || card.equipment_summary) && (
+            <div className="mt-1.5 text-xs text-slate-700">
+              {[card.vault_type, card.equipment_summary].filter(Boolean).join(" · ")}
+              {card.vault_personalization && (
+                <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
+                  Custom
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {/* Service location → Cemetery + times */}
+          <div className="mt-1.5 text-xs text-slate-600 space-y-0.5">
+            {/* Location line */}
+            {(card.service_location || card.cemetery_name) && (
+              <div className="flex items-center gap-1">
+                <span className="text-slate-400 text-[11px]">
+                  {card.service_location === "church" ? "⛪" :
+                   card.service_location === "funeral_home" ? "🏛" :
+                   card.service_location === "graveside" ? "⚰" : "📍"}
+                </span>
+                {card.service_location === "graveside" ? (
+                  <span>Graveside · {card.cemetery_name || "TBD"}</span>
+                ) : (
+                  <span>
+                    {card.service_location === "church" ? "Church" :
+                     card.service_location === "funeral_home" ? "Funeral Home" :
+                     card.service_location_other || "Service"}
+                    {card.cemetery_name ? ` → ${card.cemetery_name}` : ""}
+                  </span>
+                )}
+              </div>
+            )}
+            {!card.service_location && card.cemetery_name && (
+              <div className="truncate">{card.cemetery_name}</div>
+            )}
+
+            {/* Time line */}
+            {card.service_location === "graveside" ? (
+              card.service_time_display ? (
+                <div className="font-medium">{card.service_time_display}</div>
+              ) : (
+                <div className="text-amber-600">Time TBD</div>
+              )
+            ) : card.service_time_display ? (
+              <div>
+                Service: {card.service_time_display}
+                {card.eta_display ? (
+                  <span className="font-medium ml-2">ETA: {card.eta_display}</span>
+                ) : (
+                  <span className="text-amber-600 ml-2">ETA: TBD</span>
+                )}
+              </div>
+            ) : (
+              <div className="text-amber-600">Time TBD</div>
+            )}
+          </div>
+
+          {/* Hours countdown */}
           {card.hours_until_service !== null &&
             card.hours_until_service > 0 && (
               <div className="mt-1.5">
