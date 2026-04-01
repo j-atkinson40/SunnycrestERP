@@ -993,7 +993,7 @@ function OrderSlideOver({
             const vaultItem = template.line_items?.find(
               (item: Record<string, unknown>) =>
                 item.has_personalization || item.personalization_tier
-            );
+            ) as Record<string, unknown> | undefined;
             if (!vaultItem) return null;
             const tier = String(vaultItem.personalization_tier || "");
             const showExpand = formData._pers_expanded === "true";
