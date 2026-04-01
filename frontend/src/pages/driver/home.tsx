@@ -160,6 +160,31 @@ export default function DriverHomePage() {
         </Card>
       )}
 
+      {/* Next stop preview */}
+      {route.status === "in_progress" && (() => {
+        const nextStop = route.stops.find((s) => s.status !== "completed" && s.status !== "skipped");
+        if (!nextStop?.delivery) return null;
+        const d = nextStop.delivery;
+        return (
+          <Card
+            className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => navigate("/driver/route")}
+          >
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Next Stop</p>
+            <p className="font-medium text-sm">{d.customer_name || "Delivery"}</p>
+            {d.cemetery_name && (
+              <p className="text-xs text-gray-500 mt-0.5">
+                {d.cemetery_name}
+                {d.cemetery_city && <span className="text-gray-400"> · {d.cemetery_city}{d.cemetery_state ? `, ${d.cemetery_state}` : ""}</span>}
+              </p>
+            )}
+            {d.service_time_display && (
+              <p className="text-xs text-gray-500 mt-0.5">{d.service_time_display}</p>
+            )}
+          </Card>
+        );
+      })()}
+
       {/* Stop Preview */}
       {route.stops.length > 0 && (
         <div>

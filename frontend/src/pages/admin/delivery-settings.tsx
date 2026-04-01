@@ -67,6 +67,19 @@ const TOGGLE_GROUPS: { title: string; toggles: ToggleDef[] }[] = [
     ],
   },
   {
+    title: "Driver Portal",
+    toggles: [
+      { key: "show_en_route_button", label: "En Route Button", description: "Drivers can mark when they've left for the cemetery" },
+      { key: "show_exception_button", label: "Exception Button", description: "Drivers can report delivery exceptions (tent couldn't set, access issues, etc.)" },
+      { key: "show_delivered_button", label: "Delivered Button", description: "Drivers mark each stop complete. If off, deliveries are confirmed automatically at 6pm." },
+      { key: "show_equipment_checklist", label: "Equipment Checklist", description: "Show a loadout checklist before drivers can mark En Route. Items pulled from the order." },
+      { key: "show_funeral_home_contact", label: "Funeral Home Contact", description: "Display funeral home contact name and call button on stops" },
+      { key: "show_cemetery_contact", label: "Cemetery Contact", description: "Display cemetery contact and call button on stops" },
+      { key: "show_get_directions", label: "Get Directions", description: "One-tap navigation to the cemetery using device maps app" },
+      { key: "show_call_office_button", label: "Call Office", description: "Quick-dial button to reach your dispatch/office number" },
+    ],
+  },
+  {
     title: "Third-Party Carriers",
     toggles: [
       { key: "sms_carrier_updates", label: "SMS Carrier Updates", description: "Send SMS to carriers with delivery details and accept keyword replies (PICKED/DELIVERED/ISSUE)" },

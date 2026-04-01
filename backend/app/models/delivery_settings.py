@@ -54,6 +54,16 @@ class DeliverySettings(Base):
     require_driver_status_updates: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # False = system auto-confirms delivery at 6 PM batch; True = require driver to mark delivered
 
+    # Driver portal visibility
+    show_en_route_button: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    show_exception_button: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    show_delivered_button: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    show_equipment_checklist: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    show_funeral_home_contact: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    show_cemetery_contact: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    show_get_directions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    show_call_office_button: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
     # Carrier toggles
     sms_carrier_updates: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     carrier_portal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

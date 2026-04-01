@@ -4,6 +4,7 @@ import type {
   DeliveryMedia,
   DeliveryRoute,
   DeliveryStop,
+  DriverPortalSettings,
   EventCreate,
 } from "@/types/delivery";
 
@@ -65,6 +66,17 @@ export const driverService = {
   // -----------------------------------------------------------------------
   // Media
   // -----------------------------------------------------------------------
+
+  // -----------------------------------------------------------------------
+  // Portal Settings
+  // -----------------------------------------------------------------------
+
+  async getPortalSettings(): Promise<DriverPortalSettings> {
+    const response = await apiClient.get<DriverPortalSettings>(
+      "/driver/portal-settings",
+    );
+    return response.data;
+  },
 
   async uploadMedia(
     deliveryId: string,

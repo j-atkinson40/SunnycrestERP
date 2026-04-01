@@ -22,6 +22,126 @@ router = APIRouter()
 MODULE = "driver_delivery"
 
 
+def _enrich_route_stops(db: Session, resp_dict: dict) -> None:
+    """Batch-enrich route stops with contacts, equipment, notes, and service fields."""
+    try:
+        from collections import defaultdict
+        from app.models.sales_order import SalesOrder, SalesOrderLine
+        from app.models.customer import Customer
+        from app.models.customer_contact import CustomerContact
+        from app.models.cemetery import Cemetery
+        from app.models.product import Product
+
+        stops = resp_dict.get("stops") or []
+        order_ids = []
+        for s in stops:
+            d = s.get("delivery") or {}
+            oid = d.get("order_id")
+            if oid:
+                order_ids.append(oid)
+
+        if not order_ids:
+            return
+
+        # Batch queries
+        orders = {o.id: o for o in db.query(SalesOrder).filter(SalesOrder.id.in_(order_ids)).all()}
+
+        customer_ids = {o.customer_id for o in orders.values() if o.customer_id}
+        customers = {c.id: c for c in db.query(Customer).filter(Customer.id.in_(customer_ids)).all()} if customer_ids else {}
+
+        # Primary contacts per customer
+        primary_contacts = {}
+        if customer_ids:
+            contacts = (
+                db.query(CustomerContact)
+                .filter(
+                    CustomerContact.customer_id.in_(customer_ids),
+                    CustomerContact.is_primary.is_(True),
+                )
+                .all()
+            )
+            for cc in contacts:
+                primary_contacts[cc.customer_id] = cc
+
+        cemetery_ids = {o.cemetery_id for o in orders.values() if o.cemetery_id}
+        cemeteries = {c.id: c for c in db.query(Cemetery).filter(Cemetery.id.in_(cemetery_ids)).all()} if cemetery_ids else {}
+
+        # Equipment lines per order
+        lines_by_order = defaultdict(list)
+        all_lines = db.query(SalesOrderLine).filter(SalesOrderLine.sales_order_id.in_(order_ids)).all()
+        for line in all_lines:
+            lines_by_order[line.sales_order_id].append(line)
+
+        # Enrich each stop
+        for s in stops:
+            d = s.get("delivery") or {}
+            oid = d.get("order_id")
+            if not oid or oid not in orders:
+                continue
+
+            order = orders[oid]
+
+            # Service fields
+            if order.service_location:
+                d["service_location"] = order.service_location
+            if order.service_location_other:
+                d["service_location_other"] = order.service_location_other
+            if order.service_time:
+                h, m = order.service_time.hour, order.service_time.minute
+                d["service_time"] = f"{h:02d}:{m:02d}"
+                ampm = "AM" if h < 12 else "PM"
+                dh = h if h <= 12 else h - 12
+                if dh == 0:
+                    dh = 12
+                d["service_time_display"] = f"{dh}:{m:02d} {ampm}"
+            if order.eta:
+                h, m = order.eta.hour, order.eta.minute
+                d["eta"] = f"{h:02d}:{m:02d}"
+                ampm = "AM" if h < 12 else "PM"
+                dh = h if h <= 12 else h - 12
+                if dh == 0:
+                    dh = 12
+                d["eta_display"] = f"{dh}:{m:02d} {ampm}"
+
+            d["order_notes"] = order.notes or ""
+            d["deceased_name"] = order.deceased_name or ""
+
+            # Equipment lines
+            equipment = []
+            for line in lines_by_order.get(oid, []):
+                if line.product_id:
+                    prod = db.query(Product).filter(Product.id == line.product_id).first()
+                    if prod and not getattr(prod, "product_line", "").startswith("funeral"):
+                        equipment.append({
+                            "description": line.description or prod.name,
+                            "quantity": int(line.quantity) if line.quantity else 1,
+                        })
+                elif line.description:
+                    equipment.append({"description": line.description, "quantity": int(line.quantity) if line.quantity else 1})
+            d["equipment_lines"] = equipment
+
+            # Funeral home contact
+            cust = customers.get(order.customer_id)
+            fh_contact = None
+            if cust:
+                pc = primary_contacts.get(cust.id)
+                if pc:
+                    fh_contact = {"name": pc.name, "phone": pc.phone, "email": pc.email}
+                elif cust.contact_name:
+                    fh_contact = {"name": cust.contact_name, "phone": cust.phone, "email": cust.email}
+            d["funeral_home_contact"] = fh_contact
+
+            # Cemetery contact
+            cem = cemeteries.get(order.cemetery_id) if order.cemetery_id else None
+            cem_contact = None
+            if cem and (cem.contact_name or cem.phone):
+                cem_contact = {"name": cem.contact_name or cem.name, "phone": cem.phone}
+            d["cemetery_contact"] = cem_contact
+
+    except Exception:
+        pass  # Never break route loading for enrichment failures
+
+
 class StartRouteRequest(BaseModel):
     pass
 
@@ -35,7 +155,7 @@ class UpdateStopStatusRequest(BaseModel):
     driver_notes: str | None = None
 
 
-@router.get("/route/today", response_model=RouteResponse | None)
+@router.get("/route/today")
 def get_today_route(
     db: Session = Depends(get_db),
     _module: User = Depends(require_module(MODULE)),
@@ -52,7 +172,38 @@ def get_today_route(
         resp.driver_name = f"{route.driver.employee.first_name} {route.driver.employee.last_name}"
     if route.vehicle:
         resp.vehicle_name = route.vehicle.name
-    return resp
+    resp_dict = resp.model_dump(mode="json")
+    _enrich_route_stops(db, resp_dict)
+    return resp_dict
+
+
+@router.get("/portal-settings")
+def get_portal_settings(
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module(MODULE)),
+    current_user: User = Depends(get_current_user),
+):
+    """Return driver portal visibility settings for the tenant."""
+    from app.models.delivery_settings import DeliverySettings
+
+    settings = (
+        db.query(DeliverySettings)
+        .filter(DeliverySettings.company_id == current_user.company_id)
+        .first()
+    )
+    defaults = {
+        "show_en_route_button": True,
+        "show_exception_button": True,
+        "show_delivered_button": True,
+        "show_equipment_checklist": False,
+        "show_funeral_home_contact": True,
+        "show_cemetery_contact": True,
+        "show_get_directions": True,
+        "show_call_office_button": True,
+    }
+    if not settings:
+        return defaults
+    return {k: getattr(settings, k, v) for k, v in defaults.items()}
 
 
 @router.post("/route/today/start", response_model=RouteResponse)

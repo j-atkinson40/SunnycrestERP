@@ -233,6 +233,30 @@ export interface DeliveryListItem {
   cemetery_city?: string;
   cemetery_state?: string;
   cemetery_county?: string;
+  // Enriched fields from route/today endpoint
+  service_location?: string;
+  service_location_other?: string;
+  service_time?: string;
+  service_time_display?: string;
+  eta?: string;
+  eta_display?: string;
+  equipment_lines?: { description: string; quantity: number }[];
+  funeral_home_contact?: { name: string; phone: string | null; email: string | null } | null;
+  cemetery_contact?: { name: string; phone: string | null } | null;
+  order_notes?: string;
+  deceased_name?: string;
+  vault_type?: string;
+}
+
+export interface DriverPortalSettings {
+  show_en_route_button: boolean;
+  show_exception_button: boolean;
+  show_delivered_button: boolean;
+  show_equipment_checklist: boolean;
+  show_funeral_home_contact: boolean;
+  show_cemetery_contact: boolean;
+  show_get_directions: boolean;
+  show_call_office_button: boolean;
 }
 
 export interface Delivery extends DeliveryListItem {

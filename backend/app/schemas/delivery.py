@@ -271,6 +271,14 @@ class DeliverySettingsUpdate(BaseModel):
     auto_invoice_on_complete: bool | None = None
     invoice_generation_mode: str | None = None
     require_driver_status_updates: bool | None = None
+    show_en_route_button: bool | None = None
+    show_exception_button: bool | None = None
+    show_delivered_button: bool | None = None
+    show_equipment_checklist: bool | None = None
+    show_funeral_home_contact: bool | None = None
+    show_cemetery_contact: bool | None = None
+    show_get_directions: bool | None = None
+    show_call_office_button: bool | None = None
     sms_carrier_updates: bool | None = None
     carrier_portal: bool | None = None
     max_stops_per_route: int | None = None
@@ -301,6 +309,14 @@ class DeliverySettingsResponse(BaseModel):
     auto_invoice_on_complete: bool
     invoice_generation_mode: str = "end_of_day"
     require_driver_status_updates: bool = False
+    show_en_route_button: bool = True
+    show_exception_button: bool = True
+    show_delivered_button: bool = True
+    show_equipment_checklist: bool = False
+    show_funeral_home_contact: bool = True
+    show_cemetery_contact: bool = True
+    show_get_directions: bool = True
+    show_call_office_button: bool = True
     sms_carrier_updates: bool
     carrier_portal: bool
     max_stops_per_route: int | None = None

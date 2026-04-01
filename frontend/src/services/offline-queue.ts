@@ -8,6 +8,8 @@ export type QueueItemType =
   | 'qc_check'
   | 'inspection'
   | 'receiving'
+  | 'driver_stop_status'
+  | 'driver_exception'
 
 export type QueueItemStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 
@@ -85,6 +87,14 @@ function resolveEndpoint(item: QueueItem): { method: string; url: string } {
     case 'receiving': {
       const poId = item.payload.po_id as string
       return { method: 'POST', url: `${base}/purchase-orders/${poId}/receive` }
+    }
+    case 'driver_stop_status': {
+      const stopId = item.payload.stop_id as string
+      return { method: 'PATCH', url: `${base}/driver/stops/${stopId}/status` }
+    }
+    case 'driver_exception': {
+      const stopId = item.payload.stop_id as string
+      return { method: 'POST', url: `${base}/driver/stops/${stopId}/exception` }
     }
   }
 }
