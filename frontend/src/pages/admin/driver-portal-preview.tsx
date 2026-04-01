@@ -157,7 +157,7 @@ export default function DriverPortalPreviewPage() {
     setSettings((s) => ({ ...s, [key]: checked }))
     setSaving(true)
     try {
-      await apiClient.patch("/delivery/settings", { [key]: checked })
+      await apiClient.put("/settings/delivery", { [key]: checked })
     } catch {
       setSettings(prev)
       toast.error("Failed to save setting")
