@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     PLATFORM_ADMIN_EMAIL: str = ""
     PLATFORM_ADMIN_PASSWORD: str = ""
 
+    # Cloudflare R2 storage (S3-compatible)
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = "bridgeable-legacy"
+    R2_PUBLIC_URL: str = ""
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def strip_database_url(cls, v):
