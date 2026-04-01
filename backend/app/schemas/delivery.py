@@ -279,6 +279,7 @@ class DeliverySettingsUpdate(BaseModel):
     show_cemetery_contact: bool | None = None
     show_get_directions: bool | None = None
     show_call_office_button: bool | None = None
+    require_personalization_complete: bool | None = None
     sms_carrier_updates: bool | None = None
     carrier_portal: bool | None = None
     max_stops_per_route: int | None = None
@@ -317,6 +318,7 @@ class DeliverySettingsResponse(BaseModel):
     show_cemetery_contact: bool = True
     show_get_directions: bool = True
     show_call_office_button: bool = True
+    require_personalization_complete: bool = False
     sms_carrier_updates: bool
     carrier_portal: bool
     max_stops_per_route: int | None = None

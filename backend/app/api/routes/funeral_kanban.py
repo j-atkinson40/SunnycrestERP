@@ -348,6 +348,46 @@ def assign_delivery(
     if not delivery:
         raise HTTPException(status_code=404, detail="Delivery not found")
 
+    # Personalization scheduling gate
+    if data.driver_id and delivery.order_id:
+        try:
+            from app.models.delivery_settings import DeliverySettings
+            from app.models.order_personalization_task import OrderPersonalizationTask
+            from app.models.sales_order import SalesOrder
+
+            ds = db.query(DeliverySettings).filter(DeliverySettings.company_id == current_user.company_id).first()
+            if ds and ds.require_personalization_complete:
+                pending = (
+                    db.query(OrderPersonalizationTask)
+                    .filter(
+                        OrderPersonalizationTask.order_id == delivery.order_id,
+                        OrderPersonalizationTask.status.in_(["pending", "in_progress"]),
+                    )
+                    .all()
+                )
+                if pending:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail={
+                            "error": "personalization_incomplete",
+                            "message": "Complete all personalization tasks before assigning to a driver.",
+                            "pending_tasks": [{"task_type": t.task_type, "status": t.status} for t in pending],
+                        },
+                    )
+                order = db.query(SalesOrder).filter(SalesOrder.id == delivery.order_id).first()
+                if order and order.legacy_photo_pending:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail={
+                            "error": "legacy_photo_pending",
+                            "message": "Upload legacy artwork photos or mark as not needed before dispatching.",
+                        },
+                    )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Don't break assignment for gate check failures
+
     # Remove from any existing route on this date
     existing_routes = (
         db.query(DeliveryRoute)

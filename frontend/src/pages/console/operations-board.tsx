@@ -40,6 +40,7 @@ import "@/services/board-contributors"
 
 import type { OperationsBoardSettings } from "@/types/operations-board"
 import { VaultReplenishmentWidget } from "@/components/dashboard/vault-replenishment-widget"
+import { PersonalizationQueue } from "@/components/dashboard/personalization-queue"
 
 // ── Overview panel components — contributors reference by string key ──
 
@@ -81,6 +82,7 @@ const PANEL_COMPONENTS: Record<string, React.ComponentType> = {
   DriverSchedulePanel,
   WorkOrdersOverviewPanel,
   VaultReplenishmentWidget,
+  PersonalizationQueue,
 }
 
 // ── Production entry type ──

@@ -77,6 +77,7 @@ const TOGGLE_GROUPS: { title: string; toggles: ToggleDef[] }[] = [
       { key: "show_cemetery_contact", label: "Cemetery Contact", description: "Display cemetery contact and call button on stops" },
       { key: "show_get_directions", label: "Get Directions", description: "One-tap navigation to the cemetery using device maps app" },
       { key: "show_call_office_button", label: "Call Office", description: "Quick-dial button to reach your dispatch/office number" },
+      { key: "require_personalization_complete", label: "Require Personalization Complete", description: "Vault orders with pending personalization tasks cannot be assigned to a driver until all tasks are marked complete." },
     ],
   },
   {

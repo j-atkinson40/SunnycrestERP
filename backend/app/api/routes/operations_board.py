@@ -306,6 +306,44 @@ def _maybe_add_training_reminder(db: Session, user: User, result: dict) -> None:
         pass  # Never break daily-context for training reminders
 
 
+def _maybe_add_legacy_photo_tasks(db: Session, user: User, result: dict) -> None:
+    """Add legacy photo needed items to the daily context."""
+    try:
+        from app.models.sales_order import SalesOrder
+        from app.models.customer import Customer
+
+        today = date.today()
+        orders = (
+            db.query(SalesOrder)
+            .filter(
+                SalesOrder.company_id == user.company_id,
+                SalesOrder.legacy_photo_pending.is_(True),
+                SalesOrder.scheduled_date >= today,
+                SalesOrder.status.notin_(["cancelled", "void"]),
+            )
+            .order_by(SalesOrder.scheduled_date)
+            .limit(5)
+            .all()
+        )
+        if not orders:
+            return
+
+        items = result.get("items") or []
+        for order in orders:
+            customer = db.query(Customer).filter(Customer.id == order.customer_id).first() if order.customer_id else None
+            fh_name = customer.name if customer else "Unknown"
+            is_today = order.scheduled_date == today
+            items.append({
+                "type": "legacy_photo_needed",
+                "message": f"{'TODAY: ' if is_today else ''}Legacy photo needed — {fh_name}",
+                "action_label": "Upload photos",
+                "action_url": f"/ar/orders/{order.id}",
+            })
+        result["items"] = items
+    except Exception:
+        pass
+
+
 @router.get("/daily-context")
 def get_daily_context(
     current_user: User = Depends(get_current_user),
@@ -529,6 +567,7 @@ def get_daily_context(
 
         # Training reminder — add to items if user hasn't completed lifecycle training
         _maybe_add_training_reminder(db, current_user, result)
+        _maybe_add_legacy_photo_tasks(db, current_user, result)
 
         return result
     except Exception:

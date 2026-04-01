@@ -219,6 +219,33 @@ export default function StopDetailPage() {
         ) : null;
       })()}
 
+      {/* Personalization details (read-only for drivers) */}
+      {isFuneral && stop.delivery?.personalization_data && (
+        <Card className="p-4">
+          <h3 className="mb-2 font-semibold text-sm">Personalization</h3>
+          <div className="space-y-1.5">
+            {(Array.isArray(stop.delivery.personalization_data) ? stop.delivery.personalization_data : []).map((p: Record<string, unknown>, idx: number) => (
+              <div key={idx} className="text-sm">
+                <span className="text-xs font-medium text-green-600 mr-1">&#10003;</span>
+                <span className="font-medium">
+                  {p.type === "nameplate" ? "Nameplate" :
+                   p.type === "cover_emblem" ? "Cover Emblem" :
+                   p.type === "lifes_reflections" ? `Life's Reflections — ${p.symbol || ""}` :
+                   p.type === "legacy_standard" ? `Legacy — ${p.print_name || ""}` :
+                   p.type === "legacy_custom" ? "Legacy Custom" : String(p.type)}
+                </span>
+                {p.inscription_name && (
+                  <p className="text-xs text-gray-500 pl-4">{String(p.inscription_name)}</p>
+                )}
+                {p.inscription_dates && (
+                  <p className="text-xs text-gray-400 pl-4">{String(p.inscription_dates)}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* Actions by Status */}
       <Card className="space-y-3 p-4">
         <h3 className="font-semibold">Actions</h3>

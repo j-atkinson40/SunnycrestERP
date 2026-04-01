@@ -200,6 +200,7 @@ export interface DeliverySettingsUpdate {
   show_cemetery_contact?: boolean;
   show_get_directions?: boolean;
   show_call_office_button?: boolean;
+  require_personalization_complete?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +255,7 @@ export interface DeliveryListItem {
   order_notes?: string;
   deceased_name?: string;
   vault_type?: string;
+  personalization_data?: Record<string, unknown>[];
 }
 
 export interface DriverAnnouncement {

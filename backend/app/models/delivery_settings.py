@@ -64,6 +64,9 @@ class DeliverySettings(Base):
     show_get_directions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     show_call_office_button: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # Personalization scheduling gate
+    require_personalization_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     # Carrier toggles
     sms_carrier_updates: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     carrier_portal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

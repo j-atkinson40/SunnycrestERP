@@ -281,6 +281,28 @@ OperationsBoardRegistry.register({
 // when that condition is met — so this contributor behaves like a conditional
 // feature without being a true extension.
 
+// Personalization queue — shows today's and tomorrow's personalization tasks
+OperationsBoardRegistry.register({
+  contributor_key: "personalization_queue",
+  requires_extension: null, // always shown for manufacturing preset
+  sort_order: 1,
+  overview_panel: {
+    key: "personalization_queue",
+    label: "Personalization",
+    component: "PersonalizationQueue",
+    sort_order: 1,
+  },
+  settings_items: [
+    {
+      key: "zone_personalization_queue_visible",
+      label: "Personalization queue",
+      type: "zone_toggle",
+      default_value: true,
+      group: "sections",
+    },
+  ],
+})
+
 OperationsBoardRegistry.register({
   contributor_key: "vault_replenishment",
   requires_extension: "vault_purchase_mode",
