@@ -185,6 +185,9 @@ export interface EquipmentPrefill {
 export interface CemeteryShortlistItem {
   cemetery_id: string;
   cemetery_name: string;
+  city?: string | null;
+  state?: string | null;
+  county?: string | null;
   order_count: number;
   last_order_date: string | null;
 }

@@ -1432,9 +1432,6 @@ export default function OrderStation() {
                   className="p-4 min-h-[80px] text-left rounded-xl border border-stone-200 bg-white hover:bg-stone-50 hover:border-stone-300 transition-colors"
                 >
                   <div className="font-semibold text-sm text-gray-900">{t.display_label}</div>
-                  {t.display_description && (
-                    <div className="text-xs text-gray-500 mt-1 line-clamp-2">{t.display_description}</div>
-                  )}
                 </button>
               ))}
             </div>

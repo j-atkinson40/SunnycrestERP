@@ -33,6 +33,15 @@ interface CemeteryPickerProps {
   guidedKey?: string;
 }
 
+function cemeteryLocationLine(city?: string | null, county?: string | null, state?: string | null): string {
+  if (city && state) return `${city}, ${state}`;
+  if (city) return city;
+  if (county && state) return `${county} County, ${state}`;
+  if (county) return `${county} County`;
+  if (state) return state;
+  return "";
+}
+
 export function CemeteryPicker({
   customerId,
   value,
@@ -285,31 +294,40 @@ export function CemeteryPicker({
                 )}
               </div>
 
-              {shortlistMode === "history" && shortlist.map((s) => (
-                <button
-                  key={s.cemetery_id}
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between"
-                  onClick={() => handleSelect(s.cemetery_id, s.cemetery_name)}
-                >
-                  <span className="font-medium">{s.cemetery_name}</span>
-                  <span className="text-xs text-muted-foreground">{s.order_count} order{s.order_count !== 1 ? "s" : ""}</span>
-                </button>
-              ))}
+              {shortlistMode === "history" && shortlist.map((s) => {
+                const loc = cemeteryLocationLine(s.city, s.county, s.state);
+                return (
+                  <button
+                    key={s.cemetery_id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => handleSelect(s.cemetery_id, s.cemetery_name)}
+                  >
+                    <div className="font-medium">{s.cemetery_name}</div>
+                    {loc && <div className="text-[11px] text-muted-foreground">{loc}</div>}
+                  </button>
+                );
+              })}
 
-              {shortlistMode === "geo" && geoShortlist.map((s) => (
-                <button
-                  key={s.cemetery_id}
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between"
-                  onClick={() => handleSelect(s.cemetery_id, s.cemetery_name)}
-                >
-                  <span className="font-medium">{s.cemetery_name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {s.distance_miles != null ? `${s.distance_miles.toFixed(1)} mi` : s.county || s.state || ""}
-                  </span>
-                </button>
-              ))}
+              {shortlistMode === "geo" && geoShortlist.map((s) => {
+                const loc = cemeteryLocationLine(s.city, s.county, s.state);
+                return (
+                  <button
+                    key={s.cemetery_id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => handleSelect(s.cemetery_id, s.cemetery_name)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{s.cemetery_name}</span>
+                      {s.distance_miles != null && (
+                        <span className="text-xs text-muted-foreground">{s.distance_miles.toFixed(1)} mi</span>
+                      )}
+                    </div>
+                    {loc && <div className="text-[11px] text-muted-foreground">{loc}</div>}
+                  </button>
+                );
+              })}
 
               <div className="border-t my-1" />
               <div className="px-3 py-1.5 flex items-center gap-1.5">
@@ -330,17 +348,20 @@ export function CemeteryPicker({
               {searching && (
                 <div className="px-3 py-2 text-xs text-muted-foreground">Searching...</div>
               )}
-              {!searching && searchResults.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between"
-                  onClick={() => handleSelect(c.id, c.name)}
-                >
-                  <span>{c.name}</span>
-                  <span className="text-xs text-muted-foreground">{c.county ? `${c.county}, ` : ""}{c.state}</span>
-                </button>
-              ))}
+              {!searching && searchResults.map((c) => {
+                const loc = cemeteryLocationLine(c.city, c.county, c.state);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => handleSelect(c.id, c.name)}
+                  >
+                    <div>{c.name}</div>
+                    {loc && <div className="text-[11px] text-muted-foreground">{loc}</div>}
+                  </button>
+                );
+              })}
               {notFound && (
                 <button
                   type="button"

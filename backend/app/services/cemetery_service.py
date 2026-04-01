@@ -403,6 +403,9 @@ def get_fh_cemetery_shortlist(
                 {
                     "cemetery_id": rec.cemetery_id,
                     "cemetery_name": cemetery.name,
+                    "city": cemetery.city,
+                    "state": cemetery.state,
+                    "county": cemetery.county,
                     "order_count": rec.order_count,
                     "last_order_date": rec.last_order_date.isoformat()
                     if rec.last_order_date
