@@ -229,7 +229,7 @@ from app.models.vendor_payment import VendorPayment
 from app.models.vendor_payment_application import VendorPaymentApplication
 from app.models.data_migration import DataMigrationRun
 from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIntelligenceSuggestion
-from app.models.vault_mold_config import VaultMoldConfig
+from app.models.production_mold_config import ProductionMoldConfig
 from app.models.vault_supplier import VaultSupplier
 
 __all__ = [
@@ -409,6 +409,6 @@ __all__ = [
     "WebsiteIntelligenceSuggestion",
     "HistoricalOrderImport",
     "HistoricalOrder",
-    "VaultMoldConfig",
+    "ProductionMoldConfig",
     "VaultSupplier",
 ]

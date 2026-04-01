@@ -137,14 +137,14 @@ def on_charge_account_configured(db: Session, tenant_id: str, customer) -> None:
 def on_vault_mold_config_setup(db: Session, tenant_id: str) -> None:
     """Auto-complete setup_vault_molds when at least one mold config exists."""
     try:
-        from app.models.vault_mold_config import VaultMoldConfig
+        from app.models.production_mold_config import ProductionMoldConfig
         from app.services.onboarding_service import check_completion
 
         count = (
-            db.query(VaultMoldConfig)
+            db.query(ProductionMoldConfig)
             .filter(
-                VaultMoldConfig.company_id == tenant_id,
-                VaultMoldConfig.is_active.is_(True),
+                ProductionMoldConfig.company_id == tenant_id,
+                ProductionMoldConfig.is_active.is_(True),
             )
             .count()
         )

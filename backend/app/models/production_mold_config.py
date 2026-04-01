@@ -15,8 +15,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
-class VaultMoldConfig(Base):
-    __tablename__ = "vault_mold_configs"
+class ProductionMoldConfig(Base):
+    __tablename__ = "production_mold_configs"
     __table_args__ = (
         UniqueConstraint("company_id", "product_id", name="uq_vault_mold_company_product"),
     )
@@ -31,6 +31,9 @@ class VaultMoldConfig(Base):
         String(36), ForeignKey("products.id"), nullable=False
     )
     daily_capacity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    product_category: Mapped[str] = mapped_column(
+        String(50), server_default="burial_vault"
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

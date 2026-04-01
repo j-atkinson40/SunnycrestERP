@@ -1,4 +1,4 @@
-"""Vault mold configuration service — tracks per-product daily production capacity."""
+"""Production mold configuration service — tracks per-product daily production capacity."""
 
 import logging
 import uuid
@@ -8,24 +8,27 @@ from sqlalchemy.orm import Session
 
 from app.models.inventory_item import InventoryItem
 from app.models.product import Product
-from app.models.vault_mold_config import VaultMoldConfig
+from app.models.production_mold_config import ProductionMoldConfig
 
 logger = logging.getLogger(__name__)
 
 
-def get_mold_configs(db: Session, company_id: str) -> list[dict]:
+def get_mold_configs(
+    db: Session, company_id: str, product_category: str = "burial_vault"
+) -> list[dict]:
     """Return all active mold configs for a tenant, joined with product and inventory data."""
     configs = (
-        db.query(VaultMoldConfig, Product, InventoryItem)
-        .join(Product, VaultMoldConfig.product_id == Product.id)
+        db.query(ProductionMoldConfig, Product, InventoryItem)
+        .join(Product, ProductionMoldConfig.product_id == Product.id)
         .outerjoin(
             InventoryItem,
             (InventoryItem.product_id == Product.id)
-            & (InventoryItem.company_id == VaultMoldConfig.company_id),
+            & (InventoryItem.company_id == ProductionMoldConfig.company_id),
         )
         .filter(
-            VaultMoldConfig.company_id == company_id,
-            VaultMoldConfig.is_active.is_(True),
+            ProductionMoldConfig.company_id == company_id,
+            ProductionMoldConfig.product_category == product_category,
+            ProductionMoldConfig.is_active.is_(True),
             Product.is_active.is_(True),
         )
         .all()
@@ -36,7 +39,7 @@ def get_mold_configs(db: Session, company_id: str) -> list[dict]:
             "id": cfg.id,
             "product_id": cfg.product_id,
             "product_name": prod.name,
-            "product_category": prod.product_line or "",
+            "product_category": cfg.product_category,
             "daily_capacity": cfg.daily_capacity,
             "is_active": cfg.is_active,
             "notes": cfg.notes,
@@ -49,16 +52,19 @@ def get_mold_configs(db: Session, company_id: str) -> list[dict]:
 
 
 def upsert_mold_configs(
-    db: Session, company_id: str, configs: list[dict]
-) -> list[VaultMoldConfig]:
+    db: Session,
+    company_id: str,
+    configs: list[dict],
+    product_category: str = "burial_vault",
+) -> list[ProductionMoldConfig]:
     """Batch upsert mold configs. Each dict: {product_id, daily_capacity, is_active, notes}."""
     results = []
     for item in configs:
         existing = (
-            db.query(VaultMoldConfig)
+            db.query(ProductionMoldConfig)
             .filter(
-                VaultMoldConfig.company_id == company_id,
-                VaultMoldConfig.product_id == item["product_id"],
+                ProductionMoldConfig.company_id == company_id,
+                ProductionMoldConfig.product_id == item["product_id"],
             )
             .first()
         )
@@ -66,16 +72,18 @@ def upsert_mold_configs(
             existing.daily_capacity = item.get("daily_capacity", existing.daily_capacity)
             existing.is_active = item.get("is_active", existing.is_active)
             existing.notes = item.get("notes", existing.notes)
+            existing.product_category = product_category
             existing.updated_at = datetime.now(timezone.utc)
             results.append(existing)
         else:
-            new_cfg = VaultMoldConfig(
+            new_cfg = ProductionMoldConfig(
                 id=str(uuid.uuid4()),
                 company_id=company_id,
                 product_id=item["product_id"],
                 daily_capacity=item.get("daily_capacity", 1),
                 is_active=item.get("is_active", True),
                 notes=item.get("notes"),
+                product_category=product_category,
             )
             db.add(new_cfg)
             results.append(new_cfg)
@@ -86,19 +94,22 @@ def upsert_mold_configs(
     return results
 
 
-def get_daily_capacity_summary(db: Session, company_id: str) -> list[dict]:
+def get_daily_capacity_summary(
+    db: Session, company_id: str, product_category: str = "burial_vault"
+) -> list[dict]:
     """Return per-product daily capacity for the production log UI."""
     configs = (
-        db.query(VaultMoldConfig, Product, InventoryItem)
-        .join(Product, VaultMoldConfig.product_id == Product.id)
+        db.query(ProductionMoldConfig, Product, InventoryItem)
+        .join(Product, ProductionMoldConfig.product_id == Product.id)
         .outerjoin(
             InventoryItem,
             (InventoryItem.product_id == Product.id)
-            & (InventoryItem.company_id == VaultMoldConfig.company_id),
+            & (InventoryItem.company_id == ProductionMoldConfig.company_id),
         )
         .filter(
-            VaultMoldConfig.company_id == company_id,
-            VaultMoldConfig.is_active.is_(True),
+            ProductionMoldConfig.company_id == company_id,
+            ProductionMoldConfig.product_category == product_category,
+            ProductionMoldConfig.is_active.is_(True),
             Product.is_active.is_(True),
         )
         .order_by(Product.name)
@@ -140,11 +151,11 @@ def validate_production_entry(
             continue
 
         config = (
-            db.query(VaultMoldConfig)
+            db.query(ProductionMoldConfig)
             .filter(
-                VaultMoldConfig.company_id == company_id,
-                VaultMoldConfig.product_id == product_id,
-                VaultMoldConfig.is_active.is_(True),
+                ProductionMoldConfig.company_id == company_id,
+                ProductionMoldConfig.product_id == product_id,
+                ProductionMoldConfig.is_active.is_(True),
             )
             .first()
         )

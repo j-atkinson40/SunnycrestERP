@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.services.vault_mold_config_service import (
+from app.services.production_mold_config_service import (
     get_daily_capacity_summary,
     get_mold_configs,
     upsert_mold_configs,
