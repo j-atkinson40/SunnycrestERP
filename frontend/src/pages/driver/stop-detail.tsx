@@ -234,12 +234,12 @@ export default function StopDetailPage() {
                    p.type === "legacy_standard" ? `Legacy — ${p.print_name || ""}` :
                    p.type === "legacy_custom" ? "Legacy Custom" : String(p.type)}
                 </span>
-                {p.inscription_name && (
-                  <p className="text-xs text-gray-500 pl-4">{String(p.inscription_name)}</p>
-                )}
-                {p.inscription_dates && (
-                  <p className="text-xs text-gray-400 pl-4">{String(p.inscription_dates)}</p>
-                )}
+                {p.inscription_name ? (
+                  <p className="text-xs text-gray-500 pl-4">{String(p.inscription_name as string)}</p>
+                ) : null}
+                {p.inscription_dates ? (
+                  <p className="text-xs text-gray-400 pl-4">{String(p.inscription_dates as string)}</p>
+                ) : null}
               </div>
             ))}
           </div>
