@@ -351,6 +351,11 @@ function getManufacturingNav(
           functionalArea: "invoicing_ar",
         },
         {
+          label: "Vault Production Capacity",
+          href: "/settings/vault-molds",
+          icon: "Factory",
+        },
+        {
           label: "Seasonal Templates",
           href: "/settings/seasonal-templates",
           icon: "CalendarDays",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import apiClient from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -50,13 +50,34 @@ export function VaultReplenishmentWidget() {
   const [status, setStatus] = useState<VaultInventoryStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    apiClient
-      .get("/vault-supplier/inventory-status")
-      .then((r) => setStatus(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const fetchInventory = useCallback(async () => {
+    try {
+      const r = await apiClient.get("/vault-supplier/inventory-status");
+      setStatus(r.data);
+    } catch {
+      // silently ignore — widget hides when no data
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // Initial fetch
+  useEffect(() => { fetchInventory(); }, [fetchInventory]);
+
+  // Re-fetch when a PO is received on this device
+  useEffect(() => {
+    const handler = () => { fetchInventory(); };
+    window.addEventListener("vault-inventory-updated", handler);
+    return () => window.removeEventListener("vault-inventory-updated", handler);
+  }, [fetchInventory]);
+
+  // Poll every 5 minutes when tab is visible (catches cross-device updates)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchInventory();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchInventory]);
 
   if (loading) {
     return (

@@ -17,11 +17,20 @@ interface ContextItem {
   action_url: string
 }
 
-interface DailyContext {
+export interface DailyContext {
   greeting: string
   priority_message: string
   items: ContextItem[]
   generated_at: string
+  vault_urgency?: string | null
+  vault_delivery_today?: boolean
+  vault_po_today?: {
+    id: string
+    po_number?: string | null
+    vendor_name: string
+    total_units: number
+  } | null
+  vault_supplier_vendor_id?: string | null
 }
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
@@ -111,7 +120,12 @@ function ContextSkeleton() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function OpsContextCard({ className }: { className?: string }) {
+interface OpsContextCardProps {
+  className?: string
+  onContextLoaded?: (ctx: DailyContext) => void
+}
+
+export default function OpsContextCard({ className, onContextLoaded }: OpsContextCardProps) {
   const navigate = useNavigate()
   const [context, setContext] = useState<DailyContext | null>(null)
   const [loading, setLoading] = useState(true)
@@ -129,6 +143,7 @@ export default function OpsContextCard({ className }: { className?: string }) {
     const cached = readCache()
     if (cached) {
       setContext(cached)
+      onContextLoaded?.(cached)
       setLoading(false)
       return
     }
@@ -139,6 +154,7 @@ export default function OpsContextCard({ className }: { className?: string }) {
       .then((res) => {
         writeCache(res.data)
         setContext(res.data)
+        onContextLoaded?.(res.data)
       })
       .catch(() => {
         // Offline or server error — fall back to time-based greeting

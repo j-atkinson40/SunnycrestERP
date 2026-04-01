@@ -49,5 +49,9 @@ class InventoryItem(Base):
         String(36), ForeignKey("users.id"), nullable=True
     )
 
+    # Spare component tracking for partial vault pours
+    spare_covers: Mapped[int] = mapped_column(Integer, server_default="0")
+    spare_bases: Mapped[int] = mapped_column(Integer, server_default="0")
+
     company = relationship("Company")
     product = relationship("Product")

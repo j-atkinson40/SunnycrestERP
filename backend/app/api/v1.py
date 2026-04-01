@@ -104,6 +104,7 @@ from app.api.routes import (
     vendors,
     webhooks,
     website_intelligence,
+    vault_molds,
     vault_supplier,
     work_orders,
 )
@@ -434,6 +435,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     webhooks.router, prefix="/webhooks", tags=["Webhooks"]
+)
+v1_router.include_router(
+    vault_molds.router, prefix="/vault-molds", tags=["Vault Molds"]
 )
 v1_router.include_router(
     vault_supplier.router, prefix="/vault-supplier", tags=["Vault Supplier"]

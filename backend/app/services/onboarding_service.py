@@ -504,6 +504,24 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/scenarios/production_log_walkthrough",
         "sort_order": 206,
     },
+    # Sort 207: Vault mold setup — produce/hybrid only
+    {
+        "item_key": "setup_vault_molds",
+        "tier": "should_complete",
+        "category": "operations",
+        "title": "Set up your vault production capacity",
+        "description": (
+            "Tell us which vaults you produce and how many you can pour "
+            "per day. Makes production logging faster and tracks your "
+            "capacity automatically."
+        ),
+        "estimated_minutes": 5,
+        "action_type": "navigate",
+        "action_target": "/onboarding/vault-molds",
+        "sort_order": 207,
+        "depends_on": '["vault_production_setup"]',
+        "visibility_condition": "vault_fulfillment_mode_produces",
+    },
     # ── OPTIONAL ──────────────────────────────────────────────────────────────
     {
         "item_key": "setup_safety",
@@ -1291,6 +1309,7 @@ def initialize_checklist(
             action_target=item_def.get("action_target"),
             sort_order=item_def.get("sort_order", 0),
             depends_on=item_def.get("depends_on"),
+            visibility_condition=item_def.get("visibility_condition"),
         )
         db.add(item)
 
@@ -1510,18 +1529,38 @@ def _maybe_trigger_training_content(db: Session) -> None:
 
 
 def get_checklist(db: Session, tenant_id: str) -> OnboardingChecklist | None:
-    """Return the full checklist with items, sorted by tier then sort_order."""
+    """Return the full checklist with items, sorted by tier then sort_order.
+
+    Filters out items whose visibility_condition is not met by the tenant's
+    current configuration (e.g. vault mold setup hidden for purchase-only tenants).
+    """
     checklist = (
         db.query(OnboardingChecklist)
         .options(joinedload(OnboardingChecklist.items))
         .filter(OnboardingChecklist.tenant_id == tenant_id)
         .first()
     )
-    if checklist and checklist.items:
-        tier_order = {"must_complete": 0, "should_complete": 1, "optional": 2}
-        checklist.items.sort(
-            key=lambda i: (tier_order.get(i.tier, 99), i.sort_order)
-        )
+    if not checklist or not checklist.items:
+        return checklist
+
+    # Load tenant company for visibility checks
+    from app.models.company import Company
+
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    fulfillment_mode = getattr(company, "vault_fulfillment_mode", None) if company else None
+
+    # Filter out items whose visibility_condition is not met
+    visible_items = []
+    for item in checklist.items:
+        condition = getattr(item, "visibility_condition", None)
+        if condition == "vault_fulfillment_mode_produces":
+            if fulfillment_mode not in ("produce", "hybrid"):
+                continue
+        visible_items.append(item)
+
+    tier_order = {"must_complete": 0, "should_complete": 1, "optional": 2}
+    visible_items.sort(key=lambda i: (tier_order.get(i.tier, 99), i.sort_order))
+    checklist.items = visible_items
     return checklist
 
 

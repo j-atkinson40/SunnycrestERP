@@ -174,6 +174,7 @@ export default function ReceiveDelivery() {
         received_at: new Date().toISOString(),
       }
       await apiClient.post(`/purchase-orders/${selectedPO.id}/receive`, payload)
+      window.dispatchEvent(new CustomEvent('vault-inventory-updated', { detail: { po_id: selectedPO.id } }))
       setReceivedCount(lineStates.reduce((sum, ls) => sum + ls.receivedQty, 0))
       setStep('success')
       setTimeout(() => navigate('/console/operations'), 3000)
@@ -193,6 +194,7 @@ export default function ReceiveDelivery() {
             received_at: new Date().toISOString(),
           }),
         )
+        window.dispatchEvent(new CustomEvent('vault-inventory-updated', { detail: { po_id: selectedPO.id } }))
         setReceivedCount(lineStates.reduce((sum, ls) => sum + ls.receivedQty, 0))
         setStep('success')
         setTimeout(() => navigate('/console/operations'), 3000)

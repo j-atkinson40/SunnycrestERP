@@ -139,6 +139,8 @@ def log_production(
     raw_prompt: str | None = None,
     contributor_key: str | None = "core_product_entry",
     contributor_data: dict | None = None,
+    component_type: str = "complete",
+    component_reason: str | None = None,
 ) -> OpsProductionLogEntry:
     entry = OpsProductionLogEntry(
         tenant_id=tenant_id,
@@ -150,6 +152,8 @@ def log_production(
         raw_prompt=raw_prompt,
         contributor_key=contributor_key,
         contributor_data=contributor_data or {},
+        component_type=component_type,
+        component_reason=component_reason,
     )
     db.add(entry)
     db.commit()
@@ -291,6 +295,17 @@ def post_summary_to_inventory(
     tenant_id: str,
     user_id: str,
 ) -> DailyProductionSummary | None:
+    """Post a submitted production summary to inventory.
+
+    Updates inventory_items for each entry:
+    - complete: quantity_on_hand += quantity
+    - cover: spare_covers += quantity
+    - base: spare_bases += quantity
+    Creates InventoryTransaction records and checks for pairable spare components.
+    """
+    from app.models.inventory_item import InventoryItem
+    from app.models.inventory_transaction import InventoryTransaction
+
     summary = (
         db.query(DailyProductionSummary)
         .filter(
@@ -301,12 +316,125 @@ def post_summary_to_inventory(
     )
     if not summary or summary.status != "submitted":
         return None
+
+    entries = (
+        db.query(OpsProductionLogEntry)
+        .filter(
+            OpsProductionLogEntry.summary_id == summary_id,
+            OpsProductionLogEntry.is_excluded_from_inventory.is_(False),
+        )
+        .all()
+    )
+
+    products_updated = set()
+    for entry in entries:
+        if not entry.product_id or entry.quantity <= 0:
+            continue
+
+        inv = (
+            db.query(InventoryItem)
+            .filter(
+                InventoryItem.company_id == tenant_id,
+                InventoryItem.product_id == entry.product_id,
+            )
+            .first()
+        )
+        if not inv:
+            inv = InventoryItem(company_id=tenant_id, product_id=entry.product_id, quantity_on_hand=0)
+            db.add(inv)
+            db.flush()
+
+        component_type = getattr(entry, "component_type", "complete") or "complete"
+
+        if component_type == "complete":
+            inv.quantity_on_hand = (inv.quantity_on_hand or 0) + entry.quantity
+            tx_type = "produce"
+            tx_ref = f"Production summary {summary.summary_date}"
+        elif component_type == "cover":
+            inv.spare_covers = (inv.spare_covers or 0) + entry.quantity
+            tx_type = "produce_component"
+            tx_ref = f"Cover pour {summary.summary_date}"
+        elif component_type == "base":
+            inv.spare_bases = (inv.spare_bases or 0) + entry.quantity
+            tx_type = "produce_component"
+            tx_ref = f"Base pour {summary.summary_date}"
+        else:
+            inv.quantity_on_hand = (inv.quantity_on_hand or 0) + entry.quantity
+            tx_type = "produce"
+            tx_ref = f"Production summary {summary.summary_date}"
+
+        inv.updated_at = datetime.now(timezone.utc)
+
+        tx = InventoryTransaction(
+            company_id=tenant_id,
+            product_id=entry.product_id,
+            transaction_type=tx_type,
+            quantity_change=entry.quantity if component_type == "complete" else 0,
+            quantity_after=inv.quantity_on_hand or 0,
+            reference=tx_ref,
+            notes=getattr(entry, "component_reason", None),
+            created_by=user_id,
+        )
+        db.add(tx)
+        products_updated.add(entry.product_id)
+
     summary.status = "posted_to_inventory"
     summary.posted_at = datetime.now(timezone.utc)
     summary.posted_by = user_id
     db.commit()
+
+    # Check for pairable spare components and create alerts
+    _check_spare_component_pairing(db, tenant_id, products_updated)
+
     db.refresh(summary)
     return summary
+
+
+def _check_spare_component_pairing(
+    db: Session, tenant_id: str, product_ids: set[str]
+) -> None:
+    """Create agent alerts when spare covers and bases can be paired."""
+    from app.models.inventory_item import InventoryItem
+    from app.models.product import Product
+
+    for product_id in product_ids:
+        inv = (
+            db.query(InventoryItem)
+            .filter(
+                InventoryItem.company_id == tenant_id,
+                InventoryItem.product_id == product_id,
+            )
+            .first()
+        )
+        if not inv:
+            continue
+        covers = inv.spare_covers or 0
+        bases = inv.spare_bases or 0
+        if covers > 0 and bases > 0:
+            pairs = min(covers, bases)
+            product = db.query(Product).filter(Product.id == product_id).first()
+            name = product.name if product else "Unknown"
+            try:
+                from app.models.agent_alert import AgentAlert
+                import uuid
+
+                alert = AgentAlert(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    alert_type="spare_component_pairing",
+                    severity="info",
+                    title=f"Spare components can be paired — {name}",
+                    message=(
+                        f"You have {covers} spare cover(s) and {bases} spare base(s) "
+                        f"for {name}. {pairs} complete vault(s) can be assembled."
+                    ),
+                    action_label="Mark as assembled",
+                    action_url="/inventory",
+                )
+                db.add(alert)
+                db.commit()
+            except Exception:
+                logger.debug("Could not create spare pairing alert for %s", name)
 
 
 def get_pending_summaries(db: Session, tenant_id: str) -> list[dict]:

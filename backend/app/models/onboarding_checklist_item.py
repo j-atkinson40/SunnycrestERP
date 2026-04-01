@@ -42,6 +42,9 @@ class OnboardingChecklistItem(Base):
     action_target: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     depends_on: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    visibility_condition: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

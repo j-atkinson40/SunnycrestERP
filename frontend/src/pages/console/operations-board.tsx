@@ -19,6 +19,7 @@ import {
   ClipboardList,
   Wrench,
   RefreshCw,
+  Package,
   PackageCheck,
   ChevronRight,
   Settings,
@@ -29,7 +30,7 @@ import {
   ShieldAlert,
   CheckSquare,
 } from "lucide-react"
-import OpsContextCard from "@/components/mobile/ops-context-card"
+import OpsContextCard, { type DailyContext } from "@/components/mobile/ops-context-card"
 import offlineQueue from "@/services/offline-queue"
 import "@/styles/mobile-console.css"
 
@@ -138,6 +139,13 @@ function ActionTile({
 
 // ── ProductionSummaryCard ──
 
+interface CapacityProduct {
+  product_id: string
+  product_name: string
+  daily_capacity: number
+  current_stock: number
+}
+
 function ProductionSummaryCard({
   entries,
   onLog,
@@ -145,8 +153,27 @@ function ProductionSummaryCard({
   entries: ProductionEntry[]
   onLog: () => void
 }) {
+  const [capacityData, setCapacityData] = useState<CapacityProduct[]>([])
+
+  useEffect(() => {
+    apiClient
+      .get<CapacityProduct[]>("/vault-molds/capacity-summary")
+      .then((r) => setCapacityData(r.data || []))
+      .catch(() => {})
+  }, [])
+
   const totalUnits = entries.reduce((sum, e) => sum + (e.quantity || 0), 0)
   const isAfter8am = new Date().getHours() >= 8
+  const hasCapacity = capacityData.length > 0
+
+  // Build capacity lookup: product_name -> daily_capacity
+  const capacityMap = new Map(
+    capacityData.map((c) => [c.product_name, c.daily_capacity])
+  )
+  // Also by product_id for matching
+  const capacityById = new Map(
+    capacityData.map((c) => [c.product_id, c])
+  )
 
   return (
     <div className="mobile-card mb-4">
@@ -163,17 +190,32 @@ function ProductionSummaryCard({
 
       {entries.length > 0 ? (
         <>
-          {entries.map((e, i) => (
-            <div
-              key={e.id || i}
-              className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
-            >
-              <span className="text-base text-gray-800">
-                {e.product_name_raw || e.product_name}
-              </span>
-              <span className="text-lg font-bold text-gray-900">{e.quantity}</span>
-            </div>
-          ))}
+          {entries.map((e, i) => {
+            const name = e.product_name_raw || e.product_name || ""
+            const cap = capacityMap.get(name) ?? (e.product_id ? capacityById.get(e.product_id)?.daily_capacity : undefined)
+            const atCapacity = cap !== undefined && e.quantity >= cap
+
+            return (
+              <div
+                key={e.id || i}
+                className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
+              >
+                <span className="text-base text-gray-800">{name}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-gray-900">{e.quantity}</span>
+                  {cap !== undefined && (
+                    <span
+                      className={`text-xs font-medium ${
+                        atCapacity ? "text-green-600" : "text-amber-600"
+                      }`}
+                    >
+                      {atCapacity ? "full capacity" : `of ${cap}`}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
           <div className="flex justify-between items-center pt-3 mt-1">
             <span className="font-semibold text-gray-700">Total</span>
             <span className="text-xl font-bold text-gray-900">{totalUnits} units</span>
@@ -183,7 +225,13 @@ function ProductionSummaryCard({
         <div className="py-4 text-center">
           {isAfter8am ? (
             <>
-              <p className="text-gray-400 mb-4">Nothing logged yet</p>
+              <p className="text-gray-400 mb-3">Nothing logged yet</p>
+              {hasCapacity && (
+                <p className="text-sm text-gray-500 mb-3">
+                  Capacity available:{" "}
+                  {capacityData.map((c) => `${c.product_name} ${c.daily_capacity}`).join(" · ")}
+                </p>
+              )}
               <button
                 onClick={onLog}
                 className="mobile-primary-btn bg-blue-600 text-white px-6 py-2 rounded-xl font-semibold text-sm"
@@ -205,46 +253,114 @@ function ProductionSummaryCard({
 function ReceivingCard({
   expectedPOs,
   navigate,
+  vaultDeliveryToday,
+  vaultPoToday,
+  vaultSupplierVendorId,
 }: {
   expectedPOs: ExpectedPO[]
   navigate: (p: string) => void
+  vaultDeliveryToday?: boolean
+  vaultPoToday?: DailyContext["vault_po_today"]
+  vaultSupplierVendorId?: string | null
 }) {
-  if (expectedPOs.length === 0) return null
-
   const todayStr = new Date().toISOString().split("T")[0]
+  const hasContent = expectedPOs.length > 0 || vaultDeliveryToday
+
+  if (!hasContent) return null
 
   return (
-    <div className="mobile-card border-blue-200 bg-blue-50/50 mb-4">
-      <h3 className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-        <PackageCheck className="h-3.5 w-3.5" />
-        Deliveries Expected ({expectedPOs.length})
-      </h3>
-      {expectedPOs.map((po) => (
-        <div
-          key={po.id}
-          className="bg-white rounded-xl border border-blue-200 p-4 mb-2"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="font-bold text-base">{po.vendor_name}</p>
-              <p className="text-sm text-gray-500">PO #{po.po_number}</p>
+    <div className="space-y-3 mb-4">
+      {/* Vault delivery card — prominent on delivery days */}
+      {vaultDeliveryToday && vaultPoToday && (
+        <div className="mobile-card border-purple-300 bg-purple-50/60">
+          <h3 className="text-xs font-semibold text-purple-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <Package className="h-3.5 w-3.5" />
+            Vault Delivery Expected
+          </h3>
+          <div className="bg-white rounded-xl border border-purple-200 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="font-bold text-base">{vaultPoToday.vendor_name}</p>
+                {vaultPoToday.po_number && (
+                  <p className="text-sm text-gray-500">PO #{vaultPoToday.po_number}</p>
+                )}
+              </div>
+              <span className="text-sm font-medium text-purple-700">
+                {vaultPoToday.total_units} vaults
+              </span>
             </div>
-            <span className="text-sm font-medium">
-              ${po.total_amount?.toLocaleString()}
-            </span>
+            <button
+              onClick={() => navigate(`/console/operations/receive/${vaultPoToday.id}`)}
+              className="mt-3 w-full py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
+            >
+              <PackageCheck className="h-4 w-4" /> Receive Delivery
+            </button>
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Expected{" "}
-            {po.expected_delivery_date === todayStr ? "today" : "tomorrow"}
-          </p>
-          <button
-            onClick={() => navigate(`/console/operations/receive/${po.id}`)}
-            className="mt-3 w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
-          >
-            <PackageCheck className="h-4 w-4" /> Receive Delivery
-          </button>
         </div>
-      ))}
+      )}
+
+      {/* Delivery day but no PO */}
+      {vaultDeliveryToday && !vaultPoToday && (
+        <div className="mobile-card border-amber-300 bg-amber-50/60">
+          <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <Package className="h-3.5 w-3.5" />
+            Delivery Day
+          </h3>
+          <p className="text-sm text-gray-700 mb-3">
+            Vault delivery expected today but no PO found.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate("/console/operations/receive")}
+              className="flex-1 py-2.5 bg-amber-600 text-white rounded-xl font-semibold text-sm text-center"
+            >
+              Receive Unplanned
+            </button>
+            <button
+              onClick={() => navigate("/purchasing")}
+              className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl font-semibold text-sm text-center"
+            >
+              Check POs
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Standard PO receiving list */}
+      {expectedPOs.length > 0 && (
+        <div className="mobile-card border-blue-200 bg-blue-50/50">
+          <h3 className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <PackageCheck className="h-3.5 w-3.5" />
+            Deliveries Expected ({expectedPOs.length})
+          </h3>
+          {expectedPOs.map((po) => (
+            <div
+              key={po.id}
+              className="bg-white rounded-xl border border-blue-200 p-4 mb-2"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold text-base">{po.vendor_name}</p>
+                  <p className="text-sm text-gray-500">PO #{po.po_number}</p>
+                </div>
+                <span className="text-sm font-medium">
+                  ${po.total_amount?.toLocaleString()}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Expected{" "}
+                {po.expected_delivery_date === todayStr ? "today" : "tomorrow"}
+              </p>
+              <button
+                onClick={() => navigate(`/console/operations/receive/${po.id}`)}
+                className="mt-3 w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
+              >
+                <PackageCheck className="h-4 w-4" /> Receive Delivery
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -400,6 +516,7 @@ export default function OperationsBoardPage() {
   const [pendingCount, setPendingCount] = useState(0)
   const [currentTime, setCurrentTime] = useState("")
   const [todayDate, setTodayDate] = useState("")
+  const [dailyContext, setDailyContext] = useState<DailyContext | null>(null)
 
   const now = new Date()
   const isAfternoon = now.getHours() >= 14
@@ -542,17 +659,30 @@ export default function OperationsBoardPage() {
 
       {/* CONTEXT CARD (AI briefing) */}
       <div className="mb-4">
-        <OpsContextCard />
+        <OpsContextCard onContextLoaded={setDailyContext} />
       </div>
 
-      {/* Overview panels from registry (e.g. vault replenishment) */}
+      {/* Overview panels from registry — dynamic sort based on vault urgency */}
       {panels.length > 0 && (
         <div className="grid grid-cols-1 gap-3 mb-4">
-          {panels.map((panel) => {
-            const PanelComponent = PANEL_COMPONENTS[panel.component]
-            if (!PanelComponent) return null
-            return <PanelComponent key={panel.key} />
-          })}
+          {[...panels]
+            .map((p) => ({
+              ...p,
+              effectiveSort:
+                p.key === "vault_replenishment"
+                  ? dailyContext?.vault_urgency === "critical"
+                    ? 0
+                    : dailyContext?.vault_urgency === "warning"
+                      ? 2
+                      : 10
+                  : p.sort_order,
+            }))
+            .sort((a, b) => a.effectiveSort - b.effectiveSort)
+            .map((panel) => {
+              const PanelComponent = PANEL_COMPONENTS[panel.component]
+              if (!PanelComponent) return null
+              return <PanelComponent key={panel.key} />
+            })}
         </div>
       )}
 
@@ -562,8 +692,14 @@ export default function OperationsBoardPage() {
         onLog={() => navigate("/console/operations/product-entry")}
       />
 
-      {/* RECEIVING ZONE — PO deliveries */}
-      <ReceivingCard expectedPOs={expectedPOs} navigate={navigate} />
+      {/* RECEIVING ZONE — PO deliveries + vault delivery day */}
+      <ReceivingCard
+        expectedPOs={expectedPOs}
+        navigate={navigate}
+        vaultDeliveryToday={dailyContext?.vault_delivery_today}
+        vaultPoToday={dailyContext?.vault_po_today}
+        vaultSupplierVendorId={dailyContext?.vault_supplier_vendor_id}
+      />
 
       {/* QUICK ACTION GRID — 2x2 */}
       <div className="grid grid-cols-2 gap-3 mb-4">

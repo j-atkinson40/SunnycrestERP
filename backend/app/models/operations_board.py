@@ -93,6 +93,8 @@ class OpsProductionLogEntry(Base):
     raw_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     contributor_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
     contributor_data: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    component_type: Mapped[str] = mapped_column(String(20), server_default="complete")
+    component_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -139,7 +139,9 @@ import HistoricalOrderImportPage from "@/pages/onboarding/historical-order-impor
 import CompanyBrandingPage from "@/pages/onboarding/company-branding";
 import InvoiceSettingsPage from "@/pages/settings/invoice-settings";
 import SeasonalTemplatesSettings from "@/pages/settings/seasonal-templates";
+import VaultMoldSettingsPage from "@/pages/settings/vault-mold-settings";
 import VaultSupplierSettingsPage from "@/pages/settings/vault-supplier-settings";
+import VaultMoldSetupPage from "@/pages/onboarding/vault-mold-setup";
 import VaultSetupPage from "@/pages/onboarding/vault-setup";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import DataMigrationPage from "@/pages/onboarding/data-migration";
@@ -619,10 +621,12 @@ export default function App() {
                   <Route path="/onboarding/scheduling" element={<SchedulingSetupPage />} />
                   <Route path="/onboarding/network-preferences" element={<NetworkPreferencesPage />} />
                   <Route path="/onboarding/vault-setup" element={<VaultSetupPage />} />
+                  <Route path="/onboarding/vault-molds" element={<VaultMoldSetupPage />} />
                   <Route path="/settings/team-intelligence" element={<TeamIntelligencePage />} />
                   <Route path="/settings/charges" element={<ChargeSetupPage />} />
                   <Route path="/settings/invoice" element={<InvoiceSettingsPage />} />
                   <Route path="/settings/vault-supplier" element={<VaultSupplierSettingsPage />} />
+                  <Route path="/settings/vault-molds" element={<VaultMoldSettingsPage />} />
                   <Route path="/settings/network/preferences" element={<NetworkPreferencesSettingsPage />} />
                   <Route path="/settings/scheduling" element={<SchedulingSettingsPage />} />
                   <Route path="/settings/integrations/accounting" element={<SyncHealthDashboardPage />} />

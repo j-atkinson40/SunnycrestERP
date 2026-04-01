@@ -132,3 +132,23 @@ def on_charge_account_configured(db: Session, tenant_id: str, customer) -> None:
             check_completion(db, tenant_id, "setup_charge_accounts")
     except Exception:
         logger.exception("Onboarding hook failed: on_charge_account_configured")
+
+
+def on_vault_mold_config_setup(db: Session, tenant_id: str) -> None:
+    """Auto-complete setup_vault_molds when at least one mold config exists."""
+    try:
+        from app.models.vault_mold_config import VaultMoldConfig
+        from app.services.onboarding_service import check_completion
+
+        count = (
+            db.query(VaultMoldConfig)
+            .filter(
+                VaultMoldConfig.company_id == tenant_id,
+                VaultMoldConfig.is_active.is_(True),
+            )
+            .count()
+        )
+        if count > 0:
+            check_completion(db, tenant_id, "setup_vault_molds")
+    except Exception:
+        logger.exception("Onboarding hook failed: on_vault_mold_config_setup")

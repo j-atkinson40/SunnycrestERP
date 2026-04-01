@@ -40,6 +40,8 @@ class ProductionLogCreate(BaseModel):
     product_id: str | None = None
     entry_method: str = "manual"
     raw_prompt: str | None = None
+    component_type: str = "complete"
+    component_reason: str | None = None
 
 
 class QCUpdateRequest(BaseModel):
@@ -136,6 +138,8 @@ def create_log_entries_bulk(
             product_id=body.product_id,
             entry_method=body.entry_method,
             raw_prompt=body.raw_prompt,
+            component_type=body.component_type,
+            component_reason=body.component_reason,
         )
         ids.append(entry.id)
     return {"ids": ids, "count": len(ids)}
@@ -329,6 +333,140 @@ def get_daily_context(
         "production_entries_today": production_today,
     }
 
+    # ── Vault replenishment context ──────────────────────────────────────
+    vault_urgency = None
+    vault_delivery_today = False
+    vault_po_today = None
+    vault_supplier_vendor_id = None
+
+    try:
+        from app.models import VaultSupplier, Product, InventoryItem, Vendor
+        from app.services.vault_inventory_service import check_reorder_needed
+
+        supplier = (
+            db.query(VaultSupplier)
+            .filter(
+                VaultSupplier.company_id == current_user.company_id,
+                VaultSupplier.is_active.is_(True),
+                VaultSupplier.is_primary.is_(True),
+            )
+            .first()
+        )
+
+        if supplier:
+            vault_supplier_vendor_id = supplier.vendor_id
+
+            # Check if today is a delivery day
+            delivery_days = supplier.delivery_days or []
+            vault_delivery_today = day_name in delivery_days
+
+            # Scan vault products for urgency
+            products = (
+                db.query(Product)
+                .filter(
+                    Product.company_id == current_user.company_id,
+                    Product.is_active.is_(True),
+                    Product.product_line == "funeral_service",
+                )
+                .all()
+            )
+
+            any_urgent = False
+            any_needs_reorder = False
+            critical_products = []
+
+            for product in products:
+                inv_item = (
+                    db.query(InventoryItem)
+                    .filter(
+                        InventoryItem.company_id == current_user.company_id,
+                        InventoryItem.product_id == product.id,
+                    )
+                    .first()
+                )
+                if not inv_item or not inv_item.reorder_point:
+                    continue
+
+                reorder_info = check_reorder_needed(
+                    db, current_user.company_id, product.id
+                )
+                if not reorder_info:
+                    continue
+
+                if reorder_info.get("urgent"):
+                    any_urgent = True
+                    critical_products.append({
+                        "name": product.name,
+                        "current_stock": reorder_info["current_stock"],
+                        "reorder_point": reorder_info["reorder_point"],
+                    })
+                elif reorder_info.get("needs_reorder"):
+                    any_needs_reorder = True
+
+            if any_urgent:
+                vault_urgency = "critical"
+            elif any_needs_reorder:
+                vault_urgency = "warning"
+            else:
+                vault_urgency = "ok"
+
+            # Check for a vault PO expected today
+            vault_po = (
+                db.query(PurchaseOrder)
+                .filter(
+                    PurchaseOrder.company_id == current_user.company_id,
+                    PurchaseOrder.vendor_id == supplier.vendor_id,
+                    PurchaseOrder.expected_delivery_date == today,
+                    PurchaseOrder.status.in_(["approved", "sent", "partial"]),
+                )
+                .first()
+            )
+            if vault_po:
+                vendor = db.query(Vendor).filter(Vendor.id == supplier.vendor_id).first()
+                vault_po_today = {
+                    "id": vault_po.id,
+                    "po_number": getattr(vault_po, "po_number", None),
+                    "vendor_name": vendor.name if vendor else "Vault Supplier",
+                    "total_units": getattr(vault_po, "total_amount", 0),
+                }
+
+            # Add vault context for Claude prompt
+            if vault_urgency and vault_urgency != "ok":
+                first_reorder = check_reorder_needed(
+                    db, current_user.company_id, products[0].id
+                ) if products else None
+                context_data["vault_status"] = {
+                    "urgency": vault_urgency,
+                    "critical_products": critical_products,
+                    "order_deadline": first_reorder["order_deadline"].isoformat()
+                    if first_reorder and first_reorder.get("order_deadline")
+                    else None,
+                    "next_delivery": first_reorder["next_delivery"].isoformat()
+                    if first_reorder and first_reorder.get("next_delivery")
+                    else None,
+                    "days_until_deadline": first_reorder.get("days_until_deadline")
+                    if first_reorder
+                    else None,
+                    "supplier_vendor_id": supplier.vendor_id,
+                }
+    except Exception:
+        logger.exception("Failed to gather vault context for daily briefing")
+
+    # ── Vault urgency instructions for Claude ────────────────────────────
+    vault_prompt_addendum = ""
+    if vault_urgency == "critical":
+        vault_prompt_addendum = (
+            "\n\nIMPORTANT: Vault inventory is CRITICAL. Include this as the FIRST item in 'items': "
+            f"type='vault_reorder', message='Vault order must be placed TODAY — stock is below reorder point', "
+            f"action_label='Create Vault Order', action_url='/purchasing/po/new?vendor={vault_supplier_vendor_id}'"
+        )
+    elif vault_urgency == "warning":
+        vault_prompt_addendum = (
+            "\n\nVault inventory needs attention. Include a normal-priority item in 'items': "
+            "type='vault_reorder', message='Vault reorder needed soon — stock approaching reorder point', "
+            "action_label='Review Vault Stock', action_url='/console/operations'"
+        )
+
     try:
         result = call_anthropic(
             system_prompt=(
@@ -341,12 +479,17 @@ def get_daily_context(
                 "Return JSON only: {\"greeting\": string, \"priority_message\": string, "
                 "\"items\": [{\"type\": string, \"message\": string, "
                 "\"action_label\": string, \"action_url\": string}]}"
+                + vault_prompt_addendum
             ),
             context_data=context_data,
             max_tokens=400,
         )
         result["generated_at"] = now.isoformat()
         result["cached"] = False
+        result["vault_urgency"] = vault_urgency
+        result["vault_delivery_today"] = vault_delivery_today
+        result["vault_po_today"] = vault_po_today
+        result["vault_supplier_vendor_id"] = vault_supplier_vendor_id
         return result
     except Exception:
         greeting = (
@@ -358,6 +501,10 @@ def get_daily_context(
             "items": [],
             "generated_at": now.isoformat(),
             "cached": False,
+            "vault_urgency": vault_urgency,
+            "vault_delivery_today": vault_delivery_today,
+            "vault_po_today": vault_po_today,
+            "vault_supplier_vendor_id": vault_supplier_vendor_id,
         }
 
 
