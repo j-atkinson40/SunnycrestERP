@@ -102,6 +102,9 @@ class SalesOrder(Base):
 
     # Soft inventory warning at order entry
     has_inventory_warning: Mapped[bool] = mapped_column(Boolean, server_default="false")
+
+    # Personalization
+    legacy_photo_pending: Mapped[bool] = mapped_column(Boolean, server_default="false")
     inventory_warning_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Funeral home confirmation method (defaults from customer preference, can be overridden)
@@ -190,6 +193,7 @@ class SalesOrderLine(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     auto_add_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    personalization_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     sales_order = relationship("SalesOrder", back_populates="lines")
     product = relationship("Product")

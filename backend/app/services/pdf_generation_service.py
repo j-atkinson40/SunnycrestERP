@@ -137,6 +137,29 @@ def _build_context(db: Session, invoice_id: str, company_id: str) -> dict[str, A
         except Exception:
             is_placer = False
 
+        # Personalization details for this line
+        pers_lines = []
+        pers_data = getattr(line, "personalization_data", None)
+        if pers_data and isinstance(pers_data, list):
+            for p in pers_data:
+                ptype = p.get("type", "")
+                if ptype == "legacy_standard":
+                    pers_lines.append(f"Legacy Series\u2122 \u2014 {p.get('print_name', '')}")
+                elif ptype == "legacy_custom":
+                    pers_lines.append("Legacy Custom Series\u2122")
+                elif ptype == "lifes_reflections":
+                    pers_lines.append(f"Life's Reflections\u00AE \u2014 {p.get('symbol', '')}")
+                elif ptype == "nameplate":
+                    pers_lines.append("Nameplate")
+                elif ptype == "cover_emblem":
+                    pers_lines.append("Cover Emblem (from stock)")
+                # Add inscription lines
+                if ptype != "cover_emblem":
+                    for field in ("inscription_name", "inscription_dates", "inscription_additional"):
+                        val = p.get(field)
+                        if val:
+                            pers_lines.append(val)
+
         line_items.append({
             "description": line.description or "",
             "quantity": int(line.quantity) if line.quantity == int(line.quantity) else float(line.quantity),
@@ -144,6 +167,7 @@ def _build_context(db: Session, invoice_id: str, company_id: str) -> dict[str, A
             "line_total": _fmt_currency(line.line_total),
             "is_zero_price": float(line.unit_price or 0) == 0.0,
             "is_placer": is_placer,
+            "personalization_lines": pers_lines,
         })
 
     return {

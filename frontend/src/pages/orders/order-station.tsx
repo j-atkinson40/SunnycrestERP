@@ -987,6 +987,210 @@ function OrderSlideOver({
             </div>
           )}
 
+          {/* Personalization section — shown when vault has personalization */}
+          {(() => {
+            // Check if any line item product has personalization
+            const vaultItem = template.line_items?.find(
+              (item: Record<string, unknown>) =>
+                item.has_personalization || item.personalization_tier
+            );
+            if (!vaultItem) return null;
+            const tier = String(vaultItem.personalization_tier || "");
+            const showExpand = formData._pers_expanded === "true";
+
+            const TYPES_INFO: Record<string, { icon: string; label: string; desc: string }> = {
+              nameplate: { icon: "\uD83E\uDEA7", label: "Nameplate", desc: "Vinyl printed in-house" },
+              cover_emblem: { icon: "\uD83D\uDD37", label: "Cover Emblem", desc: "Pulled from stock" },
+              legacy_print: { icon: "\u2728", label: "Legacy Series\u2122 Print", desc: "Designed & printed" },
+              lifes_reflections: { icon: "\uD83D\uDD4A\uFE0F", label: "Life's Reflections\u00AE", desc: "Symbol vinyl on carapace" },
+            };
+
+            const available = tier === "continental" ? ["nameplate"]
+              : tier === "salute" ? ["nameplate", "cover_emblem"]
+              : ["legacy_print", "lifes_reflections", "nameplate", "cover_emblem"];
+
+            const selected = (formData._pers_types || "").split(",").filter(Boolean);
+
+            function isDisabled(t: string) {
+              if (selected.length === 0) return false;
+              const exclusive = [
+                ["legacy_print", "lifes_reflections"],
+                ["legacy_print", "nameplate"],
+                ["legacy_print", "cover_emblem"],
+                ["lifes_reflections", "nameplate"],
+                ["lifes_reflections", "cover_emblem"],
+              ];
+              for (const group of exclusive) {
+                if (group.includes(t) && selected.some((s) => group.includes(s) && s !== t)) return true;
+              }
+              return false;
+            }
+
+            function toggleType(t: string) {
+              let next: string[];
+              if (selected.includes(t)) {
+                next = selected.filter((s) => s !== t);
+              } else {
+                next = [...selected, t];
+              }
+              setField("_pers_types", next.join(","));
+            }
+
+            return (
+              <div className="rounded-lg border border-gray-200 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setField("_pers_expanded", showExpand ? "false" : "true")}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="text-left">
+                    <div className="text-sm font-medium text-gray-900">Personalization (optional)</div>
+                    <div className="text-xs text-gray-500">Add nameplate, emblem, print, or vinyl</div>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${showExpand ? "rotate-180" : ""}`} />
+                </button>
+
+                {showExpand && (
+                  <div className="p-4 space-y-3">
+                    {/* Type tiles */}
+                    {available.length > 2 ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {available.map((t) => {
+                          const info = TYPES_INFO[t];
+                          if (!info) return null;
+                          const isSelected = selected.includes(t);
+                          const disabled = isDisabled(t);
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => !disabled && toggleType(t)}
+                              className={`p-3 rounded-lg border text-left text-xs transition-colors ${
+                                isSelected
+                                  ? "border-blue-400 bg-blue-50"
+                                  : disabled
+                                    ? "border-gray-100 bg-gray-50 opacity-40 cursor-not-allowed"
+                                    : "border-gray-200 hover:border-blue-300"
+                              }`}
+                            >
+                              <div className="font-medium">{info.icon} {info.label}</div>
+                              <div className="text-gray-500 mt-0.5">{info.desc}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* Simple toggles for continental/salute */
+                      <div className="space-y-2">
+                        {available.map((t) => {
+                          const info = TYPES_INFO[t];
+                          if (!info) return null;
+                          return (
+                            <label key={t} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={selected.includes(t)}
+                                onChange={() => toggleType(t)}
+                                className="rounded accent-blue-600"
+                              />
+                              {info.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Inscription fields (for types that need them) */}
+                    {selected.some((t) => t !== "cover_emblem") && (
+                      <div className="space-y-2 pt-2 border-t border-gray-100">
+                        <Label className="text-xs text-gray-500">Inscription</Label>
+                        <Input
+                          placeholder="Name — e.g. Robert James Smith"
+                          value={formData._pers_name || ""}
+                          onChange={(e) => setField("_pers_name", e.target.value)}
+                        />
+                        <Input
+                          placeholder="Dates — e.g. April 4, 1942 — March 28, 2026"
+                          value={formData._pers_dates || ""}
+                          onChange={(e) => setField("_pers_dates", e.target.value)}
+                        />
+                        <Input
+                          placeholder="Additional — e.g. Beloved Husband and Father (optional)"
+                          value={formData._pers_additional || ""}
+                          onChange={(e) => setField("_pers_additional", e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    {/* Cover emblem note */}
+                    {selected.includes("cover_emblem") && !selected.some((t) => t !== "cover_emblem") && (
+                      <p className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+                        Cover emblem will be pulled from stock and applied.
+                      </p>
+                    )}
+
+                    {/* Life's Reflections symbol */}
+                    {selected.includes("lifes_reflections") && (
+                      <div className="pt-2 border-t border-gray-100">
+                        <Label className="text-xs text-gray-500">Symbol</Label>
+                        <select
+                          value={formData._pers_symbol || ""}
+                          onChange={(e) => setField("_pers_symbol", e.target.value)}
+                          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                        >
+                          <option value="">Select symbol...</option>
+                          {["Cross","Star of David","Praying Hands","Floral","Patriotic / American Flag","Masonic","Dove","Other (specify in notes)"].map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Legacy print type selector */}
+                    {selected.includes("legacy_print") && (
+                      <div className="pt-2 border-t border-gray-100 space-y-2">
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setField("_pers_legacy_type", "standard")}
+                            className={`flex-1 py-2 text-xs font-medium rounded-lg border ${
+                              (formData._pers_legacy_type || "standard") === "standard"
+                                ? "bg-blue-600 text-white border-blue-600" : "border-gray-200"
+                            }`}
+                          >
+                            Standard Legacy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setField("_pers_legacy_type", "custom")}
+                            className={`flex-1 py-2 text-xs font-medium rounded-lg border ${
+                              formData._pers_legacy_type === "custom"
+                                ? "bg-blue-600 text-white border-blue-600" : "border-gray-200"
+                            }`}
+                          >
+                            Custom Legacy
+                          </button>
+                        </div>
+                        {formData._pers_legacy_type === "custom" && (
+                          <textarea
+                            placeholder="Describe the artwork or design elements..."
+                            value={formData._pers_custom_desc || ""}
+                            onChange={(e) => setField("_pers_custom_desc", e.target.value)}
+                            rows={2}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          />
+                        )}
+                        <p className="text-[11px] text-gray-400">
+                          Print selection and photo uploads available after saving the order.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Notes */}
           <div>
             <Label htmlFor="notes">Notes</Label>

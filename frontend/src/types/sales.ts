@@ -76,6 +76,32 @@ export interface PaginatedQuotes {
 // Sales Order Lines
 // ---------------------------------------------------------------------------
 
+export interface PersonalizationOption {
+  type: "nameplate" | "cover_emblem" | "lifes_reflections" | "legacy_standard" | "legacy_custom";
+  inscription_name?: string;
+  inscription_dates?: string;
+  inscription_additional?: string;
+  print_name?: string;
+  print_image_url?: string;
+  symbol?: string;
+  custom_description?: string;
+}
+
+export interface PersonalizationTask {
+  id: string;
+  task_type: string;
+  inscription_name: string | null;
+  inscription_dates: string | null;
+  inscription_additional: string | null;
+  print_name: string | null;
+  print_image_url: string | null;
+  symbol: string | null;
+  is_custom_legacy: boolean;
+  status: string;
+  completed_at: string | null;
+  notes: string | null;
+}
+
 export interface SalesOrderLine {
   id: string;
   sales_order_id: string;
@@ -90,6 +116,7 @@ export interface SalesOrderLine {
   has_conditional_pricing?: boolean;
   is_call_office?: boolean;
   price_without_our_product?: string | null;
+  personalization_data?: PersonalizationOption[] | null;
 }
 
 export interface SalesOrderLineCreate {

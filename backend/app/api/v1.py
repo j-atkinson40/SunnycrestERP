@@ -103,6 +103,7 @@ from app.api.routes import (
     vendor_bills,
     vendor_payments,
     vendors,
+    personalization,
     training_lifecycle,
     webhooks,
     website_intelligence,
@@ -437,6 +438,9 @@ v1_router.include_router(
 v1_router.include_router(vendors.router, prefix="/vendors", tags=["Vendors"])
 v1_router.include_router(
     website_intelligence.router, tags=["Website Intelligence"]
+)
+v1_router.include_router(
+    personalization.router, prefix="/personalization", tags=["Personalization"]
 )
 v1_router.include_router(
     training_lifecycle.router, prefix="/training", tags=["Training"]

@@ -73,6 +73,11 @@ class Product(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )  # true = hidden until extension enabled
 
+    # Personalization
+    has_personalization: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    personalization_tier: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # 'wilbert_standard', 'continental', 'salute', 'urn_vault'
+
     # Urn catalog / Wilbert import fields
     wilbert_sku: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     wholesale_cost: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
