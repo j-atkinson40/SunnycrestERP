@@ -204,28 +204,38 @@ function FuneralHomePopup({
   onSelect: (id: string, name: string) => void;
   onCancel: () => void;
 }) {
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    // Auto-focus search field
-    setTimeout(() => searchRef.current?.focus(), 100);
-  }, []);
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 mx-4">
         <h2 className="text-lg font-bold text-gray-900 mb-4">
           Who is this order for?
         </h2>
+
+        {/* Recent funeral homes */}
+        {recentFuneralHomes.length > 0 && (
+          <div className="mb-3">
+            <span className="text-xs text-gray-500 uppercase tracking-wider font-medium">Recent</span>
+            <div className="mt-1 space-y-1">
+              {recentFuneralHomes.map((fh) => (
+                <button
+                  key={fh.id}
+                  onClick={() => onSelect(fh.id, fh.name)}
+                  className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  {fh.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <FuneralHomePicker
-          ref={searchRef}
           value={null}
           displayValue=""
           onChange={(id, name) => {
             if (id) onSelect(id, name);
           }}
           className="mb-3"
-          recentItems={recentFuneralHomes}
         />
         <button
           onClick={onCancel}
@@ -1030,7 +1040,6 @@ export default function OrderStation() {
     mode: "order" | "quote";
   } | null>(null);
   const [rememberedFormData, setRememberedFormData] = useState<Record<string, string>>({});
-  const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
   // Voice-to-order state
   const [voiceInput, setVoiceInput] = useState("");
@@ -1278,11 +1287,6 @@ export default function OrderStation() {
     setActiveSlideOver(null);
   }
 
-  function handleOrderSuccess(customerName: string) {
-    setOrderSuccess(`Order saved for ${customerName}`);
-    setTimeout(() => setOrderSuccess(null), 2000);
-    fetchActivity();
-  }
 
   function handleSlideOverSuccess() { fetchActivity(); }
 
@@ -1409,14 +1413,6 @@ export default function OrderStation() {
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
-
-        {/* Order success overlay */}
-        {orderSuccess && (
-          <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800 font-medium flex items-center gap-2">
-            <BadgeCheck className="h-4 w-4 text-green-600" />
-            {orderSuccess}
-          </div>
-        )}
 
         {/* Funeral vault templates as grid */}
         {funeralVaultTemplates.length > 0 && (

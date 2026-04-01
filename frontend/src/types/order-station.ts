@@ -57,6 +57,7 @@ export interface OrderStationActivity {
     product_summary: string;
     delivery_date: string;
   }>;
+  recent_funeral_homes?: Array<{ id: string; name: string }>;
   spring_burial_count: number;
   pending_quote_count: number;
   pending_quote_value: number;

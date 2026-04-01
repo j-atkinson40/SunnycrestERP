@@ -109,12 +109,13 @@ export default function StopDetailPage() {
   const handleMarkComplete = () => {
     // Show completion modal instead of completing directly
     // Initialize exception items from delivery line items
-    const items = (stop?.delivery?.line_items || []).map((li: { description?: string }) => ({
-      item_description: li.description || "Item",
-      checked: false,
-      reason: "other",
-      notes: "",
-    }));
+    // Build exception items from delivery context
+    const items: { item_description: string; checked: boolean; reason: string; notes: string }[] = [];
+    const deliveryType = stop?.delivery?.delivery_type || "";
+    if (deliveryType === "funeral_vault") {
+      items.push({ item_description: "Vault", checked: false, reason: "other", notes: "" });
+      items.push({ item_description: "Equipment", checked: false, reason: "other", notes: "" });
+    }
     if (items.length === 0) {
       items.push({ item_description: "Delivery", checked: false, reason: "other", notes: "" });
     }
