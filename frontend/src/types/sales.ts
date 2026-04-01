@@ -128,6 +128,12 @@ export interface SalesOrder {
   created_at: string;
   modified_at: string | null;
   lines: SalesOrderLine[];
+  driver_confirmed?: boolean;
+  completed_at?: string | null;
+  has_inventory_warning?: boolean;
+  inventory_warning_notes?: string | null;
+  has_driver_exception?: boolean;
+  delivered_at?: string | null;
 }
 
 export interface SalesOrderCreate {

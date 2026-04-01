@@ -379,6 +379,14 @@ function OrderSlideOver({
     preferred_confirmation_method: string | null;
   } | null>(null);
 
+  // Credit status for order entry warning
+  const [creditStatus, setCreditStatus] = useState<{
+    onHold: boolean;
+    nearLimit: boolean;
+    balance: number;
+    limit: number;
+  } | null>(null);
+
   const [taxPreview, setTaxPreview] = useState<{
     configured: boolean;
     rate_percentage: number | null;
@@ -407,12 +415,26 @@ function OrderSlideOver({
     apiClient
       .get(`/customers/${customerId}`)
       .then((res) => {
+        const c = res.data;
         setFhPreferences({
-          prefers_placer: res.data.prefers_placer ?? false,
-          preferred_confirmation_method: res.data.preferred_confirmation_method ?? null,
+          prefers_placer: c.prefers_placer ?? false,
+          preferred_confirmation_method: c.preferred_confirmation_method ?? null,
         });
+        // Credit status for warning banner
+        const limit = parseFloat(c.credit_limit) || 0;
+        const balance = parseFloat(c.current_balance) || 0;
+        if (limit > 0) {
+          setCreditStatus({
+            onHold: c.account_status === "on_hold" || balance >= limit,
+            nearLimit: balance >= limit * 0.8,
+            balance,
+            limit,
+          });
+        } else {
+          setCreditStatus(null);
+        }
       })
-      .catch(() => setFhPreferences(null));
+      .catch(() => { setFhPreferences(null); setCreditStatus(null); });
   }, [formData.customer_id]);
 
   const width = template.slide_over_width || 480;
@@ -505,6 +527,21 @@ function OrderSlideOver({
 
         {/* Body */}
         <form id="slide-over-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+          {/* Credit hold / near-limit warning */}
+          {creditStatus?.onHold && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+              <strong>This customer is on credit hold</strong>
+              <div className="mt-0.5">
+                Balance: ${creditStatus.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })} / Limit: ${creditStatus.limit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          )}
+          {creditStatus && !creditStatus.onHold && creditStatus.nearLimit && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+              Balance near credit limit (${creditStatus.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })} of ${creditStatus.limit.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+            </div>
+          )}
+
           {/* Smart prompt field */}
           <div>
             <Label htmlFor="ai_prompt" className="text-xs font-semibold uppercase tracking-wider text-gray-500">

@@ -104,6 +104,64 @@ def update_stop_status(
     return delivery_service.update_stop_status(db, stop, data.status, data.driver_notes)
 
 
+class ExceptionItem(BaseModel):
+    item_description: str
+    reason: str  # weather, access_issue, family_request, equipment_failure, other
+    notes: str | None = None
+
+
+class ExceptionReport(BaseModel):
+    exceptions: list[ExceptionItem]
+
+
+@router.post("/stops/{stop_id}/exception")
+def report_stop_exception(
+    stop_id: str,
+    data: ExceptionReport,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module(MODULE)),
+    current_user: User = Depends(get_current_user),
+):
+    """Report delivery exceptions for a stop. Annotates the SalesOrder for invoice review."""
+    from app.models.sales_order import SalesOrder
+    from app.models.agent import AgentAlert
+    import uuid
+
+    stop = db.query(DeliveryStop).filter(DeliveryStop.id == stop_id).first()
+    if not stop:
+        raise HTTPException(status_code=404, detail="Stop not found")
+
+    # Navigate: stop → delivery → sales order
+    delivery = db.query(Delivery).filter(Delivery.id == stop.delivery_id).first()
+    order_id = None
+    if delivery and delivery.order_id:
+        order = db.query(SalesOrder).filter(SalesOrder.id == delivery.order_id).first()
+        if order:
+            order_id = order.id
+            order.driver_exceptions = [e.model_dump() for e in data.exceptions]
+            order.has_driver_exception = True
+
+            # Create alert for morning review
+            customer_name = getattr(order, "ship_to_name", None) or "Customer"
+            alert = AgentAlert(
+                id=str(uuid.uuid4()),
+                tenant_id=current_user.company_id,
+                alert_type="driver_exception",
+                severity="warning",
+                title=f"Delivery exception — {customer_name}",
+                message=(
+                    f"Driver reported {len(data.exceptions)} exception(s) on delivery "
+                    f"to {customer_name}. Review before approving tonight's draft invoice."
+                ),
+                action_label="Review Invoices",
+                action_url="/ar/invoices/review",
+            )
+            db.add(alert)
+
+    db.commit()
+    return {"success": True, "order_id": order_id}
+
+
 @router.post("/events", response_model=EventResponse)
 def post_event(
     data: EventCreate,

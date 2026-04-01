@@ -93,6 +93,16 @@ class SalesOrder(Base):
     # True = system marked delivered at 6 PM batch; False = driver explicitly confirmed
     delivered_by_driver_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    # Driver explicitly confirmed delivery (vs auto-confirmed by batch)
+    driver_confirmed: Mapped[bool] = mapped_column(Boolean, server_default="false")
+
+    # Order completion
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Soft inventory warning at order entry
+    has_inventory_warning: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    inventory_warning_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Funeral home confirmation method (defaults from customer preference, can be overridden)
     confirmation_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
 

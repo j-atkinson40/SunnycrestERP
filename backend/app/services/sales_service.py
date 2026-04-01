@@ -421,6 +421,12 @@ def create_sales_order(
     except Exception as _exc:
         logger.warning("Funeral home preferences failed for order %s: %s", order.id, _exc)
 
+    # Credit hold check — soft warning, does not block order
+    _check_credit_on_order(db, company_id, data.customer_id, order)
+
+    # Soft inventory check — flags low stock, does not block
+    _check_inventory_on_order(db, company_id, order)
+
     audit_service.log_action(
         db,
         company_id,
@@ -757,6 +763,134 @@ def _create_short_pay_alert(db, company_id, customer, invoice, amount_paid, diff
         logger.warning("Could not create short pay alert: %s", e)
 
 
+def _check_credit_on_order(db, company_id, customer_id, order):
+    """Create agent alert if customer is on credit hold or order exceeds limit."""
+    try:
+        from app.models.customer import Customer
+        from app.models.agent import AgentAlert
+
+        customer = db.query(Customer).filter(
+            Customer.id == customer_id, Customer.company_id == company_id
+        ).first()
+        if not customer or not customer.credit_limit or customer.credit_limit <= 0:
+            return
+
+        current = float(customer.current_balance or 0)
+        limit = float(customer.credit_limit)
+        order_total = float(order.total or 0)
+
+        if current >= limit:
+            # Already on hold
+            alert = AgentAlert(
+                tenant_id=company_id,
+                alert_type="order_credit_hold",
+                severity="warning",
+                title=f"Order for customer on credit hold: {customer.name}",
+                message=(
+                    f"{customer.name} is on credit hold with balance ${current:,.2f} "
+                    f"(limit ${limit:,.2f}). Order {order.number} was created "
+                    f"but should be reviewed before fulfillment."
+                ),
+                action_label="View Customer",
+                action_url=f"/customers/{customer_id}",
+            )
+            db.add(alert)
+        elif (current + order_total) > limit:
+            # Would exceed
+            projected = current + order_total
+            alert = AgentAlert(
+                tenant_id=company_id,
+                alert_type="order_exceeds_credit",
+                severity="info",
+                title=f"Order exceeds credit limit: {customer.name}",
+                message=(
+                    f"This order of ${order_total:,.2f} would bring {customer.name}'s "
+                    f"balance to ${projected:,.2f}, exceeding their ${limit:,.2f} limit."
+                ),
+                action_label="View Customer",
+                action_url=f"/customers/{customer_id}",
+            )
+            db.add(alert)
+    except Exception as e:
+        logger.warning("Credit check on order failed: %s", e)
+
+
+def _check_inventory_on_order(db, company_id, order):
+    """Create agent alerts for low-stock products on this order."""
+    try:
+        from app.models.inventory_item import InventoryItem
+        from app.models.sales_order import SalesOrderLine
+        from app.models.product import Product
+        from app.models.agent import AgentAlert
+
+        lines = db.query(SalesOrderLine).filter(
+            SalesOrderLine.sales_order_id == order.id
+        ).all()
+
+        warnings = []
+        for line in lines:
+            if not line.product_id:
+                continue
+            inv = db.query(InventoryItem).filter(
+                InventoryItem.company_id == company_id,
+                InventoryItem.product_id == line.product_id,
+            ).first()
+            if not inv:
+                continue
+
+            qty_on_hand = inv.quantity_on_hand or 0
+            reorder_point = inv.reorder_point or 2
+            line_qty = int(line.quantity or 0)
+            remaining_after = qty_on_hand - line_qty
+
+            if remaining_after < 0:
+                product = db.query(Product).filter(Product.id == line.product_id).first()
+                name = product.name if product else "Product"
+                warnings.append(
+                    f"Only {qty_on_hand} {name} in stock — this order requires {line_qty}."
+                )
+            elif qty_on_hand <= reorder_point:
+                product = db.query(Product).filter(Product.id == line.product_id).first()
+                name = product.name if product else "Product"
+                warnings.append(
+                    f"After this order, only {remaining_after} {name} will remain in stock."
+                )
+
+        if warnings:
+            order.has_inventory_warning = True
+            order.inventory_warning_notes = "; ".join(warnings)
+            alert = AgentAlert(
+                tenant_id=company_id,
+                alert_type="low_stock_on_order",
+                severity="warning" if any("requires" in w for w in warnings) else "info",
+                title=f"Low stock on order {order.number}",
+                message="; ".join(warnings),
+                action_label="View Inventory",
+                action_url="/inventory",
+            )
+            db.add(alert)
+    except Exception as e:
+        logger.warning("Inventory check on order failed: %s", e)
+
+
+def _auto_complete_order_on_payment(db, invoice, company_id):
+    """Mark the associated SalesOrder as completed when its invoice is fully paid."""
+    try:
+        from app.models.sales_order import SalesOrder
+
+        if not getattr(invoice, "sales_order_id", None):
+            return
+        order = db.query(SalesOrder).filter(SalesOrder.id == invoice.sales_order_id).first()
+        if not order:
+            return
+        if order.status in ("cancelled", "completed"):
+            return
+        order.status = "completed"
+        order.completed_at = datetime.now(timezone.utc)
+    except Exception as e:
+        logger.warning("Could not auto-complete order on payment: %s", e)
+
+
 def _create_overpayment_alert(db, company_id, customer, total_amount, applied, overpayment):
     """Create an agent alert for an overpayment."""
     try:
@@ -891,6 +1025,8 @@ def create_customer_payment(
         if invoice.amount_paid >= invoice.total:
             invoice.status = "paid"
             invoice.paid_at = datetime.now(timezone.utc)
+            # Auto-complete associated sales order
+            _auto_complete_order_on_payment(db, invoice, company_id)
         elif invoice.amount_paid > Decimal("0.00"):
             invoice.status = "partial"
 

@@ -427,9 +427,38 @@ def update_stop_status(db: Session, stop: DeliveryStop, status: str, driver_note
     elif status == "completed" and not stop.actual_departure:
         stop.actual_departure = now
     stop.modified_at = now
+
+    # Sync SalesOrder status when stop is completed
+    if status == "completed":
+        _sync_sales_order_delivery(db, stop, now)
+
     db.commit()
     db.refresh(stop)
     return stop
+
+
+def _sync_sales_order_delivery(db: Session, stop, now) -> None:
+    """Mark the associated SalesOrder as delivered when a stop is completed."""
+    try:
+        from app.models.delivery import Delivery
+        from app.models.sales_order import SalesOrder
+
+        delivery = db.query(Delivery).filter(Delivery.id == stop.delivery_id).first()
+        if not delivery or not delivery.order_id:
+            return
+
+        order = db.query(SalesOrder).filter(SalesOrder.id == delivery.order_id).first()
+        if not order:
+            return
+        if order.status in ("completed", "invoiced", "cancelled"):
+            return
+
+        order.status = "delivered"
+        order.delivered_at = now
+        order.driver_confirmed = True
+        order.delivery_auto_confirmed = False
+    except Exception:
+        pass  # Don't break stop update if sync fails
 
 
 # ---------------------------------------------------------------------------

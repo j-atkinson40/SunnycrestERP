@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { driverService } from "@/services/driver-service";
 import { getApiErrorMessage } from "@/lib/api-error";
+import apiClient from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,11 @@ export default function StopDetailPage() {
   const [notes, setNotes] = useState("");
   const [issueText, setIssueText] = useState("");
   const [showIssue, setShowIssue] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [showExceptionForm, setShowExceptionForm] = useState(false);
+  const [exceptionItems, setExceptionItems] = useState<
+    { item_description: string; checked: boolean; reason: string; notes: string }[]
+  >([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -98,6 +104,49 @@ export default function StopDetailPage() {
     await handlePostEvent("issue_reported", issueText);
     setShowIssue(false);
     setIssueText("");
+  };
+
+  const handleMarkComplete = () => {
+    // Show completion modal instead of completing directly
+    // Initialize exception items from delivery line items
+    const items = (stop?.delivery?.line_items || []).map((li: { description?: string }) => ({
+      item_description: li.description || "Item",
+      checked: false,
+      reason: "other",
+      notes: "",
+    }));
+    if (items.length === 0) {
+      items.push({ item_description: "Delivery", checked: false, reason: "other", notes: "" });
+    }
+    setExceptionItems(items);
+    setShowCompletionModal(true);
+  };
+
+  const handleCompleteWithNoIssues = async () => {
+    setShowCompletionModal(false);
+    await handleStatusUpdate("completed");
+  };
+
+  const handleSubmitExceptions = async () => {
+    const checked = exceptionItems.filter((i) => i.checked);
+    if (checked.length === 0) return;
+
+    try {
+      await apiClient.post(`/driver/stops/${stopId}/exception`, {
+        exceptions: checked.map((i) => ({
+          item_description: i.item_description,
+          reason: i.reason,
+          notes: i.notes || null,
+        })),
+      });
+      toast.success("Exception report submitted");
+    } catch {
+      toast.error("Failed to submit exception report");
+    }
+
+    setShowCompletionModal(false);
+    setShowExceptionForm(false);
+    await handleStatusUpdate("completed");
   };
 
   if (loading) {
@@ -272,7 +321,7 @@ export default function StopDetailPage() {
 
             <Button
               className="w-full bg-green-600 hover:bg-green-700"
-              onClick={() => handleStatusUpdate("completed")}
+              onClick={handleMarkComplete}
               disabled={updating}
             >
               {updating ? "Completing..." : "Mark Complete"}
@@ -325,6 +374,112 @@ export default function StopDetailPage() {
             </div>
           )}
         </Card>
+      )}
+
+      {/* Delivery Completion Modal */}
+      {showCompletionModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40">
+          <div className="w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 space-y-4">
+            {!showExceptionForm ? (
+              <>
+                <h2 className="text-lg font-bold text-center">
+                  Was everything delivered as planned?
+                </h2>
+                <Button
+                  className="w-full bg-green-600 hover:bg-green-700 py-6 text-base"
+                  onClick={handleCompleteWithNoIssues}
+                  disabled={updating}
+                >
+                  {updating ? "Completing..." : "Yes, all complete"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full py-6 text-base text-amber-700 border-amber-300"
+                  onClick={() => setShowExceptionForm(true)}
+                >
+                  Report an issue
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setShowCompletionModal(false)}
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold">What couldn't be completed?</h2>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {exceptionItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={`rounded-lg border p-3 ${item.checked ? "border-amber-300 bg-amber-50" : "border-gray-200"}`}
+                    >
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={(e) => {
+                            const next = [...exceptionItems];
+                            next[idx] = { ...next[idx], checked: e.target.checked };
+                            setExceptionItems(next);
+                          }}
+                          className="accent-amber-600"
+                        />
+                        {item.item_description}
+                      </label>
+                      {item.checked && (
+                        <div className="mt-2 space-y-2 pl-6">
+                          <select
+                            value={item.reason}
+                            onChange={(e) => {
+                              const next = [...exceptionItems];
+                              next[idx] = { ...next[idx], reason: e.target.value };
+                              setExceptionItems(next);
+                            }}
+                            className="w-full border rounded-md p-2 text-sm"
+                          >
+                            <option value="weather">Weather</option>
+                            <option value="access_issue">Access issue</option>
+                            <option value="family_request">Family request</option>
+                            <option value="equipment_failure">Equipment failure</option>
+                            <option value="other">Other</option>
+                          </select>
+                          <input
+                            type="text"
+                            value={item.notes}
+                            onChange={(e) => {
+                              const next = [...exceptionItems];
+                              next[idx] = { ...next[idx], notes: e.target.value };
+                              setExceptionItems(next);
+                            }}
+                            placeholder="Notes (optional)"
+                            className="w-full border rounded-md p-2 text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  className="w-full bg-amber-600 hover:bg-amber-700 py-4"
+                  onClick={handleSubmitExceptions}
+                  disabled={updating || exceptionItems.every((i) => !i.checked)}
+                >
+                  {updating ? "Submitting..." : "Submit Exception Report"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setShowExceptionForm(false)}
+                >
+                  Back
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
