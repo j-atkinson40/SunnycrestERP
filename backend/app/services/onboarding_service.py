@@ -522,6 +522,21 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "depends_on": '["vault_production_setup"]',
         "visibility_condition": "vault_fulfillment_mode_produces",
     },
+    # Sort 210: Vault lifecycle training
+    {
+        "item_key": "complete_vault_lifecycle_training",
+        "tier": "should_complete",
+        "category": "team",
+        "title": "Complete vault order training",
+        "description": (
+            "Walk through how a vault order moves through Bridgeable "
+            "end to end. Takes about 10 minutes."
+        ),
+        "estimated_minutes": 10,
+        "action_type": "navigate",
+        "action_target": "/training/vault-order-lifecycle",
+        "sort_order": 210,
+    },
     # ── OPTIONAL ──────────────────────────────────────────────────────────────
     {
         "item_key": "setup_safety",

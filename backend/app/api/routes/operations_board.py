@@ -270,6 +270,42 @@ INTERPRET_PROMPTS: dict[str, str] = {
 }
 
 
+def _maybe_add_training_reminder(db: Session, user: User, result: dict) -> None:
+    """Append a training reminder to the response items if the user hasn't completed
+    the vault lifecycle training and their account is more than 3 days old."""
+    try:
+        from app.models.training_progress import TrainingProgress
+
+        # Check if user account is at least 3 days old
+        if user.created_at:
+            age_days = (datetime.now(timezone.utc) - user.created_at).days
+            if age_days < 3:
+                return
+
+        # Check if already completed
+        count = (
+            db.query(TrainingProgress)
+            .filter(
+                TrainingProgress.user_id == user.id,
+                TrainingProgress.training_key == "vault_order_lifecycle",
+            )
+            .count()
+        )
+        if count >= 7:
+            return  # All stages complete
+
+        items = result.get("items") or []
+        items.append({
+            "type": "training_reminder",
+            "message": "Complete the vault order lifecycle training",
+            "action_label": "Start training",
+            "action_url": "/training/vault-order-lifecycle",
+        })
+        result["items"] = items
+    except Exception:
+        pass  # Never break daily-context for training reminders
+
+
 @router.get("/daily-context")
 def get_daily_context(
     current_user: User = Depends(get_current_user),
@@ -490,12 +526,16 @@ def get_daily_context(
         result["vault_delivery_today"] = vault_delivery_today
         result["vault_po_today"] = vault_po_today
         result["vault_supplier_vendor_id"] = vault_supplier_vendor_id
+
+        # Training reminder — add to items if user hasn't completed lifecycle training
+        _maybe_add_training_reminder(db, current_user, result)
+
         return result
     except Exception:
         greeting = (
             "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
         )
-        return {
+        fallback = {
             "greeting": greeting,
             "priority_message": f"Today is {day_name}. {today_deliveries} deliveries scheduled.",
             "items": [],
@@ -506,6 +546,8 @@ def get_daily_context(
             "vault_po_today": vault_po_today,
             "vault_supplier_vendor_id": vault_supplier_vendor_id,
         }
+        _maybe_add_training_reminder(db, current_user, fallback)
+        return fallback
 
 
 # ---------------------------------------------------------------------------

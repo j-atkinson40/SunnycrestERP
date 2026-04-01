@@ -152,3 +152,13 @@ def on_vault_mold_config_setup(db: Session, tenant_id: str) -> None:
             check_completion(db, tenant_id, "setup_vault_molds")
     except Exception:
         logger.exception("Onboarding hook failed: on_vault_mold_config_setup")
+
+
+def on_training_lifecycle_completed(db: Session, tenant_id: str) -> None:
+    """Auto-complete onboarding item when vault lifecycle training is done."""
+    try:
+        from app.services.onboarding_service import check_completion
+
+        check_completion(db, tenant_id, "complete_vault_lifecycle_training")
+    except Exception:
+        logger.exception("Onboarding hook failed: on_training_lifecycle_completed")

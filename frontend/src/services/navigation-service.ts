@@ -208,6 +208,11 @@ function getManufacturingNav(
     title: "Training",
     items: [
       {
+        label: "Vault Order Lifecycle",
+        href: "/training/vault-order-lifecycle",
+        icon: "GraduationCap",
+      },
+      {
         label: "Procedure Library",
         href: "/training/procedures",
         icon: "BookOpen",

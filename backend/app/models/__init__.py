@@ -230,6 +230,7 @@ from app.models.vendor_payment_application import VendorPaymentApplication
 from app.models.data_migration import DataMigrationRun
 from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIntelligenceSuggestion
 from app.models.production_mold_config import ProductionMoldConfig
+from app.models.training_progress import TrainingProgress
 from app.models.vault_supplier import VaultSupplier
 
 __all__ = [
@@ -410,5 +411,6 @@ __all__ = [
     "HistoricalOrderImport",
     "HistoricalOrder",
     "ProductionMoldConfig",
+    "TrainingProgress",
     "VaultSupplier",
 ]
