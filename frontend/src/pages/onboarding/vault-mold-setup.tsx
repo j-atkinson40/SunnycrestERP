@@ -57,9 +57,6 @@ export default function VaultMoldSetupPage() {
               p.product_line?.toLowerCase().includes("burial") ||
               p.product_line?.toLowerCase().includes("urn"))
         )
-        setProducts(vaultProducts)
-        setExistingConfigs(configRes.data || [])
-
         // Build initial config map
         const configMap = new Map<string, ProductConfig>()
         const existingMap = new Map(
