@@ -241,7 +241,7 @@ export default function DriverPortalPreviewPage() {
           </button>
           <br />
           <button
-            onClick={() => navigate("/admin/announcements")}
+            onClick={() => navigate("/announcements")}
             className="text-sm text-teal-600 font-medium"
           >
             Manage announcements

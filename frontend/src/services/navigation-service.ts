@@ -117,12 +117,6 @@ function getManufacturingNav(
       functionalArea: "funeral_scheduling",
     },
     {
-      label: "Driver Announcements",
-      href: "/admin/announcements",
-      icon: "Megaphone",
-      permission: "admin",
-    },
-    {
       label: "Portal Preview",
       href: "/admin/driver-portal-preview",
       icon: "Smartphone",
