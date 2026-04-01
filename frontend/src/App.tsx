@@ -570,7 +570,8 @@ export default function App() {
                     <Route path="/delivery/routes/:id" element={<RouteDetailPage />} />
                     <Route path="/delivery/settings" element={<DeliverySettingsPage />} />
                     <Route path="/admin/announcements" element={<Navigate to="/announcements" replace />} />
-                    <Route path="/admin/driver-portal-preview" element={<DriverPortalPreviewPage />} />
+                    <Route path="/settings/driver-portal-preview" element={<DriverPortalPreviewPage />} />
+                    <Route path="/admin/driver-portal-preview" element={<Navigate to="/settings/driver-portal-preview" replace />} />
                   </Route>
                   <Route
                     element={

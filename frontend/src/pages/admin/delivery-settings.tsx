@@ -211,7 +211,7 @@ export default function DeliverySettingsPage() {
             Configure delivery requirements, notifications, and automation for your organization.
           </p>
         </div>
-        <a href="/admin/driver-portal-preview" className="text-sm text-teal-600 font-medium hover:text-teal-800">
+        <a href="/settings/driver-portal-preview" className="text-sm text-teal-600 font-medium hover:text-teal-800">
           Preview driver portal &rarr;
         </a>
       </div>

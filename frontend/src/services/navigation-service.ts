@@ -117,12 +117,6 @@ function getManufacturingNav(
       functionalArea: "funeral_scheduling",
     },
     {
-      label: "Portal Preview",
-      href: "/admin/driver-portal-preview",
-      icon: "Smartphone",
-      permission: "admin",
-    },
-    {
       label: "Inventory",
       href: "/inventory",
       icon: "Package",
@@ -365,6 +359,12 @@ function getManufacturingNav(
           label: "Vault Production Capacity",
           href: "/settings/vault-molds",
           icon: "Factory",
+        },
+        {
+          label: "Driver Portal Preview",
+          href: "/settings/driver-portal-preview",
+          icon: "Monitor",
+          permission: "admin",
         },
         {
           label: "Seasonal Templates",
