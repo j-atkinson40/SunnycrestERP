@@ -228,6 +228,11 @@ export interface DeliveryListItem {
   weight_lbs: string | null;
   scheduled_at: string | null;
   created_at: string;
+  // Funeral-specific fields (from type_config / enrichment)
+  cemetery_name?: string;
+  cemetery_city?: string;
+  cemetery_state?: string;
+  cemetery_county?: string;
 }
 
 export interface Delivery extends DeliveryListItem {
