@@ -13,6 +13,7 @@ from app.api.routes import (
     ai,
     ancillary_orders,
     announcements,
+    driver_announcements,
     ap,
     api_keys,
     audit,
@@ -127,6 +128,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     announcements.router, prefix="/announcements", tags=["Announcements"]
+)
+v1_router.include_router(
+    driver_announcements.router, prefix="", tags=["Driver Announcements"]
 )
 v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["API Keys"])
 v1_router.include_router(ap.router, prefix="/ap", tags=["Accounts Payable"])

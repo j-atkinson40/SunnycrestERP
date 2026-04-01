@@ -204,11 +204,16 @@ export default function DeliverySettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Delivery Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Configure delivery requirements, notifications, and automation for your organization.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Delivery Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Configure delivery requirements, notifications, and automation for your organization.
+          </p>
+        </div>
+        <a href="/admin/driver-portal-preview" className="text-sm text-teal-600 font-medium hover:text-teal-800">
+          Preview driver portal &rarr;
+        </a>
       </div>
 
       {/* Current Preset */}

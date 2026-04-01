@@ -7,7 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { getDeliveryTypeBadgeClass, getDeliveryTypeName } from "@/lib/delivery-types";
-import type { DeliveryRoute } from "@/types/delivery";
+import type { DeliveryRoute, DriverAnnouncement } from "@/types/delivery";
+import { AlertTriangle } from "lucide-react";
 
 function routeStatusBadge(status: string) {
   const map: Record<string, { className: string; label: string }> = {
@@ -27,12 +28,20 @@ export default function DriverHomePage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [noProfile, setNoProfile] = useState(false);
+  const [safetyBlocked, setSafetyBlocked] = useState(false);
+  const [safetyAnnouncements, setSafetyAnnouncements] = useState<DriverAnnouncement[]>([]);
 
   const loadRoute = useCallback(async () => {
     try {
       setLoading(true);
-      const r = await driverService.getTodayRoute();
+      const [r, anns] = await Promise.all([
+        driverService.getTodayRoute(),
+        driverService.getAnnouncements().catch(() => [] as DriverAnnouncement[]),
+      ]);
       setRoute(r);
+      const unackedSafety = anns.filter((a) => a.urgency === "safety" && !a.acknowledged);
+      setSafetyAnnouncements(unackedSafety);
+      setSafetyBlocked(unackedSafety.length > 0);
     } catch (err: unknown) {
       const msg = getApiErrorMessage(err);
       if (msg.toLowerCase().includes("no driver profile")) {
@@ -141,9 +150,32 @@ export default function DriverHomePage() {
       </Card>
 
       {/* Action Button */}
+      {/* Safety announcement block */}
+      {safetyBlocked && safetyAnnouncements.map((ann) => (
+        <Card key={ann.id} className="p-4 bg-red-50 border-red-200">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-semibold text-red-800">{ann.title}</h3>
+              <p className="text-sm text-red-700 mt-1">{ann.body}</p>
+              <button
+                onClick={async () => {
+                  await driverService.acknowledgeAnnouncement(ann.id);
+                  setSafetyAnnouncements((prev) => prev.filter((a) => a.id !== ann.id));
+                  setSafetyBlocked(safetyAnnouncements.length <= 1);
+                }}
+                className="mt-2 px-4 py-1.5 bg-white border border-red-300 rounded-lg text-sm font-medium text-red-700"
+              >
+                I understand — acknowledge
+              </button>
+            </div>
+          </div>
+        </Card>
+      ))}
+
       {route.status === "dispatched" && (
-        <Button className="w-full py-6 text-lg" onClick={handleStartRoute} disabled={starting}>
-          {starting ? "Starting..." : "Start Route"}
+        <Button className="w-full py-6 text-lg" onClick={handleStartRoute} disabled={starting || safetyBlocked}>
+          {safetyBlocked ? "Acknowledge safety announcement first" : starting ? "Starting..." : "Start Route"}
         </Button>
       )}
       {route.status === "in_progress" && (

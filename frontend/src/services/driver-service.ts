@@ -4,6 +4,7 @@ import type {
   DeliveryMedia,
   DeliveryRoute,
   DeliveryStop,
+  DriverAnnouncement,
   DriverPortalSettings,
   EventCreate,
 } from "@/types/delivery";
@@ -70,6 +71,21 @@ export const driverService = {
   // -----------------------------------------------------------------------
   // Portal Settings
   // -----------------------------------------------------------------------
+
+  // -----------------------------------------------------------------------
+  // Announcements
+  // -----------------------------------------------------------------------
+
+  async getAnnouncements(): Promise<DriverAnnouncement[]> {
+    const response = await apiClient.get<DriverAnnouncement[]>(
+      "/driver/announcements",
+    );
+    return response.data;
+  },
+
+  async acknowledgeAnnouncement(announcementId: string): Promise<void> {
+    await apiClient.post(`/driver/announcements/${announcementId}/acknowledge`);
+  },
 
   async getPortalSettings(): Promise<DriverPortalSettings> {
     const response = await apiClient.get<DriverPortalSettings>(

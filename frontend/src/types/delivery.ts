@@ -256,6 +256,17 @@ export interface DeliveryListItem {
   vault_type?: string;
 }
 
+export interface DriverAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  urgency: "normal" | "urgent" | "safety";
+  acknowledged: boolean;
+  requires_acknowledgment: boolean;
+  published_at: string | null;
+  expires_at: string | null;
+}
+
 export interface DriverPortalSettings {
   show_en_route_button: boolean;
   show_exception_button: boolean;

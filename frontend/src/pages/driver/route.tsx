@@ -16,6 +16,7 @@ import type {
   DeliveryRoute,
   DeliveryStop,
   DeliveryListItem,
+  DriverAnnouncement,
   DriverPortalSettings,
 } from "@/types/delivery"
 import {
@@ -89,10 +90,21 @@ function mapsUrl(address?: string | null): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function DriverRoutePage() {
+interface DriverRoutePageProps {
+  previewMode?: boolean
+  previewSettings?: DriverPortalSettings
+  previewStops?: DeliveryStop[]
+}
+
+export default function DriverRoutePage({
+  previewMode,
+  previewSettings,
+  previewStops,
+}: DriverRoutePageProps = {}) {
   const navigate = useNavigate()
   const [route, setRoute] = useState<DeliveryRoute | null>(null)
   const [settings, setSettings] = useState<DriverPortalSettings | null>(null)
+  const [announcements, setAnnouncements] = useState<DriverAnnouncement[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedStopId, setExpandedStopId] = useState<string | null>(null)
   const [checkedEquipment, setCheckedEquipment] = useState<Record<string, Set<number>>>({})
@@ -102,20 +114,27 @@ export default function DriverRoutePage() {
   const [exceptionItems, setExceptionItems] = useState<{ desc: string; checked: boolean; reason: string; notes: string }[]>([])
 
   const loadData = useCallback(async () => {
+    if (previewMode) {
+      setSettings(previewSettings || null)
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
-      const [r, s] = await Promise.all([
+      const [r, s, a] = await Promise.all([
         driverService.getTodayRoute(),
         driverService.getPortalSettings(),
+        driverService.getAnnouncements().catch(() => [] as DriverAnnouncement[]),
       ])
       setRoute(r)
       setSettings(s)
+      setAnnouncements(a)
     } catch (err) {
       toast.error(getApiErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [previewMode, previewSettings])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -203,7 +222,7 @@ export default function DriverRoutePage() {
     )
   }
 
-  if (!route) {
+  if (!route && !previewMode) {
     return (
       <div className="space-y-4 p-6 text-center">
         <h1 className="text-xl font-bold">No route today</h1>
@@ -212,10 +231,11 @@ export default function DriverRoutePage() {
     )
   }
 
-  const activeStops = route.stops.filter((s) => s.status !== "completed" && s.status !== "skipped")
-  const completedStops = route.stops.filter((s) => s.status === "completed" || s.status === "skipped")
+  const stops = previewMode && previewStops ? previewStops : (route?.stops || [])
+  const activeStops = stops.filter((s) => s.status !== "completed" && s.status !== "skipped")
+  const completedStops = stops.filter((s) => s.status === "completed" || s.status === "skipped")
   const completedCount = completedStops.length
-  const totalStops = route.stops.length
+  const totalStops = stops.length
   const allComplete = completedCount === totalStops && totalStops > 0
 
   return (
@@ -253,6 +273,51 @@ export default function DriverRoutePage() {
           </div>
         )}
       </div>
+
+      {/* Announcement banners */}
+      {announcements.filter((a) => !a.acknowledged).map((ann) => (
+        <div
+          key={ann.id}
+          className={`mx-4 mt-3 rounded-lg p-4 ${
+            ann.urgency === "safety"
+              ? "bg-red-600 text-white"
+              : ann.urgency === "urgent"
+                ? "bg-amber-100 border border-amber-300 text-amber-900"
+                : "bg-teal-50 border-l-4 border-l-teal-500 border border-teal-200 text-teal-900"
+          }`}
+        >
+          <h3 className={`font-semibold text-sm ${ann.urgency === "safety" ? "text-white" : ""}`}>
+            {ann.title}
+          </h3>
+          <p className={`text-sm mt-1 ${ann.urgency === "safety" ? "text-red-100" : "opacity-80"}`}>
+            {ann.body}
+          </p>
+          {!previewMode && (
+            <button
+              onClick={async () => {
+                await driverService.acknowledgeAnnouncement(ann.id)
+                setAnnouncements((prev) =>
+                  prev.map((a) => (a.id === ann.id ? { ...a, acknowledged: true } : a))
+                )
+              }}
+              className={`mt-2 px-4 py-1.5 rounded-lg text-sm font-medium ${
+                ann.urgency === "safety"
+                  ? "bg-white text-red-700"
+                  : "bg-white border border-gray-300 text-gray-700"
+              }`}
+            >
+              {ann.urgency === "safety" ? "I understand — acknowledge" : "Mark as read"}
+            </button>
+          )}
+        </div>
+      ))}
+
+      {/* Acknowledged announcements (collapsed) */}
+      {announcements.filter((a) => a.acknowledged && a.urgency !== "normal").map((ann) => (
+        <div key={ann.id} className="mx-4 mt-2 px-3 py-1.5 bg-gray-100 rounded text-xs text-gray-500">
+          {ann.title} — acknowledged
+        </div>
+      ))}
 
       {/* Active stops */}
       <div className="px-4 pt-4 space-y-3">

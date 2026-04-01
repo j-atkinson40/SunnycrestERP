@@ -54,6 +54,8 @@ import PaymentDetailPage from "@/pages/payment-detail";
 import ARAgingPage2 from "@/pages/ar-aging";
 import ModulesPage from "@/pages/admin/modules";
 import DeliverySettingsPage from "@/pages/admin/delivery-settings";
+import DriverAnnouncementsPage from "@/pages/admin/driver-announcements";
+import DriverPortalPreviewPage from "@/pages/admin/driver-portal-preview";
 import OperationsPage from "@/pages/delivery/operations";
 import HistoryPage from "@/pages/delivery/history";
 import DeliveryDetailPage from "@/pages/delivery/delivery-detail";
@@ -568,6 +570,8 @@ export default function App() {
                     <Route path="/delivery/deliveries/:id" element={<DeliveryDetailPage />} />
                     <Route path="/delivery/routes/:id" element={<RouteDetailPage />} />
                     <Route path="/delivery/settings" element={<DeliverySettingsPage />} />
+                    <Route path="/admin/announcements" element={<DriverAnnouncementsPage />} />
+                    <Route path="/admin/driver-portal-preview" element={<DriverPortalPreviewPage />} />
                   </Route>
                   <Route
                     element={
