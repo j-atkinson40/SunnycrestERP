@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import {
-  getDeliveryTypeBadgeClass,
   getDeliveryTypeName,
 } from "@/lib/delivery-types"
 import type {

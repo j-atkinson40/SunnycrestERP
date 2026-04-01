@@ -192,6 +192,14 @@ export interface DeliverySettingsUpdate {
   carrier_portal?: boolean;
   max_stops_per_route?: number | null;
   default_delivery_window_minutes?: number | null;
+  show_en_route_button?: boolean;
+  show_exception_button?: boolean;
+  show_delivered_button?: boolean;
+  show_equipment_checklist?: boolean;
+  show_funeral_home_contact?: boolean;
+  show_cemetery_contact?: boolean;
+  show_get_directions?: boolean;
+  show_call_office_button?: boolean;
 }
 
 // ---------------------------------------------------------------------------
