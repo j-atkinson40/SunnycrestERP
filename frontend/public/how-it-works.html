@@ -6,104 +6,111 @@
 <title>How Bridgeable Works | From First Call to Closed Account</title>
 <meta name="description" content="See how a vault order moves through Bridgeable — order entry, scheduling, invoicing, billing, collections, payment, and completion.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--teal:#1D9E75;--teal-light:#E1F5EE;--teal-dark:#167A5B;--navy:#0F2137;--text:#1a1a1a;--muted:#666;--border:#e5e5e5;--bg:#ffffff;--max-w:1100px}
+:root{--blue:#2563EB;--blue-light:#EFF6FF;--blue-dark:#1D4ED8;--blue-50:#DBEAFE;--navy:#0F172A;--text:#1a1a1a;--muted:#64748B;--border:#E2E8F0;--bg:#ffffff;--max-w:1200px}
 body{font-family:'Inter',system-ui,sans-serif;color:var(--text);background:var(--bg);line-height:1.7;-webkit-font-smoothing:antialiased}
-a{color:var(--teal);text-decoration:none}
+a{color:var(--blue);text-decoration:none}
 
 /* Header */
-.hdr{position:sticky;top:0;z-index:50;background:var(--bg);transition:border-color .2s}
-.hdr.scrolled{border-bottom:1px solid var(--border)}
-.hdr-inner{max-width:var(--max-w);margin:0 auto;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
-.logo{font-size:20px;font-weight:600;color:var(--navy);display:flex;align-items:center;gap:8px}
+.hdr{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.95);backdrop-filter:blur(8px);transition:box-shadow .2s}
+.hdr.scrolled{box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.hdr-inner{max-width:var(--max-w);margin:0 auto;padding:14px 32px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:20px;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:8px}
 .logo svg{width:28px;height:28px}
-.btn-demo{background:var(--teal);color:#fff;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:500;border:none;cursor:pointer;transition:background .2s}
-.btn-demo:hover{background:var(--teal-dark)}
+.btn-demo{background:var(--blue);color:#fff;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:500;border:none;cursor:pointer;transition:background .2s;text-decoration:none}
+.btn-demo:hover{background:var(--blue-dark)}
 
 /* Hero */
-.hero{text-align:center;padding:100px 24px 80px;max-width:800px;margin:0 auto}
-.eyebrow{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:16px}
-.hero h1{font-size:48px;font-weight:600;color:var(--navy);line-height:1.15;margin-bottom:20px}
-.hero p{font-size:18px;color:var(--muted);max-width:640px;margin:0 auto 32px}
-.btn-scroll{display:inline-flex;align-items:center;gap:6px;background:var(--navy);color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:500;border:none;cursor:pointer;transition:background .2s}
-.btn-scroll:hover{background:#1a3050}
+.hero{text-align:center;padding:100px 32px 80px;max-width:800px;margin:0 auto}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);margin-bottom:16px}
+.hero h1{font-size:52px;font-weight:700;color:var(--navy);line-height:1.1;margin-bottom:20px}
+.hero p{font-size:18px;color:var(--muted);max-width:600px;margin:0 auto 36px;line-height:1.7}
+.btn-scroll{display:inline-flex;align-items:center;gap:8px;background:var(--blue);color:#fff;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:background .2s}
+.btn-scroll:hover{background:var(--blue-dark)}
 
 /* Section */
-.section{padding:80px 24px;max-width:var(--max-w);margin:0 auto}
-.section-label{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:12px}
-.section h2{font-size:32px;font-weight:600;color:var(--navy);margin-bottom:8px}
+.section{padding:60px 32px 80px;max-width:var(--max-w);margin:0 auto}
+.section-label{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);margin-bottom:12px}
 
 /* Stage Nav Pills */
-.stage-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border)}
-.stage-pill{padding:8px 16px;border-radius:999px;font-size:13px;font-weight:500;border:1px solid var(--border);background:#fff;color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
-.stage-pill.active{background:var(--teal);color:#fff;border-color:var(--teal)}
-.stage-pill:hover:not(.active){border-color:var(--teal);color:var(--teal)}
+.stage-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:40px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.stage-pill{padding:8px 18px;border-radius:999px;font-size:13px;font-weight:500;border:1px solid var(--border);background:#fff;color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
+.stage-pill.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.stage-pill:hover:not(.active){border-color:var(--blue);color:var(--blue)}
 
-/* Stage Content */
-.stage{display:none}
-.stage.active{display:block}
-.stage-title{font-size:28px;font-weight:600;color:var(--navy);margin-bottom:16px}
-.benefit-callout{background:var(--teal-light);border-radius:12px;padding:24px;margin-bottom:28px;font-size:17px;color:var(--navy);line-height:1.6}
-.stats-row{display:flex;gap:16px;margin-bottom:28px;flex-wrap:wrap}
-.stat-card{flex:1;min-width:120px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
-.stat-value{font-size:24px;font-weight:600;color:var(--teal)}
-.stat-label{font-size:12px;color:var(--muted);margin-top:4px}
-.detail-list{list-style:none;margin-bottom:28px}
-.detail-list li{padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:15px;display:flex;align-items:flex-start;gap:10px}
+/* Two-column layout */
+.stage-cols{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}
+.stage-left{}
+.stage-right{position:sticky;top:100px}
+.stage-title{font-size:28px;font-weight:700;color:var(--navy);margin-bottom:16px;line-height:1.2}
+.benefit-callout{background:var(--blue-light);border-radius:12px;padding:20px 24px;margin-bottom:24px;font-size:16px;color:var(--navy);line-height:1.6;border-left:4px solid var(--blue)}
+.stats-row{display:flex;gap:12px;margin-bottom:24px}
+.stat-card{flex:1;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center}
+.stat-value{font-size:22px;font-weight:700;color:var(--blue)}
+.stat-label{font-size:11px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.03em}
+.detail-list{list-style:none;margin-bottom:24px}
+.detail-list li{padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px;display:flex;align-items:flex-start;gap:8px;line-height:1.5}
 .detail-list li:last-child{border-bottom:none}
-.detail-list .check{color:var(--teal);font-size:16px;flex-shrink:0;margin-top:2px}
-.badge-ai{display:inline-block;background:var(--teal-light);color:var(--teal-dark);font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle}
+.detail-list .check{color:var(--blue);font-size:14px;flex-shrink:0;margin-top:3px}
+.badge-ai{display:inline-block;background:var(--blue-50);color:var(--blue-dark);font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle;letter-spacing:.02em}
 
-/* Mockup */
-.mockup-area{background:#fafafa;border:1px solid var(--border);border-radius:12px;padding:32px;margin-bottom:28px;min-height:200px}
-.mockup-steps{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-.mockup-step{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:500;background:#fff;border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s}
-.mockup-step.active{background:var(--teal);color:#fff;border-color:var(--teal)}
-.mockup-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:24px;min-height:120px}
-.mockup-card h4{font-size:14px;font-weight:600;color:var(--navy);margin-bottom:8px}
-.mockup-card p{font-size:13px;color:var(--muted);line-height:1.5}
-.mockup-card .field{background:#f5f5f5;border-radius:6px;padding:8px 12px;margin-top:8px;font-size:13px;color:#888}
-.mockup-card .field-label{font-size:11px;font-weight:500;color:var(--muted);margin-top:12px;margin-bottom:4px}
-.mockup-card .btn-mock{display:inline-block;background:var(--teal);color:#fff;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:500;margin-top:12px}
+/* Mockup area — right column */
+.mockup-area{background:#F8FAFC;border:1px solid var(--border);border-radius:16px;padding:24px;min-height:300px}
+.mockup-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.mockup-counter{font-size:12px;color:var(--muted);font-weight:500}
+.mockup-arrows{display:flex;gap:6px}
+.mockup-arrow{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;font-size:14px;color:var(--muted)}
+.mockup-arrow:hover{border-color:var(--blue);color:var(--blue)}
+.mockup-arrow.disabled{opacity:.3;cursor:default;pointer-events:none}
+.mockup-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:24px;min-height:200px}
+.mockup-card h4{font-size:15px;font-weight:600;color:var(--navy);margin-bottom:6px}
+.mockup-card p{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:12px}
+.mockup-card .field{background:#F1F5F9;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:13px;color:#475569}
+.mockup-card .btn-mock{display:inline-block;background:var(--blue);color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:600;margin-top:14px}
 .mockup-card .card-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-.mockup-card .mini-card{background:#f9f9f9;border:1px solid #eee;border-radius:8px;padding:10px;font-size:12px}
-.mockup-card .mini-card strong{display:block;font-size:13px;color:var(--navy)}
-.mockup-card .time-badge{display:inline-block;background:var(--teal-light);color:var(--teal-dark);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;margin-left:4px}
+.mockup-card .mini-card{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;font-size:12px;line-height:1.4}
+.mockup-card .mini-card strong{display:block;font-size:13px;color:var(--navy);margin-bottom:2px}
+.mockup-card .time-badge{display:inline-block;background:var(--blue-light);color:var(--blue-dark);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;margin-left:4px}
 
 /* Nav buttons */
-.stage-nav-btns{display:flex;justify-content:space-between;align-items:center;margin-top:32px;padding-top:20px;border-top:1px solid var(--border)}
+.stage-nav-btns{display:flex;justify-content:space-between;align-items:center;margin-top:40px;padding-top:20px;border-top:1px solid var(--border)}
 .nav-btn{padding:10px 24px;border-radius:8px;font-size:14px;font-weight:500;border:1px solid var(--border);background:#fff;color:var(--text);cursor:pointer;transition:all .2s}
-.nav-btn:hover{border-color:var(--teal);color:var(--teal)}
-.nav-btn.primary{background:var(--teal);color:#fff;border-color:var(--teal)}
-.nav-btn.primary:hover{background:var(--teal-dark)}
+.nav-btn:hover{border-color:var(--blue);color:var(--blue)}
+.nav-btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.nav-btn.primary:hover{background:var(--blue-dark)}
 .pips{display:flex;gap:6px}
 .pip{width:8px;height:8px;border-radius:50%;background:var(--border)}
-.pip.active{background:var(--teal)}
+.pip.active{background:var(--blue)}
 
 /* Coming soon */
-.coming-soon{text-align:center;padding:60px 24px;background:#fafafa;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-top:40px}
-.coming-soon h3{font-size:20px;font-weight:600;color:var(--navy);margin-bottom:8px}
+.coming-soon{text-align:center;padding:64px 32px;background:#F8FAFC;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-top:40px}
+.coming-soon h3{font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px}
 .coming-soon p{color:var(--muted);margin-bottom:20px}
-.coming-soon .tags{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
-.coming-soon .tag{background:var(--teal-light);color:var(--teal-dark);padding:6px 14px;border-radius:999px;font-size:13px;font-weight:500}
+.coming-soon .tags{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:24px}
+.coming-soon .tag{background:var(--blue-light);color:var(--blue-dark);padding:6px 16px;border-radius:999px;font-size:13px;font-weight:500}
 
 /* Footer */
-.footer{text-align:center;padding:40px 24px;color:var(--muted);font-size:13px}
-.footer .logo-sm{font-size:16px;font-weight:600;color:var(--navy);margin-bottom:8px}
+.footer{text-align:center;padding:40px 32px;color:var(--muted);font-size:13px}
+.footer .logo-sm{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px}
 
-/* Responsive */
-@media(max-width:768px){
-  .hero h1{font-size:32px}
+/* Responsive — stack columns on mobile */
+@media(max-width:860px){
+  .stage-cols{grid-template-columns:1fr;gap:24px}
+  .stage-right{position:static}
+  .hero h1{font-size:34px}
   .hero p{font-size:16px}
   .stage-title{font-size:22px}
-  .benefit-callout{font-size:15px;padding:18px}
-  .stat-card{min-width:100px}
-  .stat-value{font-size:20px}
+  .benefit-callout{font-size:14px;padding:16px}
+  .stat-card{min-width:80px;padding:10px}
+  .stat-value{font-size:18px}
   .mockup-card .card-grid{grid-template-columns:1fr}
   .stage-nav{gap:4px}
   .stage-pill{padding:6px 12px;font-size:12px}
+  .hdr-inner{padding:14px 16px}
+  .section{padding:40px 16px 60px}
+  .hero{padding:60px 16px 50px}
 }
 </style>
 </head>
@@ -113,7 +120,7 @@ a{color:var(--teal);text-decoration:none}
 <header class="hdr" id="hdr">
   <div class="hdr-inner">
     <div class="logo">
-      <svg viewBox="0 0 28 28" fill="none"><path d="M4 18C4 18 8 10 14 10C20 10 24 18 24 18" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round"/><circle cx="14" cy="10" r="2" fill="#1D9E75"/><line x1="4" y1="20" x2="24" y2="20" stroke="#0F2137" stroke-width="2" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 28 28" fill="none"><path d="M4 18C4 18 8 10 14 10C20 10 24 18 24 18" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round"/><circle cx="14" cy="10" r="2" fill="#2563EB"/><line x1="4" y1="20" x2="24" y2="20" stroke="#0F172A" stroke-width="2" stroke-linecap="round"/></svg>
       Bridgeable
     </div>
     <a href="mailto:hello@getbridgeable.com" class="btn-demo">Schedule a Demo</a>
@@ -176,7 +183,6 @@ details:[
 ["Soft inventory check &mdash; flags low stock without blocking the order","ai"],
 ["Credit hold banner &mdash; staff sees the situation, order still saves",""]
 ],
-mockupSteps:["Template grid","FH pop-up","Slide-over","Review & save"],
 mockups:[
 {h:"Template grid",p:"Pre-configured vault + equipment combos. Tap to start.",fields:["Monticello &middot; Full Equipment","Venetian &middot; Full Equipment","Continental &middot; Lowering Device","Graveliner &middot; LD & Grass"]},
 {h:"Who is this for?",p:"Search or tap a recent funeral home. Inline create if new.",fields:["Johnson Funeral Home","White Chapel Funeral Home","Farone & Son Funeral Home"]},
@@ -195,13 +201,12 @@ details:[
 ["Driver exception reporting at delivery completion",""],
 ["Auto-confirm at 6 PM for tenants that don't require driver updates","ai"]
 ],
-mockupSteps:["Scheduling board","Driver portal"],
 mockups:[
 {h:"Scheduling board",p:"Kanban view with driver lanes. Drag to assign.",cards:[
 {fh:"Johnson FH",re:"Smith, Robert",vault:"Monticello &middot; Full Equipment",loc:"&#9962; Church &rarr; Oak Hill &middot; DeWitt, NY",time:"Service: 10:00 AM",eta:"ETA: 11:15 AM"},
 {fh:"White Chapel FH",re:"Miller, Dorothy",vault:"Graveliner &middot; LD & Grass",loc:"&#9904; Graveside &middot; St. Mary's &middot; Auburn, NY",time:"1:00 PM",eta:""}
 ]},
-{h:"Driver portal",p:"Today's route with all the info your driver needs at each stop.",fields:["<strong>Stop 1: Johnson FH</strong><br>Oak Hill Cemetery<br><span style='color:#888'>DeWitt, NY &middot; Church &middot; 10:00 AM</span>","<strong>Stop 2: White Chapel FH</strong><br>St. Mary's Cemetery<br><span style='color:#888'>Auburn, NY &middot; Graveside &middot; 1:00 PM</span>"]}
+{h:"Driver portal",p:"Today's route with all the info your driver needs at each stop.",fields:["<strong>Stop 1: Johnson FH</strong><br>Oak Hill Cemetery<br><span style='color:#64748B'>DeWitt, NY &middot; Church &middot; 10:00 AM</span>","<strong>Stop 2: White Chapel FH</strong><br>St. Mary's Cemetery<br><span style='color:#64748B'>Auburn, NY &middot; Graveside &middot; 1:00 PM</span>"]}
 ]},
 
 {id:3,pill:"Invoicing",title:"Invoices that create themselves",
@@ -214,7 +219,6 @@ details:[
 ["Bulk approve for clean deliveries &mdash; one-by-one for exceptions",""],
 ["Auto-generated, requires_review, never sent without human approval",""]
 ],
-mockupSteps:["Morning review"],
 mockups:[
 {h:"Invoice review queue",p:"Drafts generated overnight, ready for morning approval.",cards:[
 {fh:"Johnson FH &mdash; Smith",vault:"Monticello &middot; Full Equip",loc:"$1,705.00",time:"Auto-confirmed",eta:""},
@@ -232,7 +236,6 @@ details:[
 ["Early payment discount shown on invoice &mdash; discounted vs. full amount","ai"],
 ["Statements auto-generate at month end with all open invoices","ai"]
 ],
-mockupSteps:["Invoice PDF"],
 mockups:[
 {h:"Invoice with discount option",p:"Funeral homes see both payment options clearly.",fields:["Invoice #SO-2026-0142","Johnson Funeral Home","RE: Smith, Robert","Monticello Vault &mdash; $1,405.00","Full Equipment &mdash; $300.00","Total: $1,705.00","Pay by Apr 15: $1,619.75 (5% discount)"]}
 ]},
@@ -248,7 +251,6 @@ details:[
 ["Credit hold applied when balance exceeds limit",""],
 ["Morning briefing shows collection status and amounts at risk","ai"]
 ],
-mockupSteps:["Collections view"],
 mockups:[
 {h:"Morning briefing &mdash; collections",p:"AI surfaces what needs attention today.",fields:["3 accounts past 30 days &mdash; $4,210 at risk","1 account past 60 days &mdash; $1,890 (escalated)","Draft reminder ready for Johnson FH","White Chapel FH paid yesterday &mdash; collections paused"]}
 ]},
@@ -264,7 +266,6 @@ details:[
 ["Short-pay detection with honor-discount option","ai"],
 ["Customer balance updated immediately on payment",""]
 ],
-mockupSteps:["Check scan","Payment confirm"],
 mockups:[
 {h:"Check scan",p:"Drop a check image. Claude reads it in seconds.",fields:["Payer: Johnson Funeral Home","Amount: $1,619.75","Check #: 4892","Date: April 10, 2026","Matched to: Johnson Funeral Home (98% confidence)"]},
 {h:"Suggested application",p:"System suggests which invoices to apply payment to.",fields:["Invoice #SO-2026-0142 &mdash; $1,705.00","Discount applied: -$85.25 (5% early)","Amount to apply: $1,619.75","Status after: Paid in full"],btn:"Confirm Payment"}
@@ -281,37 +282,59 @@ details:[
 ["Collections auto-pause and credit hold auto-release on zero balance","ai"],
 ["Every order makes the next order faster",""]
 ],
-mockupSteps:["Intelligence view"],
 mockups:[
 {h:"Account intelligence",p:"Bridgeable learns from every interaction with each funeral home.",fields:["Johnson Funeral Home","Avg. payment: 12 days (within discount window)","Preferred vault: Monticello (78% of orders)","Top cemeteries: Oak Hill (45%), St. Mary's (30%), Assumption (15%)","Credit status: Good standing &mdash; $0 balance","Last order: April 1, 2026"]}
 ]}
 ];
 
 let current=0;
+// Per-stage mockup index tracker
+let mockupIdx={};
+STAGES.forEach((_,i)=>{mockupIdx[i]=0});
+
 const nav=document.getElementById('stageNav');
 const content=document.getElementById('stageContent');
 const pipsEl=document.getElementById('pips');
 
 function render(){
+  mockupIdx[current]=0;
   // Pills
   nav.innerHTML=STAGES.map((s,i)=>`<button class="stage-pill${i===current?' active':''}" onclick="go(${i})">${s.pill}</button>`).join('');
   // Pips
   pipsEl.innerHTML=STAGES.map((_,i)=>`<span class="pip${i===current?' active':''}"></span>`).join('');
-  // Content
+  // Content — two columns
   const s=STAGES[current];
-  let html=`<div class="stage active">`;
+  const totalMockups=s.mockups.length;
+  let html=`<div class="stage-cols">`;
+
+  // LEFT COLUMN — written content
+  html+=`<div class="stage-left">`;
   html+=`<h3 class="stage-title">${s.title}</h3>`;
   html+=`<div class="benefit-callout">${s.benefit}</div>`;
   html+=`<div class="stats-row">${s.stats.map(st=>`<div class="stat-card"><div class="stat-value">${st.v}</div><div class="stat-label">${st.l}</div></div>`).join('')}</div>`;
   html+=`<ul class="detail-list">${s.details.map(d=>`<li><span class="check">&#10003;</span><span>${d[0]}${d[1]==='ai'?'<span class="badge-ai">Bridgeable intelligence</span>':''}</span></li>`).join('')}</ul>`;
-  // Mockup
+  html+=`</div>`;
+
+  // RIGHT COLUMN — mockup with carousel
+  html+=`<div class="stage-right">`;
   html+=`<div class="mockup-area">`;
-  html+=`<div class="mockup-steps">${s.mockupSteps.map((ms,i)=>`<button class="mockup-step${i===0?' active':''}" onclick="showMockup(${current},${i},this)">${ms}</button>`).join('')}</div>`;
+  // Carousel nav
+  html+=`<div class="mockup-nav">`;
+  html+=`<span class="mockup-counter" id="mc-${current}">1 of ${totalMockups}</span>`;
+  html+=`<div class="mockup-arrows">`;
+  html+=`<button class="mockup-arrow${totalMockups<=1?' disabled':''}" onclick="prevMockup()" id="ma-prev-${current}">&larr;</button>`;
+  html+=`<button class="mockup-arrow${totalMockups<=1?' disabled':''}" onclick="nextMockup()" id="ma-next-${current}">&rarr;</button>`;
+  html+=`</div></div>`;
+  // Mockup content
   html+=`<div id="mockup-${current}">${renderMockup(s.mockups[0])}</div>`;
   html+=`</div>`;
   html+=`</div>`;
+
+  html+=`</div>`;
   content.innerHTML=html;
-  // Nav buttons
+  updateArrows();
+
+  // Stage nav buttons
   document.getElementById('prevBtn').style.visibility=current===0?'hidden':'visible';
   const nb=document.getElementById('nextBtn');
   if(current===STAGES.length-1){nb.textContent='Schedule a Demo \u2192';nb.onclick=function(){window.location='mailto:hello@getbridgeable.com'}}
@@ -321,22 +344,45 @@ function render(){
 function renderMockup(m){
   let h=`<div class="mockup-card"><h4>${m.h}</h4><p>${m.p}</p>`;
   if(m.cards){
-    h+=`<div class="card-grid">${m.cards.map(c=>`<div class="mini-card"><strong>${c.fh}</strong>${c.re?`<div style="color:#666;font-size:11px">RE: ${c.re}</div>`:''}<div style="margin-top:4px">${c.vault}</div><div style="color:#666;margin-top:2px">${c.loc}</div><div>${c.time}${c.eta?`<span class="time-badge">${c.eta}</span>`:''}</div></div>`).join('')}</div>`;
+    h+=`<div class="card-grid">${m.cards.map(c=>`<div class="mini-card"><strong>${c.fh}</strong>${c.re?`<div style="color:#64748B;font-size:11px">RE: ${c.re}</div>`:''}<div style="margin-top:4px">${c.vault}</div><div style="color:#64748B;margin-top:2px">${c.loc}</div><div>${c.time}${c.eta?`<span class="time-badge">${c.eta}</span>`:''}</div></div>`).join('')}</div>`;
   }
   if(m.fields){
     h+=m.fields.map(f=>`<div class="field">${f}</div>`).join('');
   }
-  if(m.extra){h+=`<div class="field" style="background:var(--teal-light);color:var(--teal-dark);font-weight:500;margin-top:12px">${m.extra}</div>`}
+  if(m.extra){h+=`<div class="field" style="background:var(--blue-light);color:var(--blue-dark);font-weight:500;margin-top:12px">${m.extra}</div>`}
   if(m.btn){h+=`<div class="btn-mock">${m.btn}</div>`}
   h+=`</div>`;
   return h;
 }
 
-function showMockup(stageIdx,mockupIdx,el){
-  const s=STAGES[stageIdx];
-  document.getElementById('mockup-'+stageIdx).innerHTML=renderMockup(s.mockups[mockupIdx]);
-  el.parentElement.querySelectorAll('.mockup-step').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
+function updateArrows(){
+  const s=STAGES[current];
+  const idx=mockupIdx[current];
+  const total=s.mockups.length;
+  const counter=document.getElementById('mc-'+current);
+  const prevA=document.getElementById('ma-prev-'+current);
+  const nextA=document.getElementById('ma-next-'+current);
+  if(counter)counter.textContent=`${idx+1} of ${total}`;
+  if(prevA){prevA.classList.toggle('disabled',idx===0)}
+  if(nextA){nextA.classList.toggle('disabled',idx>=total-1)}
+}
+
+function prevMockup(){
+  if(mockupIdx[current]>0){
+    mockupIdx[current]--;
+    const s=STAGES[current];
+    document.getElementById('mockup-'+current).innerHTML=renderMockup(s.mockups[mockupIdx[current]]);
+    updateArrows();
+  }
+}
+
+function nextMockup(){
+  const s=STAGES[current];
+  if(mockupIdx[current]<s.mockups.length-1){
+    mockupIdx[current]++;
+    document.getElementById('mockup-'+current).innerHTML=renderMockup(s.mockups[mockupIdx[current]]);
+    updateArrows();
+  }
 }
 
 function go(i){current=i;render();document.getElementById('lifecycle').scrollIntoView({behavior:'smooth',block:'start'})}
@@ -345,7 +391,7 @@ function prev(){if(current>0){current--;render()}}
 
 render();
 
-// Sticky header border
+// Sticky header shadow
 window.addEventListener('scroll',()=>{
   document.getElementById('hdr').classList.toggle('scrolled',window.scrollY>20);
 });
