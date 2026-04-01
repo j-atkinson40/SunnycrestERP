@@ -109,12 +109,21 @@ def _serialize_delivery_card(delivery: Delivery, config: dict, sequence: int | N
         try:
             from app.models.sales_order import SalesOrder, SalesOrderLine
             from app.models.product import Product
+            from app.models.cemetery import Cemetery as CemeteryModel
 
             order = db.query(SalesOrder).filter(SalesOrder.id == delivery.order_id).first()
             if order:
                 card["deceased_name"] = order.deceased_name or ""
                 card["service_location"] = order.service_location or ""
                 card["service_location_other"] = order.service_location_other or ""
+
+                # Cemetery location from cemetery record
+                if order.cemetery_id:
+                    cem = db.query(CemeteryModel).filter(CemeteryModel.id == order.cemetery_id).first()
+                    if cem:
+                        card["cemetery_city"] = cem.city or ""
+                        card["cemetery_state"] = cem.state or ""
+                        card["cemetery_county"] = cem.county or ""
 
                 # Format ETA
                 if order.eta:
@@ -155,12 +164,18 @@ def _serialize_delivery_card(delivery: Delivery, config: dict, sequence: int | N
             card.setdefault("service_location_other", "")
             card.setdefault("eta_display", "")
             card.setdefault("equipment_summary", "")
+            card.setdefault("cemetery_city", "")
+            card.setdefault("cemetery_state", "")
+            card.setdefault("cemetery_county", "")
     else:
         card["deceased_name"] = tc.get("family_name", "")
         card["service_location"] = ""
         card["service_location_other"] = ""
         card["eta_display"] = ""
         card["equipment_summary"] = ""
+        card["cemetery_city"] = ""
+        card["cemetery_state"] = ""
+        card["cemetery_county"] = ""
 
     return card
 

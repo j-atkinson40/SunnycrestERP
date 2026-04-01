@@ -427,6 +427,9 @@ export interface KanbanCard {
   service_location_other?: string;
   eta_display?: string;
   equipment_summary?: string;
+  cemetery_city?: string;
+  cemetery_state?: string;
+  cemetery_county?: string;
   vault_type: string;
   vault_personalization: string;
   requested_date: string | null;

@@ -185,6 +185,22 @@ export default function StopDetailPage() {
           </h1>
           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getDeliveryTypeBadgeClass(deliveryType)}`}>{getDeliveryTypeName(deliveryType)}</span>
         </div>
+        {/* Cemetery with city */}
+        {isFuneral && (stop.delivery as Record<string, unknown>).cemetery_name && (
+          <div className="mt-1">
+            <p className="text-sm font-medium text-gray-800">
+              {String((stop.delivery as Record<string, unknown>).cemetery_name)}
+            </p>
+            {((stop.delivery as Record<string, unknown>).cemetery_city || (stop.delivery as Record<string, unknown>).cemetery_state) && (
+              <p className="text-xs text-muted-foreground">
+                {[
+                  (stop.delivery as Record<string, unknown>).cemetery_city,
+                  (stop.delivery as Record<string, unknown>).cemetery_state,
+                ].filter(Boolean).join(", ")}
+              </p>
+            )}
+          </div>
+        )}
         <p className="mt-1 text-sm text-muted-foreground">
           {stop.delivery.delivery_address || "No address"}
         </p>

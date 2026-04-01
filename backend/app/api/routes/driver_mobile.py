@@ -245,7 +245,7 @@ def get_milestone_settings(
 # ---------------------------------------------------------------------------
 
 
-def _serialize_console_card(delivery: Delivery, stop: DeliveryStop | None, config: dict | None = None) -> dict:
+def _serialize_console_card(delivery: Delivery, stop: DeliveryStop | None, config: dict | None = None, db=None) -> dict:
     """Build a rich card payload for the driver console."""
     tc = delivery.type_config or {}
     config = config or {}
@@ -337,7 +337,27 @@ def _serialize_console_card(delivery: Delivery, stop: DeliveryStop | None, confi
         "actual_arrival": stop.actual_arrival.isoformat() if stop and stop.actual_arrival else None,
         "actual_departure": stop.actual_departure.isoformat() if stop and stop.actual_departure else None,
         "driver_notes": stop.driver_notes if stop else None,
+        # Cemetery location (enriched from order → cemetery)
+        "cemetery_city": "",
+        "cemetery_state": "",
+        "cemetery_county": "",
     }
+
+    # Enrich cemetery location from order's cemetery record
+    if db and delivery.order_id:
+        try:
+            from app.models.sales_order import SalesOrder
+            from app.models.cemetery import Cemetery as CemeteryModel
+
+            order = db.query(SalesOrder).filter(SalesOrder.id == delivery.order_id).first()
+            if order and order.cemetery_id:
+                cem = db.query(CemeteryModel).filter(CemeteryModel.id == order.cemetery_id).first()
+                if cem:
+                    card["cemetery_city"] = cem.city or ""
+                    card["cemetery_state"] = cem.state or ""
+                    card["cemetery_county"] = cem.county or ""
+        except Exception:
+            pass
 
     return card
 
@@ -419,7 +439,7 @@ def get_console_deliveries(
         if not delivery:
             continue
 
-        card = _serialize_console_card(delivery, stop, kanban_config)
+        card = _serialize_console_card(delivery, stop, kanban_config, db=db)
         cards.append(card)
 
         if stop.status == "completed" or delivery.status == "completed":

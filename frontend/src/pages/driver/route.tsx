@@ -134,6 +134,14 @@ export default function DriverRoutePage() {
                   <p className="mt-1 text-sm text-muted-foreground">
                     {stop.delivery?.delivery_address || "No address"}
                   </p>
+                  {stop.delivery?.delivery_type === "funeral_vault" && (stop.delivery as Record<string, unknown>).cemetery_name && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {String((stop.delivery as Record<string, unknown>).cemetery_name)}
+                      {(stop.delivery as Record<string, unknown>).cemetery_city && (
+                        <span className="text-gray-400"> · {String((stop.delivery as Record<string, unknown>).cemetery_city)}{(stop.delivery as Record<string, unknown>).cemetery_state ? `, ${String((stop.delivery as Record<string, unknown>).cemetery_state)}` : ""}</span>
+                      )}
+                    </p>
+                  )}
                   {stop.delivery?.priority === "urgent" && (
                     <Badge variant="destructive" className="mt-1">Urgent</Badge>
                   )}

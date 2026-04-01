@@ -71,6 +71,19 @@ interface OrderCardProps {
   panelPrefix: string;
 }
 
+function cemeteryWithLocation(card: KanbanCard): string {
+  const name = card.cemetery_name || "TBD"
+  const city = card.cemetery_city
+  const state = card.cemetery_state
+  const county = card.cemetery_county
+  let loc = ""
+  if (city && state) loc = `${city}, ${state}`
+  else if (city) loc = city
+  else if (county && state) loc = `${county}, ${state}`
+  else if (state) loc = state
+  return loc ? `${name} · ${loc}` : name
+}
+
 function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
   return (
     <Draggable
@@ -128,19 +141,19 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
                    card.service_location === "graveside" ? "⚰" : "📍"}
                 </span>
                 {card.service_location === "graveside" ? (
-                  <span>Graveside · {card.cemetery_name || "TBD"}</span>
+                  <span>Graveside · {cemeteryWithLocation(card)}</span>
                 ) : (
                   <span>
                     {card.service_location === "church" ? "Church" :
                      card.service_location === "funeral_home" ? "Funeral Home" :
                      card.service_location_other || "Service"}
-                    {card.cemetery_name ? ` → ${card.cemetery_name}` : ""}
+                    {card.cemetery_name ? ` \u2192 ${cemeteryWithLocation(card)}` : ""}
                   </span>
                 )}
               </div>
             )}
             {!card.service_location && card.cemetery_name && (
-              <div className="truncate">{card.cemetery_name}</div>
+              <div className="truncate">{cemeteryWithLocation(card)}</div>
             )}
 
             {/* Time line */}
