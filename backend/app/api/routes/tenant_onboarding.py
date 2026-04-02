@@ -89,12 +89,16 @@ def update_checklist_item(
     company: Company = Depends(get_current_company),
     db: Session = Depends(get_db),
 ):
-    """Update a checklist item (skip, mark in_progress, etc.)."""
+    """Update a checklist item (skip, mark in_progress, mark completed, etc.)."""
     if data.skipped:
         return tenant_onboarding_service.skip_item(db, company.id, item_key)
     if data.status == "in_progress":
         return tenant_onboarding_service.update_item_status(
             db, company.id, item_key, "in_progress"
+        )
+    if data.status == "completed":
+        return tenant_onboarding_service.update_item_status(
+            db, company.id, item_key, "completed"
         )
     raise HTTPException(status_code=400, detail="No valid update provided")
 
