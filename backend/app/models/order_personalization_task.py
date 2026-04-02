@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -32,6 +33,14 @@ class OrderPersonalizationTask(Base):
     completed_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Legacy proof fields
+    proof_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tif_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_layout: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    approved_layout: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(

@@ -96,6 +96,89 @@ def generate_final(
     return {"proof_url": proof_url, "tif_url": tif_url}
 
 
+def generate_legacy_proof_async(
+    task_id: str,
+    order_id: str,
+    print_name: str,
+    is_urn: bool,
+    name: str | None,
+    dates: str | None,
+    additional: str | None,
+) -> None:
+    """Background task: auto-generate a legacy proof for a new order.
+
+    Called via FastAPI BackgroundTasks after order creation.
+    """
+    from app.database import SessionLocal
+    from app.models.order_personalization_task import OrderPersonalizationTask
+
+    db = SessionLocal()
+    try:
+        task = db.query(OrderPersonalizationTask).filter(OrderPersonalizationTask.id == task_id).first()
+        if not task:
+            return
+
+        template = get_template(print_name, is_urn)
+        if not template or not template["available"]:
+            task.notes = "Template not yet available for this print — manual design required"
+            task.status = "pending"
+            db.commit()
+            return
+
+        # Get background
+        bg_url = get_background_url(print_name, is_urn)
+
+        # Build default layout
+        layout = {
+            "photos": [],
+            "text": {
+                "name": name or "",
+                "dates": dates or "",
+                "additional": additional or "",
+                "x": 0.75,
+                "y": 0.50,
+                "font_size": 0.07,
+                "color": template.get("default_text_color", "white"),
+                "shadow": True,
+            },
+        }
+
+        # Generate proof
+        result = generate_final(
+            order_id=order_id,
+            layout=layout,
+            print_name=print_name,
+            is_urn=is_urn,
+        )
+
+        task.proof_url = result["proof_url"]
+        task.tif_url = result["tif_url"]
+        task.default_layout = layout
+        task.status = "in_progress"  # proof generated, awaiting review
+        db.commit()
+
+    except TemplateNotAvailable:
+        try:
+            task = db.query(OrderPersonalizationTask).filter(OrderPersonalizationTask.id == task_id).first()
+            if task:
+                task.notes = "Template not yet available for this print — manual design required"
+                task.status = "pending"
+                db.commit()
+        except Exception:
+            pass
+    except Exception as e:
+        logger.exception("Failed to auto-generate legacy proof for task %s: %s", task_id, e)
+        try:
+            task = db.query(OrderPersonalizationTask).filter(OrderPersonalizationTask.id == task_id).first()
+            if task:
+                task.notes = f"Auto-generation failed: {e}"
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 def get_available_prints(is_urn: bool = False) -> list[dict]:
     """Return available templates with background URLs if cached."""
     templates = get_available_templates(is_urn)

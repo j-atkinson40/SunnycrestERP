@@ -344,6 +344,43 @@ def _maybe_add_legacy_photo_tasks(db: Session, user: User, result: dict) -> None
         pass
 
 
+def _maybe_add_legacy_proof_tasks(db: Session, user: User, result: dict) -> None:
+    """Add legacy proof review items to the daily context."""
+    try:
+        from app.models.order_personalization_task import OrderPersonalizationTask
+        from app.models.sales_order import SalesOrder
+        from app.models.customer import Customer
+
+        tasks = (
+            db.query(OrderPersonalizationTask, SalesOrder)
+            .join(SalesOrder, OrderPersonalizationTask.order_id == SalesOrder.id)
+            .filter(
+                OrderPersonalizationTask.company_id == user.company_id,
+                OrderPersonalizationTask.task_type.in_(["legacy_standard", "legacy_custom"]),
+                OrderPersonalizationTask.status == "in_progress",
+                OrderPersonalizationTask.proof_url.isnot(None),
+            )
+            .limit(5)
+            .all()
+        )
+        if not tasks:
+            return
+
+        items = result.get("items") or []
+        for task, order in tasks:
+            customer = db.query(Customer).filter(Customer.id == order.customer_id).first() if order.customer_id else None
+            fh_name = customer.name if customer else "Unknown"
+            items.append({
+                "type": "legacy_proof_ready",
+                "message": f"Legacy proof ready — {fh_name}, {task.print_name or 'Custom'}",
+                "action_label": "Review proof",
+                "action_url": f"/legacy/proof/{order.id}",
+            })
+        result["items"] = items
+    except Exception:
+        pass
+
+
 @router.get("/daily-context")
 def get_daily_context(
     current_user: User = Depends(get_current_user),
@@ -568,6 +605,7 @@ def get_daily_context(
         # Training reminder — add to items if user hasn't completed lifecycle training
         _maybe_add_training_reminder(db, current_user, result)
         _maybe_add_legacy_photo_tasks(db, current_user, result)
+        _maybe_add_legacy_proof_tasks(db, current_user, result)
 
         return result
     except Exception:

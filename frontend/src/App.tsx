@@ -133,6 +133,7 @@ import TaxJurisdictionsOnboarding from "@/pages/onboarding/tax-jurisdictions";
 import TransfersPage from "@/pages/transfers";
 import ProcedureLibraryPage, { ProcedureDetailPage } from "@/pages/training/procedure-library";
 import VaultOrderLifecyclePage from "@/pages/training/vault-order-lifecycle";
+import LegacyProofReviewPage from "@/pages/legacy/legacy-proof-review";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import CemeterySetupWizard from "@/pages/onboarding/cemetery-setup";
@@ -515,6 +516,7 @@ export default function App() {
                   >
                     {/* Training */}
                     <Route path="/training/vault-order-lifecycle" element={<VaultOrderLifecyclePage />} />
+                    <Route path="/legacy/proof/:orderId" element={<LegacyProofReviewPage />} />
                     <Route path="/training/procedures" element={<ProcedureLibraryPage />} />
                     <Route path="/training/procedures/:key" element={<ProcedureDetailPage />} />
                     {/* Safety */}

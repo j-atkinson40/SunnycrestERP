@@ -130,6 +130,36 @@ def generate_legacy(
         raise HTTPException(status_code=503, detail=str(e))
 
 
+@router.get("/proof-status/{task_id}")
+def get_proof_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check proof generation status for a legacy task."""
+    from app.models.order_personalization_task import OrderPersonalizationTask
+
+    task = (
+        db.query(OrderPersonalizationTask)
+        .filter(
+            OrderPersonalizationTask.id == task_id,
+            OrderPersonalizationTask.company_id == current_user.company_id,
+        )
+        .first()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return {
+        "status": task.status,
+        "proof_url": task.proof_url,
+        "tif_url": task.tif_url,
+        "default_layout": task.default_layout,
+        "approved_layout": task.approved_layout,
+        "notes": task.notes,
+    }
+
+
 @router.post("/admin/mark-available")
 def mark_template_available(
     data: MarkAvailableRequest,

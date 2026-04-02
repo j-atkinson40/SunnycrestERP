@@ -22,6 +22,7 @@ interface PersTask {
   status: string
   legacy_photo_pending: boolean
   is_custom_legacy: boolean
+  proof_url: string | null
 }
 
 interface QueueData {
@@ -145,16 +146,30 @@ export function PersonalizationQueue() {
           </p>
         )}
 
+        {/* Proof thumbnail for legacy tasks */}
+        {task.proof_url && (
+          <img src={task.proof_url} alt="Proof" className="mt-1.5 w-full h-10 object-cover rounded border" />
+        )}
+
         {/* Actions */}
         {!isComplete && (
           <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => handleComplete(task.task_id, task.order_id)}
-              disabled={completing === task.task_id}
-              className="flex-1 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-medium disabled:opacity-50"
-            >
-              {completing === task.task_id ? "..." : "Mark complete"}
-            </button>
+            {task.proof_url && (task.task_type === "legacy_standard" || task.task_type === "legacy_custom") ? (
+              <button
+                onClick={() => navigate(`/legacy/proof/${task.order_id}`)}
+                className="flex-1 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium"
+              >
+                Review proof
+              </button>
+            ) : (
+              <button
+                onClick={() => handleComplete(task.task_id, task.order_id)}
+                disabled={completing === task.task_id}
+                className="flex-1 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-medium disabled:opacity-50"
+              >
+                {completing === task.task_id ? "..." : "Mark complete"}
+              </button>
+            )}
             <button
               onClick={() => navigate(`/ar/orders/${task.order_id}`)}
               className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 flex items-center gap-1"
