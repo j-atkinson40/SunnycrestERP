@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Search, MoreHorizontal } from "lucide-react"
+import { Loader2, Plus, Search } from "lucide-react"
 
 interface LegacyProofSummary {
   id: string
