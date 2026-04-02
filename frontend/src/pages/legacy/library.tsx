@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Search, MoreHorizontal, Download, Mail, Eye, Pencil, FileText, ExternalLink } from "lucide-react"
+import { Loader2, Plus, Search, MoreHorizontal, Download, Mail, Eye, Pencil, FileText, ExternalLink, Trash2 } from "lucide-react"
 import { getPrintImageUrl } from "@/lib/legacy-print-images"
 
 interface LegacyProofSummary {
@@ -122,8 +122,20 @@ export default function LegacyLibraryPage() {
     }
   }
 
-  function getQuickActions(item: LegacyProofSummary): { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void }[] {
-    const actions: { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void }[] = []
+  async function handleDelete(itemId: string, itemName: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!window.confirm(`Delete "${itemName || "Untitled"}"? This cannot be undone.`)) return
+    try {
+      await apiClient.delete(`/legacy-studio/${itemId}`)
+      toast.success("Deleted")
+      fetchLibrary()
+    } catch {
+      toast.error("Failed to delete")
+    }
+  }
+
+  function getQuickActions(item: LegacyProofSummary): { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void; destructive?: boolean }[] {
+    const actions: { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void; destructive?: boolean }[] = []
 
     if (item.status === "draft") {
       actions.push({
@@ -138,6 +150,12 @@ export default function LegacyLibraryPage() {
           action: (e) => handleConvertToOrder(item.id, e),
         })
       }
+      actions.push({
+        label: "Delete",
+        icon: <Trash2 className="h-3.5 w-3.5" />,
+        action: (e) => handleDelete(item.id, item.inscription_name || item.deceased_name || "", e),
+        destructive: true,
+      })
     } else if (item.status === "proof_generated") {
       actions.push({
         label: "Review proof",
@@ -151,6 +169,12 @@ export default function LegacyLibraryPage() {
           action: (e) => handleConvertToOrder(item.id, e),
         })
       }
+      actions.push({
+        label: "Delete",
+        icon: <Trash2 className="h-3.5 w-3.5" />,
+        action: (e) => handleDelete(item.id, item.inscription_name || item.deceased_name || "", e),
+        destructive: true,
+      })
     } else if (item.status === "approved") {
       actions.push({
         label: "View proof",
@@ -285,7 +309,11 @@ export default function LegacyLibraryPage() {
                         <button
                           key={i}
                           onClick={a.action}
-                          className="w-full flex items-center justify-center gap-1.5 bg-white text-gray-800 rounded-md py-1.5 px-3.5 text-[13px] font-medium hover:bg-blue-50 transition-colors"
+                          className={`w-full flex items-center justify-center gap-1.5 rounded-md py-1.5 px-3.5 text-[13px] font-medium transition-colors ${
+                            a.destructive
+                              ? "bg-white text-red-600 hover:bg-red-50"
+                              : "bg-white text-gray-800 hover:bg-blue-50"
+                          }`}
                         >
                           {a.icon} {a.label}
                         </button>
@@ -311,7 +339,9 @@ export default function LegacyLibraryPage() {
                       <button
                         key={i}
                         onClick={a.action}
-                        className="w-full flex items-center gap-2 bg-white rounded-md py-2 px-3 text-sm text-gray-700 hover:bg-blue-50"
+                        className={`w-full flex items-center gap-2 bg-white rounded-md py-2 px-3 text-sm ${
+                          a.destructive ? "text-red-600 hover:bg-red-50" : "text-gray-700 hover:bg-blue-50"
+                        }`}
                       >
                         {a.icon} {a.label}
                       </button>

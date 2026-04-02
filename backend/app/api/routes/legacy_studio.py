@@ -390,25 +390,29 @@ def list_versions(
     ]
 
 
-@router.delete("/admin/cleanup-test-drafts")
-def cleanup_test_drafts(
+@router.delete("/{legacy_id}")
+def delete_legacy_proof(
+    legacy_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """One-time cleanup: delete draft legacy proofs with no proof_url (test data).
-
-    Only deletes records where inscription_name='John Smith', status='draft',
-    and proof_url IS NULL.
-    """
-    deleted = (
+    """Delete a legacy proof. Only drafts and proof_generated can be deleted."""
+    lp = (
         db.query(LegacyProof)
         .filter(
+            LegacyProof.id == legacy_id,
             LegacyProof.company_id == current_user.company_id,
-            LegacyProof.inscription_name == "John Smith",
-            LegacyProof.status == "draft",
-            LegacyProof.proof_url.is_(None),
         )
-        .delete(synchronize_session="fetch")
+        .first()
     )
+    if not lp:
+        raise HTTPException(status_code=404, detail="Legacy proof not found")
+
+    if lp.status not in ("draft", "proof_generated"):
+        raise HTTPException(status_code=400, detail="Only draft or generated proofs can be deleted")
+
+    # Delete versions first
+    db.query(LegacyProofVersion).filter(LegacyProofVersion.legacy_proof_id == legacy_id).delete(synchronize_session="fetch")
+    db.delete(lp)
     db.commit()
-    return {"deleted": deleted}
+    return {"deleted": True}
