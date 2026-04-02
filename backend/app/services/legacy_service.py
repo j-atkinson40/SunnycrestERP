@@ -104,6 +104,8 @@ def generate_legacy_proof_async(
     name: str | None,
     dates: str | None,
     additional: str | None,
+    approved_layout: dict | None = None,
+    family_approved: bool = False,
 ) -> None:
     """Background task: auto-generate a legacy proof for a new order.
 
@@ -128,20 +130,28 @@ def generate_legacy_proof_async(
         # Get background
         bg_url = get_background_url(print_name, is_urn)
 
-        # Build default layout
-        layout = {
-            "photos": [],
-            "text": {
-                "name": name or "",
-                "dates": dates or "",
-                "additional": additional or "",
-                "x": 0.75,
-                "y": 0.50,
-                "font_size": 0.07,
-                "color": template.get("default_text_color", "white"),
-                "shadow": True,
-            },
-        }
+        # Use family-approved layout if available, otherwise build default
+        if approved_layout and family_approved:
+            layout = approved_layout
+            # Ensure text fields are current
+            if "text" in layout:
+                layout["text"]["name"] = name or layout["text"].get("name", "")
+                layout["text"]["dates"] = dates or layout["text"].get("dates", "")
+                layout["text"]["additional"] = additional or layout["text"].get("additional", "")
+        else:
+            layout = {
+                "photos": [],
+                "text": {
+                    "name": name or "",
+                    "dates": dates or "",
+                    "additional": additional or "",
+                    "x": 0.75,
+                    "y": 0.50,
+                    "font_size": 0.07,
+                    "color": template.get("default_text_color", "white"),
+                    "shadow": True,
+                },
+            }
 
         # Generate proof
         result = generate_final(

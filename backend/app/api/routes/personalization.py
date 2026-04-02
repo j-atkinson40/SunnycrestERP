@@ -73,6 +73,7 @@ def get_personalization_queue(
             "has_photos": False,
             "legacy_photo_pending": order.legacy_photo_pending or False,
             "proof_url": task.proof_url,
+            "family_approved": task.approved_layout is not None,
             "is_custom_legacy": task.is_custom_legacy or False,
         }
 

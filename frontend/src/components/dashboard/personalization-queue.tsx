@@ -23,6 +23,7 @@ interface PersTask {
   legacy_photo_pending: boolean
   is_custom_legacy: boolean
   proof_url: string | null
+  family_approved: boolean
 }
 
 interface QueueData {
@@ -97,6 +98,8 @@ export function PersonalizationQueue() {
             <span className="text-[10px] text-green-600 flex items-center gap-0.5">
               <CheckCircle className="h-3 w-3" /> Complete
             </span>
+          ) : task.family_approved ? (
+            <span className="text-[10px] text-green-600 font-medium">✓ Family approved</span>
           ) : (
             <span className="text-[10px] text-amber-600 font-medium">Pending</span>
           )}

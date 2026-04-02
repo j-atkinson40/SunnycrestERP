@@ -13,6 +13,8 @@ import {
   type ParsedOrder,
 } from "@/services/order-station-service";
 import { CemeteryPicker } from "@/components/cemetery-picker";
+import LegacyCompositor from "@/components/legacy/LegacyCompositor";
+import type { LegacyLayout, GenerateResult } from "@/components/legacy/LegacyCompositor";
 import { FuneralHomePicker } from "@/components/funeral-home-picker";
 import {
   resolveBundlePrices,
@@ -1180,9 +1182,72 @@ function OrderSlideOver({
                             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                           />
                         )}
-                        <p className="text-[11px] text-gray-400">
-                          Print selection and photo uploads available after saving the order.
-                        </p>
+                        {/* Legacy proof section */}
+                        {formData._pers_name && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            {!formData._pers_proof_open && !formData._pers_proof_approved ? (
+                              <div>
+                                <p className="text-[11px] text-gray-500 mb-2">
+                                  Generate a proof before submitting — the family can approve it now.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setField("_pers_proof_open", "true")}
+                                  className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-medium"
+                                >
+                                  Generate proof →
+                                </button>
+                              </div>
+                            ) : formData._pers_proof_approved ? (
+                              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                <div className="flex items-center gap-1.5 text-green-700 text-xs font-medium mb-1">
+                                  <span>✓</span> Proof approved by family
+                                </div>
+                                {formData._pers_proof_url && (
+                                  <img src={formData._pers_proof_url} alt="Approved proof" className="w-full rounded mt-1" />
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => { setField("_pers_proof_approved", ""); setField("_pers_proof_open", "true"); }}
+                                  className="text-[11px] text-blue-600 mt-1"
+                                >
+                                  Revise proof
+                                </button>
+                              </div>
+                            ) : (
+                              <div>
+                                <LegacyCompositor
+                                  backgroundUrl={formData._pers_bg_url || ""}
+                                  mode="funeral_home"
+                                  name={formData._pers_name || ""}
+                                  dates={formData._pers_dates || ""}
+                                  additionalText={formData._pers_additional || ""}
+                                  defaultTextColor="white"
+                                  onGenerate={async (layout: LegacyLayout): Promise<GenerateResult> => {
+                                    const res = await apiClient.post("/legacy/generate-preview", {
+                                      print_name: formData._pers_print_name || null,
+                                      is_urn: false,
+                                      is_custom: formData._pers_legacy_type === "custom",
+                                      background_url: formData._pers_legacy_type === "custom" ? formData._pers_custom_bg_url : null,
+                                      layout,
+                                    });
+                                    return { proof_url: res.data.proof_url, tif_url: "" };
+                                  }}
+                                  onApprove={(layout: LegacyLayout, proofUrl: string) => {
+                                    setField("_pers_proof_approved", "true");
+                                    setField("_pers_proof_url", proofUrl);
+                                    setField("_pers_approved_layout", JSON.stringify(layout));
+                                    setField("_pers_proof_open", "");
+                                  }}
+                                  onCancel={() => setField("_pers_proof_open", "")}
+                                />
+                                <p className="text-[11px] text-gray-400 mt-2">
+                                  The proof and layout will be saved with the order.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

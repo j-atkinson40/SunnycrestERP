@@ -70,6 +70,59 @@ def get_background(
         raise HTTPException(status_code=503, detail=str(e))
 
 
+class PreviewRequest(BaseModel):
+    print_name: str | None = None
+    is_urn: bool = False
+    is_custom: bool = False
+    background_url: str | None = None
+    layout: dict
+
+
+@router.post("/generate-preview")
+def generate_preview(
+    data: PreviewRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a proof JPEG preview (no TIF, no order association).
+
+    Used by the order station to show proofs before order is saved.
+    Preview files stored temporarily in R2 cache/previews/.
+    """
+    import uuid as _uuid
+    from app.services import legacy_compositor as compositor
+    from app.services import legacy_r2_client as r2
+    from app.services.legacy_service import get_background_url, TemplateNotAvailable
+
+    try:
+        # Get background
+        if data.print_name and not data.is_custom:
+            bg_url = get_background_url(data.print_name, data.is_urn)
+            bg_bytes = r2.download_bytes(
+                f"cache/{'urn' if data.is_urn else 'standard'}/"
+                + data.print_name.replace(" ", "_").replace("—", "-") + "_bg.jpg"
+            )
+        elif data.background_url:
+            key = data.background_url.rsplit("/", 1)[-1] if "/" in data.background_url else data.background_url
+            bg_bytes = r2.download_bytes(f"cache/custom/{key}")
+        else:
+            raise HTTPException(status_code=400, detail="print_name or background_url required")
+
+        # Generate proof JPEG only (no TIF)
+        proof_bytes = compositor.composite_layout(
+            bg_bytes, data.layout, output_width=2400, for_print=False
+        )
+
+        preview_id = str(_uuid.uuid4())[:12]
+        proof_key = f"cache/previews/{preview_id}_proof.jpg"
+        proof_url = r2.upload_bytes(proof_bytes, proof_key, "image/jpeg")
+
+        return {"proof_url": proof_url}
+    except TemplateNotAvailable as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
 @router.post("/custom-background")
 async def upload_custom_background(
     order_id: str = Query(...),
