@@ -44,7 +44,7 @@ type Phase = "setup" | "compositor" | "approved"
 
 // ── Print categories (from personalization config) ──────────────────────────
 
-const PRINT_CATEGORIES = [
+const STANDARD_PRINT_CATEGORIES = [
   {
     category: "Religious & Spiritual",
     prints: ["American Flag", "Crucifix — Bible", "Forever in God's Care — Cross",
@@ -72,6 +72,140 @@ const PRINT_CATEGORIES = [
   },
 ]
 
+const URN_PRINT_CATEGORIES = [
+  {
+    category: "Religious & Spiritual",
+    prints: ["U.S. Flag", "Crucifix on Bible", "Going Home", "Irish Blessing",
+      "Jesus", "Jesus at Dawn", "Jewish 1", "Jewish 2", "Three Crosses", "Pieta"],
+  },
+  {
+    category: "Nature & Landscapes",
+    prints: ["Autumn Lake", "Bridge 1", "Bridge 2", "Cardinal", "Clouds",
+      "Country Road", "Dock", "Lighthouse", "Red Barn",
+      "Sunrise-Sunset 1", "Sunrise-Sunset 2", "Tropical Island", "Whitetail Buck"],
+  },
+  {
+    category: "Floral",
+    prints: ["Roses on Silk", "Red Roses"],
+  },
+  {
+    category: "Occupations & Hobbies",
+    prints: ["Combine", "Corn", "EMT", "Farm Field & Tractor",
+      "Father 1", "Father 2", "Firefighter", "Fisherman",
+      "Fisherman with Dog", "Golf Course", "Golfer", "Gone Fishing",
+      "Green Field & Barn", "Horses", "Mother 1", "Mother 2",
+      "Motorcycle", "Motorcycle 2", "Music", "Police", "School", "Tobacco Barn"],
+  },
+]
+
+// ── Wilbert CDN image URLs ──────────────────────────────────────────────────
+
+const _CDN = "https://www.wilbert.com/assets/1/14"
+
+const STANDARD_PRINT_IMAGES: Record<string, string> = {
+  "American Flag": `${_CDN}/WLP-AmFlag-L2-750.jpg`,
+  "Crucifix — Bible": `${_CDN}/WLP-Crucifix-Bible-L2-750.jpg`,
+  "Forever in God's Care — Cross": `${_CDN}/WLP-ForeverGodsCareCross-L2-750.jpg`,
+  "Forever in God's Care — Sunset": `${_CDN}/WLP-ForeverGodsCareSunset-L2-750.jpg`,
+  "Forever in Our Hearts — Cloud": `${_CDN}/WLP-ForeverOurHeartsCloud-L2-750.jpg`,
+  "Forever in Our Hearts — Sunset": `${_CDN}/WLP-ForeverOurHeartsSunset-L2-750.jpg`,
+  "Going Home": `${_CDN}/WLP-GoingHome-L2-750.jpg`,
+  "Irish Blessing": `${_CDN}/WLP-IrishBlessing-L2-750.jpg`,
+  "Jesus": `${_CDN}/WLP-Jesus-L2-750.jpg`,
+  "Jesus at Dawn": `${_CDN}/WLP-Jesus-dwn-L2-750.jpg`,
+  "Jewish": `${_CDN}/WLP-Jewish-L2-750.jpg`,
+  "Three Crosses": `${_CDN}/WLP-3Crosses-L2-750.jpg`,
+  "Autumn Lake": `${_CDN}/WLP-AutumnLake-L2-750.jpg`,
+  "Bridge 1": `${_CDN}/WLP-Bridge-1-L2-750.jpg`,
+  "Bridge 2": `${_CDN}/WLP-Bridge-2-L2-750.jpg`,
+  "Clouds": `${_CDN}/WLP-Clouds-L2-750.jpg`,
+  "Country Road": `${_CDN}/WLP-CountryRoad-L2-750.jpg`,
+  "Dock": `${_CDN}/WLP-Dock-L2-750.jpg`,
+  "Field and Barn": `${_CDN}/WLP-FieldRBarn-L2-750.jpg`,
+  "Footprints": `${_CDN}/WLP-Footprints-L2-750.jpg`,
+  "Footprints with Poem": `${_CDN}/WLP-FootprintsPoem-L2-750.jpg`,
+  "Lighthouse": `${_CDN}/WLP-Lighthouse-L2-750.jpg`,
+  "Red Barn": `${_CDN}/WLP-RedBarn-L2-750.jpg`,
+  "Sunrise": `${_CDN}/WLP-Sunrise-L2-750.jpg`,
+  "Sunset": `${_CDN}/WLP-Sunset-L2-750.jpg`,
+  "Tropical": `${_CDN}/WLP-Tropical-Island-L2-750.jpg`,
+  "Roses on Silk": `${_CDN}/WLP-Roses_On_Silk-L2-750.jpg`,
+  "Red Roses": `${_CDN}/WLP-R-Roses-L2-750.jpg`,
+  "Yellow Roses": `${_CDN}/WLP-Y-Roses-L2-750.jpg`,
+  "Combine": `${_CDN}/WLP-Combine-L2-750.jpg`,
+  "Corn": `${_CDN}/WLP-Corn-L2-750.jpg`,
+  "EMT": `${_CDN}/WLP-EMT-L2-750.jpg`,
+  "Farm Field with Tractor": `${_CDN}/WLP-SunsetFarmFieldTractor-L2-750.jpg`,
+  "Father 1": `${_CDN}/WLP-Father-1-L2-750.jpg`,
+  "Father 2": `${_CDN}/WLP-Father-2-L2-750.jpg`,
+  "Firefighter": `${_CDN}/WLP-Firefighter-L2-750.jpg`,
+  "Fisherman": `${_CDN}/WLP-Fisherman-L2-750.jpg`,
+  "Fisherman with Dog": `${_CDN}/WLP-Fisherman-Dog-L2-750.jpg`,
+  "Golf Course": `${_CDN}/WLP-GolfCourse-L2-750.jpg`,
+  "Golfer": `${_CDN}/WLP-Golfer-L2-750.jpg`,
+  "Gone Fishing": `${_CDN}/WLP-GoneFishin-L2-750.jpg`,
+  "Horses": `${_CDN}/WLP-Horse-L2-750.jpg`,
+  "Mother 1": `${_CDN}/WLP-Mother-1-L2-750.jpg`,
+  "Mother 2": `${_CDN}/WLP-Mother-2-L2-750.jpg`,
+  "Motorcycle 1": `${_CDN}/WLP-Motorcycle_1-L2-750.jpg`,
+  "Motorcycle 2": `${_CDN}/WLP-Motorcycle_2-L2-750.jpg`,
+  "Music": `${_CDN}/WLP-Music-L2-750.jpg`,
+  "Police": `${_CDN}/WLP-Police-L2-750.jpg`,
+  "School": `${_CDN}/WLP-School-L2-750.jpg`,
+  "Tobacco Barn": `${_CDN}/WLP-TobBarn-L2-750.jpg`,
+  "Tobacco Field": `${_CDN}/WLP-TobaccoField-750.jpg`,
+}
+
+const URN_PRINT_IMAGES: Record<string, string> = {
+  "U.S. Flag": `${_CDN}/WLP-UV-AmFlag_L2-750.jpg`,
+  "Autumn Lake": `${_CDN}/WLP-UV-AutumnLake_L2-750.jpg`,
+  "Bridge 1": `${_CDN}/WLP-UV-Bridge-1_L2-750.jpg`,
+  "Bridge 2": `${_CDN}/WLP-UV-Bridge-2_L2-750.jpg`,
+  "Cardinal": `${_CDN}/WLP-UV-Cardinal_L2-750.jpg`,
+  "Clouds": `${_CDN}/WLP-UV-Clouds_L2-750.jpg`,
+  "Combine": `${_CDN}/WLP-UV-Combine_L2-750.jpg`,
+  "Corn": `${_CDN}/WLP-UV-Corn_L2-750.jpg`,
+  "Country Road": `${_CDN}/WLP-UV-CountryRoad_L2-750.jpg`,
+  "Crucifix on Bible": `${_CDN}/WLP-UV-Crucifix-Bible_L2-750.jpg`,
+  "Dock": `${_CDN}/WLP-UV-Dock_L2-750.jpg`,
+  "EMT": `${_CDN}/WLP-UV-EMT_L2-750.jpg`,
+  "Farm Field & Tractor": `${_CDN}/WLP-UV-SunsetFarmFieldTractor_L2-750.jpg`,
+  "Father 1": `${_CDN}/WLP-UV-Father-1_L2-750.jpg`,
+  "Father 2": `${_CDN}/WLP-UV-Father-2_L2-750.jpg`,
+  "Firefighter": `${_CDN}/WLP-UV-Firefighter_L2-750.jpg`,
+  "Fisherman": `${_CDN}/WLP-UV-Fisherman_L2-750.jpg`,
+  "Fisherman with Dog": `${_CDN}/WLP-UV-Fisherman-Dog_L2-750.jpg`,
+  "Going Home": `${_CDN}/WLP-UV-GoingHome_L2-750.jpg`,
+  "Golf Course": `${_CDN}/WLP-UV-GolfCourse_L2-750.jpg`,
+  "Golfer": `${_CDN}/WLP-UV-Golfer_L2-750.jpg`,
+  "Gone Fishing": `${_CDN}/WLP-UV-GoneFishin_L2-750.jpg`,
+  "Green Field & Barn": `${_CDN}/WLP-UV-GFieldRBarn_L2-750.jpg`,
+  "Horses": `${_CDN}/WLP-UV-Horse_L2-750.jpg`,
+  "Irish Blessing": `${_CDN}/WLP-UV-IrishBlessing_L2-750.jpg`,
+  "Jesus": `${_CDN}/WLP-UV-Jesus_L2-750.jpg`,
+  "Jesus at Dawn": `${_CDN}/WLP-UV-Jesus-dwn_L2-750.jpg`,
+  "Jewish 1": `${_CDN}/WLP-UV-Jewish-1_L2-750.jpg`,
+  "Jewish 2": `${_CDN}/WLP-UV-Jewish-2_L2-750.jpg`,
+  "Lighthouse": `${_CDN}/WLP-UV-Lighthouse_L2-750.jpg`,
+  "Mother 1": `${_CDN}/WLP-UV-Mother-1_L2-750.jpg`,
+  "Mother 2": `${_CDN}/WLP-UV-Mother-2_L2-750.jpg`,
+  "Motorcycle": `${_CDN}/WLP-UV-Motorcycle_1_L2-750.jpg`,
+  "Motorcycle 2": `${_CDN}/WLP-UV-Motorcycle_2_L2-750.jpg`,
+  "Music": `${_CDN}/WLP-UV-Music_L2-750.jpg`,
+  "Pieta": `${_CDN}/WLP-UV-Pieta_L2-750.jpg`,
+  "Police": `${_CDN}/WLP-UV-Police_L2-750.jpg`,
+  "Red Barn": `${_CDN}/WLP-UV-RedBarn_L2-750.jpg`,
+  "Red Roses": `${_CDN}/WLP-UV-R-Roses_L2-750.jpg`,
+  "Roses on Silk": `${_CDN}/WLP-UV-Roses_On_Silk_L2-750.jpg`,
+  "School": `${_CDN}/WLP-UV-School_L2-750.jpg`,
+  "Sunrise-Sunset 1": `${_CDN}/WLP-UV-Sunrise-Sunset_L2-750.jpg`,
+  "Sunrise-Sunset 2": `${_CDN}/WLP-UV-Sunrise-Sunset-3_L2-750.jpg`,
+  "Three Crosses": `${_CDN}/WLP-UV-3-Crosses_L2-750.jpg`,
+  "Tobacco Barn": `${_CDN}/WLP-UV-TobBarn_L2-750.jpg`,
+  "Tropical Island": `${_CDN}/WLP-UV-Tropical-Island_L2-750.jpg`,
+  "Whitetail Buck": `${_CDN}/WLP-UV-WhitetailBuck_L2-750.jpg`,
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function ProofGeneratorPage() {
@@ -98,14 +232,12 @@ export default function ProofGeneratorPage() {
   const [dates, setDates] = useState("")
   const [additional, setAdditional] = useState("")
 
-  // FH details
-  const [customerId, setCustomerId] = useState<string | null>(null)
-  const [deceasedName, setDeceasedName] = useState("")
-  const [serviceDate, setServiceDate] = useState("")
-
   // Templates
   const [templates, setTemplates] = useState<PrintTemplate[]>([])
   const [expandedCategory, setExpandedCategory] = useState<string | null>("Religious & Spiritual")
+
+  // Track broken images
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set())
 
   // Approved state
   const [approvedProofUrl, setApprovedProofUrl] = useState<string | null>(null)
@@ -131,9 +263,6 @@ export default function ProofGeneratorPage() {
         setName(d.inscription_name || "")
         setDates(d.inscription_dates || "")
         setAdditional(d.inscription_additional || "")
-        setDeceasedName(d.deceased_name || "")
-        setServiceDate(d.service_date || "")
-        setCustomerId(d.customer_id)
         if (d.background_url) setBackgroundUrl(d.background_url)
         if (d.proof_url) {
           setBackgroundUrl(d.background_url || "")
@@ -185,9 +314,9 @@ export default function ProofGeneratorPage() {
           legacy_type: legacyType,
           print_name: selectedPrint,
           is_urn: isUrn,
-          customer_id: customerId,
-          deceased_name: deceasedName || name,
-          service_date: serviceDate || null,
+          customer_id: null,
+          deceased_name: name,
+          service_date: null,
           inscription_name: name,
           inscription_dates: dates,
           inscription_additional: additional,
@@ -253,6 +382,8 @@ export default function ProofGeneratorPage() {
      (legacyType === "custom" && customBgUrl))
 
   const templateAvailability = new Map(templates.map((t) => [t.print_name, t.available]))
+  const printCategories = isUrn ? URN_PRINT_CATEGORIES : STANDARD_PRINT_CATEGORIES
+  const printImages = isUrn ? URN_PRINT_IMAGES : STANDARD_PRINT_IMAGES
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>
@@ -363,7 +494,7 @@ export default function ProofGeneratorPage() {
               legacyType === "standard" ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-300"
             }`}
           >
-            <div className="font-semibold text-sm">✨ Standard Legacy</div>
+            <div className="font-semibold text-sm">Standard Legacy</div>
             <div className="text-xs text-gray-500 mt-1">Choose from Legacy Series prints</div>
           </button>
           <button
@@ -372,7 +503,7 @@ export default function ProofGeneratorPage() {
               legacyType === "custom" ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-300"
             }`}
           >
-            <div className="font-semibold text-sm">🎨 Custom Legacy</div>
+            <div className="font-semibold text-sm">Custom Legacy</div>
             <div className="text-xs text-gray-500 mt-1">Use a family-provided photo</div>
           </button>
         </div>
@@ -384,13 +515,13 @@ export default function ProofGeneratorPage() {
           <Label className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Vault type</Label>
           <div className="flex gap-2">
             <button
-              onClick={() => { setIsUrn(false); setSelectedPrint(null) }}
+              onClick={() => { setIsUrn(false); setSelectedPrint(null); setBrokenImages(new Set()) }}
               className={`px-4 py-2 rounded-lg text-sm font-medium border ${!isUrn ? "bg-gray-900 text-white border-gray-900" : "border-gray-200"}`}
             >
               Standard vault
             </button>
             <button
-              onClick={() => { setIsUrn(true); setSelectedPrint(null) }}
+              onClick={() => { setIsUrn(true); setSelectedPrint(null); setBrokenImages(new Set()) }}
               className={`px-4 py-2 rounded-lg text-sm font-medium border ${isUrn ? "bg-gray-900 text-white border-gray-900" : "border-gray-200"}`}
             >
               Urn vault
@@ -403,7 +534,7 @@ export default function ProofGeneratorPage() {
       {legacyType === "standard" && (
         <div className="space-y-2">
           <Label className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Print selection</Label>
-          {PRINT_CATEGORIES.map((cat) => (
+          {printCategories.map((cat) => (
             <div key={cat.category} className="border border-gray-200 rounded-lg overflow-hidden">
               <button
                 onClick={() => setExpandedCategory(expandedCategory === cat.category ? null : cat.category)}
@@ -417,20 +548,55 @@ export default function ProofGeneratorPage() {
                   {cat.prints.map((print) => {
                     const available = templateAvailability.get(print) ?? false
                     const isSelected = selectedPrint === print
+                    const imageUrl = printImages[print]
+                    const isBroken = brokenImages.has(print)
                     return (
                       <button
                         key={print}
                         disabled={!available}
-                        onClick={() => setSelectedPrint(print)}
-                        className={`relative p-2 rounded-lg border text-center text-[11px] transition-colors ${
-                          isSelected ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" :
-                          available ? "border-gray-200 hover:border-blue-300" :
-                          "border-gray-100 opacity-40 cursor-not-allowed"
+                        onClick={() => available && setSelectedPrint(print)}
+                        className={`relative rounded-lg border overflow-hidden text-center transition-all ${
+                          isSelected ? "border-blue-500 ring-2 ring-blue-200" :
+                          available ? "border-gray-200 hover:border-blue-300 hover:brightness-105" :
+                          "border-gray-100 cursor-not-allowed"
                         }`}
                       >
-                        {isSelected && <Check className="absolute top-1 right-1 h-3 w-3 text-blue-600" />}
-                        <div className="font-medium text-gray-800 leading-tight">{print}</div>
-                        {!available && <div className="text-[9px] text-gray-400 mt-0.5">Coming soon</div>}
+                        {/* Image area */}
+                        <div className="relative" style={{ aspectRatio: "16 / 4.5" }}>
+                          {imageUrl && !isBroken ? (
+                            <img
+                              src={imageUrl}
+                              alt={print}
+                              className="w-full h-full object-cover"
+                              onError={() => setBrokenImages((prev) => new Set(prev).add(print))}
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                              <span className="text-[10px] text-gray-400 px-1 leading-tight">{print}</span>
+                            </div>
+                          )}
+
+                          {/* Unavailable overlay */}
+                          {!available && (
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                              <span className="text-white text-[10px] font-medium">Coming soon</span>
+                            </div>
+                          )}
+
+                          {/* Selected checkmark */}
+                          {isSelected && (
+                            <div className="absolute top-1 right-1 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                              <Check className="h-3 w-3 text-white" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Print name */}
+                        <div className="px-1 py-1.5">
+                          <span className={`text-[11px] font-medium leading-tight ${available ? "text-gray-800" : "text-gray-400"}`}>
+                            {print}
+                          </span>
+                        </div>
                       </button>
                     )
                   })}
@@ -482,20 +648,6 @@ export default function ProofGeneratorPage() {
         <div>
           <Label htmlFor="gen-additional">Additional text</Label>
           <Input id="gen-additional" value={additional} onChange={(e) => setAdditional(e.target.value)} placeholder="e.g. Beloved Husband and Father" className="mt-1" />
-        </div>
-      </div>
-
-      {/* FH details */}
-      <div className="space-y-3">
-        <Label className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Details (optional)</Label>
-        <div>
-          <Label htmlFor="gen-deceased">Deceased name</Label>
-          <Input id="gen-deceased" value={deceasedName} onChange={(e) => setDeceasedName(e.target.value)} placeholder="e.g. Robert Smith" className="mt-1" />
-          <p className="text-[11px] text-gray-400 mt-0.5">Can differ from the inscription name</p>
-        </div>
-        <div>
-          <Label htmlFor="gen-date">Service date</Label>
-          <Input id="gen-date" type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} className="mt-1" />
         </div>
       </div>
 
