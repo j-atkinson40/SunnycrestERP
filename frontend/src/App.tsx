@@ -137,6 +137,7 @@ import LegacyProofReviewPage from "@/pages/legacy/legacy-proof-review";
 import LegacyLibraryPage from "@/pages/legacy/library";
 import LegacyDetailPage from "@/pages/legacy/legacy-detail";
 import ProofGeneratorPage from "@/pages/legacy/proof-generator";
+import LegacySettingsPage from "@/pages/legacy/legacy-settings";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import CemeterySetupWizard from "@/pages/onboarding/cemetery-setup";
@@ -521,6 +522,7 @@ export default function App() {
                     <Route path="/training/vault-order-lifecycle" element={<VaultOrderLifecyclePage />} />
                     <Route path="/legacy/proof/:orderId" element={<LegacyProofReviewPage />} />
                     <Route path="/legacy/generator" element={<ProofGeneratorPage />} />
+                    <Route path="/legacy/settings" element={<LegacySettingsPage />} />
                     <Route path="/legacy/library" element={<LegacyLibraryPage />} />
                     <Route path="/legacy/library/:legacyId" element={<LegacyDetailPage />} />
                     <Route path="/training/procedures" element={<ProcedureLibraryPage />} />

@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = "bridgeable-legacy"
     R2_PUBLIC_URL: str = ""
 
+    # Dropbox OAuth (Legacy Studio)
+    DROPBOX_APP_KEY: str = ""
+    DROPBOX_APP_SECRET: str = ""
+
+    # Google Drive OAuth (Legacy Studio)
+    GDRIVE_CLIENT_ID: str = ""
+    GDRIVE_CLIENT_SECRET: str = ""
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def strip_database_url(cls, v):
