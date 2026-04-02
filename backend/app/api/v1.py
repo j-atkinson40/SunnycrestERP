@@ -105,6 +105,7 @@ from app.api.routes import (
     vendors,
     legacy,
     legacy_delivery,
+    legacy_email,
     legacy_studio,
     personalization,
     training_lifecycle,
@@ -447,6 +448,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     legacy_delivery.router, prefix="/legacy", tags=["Legacy Delivery"]
+)
+v1_router.include_router(
+    legacy_email.router, prefix="/legacy", tags=["Legacy Email"]
 )
 v1_router.include_router(
     legacy_studio.router, prefix="/legacy-studio", tags=["Legacy Studio"]

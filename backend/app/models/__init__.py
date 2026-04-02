@@ -229,6 +229,7 @@ from app.models.vendor_payment import VendorPayment
 from app.models.vendor_payment_application import VendorPaymentApplication
 from app.models.data_migration import DataMigrationRun
 from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIntelligenceSuggestion
+from app.models.legacy_email_settings import LegacyEmailSettings, LegacyFHEmailConfig
 from app.models.legacy_proof import LegacyProof, LegacyProofVersion, LegacyProofPhoto
 from app.models.legacy_settings import LegacySettings, LegacyPrintShopContact
 from app.models.order_personalization_photo import OrderPersonalizationPhoto
@@ -414,6 +415,8 @@ __all__ = [
     "WebsiteIntelligenceSuggestion",
     "HistoricalOrderImport",
     "HistoricalOrder",
+    "LegacyEmailSettings",
+    "LegacyFHEmailConfig",
     "LegacyPrintShopContact",
     "LegacyProof",
     "LegacyProofVersion",
