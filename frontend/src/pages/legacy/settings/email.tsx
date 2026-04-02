@@ -88,9 +88,10 @@ export default function LegacyEmailSettingsTab() {
     }
   }
 
-  async function loadFHConfig(customerId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function loadFHConfig(_customerId: string) {
     try {
-      const r = await apiClient.get(`/legacy/fh-config/${customerId}`)
+      const r = await apiClient.get(`/legacy/fh-config/${_customerId}`)
       setFhRecipients(r.data.recipients || [])
       setFhSubject(r.data.custom_subject || "")
       setFhNotes(r.data.custom_notes || "")
