@@ -32,6 +32,7 @@ interface LegacyDetail {
   approved_at: string | null
   proof_emailed_at: string | null
   order_id: string | null
+  order_number: string | null
   version_count: number
   created_at: string | null
   versions: { id: string; version_number: number; proof_url: string | null; inscription_name: string | null; print_name: string | null; notes: string | null; kept: boolean; created_at: string | null }[]
@@ -248,7 +249,15 @@ export default function LegacyDetailPage() {
             {data.inscription_additional && <div><span className="text-gray-500">Additional:</span> {data.inscription_additional}</div>}
             {data.customer_name && <div><span className="text-gray-500">Funeral home:</span> {data.customer_name}</div>}
             {data.deceased_name && <div><span className="text-gray-500">Deceased:</span> {data.deceased_name}</div>}
-            <div><span className="text-gray-500">Source:</span> {data.source === "order" ? `Order linked` : "Standalone"}</div>
+            <div>
+              <span className="text-gray-500">Source:</span>{" "}
+              {data.source === "order" && data.order_id ? (
+                <button onClick={() => navigate(`/ar/orders/${data.order_id}`)} className="text-blue-600 hover:underline">
+                  {data.order_number ? `Order #${data.order_number}` : "Order linked"}
+                  {data.customer_name ? ` · ${data.customer_name}` : ""}
+                </button>
+              ) : "Standalone proof"}
+            </div>
           </Card>
 
           {/* Order link */}

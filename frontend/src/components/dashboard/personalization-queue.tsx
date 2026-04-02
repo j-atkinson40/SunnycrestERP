@@ -24,6 +24,7 @@ interface PersTask {
   is_custom_legacy: boolean
   proof_url: string | null
   family_approved: boolean
+  legacy_proof_id: string | null
 }
 
 interface QueueData {
@@ -154,12 +155,17 @@ export function PersonalizationQueue() {
           <img src={task.proof_url} alt="Proof" className="mt-1.5 w-full h-10 object-cover rounded border" />
         )}
 
+        {/* Source line for legacy tasks */}
+        {(task.task_type === "legacy_standard" || task.task_type === "legacy_custom") && (
+          <span className="text-[10px] text-gray-400 mt-1 block">Auto-generated from order</span>
+        )}
+
         {/* Actions */}
         {!isComplete && (
           <div className="flex gap-2 mt-2">
             {task.proof_url && (task.task_type === "legacy_standard" || task.task_type === "legacy_custom") ? (
               <button
-                onClick={() => navigate(`/legacy/proof/${task.order_id}`)}
+                onClick={() => navigate(task.legacy_proof_id ? `/legacy/library/${task.legacy_proof_id}` : "/legacy/library")}
                 className="flex-1 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium"
               >
                 Review proof

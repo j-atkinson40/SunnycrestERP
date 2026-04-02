@@ -176,6 +176,32 @@ def _build_funeral_scheduling_context(
                 "type_config": d.type_config,
             }
 
+        # Legacy proofs needing attention
+        legacy_pending_review = 0
+        legacy_approved_today = 0
+        try:
+            from app.models.legacy_proof import LegacyProof
+
+            legacy_pending_review = (
+                db.query(func.count(LegacyProof.id))
+                .filter(
+                    LegacyProof.company_id == company_id,
+                    LegacyProof.status == "proof_generated",
+                )
+                .scalar() or 0
+            )
+            legacy_approved_today = (
+                db.query(func.count(LegacyProof.id))
+                .filter(
+                    LegacyProof.company_id == company_id,
+                    LegacyProof.status == "approved",
+                    LegacyProof.approved_at >= datetime.combine(today, datetime.min.time()),
+                )
+                .scalar() or 0
+            )
+        except Exception:
+            pass
+
         return {
             "today_deliveries": [_delivery_summary(d) for d in today_deliveries],
             "today_count": len(today_deliveries),
@@ -183,6 +209,8 @@ def _build_funeral_scheduling_context(
             "tomorrow_count": len(tomorrow_deliveries),
             "unscheduled_within_5_days": [_delivery_summary(d) for d in unscheduled],
             "unscheduled_count": len(unscheduled),
+            "legacy_proofs_pending_review": legacy_pending_review,
+            "legacy_proofs_approved_today": legacy_approved_today,
         }
     except Exception as e:
         logger.warning("Error building funeral scheduling context: %s", e)

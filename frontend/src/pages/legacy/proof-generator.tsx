@@ -2,7 +2,7 @@
 // Route: /legacy/generator  and  /legacy/generator?legacyId={id}
 
 import { useState, useEffect } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -483,6 +483,17 @@ export default function ProofGeneratorPage() {
           </p>
         )}
       </div>
+
+      {/* Standalone note */}
+      {!existingId && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+          <p className="font-medium">Standalone Proof Generator</p>
+          <p className="text-xs mt-0.5">
+            Creating a standalone proof. To create a proof from an order, place the order and a proof will be generated automatically.{" "}
+            <Link to="/orders" className="underline font-medium">Have an order? →</Link>
+          </p>
+        </div>
+      )}
 
       {/* Legacy type */}
       <div className="space-y-2">

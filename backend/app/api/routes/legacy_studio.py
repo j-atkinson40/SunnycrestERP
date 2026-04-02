@@ -63,6 +63,14 @@ class ApproveRequest(BaseModel):
 def _serialize(lp: LegacyProof, db: Session) -> dict:
     customer = db.query(Customer).filter(Customer.id == lp.customer_id).first() if lp.customer_id else None
     version_count = db.query(func.count(LegacyProofVersion.id)).filter(LegacyProofVersion.legacy_proof_id == lp.id).scalar() or 0
+
+    # Resolve order number for order-linked proofs
+    order_number = None
+    if lp.order_id:
+        from app.models.sales_order import SalesOrder
+        order_row = db.query(SalesOrder.number).filter(SalesOrder.id == lp.order_id).first()
+        order_number = order_row[0] if order_row else None
+
     return {
         "id": lp.id,
         "source": lp.source,
@@ -86,6 +94,7 @@ def _serialize(lp: LegacyProof, db: Session) -> dict:
         "proof_emailed_at": lp.proof_emailed_at.isoformat() if lp.proof_emailed_at else None,
         "version_count": version_count,
         "order_id": lp.order_id,
+        "order_number": order_number,
         "created_at": lp.created_at.isoformat() if lp.created_at else None,
         "updated_at": lp.updated_at.isoformat() if lp.updated_at else None,
     }

@@ -186,8 +186,16 @@ export default function LegacyLibraryPage() {
                       {item.version_count > 0 ? `v${item.version_count + 1} · ` : ""}
                       {timeAgo(item.created_at)}
                     </span>
-                    {item.order_id && (
-                      <Badge variant="outline" className="text-[10px]">Order linked</Badge>
+                    {item.order_id ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] cursor-pointer hover:bg-blue-50"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/ar/orders/${item.order_id}`) }}
+                      >
+                        {item.order_number ? `Order #${item.order_number}` : "Order linked"}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px]">Standalone</Badge>
                     )}
                   </div>
                 </div>

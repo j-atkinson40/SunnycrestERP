@@ -153,6 +153,39 @@ def generate_legacy_proof_async(
                 },
             }
 
+        # Check for uploaded photos and incorporate into layout
+        from app.models.order_personalization_photo import OrderPersonalizationPhoto
+
+        photos = (
+            db.query(OrderPersonalizationPhoto)
+            .filter(OrderPersonalizationPhoto.order_id == order_id)
+            .order_by(OrderPersonalizationPhoto.created_at)
+            .all()
+        )
+        if photos:
+            photo_layouts = []
+            positions = [
+                {"x": 0.35, "y": 0.50, "scale": 0.40, "opacity": 1.0},
+                {"x": 0.25, "y": 0.35, "scale": 0.30, "opacity": 0.9},
+                {"x": 0.20, "y": 0.60, "scale": 0.25, "opacity": 0.85},
+                {"x": 0.30, "y": 0.65, "scale": 0.20, "opacity": 0.8},
+            ]
+            for i, photo in enumerate(photos[:4]):
+                pos = positions[min(i, len(positions) - 1)]
+                photo_layouts.append({
+                    "url": photo.photo_url,
+                    "x": pos["x"],
+                    "y": pos["y"],
+                    "scale": pos["scale"],
+                    "opacity": pos["opacity"],
+                    "style": "soft_fade",
+                })
+            layout["photos"] = photo_layouts
+            # When photos exist, push text to the right
+            if "text" in layout:
+                layout["text"]["x"] = 0.75
+                layout["text"]["y"] = 0.50
+
         # Generate proof
         result = generate_final(
             order_id=order_id,
@@ -165,6 +198,37 @@ def generate_legacy_proof_async(
         task.tif_url = result["tif_url"]
         task.default_layout = layout
         task.status = "in_progress"  # proof generated, awaiting review
+
+        # Create LegacyProof record so proof appears in Legacy Studio library
+        import uuid as _uuid
+        from app.models.legacy_proof import LegacyProof
+        from app.models.sales_order import SalesOrder as _SalesOrder
+
+        order_obj = db.query(_SalesOrder).filter(_SalesOrder.id == order_id).first()
+
+        lp = LegacyProof(
+            id=str(_uuid.uuid4()),
+            company_id=task.company_id,
+            source="order",
+            order_id=order_id,
+            personalization_task_id=task_id,
+            legacy_type="custom" if task.is_custom_legacy else "standard",
+            print_name=print_name,
+            is_urn=is_urn,
+            inscription_name=name,
+            inscription_dates=dates,
+            inscription_additional=additional,
+            customer_id=order_obj.customer_id if order_obj else None,
+            deceased_name=order_obj.deceased_name if order_obj else (name or None),
+            service_date=getattr(order_obj, "service_date", None),
+            proof_url=result["proof_url"],
+            tif_url=result["tif_url"],
+            background_url=bg_url,
+            approved_layout=layout,
+            status="proof_generated",
+            family_approved=family_approved,
+        )
+        db.add(lp)
         db.commit()
 
     except TemplateNotAvailable:

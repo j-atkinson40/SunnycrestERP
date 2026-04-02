@@ -54,6 +54,14 @@ def get_personalization_queue(
 
     def serialize(task, order):
         customer = db.query(Customer).filter(Customer.id == order.customer_id).first() if order.customer_id else None
+
+        # Resolve linked LegacyProof for legacy tasks
+        legacy_proof_id = None
+        if task.task_type in ("legacy_standard", "legacy_custom"):
+            from app.models.legacy_proof import LegacyProof
+            lp_row = db.query(LegacyProof.id).filter(LegacyProof.personalization_task_id == task.id).first()
+            legacy_proof_id = lp_row[0] if lp_row else None
+
         return {
             "task_id": task.id,
             "task_type": task.task_type,
@@ -75,6 +83,7 @@ def get_personalization_queue(
             "proof_url": task.proof_url,
             "family_approved": task.approved_layout is not None,
             "is_custom_legacy": task.is_custom_legacy or False,
+            "legacy_proof_id": legacy_proof_id,
         }
 
     today_tasks = [serialize(t, o) for t, o in tasks if o.scheduled_date == today]
@@ -169,6 +178,60 @@ def complete_task(
 
     db.commit()
     return {"completed": True}
+
+
+@router.get("/orders/{order_id}/legacy-proof-status")
+def get_legacy_proof_status(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the legacy proof status for an order — used by the order detail card."""
+    from app.models.legacy_proof import LegacyProof
+
+    task = (
+        db.query(OrderPersonalizationTask)
+        .filter(
+            OrderPersonalizationTask.order_id == order_id,
+            OrderPersonalizationTask.company_id == current_user.company_id,
+            OrderPersonalizationTask.task_type.in_(["legacy_standard", "legacy_custom"]),
+        )
+        .first()
+    )
+    if not task:
+        return {"status": "none"}
+
+    # Look up the linked LegacyProof record
+    lp = (
+        db.query(LegacyProof)
+        .filter(LegacyProof.personalization_task_id == task.id)
+        .first()
+    )
+
+    # Map states
+    if task.status == "complete":
+        proof_status = "approved"
+    elif task.status == "in_progress" and task.proof_url:
+        proof_status = "proof_ready"
+    elif task.status == "pending" and task.notes and "Template not yet available" in task.notes:
+        proof_status = "no_template"
+    elif task.status == "pending" and task.is_custom_legacy and not task.proof_url:
+        proof_status = "custom_photo_needed"
+    else:
+        proof_status = "generating"
+
+    return {
+        "status": proof_status,
+        "proof_url": task.proof_url,
+        "legacy_proof_id": lp.id if lp else None,
+        "print_name": task.print_name,
+        "inscription_name": task.inscription_name,
+        "inscription_dates": task.inscription_dates,
+        "task_id": task.id,
+        "notes": task.notes,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "family_approved": getattr(task, "family_approved", False) or False,
+    }
 
 
 @router.post("/orders/{order_id}/personalization/waive-photo")

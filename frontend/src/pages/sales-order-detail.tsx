@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import LegacyProofStatusCard from "@/components/legacy/LegacyProofStatusCard";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -348,6 +349,9 @@ function SalesOrderDetailView({ id }: { id: string }) {
           </div>
         </div>
       </Card>
+
+      {/* Legacy proof status */}
+      <LegacyProofStatusCard orderId={id} />
 
       {/* Notes */}
       {order.notes && (

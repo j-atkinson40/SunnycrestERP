@@ -4,7 +4,7 @@ import json
 import re
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,93 @@ from app.services import cemetery_service
 from app.services import template_season_service
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Personalization task spawning helper
+# ---------------------------------------------------------------------------
+
+def _spawn_personalization_tasks(
+    db: Session,
+    company_id: str,
+    order: SalesOrder,
+    fields: dict,
+    background_tasks: BackgroundTasks,
+) -> None:
+    """Parse _pers_* fields from the order station form and create
+    OrderPersonalizationTask records.  For legacy tasks, enqueue
+    background proof generation."""
+    import uuid as _uuid
+
+    from app.models.order_personalization_task import OrderPersonalizationTask
+    from app.services.legacy_service import generate_legacy_proof_async
+    from app.services.personalization_config import LEGACY_PRINT_IMAGE_URLS
+
+    pers_types = [t.strip() for t in (fields.get("_pers_types") or "").split(",") if t.strip()]
+    if not pers_types:
+        return
+
+    pers_name = fields.get("_pers_name") or ""
+    pers_dates = fields.get("_pers_dates") or ""
+    pers_additional = fields.get("_pers_additional") or ""
+    pers_symbol = fields.get("_pers_symbol") or ""
+    pers_legacy_type = fields.get("_pers_legacy_type") or "standard"
+    pers_print_name = fields.get("_pers_print_name") or ""
+    pers_custom_desc = fields.get("_pers_custom_desc") or ""
+
+    # Determine is_urn from order line items (check product personalization_tier)
+    is_urn = False
+    for line in (order.lines or []):
+        product = line.product
+        if product and getattr(product, "personalization_tier", None) == "urn_vault":
+            is_urn = True
+            break
+
+    for ptype in pers_types:
+        # Map frontend type to task_type
+        if ptype == "legacy_print":
+            task_type = "legacy_custom" if pers_legacy_type == "custom" else "legacy_standard"
+        elif ptype == "lifes_reflections":
+            task_type = "lifes_reflections"
+        elif ptype == "nameplate":
+            task_type = "nameplate"
+        elif ptype == "cover_emblem":
+            task_type = "cover_emblem"
+        else:
+            continue
+
+        task = OrderPersonalizationTask(
+            id=str(_uuid.uuid4()),
+            company_id=company_id,
+            order_id=order.id,
+            task_type=task_type,
+            inscription_name=pers_name or None,
+            inscription_dates=pers_dates or None,
+            inscription_additional=pers_additional or None,
+            print_name=pers_print_name or None,
+            print_image_url=LEGACY_PRINT_IMAGE_URLS.get(pers_print_name) if pers_print_name else None,
+            symbol=pers_symbol or None,
+            is_custom_legacy=(pers_legacy_type == "custom"),
+            status="pending",
+            notes=pers_custom_desc if (task_type in ("legacy_custom",) and pers_custom_desc) else None,
+        )
+        db.add(task)
+        db.flush()
+
+        # Enqueue background proof generation for legacy tasks
+        if task_type in ("legacy_standard", "legacy_custom"):
+            background_tasks.add_task(
+                generate_legacy_proof_async,
+                task_id=task.id,
+                order_id=order.id,
+                print_name=pers_print_name,
+                is_urn=is_urn,
+                name=pers_name or None,
+                dates=pers_dates or None,
+                additional=pers_additional or None,
+            )
+
+    db.commit()
 
 # ---------------------------------------------------------------------------
 # Voice-to-order parsing — system prompt for Claude
@@ -317,6 +404,7 @@ def cemetery_tax_preview(
 @router.post("/quotes", response_model=QuoteResponse, status_code=201)
 def create_quote(
     data: CreateQuoteRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -372,6 +460,15 @@ def create_quote(
                     except (ValueError, IndexError):
                         pass
                 db.commit()
+
+                # Spawn personalization tasks if _pers_* fields present
+                if data.fields and data.fields.get("_pers_types"):
+                    try:
+                        _spawn_personalization_tasks(
+                            db, current_user.company_id, order, data.fields, background_tasks,
+                        )
+                    except Exception:
+                        pass  # Non-fatal — order still created
         except Exception:
             pass  # Quote was created; conversion failure is not fatal
 
