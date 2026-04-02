@@ -388,3 +388,27 @@ def list_versions(
         }
         for v in versions
     ]
+
+
+@router.delete("/admin/cleanup-test-drafts")
+def cleanup_test_drafts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """One-time cleanup: delete draft legacy proofs with no proof_url (test data).
+
+    Only deletes records where inscription_name='John Smith', status='draft',
+    and proof_url IS NULL.
+    """
+    deleted = (
+        db.query(LegacyProof)
+        .filter(
+            LegacyProof.company_id == current_user.company_id,
+            LegacyProof.inscription_name == "John Smith",
+            LegacyProof.status == "draft",
+            LegacyProof.proof_url.is_(None),
+        )
+        .delete(synchronize_session="fetch")
+    )
+    db.commit()
+    return {"deleted": deleted}

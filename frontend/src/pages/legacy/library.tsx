@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Search } from "lucide-react"
+import { Loader2, Plus, Search, MoreHorizontal, Download, Mail, Eye, Pencil, FileText, ExternalLink } from "lucide-react"
 
 interface LegacyProofSummary {
   id: string
@@ -22,6 +22,7 @@ interface LegacyProofSummary {
   service_date: string | null
   status: string
   proof_url: string | null
+  tif_url: string | null
   family_approved: boolean
   version_count: number
   order_id: string | null
@@ -55,6 +56,8 @@ export default function LegacyLibraryPage() {
   const [statusFilter, setStatusFilter] = useState("")
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [mobileSheet, setMobileSheet] = useState<string | null>(null)
+  const [imgErrors, setImgErrors] = useState<Set<string>>(new Set())
 
   const fetchLibrary = useCallback(async () => {
     try {
@@ -89,6 +92,98 @@ export default function LegacyLibraryPage() {
     if (hrs < 1) return "just now"
     if (hrs < 24) return `${hrs}h ago`
     return `${Math.floor(hrs / 24)}d ago`
+  }
+
+  function fmtDate(dateStr: string | null): string {
+    if (!dateStr) return ""
+    return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  }
+
+  async function handleConvertToOrder(itemId: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    try {
+      const res = await apiClient.post(`/legacy-studio/${itemId}/convert-to-order`, {})
+      toast.success(res.data.action === "created" ? "Draft order created" : "Linked to order")
+      navigate(`/ar/orders/${res.data.order_id}`)
+    } catch {
+      toast.error("Failed to create order")
+    }
+  }
+
+  async function handleSendToPrint(itemId: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    try {
+      await apiClient.post(`/legacy-studio/${itemId}/mark-printed`, {})
+      toast.success("Sent to print shop")
+      fetchLibrary()
+    } catch {
+      toast.error("Failed")
+    }
+  }
+
+  function getQuickActions(item: LegacyProofSummary): { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void }[] {
+    const actions: { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void }[] = []
+
+    if (item.status === "draft") {
+      actions.push({
+        label: "Open in Compositor",
+        icon: <Pencil className="h-3.5 w-3.5" />,
+        action: (e) => { e.stopPropagation(); navigate(`/legacy/generator?legacyId=${item.id}`) },
+      })
+      if (!item.order_id) {
+        actions.push({
+          label: "Create order",
+          icon: <FileText className="h-3.5 w-3.5" />,
+          action: (e) => handleConvertToOrder(item.id, e),
+        })
+      }
+    } else if (item.status === "proof_generated") {
+      actions.push({
+        label: "Review proof",
+        icon: <Eye className="h-3.5 w-3.5" />,
+        action: (e) => { e.stopPropagation(); navigate(`/legacy/library/${item.id}`) },
+      })
+      if (!item.order_id) {
+        actions.push({
+          label: "Create order",
+          icon: <FileText className="h-3.5 w-3.5" />,
+          action: (e) => handleConvertToOrder(item.id, e),
+        })
+      }
+    } else if (item.status === "approved") {
+      actions.push({
+        label: "View proof",
+        icon: <Eye className="h-3.5 w-3.5" />,
+        action: (e) => { e.stopPropagation(); navigate(`/legacy/library/${item.id}`) },
+      })
+      actions.push({
+        label: "Send to print shop",
+        icon: <Mail className="h-3.5 w-3.5" />,
+        action: (e) => handleSendToPrint(item.id, e),
+      })
+      if (item.tif_url) {
+        actions.push({
+          label: "Download TIF",
+          icon: <Download className="h-3.5 w-3.5" />,
+          action: (e) => { e.stopPropagation(); window.open(item.tif_url!, "_blank") },
+        })
+      }
+    } else if (item.status === "printed" || item.status === "sent_to_print") {
+      actions.push({
+        label: "View proof",
+        icon: <Eye className="h-3.5 w-3.5" />,
+        action: (e) => { e.stopPropagation(); navigate(`/legacy/library/${item.id}`) },
+      })
+      if (item.tif_url) {
+        actions.push({
+          label: "Download TIF",
+          icon: <Download className="h-3.5 w-3.5" />,
+          action: (e) => { e.stopPropagation(); window.open(item.tif_url!, "_blank") },
+        })
+      }
+    }
+
+    return actions
   }
 
   return (
@@ -147,58 +242,111 @@ export default function LegacyLibraryPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((item) => {
             const sb = STATUS_BADGES[item.status] || STATUS_BADGES.draft
+            const actions = getQuickActions(item)
+            const hasProofImage = item.proof_url && !imgErrors.has(item.id)
+
             return (
               <div
                 key={item.id}
-                className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                className="group bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => navigate(`/legacy/library/${item.id}`)}
               >
-                {/* Proof thumbnail */}
-                {item.proof_url ? (
-                  <div className="aspect-[16/4.5] bg-gray-100 overflow-hidden">
-                    <img src={item.proof_url} alt="" className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="aspect-[16/4.5] bg-gray-50 flex items-center justify-center">
-                    <span className="text-xs text-gray-400">No proof yet</span>
+                {/* Image area with hover overlay */}
+                <div className="relative aspect-[16/4.5] bg-gray-100 overflow-hidden">
+                  {hasProofImage ? (
+                    <img
+                      src={item.proof_url!}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      onError={() => setImgErrors((prev) => new Set(prev).add(item.id))}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-50 flex items-center justify-center">
+                      <span className="text-xs text-gray-400">No proof yet</span>
+                    </div>
+                  )}
+
+                  {/* Desktop: hover overlay with quick actions */}
+                  {actions.length > 0 && (
+                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hidden sm:flex flex-col items-center justify-center gap-1.5 px-6">
+                      {actions.map((a, i) => (
+                        <button
+                          key={i}
+                          onClick={a.action}
+                          className="w-full flex items-center justify-center gap-1.5 bg-white text-gray-800 rounded-md py-1.5 px-3.5 text-[13px] font-medium hover:bg-blue-50 transition-colors"
+                        >
+                          {a.icon} {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Mobile: ··· button (always visible) */}
+                  {actions.length > 0 && (
+                    <button
+                      className="absolute bottom-1.5 right-1.5 sm:hidden bg-white/90 rounded-full p-1.5 shadow-sm"
+                      onClick={(e) => { e.stopPropagation(); setMobileSheet(mobileSheet === item.id ? null : item.id) }}
+                    >
+                      <MoreHorizontal className="h-4 w-4 text-gray-600" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Mobile bottom sheet */}
+                {mobileSheet === item.id && (
+                  <div className="sm:hidden border-t border-gray-100 bg-gray-50 p-2 space-y-1">
+                    {actions.map((a, i) => (
+                      <button
+                        key={i}
+                        onClick={a.action}
+                        className="w-full flex items-center gap-2 bg-white rounded-md py-2 px-3 text-sm text-gray-700 hover:bg-blue-50"
+                      >
+                        {a.icon} {a.label}
+                      </button>
+                    ))}
                   </div>
                 )}
 
                 {/* Card body */}
-                <div className="p-3 space-y-1.5">
-                  <div className="flex items-center gap-2">
+                <div className="p-3 space-y-1">
+                  {/* Badges row */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <Badge className={`text-[10px] ${sb.className}`}>{sb.label}</Badge>
                     {item.family_approved && (
                       <span className="text-[10px] text-green-600 font-medium">Family approved</span>
                     )}
+                    {item.order_id && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] cursor-pointer hover:bg-blue-50 text-blue-600 border-blue-200"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/ar/orders/${item.order_id}`) }}
+                      >
+                        <ExternalLink className="h-2.5 w-2.5 mr-0.5" />
+                        {item.order_number ? `Order #${item.order_number}` : "Order linked"}
+                      </Badge>
+                    )}
                   </div>
-                  <p className="font-medium text-sm text-gray-900">{item.inscription_name || "Untitled"}</p>
+
+                  {/* Name */}
+                  <p className="font-semibold text-[15px] text-gray-900 leading-tight">
+                    {item.inscription_name || item.deceased_name || "Untitled"}
+                  </p>
+
+                  {/* Print name */}
                   {item.print_name && (
-                    <p className="text-xs text-gray-500">{item.print_name}</p>
+                    <p className="text-[13px] text-gray-500">{item.print_name}</p>
                   )}
+
+                  {/* Funeral home */}
                   {item.customer_name && (
                     <p className="text-xs text-gray-500">{item.customer_name}</p>
                   )}
-                  {item.service_date && (
-                    <p className="text-xs text-gray-400">Service: {item.service_date}</p>
-                  )}
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11px] text-gray-400">
-                      {item.version_count > 0 ? `v${item.version_count + 1} · ` : ""}
-                      {timeAgo(item.created_at)}
-                    </span>
-                    {item.order_id ? (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] cursor-pointer hover:bg-blue-50"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/ar/orders/${item.order_id}`) }}
-                      >
-                        {item.order_number ? `Order #${item.order_number}` : "Order linked"}
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px]">Standalone</Badge>
-                    )}
-                  </div>
+
+                  {/* Date + time ago */}
+                  <p className="text-[11px] text-gray-400">
+                    {item.service_date && <>{fmtDate(item.service_date)} · </>}
+                    {timeAgo(item.created_at)}
+                  </p>
                 </div>
               </div>
             )
