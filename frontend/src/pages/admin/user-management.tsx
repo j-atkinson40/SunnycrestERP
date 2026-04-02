@@ -4,18 +4,13 @@ import { X } from "lucide-react";
 import { userService } from "@/services/user-service";
 import { roleService } from "@/services/role-service";
 import EmployeeCreationWizard from "@/components/admin/EmployeeCreationWizard";
-import { employeeProfileService } from "@/services/employee-profile-service";
 import { functionalAreaService } from "@/services/functional-area-service";
 import { dismissHelp, getDismissedHelp } from "@/services/onboarding-service";
-import { getApiErrorMessage } from "@/lib/api-error";
 import type { User } from "@/types/auth";
-import type { UserCreate } from "@/types/user";
 import type { RoleResponse } from "@/types/role";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import FunctionalAreaMatrix from "@/components/functional-area-matrix";
 import {
   Table,
   TableBody,
@@ -28,7 +23,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -80,19 +74,6 @@ export default function UserManagement() {
 
   // Create user dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newUser, setNewUser] = useState<UserCreate>({
-    first_name: "",
-    last_name: "",
-    email: "",
-    password: "",
-    role_id: "",
-  });
-  const [createTrack, setCreateTrack] = useState<"office_management" | "production_delivery">("office_management");
-  const [createUsername, setCreateUsername] = useState("");
-  const [createPin, setCreatePin] = useState("");
-  const [createConsoles, setCreateConsoles] = useState<string[]>([]);
-  const [createError, setCreateError] = useState("");
-  const [newUserAreas, setNewUserAreas] = useState<string[]>([]);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -109,15 +90,6 @@ export default function UserManagement() {
     try {
       const data = await roleService.getRoles();
       setRoles(data);
-      // Set default role_id to the employee system role
-      const employeeRole = data.find(
-        (r) => r.is_system && r.slug === "employee"
-      );
-      if (employeeRole) {
-        setNewUser((prev) =>
-          prev.role_id ? prev : { ...prev, role_id: employeeRole.id }
-        );
-      }
     } catch {
       // Roles may not be available if user lacks roles.view permission
     }
@@ -139,68 +111,6 @@ export default function UserManagement() {
   function getRoleSlug(roleId: string): string {
     const role = roles.find((r) => r.id === roleId);
     return role?.slug || "";
-  }
-
-  async function handleCreate() {
-    setCreateError("");
-    try {
-      const payload: UserCreate = {
-        first_name: newUser.first_name,
-        last_name: newUser.last_name,
-        role_id: newUser.role_id,
-      };
-      if (createTrack === "production_delivery") {
-        payload.track = "production_delivery";
-        payload.username = createUsername;
-        payload.pin = createPin;
-        payload.console_access = createConsoles;
-      } else {
-        payload.email = newUser.email;
-        payload.password = newUser.password;
-      }
-
-      const created = await userService.createUser(payload);
-
-      // Save functional areas for office users
-      if (createTrack === "office_management" && newUserAreas.length > 0) {
-        try {
-          await employeeProfileService.updateProfile(created.id, {
-            functional_areas: newUserAreas,
-          });
-        } catch {
-          // Non-critical
-        }
-      }
-
-      // Save console access for production users
-      if (createTrack === "production_delivery" && createConsoles.length > 0) {
-        try {
-          await userService.updateUser(created.id, { console_access: createConsoles });
-        } catch {
-          // Non-critical
-        }
-      }
-
-      setDialogOpen(false);
-      const employeeRole = roles.find(
-        (r) => r.is_system && r.slug === "employee"
-      );
-      setNewUser({
-        first_name: "",
-        last_name: "",
-        email: "",
-        password: "",
-        role_id: employeeRole?.id || "",
-      });
-      setCreateTrack("office_management");
-      setCreateUsername("");
-      setCreatePin("");
-      setCreateConsoles([]);
-      setNewUserAreas([]);
-      loadUsers();
-    } catch (err: unknown) {
-      setCreateError(getApiErrorMessage(err, "Failed to create user"));
-    }
   }
 
   async function handleToggleActive(user: User) {

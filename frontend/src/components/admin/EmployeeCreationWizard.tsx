@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, ChevronRight, Check, Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Check } from "lucide-react"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,7 @@ interface RoleOption {
   slug: string
   description: string | null
   is_system: boolean
+  is_active: boolean
   permission_keys: string[]
 }
 

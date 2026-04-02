@@ -336,7 +336,7 @@ export default function RoleManagement() {
             admin: "👑", manager: "🛡️", office_staff: "💼", accounting: "📊",
             legacy_designer: "🎨", driver: "🚛", production: "🏭", employee: "👤",
           }
-          const userCount = 0 // TODO: add user_count to role API response
+          const userCount: number = 0 // TODO: add user_count to role API response
           return (
             <div key={role.id} className="rounded-lg border bg-white p-3 space-y-1">
               <div className="flex items-center gap-2">
