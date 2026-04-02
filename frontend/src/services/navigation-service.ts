@@ -205,6 +205,25 @@ function getManufacturingNav(
 
   // Training
   sections.push({
+    title: "Legacy Studio",
+    items: [
+      {
+        label: "Proof Generator",
+        href: "/legacy/generator",
+        icon: "Wand2",
+        permission: "admin",
+      },
+      {
+        label: "Library",
+        href: "/legacy/library",
+        icon: "Library",
+        permission: "admin",
+      },
+    ],
+  });
+
+  // Training
+  sections.push({
     title: "Training",
     items: [
       {

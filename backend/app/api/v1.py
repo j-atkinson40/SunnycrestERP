@@ -104,6 +104,7 @@ from app.api.routes import (
     vendor_payments,
     vendors,
     legacy,
+    legacy_studio,
     personalization,
     training_lifecycle,
     webhooks,
@@ -442,6 +443,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     legacy.router, prefix="/legacy", tags=["Legacy"]
+)
+v1_router.include_router(
+    legacy_studio.router, prefix="/legacy-studio", tags=["Legacy Studio"]
 )
 v1_router.include_router(
     personalization.router, prefix="/personalization", tags=["Personalization"]

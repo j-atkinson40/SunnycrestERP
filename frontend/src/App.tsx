@@ -134,6 +134,8 @@ import TransfersPage from "@/pages/transfers";
 import ProcedureLibraryPage, { ProcedureDetailPage } from "@/pages/training/procedure-library";
 import VaultOrderLifecyclePage from "@/pages/training/vault-order-lifecycle";
 import LegacyProofReviewPage from "@/pages/legacy/legacy-proof-review";
+import LegacyLibraryPage from "@/pages/legacy/library";
+import LegacyDetailPage from "@/pages/legacy/legacy-detail";
 import TeamIntelligencePage from "@/pages/onboarding/team-intelligence";
 import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customers";
 import CemeterySetupWizard from "@/pages/onboarding/cemetery-setup";
@@ -517,6 +519,8 @@ export default function App() {
                     {/* Training */}
                     <Route path="/training/vault-order-lifecycle" element={<VaultOrderLifecyclePage />} />
                     <Route path="/legacy/proof/:orderId" element={<LegacyProofReviewPage />} />
+                    <Route path="/legacy/library" element={<LegacyLibraryPage />} />
+                    <Route path="/legacy/library/:legacyId" element={<LegacyDetailPage />} />
                     <Route path="/training/procedures" element={<ProcedureLibraryPage />} />
                     <Route path="/training/procedures/:key" element={<ProcedureDetailPage />} />
                     {/* Safety */}

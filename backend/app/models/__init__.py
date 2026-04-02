@@ -229,6 +229,7 @@ from app.models.vendor_payment import VendorPayment
 from app.models.vendor_payment_application import VendorPaymentApplication
 from app.models.data_migration import DataMigrationRun
 from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIntelligenceSuggestion
+from app.models.legacy_proof import LegacyProof, LegacyProofVersion, LegacyProofPhoto
 from app.models.order_personalization_photo import OrderPersonalizationPhoto
 from app.models.order_personalization_task import OrderPersonalizationTask
 from app.models.production_mold_config import ProductionMoldConfig
@@ -412,6 +413,9 @@ __all__ = [
     "WebsiteIntelligenceSuggestion",
     "HistoricalOrderImport",
     "HistoricalOrder",
+    "LegacyProof",
+    "LegacyProofVersion",
+    "LegacyProofPhoto",
     "OrderPersonalizationPhoto",
     "OrderPersonalizationTask",
     "ProductionMoldConfig",
