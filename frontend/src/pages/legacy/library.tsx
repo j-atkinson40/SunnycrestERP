@@ -134,78 +134,42 @@ export default function LegacyLibraryPage() {
     }
   }
 
-  function getQuickActions(item: LegacyProofSummary): { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void; destructive?: boolean }[] {
-    const actions: { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void; destructive?: boolean }[] = []
+  /** Can this item be deleted? */
+  function canDelete(item: LegacyProofSummary): boolean {
+    return item.status === "draft" || item.status === "proof_generated"
+  }
+
+  /** Bottom-right action buttons for the card body. */
+  function getCardActions(item: LegacyProofSummary): { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void }[] {
+    const actions: { label: string; icon: React.ReactNode; action: (e: React.MouseEvent) => void }[] = []
 
     if (item.status === "draft") {
       actions.push({
-        label: "Open in Compositor",
-        icon: <Pencil className="h-3.5 w-3.5" />,
+        label: "Compositor",
+        icon: <Pencil className="h-3 w-3" />,
         action: (e) => { e.stopPropagation(); navigate(`/legacy/generator?legacyId=${item.id}`) },
       })
-      if (!item.order_id) {
-        actions.push({
-          label: "Create order",
-          icon: <FileText className="h-3.5 w-3.5" />,
-          action: (e) => handleConvertToOrder(item.id, e),
-        })
-      }
+    }
+    if (item.status === "approved") {
       actions.push({
-        label: "Delete",
-        icon: <Trash2 className="h-3.5 w-3.5" />,
-        action: (e) => handleDelete(item.id, item.inscription_name || item.deceased_name || "", e),
-        destructive: true,
-      })
-    } else if (item.status === "proof_generated") {
-      actions.push({
-        label: "Review proof",
-        icon: <Eye className="h-3.5 w-3.5" />,
-        action: (e) => { e.stopPropagation(); navigate(`/legacy/library/${item.id}`) },
-      })
-      if (!item.order_id) {
-        actions.push({
-          label: "Create order",
-          icon: <FileText className="h-3.5 w-3.5" />,
-          action: (e) => handleConvertToOrder(item.id, e),
-        })
-      }
-      actions.push({
-        label: "Delete",
-        icon: <Trash2 className="h-3.5 w-3.5" />,
-        action: (e) => handleDelete(item.id, item.inscription_name || item.deceased_name || "", e),
-        destructive: true,
-      })
-    } else if (item.status === "approved") {
-      actions.push({
-        label: "View proof",
-        icon: <Eye className="h-3.5 w-3.5" />,
-        action: (e) => { e.stopPropagation(); navigate(`/legacy/library/${item.id}`) },
-      })
-      actions.push({
-        label: "Send to print shop",
-        icon: <Mail className="h-3.5 w-3.5" />,
+        label: "Print",
+        icon: <Mail className="h-3 w-3" />,
         action: (e) => handleSendToPrint(item.id, e),
       })
-      if (item.tif_url) {
-        actions.push({
-          label: "Download TIF",
-          icon: <Download className="h-3.5 w-3.5" />,
-          action: (e) => { e.stopPropagation(); window.open(item.tif_url!, "_blank") },
-        })
-      }
-    } else if (item.status === "printed" || item.status === "sent_to_print") {
+    }
+    if ((item.status === "approved" || item.status === "printed" || item.status === "sent_to_print") && item.tif_url) {
       actions.push({
-        label: "View proof",
-        icon: <Eye className="h-3.5 w-3.5" />,
-        action: (e) => { e.stopPropagation(); navigate(`/legacy/library/${item.id}`) },
+        label: "TIF",
+        icon: <Download className="h-3 w-3" />,
+        action: (e) => { e.stopPropagation(); window.open(item.tif_url!, "_blank") },
       })
-      if (item.tif_url) {
-        actions.push({
-          label: "Download TIF",
-          icon: <Download className="h-3.5 w-3.5" />,
-          action: (e) => { e.stopPropagation(); window.open(item.tif_url!, "_blank") },
-        })
-      }
+    }
+    if (!item.order_id && (item.status === "draft" || item.status === "proof_generated")) {
+      actions.push({
+        label: "Create order",
+        icon: <FileText className="h-3 w-3" />,
+        action: (e) => handleConvertToOrder(item.id, e),
+      })
     }
 
     return actions
@@ -267,11 +231,13 @@ export default function LegacyLibraryPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((item) => {
             const sb = STATUS_BADGES[item.status] || STATUS_BADGES.draft
-            const actions = getQuickActions(item)
-            // Prefer proof_url, fall back to Wilbert CDN preview, then placeholder
+            const cardActions = getCardActions(item)
+            // Prefer proof_url (has text baked in), else Wilbert CDN bg
             const proofSrc = (!imgErrors.has(item.id) && item.proof_url) || null
             const fallbackSrc = (!imgErrors.has(item.id + "_fb") && getPrintImageUrl(item.print_name)) || null
             const displaySrc = proofSrc || fallbackSrc
+            // Show text overlay only when using the CDN fallback (no text baked in)
+            const showTextOverlay = !proofSrc && displaySrc && item.inscription_name
 
             return (
               <div
@@ -279,7 +245,7 @@ export default function LegacyLibraryPage() {
                 className="group bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => navigate(`/legacy/library/${item.id}`)}
               >
-                {/* Image area with hover overlay */}
+                {/* Image area — proof or background + text overlay */}
                 <div className="relative aspect-[16/4.5] bg-gray-100 overflow-hidden">
                   {displaySrc ? (
                     <img
@@ -288,10 +254,8 @@ export default function LegacyLibraryPage() {
                       className="w-full h-full object-cover"
                       onError={() => {
                         if (proofSrc) {
-                          // proof_url failed — try fallback next render
                           setImgErrors((prev) => new Set(prev).add(item.id))
                         } else {
-                          // fallback also failed — show placeholder
                           setImgErrors((prev) => new Set(prev).add(item.id + "_fb"))
                         }
                       }}
@@ -302,27 +266,35 @@ export default function LegacyLibraryPage() {
                     </div>
                   )}
 
-                  {/* Desktop: hover overlay with quick actions */}
-                  {actions.length > 0 && (
-                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hidden sm:flex flex-col items-center justify-center gap-1.5 px-6">
-                      {actions.map((a, i) => (
-                        <button
-                          key={i}
-                          onClick={a.action}
-                          className={`w-full flex items-center justify-center gap-1.5 rounded-md py-1.5 px-3.5 text-[13px] font-medium transition-colors ${
-                            a.destructive
-                              ? "bg-white text-red-600 hover:bg-red-50"
-                              : "bg-white text-gray-800 hover:bg-blue-50"
-                          }`}
-                        >
-                          {a.icon} {a.label}
-                        </button>
-                      ))}
+                  {/* Text overlay when showing raw background (no proof generated yet) */}
+                  {showTextOverlay && (
+                    <div className="absolute inset-0 flex items-center justify-end pr-[12%]">
+                      <div className="text-center" style={{ textShadow: "1px 1px 3px rgba(0,0,0,0.7)" }}>
+                        <p className="text-white font-bold italic text-[13px] sm:text-[15px] leading-tight">
+                          {item.inscription_name}
+                        </p>
+                        {item.inscription_dates && (
+                          <p className="text-white font-bold italic text-[11px] sm:text-[13px] leading-tight mt-0.5">
+                            {item.inscription_dates}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
 
-                  {/* Mobile: ··· button (always visible) */}
-                  {actions.length > 0 && (
+                  {/* Delete button — top right (hover-reveal on desktop, always visible on mobile) */}
+                  {canDelete(item) && (
+                    <button
+                      onClick={(e) => handleDelete(item.id, item.inscription_name || item.deceased_name || "", e)}
+                      className="absolute top-1.5 right-1.5 bg-white/90 hover:bg-red-50 rounded-full p-1.5 shadow-sm sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                    </button>
+                  )}
+
+                  {/* Mobile: ··· menu button */}
+                  {cardActions.length > 0 && (
                     <button
                       className="absolute bottom-1.5 right-1.5 sm:hidden bg-white/90 rounded-full p-1.5 shadow-sm"
                       onClick={(e) => { e.stopPropagation(); setMobileSheet(mobileSheet === item.id ? null : item.id) }}
@@ -332,20 +304,26 @@ export default function LegacyLibraryPage() {
                   )}
                 </div>
 
-                {/* Mobile bottom sheet */}
+                {/* Mobile action sheet */}
                 {mobileSheet === item.id && (
                   <div className="sm:hidden border-t border-gray-100 bg-gray-50 p-2 space-y-1">
-                    {actions.map((a, i) => (
+                    {cardActions.map((a, i) => (
                       <button
                         key={i}
                         onClick={a.action}
-                        className={`w-full flex items-center gap-2 bg-white rounded-md py-2 px-3 text-sm ${
-                          a.destructive ? "text-red-600 hover:bg-red-50" : "text-gray-700 hover:bg-blue-50"
-                        }`}
+                        className="w-full flex items-center gap-2 bg-white rounded-md py-2 px-3 text-sm text-gray-700 hover:bg-blue-50"
                       >
                         {a.icon} {a.label}
                       </button>
                     ))}
+                    {canDelete(item) && (
+                      <button
+                        onClick={(e) => handleDelete(item.id, item.inscription_name || item.deceased_name || "", e)}
+                        className="w-full flex items-center gap-2 bg-white rounded-md py-2 px-3 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -369,15 +347,33 @@ export default function LegacyLibraryPage() {
                     )}
                   </div>
 
-                  {/* Name */}
-                  <p className="font-semibold text-[15px] text-gray-900 leading-tight">
-                    {item.inscription_name || item.deceased_name || "Untitled"}
-                  </p>
+                  {/* Name + actions row */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[15px] text-gray-900 leading-tight">
+                        {item.inscription_name || item.deceased_name || "Untitled"}
+                      </p>
+                      {item.print_name && (
+                        <p className="text-[13px] text-gray-500">{item.print_name}</p>
+                      )}
+                    </div>
 
-                  {/* Print name */}
-                  {item.print_name && (
-                    <p className="text-[13px] text-gray-500">{item.print_name}</p>
-                  )}
+                    {/* Action buttons — bottom right */}
+                    {cardActions.length > 0 && (
+                      <div className="hidden sm:flex items-center gap-1 flex-shrink-0 pt-0.5">
+                        {cardActions.map((a, i) => (
+                          <button
+                            key={i}
+                            onClick={a.action}
+                            className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                            title={a.label}
+                          >
+                            {a.icon} {a.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Funeral home */}
                   {item.customer_name && (
