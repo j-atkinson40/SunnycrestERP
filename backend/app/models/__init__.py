@@ -17,6 +17,8 @@ from app.models.balance_adjustment import BalanceAdjustment
 from app.models.batch_ticket import BatchTicket
 from app.models.bom import BillOfMaterials, BOMLine
 from app.models.company import Company
+from app.models.company_entity import CompanyEntity
+from app.models.company_migration_review import CompanyMigrationReview
 from app.models.company_module import CompanyModule
 from app.models.cemetery import Cemetery
 from app.models.cemetery_directory import CemeteryDirectory
@@ -252,6 +254,8 @@ __all__ = [
     "BillOfMaterials",
     "BOMLine",
     "Company",
+    "CompanyEntity",
+    "CompanyMigrationReview",
     "CompanyModule",
     "Cemetery",
     "Customer",

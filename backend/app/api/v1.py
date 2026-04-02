@@ -22,6 +22,7 @@ from app.api.routes import (
     bom,
     briefings,
     bundles,
+    company_entities,
     carrier_portal,
     cases,
     cemeteries,
@@ -152,6 +153,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     bundles.router, prefix="/products", tags=["Product Bundles"]
+)
+v1_router.include_router(
+    company_entities.router, prefix="/companies", tags=["Company Entities"]
 )
 v1_router.include_router(
     carrier_portal.router, prefix="/carrier", tags=["Carrier Portal"]

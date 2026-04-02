@@ -82,6 +82,9 @@ class Vendor(Base):
     is_1099_vendor: Mapped[bool] = mapped_column(Boolean, server_default="false")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # --- CRM master entity link ---
+    master_company_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("company_entities.id"), nullable=True)
+
     # --- Sage sync ---
     sage_vendor_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 

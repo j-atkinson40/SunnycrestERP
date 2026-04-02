@@ -61,6 +61,9 @@ class Cemetery(Base):
     equipment_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # CRM master entity link
+    master_company_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("company_entities.id"), nullable=True)
+
     # Billing link — NULL = operational only, no billing customer record
     customer_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("customers.id"), nullable=True, index=True

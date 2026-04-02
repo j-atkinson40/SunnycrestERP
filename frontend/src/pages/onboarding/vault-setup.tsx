@@ -65,10 +65,26 @@ export default function VaultSetupPage() {
       return;
     }
     try {
-      const r = await apiClient.get(`/vault-supplier/search-vendors?q=${encodeURIComponent(q)}`);
-      setVendors(r.data || []);
+      // Try unified company search first (finds customers, vendors, cemeteries)
+      const r = await apiClient.get(`/companies/search?q=${encodeURIComponent(q)}`);
+      const items = (r.data || []).map((c: Record<string, unknown>) => ({
+        id: (c.vendor_id as string) || (c.company_id as string),
+        name: c.name as string,
+        roles: (c.roles as string[]) || [],
+        company_entity_id: c.company_id as string,
+        is_vendor: ((c.roles as string[]) || []).includes("vendor"),
+      }));
+      setVendors(items);
     } catch {
-      setVendors([]);
+      // Fallback to vault-supplier vendor search if companies endpoint unavailable
+      try {
+        const r2 = await apiClient.get(`/vault-supplier/search-vendors?q=${encodeURIComponent(q)}`);
+        setVendors((r2.data || []).map((v: Record<string, unknown>) => ({
+          id: v.id as string, name: v.name as string, roles: ["vendor"], is_vendor: true,
+        })));
+      } catch {
+        setVendors([]);
+      }
     }
   }, []);
 
@@ -196,18 +212,25 @@ export default function VaultSetupPage() {
                 />
                 {(vendors.length > 0 || vendorSearch.length >= 2) && (
                   <div className="border rounded-md bg-background shadow-sm max-h-48 overflow-y-auto">
-                    {vendors.map((v) => (
+                    {vendors.map((v: Record<string, unknown>) => (
                       <button
-                        key={v.id}
+                        key={v.id as string}
                         type="button"
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between"
                         onClick={() => {
-                          setVendorId(v.id);
-                          setVendorSearch(v.name);
+                          setVendorId(v.id as string);
+                          setVendorSearch(v.name as string);
                           setVendors([]);
                         }}
                       >
-                        {v.name}
+                        <span>{v.name as string}</span>
+                        {Array.isArray(v.roles) && v.roles.length > 0 && (
+                          <span className="flex gap-1">
+                            {(v.roles as string[]).map((r: string) => (
+                              <span key={r} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{r}</span>
+                            ))}
+                          </span>
+                        )}
                       </button>
                     ))}
                     <button

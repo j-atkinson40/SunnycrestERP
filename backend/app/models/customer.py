@@ -145,6 +145,9 @@ class Customer(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )  # true = hidden until extension enabled; separate from is_active
 
+    # --- CRM master entity link ---
+    master_company_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("company_entities.id"), nullable=True)
+
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 

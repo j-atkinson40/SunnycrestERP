@@ -16,6 +16,7 @@ import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
+import CompanyMigrationReviewPage from "@/pages/admin/company-migration-review";
 import AuditLogs from "@/pages/admin/audit-logs";
 import CompanySettings from "@/pages/admin/company-settings";
 import AccountingPage from "@/pages/admin/accounting";
@@ -273,6 +274,10 @@ export default function App() {
                     <Route
                       path="/admin/roles"
                       element={<RoleManagement />}
+                    />
+                    <Route
+                      path="/admin/company-migration"
+                      element={<CompanyMigrationReviewPage />}
                     />
                   </Route>
 
