@@ -214,34 +214,95 @@ export default function LegacyCompositor({
     }
   }, [bgLoaded, renderCanvas, showProof])
 
-  // Canvas mouse interaction
-  function handleCanvasMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const mx = (e.clientX - rect.left) / rect.width
-    const my = (e.clientY - rect.top) / rect.height
+  // ── Canvas pointer helpers (mouse + touch) ─────────────────────────────────
 
+  function getEventCoords(
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>,
+    canvas: HTMLCanvasElement,
+  ): { x: number; y: number } {
+    const rect = canvas.getBoundingClientRect()
+    const clientX = "touches" in e ? e.touches[0]?.clientX ?? 0 : e.clientX
+    const clientY = "touches" in e ? e.touches[0]?.clientY ?? 0 : e.clientY
+    return {
+      x: (clientX - rect.left) / rect.width,
+      y: (clientY - rect.top) / rect.height,
+    }
+  }
+
+  // Pinch-to-scale state
+  const pinchRef = useRef<{ initialDist: number; layerType: "photo" | "text"; id?: string; initialScale: number } | null>(null)
+
+  function hitTest(mx: number, my: number): { type: "photo" | "text"; id?: string } | null {
     // Check text hit
     if (Math.abs(mx - textLayer.x) < 0.15 && Math.abs(my - textLayer.y) < 0.1) {
-      setDragging({ type: "text" })
-      return
+      return { type: "text" }
     }
     // Check photo hits (reverse order — top first)
     for (let i = photos.length - 1; i >= 0; i--) {
       const p = photos[i]
       if (Math.abs(mx - p.x) < p.scale / 2 && Math.abs(my - p.y) < p.scale / 2) {
-        setDragging({ type: "photo", id: p.id })
-        return
+        return { type: "photo", id: p.id }
       }
     }
+    return null
   }
 
-  function handleCanvasMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (!dragging || !canvasRef.current) return
-    const rect = canvasRef.current.getBoundingClientRect()
-    const mx = clamp((e.clientX - rect.left) / rect.width, 0, 1)
-    const my = clamp((e.clientY - rect.top) / rect.height, 0, 1)
+  function handlePointerDown(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    // Pinch start (two-finger touch)
+    if ("touches" in e && e.touches.length === 2) {
+      e.preventDefault()
+      const t = e.touches
+      const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+      const rect = canvas.getBoundingClientRect()
+      const midX = ((t[0].clientX + t[1].clientX) / 2 - rect.left) / rect.width
+      const midY = ((t[0].clientY + t[1].clientY) / 2 - rect.top) / rect.height
+      const hit = hitTest(midX, midY)
+      if (hit) {
+        const scale = hit.type === "text"
+          ? textLayer.fontSize
+          : (photos.find((p) => p.id === hit.id)?.scale ?? 0.4)
+        pinchRef.current = { initialDist: dist, layerType: hit.type, id: hit.id, initialScale: scale }
+      }
+      return
+    }
+
+    if ("touches" in e) e.preventDefault()
+
+    const { x, y } = getEventCoords(e, canvas)
+    const hit = hitTest(x, y)
+    if (hit) setDragging(hit)
+  }
+
+  function handlePointerMove(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    // Pinch move
+    if ("touches" in e && e.touches.length === 2 && pinchRef.current) {
+      e.preventDefault()
+      const t = e.touches
+      const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+      const factor = dist / pinchRef.current.initialDist
+      const newScale = pinchRef.current.initialScale * factor
+
+      if (pinchRef.current.layerType === "text") {
+        setTextLayer((prev) => ({ ...prev, fontSize: clamp(newScale, 0.03, 0.12) }))
+      } else if (pinchRef.current.id) {
+        const id = pinchRef.current.id
+        setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, scale: clamp(newScale, 0.05, 1.0) } : p))
+      }
+      return
+    }
+
+    if (!dragging) return
+    if ("touches" in e) e.preventDefault()
+
+    const { x, y } = getEventCoords(e, canvas)
+    const mx = clamp(x, 0, 1)
+    const my = clamp(y, 0, 1)
 
     if (dragging.type === "text") {
       setTextLayer((t) => ({ ...t, x: mx, y: my }))
@@ -252,8 +313,9 @@ export default function LegacyCompositor({
     }
   }
 
-  function handleCanvasMouseUp() {
+  function handlePointerUp() {
     setDragging(null)
+    pinchRef.current = null
   }
 
   // Photo management
@@ -327,11 +389,14 @@ export default function LegacyCompositor({
               ref={canvasRef}
               width={canvasWidth}
               height={canvasHeight}
-              className="w-full rounded-lg border cursor-move bg-gray-100"
-              onMouseDown={handleCanvasMouseDown}
-              onMouseMove={handleCanvasMouseMove}
-              onMouseUp={handleCanvasMouseUp}
-              onMouseLeave={handleCanvasMouseUp}
+              className="w-full rounded-lg border cursor-move bg-gray-100 touch-none"
+              onMouseDown={handlePointerDown}
+              onMouseMove={handlePointerMove}
+              onMouseUp={handlePointerUp}
+              onMouseLeave={handlePointerUp}
+              onTouchStart={handlePointerDown}
+              onTouchMove={handlePointerMove}
+              onTouchEnd={handlePointerUp}
             />
             <p className="text-xs text-gray-400 text-center mt-1">
               Drag photos and text to reposition
