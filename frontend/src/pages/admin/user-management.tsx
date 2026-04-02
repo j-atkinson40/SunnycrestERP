@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { X } from "lucide-react";
 import { userService } from "@/services/user-service";
 import { roleService } from "@/services/role-service";
+import EmployeeCreationWizard from "@/components/admin/EmployeeCreationWizard";
 import { employeeProfileService } from "@/services/employee-profile-service";
 import { functionalAreaService } from "@/services/functional-area-service";
 import { dismissHelp, getDismissedHelp } from "@/services/onboarding-service";
@@ -234,188 +235,19 @@ export default function UserManagement() {
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger render={<Button />}>
-            Add User
+            Add Employee
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Create New User</DialogTitle>
+              <DialogTitle>Add Employee</DialogTitle>
               <DialogDescription>
-                Add a new user to the system.
+                Set up a new employee account with role and permissions.
               </DialogDescription>
             </DialogHeader>
-            {createError && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                {createError}
-              </div>
-            )}
-            <div className="space-y-4">
-              {/* Track toggle */}
-              <div className="space-y-2">
-                <Label>Employee Type</Label>
-                <div className="flex rounded-md border overflow-hidden text-sm w-fit">
-                  <button
-                    type="button"
-                    className={`px-4 py-1.5 transition-colors ${
-                      createTrack === "office_management"
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-muted"
-                    }`}
-                    onClick={() => setCreateTrack("office_management")}
-                  >
-                    Office / Management
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-4 py-1.5 transition-colors ${
-                      createTrack === "production_delivery"
-                        ? "bg-blue-600 text-white"
-                        : "hover:bg-muted"
-                    }`}
-                    onClick={() => setCreateTrack("production_delivery")}
-                  >
-                    Production / Delivery
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>First Name</Label>
-                  <Input
-                    value={newUser.first_name}
-                    onChange={(e) =>
-                      setNewUser({ ...newUser, first_name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Last Name</Label>
-                  <Input
-                    value={newUser.last_name}
-                    onChange={(e) =>
-                      setNewUser({ ...newUser, last_name: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              {createTrack === "office_management" ? (
-                <>
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      value={newUser.email ?? ""}
-                      onChange={(e) =>
-                        setNewUser({ ...newUser, email: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Password</Label>
-                    <Input
-                      type="password"
-                      value={newUser.password ?? ""}
-                      onChange={(e) =>
-                        setNewUser({ ...newUser, password: e.target.value })
-                      }
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <Label>Username</Label>
-                    <Input
-                      value={createUsername}
-                      onChange={(e) => setCreateUsername(e.target.value)}
-                      placeholder="john.s"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>PIN (4 digits)</Label>
-                    <Input
-                      inputMode="numeric"
-                      maxLength={4}
-                      value={createPin}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/\D/g, "").slice(0, 4);
-                        setCreatePin(v);
-                      }}
-                      placeholder="1234"
-                      className="font-mono"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Console Access</Label>
-                    <div className="space-y-1">
-                      {[
-                        { key: "delivery_console", label: "Delivery Console" },
-                        { key: "production_console", label: "Production Console" },
-                      ].map((opt) => (
-                        <label key={opt.key} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={createConsoles.includes(opt.key)}
-                            onChange={() =>
-                              setCreateConsoles((prev) =>
-                                prev.includes(opt.key)
-                                  ? prev.filter((k) => k !== opt.key)
-                                  : [...prev, opt.key]
-                              )
-                            }
-                            className="size-4 rounded"
-                          />
-                          {opt.label}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <select
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                  value={newUser.role_id}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, role_id: e.target.value })
-                  }
-                >
-                  {roles.length === 0 ? (
-                    <option value="">Loading roles...</option>
-                  ) : (
-                    roles
-                      .filter((r) => r.is_active)
-                      .map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.name}
-                        </option>
-                      ))
-                  )}
-                </select>
-              </div>
-
-              {createTrack === "office_management" && (
-                <div className="space-y-2">
-                  <Label>Functional Areas</Label>
-                  <p className="text-xs text-muted-foreground">
-                    What parts of the business will this person work in?
-                  </p>
-                  <FunctionalAreaMatrix
-                    selectedAreas={newUserAreas}
-                    onChange={setNewUserAreas}
-                  />
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCreate}>Create User</Button>
-            </DialogFooter>
+            <EmployeeCreationWizard
+              onClose={() => setDialogOpen(false)}
+              onCreated={() => { setDialogOpen(false); loadUsers() }}
+            />
           </DialogContent>
         </Dialog>
       </div>

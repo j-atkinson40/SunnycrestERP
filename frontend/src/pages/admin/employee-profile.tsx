@@ -335,6 +335,26 @@ export default function AdminEmployeeProfile() {
         </div>
       </Card>
 
+      {/* Role & Permissions Card */}
+      {targetUser && (
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Role & Permissions</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium">
+              {targetUser.role_name || "No role"}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {targetUser.track === "production_delivery" ? "Production / Delivery" : "Office / Management"}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Permissions are managed through the role. Use <Link to="/admin/roles" className="text-blue-600 hover:underline">Role Management</Link> to view or adjust permissions, or add per-user exceptions via the API.
+          </p>
+        </Card>
+      )}
+
       <form onSubmit={handleSave} className="space-y-6">
         {/* Professional Info */}
         <Card className="p-6">

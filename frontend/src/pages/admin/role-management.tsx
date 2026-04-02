@@ -329,6 +329,34 @@ export default function RoleManagement() {
         )}
       </div>
 
+      {/* System roles overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {roles.filter((r) => r.is_system).map((role) => {
+          const icons: Record<string, string> = {
+            admin: "👑", manager: "🛡️", office_staff: "💼", accounting: "📊",
+            legacy_designer: "🎨", driver: "🚛", production: "🏭", employee: "👤",
+          }
+          const userCount = 0 // TODO: add user_count to role API response
+          return (
+            <div key={role.id} className="rounded-lg border bg-white p-3 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{icons[role.slug] || "⚙"}</span>
+                <span className="font-semibold text-sm">{role.name}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{role.description}</p>
+              <p className="text-[11px] text-muted-foreground/60">
+                {role.slug === "admin" ? "All permissions" : `${role.permission_keys?.length || 0} permissions`}
+                {userCount > 0 ? ` · ${userCount} employee${userCount !== 1 ? "s" : ""}` : ""}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        System roles cannot be modified. Use per-user exceptions for specific adjustments, or create a custom role below.
+      </p>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
