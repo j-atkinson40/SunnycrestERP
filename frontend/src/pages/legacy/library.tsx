@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Plus, Search, MoreHorizontal, Download, Mail, Eye, Pencil, FileText, ExternalLink } from "lucide-react"
+import { getPrintImageUrl } from "@/lib/legacy-print-images"
 
 interface LegacyProofSummary {
   id: string
@@ -243,7 +244,10 @@ export default function LegacyLibraryPage() {
           {items.map((item) => {
             const sb = STATUS_BADGES[item.status] || STATUS_BADGES.draft
             const actions = getQuickActions(item)
-            const hasProofImage = item.proof_url && !imgErrors.has(item.id)
+            // Prefer proof_url, fall back to Wilbert CDN preview, then placeholder
+            const proofSrc = (!imgErrors.has(item.id) && item.proof_url) || null
+            const fallbackSrc = (!imgErrors.has(item.id + "_fb") && getPrintImageUrl(item.print_name)) || null
+            const displaySrc = proofSrc || fallbackSrc
 
             return (
               <div
@@ -253,12 +257,20 @@ export default function LegacyLibraryPage() {
               >
                 {/* Image area with hover overlay */}
                 <div className="relative aspect-[16/4.5] bg-gray-100 overflow-hidden">
-                  {hasProofImage ? (
+                  {displaySrc ? (
                     <img
-                      src={item.proof_url!}
+                      src={displaySrc}
                       alt=""
                       className="w-full h-full object-cover"
-                      onError={() => setImgErrors((prev) => new Set(prev).add(item.id))}
+                      onError={() => {
+                        if (proofSrc) {
+                          // proof_url failed — try fallback next render
+                          setImgErrors((prev) => new Set(prev).add(item.id))
+                        } else {
+                          // fallback also failed — show placeholder
+                          setImgErrors((prev) => new Set(prev).add(item.id + "_fb"))
+                        }
+                      }}
                     />
                   ) : (
                     <div className="w-full h-full bg-gray-50 flex items-center justify-center">
