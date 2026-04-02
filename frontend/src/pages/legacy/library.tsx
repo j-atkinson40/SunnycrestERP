@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Search, MoreHorizontal, Download, Mail, Eye, Pencil, FileText, ExternalLink, Trash2 } from "lucide-react"
+import { Loader2, Plus, Search, MoreHorizontal, Download, Mail, Pencil, FileText, ExternalLink, Trash2 } from "lucide-react"
 import { getPrintImageUrl } from "@/lib/legacy-print-images"
 
 interface LegacyProofSummary {
