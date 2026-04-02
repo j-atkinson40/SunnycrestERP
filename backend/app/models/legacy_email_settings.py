@@ -41,6 +41,7 @@ class LegacyFHEmailConfig(Base):
     company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False)
     customer_id: Mapped[str] = mapped_column(String(36), ForeignKey("customers.id"), nullable=False)
     recipients: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="'[]'")
+    proof_contact_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True, server_default="'[]'")
     custom_subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
     custom_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

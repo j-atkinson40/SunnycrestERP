@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { RecordPaymentDialog } from "@/components/record-payment-dialog";
+import ContactListCRM from "@/components/crm/ContactList";
 
 function statusBadge(status: string) {
   switch (status) {
@@ -1611,6 +1612,18 @@ export default function CustomerDetailPage() {
           </div>
         )}
       </Card>
+
+      {/* CRM Contacts (from company_entities) */}
+      {customer.master_company_id && (
+        <Card className="p-6">
+          <ContactListCRM
+            masterCompanyId={customer.master_company_id}
+            companyName={customer.name}
+            allowEdit={canEdit}
+            compact
+          />
+        </Card>
+      )}
 
       {/* Activity Notes */}
       <Card className="p-6">

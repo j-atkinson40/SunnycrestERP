@@ -71,6 +71,7 @@ export interface Customer {
   tax_id: string | null;
   notes: string | null;
   sage_customer_id: string | null;
+  master_company_id: string | null;
   customer_type: string | null;
   classification_confidence: number | null;
   classification_method: string | null;

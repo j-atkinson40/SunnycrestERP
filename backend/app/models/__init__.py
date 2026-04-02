@@ -20,6 +20,7 @@ from app.models.company import Company
 from app.models.company_entity import CompanyEntity
 from app.models.company_migration_review import CompanyMigrationReview
 from app.models.company_module import CompanyModule
+from app.models.contact import Contact
 from app.models.cemetery import Cemetery
 from app.models.cemetery_directory import CemeteryDirectory
 from app.models.cemetery_directory_selection import CemeteryDirectorySelection
@@ -256,6 +257,7 @@ __all__ = [
     "Company",
     "CompanyEntity",
     "CompanyMigrationReview",
+    "Contact",
     "CompanyModule",
     "Cemetery",
     "Customer",

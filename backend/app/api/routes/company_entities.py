@@ -11,10 +11,12 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db
 from app.models.company_entity import CompanyEntity
 from app.models.company_migration_review import CompanyMigrationReview
+from app.models.contact import Contact
 from app.models.customer import Customer
 from app.models.vendor import Vendor
 from app.models.cemetery import Cemetery
 from app.models.user import User
+from app.services.crm import contact_service
 
 router = APIRouter()
 
@@ -439,3 +441,164 @@ def update_company(
     db.commit()
     db.refresh(entity)
     return _serialize(entity, db)
+
+
+# ── Contact endpoints ────────────────────────────────────────────────────────
+
+class ContactCreate(BaseModel):
+    name: str
+    title: str | None = None
+    phone: str | None = None
+    phone_ext: str | None = None
+    mobile: str | None = None
+    email: str | None = None
+    role: str | None = None
+    is_primary: bool = False
+    receives_invoices: bool = False
+    receives_legacy_proofs: bool = False
+    notes: str | None = None
+
+
+class ContactUpdate(BaseModel):
+    name: str | None = None
+    title: str | None = None
+    phone: str | None = None
+    phone_ext: str | None = None
+    mobile: str | None = None
+    email: str | None = None
+    role: str | None = None
+    is_primary: bool | None = None
+    receives_invoices: bool | None = None
+    receives_legacy_proofs: bool | None = None
+    notes: str | None = None
+
+
+def _serialize_contact(c: Contact) -> dict:
+    return {
+        "id": c.id,
+        "name": c.name,
+        "title": c.title,
+        "phone": c.phone,
+        "phone_ext": c.phone_ext,
+        "mobile": c.mobile,
+        "email": c.email,
+        "role": c.role,
+        "is_primary": c.is_primary,
+        "is_active": c.is_active,
+        "receives_invoices": c.receives_invoices,
+        "receives_legacy_proofs": c.receives_legacy_proofs,
+        "linked_user_id": c.linked_user_id,
+        "linked_auto": c.linked_auto,
+        "notes": c.notes,
+        "linked_user": None,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
+
+
+@router.get("/{entity_id}/contacts")
+def list_contacts(
+    entity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    result = contact_service.get_contacts(db, entity_id, current_user.company_id)
+    return {
+        "confirmed": [_serialize_contact(c) for c in result["confirmed"]],
+        "suggested": [_serialize_contact(c) for c in result["suggested"]],
+    }
+
+
+@router.post("/{entity_id}/contacts", status_code=201)
+def create_contact_endpoint(
+    entity_id: str,
+    data: ContactCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    contact = contact_service.create_contact(
+        db, entity_id, current_user.company_id,
+        data.model_dump(), created_by=current_user.id,
+    )
+    db.commit()
+    return _serialize_contact(contact)
+
+
+@router.patch("/{entity_id}/contacts/{contact_id}")
+def update_contact_endpoint(
+    entity_id: str,
+    contact_id: str,
+    data: ContactUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id,
+        Contact.master_company_id == entity_id,
+        Contact.company_id == current_user.company_id,
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    contact = contact_service.update_contact(db, contact, data.model_dump(exclude_unset=True))
+    db.commit()
+    return _serialize_contact(contact)
+
+
+@router.delete("/{entity_id}/contacts/{contact_id}")
+def delete_contact_endpoint(
+    entity_id: str,
+    contact_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id,
+        Contact.master_company_id == entity_id,
+        Contact.company_id == current_user.company_id,
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    contact_service.soft_delete_contact(db, contact)
+    db.commit()
+    return {"deleted": True}
+
+
+@router.post("/{entity_id}/contacts/{contact_id}/confirm")
+def confirm_contact_endpoint(
+    entity_id: str,
+    contact_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id,
+        Contact.master_company_id == entity_id,
+        Contact.company_id == current_user.company_id,
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    contact = contact_service.confirm_contact(db, contact)
+    db.commit()
+    return _serialize_contact(contact)
+
+
+@router.post("/{entity_id}/contacts/{contact_id}/dismiss")
+def dismiss_contact_endpoint(
+    entity_id: str,
+    contact_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id,
+        Contact.master_company_id == entity_id,
+        Contact.company_id == current_user.company_id,
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    contact_service.hard_delete_contact(db, contact)
+    db.commit()
+    return {"dismissed": True}
