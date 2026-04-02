@@ -35,6 +35,27 @@
     --chart-4: oklch(0.488 0.243 264.376);
     --chart-5: oklch(0.424 0.199 265.638);
     --radius: 0.625rem;
+
+    /* Semantic status colors */
+    --status-success: #16A34A;
+    --status-success-light: #DCFCE7;
+    --status-success-dark: #14532D;
+    --status-warning: #D97706;
+    --status-warning-light: #FEF3C7;
+    --status-warning-dark: #78350F;
+    --status-danger: #DC2626;
+    --status-danger-light: #FEE2E2;
+    --status-danger-dark: #7F1D1D;
+    --status-info: #0891B2;
+    --status-info-light: #CFFAFE;
+    --status-info-dark: #164E63;
+
+    /* Brand colors */
+    --brand-primary: #0D9488;
+    --brand-primary-hover: #0F766E;
+    --brand-primary-active: #115E59;
+    --brand-secondary: #1E3A5F;
+    --brand-secondary-light: #E1E8F0;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -119,6 +140,36 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+
+    /* Semantic status tokens */
+    --color-status-success: var(--status-success);
+    --color-status-success-light: var(--status-success-light);
+    --color-status-success-dark: var(--status-success-dark);
+    --color-status-warning: var(--status-warning);
+    --color-status-warning-light: var(--status-warning-light);
+    --color-status-warning-dark: var(--status-warning-dark);
+    --color-status-danger: var(--status-danger);
+    --color-status-danger-light: var(--status-danger-light);
+    --color-status-danger-dark: var(--status-danger-dark);
+    --color-status-info: var(--status-info);
+    --color-status-info-light: var(--status-info-light);
+    --color-status-info-dark: var(--status-info-dark);
+
+    /* Brand tokens */
+    --color-brand-primary: var(--brand-primary);
+    --color-brand-primary-hover: var(--brand-primary-hover);
+    --color-brand-primary-active: var(--brand-primary-active);
+    --color-brand-secondary: var(--brand-secondary);
+    --color-brand-secondary-light: var(--brand-secondary-light);
+
+    /* Typography tracking */
+    --tracking-tightest: -0.05em;
+    --tracking-tighter: -0.025em;
+    --tracking-tight: -0.015em;
+    --tracking-normal: 0em;
+    --tracking-wide: 0.025em;
+    --tracking-wider: 0.05em;
+    --tracking-widest: 0.1em;
 }
 
 @layer base {
@@ -131,4 +182,17 @@
   html {
     @apply font-sans;
     }
+
+  /* Typography: tight tracking on large headings, wide on uppercase labels */
+  h1, .text-4xl, .text-3xl {
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+  }
+  h2, .text-2xl {
+    letter-spacing: -0.015em;
+    line-height: 1.35;
+  }
+  .uppercase {
+    letter-spacing: 0.05em;
+  }
 }
