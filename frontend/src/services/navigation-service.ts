@@ -6,6 +6,7 @@ export interface NavItem {
   permission?: string;
   requiresModule?: string;
   functionalArea?: string; // employee must have this area assigned
+  adminOnly?: boolean; // only show for admin role
   children?: NavItem[]; // nested sub-items shown when parent is expanded
 }
 
@@ -47,22 +48,24 @@ export function getNavigation(
   permissions: Set<string>,
   tenantSettings?: Record<string, unknown>,
   functionalAreas?: Set<string>,
+  isAdmin?: boolean,
 ): NavigationConfig {
   const preset = vertical || "manufacturing";
   const settings = tenantSettings || {};
   const areas = functionalAreas || new Set<string>();
+  const admin = isAdmin ?? false;
 
   switch (preset) {
     case "manufacturing":
-      return getManufacturingNav(enabledModules, permissions, settings, areas);
+      return getManufacturingNav(enabledModules, permissions, settings, areas, admin);
     case "funeral_home":
-      return getFuneralHomeNav(enabledModules, permissions);
+      return getFuneralHomeNav(enabledModules, permissions, admin);
     case "cemetery":
-      return getCemeteryNav(enabledModules, permissions);
+      return getCemeteryNav(enabledModules, permissions, admin);
     case "crematory":
-      return getCrematoryNav(enabledModules, permissions);
+      return getCrematoryNav(enabledModules, permissions, admin);
     default:
-      return getManufacturingNav(enabledModules, permissions, settings, areas);
+      return getManufacturingNav(enabledModules, permissions, settings, areas, admin);
   }
 }
 
@@ -71,6 +74,7 @@ function getManufacturingNav(
   perms: Set<string>,
   settings: Record<string, unknown> = {},
   areas: Set<string> = new Set(),
+  isAdmin: boolean = false,
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
@@ -158,7 +162,7 @@ function getManufacturingNav(
 
   sections.push({
     title: "Operations",
-    items: filterByPermission(opsItems, modules, perms, areas),
+    items: filterByPermission(opsItems, modules, perms, areas, isAdmin),
   });
 
   // Compliance
@@ -198,6 +202,7 @@ function getManufacturingNav(
     modules,
     perms,
     areas,
+    isAdmin,
   );
   if (filteredCompliance.length > 0) {
     sections.push({ title: "Compliance", items: filteredCompliance });
@@ -211,13 +216,13 @@ function getManufacturingNav(
         label: "Proof Generator",
         href: "/legacy/generator",
         icon: "Wand2",
-        permission: "admin",
+        permission: "legacy_studio.create",
       },
       {
         label: "Library",
         href: "/legacy/library",
         icon: "Library",
-        permission: "admin",
+        permission: "legacy_studio.view",
       },
     ],
   });
@@ -289,6 +294,7 @@ function getManufacturingNav(
     modules,
     perms,
     areas,
+    isAdmin,
   );
   if (financeItems.length > 0) {
     sections.push({ title: "Finance", items: financeItems });
@@ -306,6 +312,8 @@ function getManufacturingNav(
     ],
     modules,
     perms,
+    undefined,
+    isAdmin,
   );
   if (teamItems.length > 0) {
     sections.push({ title: "Team", items: teamItems });
@@ -383,7 +391,7 @@ function getManufacturingNav(
           label: "Driver Portal Preview",
           href: "/settings/driver-portal-preview",
           icon: "Monitor",
-          permission: "admin",
+          adminOnly: true,
         },
         {
           label: "Seasonal Templates",
@@ -398,6 +406,8 @@ function getManufacturingNav(
       ],
       modules,
       perms,
+      undefined,
+      isAdmin,
     ),
   });
 
@@ -420,6 +430,7 @@ function getManufacturingNav(
 function getFuneralHomeNav(
   modules: Set<string>,
   perms: Set<string>,
+  isAdmin: boolean = false,
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
@@ -448,7 +459,7 @@ function getFuneralHomeNav(
   }
   sections.push({
     title: "Cases",
-    items: filterByPermission(caseItems, modules, perms),
+    items: filterByPermission(caseItems, modules, perms, undefined, isAdmin),
   });
 
   // Compliance
@@ -567,6 +578,7 @@ function getFuneralHomeNav(
 function getCemeteryNav(
   modules: Set<string>,
   perms: Set<string>,
+  _isAdmin: boolean = false,
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
@@ -640,6 +652,7 @@ function getCemeteryNav(
 function getCrematoryNav(
   modules: Set<string>,
   perms: Set<string>,
+  _isAdmin: boolean = false,
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
@@ -734,11 +747,17 @@ function getCrematoryNav(
 function filterByPermission(
   items: NavItem[],
   modules: Set<string>,
-  _perms: Set<string>,
+  perms: Set<string>,
   areas?: Set<string>,
+  isAdmin?: boolean,
 ): NavItem[] {
   return items.filter((item) => {
+    // Admin-only items
+    if (item.adminOnly && !isAdmin) return false;
+    // Module gating
     if (item.requiresModule && !modules.has(item.requiresModule)) return false;
+    // Permission gating (admins bypass)
+    if (item.permission && !isAdmin && !perms.has(item.permission)) return false;
     // Functional area filtering — only applied when areas are configured
     if (item.functionalArea && areas && areas.size > 0) {
       // full_admin bypasses area restrictions

@@ -1,7 +1,16 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.permissions import ACCOUNTING_DEFAULT_PERMISSIONS, EMPLOYEE_DEFAULT_PERMISSIONS, get_all_permission_keys
+from app.core.permissions import (
+    ACCOUNTING_DEFAULT_PERMISSIONS,
+    DRIVER_DEFAULT_PERMISSIONS,
+    EMPLOYEE_DEFAULT_PERMISSIONS,
+    LEGACY_DESIGNER_DEFAULT_PERMISSIONS,
+    MANAGER_DEFAULT_PERMISSIONS,
+    OFFICE_STAFF_DEFAULT_PERMISSIONS,
+    PRODUCTION_DEFAULT_PERMISSIONS,
+    get_all_permission_keys,
+)
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.user import User
@@ -10,44 +19,129 @@ from app.schemas.role import RoleCreate, RoleUpdate
 from app.services import audit_service
 
 
+# ── Role → Functional Area mapping ──────────────────────────────────────────
+
+ROLE_FUNCTIONAL_AREAS: dict[str, list[str]] = {
+    "admin": ["full_admin"],
+    "manager": ["full_admin"],
+    "office_staff": ["customer_management", "funeral_scheduling", "invoicing_ar"],
+    "driver": [],
+    "production": ["production_log", "safety_compliance"],
+    "legacy_designer": ["customer_management"],
+    "accounting": ["invoicing_ar", "customer_management"],
+    "employee": [],
+}
+
+# ── System role definitions ─────────────────────────────────────────────────
+
+_SYSTEM_ROLES = [
+    {
+        "name": "Admin",
+        "slug": "admin",
+        "description": "Full system access",
+        "permissions": [],  # Wildcard — handled by permission_service.py
+    },
+    {
+        "name": "Manager",
+        "slug": "manager",
+        "description": "Full access except billing settings and user deletion",
+        "permissions": MANAGER_DEFAULT_PERMISSIONS,
+    },
+    {
+        "name": "Office Staff",
+        "slug": "office_staff",
+        "description": "Order entry, billing, AR, scheduling, and Legacy Studio",
+        "permissions": OFFICE_STAFF_DEFAULT_PERMISSIONS,
+    },
+    {
+        "name": "Accounting",
+        "slug": "accounting",
+        "description": "Read access to financial and operational data",
+        "permissions": ACCOUNTING_DEFAULT_PERMISSIONS,
+    },
+    {
+        "name": "Legacy Designer",
+        "slug": "legacy_designer",
+        "description": "Full Legacy Studio access with order and customer view only",
+        "permissions": LEGACY_DESIGNER_DEFAULT_PERMISSIONS,
+    },
+    {
+        "name": "Driver",
+        "slug": "driver",
+        "description": "Driver portal and route management only",
+        "permissions": DRIVER_DEFAULT_PERMISSIONS,
+    },
+    {
+        "name": "Production",
+        "slug": "production",
+        "description": "Operations board, production logging, safety, and QC",
+        "permissions": PRODUCTION_DEFAULT_PERMISSIONS,
+    },
+    {
+        "name": "Employee",
+        "slug": "employee",
+        "description": "Basic employee access",
+        "permissions": EMPLOYEE_DEFAULT_PERMISSIONS,
+    },
+]
+
+
 def seed_default_roles(db: Session, company_id: str) -> tuple[Role, Role]:
-    """Create Admin, Employee, and Accounting system roles for a new company."""
-    admin_role = Role(
-        company_id=company_id,
-        name="Admin",
-        slug="admin",
-        description="Full system access",
-        is_system=True,
-    )
-    employee_role = Role(
-        company_id=company_id,
-        name="Employee",
-        slug="employee",
-        description="Basic employee access",
-        is_system=True,
-    )
-    accounting_role = Role(
-        company_id=company_id,
-        name="Accounting",
-        slug="accounting",
-        description="Read access to financial and operational data",
-        is_system=True,
-    )
-    db.add_all([admin_role, employee_role, accounting_role])
+    """Create all system roles for a new company.
+
+    Returns (admin_role, employee_role) for backward compatibility.
+    """
+    admin_role = None
+    employee_role = None
+
+    for role_def in _SYSTEM_ROLES:
+        # Skip if already exists for this company
+        existing = (
+            db.query(Role)
+            .filter(Role.company_id == company_id, Role.slug == role_def["slug"])
+            .first()
+        )
+        if existing:
+            if role_def["slug"] == "admin":
+                admin_role = existing
+            elif role_def["slug"] == "employee":
+                employee_role = existing
+            continue
+
+        role = Role(
+            company_id=company_id,
+            name=role_def["name"],
+            slug=role_def["slug"],
+            description=role_def["description"],
+            is_system=True,
+        )
+        db.add(role)
+        db.flush()
+
+        for perm_key in role_def["permissions"]:
+            db.add(RolePermission(role_id=role.id, permission_key=perm_key))
+
+        if role_def["slug"] == "admin":
+            admin_role = role
+        elif role_def["slug"] == "employee":
+            employee_role = role
+
     db.flush()
+    return admin_role, employee_role  # type: ignore[return-value]
 
-    # Employee gets default permissions
-    for perm_key in EMPLOYEE_DEFAULT_PERMISSIONS:
-        db.add(RolePermission(role_id=employee_role.id, permission_key=perm_key))
 
-    # Accounting gets broad read access
-    for perm_key in ACCOUNTING_DEFAULT_PERMISSIONS:
-        db.add(RolePermission(role_id=accounting_role.id, permission_key=perm_key))
+def sync_functional_areas_for_role(db: Session, user_id: str, role_slug: str) -> None:
+    """Set employee_profiles.functional_areas based on the role's default mapping."""
+    from app.models.employee_profile import EmployeeProfile
 
-    # Admin doesn't need explicit permissions — handled by wildcard logic
-
-    db.flush()
-    return admin_role, employee_role
+    areas = ROLE_FUNCTIONAL_AREAS.get(role_slug, [])
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
+    if profile:
+        profile.functional_areas = areas
+    else:
+        # Create profile if it doesn't exist
+        profile = EmployeeProfile(user_id=user_id, functional_areas=areas)
+        db.add(profile)
 
 
 def get_roles(db: Session, company_id: str) -> list[Role]:

@@ -55,6 +55,10 @@ PERMISSIONS: dict[str, list[str]] = {
     "pour_events": ["view", "create", "edit"],
     "mix_designs": ["view", "create", "edit", "delete"],
     "cure_schedules": ["view", "create", "edit", "delete"],
+    # ── New modules ──────────────────────────────────────────────────────────
+    "legacy_studio": ["view", "create", "edit", "approve", "send", "delete"],
+    "announcements": ["view", "create", "edit", "delete"],
+    "personalization": ["view", "create", "complete", "approve"],
 }
 
 
@@ -67,8 +71,16 @@ def get_all_permission_keys() -> list[str]:
     ]
 
 
-# Default permissions for seeded roles
-EMPLOYEE_DEFAULT_PERMISSIONS = ["dashboard.view", "delivery.view", "drivers.view", "routes.view", "safety.view", "work_orders.view"]
+# ── Default permissions for seeded system roles ──────────────────────────────
+
+EMPLOYEE_DEFAULT_PERMISSIONS = [
+    "dashboard.view",
+    "delivery.view",
+    "drivers.view",
+    "routes.view",
+    "safety.view",
+    "work_orders.view",
+]
 
 ACCOUNTING_DEFAULT_PERMISSIONS = [
     "dashboard.view",
@@ -93,4 +105,75 @@ ACCOUNTING_DEFAULT_PERMISSIONS = [
     "ar.create_invoice",
     "ar.record_payment",
     "ar.void",
+]
+
+# Manager — everything except user/role deletion
+MANAGER_DEFAULT_PERMISSIONS = [
+    k for k in get_all_permission_keys()
+    if k not in ("users.delete", "roles.delete")
+]
+
+OFFICE_STAFF_DEFAULT_PERMISSIONS = [
+    "dashboard.view",
+    "customers.view",
+    "customers.create",
+    "customers.edit",
+    "products.view",
+    "ar.view",
+    "ar.create_quote",
+    "ar.create_order",
+    "ar.create_invoice",
+    "ar.record_payment",
+    "delivery.view",
+    "drivers.view",
+    "routes.view",
+    "safety.view",
+    "announcements.view",
+    "announcements.create",
+    "legacy_studio.view",
+    "legacy_studio.create",
+    "legacy_studio.edit",
+    "inventory.view",
+    "equipment.view",
+    "work_orders.view",
+    "personalization.view",
+]
+
+DRIVER_DEFAULT_PERMISSIONS = [
+    "dashboard.view",
+    "delivery.view",
+    "routes.view",
+    "drivers.view",
+    "safety.view",
+]
+
+PRODUCTION_DEFAULT_PERMISSIONS = [
+    "dashboard.view",
+    "production_log.view",
+    "production_log.create",
+    "production_log.edit",
+    "work_orders.view",
+    "work_orders.create",
+    "qc.view",
+    "qc.create",
+    "safety.view",
+    "safety.create",
+    "equipment.view",
+    "inventory.view",
+    "announcements.view",
+    "personalization.view",
+]
+
+LEGACY_DESIGNER_DEFAULT_PERMISSIONS = [
+    "dashboard.view",
+    "legacy_studio.view",
+    "legacy_studio.create",
+    "legacy_studio.edit",
+    "legacy_studio.approve",
+    "legacy_studio.send",
+    "ar.view",
+    "customers.view",
+    "delivery.view",
+    "announcements.view",
+    "personalization.view",
 ]

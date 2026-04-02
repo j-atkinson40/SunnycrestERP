@@ -160,6 +160,13 @@ def create_user(
     db.add(user)
     db.flush()
 
+    # Sync functional areas based on role
+    from app.services.role_service import sync_functional_areas_for_role
+
+    role_obj = db.query(Role).filter(Role.id == role_id).first()
+    if role_obj:
+        sync_functional_areas_for_role(db, user.id, role_obj.slug)
+
     audit_service.log_action(
         db,
         company_id,
@@ -255,7 +262,7 @@ def update_user(
             user_id=actor_id, changes=changes,
         )
 
-        # Notify user if their role was changed
+        # Notify user if their role was changed and sync functional areas
         if "role_id" in changes:
             new_role = (
                 db.query(Role).filter(Role.id == user.role_id).first()
@@ -271,6 +278,10 @@ def update_user(
                 category="user",
                 actor_id=actor_id,
             )
+            # Sync functional areas to match new role
+            if new_role:
+                from app.services.role_service import sync_functional_areas_for_role
+                sync_functional_areas_for_role(db, user.id, new_role.slug)
 
         # Notify user if their account was reactivated
         if "is_active" in changes and changes["is_active"]["new"] is True:
