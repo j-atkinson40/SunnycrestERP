@@ -1,7 +1,7 @@
 // proof-generator.tsx — Standalone legacy proof generator
 // Route: /legacy/generator  and  /legacy/generator?legacyId={id}
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
-import { ChevronLeft, Loader2, Check, Download, Mail, ExternalLink } from "lucide-react"
+import { ChevronLeft, Loader2, Check, Download, ExternalLink } from "lucide-react"
 import LegacyCompositor from "@/components/legacy/LegacyCompositor"
 import type { LegacyLayout, GenerateResult } from "@/components/legacy/LegacyCompositor"
 
@@ -225,7 +225,7 @@ export default function ProofGeneratorPage() {
   }
 
   // Approve handler
-  async function handleApprove(layout: LegacyLayout, proofUrl: string, tifUrl: string) {
+  async function handleApprove(_layout: LegacyLayout, proofUrl: string, tifUrl: string) {
     if (legacyId) {
       await apiClient.post(`/legacy-studio/${legacyId}/approve`, {}).catch(() => {})
     }
