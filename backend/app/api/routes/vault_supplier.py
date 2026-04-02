@@ -151,6 +151,73 @@ def get_vault_inventory_status(
     }
 
 
+class QuickVendorCreate(BaseModel):
+    name: str
+    email: str | None = None
+    phone: str | None = None
+
+
+@router.post("/create-vendor")
+def create_vendor_for_supplier(
+    data: QuickVendorCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Quick-create a vendor during vault supplier onboarding.
+
+    Does not require the purchasing module — used when the company
+    hasn't enabled purchasing yet but needs to configure a vault supplier.
+    """
+    from app.models.vendor import Vendor
+
+    # Check if vendor with same name already exists for this company
+    existing = (
+        db.query(Vendor)
+        .filter(Vendor.company_id == current_user.company_id, Vendor.name == data.name)
+        .first()
+    )
+    if existing:
+        return {"id": existing.id, "name": existing.name}
+
+    vendor = Vendor(
+        id=str(uuid.uuid4()),
+        company_id=current_user.company_id,
+        name=data.name,
+        email=data.email,
+        phone=data.phone,
+        created_by=current_user.id,
+    )
+    db.add(vendor)
+    db.commit()
+    db.refresh(vendor)
+    return {"id": vendor.id, "name": vendor.name}
+
+
+@router.get("/search-vendors")
+def search_vendors_for_supplier(
+    q: str = "",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Search vendors without requiring the purchasing module."""
+    from app.models.vendor import Vendor
+
+    if len(q) < 2:
+        return []
+    query = (
+        db.query(Vendor)
+        .filter(
+            Vendor.company_id == current_user.company_id,
+            Vendor.is_active == True,
+            Vendor.name.ilike(f"%{q}%"),
+        )
+        .order_by(Vendor.name)
+        .limit(10)
+        .all()
+    )
+    return [{"id": v.id, "name": v.name} for v in query]
+
+
 @router.patch("/fulfillment-mode")
 def update_fulfillment_mode(
     data: dict,

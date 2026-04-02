@@ -65,8 +65,8 @@ export default function VaultSetupPage() {
       return;
     }
     try {
-      const r = await apiClient.get(`/vendors?search=${encodeURIComponent(q)}&limit=10`);
-      setVendors(r.data?.items || r.data || []);
+      const r = await apiClient.get(`/vault-supplier/search-vendors?q=${encodeURIComponent(q)}`);
+      setVendors(r.data || []);
     } catch {
       setVendors([]);
     }
@@ -76,7 +76,7 @@ export default function VaultSetupPage() {
     if (!newVendorName.trim()) { toast.error("Vendor name is required"); return }
     setCreatingVendor(true)
     try {
-      const res = await apiClient.post("/vendors", {
+      const res = await apiClient.post("/vault-supplier/create-vendor", {
         name: newVendorName.trim(),
         email: newVendorEmail.trim() || null,
         phone: newVendorPhone.trim() || null,
