@@ -48,16 +48,21 @@ type Phase = "setup" | "compositor" | "approved"
 const STANDARD_PRINT_CATEGORIES = [
   {
     category: "Religious & Spiritual",
-    prints: ["American Flag", "Crucifix — Bible", "Forever in God's Care — Cross",
-      "Forever in God's Care — Sunset", "Forever in Our Hearts — Cloud",
-      "Forever in Our Hearts — Sunset", "Going Home", "Irish Blessing",
-      "Jesus", "Jesus at Dawn", "Jewish", "Three Crosses"],
+    prints: ["American Flag", "Canadian Flag", "Cross — Gold", "Cross — Silver",
+      "Cross — White Horizontal", "Crucifix — Bible", "Forever in God's Care",
+      "Going Home", "Irish Blessing", "Irish Blessing — No Poem",
+      "Jesus", "Jesus at Dawn", "Jewish 1", "Jewish 2",
+      "Our Lady of Guadalupe", "Pieta",
+      "Stained Glass — Gold Marble", "Stained Glass — White Marble",
+      "Star of David — Gold", "Star of David — White", "Three Crosses"],
   },
   {
     category: "Nature & Landscapes",
-    prints: ["Autumn Lake", "Bridge 1", "Bridge 2", "Clouds", "Country Road",
-      "Dock", "Field and Barn", "Footprints", "Footprints with Poem",
-      "Lighthouse", "Red Barn", "Sunrise", "Sunset", "Tropical"],
+    prints: ["Autumn Lake", "Bridge 1", "Bridge 2", "Cardinal", "Clouds",
+      "Country Road", "Dock", "Footprints", "Footprints with Poem",
+      "Green Field & Barn", "Lighthouse", "Marble — Gold", "Marble — White",
+      "Red Barn", "Sunrise-Sunset", "Sunrise-Sunset 2",
+      "Tropical", "Whitetail Buck"],
   },
   {
     category: "Floral",
@@ -76,26 +81,20 @@ const STANDARD_PRINT_CATEGORIES = [
 const URN_PRINT_CATEGORIES = [
   {
     category: "Religious & Spiritual",
-    prints: ["U.S. Flag", "Crucifix on Bible", "Going Home", "Irish Blessing",
-      "Jesus", "Jesus at Dawn", "Jewish 1", "Jewish 2", "Three Crosses", "Pieta"],
+    prints: ["U.S. Flag", "Crucifix on Bible", "Forever in God's Care",
+      "Going Home", "Irish Blessing", "Jesus", "Three Crosses"],
   },
   {
     category: "Nature & Landscapes",
-    prints: ["Autumn Lake", "Bridge 1", "Bridge 2", "Cardinal", "Clouds",
-      "Country Road", "Dock", "Lighthouse", "Red Barn",
-      "Sunrise-Sunset 1", "Sunrise-Sunset 2", "Tropical Island", "Whitetail Buck"],
-  },
-  {
-    category: "Floral",
-    prints: ["Roses on Silk", "Red Roses"],
+    prints: ["Autumn Lake", "Barn", "Bridge 1", "Bridge 2", "Cardinal",
+      "Clouds", "Country Road", "Dock", "Footprints",
+      "Green Field & Barn", "Horses"],
   },
   {
     category: "Occupations & Hobbies",
-    prints: ["Combine", "Corn", "EMT", "Farm Field & Tractor",
-      "Father 1", "Father 2", "Firefighter", "Fisherman",
-      "Fisherman with Dog", "Golf Course", "Golfer", "Gone Fishing",
-      "Green Field & Barn", "Horses", "Mother 1", "Mother 2",
-      "Motorcycle", "Motorcycle 2", "Music", "Police", "School", "Tobacco Barn"],
+    prints: ["Combine", "Corn", "EMT", "Father 1", "Father 2",
+      "Firefighter", "Fisherman", "Fisherman with Dog",
+      "Golf Course", "Golfer", "Gone Fishing"],
   },
 ]
 

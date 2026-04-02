@@ -55,20 +55,24 @@ LEGACY_SERIES_PRINTS: list[dict] = [
     {
         "category": "Religious & Spiritual",
         "prints": [
-            "American Flag", "Crucifix — Bible",
-            "Forever in God's Care — Cross", "Forever in God's Care — Sunset",
-            "Forever in Our Hearts — Cloud", "Forever in Our Hearts — Sunset",
-            "Going Home", "Irish Blessing", "Jesus", "Jesus at Dawn",
-            "Jewish", "Three Crosses",
+            "American Flag", "Canadian Flag",
+            "Cross — Gold", "Cross — Silver", "Cross — White Horizontal",
+            "Crucifix — Bible", "Forever in God's Care",
+            "Going Home", "Irish Blessing", "Irish Blessing — No Poem",
+            "Jesus", "Jesus at Dawn", "Jewish 1", "Jewish 2",
+            "Our Lady of Guadalupe", "Pieta",
+            "Stained Glass — Gold Marble", "Stained Glass — White Marble",
+            "Star of David — Gold", "Star of David — White", "Three Crosses",
         ],
     },
     {
         "category": "Nature & Landscapes",
         "prints": [
-            "Autumn Lake", "Bridge 1", "Bridge 2", "Clouds",
-            "Country Road", "Dock", "Field and Barn", "Footprints",
-            "Footprints with Poem", "Lighthouse", "Red Barn",
-            "Sunrise", "Sunset", "Tropical",
+            "Autumn Lake", "Bridge 1", "Bridge 2", "Cardinal", "Clouds",
+            "Country Road", "Dock", "Footprints", "Footprints with Poem",
+            "Green Field & Barn", "Lighthouse", "Marble — Gold", "Marble — White",
+            "Red Barn", "Sunrise-Sunset", "Sunrise-Sunset 2",
+            "Tropical", "Whitetail Buck",
         ],
     },
     {
