@@ -25,6 +25,7 @@ interface LegacyProofSummary {
   family_approved: boolean
   version_count: number
   order_id: string | null
+  order_number: string | null
   created_at: string | null
 }
 
