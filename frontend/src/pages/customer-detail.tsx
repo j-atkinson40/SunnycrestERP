@@ -134,6 +134,9 @@ export default function CustomerDetailPage() {
   // Sage
   const [sageCustomerId, setSageCustomerId] = useState("");
 
+  // CRM link
+  const [masterCompanyId, setMasterCompanyId] = useState<string | null>(null);
+
   // Classification
   const [customerType, setCustomerType] = useState<string | null>(null);
   const [classificationConfidence, setClassificationConfidence] = useState<number | null>(null);
@@ -233,6 +236,7 @@ export default function CustomerDetailPage() {
       );
       setPaymentTerms(customer.payment_terms || "");
       setSageCustomerId(customer.sage_customer_id || "");
+      setMasterCompanyId(customer.master_company_id || null);
       setCustomerNotes(customer.notes || "");
       setCustomerType(customer.customer_type ?? null);
       setClassificationConfidence(customer.classification_confidence ?? null);
@@ -1614,11 +1618,11 @@ export default function CustomerDetailPage() {
       </Card>
 
       {/* CRM Contacts (from company_entities) */}
-      {customer.master_company_id && (
+      {masterCompanyId && (
         <Card className="p-6">
           <ContactListCRM
-            masterCompanyId={customer.master_company_id}
-            companyName={customer.name}
+            masterCompanyId={masterCompanyId}
+            companyName={name}
             allowEdit={canEdit}
             compact
           />

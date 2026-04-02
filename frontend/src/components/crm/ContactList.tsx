@@ -49,7 +49,7 @@ const ROLE_OPTIONS = [
 
 export default function ContactList({
   masterCompanyId,
-  companyName,
+  companyName: _companyName,
   allowEdit = true,
   compact = false,
   onContactSelect,
