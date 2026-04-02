@@ -88,18 +88,6 @@ export default function LegacyEmailSettingsTab() {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async function loadFHConfig(_customerId: string) {
-    try {
-      const r = await apiClient.get(`/legacy/fh-config/${_customerId}`)
-      setFhRecipients(r.data.recipients || [])
-      setFhSubject(r.data.custom_subject || "")
-      setFhNotes(r.data.custom_notes || "")
-    } catch {
-      setFhRecipients([])
-    }
-  }
-
   async function saveFHConfig() {
     if (!selectedFH) return
     try {
