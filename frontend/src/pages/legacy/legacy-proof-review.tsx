@@ -124,7 +124,7 @@ export default function LegacyProofReviewPage() {
     return res.data
   }
 
-  async function handleApprove(layout: LegacyLayout, proofUrl: string, tifUrl: string) {
+  async function handleApprove(layout: LegacyLayout, _proofUrl: string, _tifUrl: string) {
     if (!task || !orderId) return
     try {
       await apiClient.post(`/personalization/orders/${orderId}/personalization/tasks/${task.id}/complete`, {
@@ -225,7 +225,7 @@ export default function LegacyProofReviewPage() {
         <LegacyCompositor
           backgroundUrl={backgroundUrl}
           mode="manufacturer"
-          initialLayout={task.default_layout as LegacyLayout | undefined}
+          initialLayout={task.default_layout as unknown as LegacyLayout | undefined}
           name={task.inscription_name || ""}
           dates={task.inscription_dates || ""}
           additionalText={task.inscription_additional || ""}

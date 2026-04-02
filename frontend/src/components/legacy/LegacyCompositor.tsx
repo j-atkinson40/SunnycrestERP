@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Loader2, Plus, X, Check, RotateCcw } from "lucide-react"
+import { Plus, X, Check, RotateCcw } from "lucide-react"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
