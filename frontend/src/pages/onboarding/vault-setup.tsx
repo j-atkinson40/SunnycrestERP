@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { CheckCircle, Package, Shuffle, Warehouse } from "lucide-react";
+import { CheckCircle, Package, Plus, Shuffle, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import apiClient from "@/lib/api-client";
@@ -52,6 +52,11 @@ export default function VaultSetupPage() {
   const [deliverySchedule, setDeliverySchedule] = useState<DeliverySchedule>("on_demand");
   const [deliveryDays, setDeliveryDays] = useState<string[]>([]);
   const [vendors, setVendors] = useState<Array<{ id: string; name: string }>>([]);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newVendorName, setNewVendorName] = useState("");
+  const [newVendorEmail, setNewVendorEmail] = useState("");
+  const [newVendorPhone, setNewVendorPhone] = useState("");
+  const [creatingVendor, setCreatingVendor] = useState(false);
 
   const searchVendors = useCallback(async (q: string) => {
     setVendorSearch(q);
@@ -66,6 +71,31 @@ export default function VaultSetupPage() {
       setVendors([]);
     }
   }, []);
+
+  const handleCreateVendor = async () => {
+    if (!newVendorName.trim()) { toast.error("Vendor name is required"); return }
+    setCreatingVendor(true)
+    try {
+      const res = await apiClient.post("/vendors", {
+        name: newVendorName.trim(),
+        email: newVendorEmail.trim() || null,
+        phone: newVendorPhone.trim() || null,
+      })
+      const created = res.data
+      setVendorId(created.id)
+      setVendorSearch(created.name)
+      setVendors([])
+      setShowCreateForm(false)
+      setNewVendorName("")
+      setNewVendorEmail("")
+      setNewVendorPhone("")
+      toast.success(`Vendor "${created.name}" created`)
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to create vendor"))
+    } finally {
+      setCreatingVendor(false)
+    }
+  }
 
   const saveMode = async (m: FulfillmentMode) => {
     await apiClient.patch("/vault-supplier/fulfillment-mode", { vault_fulfillment_mode: m });
@@ -155,30 +185,101 @@ export default function VaultSetupPage() {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Supplier (vendor)</label>
-            <input
-              type="text"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Search vendors..."
-              value={vendorSearch}
-              onChange={(e) => searchVendors(e.target.value)}
-            />
-            {vendors.length > 0 && (
-              <div className="border rounded-md bg-background shadow-sm max-h-40 overflow-y-auto">
-                {vendors.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-                    onClick={() => {
-                      setVendorId(v.id);
-                      setVendorSearch(v.name);
-                      setVendors([]);
-                    }}
+            {!showCreateForm ? (
+              <>
+                <input
+                  type="text"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Search existing vendors or create new..."
+                  value={vendorSearch}
+                  onChange={(e) => searchVendors(e.target.value)}
+                />
+                {(vendors.length > 0 || vendorSearch.length >= 2) && (
+                  <div className="border rounded-md bg-background shadow-sm max-h-48 overflow-y-auto">
+                    {vendors.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                        onClick={() => {
+                          setVendorId(v.id);
+                          setVendorSearch(v.name);
+                          setVendors([]);
+                        }}
+                      >
+                        {v.name}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 border-t flex items-center gap-1.5"
+                      onClick={() => {
+                        setShowCreateForm(true);
+                        setNewVendorName(vendorSearch);
+                        setVendors([]);
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Create new vendor{vendorSearch ? `: "${vendorSearch}"` : ""}
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="border rounded-lg p-3 space-y-3 bg-gray-50">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">New vendor</p>
+                <div>
+                  <label className="text-xs text-gray-500">Name *</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border bg-white px-3 py-1.5 text-sm mt-0.5"
+                    value={newVendorName}
+                    onChange={(e) => setNewVendorName(e.target.value)}
+                    placeholder="e.g. Wilbert Vault Co."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">Email</label>
+                    <input
+                      type="email"
+                      className="w-full rounded-md border bg-white px-3 py-1.5 text-sm mt-0.5"
+                      value={newVendorEmail}
+                      onChange={(e) => setNewVendorEmail(e.target.value)}
+                      placeholder="orders@vendor.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Phone</label>
+                    <input
+                      type="text"
+                      className="w-full rounded-md border bg-white px-3 py-1.5 text-sm mt-0.5"
+                      value={newVendorPhone}
+                      onChange={(e) => setNewVendorPhone(e.target.value)}
+                      placeholder="(555) 123-4567"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setShowCreateForm(false); setNewVendorName(""); setNewVendorEmail(""); setNewVendorPhone("") }}
                   >
-                    {v.name}
-                  </button>
-                ))}
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleCreateVendor}
+                    disabled={creatingVendor || !newVendorName.trim()}
+                  >
+                    {creatingVendor ? "Creating..." : "Create vendor"}
+                  </Button>
+                </div>
               </div>
+            )}
+            {vendorId && !showCreateForm && (
+              <p className="text-xs text-green-600">Selected: {vendorSearch}</p>
             )}
           </div>
 
