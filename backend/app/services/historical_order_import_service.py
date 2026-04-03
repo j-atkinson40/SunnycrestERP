@@ -206,6 +206,22 @@ def _is_likely_cemetery(name: str) -> bool:
     if len(lower) < 4:
         return False
 
+    # Address detection — starts with a number followed by a street name
+    if re.match(r"^\d+\s", lower):
+        return False  # "123 Main St", "45 Oak Drive"
+
+    # Common street suffixes indicate an address, not a cemetery
+    street_suffixes = [" st", " street", " ave", " avenue", " blvd", " boulevard",
+                       " rd", " road", " dr", " drive", " ln", " lane", " ct", " court",
+                       " pl", " place", " way", " pkwy", " parkway", " hwy", " highway",
+                       " rt ", " route ", " rte "]
+    if any(s in lower for s in street_suffixes):
+        return False
+
+    # PO Box
+    if "po box" in lower or "p.o. box" in lower or "p o box" in lower:
+        return False
+
     # Default: assume it's a cemetery (most entries in the cemetery column are)
     return True
 
