@@ -1334,13 +1334,13 @@ def run_bulk_classification_endpoint(
     db: Session = Depends(get_db),
 ):
     """Run bulk classification on all unclassified companies. Returns stats."""
-    # Ensure ALL classification columns exist (r50 + name cleanup)
+    # Always ensure classification columns exist (idempotent)
     try:
-        db.execute(sa.text("SELECT classification_source, original_name FROM company_entities LIMIT 0"))
-    except Exception:
-        db.rollback()
         _ensure_classification_columns(db)
         db.commit()
+        db.expire_all()  # Clear ORM cache so it picks up new columns
+    except Exception:
+        db.rollback()
 
     try:
         result = classification_service.run_bulk_classification(db, current_user.company_id, use_google_places=False)
