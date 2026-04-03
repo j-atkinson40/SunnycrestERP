@@ -179,3 +179,4 @@ class Customer(Base):
         back_populates="customer",
         order_by="CustomerNote.created_at.desc()",
     )
+    company_entity = relationship("CompanyEntity", foreign_keys=[master_company_id])

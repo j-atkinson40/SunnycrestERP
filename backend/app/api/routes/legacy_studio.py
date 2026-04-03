@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user
 from app.database import get_db
@@ -61,7 +61,10 @@ class ApproveRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _serialize(lp: LegacyProof, db: Session) -> dict:
-    customer = db.query(Customer).filter(Customer.id == lp.customer_id).first() if lp.customer_id else None
+    from app.utils.company_name_resolver import resolve_customer_name
+    customer = db.query(Customer).options(
+        joinedload(Customer.company_entity)
+    ).filter(Customer.id == lp.customer_id).first() if lp.customer_id else None
     version_count = db.query(func.count(LegacyProofVersion.id)).filter(LegacyProofVersion.legacy_proof_id == lp.id).scalar() or 0
 
     # Resolve order number for order-linked proofs
@@ -81,7 +84,7 @@ def _serialize(lp: LegacyProof, db: Session) -> dict:
         "inscription_dates": lp.inscription_dates,
         "inscription_additional": lp.inscription_additional,
         "customer_id": lp.customer_id,
-        "customer_name": customer.name if customer else None,
+        "customer_name": resolve_customer_name(customer) if customer else None,
         "deceased_name": lp.deceased_name,
         "service_date": lp.service_date.isoformat() if lp.service_date else None,
         "status": lp.status,

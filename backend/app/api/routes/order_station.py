@@ -241,11 +241,14 @@ def order_station_activity(
         .limit(50)
         .all()
     )
+    from app.utils.company_name_resolver import resolve_customer_name, resolve_cemetery_name
     todays_orders = [
         {
             "id": o.id,
             "number": o.number,
-            "customer_name": o.ship_to_name or (o.customer.name if o.customer else ""),
+            "customer_name": o.ship_to_name or resolve_customer_name(o.customer),
+            "cemetery_name": resolve_cemetery_name(o.cemetery) if o.cemetery_id else None,
+            "cemetery_id": o.cemetery_id,
             "total": float(o.total),
             "status": o.status,
             "created_at": o.created_at.isoformat() if o.created_at else None,

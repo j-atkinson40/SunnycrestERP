@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models.order_personalization_photo import OrderPersonalizationPhoto
 from app.models.order_personalization_task import OrderPersonalizationTask
 from app.models.user import User
+from app.utils.company_name_resolver import resolve_customer_name as _resolve_customer
 
 router = APIRouter()
 
@@ -66,7 +67,7 @@ def get_personalization_queue(
             "task_id": task.id,
             "task_type": task.task_type,
             "order_id": order.id,
-            "funeral_home_name": customer.name if customer else "",
+            "funeral_home_name": _resolve_customer(customer),
             "vault_name": task.notes or "",
             "deceased_name": order.deceased_name or "",
             "service_date": order.scheduled_date.isoformat() if order.scheduled_date else None,

@@ -575,8 +575,28 @@ def list_companies(
     total = query.count()
     items = query.order_by(CompanyEntity.name).offset((page - 1) * per_page).limit(per_page).all()
 
+    # Batch-load last_activity_date for all items
+    from app.models.activity_log import ActivityLog
+    entity_ids = [e.id for e in items]
+    last_activities = {}
+    if entity_ids:
+        rows = (
+            db.query(ActivityLog.master_company_id, func.max(ActivityLog.created_at))
+            .filter(ActivityLog.master_company_id.in_(entity_ids))
+            .group_by(ActivityLog.master_company_id)
+            .all()
+        )
+        last_activities = {r[0]: r[1] for r in rows}
+
+    result_items = []
+    for e in items:
+        data = _serialize(e, db)
+        la = last_activities.get(e.id)
+        data["last_activity_date"] = la.isoformat() if la else None
+        result_items.append(data)
+
     return {
-        "items": [_serialize(e, db) for e in items],
+        "items": result_items,
         "total": total,
         "page": page,
         "pages": (total + per_page - 1) // per_page,
@@ -1710,3 +1730,191 @@ def revert_company_name_endpoint(
 
     db.commit()
     return result
+
+
+# ── Company detail tabs: invoices, bills, legacy proofs ──────────────────────
+
+
+@router.get("/{entity_id}/invoices")
+def get_company_invoices(
+    entity_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Invoices for a company entity (via linked customer)."""
+    from app.models.invoice import Invoice
+    from app.utils.company_name_resolver import resolve_customer_name
+
+    entity = _get_entity_or_404(db, entity_id, current_user.company_id)
+    customer = db.query(Customer).filter(Customer.master_company_id == entity.id).first()
+    if not customer:
+        return {"items": [], "total": 0, "page": 1, "pages": 0,
+                "total_outstanding": "0.00", "total_overdue": "0.00"}
+
+    query = db.query(Invoice).filter(
+        Invoice.customer_id == customer.id,
+        Invoice.company_id == current_user.company_id,
+    )
+    total = query.count()
+    invoices = query.order_by(Invoice.invoice_date.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+    from decimal import Decimal
+    total_outstanding = sum(
+        (i.balance_remaining or Decimal("0")) for i in
+        db.query(Invoice).filter(
+            Invoice.customer_id == customer.id,
+            Invoice.company_id == current_user.company_id,
+            Invoice.status.in_(["sent", "partial", "overdue"]),
+        ).all()
+    )
+
+    return {
+        "items": [
+            {
+                "id": i.id,
+                "number": i.number,
+                "invoice_date": i.invoice_date.isoformat() if i.invoice_date else None,
+                "due_date": i.due_date.isoformat() if i.due_date else None,
+                "total": str(i.total),
+                "balance_remaining": str(i.balance_remaining),
+                "status": i.status,
+                "deceased_name": i.deceased_name,
+            }
+            for i in invoices
+        ],
+        "total": total,
+        "page": page,
+        "pages": (total + per_page - 1) // per_page,
+        "total_outstanding": str(total_outstanding),
+    }
+
+
+@router.get("/{entity_id}/bills")
+def get_company_bills(
+    entity_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Vendor bills for a company entity (via linked vendor)."""
+    from app.models.vendor_bill import VendorBill
+
+    entity = _get_entity_or_404(db, entity_id, current_user.company_id)
+    vendor = db.query(Vendor).filter(Vendor.master_company_id == entity.id).first()
+    if not vendor:
+        return {"items": [], "total": 0, "page": 1, "pages": 0, "total_outstanding": "0.00"}
+
+    query = db.query(VendorBill).filter(
+        VendorBill.vendor_id == vendor.id,
+        VendorBill.company_id == current_user.company_id,
+    )
+    total = query.count()
+    bills = query.order_by(VendorBill.bill_date.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+    return {
+        "items": [
+            {
+                "id": b.id,
+                "number": b.bill_number,
+                "bill_date": b.bill_date.isoformat() if b.bill_date else None,
+                "due_date": b.due_date.isoformat() if b.due_date else None,
+                "total": str(b.total),
+                "balance_remaining": str(b.balance_remaining),
+                "status": b.status,
+            }
+            for b in bills
+        ],
+        "total": total,
+        "page": page,
+        "pages": (total + per_page - 1) // per_page,
+    }
+
+
+@router.get("/{entity_id}/legacy-proofs")
+def get_company_legacy_proofs(
+    entity_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Legacy proofs for a company entity (via linked customer)."""
+    from app.models.legacy_proof import LegacyProof
+
+    entity = _get_entity_or_404(db, entity_id, current_user.company_id)
+    customer = db.query(Customer).filter(Customer.master_company_id == entity.id).first()
+    if not customer:
+        return {"items": [], "total": 0, "page": 1, "pages": 0}
+
+    query = db.query(LegacyProof).filter(
+        LegacyProof.customer_id == customer.id,
+        LegacyProof.company_id == current_user.company_id,
+    )
+    total = query.count()
+    proofs = query.order_by(LegacyProof.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+    return {
+        "items": [
+            {
+                "id": p.id,
+                "print_name": p.print_name,
+                "inscription_name": p.inscription_name,
+                "deceased_name": p.deceased_name,
+                "status": p.status,
+                "proof_url": p.proof_url,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in proofs
+        ],
+        "total": total,
+        "page": page,
+        "pages": (total + per_page - 1) // per_page,
+    }
+
+
+@router.get("/{entity_id}/relationships")
+def get_company_relationships(
+    entity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cemetery relationship map — which cemeteries does this customer use?"""
+    from app.models.sales_order import SalesOrder
+    from app.utils.company_name_resolver import resolve_cemetery_name
+
+    entity = _get_entity_or_404(db, entity_id, current_user.company_id)
+    customer = db.query(Customer).filter(Customer.master_company_id == entity.id).first()
+    if not customer:
+        return {"cemeteries": []}
+
+    rows = (
+        db.query(
+            Cemetery,
+            func.count(SalesOrder.id).label("order_count"),
+            func.max(SalesOrder.service_date).label("last_service"),
+        )
+        .join(SalesOrder, SalesOrder.cemetery_id == Cemetery.id)
+        .filter(SalesOrder.customer_id == customer.id)
+        .group_by(Cemetery.id)
+        .order_by(func.count(SalesOrder.id).desc())
+        .limit(10)
+        .all()
+    )
+
+    return {
+        "cemeteries": [
+            {
+                "id": cem.id,
+                "name": resolve_cemetery_name(cem),
+                "city": cem.city,
+                "state": cem.state,
+                "order_count": count,
+                "last_service_date": last.isoformat() if last else None,
+                "company_entity_id": cem.master_company_id,
+            }
+            for cem, count, last in rows
+        ],
+    }

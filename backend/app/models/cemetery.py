@@ -95,3 +95,4 @@ class Cemetery(Base):
         cascade="all, delete-orphan",
     )
     billing_customer = relationship("Customer", foreign_keys=[customer_id])
+    company_entity = relationship("CompanyEntity", foreign_keys=[master_company_id])

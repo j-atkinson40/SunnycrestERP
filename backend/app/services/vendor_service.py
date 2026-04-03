@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.vendor import Vendor
 from app.models.vendor_contact import VendorContact
@@ -34,7 +34,14 @@ def get_vendors(
     vendor_status: str | None = None,
     include_inactive: bool = False,
 ) -> dict:
-    query = db.query(Vendor).filter(Vendor.company_id == company_id)
+    from app.models.company_entity import CompanyEntity
+
+    query = (
+        db.query(Vendor)
+        .outerjoin(CompanyEntity, Vendor.master_company_id == CompanyEntity.id)
+        .options(joinedload(Vendor.company_entity))
+        .filter(Vendor.company_id == company_id)
+    )
 
     if not include_inactive:
         query = query.filter(Vendor.is_active == True)  # noqa: E712
@@ -47,6 +54,7 @@ def get_vendors(
                 Vendor.account_number.ilike(pattern),
                 Vendor.email.ilike(pattern),
                 Vendor.contact_name.ilike(pattern),
+                CompanyEntity.name.ilike(pattern),
             )
         )
 

@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.cemetery import Cemetery
 from app.models.customer import Customer
@@ -57,11 +57,18 @@ def list_cemeteries(
     county: str | None = None,
     page: int = 1,
     per_page: int = 50,
+    include_inactive: bool = False,
 ) -> dict:
-    query = db.query(Cemetery).filter(
-        Cemetery.company_id == company_id,
-        Cemetery.is_active == True,  # noqa: E712
+    from app.models.company_entity import CompanyEntity
+
+    query = (
+        db.query(Cemetery)
+        .outerjoin(CompanyEntity, Cemetery.master_company_id == CompanyEntity.id)
+        .options(joinedload(Cemetery.company_entity))
+        .filter(Cemetery.company_id == company_id)
     )
+    if not include_inactive:
+        query = query.filter(Cemetery.is_active == True)  # noqa: E712
 
     if search:
         pattern = f"%{search}%"
@@ -70,6 +77,7 @@ def list_cemeteries(
                 Cemetery.name.ilike(pattern),
                 Cemetery.city.ilike(pattern),
                 Cemetery.county.ilike(pattern),
+                CompanyEntity.name.ilike(pattern),
             )
         )
 

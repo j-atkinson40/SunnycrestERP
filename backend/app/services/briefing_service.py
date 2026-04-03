@@ -202,11 +202,13 @@ def _build_funeral_scheduling_context(
         except Exception:
             pass
 
-        # CRM follow-up reminders
+        # CRM follow-up reminders — return detailed items with links
         overdue_followups = 0
         today_followups = 0
+        follow_up_items = []
         try:
             from app.models.activity_log import ActivityLog
+            from app.models.company_entity import CompanyEntity as _CE_fu
 
             overdue_followups = (
                 db.query(func.count(ActivityLog.id))
@@ -227,6 +229,31 @@ def _build_funeral_scheduling_context(
                 )
                 .scalar() or 0
             )
+
+            # Detailed items for briefing display (overdue + today, max 10)
+            fu_rows = (
+                db.query(ActivityLog, _CE_fu)
+                .join(_CE_fu, ActivityLog.master_company_id == _CE_fu.id)
+                .filter(
+                    ActivityLog.tenant_id == company_id,
+                    ActivityLog.follow_up_completed == False,
+                    ActivityLog.follow_up_date.isnot(None),
+                    ActivityLog.follow_up_date <= today,
+                )
+                .order_by(ActivityLog.follow_up_date.asc())
+                .limit(10)
+                .all()
+            )
+            for activity, entity in fu_rows:
+                follow_up_items.append({
+                    "activity_id": activity.id,
+                    "master_company_id": entity.id,
+                    "company_name": entity.name,
+                    "title": activity.title,
+                    "follow_up_date": activity.follow_up_date.isoformat() if activity.follow_up_date else None,
+                    "overdue": activity.follow_up_date < today if activity.follow_up_date else False,
+                    "action_url": f"/crm/companies/{entity.id}?tab=activity",
+                })
         except Exception:
             pass
 
@@ -274,6 +301,7 @@ def _build_funeral_scheduling_context(
             "legacy_proofs_approved_today": legacy_approved_today,
             "crm_overdue_followups": overdue_followups,
             "crm_today_followups": today_followups,
+            "crm_follow_up_items": follow_up_items,
             "crm_at_risk_accounts": at_risk_accounts,
         }
         return result

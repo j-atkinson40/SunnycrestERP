@@ -17,7 +17,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "legacy_fh_email_config",
-        sa.Column("proof_contact_ids", JSONB, server_default="'[]'", nullable=True),
+        sa.Column("proof_contact_ids", JSONB, server_default=sa.text("'[]'::jsonb"), nullable=True),
     )
 
 

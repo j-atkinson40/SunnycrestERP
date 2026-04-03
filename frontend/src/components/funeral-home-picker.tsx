@@ -81,9 +81,10 @@ export function FuneralHomePicker({
     debounceRef.current = setTimeout(() => search(q), 300);
   }
 
-  function selectCustomer(c: CustomerListItem) {
-    setQuery(c.name);
-    onChange(c.id, c.name);
+  function selectCustomer(c: CustomerListItem & { display_name?: string }) {
+    const displayName = c.display_name ?? c.name;
+    setQuery(displayName);
+    onChange(c.id, displayName);
     setOpen(false);
     setResults([]);
   }
@@ -176,7 +177,7 @@ export function FuneralHomePicker({
                 idx === activeIdx && "bg-blue-50",
               )}
             >
-              <span className="flex-1 truncate">{c.name}</span>
+              <span className="flex-1 truncate">{c.display_name ?? c.name}</span>
               {c.city && (
                 <span className="text-xs text-muted-foreground shrink-0">
                   {c.city}{c.state ? `, ${c.state}` : ""}

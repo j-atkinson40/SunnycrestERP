@@ -35,7 +35,8 @@ def log_system_event(
         master_company_id = row[0] if row and row[0] else None
 
     if not master_company_id:
-        return  # Not linked to company_entity yet — skip silently
+        logger.debug("Activity not logged — customer %s has no master_company_id", customer_id)
+        return
 
     try:
         entry = ActivityLog(

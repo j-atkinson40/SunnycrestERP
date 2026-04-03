@@ -192,21 +192,33 @@ def send_proof_email(
     if preview_only:
         return {"html": html}
 
-    # Determine recipients
+    # Determine recipients — try CRM contacts first, then legacy JSONB
     if recipient_override:
         recipients = recipient_override
     elif proof.customer_id:
-        fh_config = get_fh_email_config(db, company_id, proof.customer_id)
-        if fh_config and fh_config.recipients:
-            recipients = [r["email"] for r in fh_config.recipients if r.get("email")]
-        else:
+        recipients = []
+        # 1) CRM contacts with receives_legacy_proofs flag
+        customer_for_lookup = db.query(Customer).filter(Customer.id == proof.customer_id).first()
+        if customer_for_lookup and customer_for_lookup.master_company_id:
+            try:
+                from app.services.crm.contact_service import get_proof_recipients
+                recipients = get_proof_recipients(db, customer_for_lookup.master_company_id, company_id)
+            except Exception:
+                pass
+        # 2) Fallback to legacy FH email config JSONB
+        if not recipients:
+            fh_config = get_fh_email_config(db, company_id, proof.customer_id)
+            if fh_config and fh_config.recipients:
+                recipients = [r["email"] for r in fh_config.recipients if r.get("email")]
+        if not recipients:
             raise ValueError("No recipients configured for this funeral home")
     else:
         raise ValueError("No funeral home associated — specify recipients manually")
 
     # Resolve subject
+    from app.utils.company_name_resolver import resolve_customer_name
     customer = db.query(Customer).filter(Customer.id == proof.customer_id).first() if proof.customer_id else None
-    customer_name = customer.name if customer else ""
+    customer_name = resolve_customer_name(customer) if customer else ""
 
     subject = _substitute_vars(
         email_settings.proof_email_subject or "Legacy Proof — {name}",
@@ -246,5 +258,19 @@ def send_proof_email(
     if proof.status == "proof_generated":
         proof.status = "proof_sent"
     db.commit()
+
+    # CRM activity log
+    try:
+        from app.services.crm.activity_log_service import log_system_event
+        log_system_event(
+            db, company_id, None,
+            activity_type="legacy_proof",
+            title=f"Legacy proof sent — {proof.print_name}, RE: {proof.inscription_name or 'Unknown'}",
+            related_legacy_proof_id=proof.id,
+            customer_id=proof.customer_id,
+        )
+        db.commit()
+    except Exception:
+        pass
 
     return {"sent_to": recipients, "message_id": message_id}

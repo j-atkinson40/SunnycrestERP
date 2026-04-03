@@ -25,15 +25,17 @@ router = APIRouter()
 
 
 def _bill_to_list_item(bill) -> dict:
+    from app.utils.company_name_resolver import resolve_vendor_name
     data = VendorBillListItem.model_validate(bill).model_dump()
-    data["vendor_name"] = bill.vendor.name if bill.vendor else None
+    data["vendor_name"] = resolve_vendor_name(bill.vendor)
     data["balance_remaining"] = bill.balance_remaining
     return data
 
 
 def _bill_to_response(bill) -> dict:
+    from app.utils.company_name_resolver import resolve_vendor_name
     data = VendorBillResponse.model_validate(bill).model_dump()
-    data["vendor_name"] = bill.vendor.name if bill.vendor else None
+    data["vendor_name"] = resolve_vendor_name(bill.vendor)
     data["po_number"] = bill.purchase_order.number if bill.purchase_order else None
     data["balance_remaining"] = bill.balance_remaining
     if bill.approver:

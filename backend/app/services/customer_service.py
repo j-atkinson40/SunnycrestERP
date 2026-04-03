@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.balance_adjustment import BalanceAdjustment
 from app.models.customer import Customer
@@ -38,7 +38,14 @@ def get_customers(
     customer_type: str | None = None,
     include_hidden: bool = False,
 ) -> dict:
-    query = db.query(Customer).filter(Customer.company_id == company_id)
+    from app.models.company_entity import CompanyEntity
+
+    query = (
+        db.query(Customer)
+        .outerjoin(CompanyEntity, Customer.master_company_id == CompanyEntity.id)
+        .options(joinedload(Customer.company_entity))
+        .filter(Customer.company_id == company_id)
+    )
 
     if not include_inactive:
         query = query.filter(Customer.is_active == True)  # noqa: E712
@@ -54,6 +61,7 @@ def get_customers(
                 Customer.account_number.ilike(pattern),
                 Customer.email.ilike(pattern),
                 Customer.contact_name.ilike(pattern),
+                CompanyEntity.name.ilike(pattern),
             )
         )
 

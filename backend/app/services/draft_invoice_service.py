@@ -42,10 +42,21 @@ def _try_send_invoice_email(db: Session, inv: Invoice) -> None:
         from datetime import datetime, timezone
 
         customer = inv.customer
-        to_email = (customer.billing_email or customer.email) if customer else None
-        if not to_email:
+        # Try CRM contacts first, fallback to legacy customer email
+        to_emails = []
+        if customer and customer.master_company_id:
+            try:
+                from app.services.crm.contact_service import get_invoice_recipients
+                to_emails = get_invoice_recipients(db, customer.master_company_id, inv.company_id)
+            except Exception:
+                pass
+        if not to_emails:
+            fallback = (customer.billing_email or customer.email) if customer else None
+            to_emails = [fallback] if fallback else []
+        if not to_emails:
             logger.warning("Invoice %s: no email on customer — skipping email delivery", inv.number)
             return
+        to_email = to_emails[0]  # primary recipient for email_service API
 
         company = db.query(Company).filter(Company.id == inv.company_id).first()
         company_name = company.name if company else "Your supplier"
@@ -55,9 +66,10 @@ def _try_send_invoice_email(db: Session, inv: Invoice) -> None:
             logger.warning("Invoice %s: PDF generation unavailable — email not sent", inv.number)
             return
 
+        from app.utils.company_name_resolver import resolve_customer_name
         result = email_service.send_invoice_email(
             to_email=to_email,
-            to_name=customer.name if customer else "",
+            to_name=resolve_customer_name(customer),
             company_name=company_name,
             invoice_number=inv.number,
             invoice_date=inv.invoice_date.strftime("%B %d, %Y") if inv.invoice_date else "",
@@ -75,6 +87,19 @@ def _try_send_invoice_email(db: Session, inv: Invoice) -> None:
             inv.sent_to_email = to_email
             db.commit()
             logger.info("Invoice %s emailed to %s", inv.number, to_email)
+            # CRM activity log
+            try:
+                from app.services.crm.activity_log_service import log_system_event
+                log_system_event(
+                    db, inv.company_id, None,
+                    activity_type="invoice",
+                    title=f"Invoice #{inv.number} sent — ${inv.total:,.2f}",
+                    related_invoice_id=inv.id,
+                    customer_id=inv.customer_id,
+                )
+                db.commit()
+            except Exception:
+                pass
         else:
             logger.error("Invoice %s email delivery failed", inv.number)
     except Exception as exc:
@@ -218,7 +243,8 @@ def _generate_auto_confirm_mode(
             db.add(invoice)
             created_invoices.append(invoice)
 
-            customer_name = order.customer.name if order.customer else order.customer_id
+            from app.utils.company_name_resolver import resolve_customer_name as _rcn
+            customer_name = _rcn(order.customer) if order.customer else order.customer_id
             log_activity(
                 db, tenant_id,
                 action_type="draft_invoice_created",
@@ -323,7 +349,8 @@ def _generate_require_driver_mode(
             db.add(invoice)
             created_invoices.append(invoice)
 
-            customer_name = order.customer.name if order.customer else order.customer_id
+            from app.utils.company_name_resolver import resolve_customer_name as _rcn
+            customer_name = _rcn(order.customer) if order.customer else order.customer_id
             log_activity(
                 db, tenant_id,
                 action_type="draft_invoice_created",
@@ -384,10 +411,11 @@ def _generate_require_driver_mode(
 
 
 def _create_unconfirmed_alert(db, tenant_id, unconfirmed, today, create_alert):
+    from app.utils.company_name_resolver import resolve_customer_name
     count = len(unconfirmed)
     details = []
     for order in unconfirmed:
-        cust = order.customer.name if order.customer else "Unknown"
+        cust = resolve_customer_name(order.customer)
         dest = order.ship_to_name or order.ship_to_address or "—"
         details.append(f"  • {cust} — {dest}")
 
@@ -413,10 +441,11 @@ def _create_unconfirmed_alert(db, tenant_id, unconfirmed, today, create_alert):
 
 
 def _collect_customer_names(db, invoices, orders) -> list[str]:
+    from app.utils.company_name_resolver import resolve_customer_name
     names: list[str] = []
     for inv in invoices:
         order = next((o for o in orders if o.id == inv.sales_order_id), None)
-        name = order.customer.name if (order and order.customer) else "Unknown"
+        name = resolve_customer_name(order.customer) if (order and order.customer) else "Unknown"
         names.append(name)
     return names
 
@@ -445,12 +474,13 @@ def get_review_queue(db: Session, company_id: str) -> list[dict]:
         if inv.sales_order_id:
             order = db.query(SalesOrder).filter(SalesOrder.id == inv.sales_order_id).first()
 
+        from app.utils.company_name_resolver import resolve_customer_name
         customer_name = None
         ship_to = None
         if inv.customer:
-            customer_name = inv.customer.name
+            customer_name = resolve_customer_name(inv.customer)
         elif order and order.customer:
-            customer_name = order.customer.name
+            customer_name = resolve_customer_name(order.customer)
 
         if order:
             ship_to = order.ship_to_name or order.ship_to_address

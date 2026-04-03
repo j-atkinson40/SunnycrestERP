@@ -1079,6 +1079,20 @@ def create_customer_payment(
     )
     db.commit()
     db.refresh(payment)
+
+    # CRM activity log
+    try:
+        from app.services.crm.activity_log_service import log_system_event
+        log_system_event(
+            db, company_id, None,
+            activity_type="payment",
+            title=f"Payment received — ${data.total_amount:,.2f} ({data.payment_method or 'check'})",
+            customer_id=data.customer_id,
+        )
+        db.commit()
+    except Exception:
+        pass
+
     return payment
 
 
@@ -1096,9 +1110,11 @@ def get_ar_aging(
     if as_of_date is None:
         as_of_date = datetime.now(timezone.utc)
 
+    from app.utils.company_name_resolver import resolve_customer_name
+
     invoices = (
         db.query(Invoice)
-        .options(joinedload(Invoice.customer))
+        .options(joinedload(Invoice.customer).joinedload(Customer.company_entity))
         .filter(
             Invoice.company_id == company_id,
             Invoice.status.in_(["sent", "partial", "overdue"]),
@@ -1118,7 +1134,7 @@ def get_ar_aging(
         if cid not in customer_buckets:
             customer_buckets[cid] = {
                 "customer_id": cid,
-                "customer_name": inv.customer.name if inv.customer else "Unknown",
+                "customer_name": resolve_customer_name(inv.customer),
                 "account_number": (
                     inv.customer.account_number if inv.customer else None
                 ),

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.vendor import Vendor
 from app.models.vendor_bill import VendorBill
+from app.utils.company_name_resolver import resolve_vendor_name as _resolve_vendor
 
 
 def get_ap_aging(
@@ -21,7 +22,7 @@ def get_ap_aging(
 
     bills = (
         db.query(VendorBill)
-        .options(joinedload(VendorBill.vendor))
+        .options(joinedload(VendorBill.vendor).joinedload(Vendor.company_entity))
         .filter(
             VendorBill.company_id == company_id,
             VendorBill.deleted_at.is_(None),
@@ -42,7 +43,7 @@ def get_ap_aging(
         if vid not in vendor_buckets:
             vendor_buckets[vid] = {
                 "vendor_id": vid,
-                "vendor_name": bill.vendor.name if bill.vendor else "Unknown",
+                "vendor_name": _resolve_vendor(bill.vendor),
                 "current": zero,
                 "d1_30": zero,
                 "d31_60": zero,

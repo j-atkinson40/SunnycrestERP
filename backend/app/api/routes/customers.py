@@ -202,11 +202,14 @@ def list_customers(
         customer_type,
         include_hidden,
     )
+    from app.utils.company_name_resolver import resolve_customer_name
+    items = []
+    for c in result["items"]:
+        item = CustomerListItem.model_validate(c).model_dump()
+        item["display_name"] = resolve_customer_name(c)
+        items.append(item)
     return {
-        "items": [
-            CustomerListItem.model_validate(c).model_dump()
-            for c in result["items"]
-        ],
+        "items": items,
         "total": result["total"],
         "page": result["page"],
         "per_page": result["per_page"],

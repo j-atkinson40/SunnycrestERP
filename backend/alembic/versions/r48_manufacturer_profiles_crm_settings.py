@@ -37,7 +37,7 @@ def upgrade() -> None:
         sa.Column("avg_days_to_pay_prior", sa.Numeric(8, 2), nullable=True),
 
         sa.Column("health_score", sa.String(20), server_default="unknown"),
-        sa.Column("health_reasons", JSONB, server_default="'[]'"),
+        sa.Column("health_reasons", JSONB, server_default=sa.text("'[]'::jsonb")),
         sa.Column("health_last_calculated", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_briefed_at", sa.DateTime(timezone=True), nullable=True),
 

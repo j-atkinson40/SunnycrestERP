@@ -105,3 +105,4 @@ class Vendor(Base):
         back_populates="vendor",
         order_by="VendorNote.created_at.desc()",
     )
+    company_entity = relationship("CompanyEntity", foreign_keys=[master_company_id])

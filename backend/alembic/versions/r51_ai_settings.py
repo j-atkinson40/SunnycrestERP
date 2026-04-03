@@ -26,7 +26,7 @@ def upgrade() -> None:
         # Morning briefing
         sa.Column("briefing_narrative_enabled", sa.Boolean, server_default="true"),
         sa.Column("briefing_narrative_tone", sa.String(20), server_default="concise"),
-        sa.Column("briefing_narrative_sections", JSONB, server_default=f"'{_DEFAULT_SECTIONS}'"),
+        sa.Column("briefing_narrative_sections", JSONB, server_default=_DEFAULT_SECTIONS),
         sa.Column("weekly_summary_enabled", sa.Boolean, server_default="false"),
         sa.Column("weekly_summary_day", sa.String(10), server_default="monday"),
         sa.Column("weekly_summary_time", sa.String(5), server_default="07:00"),

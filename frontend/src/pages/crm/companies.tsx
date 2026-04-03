@@ -25,6 +25,7 @@ interface CompanySummary {
   linked_customer_id: string | null
   linked_vendor_id: string | null
   created_at: string | null
+  last_activity_date: string | null
 }
 
 const ROLE_FILTERS = [
@@ -286,7 +287,7 @@ export default function CompaniesListPage() {
                 <th className="px-4 py-3">Roles</th>
                 <th className="px-4 py-3 hidden md:table-cell">Location</th>
                 <th className="px-4 py-3 hidden lg:table-cell">Primary Contact</th>
-                <th className="px-4 py-3 hidden lg:table-cell">Created</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Last Activity</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -329,7 +330,7 @@ export default function CompaniesListPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-gray-400 text-xs">
-                      {timeAgo(item.created_at)}
+                      {item.last_activity_date ? timeAgo(item.last_activity_date) : timeAgo(item.created_at)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/crm/companies/${item.id}`) }}>

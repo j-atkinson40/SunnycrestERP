@@ -62,7 +62,7 @@ interface ActivityItem {
   created_at: string | null
 }
 
-type Tab = "overview" | "activity" | "orders" | "contacts"
+type Tab = "overview" | "activity" | "orders" | "contacts" | "invoices" | "bills" | "legacy"
 
 const ROLE_BADGES: Record<string, { label: string; className: string }> = {
   customer: { label: "Customer", className: "bg-blue-100 text-blue-700" },
@@ -204,6 +204,9 @@ export default function CompanyDetailPage() {
     { key: "activity", label: "Activity" },
   ]
   if (company.is_customer) tabs.push({ key: "orders", label: "Orders" })
+  if (company.is_customer) tabs.push({ key: "invoices", label: "Invoices" })
+  if (company.is_vendor) tabs.push({ key: "bills", label: "Bills" })
+  if (company.is_customer) tabs.push({ key: "legacy", label: "Legacy" })
   tabs.push({ key: "contacts", label: "Contacts" })
 
   return (
@@ -406,6 +409,21 @@ export default function CompanyDetailPage() {
             </div>
           )}
 
+          {/* ── Invoices Tab ─────────────────────────────────────── */}
+          {tab === "invoices" && company.is_customer && (
+            <CompanyInvoicesTab entityId={id!} />
+          )}
+
+          {/* ── Bills Tab ─────────────────────────────────────────── */}
+          {tab === "bills" && company.is_vendor && (
+            <CompanyBillsTab entityId={id!} />
+          )}
+
+          {/* ── Legacy Tab ────────────────────────────────────────── */}
+          {tab === "legacy" && company.is_customer && (
+            <CompanyLegacyTab entityId={id!} />
+          )}
+
           {/* ── Contacts Tab ───────────────────────────────────────── */}
           {tab === "contacts" && (
             <ContactList
@@ -491,6 +509,92 @@ export default function CompanyDetailPage() {
           </Card>
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// ── Inline tab components ──────────────────────────────────────────────────
+
+function CompanyInvoicesTab({ entityId }: { entityId: string }) {
+  const [data, setData] = useState<{ items: any[]; total: number; total_outstanding?: string } | null>(null)
+  const [page, setPage] = useState(1)
+  useEffect(() => {
+    apiClient.get(`/companies/${entityId}/invoices?page=${page}&per_page=20`).then(r => setData(r.data)).catch(() => {})
+  }, [entityId, page])
+  if (!data) return <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
+  if (data.total === 0) return <p className="text-sm text-gray-400 text-center py-8">No invoices found</p>
+  return (
+    <div className="space-y-3">
+      {data.total_outstanding && parseFloat(data.total_outstanding) > 0 && (
+        <div className="text-sm text-gray-600">Outstanding: <span className="font-medium">${parseFloat(data.total_outstanding).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+      )}
+      <div className="divide-y rounded-md border">
+        {data.items.map((inv: any) => (
+          <div key={inv.id} className="flex items-center justify-between px-3 py-2 text-sm">
+            <div>
+              <span className="font-medium">#{inv.number}</span>
+              {inv.deceased_name && <span className="ml-2 text-gray-500">{inv.deceased_name}</span>}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-gray-500">${parseFloat(inv.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <Badge className="text-xs" variant="outline">{inv.status}</Badge>
+            </div>
+          </div>
+        ))}
+      </div>
+      {data.total > 20 && (
+        <div className="flex justify-center gap-2 pt-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Prev</Button>
+          <span className="text-sm text-gray-500 self-center">Page {page}</span>
+          <Button variant="outline" size="sm" disabled={page * 20 >= data.total} onClick={() => setPage(p => p + 1)}>Next</Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CompanyBillsTab({ entityId }: { entityId: string }) {
+  const [data, setData] = useState<{ items: any[]; total: number } | null>(null)
+  useEffect(() => {
+    apiClient.get(`/companies/${entityId}/bills?per_page=20`).then(r => setData(r.data)).catch(() => {})
+  }, [entityId])
+  if (!data) return <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
+  if (data.total === 0) return <p className="text-sm text-gray-400 text-center py-8">No bills found</p>
+  return (
+    <div className="divide-y rounded-md border">
+      {data.items.map((b: any) => (
+        <div key={b.id} className="flex items-center justify-between px-3 py-2 text-sm">
+          <span className="font-medium">#{b.number}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-gray-500">${parseFloat(b.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            <Badge className="text-xs" variant="outline">{b.status}</Badge>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CompanyLegacyTab({ entityId }: { entityId: string }) {
+  const [data, setData] = useState<{ items: any[]; total: number } | null>(null)
+  useEffect(() => {
+    apiClient.get(`/companies/${entityId}/legacy-proofs?per_page=20`).then(r => setData(r.data)).catch(() => {})
+  }, [entityId])
+  if (!data) return <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
+  if (data.total === 0) return <p className="text-sm text-gray-400 text-center py-8">No legacy proofs found</p>
+  return (
+    <div className="divide-y rounded-md border">
+      {data.items.map((p: any) => (
+        <div key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+          {p.proof_url && <img src={p.proof_url} alt="" className="h-10 w-10 rounded object-cover bg-gray-100" />}
+          <div className="flex-1 min-w-0">
+            <p className="font-medium truncate">{p.print_name}</p>
+            <p className="text-xs text-gray-500">{p.inscription_name || p.deceased_name}</p>
+          </div>
+          <Badge className="text-xs" variant="outline">{p.status}</Badge>
+        </div>
+      ))}
     </div>
   )
 }

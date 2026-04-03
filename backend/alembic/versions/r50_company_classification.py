@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.add_column("company_entities", sa.Column("is_aggregate", sa.Boolean, server_default="false"))
     op.add_column("company_entities", sa.Column("classification_confidence", sa.Numeric(4, 3), nullable=True))
     op.add_column("company_entities", sa.Column("classification_source", sa.String(30), nullable=True))
-    op.add_column("company_entities", sa.Column("classification_reasons", JSONB, server_default="'[]'"))
+    op.add_column("company_entities", sa.Column("classification_reasons", JSONB, server_default=sa.text("'[]'::jsonb")))
     op.add_column("company_entities", sa.Column("classification_reviewed_by", sa.String(36), nullable=True))
     op.add_column("company_entities", sa.Column("classification_reviewed_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("company_entities", sa.Column("is_active_customer", sa.Boolean, server_default="false"))

@@ -42,7 +42,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("company_id", sa.String(36), sa.ForeignKey("companies.id"), nullable=False),
         sa.Column("customer_id", sa.String(36), sa.ForeignKey("customers.id"), nullable=False),
-        sa.Column("recipients", JSONB, nullable=False, server_default="'[]'"),
+        sa.Column("recipients", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
         sa.Column("custom_subject", sa.String(500), nullable=True),
         sa.Column("custom_notes", sa.Text, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),

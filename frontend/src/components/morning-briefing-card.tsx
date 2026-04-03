@@ -197,6 +197,7 @@ export function MorningBriefingCard() {
         crm_today_followups: 0,
         crm_overdue_followups: 0,
         crm_at_risk_accounts: [],
+        crm_follow_up_items: [],
       },
     }).then((r) => {
       const items = r.data.items || [];
