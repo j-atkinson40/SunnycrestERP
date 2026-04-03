@@ -43,7 +43,6 @@ export default function DataQualityPage() {
       // Fetch first page to get total
       const first = await apiClient.get("/ai/name-suggestions?status=pending&page=1&per_page=100")
       let items: NameSuggestion[] = first.data.items || []
-      const total = first.data.total || 0
       const pages = first.data.pages || 1
 
       // Fetch remaining pages if any
