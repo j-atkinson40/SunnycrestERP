@@ -240,6 +240,28 @@ export default function AiSettingsPage() {
         </Card>
       )}
 
+      {/* Run Agents */}
+      <Card className="p-5 space-y-3">
+        <h2 className="font-semibold text-base">Background Agents</h2>
+        <p className="text-xs text-gray-500">Run AI agents manually or view recent activity.</p>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={async () => {
+            toast.info("Running agents... this may take a minute.")
+            try {
+              const res = await apiClient.get("/ai/agents/run-nightly")
+              toast.success("Agents complete")
+              console.log("Agent results:", JSON.stringify(res.data, null, 2))
+              alert(JSON.stringify(res.data, null, 2))
+            } catch (err: unknown) {
+              const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+              toast.error(detail || "Agent run failed")
+            }
+          }}>
+            Run nightly agents now
+          </Button>
+        </div>
+      </Card>
+
       {/* Save */}
       {dirty && (
         <div className="sticky bottom-0 bg-white border-t py-4 -mx-6 px-6">
