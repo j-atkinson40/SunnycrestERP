@@ -158,11 +158,13 @@ def dropbox_callback(
     state: str = Query(""),
     db: Session = Depends(get_db),
 ):
+    from app.config import settings as app_settings
+    frontend = app_settings.FRONTEND_URL.rstrip("/")
     try:
         dropbox_handle_callback(db, code, state)
-        return RedirectResponse(url="/legacy/settings?dropbox=connected")
+        return RedirectResponse(url=f"{frontend}/legacy/settings?dropbox=connected")
     except Exception as e:
-        return RedirectResponse(url=f"/legacy/settings?dropbox=error&msg={e}")
+        return RedirectResponse(url=f"{frontend}/legacy/settings?dropbox=error&msg={e}")
 
 
 @router.delete("/auth/dropbox/disconnect")
@@ -195,11 +197,13 @@ def gdrive_callback(
     state: str = Query(""),
     db: Session = Depends(get_db),
 ):
+    from app.config import settings as app_settings
+    frontend = app_settings.FRONTEND_URL.rstrip("/")
     try:
         gdrive_handle_callback(db, code, state)
-        return RedirectResponse(url="/legacy/settings?gdrive=connected")
+        return RedirectResponse(url=f"{frontend}/legacy/settings?gdrive=connected")
     except Exception as e:
-        return RedirectResponse(url=f"/legacy/settings?gdrive=error&msg={e}")
+        return RedirectResponse(url=f"{frontend}/legacy/settings?gdrive=error&msg={e}")
 
 
 @router.delete("/auth/gdrive/disconnect")

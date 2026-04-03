@@ -12,6 +12,14 @@ from app.models.legacy_settings import LegacySettings, LegacyPrintShopContact
 logger = logging.getLogger(__name__)
 
 
+def _oauth_redirect_base(app_settings) -> str:
+    """Return the base URL for OAuth callbacks — must be the backend API URL."""
+    if app_settings.ENVIRONMENT == "production":
+        return f"https://api.{app_settings.PLATFORM_DOMAIN}"
+    # Dev/staging: backend runs on port 8000
+    return "http://localhost:8000"
+
+
 # ── Deadline calculation ─────────────────────────────────────────────────────
 
 def calculate_print_deadline(service_date: date, days_before: int = 1) -> dict:
@@ -76,7 +84,7 @@ def dropbox_get_auth_url(company_id: str) -> str:
     params = {
         "client_id": app_settings.DROPBOX_APP_KEY,
         "response_type": "code",
-        "redirect_uri": f"{app_settings.FRONTEND_URL.rstrip('/')}/api/v1/legacy/auth/dropbox/callback",
+        "redirect_uri": _oauth_redirect_base(app_settings) + "/api/v1/legacy/auth/dropbox/callback",
         "state": company_id,
         "token_access_type": "offline",
     }
@@ -93,7 +101,7 @@ def dropbox_handle_callback(db: Session, code: str, company_id: str) -> None:
         "grant_type": "authorization_code",
         "client_id": app_settings.DROPBOX_APP_KEY,
         "client_secret": app_settings.DROPBOX_APP_SECRET,
-        "redirect_uri": f"{app_settings.FRONTEND_URL.rstrip('/')}/api/v1/legacy/auth/dropbox/callback",
+        "redirect_uri": _oauth_redirect_base(app_settings) + "/api/v1/legacy/auth/dropbox/callback",
     })
     resp.raise_for_status()
     tokens = resp.json()
@@ -162,7 +170,7 @@ def gdrive_get_auth_url(company_id: str) -> str:
     from urllib.parse import urlencode
     params = {
         "client_id": app_settings.GDRIVE_CLIENT_ID,
-        "redirect_uri": f"{app_settings.FRONTEND_URL.rstrip('/')}/api/v1/legacy/auth/gdrive/callback",
+        "redirect_uri": _oauth_redirect_base(app_settings) + "/api/v1/legacy/auth/gdrive/callback",
         "response_type": "code",
         "scope": "https://www.googleapis.com/auth/drive.file",
         "access_type": "offline",
@@ -181,7 +189,7 @@ def gdrive_handle_callback(db: Session, code: str, company_id: str) -> None:
         "code": code,
         "client_id": app_settings.GDRIVE_CLIENT_ID,
         "client_secret": app_settings.GDRIVE_CLIENT_SECRET,
-        "redirect_uri": f"{app_settings.FRONTEND_URL.rstrip('/')}/api/v1/legacy/auth/gdrive/callback",
+        "redirect_uri": _oauth_redirect_base(app_settings) + "/api/v1/legacy/auth/gdrive/callback",
         "grant_type": "authorization_code",
     })
     resp.raise_for_status()
