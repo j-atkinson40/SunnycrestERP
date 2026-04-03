@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, time, timezone
 from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from app.models.behavioral_analytics import EntityBehavioralProfile
@@ -993,6 +993,10 @@ def run_import(
     enrich_counts = enrich_from_historical_orders(db, company_id, import_record)
 
     import_record.fh_cemetery_pairs_created = enrich_counts.get("pairs_created", 0)
+
+    # ── Sync to CRM: create company_entities + classify ──────────────────
+    crm_stats = _sync_to_crm(db, company_id)
+
     import_record.status = "complete"
     import_record.completed_at = datetime.now(timezone.utc)
     db.commit()
@@ -1006,9 +1010,98 @@ def run_import(
         "cemeteries_created": cemeteries_created,
         "cemeteries_matched": cemeteries_matched,
         "fh_cemetery_pairs": enrich_counts.get("pairs_created", 0),
+        "crm_entities_created": crm_stats.get("entities_created", 0),
+        "crm_classified": crm_stats.get("classified", 0),
         "recommended_templates": import_record.recommended_templates,
         "warnings": import_record.warnings,
     }
+
+
+# ---------------------------------------------------------------------------
+# CRM Sync — create company_entities + classify after import
+# ---------------------------------------------------------------------------
+
+
+def _sync_to_crm(db: Session, tenant_id: str) -> dict:
+    """Create company_entities for new customers/cemeteries and run classification."""
+    import uuid as _uuid
+    stats = {"entities_created": 0, "classified": 0}
+
+    try:
+        # Check if company_entities table exists
+        db.execute(text("SELECT 1 FROM company_entities LIMIT 0"))
+    except Exception:
+        db.rollback()
+        return stats  # CRM tables not created yet — skip silently
+
+    try:
+        from app.models.company_entity import CompanyEntity
+        from app.models.customer import Customer
+        from app.models.cemetery import Cemetery
+
+        # Create entities for customers without one
+        customers = db.query(Customer).filter(
+            Customer.company_id == tenant_id,
+            Customer.is_active == True,
+            Customer.master_company_id.is_(None),
+        ).all()
+
+        for c in customers:
+            eid = str(_uuid.uuid4())
+            is_fh = (getattr(c, "customer_type", None) or "").lower() in ("funeral_home", "funeral home")
+            entity = CompanyEntity(
+                id=eid, company_id=tenant_id, name=c.name,
+                phone=c.phone, email=c.email, website=c.website,
+                address_line1=c.address_line1, address_line2=c.address_line2,
+                city=c.city, state=c.state, zip=c.zip_code, country=c.country or "US",
+                is_customer=True, is_funeral_home=is_fh,
+            )
+            db.add(entity)
+            c.master_company_id = eid
+            stats["entities_created"] += 1
+
+        # Create entities for cemeteries without one
+        cemeteries = db.query(Cemetery).filter(
+            Cemetery.company_id == tenant_id,
+            Cemetery.is_active == True,
+            Cemetery.master_company_id.is_(None),
+        ).all()
+
+        for cem in cemeteries:
+            # Check if entity with same name already exists
+            existing = db.query(CompanyEntity).filter(
+                CompanyEntity.company_id == tenant_id,
+                CompanyEntity.name == cem.name,
+            ).first()
+            if existing:
+                existing.is_cemetery = True
+                cem.master_company_id = existing.id
+            else:
+                eid = str(_uuid.uuid4())
+                entity = CompanyEntity(
+                    id=eid, company_id=tenant_id, name=cem.name,
+                    phone=cem.phone, address_line1=getattr(cem, "address", None),
+                    city=cem.city, state=cem.state, zip=cem.zip_code,
+                    is_cemetery=True,
+                )
+                db.add(entity)
+                cem.master_company_id = eid
+                stats["entities_created"] += 1
+
+        db.flush()
+
+        # Run classification on new entities
+        try:
+            from app.services.crm.classification_service import run_bulk_classification
+            result = run_bulk_classification(db, tenant_id, use_google_places=False)
+            stats["classified"] = result.get("total_processed", 0)
+        except Exception:
+            logger.warning("CRM classification after import failed (non-fatal)", exc_info=True)
+
+    except Exception:
+        logger.warning("CRM sync after import failed (non-fatal)", exc_info=True)
+
+    return stats
 
 
 # ---------------------------------------------------------------------------
