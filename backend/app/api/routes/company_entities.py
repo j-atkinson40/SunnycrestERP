@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+import sqlalchemy as sa
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -204,8 +205,40 @@ def run_company_migration(
     Run this once after deploying the company_entities table.
     """
     import uuid as _uuid
+    import traceback
 
     tenant_id = current_user.company_id
+    stats = {"customers": 0, "vendors": 0, "cemeteries": 0, "skipped": 0}
+
+    try:
+        # Verify tables exist
+        db.execute(sa.text("SELECT 1 FROM company_entities LIMIT 0"))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"company_entities table not found. Run alembic migrations first. Error: {e}",
+        )
+
+    try:
+        # Check if master_company_id column exists on customers
+        db.execute(sa.text("SELECT master_company_id FROM customers LIMIT 0"))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"master_company_id column missing on customers. Run migration r44. Error: {e}",
+        )
+
+    try:
+        return _do_migration(db, tenant_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Migration error: {type(e).__name__}: {e}")
+
+
+def _do_migration(db: Session, tenant_id: str) -> dict:
+    import uuid as _uuid
     stats = {"customers": 0, "vendors": 0, "cemeteries": 0, "skipped": 0}
 
     # Migrate customers
