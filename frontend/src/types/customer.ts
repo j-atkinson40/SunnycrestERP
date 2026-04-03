@@ -115,6 +115,7 @@ export interface CustomerListItem {
   prefers_placer: boolean;
   preferred_confirmation_method: string | null;
   invoice_delivery_preference: string;
+  display_name?: string;
 }
 
 // ---------------------------------------------------------------------------

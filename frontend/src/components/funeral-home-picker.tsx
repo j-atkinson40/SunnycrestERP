@@ -81,7 +81,7 @@ export function FuneralHomePicker({
     debounceRef.current = setTimeout(() => search(q), 300);
   }
 
-  function selectCustomer(c: CustomerListItem & { display_name?: string }) {
+  function selectCustomer(c: CustomerListItem) {
     const displayName = c.display_name ?? c.name;
     setQuery(displayName);
     onChange(c.id, displayName);
