@@ -99,13 +99,7 @@ function getManufacturingNav(
       icon: "ClipboardList",
       permission: "orders.view",
     },
-    {
-      label: "Customers",
-      href: "/customers",
-      icon: "Users",
-      permission: "customers.view",
-      functionalArea: "customer_management",
-    },
+    // Customers moved to CRM → /crm/companies?role=customer
     {
       label: "Products",
       href: "/products",

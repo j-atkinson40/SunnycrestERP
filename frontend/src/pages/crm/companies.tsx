@@ -2,7 +2,7 @@
 // Route: /crm/companies
 
 import { useState, useEffect, useCallback } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -46,10 +46,11 @@ const ROLE_BADGES: Record<string, { label: string; className: string }> = {
 
 export default function CompaniesListPage() {
   const navigate = useNavigate()
+  const [urlParams] = useSearchParams()
   const [items, setItems] = useState<CompanySummary[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
-  const [roleFilter, setRoleFilter] = useState("")
+  const [roleFilter, setRoleFilter] = useState(urlParams.get("role") || "")
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
 

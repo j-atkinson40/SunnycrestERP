@@ -329,7 +329,7 @@ export default function App() {
                   >
                     <Route
                       path="/customers"
-                      element={<CustomersPage />}
+                      element={<Navigate to="/crm/companies?role=customer" replace />}
                     />
                     <Route
                       path="/customers/:customerId"
