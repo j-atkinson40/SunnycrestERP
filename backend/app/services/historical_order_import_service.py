@@ -1098,10 +1098,106 @@ def _sync_to_crm(db: Session, tenant_id: str) -> dict:
         except Exception:
             logger.warning("CRM classification after import failed (non-fatal)", exc_info=True)
 
+        # Populate manufacturer profiles with historical order stats
+        try:
+            stats["profiles_updated"] = _populate_profiles_from_history(db, tenant_id)
+        except Exception:
+            logger.warning("CRM profile population from history failed (non-fatal)", exc_info=True)
+
     except Exception:
         logger.warning("CRM sync after import failed (non-fatal)", exc_info=True)
 
     return stats
+
+
+def _populate_profiles_from_history(db: Session, tenant_id: str) -> int:
+    """Update ManufacturerCompanyProfile stats from historical_orders data."""
+    import uuid as _uuid
+    from decimal import Decimal
+
+    try:
+        db.execute(text("SELECT 1 FROM manufacturer_company_profiles LIMIT 0"))
+    except Exception:
+        db.rollback()
+        return 0
+
+    from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
+    from app.models.company_entity import CompanyEntity
+    from app.models.customer import Customer
+    from app.models.historical_order_import import HistoricalOrder
+
+    updated = 0
+
+    # Get all customer entities for this tenant
+    customer_entities = (
+        db.query(CompanyEntity)
+        .filter(CompanyEntity.company_id == tenant_id, CompanyEntity.is_customer == True)
+        .all()
+    )
+
+    for entity in customer_entities:
+        customer = db.query(Customer).filter(Customer.master_company_id == entity.id).first()
+        if not customer:
+            continue
+
+        # Get historical order stats
+        row = db.execute(text("""
+            SELECT
+                COUNT(*) as total_orders,
+                MIN(scheduled_date) as first_order,
+                MAX(scheduled_date) as last_order,
+                COUNT(DISTINCT raw_product) as product_count
+            FROM historical_orders
+            WHERE customer_id = :cid AND company_id = :tid
+        """), {"cid": customer.id, "tid": tenant_id}).fetchone()
+
+        if not row or row.total_orders == 0:
+            continue
+
+        # Get most common product
+        top_product = db.execute(text("""
+            SELECT raw_product, COUNT(*) as cnt
+            FROM historical_orders
+            WHERE customer_id = :cid AND company_id = :tid
+            AND raw_product IS NOT NULL
+            GROUP BY raw_product ORDER BY cnt DESC LIMIT 1
+        """), {"cid": customer.id, "tid": tenant_id}).fetchone()
+
+        # Ensure profile exists
+        profile = db.query(ManufacturerCompanyProfile).filter(
+            ManufacturerCompanyProfile.master_company_id == entity.id
+        ).first()
+        if not profile:
+            profile = ManufacturerCompanyProfile(
+                id=str(_uuid.uuid4()),
+                company_id=tenant_id,
+                master_company_id=entity.id,
+            )
+            db.add(profile)
+
+        # Update with historical data (don't overwrite if live data is newer)
+        if not profile.last_order_date or (row.last_order and row.last_order > (profile.last_order_date or row.last_order)):
+            profile.last_order_date = row.last_order
+
+        profile.order_count_all_time = max(profile.order_count_all_time or 0, row.total_orders)
+
+        if row.first_order:
+            entity.first_order_year = row.first_order.year
+
+        if top_product:
+            profile.most_ordered_vault_name = top_product.raw_product
+
+        # Set active status based on historical recency
+        if row.last_order:
+            from datetime import date as _date
+            days_since = (_date.today() - row.last_order).days
+            if days_since < 365:
+                entity.is_active_customer = True
+
+        updated += 1
+
+    db.flush()
+    return updated
 
 
 # ---------------------------------------------------------------------------

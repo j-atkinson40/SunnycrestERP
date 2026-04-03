@@ -72,6 +72,19 @@ def calculate_health_score(db: Session, master_company_id: str, tenant_id: str) 
             .scalar()
         )
 
+        # Also check historical orders for last order date
+        try:
+            hist_last = db.execute(text(
+                "SELECT MAX(scheduled_date) FROM historical_orders WHERE customer_id = :cid"
+            ), {"cid": customer_id}).scalar()
+            if hist_last:
+                from datetime import datetime as _dt
+                hist_dt = _dt.combine(hist_last, _dt.min.time()).replace(tzinfo=timezone.utc)
+                if not last_order_row or hist_dt > last_order_row:
+                    last_order_row = hist_dt
+        except Exception:
+            pass  # historical_orders table may not exist
+
         profile.order_count_12mo = order_count_12mo
         profile.total_revenue_12mo = total_revenue_12mo
         profile.last_order_date = last_order_row.date() if last_order_row else None
