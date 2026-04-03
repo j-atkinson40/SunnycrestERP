@@ -651,3 +651,81 @@ def get_agent_runs(
         ]
     except Exception:
         return []
+
+
+# ── Name Suggestions ─────────────────────────────────────────────────────────
+
+@router.get("/name-suggestions")
+def list_name_suggestions(status: str = "pending", page: int = 1, per_page: int = 20, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.models.ai_name_suggestion import AiNameSuggestion
+    from app.models.company_entity import CompanyEntity
+    try:
+        query = db.query(AiNameSuggestion, CompanyEntity).join(CompanyEntity, AiNameSuggestion.master_company_id == CompanyEntity.id).filter(AiNameSuggestion.tenant_id == current_user.company_id, AiNameSuggestion.status == status).order_by(AiNameSuggestion.confidence.desc())
+        total = query.count()
+        items = query.offset((page - 1) * per_page).limit(per_page).all()
+        return {"items": [{"id": s.id, "current_name": s.current_name, "suggested_name": s.suggested_name, "confidence": float(s.confidence) if s.confidence else None, "suggestion_source": s.suggestion_source, "suggested_phone": s.suggested_phone, "suggested_website": s.suggested_website, "suggested_address_line1": s.suggested_address_line1, "company_id": e.id, "customer_type": getattr(e, "customer_type", None), "city": e.city, "state": e.state} for s, e in items], "total": total, "page": page, "pages": (total + per_page - 1) // per_page}
+    except Exception:
+        db.rollback()
+        return {"items": [], "total": 0, "page": 1, "pages": 0}
+
+@router.get("/name-suggestions/summary")
+def name_suggestions_summary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        from app.models.ai_name_suggestion import AiNameSuggestion
+        return {"pending": db.query(AiNameSuggestion).filter(AiNameSuggestion.tenant_id == current_user.company_id, AiNameSuggestion.status == "pending").count()}
+    except Exception:
+        db.rollback()
+        return {"pending": 0}
+
+@router.post("/name-suggestions/{sid}/apply")
+def apply_name_suggestion(sid: str, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.models.ai_name_suggestion import AiNameSuggestion
+    from app.models.company_entity import CompanyEntity
+    s = db.query(AiNameSuggestion).filter(AiNameSuggestion.id == sid).first()
+    if not s: raise HTTPException(status_code=404, detail="Not found")
+    entity = db.query(CompanyEntity).filter(CompanyEntity.id == s.master_company_id).first()
+    if not entity: raise HTTPException(status_code=404, detail="Company not found")
+    new_name = data.get("name", s.suggested_name)
+    entity.name = new_name
+    if data.get("apply_address") and s.suggested_address_line1: entity.address_line1 = s.suggested_address_line1
+    if data.get("apply_phone") and s.suggested_phone and not entity.phone: entity.phone = s.suggested_phone
+    if data.get("apply_website") and s.suggested_website and not entity.website: entity.website = s.suggested_website
+    s.status = "applied"; s.reviewed_by = current_user.id; s.reviewed_at = datetime.now(timezone.utc); s.applied_name = new_name
+    db.commit()
+    return {"applied": True, "name": new_name}
+
+@router.post("/name-suggestions/{sid}/reject")
+def reject_name_suggestion(sid: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.models.ai_name_suggestion import AiNameSuggestion
+    s = db.query(AiNameSuggestion).filter(AiNameSuggestion.id == sid).first()
+    if not s: raise HTTPException(status_code=404, detail="Not found")
+    s.status = "rejected"; s.reviewed_by = current_user.id; s.reviewed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"rejected": True}
+
+@router.post("/name-suggestions/apply-bulk")
+def apply_bulk_suggestions(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.models.ai_name_suggestion import AiNameSuggestion
+    from app.models.company_entity import CompanyEntity
+    applied = 0
+    for sid in data.get("suggestion_ids", []):
+        s = db.query(AiNameSuggestion).filter(AiNameSuggestion.id == sid, AiNameSuggestion.status == "pending").first()
+        if s and s.suggested_name:
+            entity = db.query(CompanyEntity).filter(CompanyEntity.id == s.master_company_id).first()
+            if entity:
+                entity.name = s.suggested_name
+                if s.suggested_phone and not entity.phone: entity.phone = s.suggested_phone
+                if s.suggested_website and not entity.website: entity.website = s.suggested_website
+                s.status = "applied"; s.reviewed_by = current_user.id; s.reviewed_at = datetime.now(timezone.utc); s.applied_name = s.suggested_name
+                applied += 1
+    db.commit()
+    return {"applied": applied}
+
+@router.get("/name-enrichment/run")
+def run_name_enrichment_endpoint(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.services.ai.name_enrichment_agent import run_name_enrichment
+    try:
+        return run_name_enrichment(db, current_user.company_id)
+    except Exception as e:
+        db.rollback()
+        return {"error": True, "detail": str(e)}

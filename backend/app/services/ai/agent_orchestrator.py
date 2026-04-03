@@ -88,6 +88,7 @@ def run_nightly_agents(db: Session, tenant_id: str) -> dict:
         ("relationship_scoring", relationship_scoring_agent),
         ("upsell_detector", upsell_detector_agent),
         ("account_rescue", account_rescue_agent),
+        ("name_enrichment", _name_enrichment_wrapper),
     ]
 
     for name, func in agents:
@@ -126,6 +127,12 @@ def run_weekly_agents(db: Session, tenant_id: str) -> dict:
             _log_run(db, tenant_id, name, started, 0, None, str(e))
     db.commit()
     return results
+
+
+def _name_enrichment_wrapper(db: Session, tenant_id: str) -> dict:
+    """Wrapper for name enrichment agent."""
+    from app.services.ai.name_enrichment_agent import run_name_enrichment
+    return run_name_enrichment(db, tenant_id)
 
 
 # ── Individual Agents ────────────────────────────────────────────────────────

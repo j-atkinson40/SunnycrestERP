@@ -13,6 +13,7 @@ from app.models.assistant_profile import AssistantProfile
 from app.models.api_key import ApiKey
 from app.models.api_key_usage import ApiKeyUsage
 from app.models.activity_log import ActivityLog
+from app.models.ai_name_suggestion import AiNameSuggestion
 from app.models.ai_pattern_alert import AiPatternAlert
 from app.models.ai_settings import AiSettings, UserAiPreferences
 from app.models.audit_log import AuditLog
@@ -256,6 +257,7 @@ __all__ = [
     "ApiKey",
     "ApiKeyUsage",
     "ActivityLog",
+    "AiNameSuggestion",
     "AiPatternAlert",
     "AiSettings",
     "UserAiPreferences",
