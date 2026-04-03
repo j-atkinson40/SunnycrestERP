@@ -31,6 +31,33 @@ export default function AiSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [agentsRunning, setAgentsRunning] = useState(false)
+  const [agentResults, setAgentResults] = useState<Record<string, unknown> | null>(null)
+
+  function _formatAgentResult(name: string, result: Record<string, unknown>): string {
+    const p = result.processed as number | undefined
+    if (name === "duplicate_detection") return `${result.duplicates_found || 0} duplicates found`
+    if (name === "auto_enrichment") return `${result.enriched || 0} companies enriched`
+    if (name === "relationship_scoring") return `${result.scored || 0} scores calculated`
+    if (name === "upsell_detector") return `${result.insights_created || 0} opportunities`
+    if (name === "account_rescue") return `${result.drafts_created || 0} drafts generated`
+    return p ? `${p} processed` : "—"
+  }
+
+  async function handleRunAgents() {
+    setAgentsRunning(true)
+    setAgentResults(null)
+    try {
+      const res = await apiClient.get("/ai/agents/run-nightly")
+      setAgentResults(res.data)
+      toast.success("Agents complete")
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(detail || "Agent run failed")
+    } finally {
+      setAgentsRunning(false)
+    }
+  }
 
   useEffect(() => {
     apiClient.get("/settings/ai")
@@ -240,26 +267,66 @@ export default function AiSettingsPage() {
         </Card>
       )}
 
-      {/* Run Agents */}
-      <Card className="p-5 space-y-3">
-        <h2 className="font-semibold text-base">Background Agents</h2>
-        <p className="text-xs text-gray-500">Run AI agents manually or view recent activity.</p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={async () => {
-            toast.info("Running agents... this may take a minute.")
-            try {
-              const res = await apiClient.get("/ai/agents/run-nightly")
-              toast.success("Agents complete")
-              console.log("Agent results:", JSON.stringify(res.data, null, 2))
-              alert(JSON.stringify(res.data, null, 2))
-            } catch (err: unknown) {
-              const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-              toast.error(detail || "Agent run failed")
-            }
-          }}>
-            Run nightly agents now
+      {/* Background Agents */}
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-base">Background Agents</h2>
+            <p className="text-xs text-gray-500">AI agents run nightly to analyze your data. You can also trigger them manually.</p>
+          </div>
+          <Button variant="outline" size="sm" disabled={agentsRunning} onClick={handleRunAgents}>
+            {agentsRunning ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Running...</> : "Run agents now"}
           </Button>
         </div>
+
+        {/* Agent results */}
+        {agentResults && (
+          <div className="rounded-lg border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <tr>
+                  <th className="px-4 py-2 text-left">Agent</th>
+                  <th className="px-4 py-2 text-left">Status</th>
+                  <th className="px-4 py-2 text-right">Results</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {Object.entries(agentResults as Record<string, Record<string, unknown>>).map(([name, result]) => {
+                  const isError = !!result.error
+                  const isSkipped = !!result.skipped
+                  const labels: Record<string, string> = {
+                    duplicate_detection: "Duplicate Detection",
+                    auto_enrichment: "Auto-Enrichment",
+                    relationship_scoring: "Relationship Scoring",
+                    upsell_detector: "Upsell Detector",
+                    account_rescue: "Account Rescue",
+                  }
+                  const resultText = isError
+                    ? "Error"
+                    : isSkipped
+                    ? "Disabled"
+                    : _formatAgentResult(name, result)
+
+                  return (
+                    <tr key={name}>
+                      <td className="px-4 py-2.5 font-medium text-gray-800">{labels[name] || name}</td>
+                      <td className="px-4 py-2.5">
+                        {isError ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Error</span>
+                        ) : isSkipped ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">Disabled</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Complete</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-gray-600">{resultText}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       {/* Save */}
