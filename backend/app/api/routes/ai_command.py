@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -534,3 +535,46 @@ async def voice_command(
     # Reuse command bar logic with the transcript
     cmd_data = CommandRequest(query=transcript, context={"current_page": "voice"})
     return process_command(cmd_data, current_user, db)
+
+
+# ── Agent Management ─────────────────────────────────────────────────────────
+
+@router.get("/agents/run-nightly")
+def run_nightly_agents_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Manually trigger nightly AI agents for current tenant."""
+    from app.services.ai.agent_orchestrator import run_nightly_agents
+    try:
+        results = run_nightly_agents(db, current_user.company_id)
+        return results
+    except Exception as e:
+        return {"error": True, "detail": str(e)}
+
+
+@router.get("/agents/runs")
+def get_agent_runs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get recent agent run history."""
+    try:
+        rows = db.execute(text(
+            "SELECT agent_name, started_at, completed_at, status, records_processed, results_summary, error_message "
+            "FROM ai_agent_runs WHERE tenant_id = :tid ORDER BY started_at DESC LIMIT 20"
+        ), {"tid": current_user.company_id}).fetchall()
+        return [
+            {
+                "agent_name": r.agent_name,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "status": r.status,
+                "records_processed": r.records_processed,
+                "results_summary": r.results_summary,
+                "error_message": r.error_message,
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []

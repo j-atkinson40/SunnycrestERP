@@ -38,6 +38,11 @@ class ManufacturerCompanyProfile(Base):
     preferred_contact_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Relationship scoring
+    relationship_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    relationship_score_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    relationship_score_calculated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
