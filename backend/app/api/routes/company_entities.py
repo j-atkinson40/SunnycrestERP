@@ -1528,6 +1528,36 @@ def reclassify_bulk(
     return {"reclassified": updated}
 
 
+@router.post("/classify/delete-bulk")
+def delete_bulk(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete multiple company entities."""
+    company_ids = data.get("company_ids", [])
+    if not company_ids:
+        raise HTTPException(status_code=400, detail="No company IDs provided")
+
+    deleted = 0
+    for cid in company_ids:
+        entity = db.query(CompanyEntity).filter(
+            CompanyEntity.id == cid, CompanyEntity.company_id == current_user.company_id,
+        ).first()
+        if entity:
+            # Clear master_company_id on linked records before deleting
+            from app.models.contact import Contact
+            db.query(Customer).filter(Customer.master_company_id == cid).update({"master_company_id": None}, synchronize_session="fetch")
+            db.query(Vendor).filter(Vendor.master_company_id == cid).update({"master_company_id": None}, synchronize_session="fetch")
+            db.query(Cemetery).filter(Cemetery.master_company_id == cid).update({"master_company_id": None}, synchronize_session="fetch")
+            db.query(Contact).filter(Contact.master_company_id == cid).delete(synchronize_session="fetch")
+            db.delete(entity)
+            deleted += 1
+
+    db.commit()
+    return {"deleted": deleted}
+
+
 @router.post("/classify/confirm-all")
 def confirm_all_pending(
     current_user: User = Depends(get_current_user),

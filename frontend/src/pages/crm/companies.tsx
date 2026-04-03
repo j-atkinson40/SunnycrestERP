@@ -90,19 +90,25 @@ export default function CompaniesListPage() {
   }
 
   async function handleReclassify() {
-    if (selected.size === 0 || !reclassifyTo) { toast.error("Select companies and a type"); return }
+    if (selected.size === 0 || !reclassifyTo) { toast.error("Select companies and an action"); return }
     setReclassifying(true)
     try {
-      const res = await apiClient.post("/companies/classify/reclassify-bulk", {
-        company_ids: [...selected],
-        customer_type: reclassifyTo,
-      })
-      toast.success(`Reclassified ${res.data.reclassified} companies`)
+      if (reclassifyTo === "_delete") {
+        if (!window.confirm(`Delete ${selected.size} selected companies? This cannot be undone.`)) { setReclassifying(false); return }
+        const res = await apiClient.post("/companies/classify/delete-bulk", { company_ids: [...selected] })
+        toast.success(`Deleted ${res.data.deleted} companies`)
+      } else {
+        const res = await apiClient.post("/companies/classify/reclassify-bulk", {
+          company_ids: [...selected],
+          customer_type: reclassifyTo,
+        })
+        toast.success(`Reclassified ${res.data.reclassified} companies`)
+      }
       setSelected(new Set())
       setReclassifyMode(false)
       setReclassifyTo("")
       fetchData()
-    } catch { toast.error("Failed to reclassify") }
+    } catch { toast.error("Failed") }
     finally { setReclassifying(false) }
   }
 
@@ -175,11 +181,12 @@ export default function CompaniesListPage() {
                 onChange={(e) => setReclassifyTo(e.target.value)}
                 className="rounded-md border px-3 py-2 text-sm bg-background"
               >
-                <option value="">Reclassify as...</option>
+                <option value="">Action...</option>
                 {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                <option value="_delete" className="text-red-600">Delete</option>
               </select>
-              <Button onClick={handleReclassify} disabled={selected.size === 0 || !reclassifyTo || reclassifying}>
-                {reclassifying ? "..." : `Reclassify ${selected.size} selected`}
+              <Button onClick={handleReclassify} disabled={selected.size === 0 || !reclassifyTo || reclassifying} variant={reclassifyTo === "_delete" ? "destructive" : "default"}>
+                {reclassifying ? "..." : reclassifyTo === "_delete" ? `Delete ${selected.size} selected` : `Reclassify ${selected.size} selected`}
               </Button>
               <Button variant="ghost" onClick={() => { setReclassifyMode(false); setSelected(new Set()); setReclassifyTo("") }}>
                 Cancel
