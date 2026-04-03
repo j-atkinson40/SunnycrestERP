@@ -228,6 +228,7 @@ function getManufacturingNav(
       [
         { label: "Companies", href: "/crm/companies", icon: "Building2", permission: "customers.view" },
         { label: "Funeral Homes", href: "/crm/funeral-homes", icon: "Home", permission: "customers.view" },
+        { label: "Classification", href: "/admin/company-classification", icon: "Sparkles", adminOnly: true },
         { label: "Settings", href: "/crm/settings", icon: "Settings2", adminOnly: true },
       ],
       modules, perms, areas, isAdmin,
