@@ -27,6 +27,27 @@ router = APIRouter()
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
+def _ensure_classification_columns(db: Session) -> None:
+    """Add classification columns to company_entities if they don't exist."""
+    for col_sql in [
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS customer_type VARCHAR(50)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS contractor_type VARCHAR(50)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS is_aggregate BOOLEAN DEFAULT false",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_confidence DECIMAL(4,3)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_source VARCHAR(30)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_reasons JSONB DEFAULT '[]'",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_reviewed_by VARCHAR(36)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_reviewed_at TIMESTAMPTZ",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS is_active_customer BOOLEAN DEFAULT false",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS first_order_year INTEGER",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS google_places_id VARCHAR(200)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS google_places_type VARCHAR(100)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS original_name VARCHAR(500)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS name_cleanup_actions JSONB",
+    ]:
+        db.execute(sa.text(col_sql))
+
+
 class CompanyEntityCreate(BaseModel):
     name: str
     legal_name: str | None = None
@@ -1307,16 +1328,12 @@ def run_bulk_classification_endpoint(
     db: Session = Depends(get_db),
 ):
     """Run bulk classification on all unclassified companies. Returns stats."""
-    # Ensure classification columns exist
+    # Ensure ALL classification columns exist (r50 + name cleanup)
     try:
-        db.execute(sa.text("SELECT original_name FROM company_entities LIMIT 0"))
+        db.execute(sa.text("SELECT classification_source, original_name FROM company_entities LIMIT 0"))
     except Exception:
         db.rollback()
-        for col_sql in [
-            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS original_name VARCHAR(500)",
-            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS name_cleanup_actions JSONB",
-        ]:
-            db.execute(sa.text(col_sql))
+        _ensure_classification_columns(db)
         db.commit()
 
     try:
@@ -1342,7 +1359,8 @@ def get_review_queue(
         db.execute(sa.text("SELECT classification_source FROM company_entities LIMIT 0"))
     except Exception:
         db.rollback()
-        return {"items": [], "total": 0, "page": 1, "pages": 0, "message": "Classification columns not yet created. Run migration first."}
+        _ensure_classification_columns(db)
+        db.commit()
 
     query = db.query(CompanyEntity).filter(
         CompanyEntity.company_id == current_user.company_id,
