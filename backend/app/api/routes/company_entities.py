@@ -1307,8 +1307,24 @@ def run_bulk_classification_endpoint(
     db: Session = Depends(get_db),
 ):
     """Run bulk classification on all unclassified companies. Returns stats."""
-    result = classification_service.run_bulk_classification(db, current_user.company_id, use_google_places=False)
-    return result
+    # Ensure classification columns exist
+    try:
+        db.execute(sa.text("SELECT original_name FROM company_entities LIMIT 0"))
+    except Exception:
+        db.rollback()
+        for col_sql in [
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS original_name VARCHAR(500)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS name_cleanup_actions JSONB",
+        ]:
+            db.execute(sa.text(col_sql))
+        db.commit()
+
+    try:
+        result = classification_service.run_bulk_classification(db, current_user.company_id, use_google_places=False)
+        return result
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Classification error: {type(e).__name__}: {e}")
 
 
 @router.get("/classify/review-queue")
