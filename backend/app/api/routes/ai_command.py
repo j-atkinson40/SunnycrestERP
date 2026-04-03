@@ -714,15 +714,17 @@ def apply_bulk_suggestions(data: dict, current_user: User = Depends(get_current_
     from app.models.ai_name_suggestion import AiNameSuggestion
     from app.models.company_entity import CompanyEntity
     applied = 0
+    name_overrides = data.get("name_overrides", {})  # {suggestion_id: edited_name}
     for sid in data.get("suggestion_ids", []):
         s = db.query(AiNameSuggestion).filter(AiNameSuggestion.id == sid, AiNameSuggestion.status == "pending").first()
         if s and s.suggested_name:
             entity = db.query(CompanyEntity).filter(CompanyEntity.id == s.master_company_id).first()
             if entity:
-                entity.name = s.suggested_name
+                final_name = name_overrides.get(sid, s.suggested_name)
+                entity.name = final_name
                 if s.suggested_phone and not entity.phone: entity.phone = s.suggested_phone
                 if s.suggested_website and not entity.website: entity.website = s.suggested_website
-                s.status = "applied"; s.reviewed_by = current_user.id; s.reviewed_at = datetime.now(timezone.utc); s.applied_name = s.suggested_name
+                s.status = "applied"; s.reviewed_by = current_user.id; s.reviewed_at = datetime.now(timezone.utc); s.applied_name = final_name
                 applied += 1
     db.commit()
     return {"applied": applied}
