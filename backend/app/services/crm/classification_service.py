@@ -136,6 +136,77 @@ def revert_company_name(db: Session, company_entity_id: str) -> dict:
     return {"reverted": True, "name": entity.name, "was": reverted_from}
 
 
+# Words that indicate a business, not an individual
+BUSINESS_INDICATORS = {
+    "inc", "llc", "ltd", "corp", "co", "company", "companies", "group", "assoc",
+    "association", "associates", "services", "service", "supply", "supplies",
+    "sons", "brothers", "bros", "enterprises", "enterprise", "industries",
+    "contracting", "construction", "excavating", "plumbing", "electric",
+    "funeral", "mortuary", "cemetery", "church", "school", "fire", "town",
+    "county", "city", "village", "state", "dept", "department", "district",
+    "authority", "commission", "board", "agency", "foundation", "institute",
+    "hospital", "clinic", "realty", "properties", "property", "management",
+    "trucking", "transport", "paving", "roofing", "heating", "cooling",
+    "hvac", "auto", "garage", "shop", "store", "market", "farm", "dairy",
+    "nursery", "landscaping", "tree", "lawn", "masonry", "concrete",
+    "steel", "iron", "lumber", "building", "builders", "homes", "housing",
+    "development", "developers", "engineering", "engineers", "design",
+    "consulting", "consultants", "solutions", "systems", "technology",
+    "electric", "electrical", "mechanical", "welding", "fabrication",
+    "rental", "rentals", "equipment", "oil", "gas", "energy", "power",
+    "vault", "precast", "monument", "memorial", "wilbert",
+    "dba", "pllc", "pc", "llp", "lp", "na",
+}
+
+
+def _looks_like_individual(name_lower: str) -> bool:
+    """Check if a name looks like a person rather than a business."""
+    # Remove common punctuation for analysis
+    clean = re.sub(r"[.,\-'()]", " ", name_lower).strip()
+    words = clean.split()
+
+    if not words:
+        return False
+
+    # If any word is a business indicator, it's not an individual
+    for w in words:
+        if w in BUSINESS_INDICATORS:
+            return False
+
+    # Also check the original name for any keyword from NAME_SIGNALS
+    for keywords in NAME_SIGNALS.values():
+        for kw in keywords:
+            if kw in name_lower:
+                return False
+
+    # Patterns that suggest a personal name:
+    # 1. Two or three short words (first + last, or first + middle + last)
+    # 2. Words with initials like "J.J." or "E."
+    # 3. No numbers in the name
+
+    if re.search(r"\d", clean):
+        return False  # Has numbers — probably an address or business
+
+    if len(words) > 4:
+        return False  # Too many words for a personal name
+
+    if len(words) < 2:
+        return False  # Single word — ambiguous, don't auto-classify
+
+    # Count how many words look like name parts (short, capitalized, or initials)
+    name_like = 0
+    for w in words:
+        # Initials: "j", "jj", "e" (single/double letters)
+        if len(w) <= 2:
+            name_like += 1
+        # Normal name word (no special characters, reasonable length)
+        elif len(w) <= 15 and w.isalpha():
+            name_like += 1
+
+    # If all words look like name parts, it's likely an individual
+    return name_like == len(words) and len(words) >= 2
+
+
 def classify_company(db: Session, company_entity_id: str, use_google_places: bool = False) -> dict:
     """Classify a single company using name analysis, order history, and optionally AI + Google."""
     entity = db.query(CompanyEntity).filter(CompanyEntity.id == company_entity_id).first()
@@ -172,6 +243,14 @@ def classify_company(db: Session, company_entity_id: str, use_google_places: boo
         entity.name = cleanup_result["cleaned"]
         entity.name_cleanup_actions = cleanup_result["actions"]
         name_lower = entity.name.lower().strip()
+
+    # ── Check for individual (personal name, not a business) ──────────────
+    if _looks_like_individual(name_lower):
+        entity.customer_type = "individual"
+        entity.classification_source = "auto_high"
+        entity.classification_confidence = Decimal("0.880")
+        entity.classification_reasons = ["Name appears to be a person, not a business"]
+        return {"status": "classified", "customer_type": "individual", "confidence": 0.88, "reasons": ["Name appears to be a person, not a business"]}
 
     # ── Signal 1: Name analysis ──────────────────────────────────────────
     name_matches = {}
