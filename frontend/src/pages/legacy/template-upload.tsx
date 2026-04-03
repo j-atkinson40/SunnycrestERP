@@ -30,6 +30,7 @@ export default function TemplateUploadPage() {
   const [statuses, setStatuses] = useState<TemplateStatus[]>([])
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [results, setResults] = useState<UploadResult[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -72,6 +73,19 @@ export default function TemplateUploadPage() {
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ""
+    }
+  }
+
+  async function handleGenerateThumbnails() {
+    setGenerating(true)
+    try {
+      const apiType = templateType.startsWith("bv_") ? templateType.replace("bv_", "") : templateType
+      const res = await apiClient.post(`/legacy/admin/generate-thumbnails?type=${apiType}`, {}, { timeout: 300000 })
+      toast.success(`Generated ${res.data.generated} thumbnails (${res.data.skipped} already cached, ${res.data.errors} errors)`)
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Failed to generate thumbnails")
+    } finally {
+      setGenerating(false)
     }
   }
 
@@ -135,6 +149,17 @@ export default function TemplateUploadPage() {
             <p className="text-xs text-gray-400">Select all {TYPE_LABELS[templateType]} blank templates at once</p>
           </div>
         )}
+      </div>
+
+      {/* Generate thumbnails */}
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+        <div>
+          <p className="text-sm font-medium">Generate preview thumbnails</p>
+          <p className="text-xs text-gray-500">Creates cached JPEG previews from uploaded TIF files for the proof generator</p>
+        </div>
+        <Button variant="outline" size="sm" disabled={generating} onClick={handleGenerateThumbnails}>
+          {generating ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Generating...</> : "Generate thumbnails"}
+        </Button>
       </div>
 
       {/* Upload results */}

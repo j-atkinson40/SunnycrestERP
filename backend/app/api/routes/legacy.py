@@ -368,3 +368,42 @@ def template_upload_status(
             "in_r2": in_r2,
         })
     return results
+
+
+@router.post("/admin/generate-thumbnails")
+def generate_all_thumbnails(
+    type: str = Query("standard", regex="^(standard|urn)$"),
+    current_user: User = Depends(require_admin),
+):
+    """Pre-generate cached JPEG thumbnails for all templates that have TIFs in R2."""
+    from app.services import legacy_r2_client as r2
+    from app.services import legacy_compositor as compositor
+    from app.services.legacy_templates import get_all_templates
+
+    is_urn = type == "urn"
+    templates = get_all_templates(is_urn)
+    generated = 0
+    skipped = 0
+    errors = 0
+
+    for t in templates:
+        cache_key = t["cache_key"]
+        # Skip if already cached
+        if r2.exists(cache_key):
+            skipped += 1
+            continue
+        # Skip if TIF doesn't exist
+        if not r2.exists(t["r2_key"]):
+            skipped += 1
+            continue
+        try:
+            tif_bytes = r2.download_bytes(t["r2_key"])
+            jpeg_bytes = compositor.flatten_tif_to_jpeg(tif_bytes)
+            r2.upload_bytes(jpeg_bytes, cache_key, "image/jpeg")
+            generated += 1
+            logger.info("Generated thumbnail for %s", t["print_name"])
+        except Exception as e:
+            errors += 1
+            logger.warning("Failed to generate thumbnail for %s: %s", t["print_name"], e)
+
+    return {"generated": generated, "skipped": skipped, "errors": errors, "total": len(templates)}
