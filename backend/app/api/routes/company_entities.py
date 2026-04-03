@@ -1520,8 +1520,22 @@ def fix_role_flags(
         ).update(flags, synchronize_session="fetch")
         stats[ctype] = n
 
-    # Step 3: Keep is_customer=true on all (they're all customers from migration)
-    # No change needed — is_customer was set during migration and shouldn't be touched
+    # Step 3: Deactivate records with closed/inactive markers in name
+    inactive_keywords = ["do not use", "don't use", "dont use", "inactive", "closed",
+                         "out of business", "deceased", "no longer", "duplicate",
+                         "delete", "removed", "old account", "test account"]
+    deactivated = 0
+    active_records = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == tid,
+        CompanyEntity.is_active == True,
+    ).all()
+    for entity in active_records:
+        name_lower = (entity.name or "").lower()
+        if any(kw in name_lower for kw in inactive_keywords):
+            entity.is_active = False
+            entity.classification_reasons = [f"Deactivated: name contains inactive marker"]
+            deactivated += 1
+    stats["deactivated"] = deactivated
 
     db.commit()
     return stats

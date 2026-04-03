@@ -34,7 +34,8 @@ AGGREGATE_PATTERNS = ["cod_precast", "cash", "misc", "miscellaneous", "walk-in",
 
 # Old/inactive account indicators — these records should be deactivated
 INACTIVE_PATTERNS = ["do not use", "don't use", "dont use", "inactive", "closed", "out of business",
-                     "deceased", "no longer", "duplicate", "delete", "removed", "old account", "test account"]
+                     "deceased", "no longer", "duplicate", "delete", "removed", "old account", "test account",
+                     "*closed*", "✱closed✱", "×closed×", "xClosedx", "-closed-", "(closed)", "[closed]"]
 
 GOOGLE_TYPE_MAP = {
     "funeral_home": "funeral_home", "cemetery": "cemetery",
