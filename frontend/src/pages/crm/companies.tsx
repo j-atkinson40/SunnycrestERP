@@ -150,9 +150,23 @@ export default function CompaniesListPage() {
             {search || roleFilter ? "No companies match your filters" : "No companies yet"}
           </p>
           {!search && !roleFilter && (
+            <>
             <p className="text-xs text-gray-400 mb-4">
               Your customers, vendors, and cemeteries will appear here automatically.
             </p>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const res = await apiClient.get("/companies/run-migration")
+                  toast.success(`Migrated ${res.data.total_entities} companies (${res.data.customers} customers, ${res.data.vendors} vendors, ${res.data.cemeteries} cemeteries)`)
+                  fetchData()
+                } catch { toast.error("Migration failed") }
+              }}
+            >
+              Import existing customers, vendors & cemeteries
+            </Button>
+            </>
           )}
           {(search || roleFilter) && (
             <Button variant="outline" size="sm" onClick={() => { setSearch(""); setRoleFilter("") }}>
