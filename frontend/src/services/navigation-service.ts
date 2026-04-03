@@ -218,6 +218,12 @@ function getManufacturingNav(
         icon: "Library",
         permission: "legacy_studio.view",
       },
+      {
+        label: "Settings",
+        href: "/legacy/settings",
+        icon: "Settings",
+        permission: "legacy_studio.create",
+      },
     ],
   });
 
