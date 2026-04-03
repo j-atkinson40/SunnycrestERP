@@ -193,7 +193,7 @@ def _ensure_role_records(db: Session, entity: CompanyEntity, company_id: str) ->
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
-@router.post("/run-migration")
+@router.get("/run-migration")
 def run_company_migration(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
