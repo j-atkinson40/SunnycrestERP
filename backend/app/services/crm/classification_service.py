@@ -21,12 +21,16 @@ NAME_SIGNALS = {
     "cemetery": ["cemetery", "memorial garden", "memorial park", "mausoleum", "burial ground", "holy cross", "sacred heart", "calvary", "grove", "lawn"],
     "contractor": ["excavat", "septic", "plumbing", "plumber", "construction", "contracting", "contractor", "backhoe", "site work", "grading", "landscap", "environmental", "well & septic", "drain", "sewer", "utility", "earthwork", "digging", "underground"],
     "crematory": ["cremator", "cremation", "cremains"],
-    "licensee": ["burial vault", "concrete product", "precast", "vault co", "monument"],
+    "licensee": ["burial vault", "concrete product", "precast", "vault co", "monument", "wilbert", "vault company", "vault works"],
     "church": ["church", "parish", "cathedral", "diocese"],
     "government": ["town of", "county of", "city of", "village of", "state of", "department of", "dept of", "municipality"],
 }
 
 AGGREGATE_PATTERNS = ["cod_precast", "cash", "misc", "miscellaneous", "walk-in", "walkin", "counter sale"]
+
+# Old/inactive account indicators — these records should be deactivated
+INACTIVE_PATTERNS = ["do not use", "don't use", "dont use", "inactive", "closed", "out of business",
+                     "deceased", "no longer", "duplicate", "delete", "removed", "old account", "test account"]
 
 GOOGLE_TYPE_MAP = {
     "funeral_home": "funeral_home", "cemetery": "cemetery",
@@ -55,6 +59,16 @@ def classify_company(db: Session, company_entity_id: str, use_google_places: boo
         entity.classification_confidence = Decimal("1.000")
         entity.classification_reasons = ["Aggregate/cash sales record"]
         return {"status": "aggregate"}
+
+    # Check for old/inactive accounts — deactivate them
+    if any(p in name_lower for p in INACTIVE_PATTERNS):
+        matched = [p for p in INACTIVE_PATTERNS if p in name_lower]
+        entity.is_active = False
+        entity.customer_type = None
+        entity.classification_source = "auto_high"
+        entity.classification_confidence = Decimal("1.000")
+        entity.classification_reasons = [f"Old/inactive account: name contains '{matched[0]}'"]
+        return {"status": "deactivated", "reason": f"Inactive pattern: {matched[0]}"}
 
     # ── Signal 1: Name analysis ──────────────────────────────────────────
     name_matches = {}
@@ -189,17 +203,17 @@ def _rule_based_classify(name_matches: dict, order_data: dict, domain_signals: d
         confidence = 0.85
         reasons.append(f"Name contains: {', '.join(name_matches['licensee'])}")
     else:
-        # No name match — use order data if available
+        # No name match — default to contractor (most common non-FH type)
         total = order_data.get("total_orders", 0)
+        customer_type = "contractor"
         if total > 0:
-            customer_type = "contractor"
             contractor_type = "general"
-            confidence = 0.50
-            reasons.append(f"{total} orders, no clear name signal")
+            confidence = 0.55
+            reasons.append(f"{total} orders, no clear name signal — defaulting to contractor")
         else:
-            customer_type = "other"
-            confidence = 0.30
-            reasons.append("No name signal, no order history")
+            contractor_type = "occasional"
+            confidence = 0.40
+            reasons.append("No name signal, no order history — defaulting to contractor for review")
 
     # Domain boost
     for dtype, matched in domain_signals.items():
