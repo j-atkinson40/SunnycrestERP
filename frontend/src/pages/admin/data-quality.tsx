@@ -6,7 +6,6 @@ import { Link } from "react-router-dom"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Check, X, MapPin, Phone, Globe } from "lucide-react"
 
@@ -169,9 +168,9 @@ export default function DataQualityPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1">
-                            {s.suggested_address_line1 && <MapPin className="h-3.5 w-3.5 text-gray-400" title={s.suggested_address_line1} />}
-                            {s.suggested_phone && <Phone className="h-3.5 w-3.5 text-gray-400" title={s.suggested_phone} />}
-                            {s.suggested_website && <Globe className="h-3.5 w-3.5 text-gray-400" title={s.suggested_website} />}
+                            {s.suggested_address_line1 && <span title={s.suggested_address_line1}><MapPin className="h-3.5 w-3.5 text-gray-400" /></span>}
+                            {s.suggested_phone && <span title={s.suggested_phone}><Phone className="h-3.5 w-3.5 text-gray-400" /></span>}
+                            {s.suggested_website && <span title={s.suggested_website}><Globe className="h-3.5 w-3.5 text-gray-400" /></span>}
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
