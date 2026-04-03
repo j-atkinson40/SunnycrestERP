@@ -39,18 +39,27 @@ def list_templates(
 ):
     """List all legacy print templates with availability status."""
     from app.services.legacy_templates import get_all_templates
+    from app.services import legacy_r2_client as r2
 
     is_urn = type == "urn"
     templates = get_all_templates(is_urn)
-    return [
-        {
+    results = []
+    for t in templates:
+        # Build thumbnail URL from the cached background JPEG in R2
+        thumbnail_url = None
+        if t["available"]:
+            try:
+                thumbnail_url = r2.get_public_url(t["cache_key"])
+            except Exception:
+                pass
+        results.append({
             "print_name": t["print_name"],
             "is_urn": is_urn,
             "available": t["available"],
             "default_text_color": t["default_text_color"],
-        }
-        for t in templates
-    ]
+            "thumbnail_url": thumbnail_url,
+        })
+    return results
 
 
 @router.post("/background")

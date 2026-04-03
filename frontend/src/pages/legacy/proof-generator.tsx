@@ -20,6 +20,7 @@ interface PrintTemplate {
   print_name: string
   available: boolean
   default_text_color: string
+  thumbnail_url: string | null
 }
 
 interface LegacyRecord {
@@ -311,6 +312,7 @@ export default function ProofGeneratorPage() {
      (legacyType === "custom" && customBgUrl))
 
   const templateAvailability = new Map(templates.map((t) => [t.print_name, t.available]))
+  const templateThumbnails = new Map(templates.map((t) => [t.print_name, t.thumbnail_url]))
   const printCategories = isUrn ? URN_PRINT_CATEGORIES : STANDARD_PRINT_CATEGORIES
   const printImages = isUrn ? URN_PRINT_IMAGES : STANDARD_PRINT_IMAGES
 
@@ -488,8 +490,11 @@ export default function ProofGeneratorPage() {
                   {cat.prints.map((print) => {
                     const available = templateAvailability.get(print) ?? false
                     const isSelected = selectedPrint === print
-                    const imageUrl = printImages[print]
+                    const cdnUrl = printImages[print]
+                    const r2Thumbnail = templateThumbnails.get(print)
                     const isBroken = brokenImages.has(print)
+                    // Use Wilbert CDN first, fall back to R2 cached background
+                    const imageUrl = (cdnUrl && !isBroken) ? cdnUrl : r2Thumbnail
                     return (
                       <button
                         key={print}
@@ -503,12 +508,19 @@ export default function ProofGeneratorPage() {
                       >
                         {/* Image area */}
                         <div className="relative" style={{ aspectRatio: "16 / 4.5" }}>
-                          {imageUrl && !isBroken ? (
+                          {imageUrl ? (
                             <img
                               src={imageUrl}
                               alt={print}
                               className="w-full h-full object-cover"
-                              onError={() => setBrokenImages((prev) => new Set(prev).add(print))}
+                              onError={(e) => {
+                                // If CDN failed, try R2 thumbnail before giving up
+                                if (cdnUrl && e.currentTarget.src === cdnUrl && r2Thumbnail) {
+                                  e.currentTarget.src = r2Thumbnail
+                                } else {
+                                  setBrokenImages((prev) => new Set(prev).add(print))
+                                }
+                              }}
                             />
                           ) : (
                             <div className="w-full h-full bg-gray-200 flex items-center justify-center">
