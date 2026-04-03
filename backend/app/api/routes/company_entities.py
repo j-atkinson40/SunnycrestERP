@@ -1337,6 +1337,13 @@ def get_review_queue(
     db: Session = Depends(get_db),
 ):
     """List companies pending classification review."""
+    # Check if classification columns exist
+    try:
+        db.execute(sa.text("SELECT classification_source FROM company_entities LIMIT 0"))
+    except Exception:
+        db.rollback()
+        return {"items": [], "total": 0, "page": 1, "pages": 0, "message": "Classification columns not yet created. Run migration first."}
+
     query = db.query(CompanyEntity).filter(
         CompanyEntity.company_id == current_user.company_id,
         CompanyEntity.classification_source == "pending_review",
@@ -1451,6 +1458,12 @@ def get_classification_summary(
     db: Session = Depends(get_db),
 ):
     """Get classification breakdown for this tenant."""
+    try:
+        db.execute(sa.text("SELECT classification_source FROM company_entities LIMIT 0"))
+    except Exception:
+        db.rollback()
+        return {"by_source": {}, "by_type": {}, "total": 0, "message": "Classification columns not yet created."}
+
     entities = db.query(CompanyEntity).filter(CompanyEntity.company_id == current_user.company_id).all()
 
     summary = {"auto_high": 0, "auto_google": 0, "pending_review": 0, "manual": 0, "unclassified": 0}
