@@ -20,6 +20,7 @@ from app.models.user import User
 from app.services.crm import contact_service
 from app.services.crm import activity_log_service
 from app.services.crm import health_score_service
+from app.services.crm import classification_service
 
 router = APIRouter()
 
@@ -229,11 +230,43 @@ def run_company_migration(
                 is_cemetery BOOLEAN DEFAULT false, is_funeral_home BOOLEAN DEFAULT false,
                 is_licensee BOOLEAN DEFAULT false, is_crematory BOOLEAN DEFAULT false,
                 is_print_shop BOOLEAN DEFAULT false, is_active BOOLEAN DEFAULT true,
+                customer_type VARCHAR(50), contractor_type VARCHAR(50),
+                is_aggregate BOOLEAN DEFAULT false,
+                classification_confidence DECIMAL(4,3),
+                classification_source VARCHAR(30),
+                classification_reasons JSONB DEFAULT '[]',
+                classification_reviewed_by VARCHAR(36),
+                classification_reviewed_at TIMESTAMPTZ,
+                is_active_customer BOOLEAN DEFAULT false,
+                first_order_year INTEGER,
+                google_places_id VARCHAR(200), google_places_type VARCHAR(100),
                 notes TEXT, created_by VARCHAR(36),
                 created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
             )
         """))
         db.execute(sa.text("CREATE INDEX IF NOT EXISTS idx_company_entities_tenant ON company_entities(company_id)"))
+        db.commit()
+
+    # Add classification columns if missing (for tables created before r50)
+    try:
+        db.execute(sa.text("SELECT customer_type FROM company_entities LIMIT 0"))
+    except Exception:
+        db.rollback()
+        for col_sql in [
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS customer_type VARCHAR(50)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS contractor_type VARCHAR(50)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS is_aggregate BOOLEAN DEFAULT false",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_confidence DECIMAL(4,3)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_source VARCHAR(30)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_reasons JSONB DEFAULT '[]'",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_reviewed_by VARCHAR(36)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS classification_reviewed_at TIMESTAMPTZ",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS is_active_customer BOOLEAN DEFAULT false",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS first_order_year INTEGER",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS google_places_id VARCHAR(200)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS google_places_type VARCHAR(100)",
+        ]:
+            db.execute(sa.text(col_sql))
         db.commit()
 
     try:
@@ -1262,3 +1295,154 @@ def delete_opportunity(
     db.delete(opp)
     db.commit()
     return {"deleted": True}
+
+
+# ── Classification endpoints ─────────────────────────────────────────────────
+
+@router.get("/classify/run-bulk")
+def run_bulk_classification_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Run bulk classification on all unclassified companies. Returns stats."""
+    result = classification_service.run_bulk_classification(db, current_user.company_id, use_google_places=False)
+    return result
+
+
+@router.get("/classify/review-queue")
+def get_review_queue(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    customer_type: str = Query(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List companies pending classification review."""
+    query = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == current_user.company_id,
+        CompanyEntity.classification_source == "pending_review",
+        CompanyEntity.is_aggregate == False,
+    )
+    if customer_type:
+        query = query.filter(CompanyEntity.customer_type == customer_type)
+
+    total = query.count()
+    items = (
+        query.order_by(CompanyEntity.classification_confidence.asc().nullsfirst())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "id": e.id,
+                "name": e.name,
+                "city": e.city,
+                "state": e.state,
+                "customer_type": e.customer_type,
+                "contractor_type": e.contractor_type,
+                "classification_confidence": float(e.classification_confidence) if e.classification_confidence else None,
+                "classification_reasons": e.classification_reasons or [],
+                "classification_source": e.classification_source,
+                "is_active_customer": e.is_active_customer,
+                "first_order_year": e.first_order_year,
+            }
+            for e in items
+        ],
+        "total": total,
+        "page": page,
+        "pages": (total + per_page - 1) // per_page,
+    }
+
+
+@router.post("/{entity_id}/classify/confirm")
+def confirm_classification(
+    entity_id: str,
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Manually confirm or override classification."""
+    entity = db.query(CompanyEntity).filter(
+        CompanyEntity.id == entity_id, CompanyEntity.company_id == current_user.company_id,
+    ).first()
+    if not entity:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    entity.customer_type = data.get("customer_type", entity.customer_type)
+    entity.contractor_type = data.get("contractor_type")
+    entity.classification_source = "manual"
+    entity.classification_reviewed_by = current_user.id
+    entity.classification_reviewed_at = datetime.now(timezone.utc)
+
+    if entity.customer_type == "funeral_home":
+        entity.is_funeral_home = True
+    if entity.customer_type == "cemetery":
+        entity.is_cemetery = True
+
+    db.commit()
+    return {"confirmed": True, "customer_type": entity.customer_type}
+
+
+@router.post("/classify/confirm-bulk")
+def confirm_bulk_classification(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Batch confirm classifications as-is."""
+    company_ids = data.get("company_ids", [])
+    if not company_ids:
+        raise HTTPException(status_code=400, detail="No company IDs provided")
+
+    updated = 0
+    for cid in company_ids:
+        entity = db.query(CompanyEntity).filter(
+            CompanyEntity.id == cid, CompanyEntity.company_id == current_user.company_id,
+        ).first()
+        if entity:
+            entity.classification_source = "manual"
+            entity.classification_reviewed_by = current_user.id
+            entity.classification_reviewed_at = datetime.now(timezone.utc)
+            updated += 1
+
+    db.commit()
+    return {"confirmed": updated}
+
+
+@router.get("/{entity_id}/classify/reclassify")
+def reclassify_company(
+    entity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-run classification on a single company."""
+    result = classification_service.classify_company(db, entity_id)
+    db.commit()
+    return result
+
+
+@router.get("/classify/summary")
+def get_classification_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get classification breakdown for this tenant."""
+    entities = db.query(CompanyEntity).filter(CompanyEntity.company_id == current_user.company_id).all()
+
+    summary = {"auto_high": 0, "auto_google": 0, "pending_review": 0, "manual": 0, "unclassified": 0}
+    types = {}
+
+    for e in entities:
+        src = e.classification_source or "unclassified"
+        if src in summary:
+            summary[src] += 1
+        else:
+            summary["unclassified"] += 1
+
+        ct = e.customer_type or "unclassified"
+        types[ct] = types.get(ct, 0) + 1
+
+    return {"by_source": summary, "by_type": types, "total": len(entities)}

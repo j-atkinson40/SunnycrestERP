@@ -17,6 +17,7 @@ import Dashboard from "@/pages/dashboard/employee-dashboard";
 import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
 import CompanyMigrationReviewPage from "@/pages/admin/company-migration-review";
+import CompanyClassificationPage from "@/pages/admin/company-classification";
 import CompaniesListPage from "@/pages/crm/companies";
 import CompanyDetailPage from "@/pages/crm/company-detail";
 import FuneralHomesPage from "@/pages/crm/funeral-homes";
@@ -288,6 +289,7 @@ export default function App() {
 
                   {/* CRM */}
                   <Route path="/crm/companies" element={<CompaniesListPage />} />
+                  <Route path="/admin/company-classification" element={<CompanyClassificationPage />} />
                   <Route path="/crm/companies/:id" element={<CompanyDetailPage />} />
                   <Route path="/crm/funeral-homes" element={<FuneralHomesPage />} />
                   <Route path="/crm/settings" element={<CrmSettingsPage />} />

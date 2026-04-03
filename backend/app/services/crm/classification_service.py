@@ -1,0 +1,321 @@
+"""Classification service — AI-powered company type classification using Claude + Google Places."""
+
+import json
+import logging
+import time
+from datetime import datetime, timezone
+from decimal import Decimal
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.models.company_entity import CompanyEntity
+from app.models.customer import Customer
+
+logger = logging.getLogger(__name__)
+
+# ── Name keyword signals ─────────────────────────────────────────────────────
+
+NAME_SIGNALS = {
+    "funeral_home": ["funeral", "mortuary", "chapel", "cremation", "memorial home", "funeral service", "funeral parlor"],
+    "cemetery": ["cemetery", "memorial garden", "memorial park", "mausoleum", "burial ground", "holy cross", "sacred heart", "calvary", "grove", "lawn"],
+    "contractor": ["excavat", "septic", "plumbing", "plumber", "construction", "contracting", "contractor", "backhoe", "site work", "grading", "landscap", "environmental", "well & septic", "drain", "sewer", "utility", "earthwork", "digging", "underground"],
+    "crematory": ["cremator", "cremation", "cremains"],
+    "licensee": ["burial vault", "concrete product", "precast", "vault co", "monument"],
+    "church": ["church", "parish", "cathedral", "diocese"],
+    "government": ["town of", "county of", "city of", "village of", "state of", "department of", "dept of", "municipality"],
+}
+
+AGGREGATE_PATTERNS = ["cod_precast", "cash", "misc", "miscellaneous", "walk-in", "walkin", "counter sale"]
+
+GOOGLE_TYPE_MAP = {
+    "funeral_home": "funeral_home", "cemetery": "cemetery",
+    "general_contractor": "contractor", "plumber": "contractor",
+    "electrician": "contractor", "roofing_contractor": "contractor",
+    "church": "church", "local_government_office": "government",
+    "crematorium": "crematory",
+}
+
+
+def classify_company(db: Session, company_entity_id: str, use_google_places: bool = False) -> dict:
+    """Classify a single company using name analysis, order history, and optionally AI + Google."""
+    entity = db.query(CompanyEntity).filter(CompanyEntity.id == company_entity_id).first()
+    if not entity:
+        return {"error": "not_found"}
+
+    # Skip aggregates
+    if entity.is_aggregate:
+        return {"status": "skipped", "reason": "aggregate"}
+
+    name_lower = (entity.name or "").lower().strip()
+    if any(name_lower.startswith(p) or name_lower == p for p in AGGREGATE_PATTERNS):
+        entity.is_aggregate = True
+        entity.customer_type = None
+        entity.classification_source = "auto_high"
+        entity.classification_confidence = Decimal("1.000")
+        entity.classification_reasons = ["Aggregate/cash sales record"]
+        return {"status": "aggregate"}
+
+    # ── Signal 1: Name analysis ──────────────────────────────────────────
+    name_matches = {}
+    for ctype, keywords in NAME_SIGNALS.items():
+        matches = [k for k in keywords if k in name_lower]
+        if matches:
+            name_matches[ctype] = matches
+
+    # ── Signal 2: Order history ──────────────────────────────────────────
+    customer = db.query(Customer).filter(Customer.master_company_id == company_entity_id).first()
+    order_data = _get_order_signals(db, customer.id if customer else None)
+
+    # ── Signal 3: Domain analysis ────────────────────────────────────────
+    domain_signals = {}
+    email = entity.email or ""
+    if "@" in email:
+        domain = email.split("@")[1].lower()
+        if domain.endswith(".gov"):
+            domain_signals["government"] = True
+        if "funeral" in domain:
+            domain_signals["funeral_home"] = True
+        if "church" in domain or "diocese" in domain:
+            domain_signals["church"] = True
+
+    # ── Determine classification ─────────────────────────────────────────
+    result = _rule_based_classify(name_matches, order_data, domain_signals, entity.name)
+
+    # ── Try Claude AI for uncertain cases ────────────────────────────────
+    if result["confidence"] < 0.80:
+        try:
+            ai_result = _ai_classify(entity, name_matches, order_data)
+            if ai_result and ai_result.get("confidence", 0) > result["confidence"]:
+                result = ai_result
+        except Exception:
+            logger.exception("AI classification failed for %s", entity.name)
+
+    # ── Apply results ────────────────────────────────────────────────────
+    entity.customer_type = result.get("customer_type")
+    entity.contractor_type = result.get("contractor_type")
+    entity.classification_confidence = Decimal(str(round(result.get("confidence", 0), 3)))
+    entity.classification_reasons = result.get("reasons", [])
+    entity.is_active_customer = order_data.get("is_active", False)
+    entity.first_order_year = order_data.get("first_order_year")
+
+    if result.get("confidence", 0) >= 0.85:
+        entity.classification_source = "auto_high"
+    elif result.get("confidence", 0) >= 0.60:
+        entity.classification_source = "pending_review"
+    else:
+        entity.classification_source = "pending_review"
+
+    # Set role flags from classification
+    if entity.customer_type == "funeral_home":
+        entity.is_funeral_home = True
+    elif entity.customer_type == "cemetery":
+        entity.is_cemetery = True
+
+    return result
+
+
+def _get_order_signals(db: Session, customer_id: str | None) -> dict:
+    """Analyze order history for classification signals."""
+    if not customer_id:
+        return {"total_orders": 0, "is_active": False}
+
+    try:
+        row = db.execute(text("""
+            SELECT
+                COUNT(*) as total_orders,
+                MIN(so.created_at) as first_order,
+                MAX(so.created_at) as last_order
+            FROM sales_orders so
+            WHERE so.customer_id = :cid AND so.status != 'cancelled'
+        """), {"cid": customer_id}).fetchone()
+
+        if not row or row.total_orders == 0:
+            return {"total_orders": 0, "is_active": False}
+
+        is_active = False
+        if row.last_order:
+            days_since = (datetime.now(timezone.utc) - row.last_order).days if hasattr(row.last_order, "tzinfo") and row.last_order.tzinfo else 365
+            is_active = days_since < 365
+
+        first_year = row.first_order.year if row.first_order else None
+
+        return {
+            "total_orders": row.total_orders,
+            "is_active": is_active,
+            "first_order_year": first_year,
+            "last_order": row.last_order,
+        }
+    except Exception:
+        logger.exception("Failed to query order history for customer %s", customer_id)
+        return {"total_orders": 0, "is_active": False}
+
+
+def _rule_based_classify(name_matches: dict, order_data: dict, domain_signals: dict, company_name: str) -> dict:
+    """Rule-based classification from signals."""
+    reasons = []
+    customer_type = None
+    contractor_type = None
+    confidence = 0.0
+
+    # Strong name match
+    if "funeral_home" in name_matches:
+        customer_type = "funeral_home"
+        confidence = 0.92
+        reasons.append(f"Name contains: {', '.join(name_matches['funeral_home'])}")
+    elif "cemetery" in name_matches:
+        customer_type = "cemetery"
+        confidence = 0.90
+        reasons.append(f"Name contains: {', '.join(name_matches['cemetery'])}")
+    elif "contractor" in name_matches:
+        customer_type = "contractor"
+        confidence = 0.85
+        reasons.append(f"Name contains: {', '.join(name_matches['contractor'])}")
+        contractor_type = "general"
+    elif "church" in name_matches:
+        customer_type = "church"
+        confidence = 0.88
+        reasons.append(f"Name contains: {', '.join(name_matches['church'])}")
+    elif "government" in name_matches:
+        customer_type = "government"
+        confidence = 0.90
+        reasons.append(f"Name contains: {', '.join(name_matches['government'])}")
+    elif "crematory" in name_matches:
+        customer_type = "crematory"
+        confidence = 0.88
+        reasons.append(f"Name contains: {', '.join(name_matches['crematory'])}")
+    elif "licensee" in name_matches:
+        customer_type = "licensee"
+        confidence = 0.85
+        reasons.append(f"Name contains: {', '.join(name_matches['licensee'])}")
+    else:
+        # No name match — use order data if available
+        total = order_data.get("total_orders", 0)
+        if total > 0:
+            customer_type = "contractor"
+            contractor_type = "general"
+            confidence = 0.50
+            reasons.append(f"{total} orders, no clear name signal")
+        else:
+            customer_type = "other"
+            confidence = 0.30
+            reasons.append("No name signal, no order history")
+
+    # Domain boost
+    for dtype, matched in domain_signals.items():
+        if matched and dtype == customer_type:
+            confidence = min(1.0, confidence + 0.05)
+            reasons.append(f"Email domain confirms: {dtype}")
+
+    # Order count boost for contractors
+    total = order_data.get("total_orders", 0)
+    if customer_type == "contractor":
+        if total <= 3:
+            contractor_type = "occasional"
+            reasons.append(f"Only {total} orders — occasional buyer")
+        elif total > 10:
+            reasons.append(f"Active: {total} orders")
+
+    return {
+        "customer_type": customer_type,
+        "contractor_type": contractor_type,
+        "confidence": confidence,
+        "reasons": reasons,
+    }
+
+
+def _ai_classify(entity: CompanyEntity, name_matches: dict, order_data: dict) -> dict | None:
+    """Use Claude to classify uncertain companies."""
+    try:
+        from app.services.ai_service import call_anthropic
+    except ImportError:
+        return None
+
+    prompt = f"""Classify this business customer for a precast concrete manufacturer in upstate New York.
+
+Company: {entity.name}
+City: {entity.city or 'unknown'}, State: {entity.state or 'unknown'}
+Email: {entity.email or 'none'}
+Total orders: {order_data.get('total_orders', 0)}
+Active (12mo): {order_data.get('is_active', False)}
+Name keyword matches: {json.dumps(name_matches)}
+
+Classify as ONE of: funeral_home, cemetery, contractor, crematory, licensee, church, government, individual, other
+For contractors also set contractor_type: full_service, wastewater_only, redi_rock_only, general, occasional
+
+Return JSON: {{"customer_type": str, "contractor_type": str|null, "confidence": float, "reasons": [str]}}"""
+
+    try:
+        response = call_anthropic(prompt, max_tokens=200)
+        if response:
+            data = json.loads(response)
+            return {
+                "customer_type": data.get("customer_type"),
+                "contractor_type": data.get("contractor_type"),
+                "confidence": float(data.get("confidence", 0.5)),
+                "reasons": data.get("reasons", ["AI classification"]),
+            }
+    except Exception:
+        logger.exception("Claude classification failed for %s", entity.name)
+
+    return None
+
+
+def run_bulk_classification(db: Session, tenant_id: str, use_google_places: bool = False) -> dict:
+    """Classify all unclassified companies for a tenant."""
+    entities = (
+        db.query(CompanyEntity)
+        .filter(
+            CompanyEntity.company_id == tenant_id,
+            CompanyEntity.is_aggregate == False,
+        )
+        .filter(
+            (CompanyEntity.classification_source.is_(None)) |
+            (CompanyEntity.classification_source == "pending_review")
+        )
+        .all()
+    )
+
+    total = len(entities)
+    stats = {
+        "total_processed": 0, "auto_classified": 0, "needs_review": 0,
+        "unknown": 0, "errors": 0,
+        "breakdown": {
+            "funeral_home": 0, "contractor": 0, "cemetery": 0,
+            "crematory": 0, "church": 0, "government": 0,
+            "licensee": 0, "individual": 0, "other": 0, "unclassified": 0,
+        },
+    }
+
+    for i, entity in enumerate(entities):
+        try:
+            result = classify_company(db, entity.id, use_google_places=use_google_places)
+            ctype = result.get("customer_type") or "unclassified"
+            conf = result.get("confidence", 0)
+
+            if ctype in stats["breakdown"]:
+                stats["breakdown"][ctype] += 1
+            else:
+                stats["breakdown"]["other"] += 1
+
+            if conf >= 0.85:
+                stats["auto_classified"] += 1
+            elif conf >= 0.60:
+                stats["needs_review"] += 1
+            else:
+                stats["unknown"] += 1
+
+            stats["total_processed"] += 1
+        except Exception:
+            logger.exception("Classification error for %s", entity.id)
+            stats["errors"] += 1
+
+        # Commit every 50 records
+        if (i + 1) % 50 == 0:
+            db.commit()
+            logger.info("Classified %d / %d companies", i + 1, total)
+            time.sleep(0.5)
+
+    db.commit()
+    logger.info("Bulk classification complete: %s", stats)
+    return stats

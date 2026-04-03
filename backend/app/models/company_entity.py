@@ -8,7 +8,8 @@ Existing customers/vendors/cemeteries link here via master_company_id.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -48,6 +49,20 @@ class CompanyEntity(Base):
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+
+    # Classification
+    customer_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    contractor_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_aggregate: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    classification_confidence: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
+    classification_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    classification_reasons: Mapped[list] = mapped_column(JSONB, server_default="'[]'")
+    classification_reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    classification_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active_customer: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    first_order_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    google_places_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    google_places_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Notes
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
