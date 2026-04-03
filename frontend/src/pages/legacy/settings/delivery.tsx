@@ -120,6 +120,7 @@ export default function LegacyDeliverySettingsTab() {
       {/* Dropbox */}
       <Card className="p-4 space-y-3">
         <h3 className="font-semibold text-sm">Dropbox</h3>
+        <p className="text-xs text-gray-500">Auto-save approved TIF files to a Dropbox folder</p>
         {settings.dropbox_connected ? (
           <>
             <p className="text-xs text-green-600 font-medium">Connected ✓</p>
@@ -127,13 +128,17 @@ export default function LegacyDeliverySettingsTab() {
             <div className="flex items-center justify-between"><Label className="text-sm">Auto-save on approval</Label><Switch checked={settings.dropbox_auto_save} onCheckedChange={(v: boolean) => save({ dropbox_auto_save: v })} /></div>
           </>
         ) : (
-          <Button onClick={() => apiClient.get("/legacy/auth/dropbox/connect").then((r) => { window.location.href = r.data.auth_url }).catch(() => toast.error("Not configured"))}><ExternalLink className="h-4 w-4 mr-1" /> Connect Dropbox</Button>
+          <div className="space-y-2">
+            <Button onClick={() => apiClient.get("/legacy/auth/dropbox/connect").then((r) => { window.location.href = r.data.auth_url }).catch((err) => toast.error(err?.response?.data?.detail || "Dropbox integration not configured yet — contact support"))}><ExternalLink className="h-4 w-4 mr-1" /> Connect Dropbox</Button>
+            <p className="text-[11px] text-gray-400">Requires Dropbox API credentials to be configured on the server</p>
+          </div>
         )}
       </Card>
 
       {/* Google Drive */}
       <Card className="p-4 space-y-3">
         <h3 className="font-semibold text-sm">Google Drive</h3>
+        <p className="text-xs text-gray-500">Auto-save approved TIF files to a Google Drive folder</p>
         {settings.gdrive_connected ? (
           <>
             <p className="text-xs text-green-600 font-medium">Connected ✓</p>
@@ -141,7 +146,10 @@ export default function LegacyDeliverySettingsTab() {
             <div className="flex items-center justify-between"><Label className="text-sm">Auto-save on approval</Label><Switch checked={settings.gdrive_auto_save} onCheckedChange={(v: boolean) => save({ gdrive_auto_save: v })} /></div>
           </>
         ) : (
-          <Button onClick={() => apiClient.get("/legacy/auth/gdrive/connect").then((r) => { window.location.href = r.data.auth_url }).catch(() => toast.error("Not configured"))}><ExternalLink className="h-4 w-4 mr-1" /> Connect Google Drive</Button>
+          <div className="space-y-2">
+            <Button onClick={() => apiClient.get("/legacy/auth/gdrive/connect").then((r) => { window.location.href = r.data.auth_url }).catch((err) => toast.error(err?.response?.data?.detail || "Google Drive integration not configured yet — contact support"))}><ExternalLink className="h-4 w-4 mr-1" /> Connect Google Drive</Button>
+            <p className="text-[11px] text-gray-400">Requires Google OAuth credentials to be configured on the server</p>
+          </div>
         )}
       </Card>
 
