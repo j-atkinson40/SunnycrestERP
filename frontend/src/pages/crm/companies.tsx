@@ -53,6 +53,58 @@ export default function CompaniesListPage() {
   const [roleFilter, setRoleFilter] = useState(urlParams.get("role") || "")
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [reclassifyMode, setReclassifyMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [reclassifyTo, setReclassifyTo] = useState("")
+  const [reclassifying, setReclassifying] = useState(false)
+
+  const TYPE_OPTIONS = [
+    { value: "funeral_home", label: "Funeral Home" },
+    { value: "contractor", label: "Contractor" },
+    { value: "cemetery", label: "Cemetery" },
+    { value: "crematory", label: "Crematory" },
+    { value: "licensee", label: "Licensee" },
+    { value: "church", label: "Church" },
+    { value: "government", label: "Government" },
+    { value: "school", label: "School" },
+    { value: "fire_department", label: "Fire Department" },
+    { value: "utility", label: "Utility" },
+    { value: "individual", label: "Individual" },
+    { value: "other", label: "Other" },
+  ]
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === items.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(items.map((i) => i.id)))
+    }
+  }
+
+  async function handleReclassify() {
+    if (selected.size === 0 || !reclassifyTo) { toast.error("Select companies and a type"); return }
+    setReclassifying(true)
+    try {
+      const res = await apiClient.post("/companies/classify/reclassify-bulk", {
+        company_ids: [...selected],
+        customer_type: reclassifyTo,
+      })
+      toast.success(`Reclassified ${res.data.reclassified} companies`)
+      setSelected(new Set())
+      setReclassifyMode(false)
+      setReclassifyTo("")
+      fetchData()
+    } catch { toast.error("Failed to reclassify") }
+    finally { setReclassifying(false) }
+  }
 
   const fetchData = useCallback(async () => {
     try {
@@ -106,10 +158,46 @@ export default function CompaniesListPage() {
           <h1 className="text-2xl font-bold text-gray-900">Companies</h1>
           <p className="text-sm text-gray-500 mt-1">All customers, vendors, cemeteries, and partners</p>
         </div>
-        <Button onClick={() => navigate("/crm/companies/new")}>
-          <Plus className="h-4 w-4 mr-1" /> New company
-        </Button>
+        <div className="flex gap-2">
+          {!reclassifyMode ? (
+            <>
+              <Button variant="outline" onClick={() => { setReclassifyMode(true); setSelected(new Set()) }}>
+                Reclassify
+              </Button>
+              <Button onClick={() => navigate("/crm/companies/new")}>
+                <Plus className="h-4 w-4 mr-1" /> New company
+              </Button>
+            </>
+          ) : (
+            <>
+              <select
+                value={reclassifyTo}
+                onChange={(e) => setReclassifyTo(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm bg-background"
+              >
+                <option value="">Reclassify as...</option>
+                {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <Button onClick={handleReclassify} disabled={selected.size === 0 || !reclassifyTo || reclassifying}>
+                {reclassifying ? "..." : `Reclassify ${selected.size} selected`}
+              </Button>
+              <Button variant="ghost" onClick={() => { setReclassifyMode(false); setSelected(new Set()); setReclassifyTo("") }}>
+                Cancel
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Reclassify mode banner */}
+      {reclassifyMode && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700 flex items-center justify-between">
+          <span>Select companies to reclassify. {selected.size} selected.</span>
+          <button onClick={toggleSelectAll} className="text-blue-600 font-medium hover:underline text-xs">
+            {selected.size === items.length ? "Deselect all" : "Select all on page"}
+          </button>
+        </div>
+      )}
 
       {/* Search + filters */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -183,6 +271,7 @@ export default function CompaniesListPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wider">
               <tr>
+                {reclassifyMode && <th className="px-4 py-3 w-8"></th>}
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Roles</th>
                 <th className="px-4 py-3 hidden md:table-cell">Location</th>
@@ -195,7 +284,12 @@ export default function CompaniesListPage() {
               {items.map((item) => {
                 const roles = getRoles(item)
                 return (
-                  <tr key={item.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/crm/companies/${item.id}`)}>
+                  <tr key={item.id} className={`hover:bg-gray-50 cursor-pointer ${selected.has(item.id) ? "bg-blue-50" : ""}`} onClick={() => reclassifyMode ? toggleSelect(item.id) : navigate(`/crm/companies/${item.id}`)}>
+                    {reclassifyMode && (
+                      <td className="px-4 py-3">
+                        <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggleSelect(item.id)} className="rounded accent-blue-600" onClick={(e) => e.stopPropagation()} />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900">{item.name}</div>
                       {item.legal_name && item.legal_name !== item.name && (
