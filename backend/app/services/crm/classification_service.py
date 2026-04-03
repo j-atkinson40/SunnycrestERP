@@ -23,8 +23,11 @@ NAME_SIGNALS = {
     "contractor": ["excavat", "septic", "plumbing", "plumber", "construction", "contracting", "contractor", "backhoe", "site work", "grading", "landscap", "environmental", "well & septic", "drain", "sewer", "utility", "earthwork", "digging", "underground"],
     "crematory": ["cremator", "cremation", "cremains"],
     "licensee": ["burial vault", "concrete product", "precast", "vault co", "monument", "wilbert", "vault company", "vault works", " vault", "vault "],
-    "church": ["church", "parish", "cathedral", "diocese"],
-    "government": ["town of", "county of", "city of", "village of", "state of", "department of", "dept of", "municipality"],
+    "church": ["church", "parish", "cathedral", "diocese", "st. ", "saint "],
+    "government": ["town of", "county of", "city of", "village of", "state of", "department of", "dept of", "municipality", "highway dept", "water district", "sewer district", "housing authority"],
+    "school": ["school", "university", "college", "academy", "board of education", "boces", "suny"],
+    "fire_department": ["fire dept", "fire department", "fire district", "fire co", "fire company", "volunteer fire", "fire station", "ems", "ambulance", "rescue squad"],
+    "utility": ["electric", "power authority", "water authority", "gas company", "energy"],
 }
 
 AGGREGATE_PATTERNS = ["cod_precast", "cash", "misc", "miscellaneous", "walk-in", "walkin", "counter sale"]
@@ -188,6 +191,8 @@ def classify_company(db: Session, company_entity_id: str, use_google_places: boo
         domain = email.split("@")[1].lower()
         if domain.endswith(".gov"):
             domain_signals["government"] = True
+        if domain.endswith(".edu"):
+            domain_signals["school"] = True
         if "funeral" in domain:
             domain_signals["funeral_home"] = True
         if "church" in domain or "diocese" in domain:
@@ -302,6 +307,18 @@ def _rule_based_classify(name_matches: dict, order_data: dict, domain_signals: d
         customer_type = "licensee"
         confidence = 0.85
         reasons.append(f"Name contains: {', '.join(name_matches['licensee'])}")
+    elif "school" in name_matches:
+        customer_type = "school"
+        confidence = 0.90
+        reasons.append(f"Name contains: {', '.join(name_matches['school'])} — occasional buyer")
+    elif "fire_department" in name_matches:
+        customer_type = "fire_department"
+        confidence = 0.90
+        reasons.append(f"Name contains: {', '.join(name_matches['fire_department'])} — occasional buyer")
+    elif "utility" in name_matches:
+        customer_type = "utility"
+        confidence = 0.88
+        reasons.append(f"Name contains: {', '.join(name_matches['utility'])} — occasional buyer")
     else:
         # No name match — default to contractor (most common non-FH type)
         total = order_data.get("total_orders", 0)
