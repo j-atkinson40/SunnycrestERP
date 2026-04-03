@@ -210,23 +210,142 @@ def run_company_migration(
     tenant_id = current_user.company_id
     stats = {"customers": 0, "vendors": 0, "cemeteries": 0, "skipped": 0}
 
+    # Auto-create tables if Alembic migrations haven't run
     try:
-        # Verify tables exist
         db.execute(sa.text("SELECT 1 FROM company_entities LIMIT 0"))
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"company_entities table not found. Run alembic migrations first. Error: {e}",
-        )
+    except Exception:
+        db.rollback()
+        db.execute(sa.text("""
+            CREATE TABLE IF NOT EXISTS company_entities (
+                id VARCHAR(36) PRIMARY KEY,
+                company_id VARCHAR(36) NOT NULL REFERENCES companies(id),
+                name VARCHAR(500) NOT NULL,
+                legal_name VARCHAR(500),
+                phone VARCHAR(50), email VARCHAR(500), website VARCHAR(500),
+                address_line1 VARCHAR(500), address_line2 VARCHAR(500),
+                city VARCHAR(200), state VARCHAR(100), zip VARCHAR(20),
+                country VARCHAR(100) DEFAULT 'US',
+                is_customer BOOLEAN DEFAULT false, is_vendor BOOLEAN DEFAULT false,
+                is_cemetery BOOLEAN DEFAULT false, is_funeral_home BOOLEAN DEFAULT false,
+                is_licensee BOOLEAN DEFAULT false, is_crematory BOOLEAN DEFAULT false,
+                is_print_shop BOOLEAN DEFAULT false, is_active BOOLEAN DEFAULT true,
+                notes TEXT, created_by VARCHAR(36),
+                created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        db.execute(sa.text("CREATE INDEX IF NOT EXISTS idx_company_entities_tenant ON company_entities(company_id)"))
+        db.commit()
 
     try:
-        # Check if master_company_id column exists on customers
         db.execute(sa.text("SELECT master_company_id FROM customers LIMIT 0"))
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"master_company_id column missing on customers. Run migration r44. Error: {e}",
-        )
+    except Exception:
+        db.rollback()
+        db.execute(sa.text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS master_company_id VARCHAR(36) REFERENCES company_entities(id)"))
+        db.execute(sa.text("ALTER TABLE vendors ADD COLUMN IF NOT EXISTS master_company_id VARCHAR(36) REFERENCES company_entities(id)"))
+        db.execute(sa.text("ALTER TABLE cemeteries ADD COLUMN IF NOT EXISTS master_company_id VARCHAR(36) REFERENCES company_entities(id)"))
+        db.commit()
+
+    # Create contacts table if missing
+    try:
+        db.execute(sa.text("SELECT 1 FROM contacts LIMIT 0"))
+    except Exception:
+        db.rollback()
+        db.execute(sa.text("""
+            CREATE TABLE IF NOT EXISTS contacts (
+                id VARCHAR(36) PRIMARY KEY,
+                company_id VARCHAR(36) NOT NULL REFERENCES companies(id),
+                master_company_id VARCHAR(36) NOT NULL REFERENCES company_entities(id) ON DELETE CASCADE,
+                name VARCHAR(500) NOT NULL, title VARCHAR(200),
+                phone VARCHAR(50), phone_ext VARCHAR(20), mobile VARCHAR(50), email VARCHAR(500),
+                role VARCHAR(50), is_primary BOOLEAN DEFAULT false, is_active BOOLEAN DEFAULT true,
+                receives_invoices BOOLEAN DEFAULT false, receives_legacy_proofs BOOLEAN DEFAULT false,
+                linked_user_id VARCHAR(36), linked_auto BOOLEAN DEFAULT false,
+                notes TEXT, created_by VARCHAR(36),
+                created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        db.commit()
+
+    # Create activity_log if missing
+    try:
+        db.execute(sa.text("SELECT 1 FROM activity_log LIMIT 0"))
+    except Exception:
+        db.rollback()
+        db.execute(sa.text("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id VARCHAR(36) PRIMARY KEY,
+                tenant_id VARCHAR(36) NOT NULL,
+                master_company_id VARCHAR(36) NOT NULL REFERENCES company_entities(id),
+                contact_id VARCHAR(36), logged_by VARCHAR(36),
+                activity_type VARCHAR(30) NOT NULL, is_system_generated BOOLEAN DEFAULT false,
+                title VARCHAR(500), body TEXT, outcome TEXT,
+                follow_up_date DATE, follow_up_assigned_to VARCHAR(36),
+                follow_up_completed BOOLEAN DEFAULT false, follow_up_completed_at TIMESTAMPTZ,
+                related_order_id VARCHAR(36), related_invoice_id VARCHAR(36), related_legacy_proof_id VARCHAR(36),
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        db.commit()
+
+    # Create manufacturer_company_profiles if missing
+    try:
+        db.execute(sa.text("SELECT 1 FROM manufacturer_company_profiles LIMIT 0"))
+    except Exception:
+        db.rollback()
+        db.execute(sa.text("""
+            CREATE TABLE IF NOT EXISTS manufacturer_company_profiles (
+                id VARCHAR(36) PRIMARY KEY,
+                company_id VARCHAR(36) NOT NULL REFERENCES companies(id),
+                master_company_id VARCHAR(36) NOT NULL UNIQUE REFERENCES company_entities(id) ON DELETE CASCADE,
+                avg_days_between_orders DECIMAL(8,2), last_order_date DATE,
+                order_count_12mo INTEGER DEFAULT 0, order_count_all_time INTEGER DEFAULT 0,
+                total_revenue_12mo DECIMAL(12,2) DEFAULT 0, total_revenue_all_time DECIMAL(12,2) DEFAULT 0,
+                most_ordered_vault_id VARCHAR(36), most_ordered_vault_name VARCHAR(200),
+                avg_days_to_pay_recent DECIMAL(8,2), avg_days_to_pay_prior DECIMAL(8,2),
+                health_score VARCHAR(20) DEFAULT 'unknown', health_reasons JSONB DEFAULT '[]',
+                health_last_calculated TIMESTAMPTZ, last_briefed_at TIMESTAMPTZ,
+                preferred_contact_method VARCHAR(20), notes TEXT,
+                created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        db.commit()
+
+    # Create crm_settings if missing
+    try:
+        db.execute(sa.text("SELECT 1 FROM crm_settings LIMIT 0"))
+    except Exception:
+        db.rollback()
+        db.execute(sa.text("""
+            CREATE TABLE IF NOT EXISTS crm_settings (
+                id VARCHAR(36) PRIMARY KEY,
+                company_id VARCHAR(36) NOT NULL UNIQUE REFERENCES companies(id),
+                pipeline_enabled BOOLEAN DEFAULT false, health_scoring_enabled BOOLEAN DEFAULT true,
+                activity_log_enabled BOOLEAN DEFAULT true,
+                at_risk_days_multiplier DECIMAL(4,2) DEFAULT 2.0,
+                at_risk_payment_trend_days INTEGER DEFAULT 7, at_risk_payment_threshold_days INTEGER DEFAULT 30,
+                created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        db.commit()
+
+    # Create crm_opportunities if missing
+    try:
+        db.execute(sa.text("SELECT 1 FROM crm_opportunities LIMIT 0"))
+    except Exception:
+        db.rollback()
+        db.execute(sa.text("""
+            CREATE TABLE IF NOT EXISTS crm_opportunities (
+                id VARCHAR(36) PRIMARY KEY,
+                company_id VARCHAR(36) NOT NULL REFERENCES companies(id),
+                master_company_id VARCHAR(36) REFERENCES company_entities(id),
+                prospect_name VARCHAR(500), prospect_city VARCHAR(200), prospect_state VARCHAR(100),
+                title VARCHAR(500) NOT NULL, stage VARCHAR(30) NOT NULL DEFAULT 'prospect',
+                estimated_annual_value DECIMAL(12,2), assigned_to VARCHAR(36),
+                expected_close_date DATE, notes TEXT, lost_reason TEXT, created_by VARCHAR(36),
+                created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        db.commit()
 
     try:
         return _do_migration(db, tenant_id)
