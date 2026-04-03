@@ -152,6 +152,91 @@ _FH_SUFFIX_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Agentic import filters — skip non-cemetery and non-FH entries
+# ---------------------------------------------------------------------------
+
+# Patterns that indicate a delivery location is NOT a cemetery
+_NOT_CEMETERY_PATTERNS = [
+    "residence", "home", "house", "apt", "apartment", "condo",
+    "church", "parish", "cathedral", "temple", "synagogue", "mosque",
+    "hospital", "medical center", "nursing home", "hospice", "rehab",
+    "funeral home", "funeral parlor", "mortuary", "cremator",
+    "fire department", "fire station", "fire house",
+    "school", "university", "college", "academy",
+    "town hall", "village hall", "city hall", "courthouse",
+    "private property", "family plot", "family land",
+    "national guard", "armory", "vfw", "american legion", "legion hall",
+    "elks", "moose", "eagles", "masonic",
+    "tbd", "tba", "unknown", "n/a", "none", "na", "pending",
+    "will call", "pick up", "pickup", "office", "shop", "warehouse",
+    "same as above", "see above", "ditto",
+]
+
+# Patterns that indicate a "funeral home" field is NOT actually a funeral home
+_NOT_FUNERAL_HOME_PATTERNS = [
+    "cash", "cod", "misc", "miscellaneous", "walk-in", "walkin",
+    "counter sale", "over the counter", "otc",
+    "do not use", "inactive", "closed", "duplicate", "test",
+    "unknown", "n/a", "none", "na", "tbd", "tba", "pending",
+    "homeowner", "home owner", "private", "individual",
+    "self", "personal",
+]
+
+
+def _is_likely_cemetery(name: str) -> bool:
+    """Check if a delivery location name looks like an actual cemetery."""
+    if not name or len(name.strip()) < 3:
+        return False
+    lower = name.strip().lower()
+
+    # Explicit cemetery indicators — definitely a cemetery
+    cemetery_words = ["cemetery", "memorial park", "memorial garden", "mausoleum",
+                      "burial ground", "national cemetery", "veterans cemetery"]
+    if any(w in lower for w in cemetery_words):
+        return True
+
+    # Not-a-cemetery indicators — skip these
+    if any(p in lower for p in _NOT_CEMETERY_PATTERNS):
+        return False
+
+    # If it's just a number or very short, skip
+    if lower.replace(" ", "").isdigit():
+        return False
+    if len(lower) < 4:
+        return False
+
+    # Default: assume it's a cemetery (most entries in the cemetery column are)
+    return True
+
+
+def _is_likely_funeral_home(name: str) -> bool:
+    """Check if a funeral home field value is an actual funeral home."""
+    if not name or len(name.strip()) < 3:
+        return False
+    lower = name.strip().lower()
+
+    # Not-a-funeral-home indicators
+    if any(p in lower for p in _NOT_FUNERAL_HOME_PATTERNS):
+        return False
+
+    # Just a number or very short
+    if lower.replace(" ", "").isdigit():
+        return False
+    if len(lower) < 4:
+        return False
+
+    # Looks like a person's name (2 words, no business indicators)
+    # Simple heuristic: if it's 2-3 short alpha words with no business keywords, skip
+    words = lower.split()
+    if len(words) in (2, 3) and all(w.replace(".", "").isalpha() and len(w) <= 15 for w in words):
+        business_words = {"funeral", "home", "mortuary", "chapel", "service", "inc", "llc", "co", "fh", "f.h."}
+        if not any(w in business_words for w in words):
+            return False  # Looks like a person's name, not a business
+
+    return True
+
+
 def normalize_funeral_home_name(raw: str) -> str:
     """Strip whitespace, special chars, and trailing suffix variants."""
     name = raw.strip().replace("\xa0", " ").replace("\n", " ")
@@ -829,8 +914,8 @@ def run_import(
                         customer_id = result["customer_id"]
                         fh_confidence = result["confidence"]
                         customers_matched += 1
-                    elif create_missing_customers:
-                        # Create new funeral home customer
+                    elif create_missing_customers and _is_likely_funeral_home(raw_fh):
+                        # Create new funeral home customer (filtered)
                         from app.services.customer_service import quick_create_customer
                         new_cust = quick_create_customer(
                             db, company_id, norm_fh, customer_type="funeral_home"
@@ -868,7 +953,7 @@ def run_import(
                         cemetery_id = cem_result["cemetery_id"]
                         cem_confidence = cem_result["confidence"]
                         cemeteries_matched += 1
-                    elif delivery_loc == "cemetery" and create_missing_cemeteries:
+                    elif delivery_loc == "cemetery" and create_missing_cemeteries and _is_likely_cemetery(raw_cem):
                         from app.services.cemetery_service import create_cemetery as _create_cem
                         new_cem = _create_cem(
                             db, company_id,
