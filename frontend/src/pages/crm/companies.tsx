@@ -167,6 +167,9 @@ export default function CompaniesListPage() {
         <div className="flex gap-2">
           {!reclassifyMode ? (
             <>
+              <Button variant="outline" onClick={() => navigate("/crm/companies/duplicates")}>
+                Duplicates
+              </Button>
               <Button variant="outline" onClick={() => { setReclassifyMode(true); setSelected(new Set()) }}>
                 Reclassify
               </Button>

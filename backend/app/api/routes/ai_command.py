@@ -581,7 +581,11 @@ def resolve_duplicate(
     action = data.get("action", "not_duplicate")
     now = datetime.now(timezone.utc)
 
-    if action == "merge":
+    if action == "undo":
+        db.execute(text(
+            "UPDATE duplicate_reviews SET status = 'pending', resolved_by = NULL, resolved_at = NULL WHERE id = :id"
+        ), {"id": review_id})
+    elif action == "merge":
         db.execute(text(
             "UPDATE duplicate_reviews SET status = 'merged', resolved_by = :uid, resolved_at = :now WHERE id = :id"
         ), {"id": review_id, "uid": current_user.id, "now": now})
