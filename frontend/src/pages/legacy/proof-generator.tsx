@@ -245,7 +245,7 @@ export default function ProofGeneratorPage() {
     return res.data
   }
 
-  // Approve handler
+  // Approve handler — auto-triggers delivery (Dropbox/Drive) and downloads TIF
   async function handleApprove(_layout: LegacyLayout, proofUrl: string, tifUrl: string) {
     if (legacyId) {
       await apiClient.post(`/legacy-studio/${legacyId}/approve`, {}).catch(() => {})
@@ -253,7 +253,18 @@ export default function ProofGeneratorPage() {
     setApprovedProofUrl(proofUrl)
     setApprovedTifUrl(tifUrl)
     setPhase("approved")
-    toast.success("Proof approved")
+    toast.success("Legacy approved")
+
+    // Auto-download the TIF file
+    if (tifUrl) {
+      const a = document.createElement("a")
+      a.href = tifUrl
+      a.download = `${name || "legacy"}.tif`
+      a.target = "_blank"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
   }
 
   // Convert to order

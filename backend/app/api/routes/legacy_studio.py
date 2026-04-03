@@ -248,6 +248,14 @@ def approve_legacy(
     lp.approved_by = current_user.id
     lp.approved_at = datetime.now(timezone.utc)
     db.commit()
+
+    # Trigger auto-delivery (Dropbox/Drive) if configured
+    try:
+        from app.services.legacy_delivery import run_auto_delivery
+        run_auto_delivery(db, legacy_id, current_user.company_id)
+    except Exception:
+        pass  # Non-blocking — delivery failures don't block approval
+
     return {"approved": True}
 
 

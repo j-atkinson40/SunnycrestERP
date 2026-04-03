@@ -501,24 +501,17 @@ export default function LegacyCompositor({
               loading={generating || isGenerating}
               className="w-full"
             >
-              Preview legacy
+              Submit legacy
             </Button>
           )}
 
           {showProof && proofUrl && (
             <>
-              {mode === "manufacturer" && (
-                <Button onClick={handleApprove} className="w-full bg-green-600 hover:bg-green-700">
-                  <Check className="h-4 w-4 mr-1" /> Approve & send to print
-                </Button>
-              )}
-              {mode === "funeral_home" && (
-                <Button onClick={handleApprove} className="w-full">
-                  <Check className="h-4 w-4 mr-1" /> Submit legacy order
-                </Button>
-              )}
+              <Button onClick={handleApprove} className="w-full bg-green-600 hover:bg-green-700">
+                <Check className="h-4 w-4 mr-1" /> Approve & finish
+              </Button>
               <Button variant="outline" onClick={() => setShowProof(false)} className="w-full">
-                <RotateCcw className="h-4 w-4 mr-1" /> Regenerate
+                <RotateCcw className="h-4 w-4 mr-1" /> Adjust & regenerate
               </Button>
             </>
           )}
