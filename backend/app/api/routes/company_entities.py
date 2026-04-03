@@ -136,6 +136,8 @@ def _serialize(e: CompanyEntity, db: Session) -> dict:
         "is_crematory": e.is_crematory,
         "is_print_shop": e.is_print_shop,
         "is_active": e.is_active,
+        "customer_type": getattr(e, "customer_type", None),
+        "contractor_type": getattr(e, "contractor_type", None),
         "notes": e.notes,
         "linked_customer_id": customer[0] if customer else None,
         "linked_vendor_id": vendor[0] if vendor else None,
@@ -1460,6 +1462,41 @@ def confirm_bulk_classification(
 
     db.commit()
     return {"confirmed": updated}
+
+
+@router.post("/classify/reclassify-bulk")
+def reclassify_bulk(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Change customer_type for multiple companies at once."""
+    company_ids = data.get("company_ids", [])
+    new_type = data.get("customer_type")
+    new_contractor_type = data.get("contractor_type")
+    if not company_ids or not new_type:
+        raise HTTPException(status_code=400, detail="company_ids and customer_type required")
+
+    updated = 0
+    for cid in company_ids:
+        entity = db.query(CompanyEntity).filter(
+            CompanyEntity.id == cid, CompanyEntity.company_id == current_user.company_id,
+        ).first()
+        if entity:
+            entity.customer_type = new_type
+            entity.contractor_type = new_contractor_type
+            entity.classification_source = "manual"
+            entity.classification_reviewed_by = current_user.id
+            entity.classification_reviewed_at = datetime.now(timezone.utc)
+            # Reset role flags
+            entity.is_funeral_home = (new_type == "funeral_home")
+            entity.is_cemetery = (new_type == "cemetery")
+            entity.is_licensee = (new_type == "licensee")
+            entity.is_crematory = (new_type == "crematory")
+            updated += 1
+
+    db.commit()
+    return {"reclassified": updated}
 
 
 @router.post("/classify/confirm-all")

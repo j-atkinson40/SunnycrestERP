@@ -287,17 +287,58 @@ export default function CompanyClassificationPage() {
       )}
 
       {tab === "all" && summary && (
-        <Card className="p-4">
-          <h3 className="font-semibold mb-3">Classification breakdown</h3>
-          <div className="space-y-1">
-            {Object.entries(summary.by_type).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
-              <div key={type} className="flex items-center justify-between text-sm">
-                <span className="capitalize">{type.replace("_", " ")}</span>
-                <span className="font-medium">{count}</span>
+        <div className="space-y-4">
+          <Card className="p-4">
+            <h3 className="font-semibold mb-3">Classification breakdown</h3>
+            <div className="space-y-1">
+              {Object.entries(summary.by_type).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+                <div key={type} className="flex items-center justify-between text-sm">
+                  <span className="capitalize">{type.replace("_", " ")}</span>
+                  <span className="font-medium">{count}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Bulk reclassify tool */}
+          <Card className="p-4 space-y-3">
+            <h3 className="font-semibold">Bulk reclassify</h3>
+            <p className="text-xs text-gray-500">Change all companies of one type to another. Useful for fixing misclassifications.</p>
+            <div className="flex gap-2 items-end flex-wrap">
+              <div>
+                <label className="text-xs text-gray-500">From type</label>
+                <select id="bulk-from" className="mt-0.5 block rounded-md border px-3 py-1.5 text-sm bg-background">
+                  <option value="">Select...</option>
+                  {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label} ({summary.by_type[o.value] || 0})</option>)}
+                </select>
               </div>
-            ))}
-          </div>
-        </Card>
+              <div>
+                <label className="text-xs text-gray-500">To type</label>
+                <select id="bulk-to" className="mt-0.5 block rounded-md border px-3 py-1.5 text-sm bg-background">
+                  <option value="">Select...</option>
+                  {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <Button size="sm" onClick={async () => {
+                const from = (document.getElementById("bulk-from") as HTMLSelectElement).value
+                const to = (document.getElementById("bulk-to") as HTMLSelectElement).value
+                if (!from || !to || from === to) { toast.error("Select different from/to types"); return }
+                if (!window.confirm(`Reclassify ALL ${from.replace("_", " ")} companies as ${to.replace("_", " ")}?`)) return
+                try {
+                  // Get all IDs of the "from" type
+                  const res = await apiClient.get(`/companies?role=&per_page=500&page=1`)
+                  const ids = (res.data.items || []).filter((c: Record<string, unknown>) => c.customer_type === from).map((c: Record<string, unknown>) => c.id)
+                  if (ids.length === 0) { toast.error("No companies found with that type"); return }
+                  const result = await apiClient.post("/companies/classify/reclassify-bulk", { company_ids: ids, customer_type: to })
+                  toast.success(`Reclassified ${result.data.reclassified} companies from ${from} to ${to}`)
+                  loadSummary()
+                } catch { toast.error("Failed") }
+              }}>
+                Reclassify
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   )

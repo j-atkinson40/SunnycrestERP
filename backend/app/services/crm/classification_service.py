@@ -362,11 +362,23 @@ def _rule_based_classify(name_matches: dict, order_data: dict, domain_signals: d
     contractor_type = None
     confidence = 0.0
 
-    # Strong name match
-    if "funeral_home" in name_matches:
+    # Strong name match — check licensee FIRST (takes priority when both match)
+    if "licensee" in name_matches:
+        customer_type = "licensee"
+        confidence = 0.90
+        reasons.append(f"Name contains: {', '.join(name_matches['licensee'])}")
+        if "funeral_home" in name_matches:
+            reasons.append(f"Also matches funeral_home keywords but licensee takes priority (vault/precast company)")
+    elif "funeral_home" in name_matches:
         customer_type = "funeral_home"
-        confidence = 0.92
-        reasons.append(f"Name contains: {', '.join(name_matches['funeral_home'])}")
+        # Lower confidence if name has "services" but not "home"/"parlor" — could be a licensee
+        name_has_home = any(w in company_name.lower() for w in ["home", "parlor", " fh", "f.h."])
+        if not name_has_home and "service" in company_name.lower():
+            confidence = 0.70
+            reasons.append(f"Name contains: {', '.join(name_matches['funeral_home'])} — but 'Services' without 'Home' may indicate a licensee")
+        else:
+            confidence = 0.92
+            reasons.append(f"Name contains: {', '.join(name_matches['funeral_home'])}")
     elif "cemetery" in name_matches:
         customer_type = "cemetery"
         confidence = 0.90
