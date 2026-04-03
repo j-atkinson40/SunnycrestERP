@@ -1603,6 +1603,18 @@ def fix_role_flags(
             deactivated += 1
     stats["deactivated"] = deactivated
 
+    # Step 4: Auto-approve vendor-only records that ended up in review
+    n = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == tid,
+        CompanyEntity.is_vendor == True,
+        CompanyEntity.is_customer == False,
+        CompanyEntity.classification_source == "pending_review",
+    ).update({
+        "classification_source": "auto_high",
+        "customer_type": None,
+    }, synchronize_session="fetch")
+    stats["vendor_only_cleared"] = n
+
     db.commit()
     return stats
 

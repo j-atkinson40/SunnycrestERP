@@ -496,6 +496,7 @@ def run_bulk_classification(db: Session, tenant_id: str, use_google_places: bool
         .filter(
             CompanyEntity.company_id == tenant_id,
             CompanyEntity.is_aggregate == False,
+            CompanyEntity.is_customer == True,  # Only classify customers, not vendor-only records
         )
     )
     if not include_approved:
