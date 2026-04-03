@@ -161,7 +161,11 @@ export default function CompaniesListPage() {
                   const res = await apiClient.get("/companies/run-migration")
                   toast.success(`Migrated ${res.data.total_entities} companies (${res.data.customers} customers, ${res.data.vendors} vendors, ${res.data.cemeteries} cemeteries)`)
                   fetchData()
-                } catch { toast.error("Migration failed") }
+                } catch (err: unknown) {
+                  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+                  toast.error(detail || "Migration failed — check browser console")
+                  console.error("Migration error:", err)
+                }
               }}
             >
               Import existing customers, vendors & cemeteries
