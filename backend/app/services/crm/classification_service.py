@@ -22,7 +22,7 @@ NAME_SIGNALS = {
     "cemetery": ["cemetery", "memorial garden", "memorial park", "mausoleum", "burial ground", "holy cross", "sacred heart", "calvary", "grove", "lawn"],
     "contractor": ["excavat", "septic", "plumbing", "plumber", "construction", "contracting", "contractor", "backhoe", "site work", "grading", "landscap", "environmental", "well & septic", "drain", "sewer", "utility", "earthwork", "digging", "underground"],
     "crematory": ["cremator", "cremation", "cremains"],
-    "licensee": ["burial vault", "concrete product", "precast", "vault co", "monument", "wilbert", "vault company", "vault works"],
+    "licensee": ["burial vault", "concrete product", "precast", "vault co", "monument", "wilbert", "vault company", "vault works", " vault", "vault "],
     "church": ["church", "parish", "cathedral", "diocese"],
     "government": ["town of", "county of", "city of", "village of", "state of", "department of", "dept of", "municipality"],
 }
