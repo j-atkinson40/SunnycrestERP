@@ -504,6 +504,9 @@ def run_bulk_classification(db: Session, tenant_id: str, use_google_places: bool
             (CompanyEntity.classification_source.is_(None)) |
             (CompanyEntity.classification_source == "pending_review")
         )
+    else:
+        # Even with include_approved, never overwrite manually confirmed records
+        query = query.filter(CompanyEntity.classification_source != "manual")
     entities = query.all()
 
     total = len(entities)
