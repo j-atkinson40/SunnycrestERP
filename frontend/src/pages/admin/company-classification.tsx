@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { Loader2, Check, X } from "lucide-react"
+import { Loader2, Check } from "lucide-react"
 
 interface ReviewItem {
   id: string
