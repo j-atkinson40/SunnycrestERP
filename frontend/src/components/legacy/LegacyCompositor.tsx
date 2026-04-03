@@ -66,7 +66,7 @@ function clamp(v: number, min: number, max: number): number {
 
 export default function LegacyCompositor({
   backgroundUrl,
-  mode,
+  mode: _mode,
   initialLayout,
   name,
   dates,
