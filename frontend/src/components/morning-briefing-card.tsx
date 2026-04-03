@@ -183,6 +183,35 @@ export function MorningBriefingCard() {
   const autoDismissTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  // AI-enhanced briefing items
+  const [aiNarrative, setAiNarrative] = useState<string | null>(null);
+  const [aiPatterns, setAiPatterns] = useState<{alert_id: string; message: string; action_url: string | null}[]>([]);
+
+  // Load AI enhancements after briefing data loads
+  useEffect(() => {
+    if (!data || !data.items) return;
+    apiClient.post("/ai/briefing/enhance", {
+      briefing_data: {
+        today_count: data.items.length,
+        legacy_proofs_pending_review: 0,
+        crm_today_followups: 0,
+        crm_overdue_followups: 0,
+        crm_at_risk_accounts: [],
+      },
+    }).then((r) => {
+      const items = r.data.items || [];
+      for (const item of items) {
+        if (item.type === "ai_narrative") setAiNarrative(item.content);
+        if (item.type === "pattern_alert") setAiPatterns((prev) => [...prev, { alert_id: item.alert_id, message: item.message, action_url: item.action_url }]);
+      }
+    }).catch(() => {}); // AI features fail silently
+  }, [data]);
+
+  function dismissPattern(alertId: string) {
+    apiClient.post(`/ai/pattern-alerts/${alertId}/dismiss`).catch(() => {});
+    setAiPatterns((prev) => prev.filter((p) => p.alert_id !== alertId));
+  }
+
   const dismissKey = `briefing_dismissed_${user?.id ?? "anon"}_${todayDateString()}`;
 
   // Check sessionStorage on mount
@@ -683,6 +712,30 @@ export function MorningBriefingCard() {
             </button>
           </div>
         </div>
+
+        {/* AI Narrative — shown above items if available */}
+        {aiNarrative && (
+          <div className="mb-4 p-3 bg-blue-50/50 rounded-lg border border-blue-100 relative">
+            <span className="absolute top-2 right-2 text-xs text-blue-400">✨</span>
+            <p className="text-[15px] text-gray-800 leading-relaxed">{aiNarrative}</p>
+          </div>
+        )}
+
+        {/* Pattern Alerts */}
+        {aiPatterns.length > 0 && (
+          <div className="mb-4 space-y-2">
+            {aiPatterns.map((p) => (
+              <div key={p.alert_id} className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg border border-amber-100 text-sm">
+                <span className="text-amber-500 mt-0.5">💡</span>
+                <div className="flex-1">
+                  <p className="text-gray-700">{p.message}</p>
+                  {p.action_url && <a href={p.action_url} className="text-xs text-blue-600 hover:underline">View account →</a>}
+                </div>
+                <button onClick={() => dismissPattern(p.alert_id)} className="text-xs text-gray-400 hover:text-gray-600">Dismiss</button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Items */}
         <div className="space-y-3">

@@ -33,6 +33,10 @@ class FilterParseRequest(BaseModel):
     entity_type: str
 
 
+class BriefingEnhanceRequest(BaseModel):
+    briefing_data: dict
+
+
 class CompanyChatRequest(BaseModel):
     master_company_id: str
     message: str
@@ -378,3 +382,96 @@ User: {data.message}"""
         return {"answer": "Sorry, I couldn't process that question right now.", "sources": []}
 
     return {"answer": answer, "sources": []}
+
+
+# ── Briefing Intelligence ────────────────────────────────────────────────────
+
+@router.post("/briefing/enhance")
+def enhance_briefing(
+    data: BriefingEnhanceRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate AI-enhanced briefing items: narrative, patterns, prep notes."""
+    items = []
+    tid = current_user.company_id
+
+    # 1. Narrative
+    try:
+        from app.services.ai.briefing_intelligence import generate_narrative
+        narrative = generate_narrative(db, tid, current_user.id, data.briefing_data)
+        if narrative:
+            items.append({
+                "type": "ai_narrative",
+                "priority": "info",
+                "content": narrative,
+            })
+    except Exception:
+        logger.exception("Narrative generation failed")
+
+    # 2. Pattern alerts
+    try:
+        from app.services.ai.pattern_agent import get_unsurfaced_alerts, mark_surfaced
+        alerts = get_unsurfaced_alerts(db, tid)
+        alert_ids = []
+        for alert in alerts:
+            items.append({
+                "type": "pattern_alert",
+                "priority": "info",
+                "title": "Something I noticed",
+                "message": alert.description,
+                "company_id": alert.master_company_id,
+                "alert_id": alert.id,
+                "action_url": f"/crm/companies/{alert.master_company_id}" if alert.master_company_id else None,
+            })
+            alert_ids.append(alert.id)
+        if alert_ids:
+            mark_surfaced(db, alert_ids)
+    except Exception:
+        logger.exception("Pattern alerts failed")
+
+    # 3. Prep notes for today's follow-ups
+    try:
+        from app.services.ai.briefing_intelligence import generate_prep_note
+        from app.models.activity_log import ActivityLog
+        from datetime import date as _date
+
+        followups = (
+            db.query(ActivityLog)
+            .filter(
+                ActivityLog.tenant_id == tid,
+                ActivityLog.follow_up_date == _date.today(),
+                ActivityLog.follow_up_completed == False,
+            )
+            .limit(5)
+            .all()
+        )
+        for fu in followups:
+            if fu.master_company_id:
+                note = generate_prep_note(db, tid, fu.master_company_id, fu.body)
+                if note:
+                    items.append({
+                        "type": "prep_note",
+                        "priority": "info",
+                        "title": f"Prep: {fu.title or 'Follow-up'}",
+                        "content": note,
+                        "company_id": fu.master_company_id,
+                    })
+    except Exception:
+        logger.exception("Prep notes failed")
+
+    db.commit()
+    return {"items": items}
+
+
+@router.post("/pattern-alerts/{alert_id}/dismiss")
+def dismiss_pattern_alert(
+    alert_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Dismiss a pattern alert so it doesn't appear again."""
+    from app.services.ai.pattern_agent import dismiss_alert
+    dismiss_alert(db, alert_id, current_user.id)
+    db.commit()
+    return {"dismissed": True}
