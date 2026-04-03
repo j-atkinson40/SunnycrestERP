@@ -335,6 +335,12 @@ function getManufacturingNav(
     items: filterByPermission(
       [
         {
+          label: "AI & Intelligence",
+          href: "/settings/ai-intelligence",
+          icon: "Sparkles",
+          adminOnly: true,
+        },
+        {
           label: "Team Intelligence",
           href: "/settings/team-intelligence",
           icon: "BrainCircuit",

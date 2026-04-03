@@ -23,6 +23,7 @@ import CompanyDetailPage from "@/pages/crm/company-detail";
 import FuneralHomesPage from "@/pages/crm/funeral-homes";
 import CrmSettingsPage from "@/pages/crm/crm-settings";
 import PipelinePage from "@/pages/crm/pipeline";
+import AiSettingsPage from "@/pages/settings/ai-settings";
 import AuditLogs from "@/pages/admin/audit-logs";
 import CompanySettings from "@/pages/admin/company-settings";
 import AccountingPage from "@/pages/admin/accounting";
@@ -294,6 +295,7 @@ export default function App() {
                   <Route path="/crm/funeral-homes" element={<FuneralHomesPage />} />
                   <Route path="/crm/settings" element={<CrmSettingsPage />} />
                   <Route path="/crm/pipeline" element={<PipelinePage />} />
+                  <Route path="/settings/ai-intelligence" element={<AiSettingsPage />} />
 
                   {/* Products — core feature, no module gate */}
                   <Route
