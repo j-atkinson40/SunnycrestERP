@@ -89,7 +89,7 @@ export default function CompanyDetailPage() {
   const [company, setCompany] = useState<CompanyDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>("overview")
-  const [saving, setSaving] = useState(false)
+  const [, setSaving] = useState(false)
 
   // Editable fields
   const [editPhone, setEditPhone] = useState("")
