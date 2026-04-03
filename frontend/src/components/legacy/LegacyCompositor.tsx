@@ -26,6 +26,11 @@ export interface LegacyTextLayer {
   fontSize: number
   color: "white" | "black"
   shadow: boolean
+  // Included when sending to backend for generation
+  name?: string
+  dates?: string
+  additional?: string
+  font_size?: number
 }
 
 export interface LegacyLayout {
@@ -346,7 +351,16 @@ export default function LegacyCompositor({
   async function handleGenerate() {
     setGenerating(true)
     try {
-      const layout: LegacyLayout = { photos, text: textLayer }
+      const layout: LegacyLayout = {
+        photos,
+        text: {
+          ...textLayer,
+          name,
+          dates,
+          additional: additionalText,
+          font_size: textLayer.fontSize,
+        },
+      }
       const result = await onGenerate(layout)
       setProofUrl(result.proof_url)
       setTifUrl(result.tif_url)
@@ -360,7 +374,16 @@ export default function LegacyCompositor({
 
   function handleApprove() {
     if (proofUrl && tifUrl) {
-      onApprove({ photos, text: textLayer }, proofUrl, tifUrl)
+      onApprove({
+        photos,
+        text: {
+          ...textLayer,
+          name,
+          dates,
+          additional: additionalText,
+          font_size: textLayer.fontSize,
+        },
+      }, proofUrl, tifUrl)
     }
   }
 
