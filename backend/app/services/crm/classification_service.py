@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 NAME_SIGNALS = {
     "funeral_home": ["funeral", "mortuary", "chapel", "cremation", "memorial home", "funeral service", "funeral parlor", " fh", "fh ", "(fh)", "f.h.", " fh.", "f.h "],
-    "cemetery": ["cemetery", "memorial garden", "memorial park", "mausoleum", "burial ground", "holy cross", "sacred heart", "calvary", "grove", "lawn"],
-    "contractor": ["excavat", "septic", "plumbing", "plumber", "construction", "contracting", "contractor", "backhoe", "site work", "grading", "landscap", "environmental", "well & septic", "drain", "sewer", "utility", "earthwork", "digging", "underground"],
+    "cemetery": ["cemetery", "memorial garden", "memorial park", "mausoleum", "burial ground"],
+    "contractor": ["excavat", "septic", "plumbing", "plumber", "construction", "contracting", "contractor", "backhoe", "site work", "grading", "landscap", "environmental", "well & septic", "drain", "sewer", "utility", "earthwork", "digging", "underground", "lawn care", "lawn service", "lawn maint", "snow remov", "snow plow", "paving", "hauling", "trucking", "tree service", "tree remov", "stump"],
     "crematory": ["cremator", "cremation", "cremains"],
     "licensee": ["burial vault", "concrete product", "precast", "vault co", "monument", "wilbert", "vault company", "vault works", " vault", "vault "],
     "church": ["church", "parish", "cathedral", "diocese", "st. ", "saint "],
