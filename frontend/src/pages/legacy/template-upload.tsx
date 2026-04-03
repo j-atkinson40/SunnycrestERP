@@ -6,7 +6,7 @@ import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Upload, Check, X, CloudUpload, RefreshCw } from "lucide-react"
+import { Loader2, Check, X, CloudUpload, RefreshCw } from "lucide-react"
 
 type TemplateType = "standard" | "urn" | "bv_standard" | "bv_urn"
 
