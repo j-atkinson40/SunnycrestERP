@@ -663,7 +663,13 @@ def list_name_suggestions(status: str = "pending", page: int = 1, per_page: int 
         query = db.query(AiNameSuggestion, CompanyEntity).join(CompanyEntity, AiNameSuggestion.master_company_id == CompanyEntity.id).filter(AiNameSuggestion.tenant_id == current_user.company_id, AiNameSuggestion.status == status).order_by(AiNameSuggestion.confidence.desc())
         total = query.count()
         items = query.offset((page - 1) * per_page).limit(per_page).all()
-        return {"items": [{"id": s.id, "current_name": s.current_name, "suggested_name": s.suggested_name, "confidence": float(s.confidence) if s.confidence else None, "suggestion_source": s.suggestion_source, "suggested_phone": s.suggested_phone, "suggested_website": s.suggested_website, "suggested_address_line1": s.suggested_address_line1, "company_id": e.id, "customer_type": getattr(e, "customer_type", None), "city": e.city, "state": e.state} for s, e in items], "total": total, "page": page, "pages": (total + per_page - 1) // per_page}
+        def _etype(e):
+            ct = getattr(e, "customer_type", None)
+            if ct: return ct
+            if getattr(e, "is_cemetery", False): return "cemetery"
+            if getattr(e, "is_funeral_home", False): return "funeral_home"
+            return None
+        return {"items": [{"id": s.id, "current_name": s.current_name, "suggested_name": s.suggested_name, "confidence": float(s.confidence) if s.confidence else None, "suggestion_source": s.suggestion_source, "suggested_phone": s.suggested_phone, "suggested_website": s.suggested_website, "suggested_address_line1": s.suggested_address_line1, "company_id": e.id, "customer_type": _etype(e), "city": e.city, "state": e.state} for s, e in items], "total": total, "page": page, "pages": (total + per_page - 1) // per_page}
     except Exception:
         db.rollback()
         return {"items": [], "total": 0, "page": 1, "pages": 0}

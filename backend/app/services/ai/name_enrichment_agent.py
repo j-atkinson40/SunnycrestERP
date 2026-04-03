@@ -6,7 +6,7 @@ import time
 import uuid as _uuid
 from decimal import Decimal
 
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from app.models.ai_name_suggestion import AiNameSuggestion
@@ -36,12 +36,25 @@ def is_shorthand_name(name: str, customer_type: str | None) -> bool:
     return False
 
 
+def _resolve_type(entity: CompanyEntity) -> str | None:
+    """Get effective type from customer_type or boolean flags."""
+    ct = getattr(entity, "customer_type", None)
+    if ct in ("cemetery", "funeral_home"):
+        return ct
+    if getattr(entity, "is_cemetery", False):
+        return "cemetery"
+    if getattr(entity, "is_funeral_home", False):
+        return "funeral_home"
+    return None
+
+
 def enrich_company_name(db: Session, entity: CompanyEntity, use_google_places: bool = True) -> AiNameSuggestion | None:
     """Try to find the complete professional name for a shorthand company name."""
-    if getattr(entity, "customer_type", None) not in ("cemetery", "funeral_home"):
+    effective_type = _resolve_type(entity)
+    if effective_type not in ("cemetery", "funeral_home"):
         return None
 
-    if not is_shorthand_name(entity.name, entity.customer_type):
+    if not is_shorthand_name(entity.name, effective_type):
         return None
 
     # Check for existing pending or rejected suggestion
@@ -64,7 +77,7 @@ def enrich_company_name(db: Session, entity: CompanyEntity, use_google_places: b
             from app.config import settings as app_settings
             api_key = app_settings.GOOGLE_PLACES_API_KEY
             if api_key:
-                suffix = "Cemetery" if entity.customer_type == "cemetery" else "Funeral Home"
+                suffix = "Cemetery" if effective_type == "cemetery" else "Funeral Home"
                 query = f"{entity.name} {suffix} {entity.city or ''} {entity.state or ''}".strip()
 
                 import httpx
@@ -130,7 +143,7 @@ def enrich_company_name(db: Session, entity: CompanyEntity, use_google_places: b
     if not suggested_name or confidence < Decimal("0.70"):
         try:
             from app.services.ai_service import call_anthropic
-            suffix_type = "cemetery" if entity.customer_type == "cemetery" else "funeral home"
+            suffix_type = "cemetery" if effective_type == "cemetery" else "funeral home"
             prompt = f"""A precast concrete manufacturer has a {suffix_type} in their CRM with the shorthand name "{entity.name}".
 Location: {entity.city or 'unknown'}, {entity.state or 'unknown'}
 
@@ -212,8 +225,12 @@ def run_name_enrichment(db: Session, tenant_id: str) -> dict:
         db.query(CompanyEntity)
         .filter(
             CompanyEntity.company_id == tenant_id,
-            CompanyEntity.customer_type.in_(["cemetery", "funeral_home"]),
             CompanyEntity.is_active == True,
+            or_(
+                CompanyEntity.customer_type.in_(["cemetery", "funeral_home"]),
+                CompanyEntity.is_cemetery == True,
+                CompanyEntity.is_funeral_home == True,
+            ),
         )
         .order_by(CompanyEntity.name)
         .all()
@@ -225,7 +242,8 @@ def run_name_enrichment(db: Session, tenant_id: str) -> dict:
             stats["processed"] += 1
             if result:
                 stats["suggestions_created"] += 1
-                stats["by_type"][company.customer_type or "other"] = stats["by_type"].get(company.customer_type or "other", 0) + 1
+                ctype = _resolve_type(company) or "other"
+                stats["by_type"][ctype] = stats["by_type"].get(ctype, 0) + 1
 
             if stats["processed"] % 50 == 0:
                 db.commit()
