@@ -71,12 +71,18 @@ export default function CompanyClassificationPage() {
     try {
       const res = await apiClient.get("/companies/classify/run-bulk")
       const d = res.data
-      toast.success(`Classified ${d.total_processed} companies. Auto: ${d.auto_classified}, Review: ${d.needs_review}, Unknown: ${d.unknown}`)
-      loadQueue()
-      loadSummary()
+      if (d.error) {
+        toast.error(`Classification error: ${d.detail}`)
+        console.error("Classification trace:", d.trace)
+      } else {
+        toast.success(`Classified ${d.total_processed} companies. Auto: ${d.auto_classified}, Review: ${d.needs_review}, Unknown: ${d.unknown}`)
+        loadQueue()
+        loadSummary()
+      }
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast.error(detail || "Classification failed")
+      toast.error(detail || "Classification failed — check browser console")
+      console.error("Classification error:", err)
     } finally {
       setRunning(false)
     }

@@ -1324,7 +1324,8 @@ def run_bulk_classification_endpoint(
         return result
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Classification error: {type(e).__name__}: {e}")
+        import traceback
+        return {"error": True, "detail": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-500:]}
 
 
 @router.get("/classify/review-queue")

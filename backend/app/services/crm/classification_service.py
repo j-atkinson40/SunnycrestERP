@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -58,7 +59,6 @@ def cleanup_company_name(name: str) -> dict:
         actions.append("Trimmed leading/trailing whitespace")
 
     # 2. Collapse multiple spaces into one
-    import re
     collapsed = re.sub(r"\s{2,}", " ", cleaned)
     if collapsed != cleaned:
         actions.append(f"Collapsed extra spaces (had multiple consecutive spaces)")
