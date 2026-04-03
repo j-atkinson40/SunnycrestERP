@@ -25,8 +25,8 @@ NAME_SIGNALS = {
     "licensee": ["burial vault", "concrete product", "precast", "vault co", "monument", "wilbert", "vault company", "vault works", " vault", "vault "],
     "church": ["church", "parish", "cathedral", "diocese", "st. ", "saint "],
     "government": ["town of", "county of", "city of", "village of", "state of", "department of", "dept of", "municipality", "highway dept", "water district", "sewer district", "housing authority"],
-    "school": ["school", "university", "college", "academy", "board of education", "boces", "suny"],
-    "fire_department": ["fire dept", "fire department", "fire district", "fire co", "fire company", "volunteer fire", "fire station", "ems", "ambulance", "rescue squad"],
+    "school": ["school", "university", "college", "academy", "board of education", "boces", "suny", " csd", "csd ", "(csd)", "c.s.d.", "central school"],
+    "fire_department": ["fire dept", "fire department", "fire district", "fire co", "fire company", "volunteer fire", "fire station", "ems", "ambulance", "rescue squad", " fd", "fd ", "(fd)", "f.d.", " fd.", "f.d "],
     "utility": ["electric", "power authority", "water authority", "gas company", "energy"],
 }
 
