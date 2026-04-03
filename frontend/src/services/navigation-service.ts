@@ -227,6 +227,17 @@ function getManufacturingNav(
     ],
   });
 
+  // CRM
+  sections.push({
+    title: "CRM",
+    items: filterByPermission(
+      [
+        { label: "Companies", href: "/crm/companies", icon: "Building2", permission: "customers.view" },
+      ],
+      modules, perms, areas, isAdmin,
+    ),
+  });
+
   // Training
   sections.push({
     title: "Training",

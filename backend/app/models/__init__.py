@@ -12,6 +12,7 @@ from app.models.announcement_read import AnnouncementRead
 from app.models.assistant_profile import AssistantProfile
 from app.models.api_key import ApiKey
 from app.models.api_key_usage import ApiKeyUsage
+from app.models.activity_log import ActivityLog
 from app.models.audit_log import AuditLog
 from app.models.balance_adjustment import BalanceAdjustment
 from app.models.batch_ticket import BatchTicket
@@ -249,6 +250,7 @@ __all__ = [
     "AssistantProfile",
     "ApiKey",
     "ApiKeyUsage",
+    "ActivityLog",
     "AuditLog",
     "BalanceAdjustment",
     "BatchTicket",

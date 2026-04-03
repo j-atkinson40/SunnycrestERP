@@ -202,6 +202,34 @@ def _build_funeral_scheduling_context(
         except Exception:
             pass
 
+        # CRM follow-up reminders
+        overdue_followups = 0
+        today_followups = 0
+        try:
+            from app.models.activity_log import ActivityLog
+
+            overdue_followups = (
+                db.query(func.count(ActivityLog.id))
+                .filter(
+                    ActivityLog.tenant_id == company_id,
+                    ActivityLog.follow_up_completed == False,
+                    ActivityLog.follow_up_date < today,
+                    ActivityLog.follow_up_date.isnot(None),
+                )
+                .scalar() or 0
+            )
+            today_followups = (
+                db.query(func.count(ActivityLog.id))
+                .filter(
+                    ActivityLog.tenant_id == company_id,
+                    ActivityLog.follow_up_completed == False,
+                    ActivityLog.follow_up_date == today,
+                )
+                .scalar() or 0
+            )
+        except Exception:
+            pass
+
         return {
             "today_deliveries": [_delivery_summary(d) for d in today_deliveries],
             "today_count": len(today_deliveries),
@@ -211,6 +239,8 @@ def _build_funeral_scheduling_context(
             "unscheduled_count": len(unscheduled),
             "legacy_proofs_pending_review": legacy_pending_review,
             "legacy_proofs_approved_today": legacy_approved_today,
+            "crm_overdue_followups": overdue_followups,
+            "crm_today_followups": today_followups,
         }
     except Exception as e:
         logger.warning("Error building funeral scheduling context: %s", e)

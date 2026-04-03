@@ -17,6 +17,7 @@ from app.models.vendor import Vendor
 from app.models.cemetery import Cemetery
 from app.models.user import User
 from app.services.crm import contact_service
+from app.services.crm import activity_log_service
 
 router = APIRouter()
 
@@ -602,3 +603,119 @@ def dismiss_contact_endpoint(
     contact_service.hard_delete_contact(db, contact)
     db.commit()
     return {"dismissed": True}
+
+
+# ── Activity log endpoints ───────────────────────────────────────────────────
+
+class ActivityCreate(BaseModel):
+    activity_type: str
+    contact_id: str | None = None
+    title: str
+    body: str | None = None
+    outcome: str | None = None
+    follow_up_date: str | None = None
+    follow_up_assigned_to: str | None = None
+
+
+class ActivityUpdate(BaseModel):
+    title: str | None = None
+    body: str | None = None
+    outcome: str | None = None
+    follow_up_date: str | None = None
+    follow_up_assigned_to: str | None = None
+
+
+@router.get("/{entity_id}/activity")
+def list_activity(
+    entity_id: str,
+    type: str = Query("", alias="type"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return activity_log_service.get_feed(
+        db, entity_id, activity_type=type or None, page=page, per_page=per_page,
+    )
+
+
+@router.post("/{entity_id}/activity", status_code=201)
+def create_activity(
+    entity_id: str,
+    data: ActivityCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entry = activity_log_service.log_manual_activity(
+        db,
+        tenant_id=current_user.company_id,
+        master_company_id=entity_id,
+        activity_type=data.activity_type,
+        title=data.title,
+        logged_by=current_user.id,
+        body=data.body,
+        outcome=data.outcome,
+        contact_id=data.contact_id,
+        follow_up_date=data.follow_up_date,
+        follow_up_assigned_to=data.follow_up_assigned_to,
+    )
+    db.commit()
+    return activity_log_service._serialize(entry)
+
+
+@router.patch("/{entity_id}/activity/{activity_id}")
+def update_activity(
+    entity_id: str,
+    activity_id: str,
+    data: ActivityUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.activity_log import ActivityLog
+    entry = db.query(ActivityLog).filter(
+        ActivityLog.id == activity_id,
+        ActivityLog.master_company_id == entity_id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if entry.is_system_generated:
+        raise HTTPException(status_code=403, detail="Cannot edit system-generated activity")
+
+    updates = data.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(entry, field, value)
+    db.commit()
+    return activity_log_service._serialize(entry)
+
+
+@router.post("/{entity_id}/activity/{activity_id}/complete-followup")
+def complete_followup_endpoint(
+    entity_id: str,
+    activity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entry = activity_log_service.complete_followup(db, activity_id, current_user.id)
+    db.commit()
+    return activity_log_service._serialize(entry)
+
+
+@router.delete("/{entity_id}/activity/{activity_id}")
+def delete_activity(
+    entity_id: str,
+    activity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.activity_log import ActivityLog
+    entry = db.query(ActivityLog).filter(
+        ActivityLog.id == activity_id,
+        ActivityLog.master_company_id == entity_id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if entry.is_system_generated:
+        raise HTTPException(status_code=403, detail="Cannot delete system-generated activity")
+    db.delete(entry)
+    db.commit()
+    return {"deleted": True}

@@ -469,6 +469,20 @@ def create_quote(
                         )
                     except Exception:
                         pass  # Non-fatal — order still created
+
+                # Log CRM activity
+                try:
+                    from app.services.crm.activity_log_service import log_system_event
+                    log_system_event(
+                        db, current_user.company_id, None,
+                        activity_type="order",
+                        title=f"Order #{order_result.get('order_number', '')} created — {data.customer_name}",
+                        related_order_id=order_result["id"],
+                        customer_id=order.customer_id if order else None,
+                    )
+                    db.commit()
+                except Exception:
+                    pass
         except Exception:
             pass  # Quote was created; conversion failure is not fatal
 
