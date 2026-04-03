@@ -134,9 +134,39 @@ URN_TEMPLATES: list[dict] = [
 ]
 
 
-def get_template(print_name: str, is_urn: bool = False) -> dict | None:
+# ── Bronze vault (BV) standard templates ────────────────────────────────────
+# Custom photo layout templates — different from WLP (full background) templates.
+# These have a photo cutout area (heart, cross, etc.) on a decorative background.
+
+BV_STANDARD_TEMPLATES: list[dict] = [
+    _t("Cross Set", "templates/bv_standard/BV-CrossSet-Custom.tif"),
+    _t("Cross Set — No Token", "templates/bv_standard/BV-CrossSet-Custom_NoToken.tif"),
+    _t("Cross Sky", "templates/bv_standard/BV-CrossSky-Custom.tif"),
+    _t("Cross Sky — No Token", "templates/bv_standard/BV-CrossSky-Custom_NoToken.tif"),
+    _t("Heart Cloud", "templates/bv_standard/BV-HeartCld-Custom.tif"),
+    _t("Heart Cloud — No Token", "templates/bv_standard/BV-HeartCld-Custom_NoToken.tif"),
+    _t("Heart Ribbon", "templates/bv_standard/BV-HeartRbn-Custom.tif"),
+    _t("Heart Ribbon — No Token", "templates/bv_standard/BV-HeartRbn-Custom_NoToken.tif"),
+    _t("Heart Ribbon — No Token/Type", "templates/bv_standard/BV-HeartRbn-Custom_NoTokenNoType.tif"),
+]
+
+# ── Bronze vault (BV) urn templates ─────────────────────────────────────────
+
+BV_URN_TEMPLATES: list[dict] = [
+    _t("Cross Set", "templates/bv_urn/UV-CrossSet.tif"),
+    _t("Cross Set — No Token", "templates/bv_urn/UV-CrossSet_NoToken.tif"),
+    _t("Cross Sky", "templates/bv_urn/UV-CrossSky.tif"),
+    _t("Cross Sky — No Token", "templates/bv_urn/UV-CrossSky_NoToken.tif"),
+    _t("Heart Cloud", "templates/bv_urn/UV-HeartCld.tif"),
+    _t("Heart Cloud — No Token", "templates/bv_urn/UV-HeartCld_NoToken.tif"),
+    _t("Heart Ribbon", "templates/bv_urn/UV-HeartRbn.tif"),
+    _t("Heart Ribbon — No Token", "templates/bv_urn/UV-HeartRbn_NoToken.tif"),
+]
+
+
+def get_template(print_name: str, is_urn: bool = False, template_type: str = "standard") -> dict | None:
     """Find template by print name (case-insensitive)."""
-    templates = URN_TEMPLATES if is_urn else STANDARD_TEMPLATES
+    templates = _get_template_list(is_urn, template_type)
     name_lower = print_name.lower()
     for t in templates:
         if t["print_name"].lower() == name_lower:
@@ -144,12 +174,19 @@ def get_template(print_name: str, is_urn: bool = False) -> dict | None:
     return None
 
 
-def get_available_templates(is_urn: bool = False) -> list[dict]:
+def get_available_templates(is_urn: bool = False, template_type: str = "standard") -> list[dict]:
     """Return templates where available=True."""
-    templates = URN_TEMPLATES if is_urn else STANDARD_TEMPLATES
+    templates = _get_template_list(is_urn, template_type)
     return [t for t in templates if t["available"]]
 
 
-def get_all_templates(is_urn: bool = False) -> list[dict]:
+def get_all_templates(is_urn: bool = False, template_type: str = "standard") -> list[dict]:
     """Return all templates with availability status."""
+    return _get_template_list(is_urn, template_type)
+
+
+def _get_template_list(is_urn: bool, template_type: str = "standard") -> list[dict]:
+    """Resolve which template list to use."""
+    if template_type == "bv":
+        return BV_URN_TEMPLATES if is_urn else BV_STANDARD_TEMPLATES
     return URN_TEMPLATES if is_urn else STANDARD_TEMPLATES

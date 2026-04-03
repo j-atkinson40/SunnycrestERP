@@ -233,3 +233,129 @@ def mark_template_available(
                 return {"available": True, "background_url": None, "note": str(e)}
 
     raise HTTPException(status_code=404, detail=f"Template '{data.print_name}' not found")
+
+
+@router.post("/admin/upload-template")
+async def upload_template_tif(
+    file: UploadFile = File(...),
+    template_type: str = Query("standard", regex="^(standard|urn|bv_standard|bv_urn)$"),
+    current_user: User = Depends(require_admin),
+):
+    """Upload a template TIF file to R2 storage.
+
+    The filename must match the r2_key filename for a registered template
+    (e.g., WLP-AmFlag.tif, BV-CrossSet-Custom.tif).
+    """
+    from app.services import legacy_r2_client as r2
+    from app.services.legacy_templates import get_all_templates
+
+    if not file.filename or not file.filename.lower().endswith((".tif", ".tiff")):
+        raise HTTPException(status_code=400, detail="Only TIF files accepted")
+
+    # Determine R2 folder
+    folder_map = {
+        "standard": "templates/standard",
+        "urn": "templates/urn",
+        "bv_standard": "templates/bv_standard",
+        "bv_urn": "templates/bv_urn",
+    }
+    folder = folder_map[template_type]
+    r2_key = f"{folder}/{file.filename}"
+
+    file_bytes = await file.read()
+    size_mb = len(file_bytes) / (1024 * 1024)
+
+    try:
+        url = r2.upload_bytes(file_bytes, r2_key, "image/tiff")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    # Check if this matches a registered template
+    is_urn = template_type in ("urn", "bv_urn")
+    all_templates = get_all_templates(is_urn)
+    matched = None
+    for t in all_templates:
+        if t["r2_key"] == r2_key:
+            matched = t["print_name"]
+            t["available"] = True
+            break
+
+    return {
+        "uploaded": True,
+        "r2_key": r2_key,
+        "url": url,
+        "size_mb": round(size_mb, 1),
+        "matched_template": matched,
+    }
+
+
+@router.post("/admin/upload-templates-bulk")
+async def upload_templates_bulk(
+    files: list[UploadFile] = File(...),
+    template_type: str = Query("standard", regex="^(standard|urn|bv_standard|bv_urn)$"),
+    current_user: User = Depends(require_admin),
+):
+    """Upload multiple template TIF files at once."""
+    from app.services import legacy_r2_client as r2
+    from app.services.legacy_templates import get_all_templates
+
+    folder_map = {
+        "standard": "templates/standard",
+        "urn": "templates/urn",
+        "bv_standard": "templates/bv_standard",
+        "bv_urn": "templates/bv_urn",
+    }
+    folder = folder_map[template_type]
+    is_urn = template_type in ("urn", "bv_urn")
+    all_templates = get_all_templates(is_urn)
+
+    results = []
+    for file in files:
+        if not file.filename or not file.filename.lower().endswith((".tif", ".tiff")):
+            results.append({"filename": file.filename, "error": "Not a TIF file"})
+            continue
+
+        r2_key = f"{folder}/{file.filename}"
+        file_bytes = await file.read()
+        try:
+            url = r2.upload_bytes(file_bytes, r2_key, "image/tiff")
+            matched = None
+            for t in all_templates:
+                if t["r2_key"] == r2_key:
+                    matched = t["print_name"]
+                    t["available"] = True
+                    break
+            results.append({
+                "filename": file.filename,
+                "r2_key": r2_key,
+                "size_mb": round(len(file_bytes) / (1024 * 1024), 1),
+                "matched_template": matched,
+            })
+        except Exception as e:
+            results.append({"filename": file.filename, "error": str(e)})
+
+    uploaded = [r for r in results if "error" not in r]
+    return {"uploaded": len(uploaded), "errors": len(results) - len(uploaded), "results": results}
+
+
+@router.get("/admin/template-status")
+def template_upload_status(
+    type: str = Query("standard", regex="^(standard|urn)$"),
+    current_user: User = Depends(require_admin),
+):
+    """Check which registered templates have TIF files in R2."""
+    from app.services import legacy_r2_client as r2
+    from app.services.legacy_templates import get_all_templates
+
+    is_urn = type == "urn"
+    templates = get_all_templates(is_urn)
+    results = []
+    for t in templates:
+        in_r2 = r2.exists(t["r2_key"])
+        results.append({
+            "print_name": t["print_name"],
+            "r2_key": t["r2_key"],
+            "available": t["available"],
+            "in_r2": in_r2,
+        })
+    return results

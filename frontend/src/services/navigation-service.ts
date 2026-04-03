@@ -224,6 +224,12 @@ function getManufacturingNav(
         icon: "Settings",
         permission: "legacy_studio.create",
       },
+      {
+        label: "Template Upload",
+        href: "/legacy/templates/upload",
+        icon: "Upload",
+        permission: "legacy_studio.create",
+      },
     ],
   });
 
