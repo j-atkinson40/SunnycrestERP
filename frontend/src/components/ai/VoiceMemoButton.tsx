@@ -5,7 +5,7 @@ import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Mic, Square, Loader2, Check, X, Pencil } from "lucide-react"
+import { Mic, Square, Loader2, Check, X } from "lucide-react"
 
 interface VoiceMemoResult {
   activity_id: string
