@@ -1115,8 +1115,12 @@ def list_funeral_homes(
         .outerjoin(ManufacturerCompanyProfile, ManufacturerCompanyProfile.master_company_id == CompanyEntity.id)
         .filter(
             CompanyEntity.company_id == current_user.company_id,
-            CompanyEntity.is_customer == True,
             CompanyEntity.is_active == True,
+            # Show funeral homes by classification, or by role flag if unclassified
+            or_(
+                CompanyEntity.customer_type == "funeral_home",
+                sa.and_(CompanyEntity.customer_type.is_(None), CompanyEntity.is_funeral_home == True),
+            ),
         )
     )
     if q:

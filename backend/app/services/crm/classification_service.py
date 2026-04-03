@@ -309,6 +309,11 @@ def classify_company(db: Session, company_entity_id: str, use_google_places: boo
         entity.is_funeral_home = True
     elif entity.customer_type == "cemetery":
         entity.is_cemetery = True
+    elif entity.customer_type == "licensee":
+        entity.is_licensee = True
+        entity.is_funeral_home = False  # Clear if incorrectly set
+    elif entity.customer_type == "crematory":
+        entity.is_crematory = True
 
     return result
 
