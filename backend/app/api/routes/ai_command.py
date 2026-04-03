@@ -729,9 +729,12 @@ def apply_bulk_suggestions(data: dict, current_user: User = Depends(get_current_
 
 @router.get("/name-enrichment/run")
 def run_name_enrichment_endpoint(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    import traceback
     from app.services.ai.name_enrichment_agent import run_name_enrichment
     try:
         return run_name_enrichment(db, current_user.company_id)
     except Exception as e:
         db.rollback()
-        return {"error": True, "detail": str(e)}
+        tb = traceback.format_exc()
+        logger.error("Name enrichment failed: %s\n%s", str(e), tb)
+        return {"error": True, "detail": f"{str(e)} | {tb[-500:]}"}

@@ -221,20 +221,27 @@ def run_name_enrichment(db: Session, tenant_id: str) -> dict:
         """))
         db.commit()
 
-    companies = (
-        db.query(CompanyEntity)
-        .filter(
-            CompanyEntity.company_id == tenant_id,
-            CompanyEntity.is_active == True,
-            or_(
-                CompanyEntity.customer_type.in_(["cemetery", "funeral_home"]),
-                CompanyEntity.is_cemetery == True,
-                CompanyEntity.is_funeral_home == True,
-            ),
-        )
-        .order_by(CompanyEntity.name)
-        .all()
-    )
+    # Use raw SQL to avoid ORM issues if boolean columns don't exist on Railway
+    try:
+        rows = db.execute(text(
+            "SELECT id FROM company_entities "
+            "WHERE company_id = :tid AND is_active = true "
+            "AND (customer_type IN ('cemetery', 'funeral_home') "
+            "     OR is_cemetery = true OR is_funeral_home = true) "
+            "ORDER BY name"
+        ), {"tid": tenant_id}).fetchall()
+    except Exception:
+        db.rollback()
+        # Fallback: only customer_type filter
+        rows = db.execute(text(
+            "SELECT id FROM company_entities "
+            "WHERE company_id = :tid AND is_active = true "
+            "AND customer_type IN ('cemetery', 'funeral_home') "
+            "ORDER BY name"
+        ), {"tid": tenant_id}).fetchall()
+
+    entity_ids = [r[0] for r in rows]
+    companies = db.query(CompanyEntity).filter(CompanyEntity.id.in_(entity_ids)).all() if entity_ids else []
 
     for company in companies:
         try:

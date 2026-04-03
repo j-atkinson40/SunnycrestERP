@@ -80,10 +80,10 @@ export default function DataQualityPage() {
     toast.info("Running name enrichment... this may take a few minutes.")
     try {
       const res = await apiClient.get("/ai/name-enrichment/run")
-      if (res.data.error) { toast.error(res.data.detail); return }
+      if (res.data.error) { toast.error(res.data.detail || "Agent error"); return }
       toast.success(`Done — ${res.data.suggestions_created} suggestions created`)
       loadSuggestions()
-    } catch { toast.error("Failed") }
+    } catch (err: any) { toast.error(err?.response?.data?.detail || err?.message || "Failed to run enrichment") }
     finally { setRunning(false) }
   }
 
