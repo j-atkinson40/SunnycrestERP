@@ -15,7 +15,7 @@ from app.services import ai_settings_service
 
 logger = logging.getLogger(__name__)
 
-CEMETERY_SUFFIXES = ["cemetery", "memorial gardens", "memorial park", "burial ground", "memorial", "gardens", "lawn", "park", "mausoleum"]
+CEMETERY_SUFFIXES = ["cemetery", "memorial gardens", "memorial park", "burial ground", "mausoleum", "burial park", "memorial cemetery"]
 FH_SUFFIXES = ["funeral home", "funeral chapel", "funeral service", "funeral parlor", "mortuary", "chapels", "chapel", "cremation service", "cremation services", "funeral & cremation", "memorial home", "& sons", "& son", "& daughters"]
 
 
