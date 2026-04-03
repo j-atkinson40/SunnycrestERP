@@ -25,7 +25,7 @@ export default function NaturalLanguageFilter({ entityType, onFiltersApplied, pl
   const [query, setQuery] = useState("")
   const [chips, setChips] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
-  const [activeFilters, setActiveFilters] = useState<FilterSet>({})
+  const [, setActiveFilters] = useState<FilterSet>({})
 
   async function handleSubmit() {
     if (!query.trim()) return
