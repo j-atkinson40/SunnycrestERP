@@ -9,12 +9,27 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Check, X, Loader2, ChevronLeft, ExternalLink, Undo2 } from "lucide-react"
 
+interface CompanySide {
+  id: string
+  name: string
+  city: string | null
+  state: string | null
+  customer_type: string | null
+  roles: string[]
+}
+
 interface DuplicateReview {
   id: string
-  company_a: { id: string; name: string; city: string | null; state: string | null }
-  company_b: { id: string; name: string; city: string | null; state: string | null }
+  company_a: CompanySide
+  company_b: CompanySide
   similarity_score: number | null
   status: string
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  funeral_home: "Funeral Home", contractor: "Contractor", cemetery: "Cemetery",
+  licensee: "Licensee", church: "Church", government: "Government",
+  school: "School", fire_department: "Fire Dept", individual: "Individual",
 }
 
 interface UndoItem {
@@ -99,20 +114,25 @@ export default function DuplicateReviewPage() {
             <Card key={r.id} className="p-4 space-y-3">
               <p className="text-sm font-medium text-gray-700">Are these the same company?</p>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="font-semibold text-sm">{r.company_a.name}</p>
-                  {r.company_a.city && <p className="text-xs text-gray-500">{r.company_a.city}, {r.company_a.state}</p>}
-                  <a href={`/crm/companies/${r.company_a.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline mt-1">
-                    View <ExternalLink className="h-2.5 w-2.5" />
-                  </a>
-                </div>
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <p className="font-semibold text-sm">{r.company_b.name}</p>
-                  {r.company_b.city && <p className="text-xs text-gray-500">{r.company_b.city}, {r.company_b.state}</p>}
-                  <a href={`/crm/companies/${r.company_b.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline mt-1">
-                    View <ExternalLink className="h-2.5 w-2.5" />
-                  </a>
-                </div>
+                {[{ side: r.company_a, bg: "bg-gray-50" }, { side: r.company_b, bg: "bg-blue-50" }].map(({ side, bg }) => (
+                  <div key={side.id} className={`${bg} rounded-lg p-3`}>
+                    <p className="font-semibold text-sm">{side.name}</p>
+                    {side.city && <p className="text-xs text-gray-500">{side.city}, {side.state}</p>}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {side.customer_type && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white border text-gray-600">
+                          {TYPE_LABELS[side.customer_type] || side.customer_type}
+                        </span>
+                      )}
+                      {(side.roles || []).map((role) => (
+                        <span key={role} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white border text-gray-500">{role}</span>
+                      ))}
+                    </div>
+                    <a href={`/crm/companies/${side.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline mt-1.5">
+                      View <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  </div>
+                ))}
               </div>
               {r.similarity_score && (
                 <p className="text-xs text-gray-400">Name similarity: {Math.round(r.similarity_score * 100)}%</p>

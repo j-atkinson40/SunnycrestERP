@@ -549,20 +549,32 @@ def list_duplicate_reviews(
         rows = db.execute(text("""
             SELECT dr.id, dr.similarity_score, dr.status,
                    a.id as a_id, a.name as a_name, a.city as a_city, a.state as a_state,
-                   b.id as b_id, b.name as b_name, b.city as b_city, b.state as b_state
+                   a.customer_type as a_type, a.is_customer as a_is_cust, a.is_vendor as a_is_vend, a.is_cemetery as a_is_cem,
+                   b.id as b_id, b.name as b_name, b.city as b_city, b.state as b_state,
+                   b.customer_type as b_type, b.is_customer as b_is_cust, b.is_vendor as b_is_vend, b.is_cemetery as b_is_cem
             FROM duplicate_reviews dr
             JOIN company_entities a ON dr.company_id_a = a.id
             JOIN company_entities b ON dr.company_id_b = b.id
             WHERE dr.tenant_id = :tid AND dr.status = 'pending'
             ORDER BY dr.similarity_score DESC
         """), {"tid": current_user.company_id}).fetchall()
+
+        def _roles(r, prefix):
+            roles = []
+            if getattr(r, f"{prefix}_is_cust", False): roles.append("Customer")
+            if getattr(r, f"{prefix}_is_vend", False): roles.append("Vendor")
+            if getattr(r, f"{prefix}_is_cem", False): roles.append("Cemetery")
+            return roles
+
         return [
             {
                 "id": r.id,
                 "similarity_score": float(r.similarity_score) if r.similarity_score else None,
                 "status": r.status,
-                "company_a": {"id": r.a_id, "name": r.a_name, "city": r.a_city, "state": r.a_state},
-                "company_b": {"id": r.b_id, "name": r.b_name, "city": r.b_city, "state": r.b_state},
+                "company_a": {"id": r.a_id, "name": r.a_name, "city": r.a_city, "state": r.a_state,
+                              "customer_type": r.a_type, "roles": _roles(r, "a")},
+                "company_b": {"id": r.b_id, "name": r.b_name, "city": r.b_city, "state": r.b_state,
+                              "customer_type": r.b_type, "roles": _roles(r, "b")},
             }
             for r in rows
         ]
