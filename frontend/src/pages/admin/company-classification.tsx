@@ -114,11 +114,21 @@ export default function CompanyClassificationPage() {
     } catch { toast.error("Failed") }
   }
 
-  async function handleApproveAll() {
+  async function handleApproveAllOnPage() {
     const ids = items.map((i) => i.id)
     try {
       await apiClient.post("/companies/classify/confirm-bulk", { company_ids: ids })
       toast.success(`Approved ${ids.length} companies`)
+      loadQueue()
+      loadSummary()
+    } catch { toast.error("Failed") }
+  }
+
+  async function handleApproveAllPending() {
+    if (!window.confirm(`Approve all ${total} pending classifications as suggested? This cannot be undone.`)) return
+    try {
+      const res = await apiClient.post("/companies/classify/confirm-all")
+      toast.success(`Approved ${res.data.confirmed} companies`)
       loadQueue()
       loadSummary()
     } catch { toast.error("Failed") }
@@ -187,9 +197,12 @@ export default function CompanyClassificationPage() {
             </div>
           ) : (
             <>
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={handleApproveAll}>
-                  <Check className="h-3.5 w-3.5 mr-1" /> Approve all on page
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={handleApproveAllOnPage}>
+                  <Check className="h-3.5 w-3.5 mr-1" /> Approve page ({items.length})
+                </Button>
+                <Button size="sm" onClick={handleApproveAllPending}>
+                  <Check className="h-3.5 w-3.5 mr-1" /> Approve all {total} pending
                 </Button>
               </div>
               <div className="rounded-md border overflow-hidden">

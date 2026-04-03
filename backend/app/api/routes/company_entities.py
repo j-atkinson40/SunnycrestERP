@@ -1458,6 +1458,28 @@ def confirm_bulk_classification(
     return {"confirmed": updated}
 
 
+@router.post("/classify/confirm-all")
+def confirm_all_pending(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Approve ALL pending classifications as-is for this tenant."""
+    updated = (
+        db.query(CompanyEntity)
+        .filter(
+            CompanyEntity.company_id == current_user.company_id,
+            CompanyEntity.classification_source == "pending_review",
+        )
+        .update({
+            CompanyEntity.classification_source: "manual",
+            CompanyEntity.classification_reviewed_by: current_user.id,
+            CompanyEntity.classification_reviewed_at: datetime.now(timezone.utc),
+        }, synchronize_session="fetch")
+    )
+    db.commit()
+    return {"confirmed": updated}
+
+
 @router.get("/{entity_id}/classify/reclassify")
 def reclassify_company(
     entity_id: str,
