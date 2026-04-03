@@ -11,6 +11,7 @@ from app.api.routes import (
     accounting,
     accounting_connection,
     ai,
+    ai_command,
     ai_settings,
     ancillary_orders,
     announcements,
@@ -130,6 +131,7 @@ v1_router.include_router(
     tags=["Accounting Connection"],
 )
 v1_router.include_router(ai.router, prefix="/ai", tags=["AI"])
+v1_router.include_router(ai_command.router, prefix="/ai", tags=["AI Command"])
 v1_router.include_router(ai_settings.router, prefix="/settings/ai", tags=["AI Settings"])
 v1_router.include_router(
     ancillary_orders.router, prefix="/extensions/funeral-kanban", tags=["Ancillary Orders"]

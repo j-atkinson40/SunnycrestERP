@@ -1,5 +1,7 @@
+import { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/auth-context";
+import CommandBar from "@/components/ai/CommandBar";
 import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
@@ -221,6 +223,20 @@ class ErrorBoundary extends Component<
 }
 
 export default function App() {
+  const [cmdBarOpen, setCmdBarOpen] = useState(false);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      setCmdBarOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
   // Platform admin gets an entirely separate app
   if (isPlatformAdmin()) {
     return (
@@ -822,6 +838,7 @@ export default function App() {
           )}
         </Routes>
         <Toaster />
+        <CommandBar open={cmdBarOpen} onClose={() => setCmdBarOpen(false)} />
       </ExtensionProvider>
       </FeatureFlagProvider>
       </AuthProvider>

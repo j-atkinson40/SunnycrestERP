@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { ChevronLeft, Plus, ExternalLink, Phone, Mail, Globe, MapPin, Loader2 } from "lucide-react"
 import ContactList from "@/components/crm/ContactList"
+import CompanyChat from "@/components/ai/CompanyChat"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -286,6 +287,9 @@ export default function CompanyDetailPage() {
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none"
                 />
               </Card>
+
+              {/* Conversational lookup */}
+              <CompanyChat masterCompanyId={id!} companyName={company.name} />
             </div>
           )}
 
