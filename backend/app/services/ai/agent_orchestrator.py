@@ -29,8 +29,57 @@ def _log_run(db: Session, tenant_id: str, agent_name: str, started: datetime, re
         logger.exception("Failed to log agent run")
 
 
+def _ensure_agent_tables(db: Session) -> None:
+    """Create agent tables if they don't exist."""
+    tables = [
+        """CREATE TABLE IF NOT EXISTS duplicate_reviews (
+            id VARCHAR(36) PRIMARY KEY, tenant_id VARCHAR(36) NOT NULL,
+            company_id_a VARCHAR(36) NOT NULL, company_id_b VARCHAR(36) NOT NULL,
+            similarity_score DECIMAL(4,3), claude_confidence DECIMAL(4,3),
+            claude_reasoning TEXT, status VARCHAR(20) DEFAULT 'pending',
+            resolved_by VARCHAR(36), resolved_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT now())""",
+        """CREATE TABLE IF NOT EXISTS ai_upsell_insights (
+            id VARCHAR(36) PRIMARY KEY, tenant_id VARCHAR(36) NOT NULL,
+            master_company_id VARCHAR(36), insight_type VARCHAR(50),
+            description TEXT, generated_at TIMESTAMPTZ DEFAULT now(),
+            dismissed BOOLEAN DEFAULT false, dismissed_at TIMESTAMPTZ,
+            converted BOOLEAN DEFAULT false, converted_at TIMESTAMPTZ)""",
+        """CREATE TABLE IF NOT EXISTS ai_rescue_drafts (
+            id VARCHAR(36) PRIMARY KEY, tenant_id VARCHAR(36) NOT NULL,
+            master_company_id VARCHAR(36), subject TEXT, body TEXT,
+            generated_at TIMESTAMPTZ DEFAULT now(), status VARCHAR(20) DEFAULT 'pending',
+            sent_at TIMESTAMPTZ, sent_by VARCHAR(36), edited_body TEXT)""",
+        """CREATE TABLE IF NOT EXISTS ai_agent_runs (
+            id VARCHAR(36) PRIMARY KEY, tenant_id VARCHAR(36) NOT NULL,
+            agent_name VARCHAR(100), started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ,
+            status VARCHAR(20), records_processed INTEGER,
+            results_summary JSONB, error_message TEXT)""",
+    ]
+    for sql in tables:
+        try:
+            db.execute(text(sql))
+        except Exception:
+            db.rollback()
+    # Add relationship score columns if missing
+    for col in [
+        "ALTER TABLE manufacturer_company_profiles ADD COLUMN IF NOT EXISTS relationship_score INTEGER",
+        "ALTER TABLE manufacturer_company_profiles ADD COLUMN IF NOT EXISTS relationship_score_breakdown JSONB",
+        "ALTER TABLE manufacturer_company_profiles ADD COLUMN IF NOT EXISTS relationship_score_calculated_at TIMESTAMPTZ",
+    ]:
+        try:
+            db.execute(text(col))
+        except Exception:
+            db.rollback()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def run_nightly_agents(db: Session, tenant_id: str) -> dict:
     """Run all nightly AI agents for a tenant."""
+    _ensure_agent_tables(db)
     results = {}
 
     agents = [
@@ -46,11 +95,18 @@ def run_nightly_agents(db: Session, tenant_id: str) -> dict:
         try:
             result = func(db, tenant_id)
             results[name] = result
+            db.commit()
             _log_run(db, tenant_id, name, started, result.get("processed", 0), result)
+            db.commit()
         except Exception as e:
+            db.rollback()  # Critical: clear failed transaction state
             logger.exception("Agent %s failed for tenant %s", name, tenant_id)
             results[name] = {"error": str(e)}
-            _log_run(db, tenant_id, name, started, 0, None, str(e))
+            try:
+                _log_run(db, tenant_id, name, started, 0, None, str(e))
+                db.commit()
+            except Exception:
+                db.rollback()
 
     db.commit()
     return results
