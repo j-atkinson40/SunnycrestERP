@@ -1484,6 +1484,52 @@ def confirm_all_pending(
     return {"confirmed": updated}
 
 
+@router.get("/classify/fix-role-flags")
+def fix_role_flags(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sync role flags (is_funeral_home, is_licensee etc) from customer_type for all records."""
+    tid = current_user.company_id
+    stats = {}
+
+    # Licensees: set is_licensee=true, clear is_funeral_home
+    n = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == tid, CompanyEntity.customer_type == "licensee",
+    ).update({"is_licensee": True, "is_funeral_home": False}, synchronize_session="fetch")
+    stats["licensee"] = n
+
+    # Funeral homes: ensure is_funeral_home=true
+    n = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == tid, CompanyEntity.customer_type == "funeral_home",
+    ).update({"is_funeral_home": True}, synchronize_session="fetch")
+    stats["funeral_home"] = n
+
+    # Cemeteries
+    n = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == tid, CompanyEntity.customer_type == "cemetery",
+    ).update({"is_cemetery": True}, synchronize_session="fetch")
+    stats["cemetery"] = n
+
+    # Crematories
+    n = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == tid, CompanyEntity.customer_type == "crematory",
+    ).update({"is_crematory": True}, synchronize_session="fetch")
+    stats["crematory"] = n
+
+    # Non-funeral-homes: clear is_funeral_home if wrongly set
+    n = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == tid,
+        CompanyEntity.customer_type.notin_(["funeral_home"]),
+        CompanyEntity.customer_type.isnot(None),
+        CompanyEntity.is_funeral_home == True,
+    ).update({"is_funeral_home": False}, synchronize_session="fetch")
+    stats["cleared_funeral_home"] = n
+
+    db.commit()
+    return stats
+
+
 @router.get("/{entity_id}/classify/reclassify")
 def reclassify_company(
     entity_id: str,

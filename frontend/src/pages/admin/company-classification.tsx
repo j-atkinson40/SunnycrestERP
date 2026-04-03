@@ -148,9 +148,20 @@ export default function CompanyClassificationPage() {
           <h1 className="text-2xl font-bold">Company Classification</h1>
           <p className="text-sm text-gray-500 mt-1">AI-powered customer type classification</p>
         </div>
-        <Button onClick={handleRunBulk} disabled={running}>
-          {running ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Running...</> : "Run AI Classification"}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={async () => {
+            try {
+              const res = await apiClient.get("/companies/classify/fix-role-flags")
+              toast.success(`Fixed role flags: ${JSON.stringify(res.data)}`)
+              loadSummary()
+            } catch { toast.error("Failed") }
+          }}>
+            Fix role flags
+          </Button>
+          <Button onClick={handleRunBulk} disabled={running}>
+            {running ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Running...</> : "Run AI Classification"}
+          </Button>
+        </div>
       </div>
 
       {/* Summary cards */}
