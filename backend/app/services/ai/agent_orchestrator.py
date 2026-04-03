@@ -135,32 +135,89 @@ def duplicate_detection_agent(db: Session, tenant_id: str) -> dict:
     if not ai_settings_service.is_enabled(db, tenant_id, "duplicate_detection"):
         return {"skipped": True}
 
+    # Ensure pg_trgm extension exists
+    try:
+        db.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    rows = []
+
+    # Method 1: pg_trgm fuzzy matching (if extension available)
     try:
         rows = db.execute(text("""
             SELECT a.id as id_a, a.name as name_a, b.id as id_b, b.name as name_b,
                    SIMILARITY(a.name, b.name) as score
             FROM company_entities a
             JOIN company_entities b ON a.id < b.id AND a.company_id = b.company_id
-                AND SIMILARITY(a.name, b.name) > 0.75
+                AND SIMILARITY(a.name, b.name) > 0.70
             WHERE a.company_id = :tid AND a.is_active = true AND b.is_active = true
-            LIMIT 20
+            AND a.is_aggregate = false AND b.is_aggregate = false
+            LIMIT 50
         """), {"tid": tenant_id}).fetchall()
     except Exception:
-        rows = []
+        db.rollback()
+
+    # Method 2: Exact and near-exact matching (always works, no extension needed)
+    try:
+        # Exact name matches (different IDs)
+        exact = db.execute(text("""
+            SELECT a.id as id_a, a.name as name_a, b.id as id_b, b.name as name_b, 1.0 as score
+            FROM company_entities a
+            JOIN company_entities b ON a.id < b.id AND a.company_id = b.company_id
+                AND LOWER(TRIM(a.name)) = LOWER(TRIM(b.name))
+            WHERE a.company_id = :tid AND a.is_active = true AND b.is_active = true
+            AND a.is_aggregate = false AND b.is_aggregate = false
+            LIMIT 50
+        """), {"tid": tenant_id}).fetchall()
+        rows = list(rows) + list(exact)
+    except Exception:
+        db.rollback()
+
+    # Method 3: Name contained in another (e.g. "Smith" vs "Smith Excavating")
+    try:
+        contained = db.execute(text("""
+            SELECT a.id as id_a, a.name as name_a, b.id as id_b, b.name as name_b, 0.80 as score
+            FROM company_entities a
+            JOIN company_entities b ON a.id < b.id AND a.company_id = b.company_id
+                AND LENGTH(a.name) >= 5 AND LENGTH(b.name) >= 5
+                AND (LOWER(a.name) LIKE '%' || LOWER(b.name) || '%'
+                  OR LOWER(b.name) LIKE '%' || LOWER(a.name) || '%')
+                AND a.name != b.name
+            WHERE a.company_id = :tid AND a.is_active = true AND b.is_active = true
+            AND a.is_aggregate = false AND b.is_aggregate = false
+            LIMIT 50
+        """), {"tid": tenant_id}).fetchall()
+        rows = list(rows) + list(contained)
+    except Exception:
+        db.rollback()
+
+    # Deduplicate pairs
+    seen_pairs = set()
+    unique_rows = []
+    for row in rows:
+        pair = tuple(sorted([row.id_a, row.id_b]))
+        if pair not in seen_pairs:
+            seen_pairs.add(pair)
+            unique_rows.append(row)
 
     created = 0
-    for row in rows:
-        existing = db.execute(text(
-            "SELECT id FROM duplicate_reviews WHERE tenant_id = :tid AND company_id_a = :a AND company_id_b = :b"
-        ), {"tid": tenant_id, "a": row.id_a, "b": row.id_b}).fetchone()
-        if not existing:
-            db.execute(text(
-                "INSERT INTO duplicate_reviews (id, tenant_id, company_id_a, company_id_b, similarity_score) "
-                "VALUES (:id, :tid, :a, :b, :score)"
-            ), {"id": str(_uuid.uuid4()), "tid": tenant_id, "a": row.id_a, "b": row.id_b, "score": float(row.score)})
-            created += 1
+    for row in unique_rows:
+        try:
+            existing = db.execute(text(
+                "SELECT id FROM duplicate_reviews WHERE tenant_id = :tid AND company_id_a = :a AND company_id_b = :b"
+            ), {"tid": tenant_id, "a": row.id_a, "b": row.id_b}).fetchone()
+            if not existing:
+                db.execute(text(
+                    "INSERT INTO duplicate_reviews (id, tenant_id, company_id_a, company_id_b, similarity_score) "
+                    "VALUES (:id, :tid, :a, :b, :score)"
+                ), {"id": str(_uuid.uuid4()), "tid": tenant_id, "a": row.id_a, "b": row.id_b, "score": float(row.score)})
+                created += 1
+        except Exception:
+            db.rollback()
 
-    return {"processed": len(rows), "duplicates_found": created}
+    return {"processed": len(unique_rows), "duplicates_found": created}
 
 
 def auto_enrichment_agent(db: Session, tenant_id: str) -> dict:
