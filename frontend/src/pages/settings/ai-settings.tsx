@@ -90,7 +90,7 @@ export default function AiSettingsPage() {
         <p className="text-sm text-gray-500 mt-1">Configure which AI features are active for your account</p>
       </div>
 
-      {settings.founding_licensee && (
+      {Boolean(settings.founding_licensee) && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-center gap-2">
           <span className="text-lg">⭐</span>
           <div>
@@ -229,7 +229,7 @@ export default function AiSettingsPage() {
       </Card>
 
       {/* Usage */}
-      {settings.usage && (
+      {Boolean(settings.usage) && (
         <Card className="p-5">
           <h2 className="font-semibold text-base mb-2">Usage This Month</h2>
           <div className="grid grid-cols-3 gap-4 text-center">
