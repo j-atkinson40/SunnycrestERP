@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # ── Name keyword signals ─────────────────────────────────────────────────────
 
 NAME_SIGNALS = {
-    "funeral_home": ["funeral", "mortuary", "chapel", "cremation", "memorial home", "funeral service", "funeral parlor"],
+    "funeral_home": ["funeral", "mortuary", "chapel", "cremation", "memorial home", "funeral service", "funeral parlor", " fh", "fh ", "(fh)"],
     "cemetery": ["cemetery", "memorial garden", "memorial park", "mausoleum", "burial ground", "holy cross", "sacred heart", "calvary", "grove", "lawn"],
     "contractor": ["excavat", "septic", "plumbing", "plumber", "construction", "contracting", "contractor", "backhoe", "site work", "grading", "landscap", "environmental", "well & septic", "drain", "sewer", "utility", "earthwork", "digging", "underground"],
     "crematory": ["cremator", "cremation", "cremains"],
