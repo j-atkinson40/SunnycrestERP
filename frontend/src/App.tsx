@@ -36,7 +36,7 @@ import InventoryDetailPage from "@/pages/inventory-detail";
 import ProductionEntryPage from "@/pages/production-entry";
 import WriteOffsPage from "@/pages/write-offs";
 import SageExportsPage from "@/pages/sage-exports";
-import CustomersPage from "@/pages/customers";
+// CustomersPage removed — /customers redirects to /crm/companies?role=customer
 import CustomerDetailPage from "@/pages/customer-detail";
 import VendorsPage from "@/pages/vendors";
 import VendorDetailPage from "@/pages/vendor-detail";
