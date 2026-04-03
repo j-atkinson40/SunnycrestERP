@@ -193,6 +193,124 @@ def _ensure_role_records(db: Session, entity: CompanyEntity, company_id: str) ->
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
+@router.post("/run-migration")
+def run_company_migration(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Populate company_entities from existing customers, vendors, cemeteries.
+
+    Idempotent — skips records that already have master_company_id set.
+    Run this once after deploying the company_entities table.
+    """
+    import uuid as _uuid
+
+    tenant_id = current_user.company_id
+    stats = {"customers": 0, "vendors": 0, "cemeteries": 0, "skipped": 0}
+
+    # Migrate customers
+    customers = db.query(Customer).filter(
+        Customer.company_id == tenant_id, Customer.is_active == True,
+    ).all()
+    for c in customers:
+        if c.master_company_id:
+            stats["skipped"] += 1
+            continue
+        eid = str(_uuid.uuid4())
+        is_fh = (getattr(c, "customer_type", None) or "").lower() in ("funeral_home", "funeral home")
+        entity = CompanyEntity(
+            id=eid, company_id=tenant_id, name=c.name,
+            phone=c.phone, email=c.email, website=c.website,
+            address_line1=c.address_line1, address_line2=c.address_line2,
+            city=c.city, state=c.state, zip=c.zip_code, country=c.country or "US",
+            is_customer=True, is_funeral_home=is_fh,
+        )
+        db.add(entity)
+        c.master_company_id = eid
+        stats["customers"] += 1
+
+    # Migrate vendors
+    vendors = db.query(Vendor).filter(
+        Vendor.company_id == tenant_id, Vendor.is_active == True,
+    ).all()
+    for v in vendors:
+        if v.master_company_id:
+            stats["skipped"] += 1
+            continue
+        # Check for name match with existing entity
+        existing = db.query(CompanyEntity).filter(
+            CompanyEntity.company_id == tenant_id,
+            CompanyEntity.name == v.name,
+        ).first()
+        if existing:
+            existing.is_vendor = True
+            v.master_company_id = existing.id
+            stats["vendors"] += 1
+            continue
+        eid = str(_uuid.uuid4())
+        entity = CompanyEntity(
+            id=eid, company_id=tenant_id, name=v.name,
+            phone=v.phone, email=v.email, website=v.website,
+            address_line1=v.address_line1, address_line2=v.address_line2,
+            city=v.city, state=v.state, zip=v.zip_code, country=v.country or "US",
+            is_vendor=True,
+        )
+        db.add(entity)
+        v.master_company_id = eid
+        stats["vendors"] += 1
+
+    # Migrate cemeteries
+    from app.models.cemetery import Cemetery as _Cem
+    cemeteries = db.query(_Cem).filter(
+        _Cem.company_id == tenant_id, _Cem.is_active == True,
+    ).all()
+    for cem in cemeteries:
+        if cem.master_company_id:
+            stats["skipped"] += 1
+            continue
+        existing = db.query(CompanyEntity).filter(
+            CompanyEntity.company_id == tenant_id,
+            CompanyEntity.name == cem.name,
+        ).first()
+        if existing:
+            existing.is_cemetery = True
+            cem.master_company_id = existing.id
+            stats["cemeteries"] += 1
+            continue
+        eid = str(_uuid.uuid4())
+        entity = CompanyEntity(
+            id=eid, company_id=tenant_id, name=cem.name,
+            phone=cem.phone, address_line1=getattr(cem, "address", None),
+            city=cem.city, state=cem.state, zip=cem.zip_code,
+            is_cemetery=True,
+        )
+        db.add(entity)
+        cem.master_company_id = eid
+        stats["cemeteries"] += 1
+
+    # Seed manufacturer profiles for new entities
+    from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
+    new_customer_entities = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == tenant_id,
+        CompanyEntity.is_customer == True,
+    ).all()
+    profiles_created = 0
+    for ce in new_customer_entities:
+        existing_profile = db.query(ManufacturerCompanyProfile).filter(
+            ManufacturerCompanyProfile.master_company_id == ce.id
+        ).first()
+        if not existing_profile:
+            db.add(ManufacturerCompanyProfile(
+                id=str(_uuid.uuid4()), company_id=tenant_id, master_company_id=ce.id,
+            ))
+            profiles_created += 1
+
+    db.commit()
+    stats["profiles_created"] = profiles_created
+    stats["total_entities"] = stats["customers"] + stats["vendors"] + stats["cemeteries"]
+    return stats
+
+
 @router.get("")
 def list_companies(
     q: str = Query("", description="Search by name"),
