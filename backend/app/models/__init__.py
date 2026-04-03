@@ -22,6 +22,9 @@ from app.models.company_entity import CompanyEntity
 from app.models.company_migration_review import CompanyMigrationReview
 from app.models.company_module import CompanyModule
 from app.models.contact import Contact
+from app.models.crm_opportunity import CrmOpportunity
+from app.models.crm_settings import CrmSettings
+from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
 from app.models.cemetery import Cemetery
 from app.models.cemetery_directory import CemeteryDirectory
 from app.models.cemetery_directory_selection import CemeteryDirectorySelection
@@ -260,6 +263,9 @@ __all__ = [
     "CompanyEntity",
     "CompanyMigrationReview",
     "Contact",
+    "CrmOpportunity",
+    "CrmSettings",
+    "ManufacturerCompanyProfile",
     "CompanyModule",
     "Cemetery",
     "Customer",

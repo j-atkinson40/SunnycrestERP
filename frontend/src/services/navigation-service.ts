@@ -233,6 +233,8 @@ function getManufacturingNav(
     items: filterByPermission(
       [
         { label: "Companies", href: "/crm/companies", icon: "Building2", permission: "customers.view" },
+        { label: "Funeral Homes", href: "/crm/funeral-homes", icon: "Home", permission: "customers.view" },
+        { label: "Settings", href: "/crm/settings", icon: "Settings2", adminOnly: true },
       ],
       modules, perms, areas, isAdmin,
     ),

@@ -230,7 +230,40 @@ def _build_funeral_scheduling_context(
         except Exception:
             pass
 
-        return {
+        # At-risk accounts (only new detections)
+        at_risk_accounts = []
+        try:
+            from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
+            from app.models.company_entity import CompanyEntity as _CE
+
+            at_risk = (
+                db.query(ManufacturerCompanyProfile, _CE)
+                .join(_CE, ManufacturerCompanyProfile.master_company_id == _CE.id)
+                .filter(
+                    ManufacturerCompanyProfile.company_id == company_id,
+                    ManufacturerCompanyProfile.health_score == "at_risk",
+                )
+                .filter(
+                    (ManufacturerCompanyProfile.last_briefed_at.is_(None)) |
+                    (ManufacturerCompanyProfile.health_last_calculated > ManufacturerCompanyProfile.last_briefed_at)
+                )
+                .limit(5)
+                .all()
+            )
+            for profile, entity in at_risk:
+                reasons = profile.health_reasons or []
+                at_risk_accounts.append({
+                    "company_name": entity.name,
+                    "company_id": entity.id,
+                    "reason": reasons[0] if reasons else "At risk",
+                })
+                profile.last_briefed_at = datetime.now(timezone.utc)
+            if at_risk:
+                db.commit()
+        except Exception:
+            pass
+
+        result = {
             "today_deliveries": [_delivery_summary(d) for d in today_deliveries],
             "today_count": len(today_deliveries),
             "tomorrow_deliveries": [_delivery_summary(d) for d in tomorrow_deliveries],
@@ -241,7 +274,9 @@ def _build_funeral_scheduling_context(
             "legacy_proofs_approved_today": legacy_approved_today,
             "crm_overdue_followups": overdue_followups,
             "crm_today_followups": today_followups,
+            "crm_at_risk_accounts": at_risk_accounts,
         }
+        return result
     except Exception as e:
         logger.warning("Error building funeral scheduling context: %s", e)
         return {

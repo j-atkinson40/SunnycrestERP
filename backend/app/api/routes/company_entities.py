@@ -18,6 +18,7 @@ from app.models.cemetery import Cemetery
 from app.models.user import User
 from app.services.crm import contact_service
 from app.services.crm import activity_log_service
+from app.services.crm import health_score_service
 
 router = APIRouter()
 
@@ -717,5 +718,277 @@ def delete_activity(
     if entry.is_system_generated:
         raise HTTPException(status_code=403, detail="Cannot delete system-generated activity")
     db.delete(entry)
+    db.commit()
+    return {"deleted": True}
+
+
+# ── Health score endpoints ───────────────────────────────────────────────────
+
+@router.get("/health-summary")
+def get_health_summary_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return health_score_service.get_health_summary(db, current_user.company_id)
+
+
+@router.get("/{entity_id}/health")
+def get_health(
+    entity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
+    profile = db.query(ManufacturerCompanyProfile).filter(
+        ManufacturerCompanyProfile.master_company_id == entity_id,
+    ).first()
+    if not profile:
+        return {"health_score": "unknown", "health_reasons": []}
+    return {
+        "health_score": profile.health_score,
+        "health_reasons": profile.health_reasons or [],
+        "health_last_calculated": profile.health_last_calculated.isoformat() if profile.health_last_calculated else None,
+        "avg_days_between_orders": float(profile.avg_days_between_orders) if profile.avg_days_between_orders else None,
+        "avg_days_to_pay_recent": float(profile.avg_days_to_pay_recent) if profile.avg_days_to_pay_recent else None,
+        "avg_days_to_pay_prior": float(profile.avg_days_to_pay_prior) if profile.avg_days_to_pay_prior else None,
+        "last_order_date": profile.last_order_date.isoformat() if profile.last_order_date else None,
+        "order_count_12mo": profile.order_count_12mo,
+        "total_revenue_12mo": float(profile.total_revenue_12mo) if profile.total_revenue_12mo else 0,
+        "most_ordered_vault_name": profile.most_ordered_vault_name,
+    }
+
+
+@router.post("/{entity_id}/health/recalculate")
+def recalculate_health(
+    entity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    health_score_service.calculate_health_score(db, entity_id, current_user.company_id)
+    db.commit()
+    return get_health(entity_id, current_user, db)
+
+
+# ── Funeral Homes endpoint ───────────────────────────────────────────────────
+
+@router.get("/funeral-homes")
+def list_funeral_homes(
+    health: str = Query(""),
+    q: str = Query(""),
+    sort: str = Query("last_order"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List customer companies with health data for the Funeral Homes dashboard."""
+    from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
+
+    query = (
+        db.query(CompanyEntity, ManufacturerCompanyProfile)
+        .outerjoin(ManufacturerCompanyProfile, ManufacturerCompanyProfile.master_company_id == CompanyEntity.id)
+        .filter(
+            CompanyEntity.company_id == current_user.company_id,
+            CompanyEntity.is_customer == True,
+            CompanyEntity.is_active == True,
+        )
+    )
+    if q:
+        query = query.filter(CompanyEntity.name.ilike(f"%{q}%"))
+    if health:
+        query = query.filter(ManufacturerCompanyProfile.health_score == health)
+
+    total = query.count()
+
+    # Sort
+    if sort == "name":
+        query = query.order_by(CompanyEntity.name)
+    elif sort == "revenue":
+        query = query.order_by(ManufacturerCompanyProfile.total_revenue_12mo.desc().nullslast())
+    elif sort == "health":
+        query = query.order_by(
+            func.case(
+                (ManufacturerCompanyProfile.health_score == "at_risk", 0),
+                (ManufacturerCompanyProfile.health_score == "watch", 1),
+                (ManufacturerCompanyProfile.health_score == "unknown", 2),
+                else_=3,
+            )
+        )
+    else:  # last_order
+        query = query.order_by(ManufacturerCompanyProfile.last_order_date.desc().nullslast())
+
+    items = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    # Get primary contacts
+    result = []
+    for entity, profile in items:
+        primary = db.query(Contact).filter(
+            Contact.master_company_id == entity.id,
+            Contact.is_primary == True,
+            Contact.is_active == True,
+        ).first()
+
+        result.append({
+            "id": entity.id,
+            "name": entity.name,
+            "city": entity.city,
+            "state": entity.state,
+            "is_funeral_home": entity.is_funeral_home,
+            "primary_contact": {"name": primary.name, "phone": primary.phone} if primary else None,
+            "health_score": profile.health_score if profile else "unknown",
+            "health_reasons": (profile.health_reasons or []) if profile else [],
+            "last_order_date": profile.last_order_date.isoformat() if profile and profile.last_order_date else None,
+            "order_count_12mo": profile.order_count_12mo if profile else 0,
+            "total_revenue_12mo": float(profile.total_revenue_12mo) if profile and profile.total_revenue_12mo else 0,
+            "avg_days_to_pay_recent": float(profile.avg_days_to_pay_recent) if profile and profile.avg_days_to_pay_recent else None,
+            "most_ordered_vault_name": profile.most_ordered_vault_name if profile else None,
+        })
+
+    return {"items": result, "total": total, "page": page, "pages": (total + per_page - 1) // per_page}
+
+
+# ── CRM Settings endpoints ──────────────────────────────────────────────────
+
+@router.get("/crm-settings")
+def get_crm_settings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    settings = health_score_service._get_or_create_settings(db, current_user.company_id)
+    db.commit()
+    return {
+        "pipeline_enabled": settings.pipeline_enabled,
+        "health_scoring_enabled": settings.health_scoring_enabled,
+        "activity_log_enabled": settings.activity_log_enabled,
+        "at_risk_days_multiplier": float(settings.at_risk_days_multiplier),
+        "at_risk_payment_trend_days": settings.at_risk_payment_trend_days,
+        "at_risk_payment_threshold_days": settings.at_risk_payment_threshold_days,
+    }
+
+
+@router.patch("/crm-settings")
+def update_crm_settings(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    settings = health_score_service._get_or_create_settings(db, current_user.company_id)
+    for field in ("pipeline_enabled", "health_scoring_enabled", "activity_log_enabled",
+                  "at_risk_days_multiplier", "at_risk_payment_trend_days", "at_risk_payment_threshold_days"):
+        if field in data:
+            setattr(settings, field, data[field])
+    db.commit()
+    return get_crm_settings(current_user, db)
+
+
+# ── Pipeline/Opportunity endpoints ───────────────────────────────────────────
+
+class OpportunityCreate(BaseModel):
+    master_company_id: str | None = None
+    prospect_name: str | None = None
+    prospect_city: str | None = None
+    prospect_state: str | None = None
+    title: str
+    stage: str = "prospect"
+    estimated_annual_value: float | None = None
+    assigned_to: str | None = None
+    expected_close_date: str | None = None
+    notes: str | None = None
+
+
+class OpportunityUpdate(BaseModel):
+    title: str | None = None
+    stage: str | None = None
+    estimated_annual_value: float | None = None
+    assigned_to: str | None = None
+    expected_close_date: str | None = None
+    notes: str | None = None
+    lost_reason: str | None = None
+
+
+@router.get("/opportunities")
+def list_opportunities(
+    stage: str = Query(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.crm_opportunity import CrmOpportunity
+    query = db.query(CrmOpportunity).filter(CrmOpportunity.company_id == current_user.company_id)
+    if stage:
+        query = query.filter(CrmOpportunity.stage == stage)
+    items = query.order_by(CrmOpportunity.created_at.desc()).all()
+
+    STAGES = ["prospect", "contacted", "meeting_scheduled", "proposal_sent", "negotiating", "won", "lost"]
+    grouped = {s: [] for s in STAGES}
+    for opp in items:
+        s = opp.stage if opp.stage in STAGES else "prospect"
+        grouped[s].append({
+            "id": opp.id,
+            "title": opp.title,
+            "company_name": opp.prospect_name,
+            "master_company_id": opp.master_company_id,
+            "city": opp.prospect_city,
+            "state": opp.prospect_state,
+            "stage": opp.stage,
+            "estimated_annual_value": float(opp.estimated_annual_value) if opp.estimated_annual_value else None,
+            "assigned_to": opp.assigned_to,
+            "expected_close_date": opp.expected_close_date.isoformat() if opp.expected_close_date else None,
+            "notes": opp.notes,
+            "created_at": opp.created_at.isoformat() if opp.created_at else None,
+        })
+    return {"stages": grouped, "total": len(items)}
+
+
+@router.post("/opportunities", status_code=201)
+def create_opportunity(
+    data: OpportunityCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.crm_opportunity import CrmOpportunity
+    opp = CrmOpportunity(
+        id=str(uuid.uuid4()),
+        company_id=current_user.company_id,
+        created_by=current_user.id,
+        **data.model_dump(),
+    )
+    db.add(opp)
+    db.commit()
+    db.refresh(opp)
+    return {"id": opp.id, "title": opp.title, "stage": opp.stage}
+
+
+@router.patch("/opportunities/{opp_id}")
+def update_opportunity(
+    opp_id: str,
+    data: OpportunityUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.crm_opportunity import CrmOpportunity
+    opp = db.query(CrmOpportunity).filter(
+        CrmOpportunity.id == opp_id, CrmOpportunity.company_id == current_user.company_id
+    ).first()
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(opp, field, value)
+    db.commit()
+    return {"id": opp.id, "stage": opp.stage}
+
+
+@router.delete("/opportunities/{opp_id}")
+def delete_opportunity(
+    opp_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.crm_opportunity import CrmOpportunity
+    opp = db.query(CrmOpportunity).filter(
+        CrmOpportunity.id == opp_id, CrmOpportunity.company_id == current_user.company_id
+    ).first()
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    db.delete(opp)
     db.commit()
     return {"deleted": True}

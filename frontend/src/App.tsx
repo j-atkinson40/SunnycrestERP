@@ -19,6 +19,9 @@ import RoleManagement from "@/pages/admin/role-management";
 import CompanyMigrationReviewPage from "@/pages/admin/company-migration-review";
 import CompaniesListPage from "@/pages/crm/companies";
 import CompanyDetailPage from "@/pages/crm/company-detail";
+import FuneralHomesPage from "@/pages/crm/funeral-homes";
+import CrmSettingsPage from "@/pages/crm/crm-settings";
+import PipelinePage from "@/pages/crm/pipeline";
 import AuditLogs from "@/pages/admin/audit-logs";
 import CompanySettings from "@/pages/admin/company-settings";
 import AccountingPage from "@/pages/admin/accounting";
@@ -286,6 +289,9 @@ export default function App() {
                   {/* CRM */}
                   <Route path="/crm/companies" element={<CompaniesListPage />} />
                   <Route path="/crm/companies/:id" element={<CompanyDetailPage />} />
+                  <Route path="/crm/funeral-homes" element={<FuneralHomesPage />} />
+                  <Route path="/crm/settings" element={<CrmSettingsPage />} />
+                  <Route path="/crm/pipeline" element={<PipelinePage />} />
 
                   {/* Products — core feature, no module gate */}
                   <Route
