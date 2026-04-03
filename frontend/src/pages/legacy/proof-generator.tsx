@@ -196,6 +196,24 @@ export default function ProofGeneratorPage() {
     }
   }
 
+  // Force-download a file via fetch + blob (works for cross-origin URLs)
+  async function downloadFile(url: string, filename: string) {
+    try {
+      const resp = await fetch(url)
+      const blob = await resp.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      window.open(url, "_blank")
+    }
+  }
+
   // Open compositor
   async function handleOpenCompositor() {
     // Create legacy record if needed
@@ -255,15 +273,23 @@ export default function ProofGeneratorPage() {
     setPhase("approved")
     toast.success("Legacy approved")
 
-    // Auto-download the TIF file
+    // Auto-download the TIF file via blob to force download
     if (tifUrl) {
-      const a = document.createElement("a")
-      a.href = tifUrl
-      a.download = `${name || "legacy"}.tif`
-      a.target = "_blank"
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
+      try {
+        const resp = await fetch(tifUrl)
+        const blob = await resp.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = blobUrl
+        a.download = `${name || "legacy"}.tif`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(blobUrl)
+      } catch {
+        // Fallback: open in new tab
+        window.open(tifUrl, "_blank")
+      }
     }
   }
 
@@ -312,14 +338,14 @@ export default function ProofGeneratorPage() {
         <Card className="p-4 space-y-3">
           <h3 className="font-semibold text-sm">Delivery</h3>
           {approvedProofUrl && (
-            <a href={approvedProofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600">
+            <button onClick={() => downloadFile(approvedProofUrl, `${name || "legacy"}_proof.jpg`)} className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
               <Download className="h-4 w-4" /> Download proof JPEG
-            </a>
+            </button>
           )}
           {approvedTifUrl && (
-            <a href={approvedTifUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-blue-600">
+            <button onClick={() => downloadFile(approvedTifUrl, `${name || "legacy"}.tif`)} className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
               <Download className="h-4 w-4" /> Download print TIF
-            </a>
+            </button>
           )}
         </Card>
 
