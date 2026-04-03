@@ -57,6 +57,8 @@ class CompanyEntity(Base):
     classification_confidence: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
     classification_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
     classification_reasons: Mapped[list] = mapped_column(JSONB, server_default="'[]'")
+    original_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    name_cleanup_actions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     classification_reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     classification_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active_customer: Mapped[bool] = mapped_column(Boolean, server_default="false")

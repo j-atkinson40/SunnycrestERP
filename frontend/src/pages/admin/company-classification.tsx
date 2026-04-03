@@ -20,6 +20,8 @@ interface ReviewItem {
   classification_reasons: string[]
   is_active_customer: boolean
   first_order_year: number | null
+  original_name: string | null
+  name_cleanup_actions: string[] | null
 }
 
 interface Summary { by_source: Record<string, number>; by_type: Record<string, number>; total: number }
@@ -78,6 +80,14 @@ export default function CompanyClassificationPage() {
     } finally {
       setRunning(false)
     }
+  }
+
+  async function handleRevertName(id: string) {
+    try {
+      await apiClient.post(`/companies/${id}/revert-name`)
+      toast.success("Name reverted to original")
+      loadQueue()
+    } catch { toast.error("Failed to revert") }
   }
 
   async function handleConfirm(id: string) {
@@ -193,6 +203,13 @@ export default function CompanyClassificationPage() {
                         <td className="px-4 py-3">
                           <div className="font-medium">{item.name}</div>
                           {item.city && <div className="text-xs text-gray-400">{item.city}{item.state ? `, ${item.state}` : ""}</div>}
+                          {item.original_name && item.name_cleanup_actions && (
+                            <div className="mt-1 text-[11px] text-blue-600 bg-blue-50 rounded px-2 py-1">
+                              <span className="font-medium">Cleaned:</span> {item.name_cleanup_actions.join(" · ")}
+                              <span className="text-gray-400 ml-1">(was: {item.original_name})</span>
+                              <button onClick={() => handleRevertName(item.id)} className="ml-1.5 underline hover:text-blue-800">Revert</button>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <Badge>{item.customer_type || "Unknown"}</Badge>

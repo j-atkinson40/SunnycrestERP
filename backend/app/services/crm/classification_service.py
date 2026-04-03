@@ -41,6 +41,98 @@ GOOGLE_TYPE_MAP = {
 }
 
 
+def cleanup_company_name(name: str) -> dict:
+    """Clean up a company name. Returns the cleaned name and a list of actions taken.
+
+    Tracks every change so the user can see what was done and revert if needed.
+    """
+    if not name:
+        return {"cleaned": name, "changed": False, "actions": []}
+
+    original = name
+    actions = []
+
+    # 1. Strip leading/trailing whitespace
+    cleaned = name.strip()
+    if cleaned != name:
+        actions.append("Trimmed leading/trailing whitespace")
+
+    # 2. Collapse multiple spaces into one
+    import re
+    collapsed = re.sub(r"\s{2,}", " ", cleaned)
+    if collapsed != cleaned:
+        actions.append(f"Collapsed extra spaces (had multiple consecutive spaces)")
+        cleaned = collapsed
+
+    # 3. Convert ALL CAPS to Title Case (only if entire name is uppercase)
+    if cleaned == cleaned.upper() and len(cleaned) > 3:
+        # Preserve certain abbreviations
+        PRESERVE_UPPER = {"LLC", "INC", "CO", "FH", "F.H.", "NY", "PA", "NJ", "CT", "MA",
+                          "VT", "NH", "ME", "OH", "DBA", "II", "III", "IV", "PC", "PLLC",
+                          "LP", "LLP", "NA", "PO", "APT"}
+        words = cleaned.split()
+        title_words = []
+        for w in words:
+            # Strip punctuation for comparison but keep it in output
+            bare = w.strip(".,()&-")
+            if bare.upper() in PRESERVE_UPPER:
+                title_words.append(w.upper())
+            else:
+                title_words.append(w.capitalize())
+            # Fix common patterns
+        cleaned = " ".join(title_words)
+
+        # Fix "Mcdonald" → "McDonald" etc.
+        cleaned = re.sub(r"\bMc([a-z])", lambda m: f"Mc{m.group(1).upper()}", cleaned)
+
+        actions.append("Converted from ALL CAPS to Title Case")
+
+    # 4. Fix common punctuation issues
+    # "Johnson , Inc" → "Johnson, Inc"
+    fixed_punct = re.sub(r"\s+,", ",", cleaned)
+    if fixed_punct != cleaned:
+        actions.append("Fixed spacing before commas")
+        cleaned = fixed_punct
+
+    # "Johnson,Inc" → "Johnson, Inc"
+    fixed_comma = re.sub(r",(\S)", r", \1", cleaned)
+    if fixed_comma != cleaned:
+        actions.append("Added space after commas")
+        cleaned = fixed_comma
+
+    # 5. Normalize "&" spacing: "A&B" → "A & B", "A &B" → "A & B"
+    fixed_amp = re.sub(r"(\S)&(\S)", r"\1 & \2", cleaned)
+    fixed_amp = re.sub(r"(\S)& ", r"\1 & ", fixed_amp)
+    fixed_amp = re.sub(r" &(\S)", r" & \1", fixed_amp)
+    if fixed_amp != cleaned:
+        actions.append("Normalized spacing around &")
+        cleaned = fixed_amp
+
+    # 6. Remove trailing periods (unless abbreviation like "Inc.")
+    if cleaned.endswith(".") and not cleaned.endswith("Inc.") and not cleaned.endswith("Co.") and not cleaned.endswith("F.H."):
+        cleaned = cleaned.rstrip(".")
+        actions.append("Removed trailing period")
+
+    changed = cleaned != original
+    return {"cleaned": cleaned, "changed": changed, "actions": actions, "original": original}
+
+
+def revert_company_name(db: Session, company_entity_id: str) -> dict:
+    """Revert a company name to its original pre-cleanup value."""
+    entity = db.query(CompanyEntity).filter(CompanyEntity.id == company_entity_id).first()
+    if not entity:
+        return {"error": "not_found"}
+    if not entity.original_name:
+        return {"error": "no_original", "message": "No original name stored — name was never cleaned up"}
+
+    reverted_from = entity.name
+    entity.name = entity.original_name
+    entity.original_name = None
+    entity.name_cleanup_actions = None
+
+    return {"reverted": True, "name": entity.name, "was": reverted_from}
+
+
 def classify_company(db: Session, company_entity_id: str, use_google_places: bool = False) -> dict:
     """Classify a single company using name analysis, order history, and optionally AI + Google."""
     entity = db.query(CompanyEntity).filter(CompanyEntity.id == company_entity_id).first()
@@ -69,6 +161,14 @@ def classify_company(db: Session, company_entity_id: str, use_google_places: boo
         entity.classification_confidence = Decimal("1.000")
         entity.classification_reasons = [f"Old/inactive account: name contains '{matched[0]}'"]
         return {"status": "deactivated", "reason": f"Inactive pattern: {matched[0]}"}
+
+    # ── Name cleanup ────────────────────────────────────────────────────
+    cleanup_result = cleanup_company_name(entity.name)
+    if cleanup_result["changed"]:
+        entity.original_name = entity.name
+        entity.name = cleanup_result["cleaned"]
+        entity.name_cleanup_actions = cleanup_result["actions"]
+        name_lower = entity.name.lower().strip()
 
     # ── Signal 1: Name analysis ──────────────────────────────────────────
     name_matches = {}

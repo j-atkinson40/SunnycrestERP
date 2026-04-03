@@ -265,6 +265,8 @@ def run_company_migration(
             "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS first_order_year INTEGER",
             "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS google_places_id VARCHAR(200)",
             "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS google_places_type VARCHAR(100)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS original_name VARCHAR(500)",
+            "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS name_cleanup_actions JSONB",
         ]:
             db.execute(sa.text(col_sql))
         db.commit()
@@ -1348,6 +1350,8 @@ def get_review_queue(
                 "classification_source": e.classification_source,
                 "is_active_customer": e.is_active_customer,
                 "first_order_year": e.first_order_year,
+                "original_name": e.original_name,
+                "name_cleanup_actions": e.name_cleanup_actions,
             }
             for e in items
         ],
@@ -1446,3 +1450,24 @@ def get_classification_summary(
         types[ct] = types.get(ct, 0) + 1
 
     return {"by_source": summary, "by_type": types, "total": len(entities)}
+
+
+@router.post("/{entity_id}/revert-name")
+def revert_company_name_endpoint(
+    entity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Revert a company name to its original pre-cleanup value."""
+    entity = db.query(CompanyEntity).filter(
+        CompanyEntity.id == entity_id, CompanyEntity.company_id == current_user.company_id,
+    ).first()
+    if not entity:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    result = classification_service.revert_company_name(db, entity_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result.get("message", result["error"]))
+
+    db.commit()
+    return result
