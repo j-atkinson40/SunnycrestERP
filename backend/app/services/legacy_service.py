@@ -42,7 +42,7 @@ def process_custom_background_upload(photo_bytes: bytes, order_id: str) -> str:
 
 
 def generate_final(
-    order_id: str,
+    order_id: str | None,
     layout: dict,
     print_name: str | None = None,
     is_urn: bool = False,
@@ -82,15 +82,17 @@ def generate_final(
     proof_bytes = compositor.composite_layout(
         background_bytes, layout, output_width=2400, for_print=False
     )
+    import uuid as _uuid
+    folder_id = order_id or str(_uuid.uuid4())[:12]
     preset = print_name.replace(" ", "_").replace("—", "-") if print_name else "custom"
-    proof_key = f"output/{order_id}/{preset}_proof.jpg"
+    proof_key = f"output/{folder_id}/{preset}_proof.jpg"
     proof_url = r2.upload_bytes(proof_bytes, proof_key, "image/jpeg")
 
     # Generate print TIF
     tif_bytes = compositor.composite_layout(
         background_bytes, layout, output_width=4800, for_print=True
     )
-    tif_key = f"output/{order_id}/{preset}_final.tif"
+    tif_key = f"output/{folder_id}/{preset}_final.tif"
     tif_url = r2.upload_bytes(tif_bytes, tif_key, "image/tiff")
 
     return {"proof_url": proof_url, "tif_url": tif_url}

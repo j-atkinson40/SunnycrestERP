@@ -2,6 +2,7 @@
 // Shared by manufacturer proof review and funeral home order station.
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Plus, X, Check, RotateCcw } from "lucide-react"
@@ -350,8 +351,8 @@ export default function LegacyCompositor({
       setProofUrl(result.proof_url)
       setTifUrl(result.tif_url)
       setShowProof(true)
-    } catch {
-      // Error handling in parent
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.message || "Failed to generate proof")
     } finally {
       setGenerating(false)
     }

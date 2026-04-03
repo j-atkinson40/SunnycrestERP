@@ -20,7 +20,7 @@ class BackgroundRequest(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    order_id: str
+    order_id: str | None = None
     print_name: str | None = None
     is_urn: bool = False
     is_custom: bool = False
