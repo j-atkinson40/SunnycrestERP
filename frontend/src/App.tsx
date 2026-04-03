@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/auth-context";
 import CommandBar from "@/components/ai/CommandBar";
+import VoiceMemoButton from "@/components/ai/VoiceMemoButton";
 import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
@@ -839,6 +840,10 @@ export default function App() {
         </Routes>
         <Toaster />
         <CommandBar open={cmdBarOpen} onClose={() => setCmdBarOpen(false)} />
+        {/* Global floating voice memo button */}
+        <div className="fixed bottom-6 right-6 z-40 sm:hidden">
+          <VoiceMemoButton compact />
+        </div>
       </ExtensionProvider>
       </FeatureFlagProvider>
       </AuthProvider>

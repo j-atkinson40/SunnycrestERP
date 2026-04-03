@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -475,3 +475,62 @@ def dismiss_pattern_alert(
     dismiss_alert(db, alert_id, current_user.id)
     db.commit()
     return {"dismissed": True}
+
+
+# ── Voice Memo ───────────────────────────────────────────────────────────────
+
+@router.post("/voice-memo")
+async def voice_memo(
+    audio: UploadFile = File(...),
+    master_company_id: str = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Process a voice memo: transcribe → extract → create activity."""
+    if not ai_settings_service.is_enabled(db, current_user.company_id, "voice_memo", user_id=current_user.id):
+        raise HTTPException(status_code=403, detail="Voice memo is disabled")
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Audio file too large (max 25MB)")
+
+    content_type = audio.content_type or "audio/webm"
+
+    from app.services.ai.voice_memo_service import process_voice_memo
+    result = process_voice_memo(
+        db, current_user.company_id, current_user.id,
+        audio_bytes, master_company_id, content_type,
+    )
+
+    if "error" in result:
+        return result  # Return 200 with error field (CORS-safe)
+
+    db.commit()
+    return result
+
+
+# ── Voice Command ────────────────────────────────────────────────────────────
+
+@router.post("/voice-command")
+async def voice_command(
+    audio: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Process a voice command: transcribe → interpret as command."""
+    if not ai_settings_service.is_enabled(db, current_user.company_id, "voice_commands", user_id=current_user.id):
+        raise HTTPException(status_code=403, detail="Voice commands are disabled")
+
+    audio_bytes = await audio.read()
+    content_type = audio.content_type or "audio/webm"
+
+    from app.services.ai.voice_memo_service import transcribe_audio
+    transcript = transcribe_audio(audio_bytes, content_type)
+    if not transcript:
+        return {"error": True, "detail": "Could not transcribe audio"}
+
+    ai_settings_service.track_usage(db, current_user.company_id, "transcription", 1)
+
+    # Reuse command bar logic with the transcript
+    cmd_data = CommandRequest(query=transcript, context={"current_page": "voice"})
+    return process_command(cmd_data, current_user, db)

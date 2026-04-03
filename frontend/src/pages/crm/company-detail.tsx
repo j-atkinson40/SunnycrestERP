@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card"
 import { ChevronLeft, Plus, ExternalLink, Phone, Mail, Globe, MapPin, Loader2 } from "lucide-react"
 import ContactList from "@/components/crm/ContactList"
 import CompanyChat from "@/components/ai/CompanyChat"
+import VoiceMemoBtn from "@/components/ai/VoiceMemoButton"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -298,11 +299,14 @@ export default function CompanyDetailPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-sm">Activity Log</h3>
-                {!showActivityForm && (
-                  <Button size="sm" onClick={() => setShowActivityForm(true)}>
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Log activity
-                  </Button>
-                )}
+                <div className="flex gap-2">
+                  <VoiceMemoBtn masterCompanyId={id} onComplete={loadActivity} />
+                  {!showActivityForm && (
+                    <Button size="sm" onClick={() => setShowActivityForm(true)}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Log activity
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {showActivityForm && (

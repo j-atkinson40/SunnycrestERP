@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
+    DEEPGRAM_API_KEY: str = ""
 
     # Platform admin seed (optional — creates initial super admin on startup)
     PLATFORM_ADMIN_EMAIL: str = ""

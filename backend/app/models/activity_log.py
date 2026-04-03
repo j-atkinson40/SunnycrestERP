@@ -34,6 +34,9 @@ class ActivityLog(Base):
     related_invoice_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     related_legacy_proof_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
+    source: Mapped[str] = mapped_column(String(20), server_default="manual")
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     master_company = relationship("CompanyEntity", foreign_keys=[master_company_id])
