@@ -489,20 +489,21 @@ Return JSON: {{"customer_type": str, "contractor_type": str|null, "confidence": 
     return None
 
 
-def run_bulk_classification(db: Session, tenant_id: str, use_google_places: bool = False) -> dict:
-    """Classify all unclassified companies for a tenant."""
-    entities = (
+def run_bulk_classification(db: Session, tenant_id: str, use_google_places: bool = False, include_approved: bool = False) -> dict:
+    """Classify companies for a tenant. Set include_approved=True to re-run on all records."""
+    query = (
         db.query(CompanyEntity)
         .filter(
             CompanyEntity.company_id == tenant_id,
             CompanyEntity.is_aggregate == False,
         )
-        .filter(
+    )
+    if not include_approved:
+        query = query.filter(
             (CompanyEntity.classification_source.is_(None)) |
             (CompanyEntity.classification_source == "pending_review")
         )
-        .all()
-    )
+    entities = query.all()
 
     total = len(entities)
     stats = {

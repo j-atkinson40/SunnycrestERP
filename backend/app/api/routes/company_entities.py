@@ -1355,10 +1355,11 @@ def delete_opportunity(
 
 @router.get("/classify/run-bulk")
 def run_bulk_classification_endpoint(
+    include_approved: bool = Query(False, description="Re-run on all records including approved"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Run bulk classification on all unclassified companies. Returns stats."""
+    """Run bulk classification. Set include_approved=true to re-classify everything."""
     # Ensure classification columns exist
     try:
         db.execute(sa.text("SELECT original_name FROM company_entities LIMIT 0"))
@@ -1371,7 +1372,7 @@ def run_bulk_classification_endpoint(
             db.rollback()
 
     try:
-        result = classification_service.run_bulk_classification(db, current_user.company_id, use_google_places=False)
+        result = classification_service.run_bulk_classification(db, current_user.company_id, use_google_places=False, include_approved=include_approved)
         return result
     except Exception as e:
         db.rollback()

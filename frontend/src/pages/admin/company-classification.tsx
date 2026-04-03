@@ -65,11 +65,11 @@ export default function CompanyClassificationPage() {
 
   useEffect(() => { loadQueue(); loadSummary() }, [loadQueue, loadSummary])
 
-  async function handleRunBulk() {
+  async function handleRunBulk(includeApproved = false) {
     setRunning(true)
-    toast.info("Running AI classification... this may take a few minutes.")
+    toast.info(includeApproved ? "Re-classifying ALL companies..." : "Running AI classification...")
     try {
-      const res = await apiClient.get("/companies/classify/run-bulk")
+      const res = await apiClient.get(`/companies/classify/run-bulk?include_approved=${includeApproved}`)
       const d = res.data
       if (d.error) {
         toast.error(`Classification error: ${d.detail}`)
@@ -158,8 +158,13 @@ export default function CompanyClassificationPage() {
           }}>
             Fix role flags
           </Button>
-          <Button onClick={handleRunBulk} disabled={running}>
-            {running ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Running...</> : "Run AI Classification"}
+          <Button variant="outline" onClick={() => {
+            if (window.confirm("Re-classify ALL companies (including approved)? This will update classifications based on improved keywords.")) handleRunBulk(true)
+          }} disabled={running}>
+            Re-classify all
+          </Button>
+          <Button onClick={() => handleRunBulk(false)} disabled={running}>
+            {running ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Running...</> : "Classify new"}
           </Button>
         </div>
       </div>
