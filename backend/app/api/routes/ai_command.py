@@ -537,6 +537,63 @@ async def voice_command(
     return process_command(cmd_data, current_user, db)
 
 
+# ── Duplicate Reviews ────────────────────────────────────────────────────────
+
+@router.get("/duplicates")
+def list_duplicate_reviews(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List pending duplicate reviews with company details."""
+    try:
+        rows = db.execute(text("""
+            SELECT dr.id, dr.similarity_score, dr.status,
+                   a.id as a_id, a.name as a_name, a.city as a_city, a.state as a_state,
+                   b.id as b_id, b.name as b_name, b.city as b_city, b.state as b_state
+            FROM duplicate_reviews dr
+            JOIN company_entities a ON dr.company_id_a = a.id
+            JOIN company_entities b ON dr.company_id_b = b.id
+            WHERE dr.tenant_id = :tid AND dr.status = 'pending'
+            ORDER BY dr.similarity_score DESC
+        """), {"tid": current_user.company_id}).fetchall()
+        return [
+            {
+                "id": r.id,
+                "similarity_score": float(r.similarity_score) if r.similarity_score else None,
+                "status": r.status,
+                "company_a": {"id": r.a_id, "name": r.a_name, "city": r.a_city, "state": r.a_state},
+                "company_b": {"id": r.b_id, "name": r.b_name, "city": r.b_city, "state": r.b_state},
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
+
+
+@router.post("/duplicates/{review_id}/resolve")
+def resolve_duplicate(
+    review_id: str,
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Resolve a duplicate review — merge or mark as not duplicate."""
+    action = data.get("action", "not_duplicate")
+    now = datetime.now(timezone.utc)
+
+    if action == "merge":
+        db.execute(text(
+            "UPDATE duplicate_reviews SET status = 'merged', resolved_by = :uid, resolved_at = :now WHERE id = :id"
+        ), {"id": review_id, "uid": current_user.id, "now": now})
+    else:
+        db.execute(text(
+            "UPDATE duplicate_reviews SET status = 'not_duplicate', resolved_by = :uid, resolved_at = :now WHERE id = :id"
+        ), {"id": review_id, "uid": current_user.id, "now": now})
+
+    db.commit()
+    return {"resolved": True, "action": action}
+
+
 # ── Agent Management ─────────────────────────────────────────────────────────
 
 @router.get("/agents/run-nightly")
