@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -13,12 +14,78 @@ from app.services import ai_settings_service
 router = APIRouter()
 
 
+def _ensure_ai_tables(db: Session) -> None:
+    """Create ai_settings and user_ai_preferences tables if missing."""
+    try:
+        db.execute(sa_text("SELECT 1 FROM ai_settings LIMIT 0"))
+    except Exception:
+        db.rollback()
+        db.execute(sa_text("""
+            CREATE TABLE IF NOT EXISTS ai_settings (
+                id VARCHAR(36) PRIMARY KEY,
+                tenant_id VARCHAR(36) NOT NULL UNIQUE REFERENCES companies(id),
+                briefing_narrative_enabled BOOLEAN DEFAULT true,
+                briefing_narrative_tone VARCHAR(20) DEFAULT 'concise',
+                briefing_narrative_sections JSONB DEFAULT '{}',
+                weekly_summary_enabled BOOLEAN DEFAULT false,
+                weekly_summary_day VARCHAR(10) DEFAULT 'monday',
+                weekly_summary_time VARCHAR(5) DEFAULT '07:00',
+                pattern_alerts_enabled BOOLEAN DEFAULT true,
+                pattern_alerts_sensitivity VARCHAR(20) DEFAULT 'moderate',
+                prep_notes_enabled BOOLEAN DEFAULT true,
+                seasonal_intelligence_enabled BOOLEAN DEFAULT false,
+                conversational_lookup_enabled BOOLEAN DEFAULT true,
+                natural_language_filters_enabled BOOLEAN DEFAULT true,
+                smart_followup_enabled BOOLEAN DEFAULT true,
+                duplicate_detection_enabled BOOLEAN DEFAULT true,
+                auto_enrichment_enabled BOOLEAN DEFAULT false,
+                upsell_detector_enabled BOOLEAN DEFAULT true,
+                account_rescue_enabled BOOLEAN DEFAULT false,
+                relationship_scoring_enabled BOOLEAN DEFAULT true,
+                payment_prediction_enabled BOOLEAN DEFAULT false,
+                new_customer_intelligence_enabled BOOLEAN DEFAULT true,
+                command_bar_enabled BOOLEAN DEFAULT true,
+                command_bar_action_tier VARCHAR(20) DEFAULT 'review',
+                voice_memo_enabled BOOLEAN DEFAULT false,
+                voice_commands_enabled BOOLEAN DEFAULT false,
+                allow_per_user_settings BOOLEAN DEFAULT false,
+                after_call_intelligence_enabled BOOLEAN DEFAULT true,
+                commitment_detection_enabled BOOLEAN DEFAULT true,
+                tone_analysis_enabled BOOLEAN DEFAULT false,
+                founding_licensee BOOLEAN DEFAULT false,
+                google_places_calls_month INTEGER DEFAULT 0,
+                transcription_minutes_month INTEGER DEFAULT 0,
+                claude_api_calls_month INTEGER DEFAULT 0,
+                usage_reset_date DATE,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        db.execute(sa_text("""
+            CREATE TABLE IF NOT EXISTS user_ai_preferences (
+                id VARCHAR(36) PRIMARY KEY,
+                tenant_id VARCHAR(36) NOT NULL,
+                user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+                briefing_narrative_enabled BOOLEAN,
+                briefing_narrative_tone VARCHAR(20),
+                command_bar_action_tier VARCHAR(20),
+                voice_memo_enabled BOOLEAN,
+                voice_commands_enabled BOOLEAN,
+                pattern_alerts_enabled BOOLEAN,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        db.commit()
+
+
 @router.get("")
 def get_ai_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get full AI settings for current tenant (admin view)."""
+    _ensure_ai_tables(db)
     settings = ai_settings_service.get_settings(db, current_user.company_id)
     db.commit()
     return ai_settings_service._settings_to_dict(settings)
