@@ -7,7 +7,7 @@ import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Check, X, MapPin, Phone, Globe } from "lucide-react"
+import { Loader2, Check, X, MapPin, Phone, Globe, Pencil } from "lucide-react"
 
 interface NameSuggestion {
   id: string
@@ -33,6 +33,8 @@ export default function DataQualityPage() {
   const [running, setRunning] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pendingCount, setPendingCount] = useState(0)
+  const [edits, setEdits] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState<string | null>(null)
 
   const loadSuggestions = useCallback(async () => {
     try {
@@ -48,10 +50,16 @@ export default function DataQualityPage() {
 
   async function handleApply(id: string) {
     try {
-      await apiClient.post(`/ai/name-suggestions/${id}/apply`, { apply_address: true, apply_phone: true, apply_website: true })
+      const customName = edits[id]
+      await apiClient.post(`/ai/name-suggestions/${id}/apply`, {
+        apply_address: true, apply_phone: true, apply_website: true,
+        ...(customName ? { name: customName } : {}),
+      })
       toast.success("Name updated")
       setSuggestions((prev) => prev.filter((s) => s.id !== id))
       setPendingCount((n) => n - 1)
+      setEdits((prev) => { const n = { ...prev }; delete n[id]; return n })
+      if (editing === id) setEditing(null)
     } catch { toast.error("Failed") }
   }
 
@@ -164,7 +172,30 @@ export default function DataQualityPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
-                          <div className="text-green-700 font-medium">{s.suggested_name}</div>
+                          {editing === s.id ? (
+                            <input
+                              autoFocus
+                              className="w-full border rounded px-2 py-1 text-sm text-green-700 font-medium focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              value={edits[s.id] ?? s.suggested_name}
+                              onChange={(e) => setEdits((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") { setEditing(null) }
+                                if (e.key === "Escape") { setEditing(null); setEdits((prev) => { const n = { ...prev }; delete n[s.id]; return n }) }
+                              }}
+                              onBlur={() => setEditing(null)}
+                            />
+                          ) : (
+                            <div
+                              className="text-green-700 font-medium cursor-pointer group flex items-center gap-1"
+                              onClick={() => { setEditing(s.id); if (!edits[s.id]) setEdits((prev) => ({ ...prev, [s.id]: s.suggested_name })) }}
+                            >
+                              <span>{edits[s.id] || s.suggested_name}</span>
+                              <Pencil className="h-3 w-3 text-gray-300 group-hover:text-gray-500 shrink-0" />
+                            </div>
+                          )}
+                          {edits[s.id] && edits[s.id] !== s.suggested_name && (
+                            <div className="text-[10px] text-blue-500 mt-0.5">edited</div>
+                          )}
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1">
