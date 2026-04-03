@@ -27,6 +27,27 @@ router = APIRouter()
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
+_columns_checked = False
+
+
+def _ensure_columns_exist(db: Session) -> None:
+    """Check once per process if classification columns exist, create if not."""
+    global _columns_checked
+    if _columns_checked:
+        return
+    try:
+        db.execute(sa.text("SELECT customer_type FROM company_entities LIMIT 0"))
+        _columns_checked = True
+    except Exception:
+        db.rollback()
+        try:
+            _ensure_classification_columns(db)
+            db.commit()
+            _columns_checked = True
+        except Exception:
+            db.rollback()
+
+
 def _ensure_classification_columns(db: Session) -> None:
     """Add classification columns to company_entities if they don't exist."""
     for col_sql in [
@@ -531,6 +552,7 @@ def list_companies(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _ensure_columns_exist(db)
     query = db.query(CompanyEntity).filter(
         CompanyEntity.company_id == current_user.company_id,
         CompanyEntity.is_active == is_active,
@@ -568,6 +590,7 @@ def search_companies(
     db: Session = Depends(get_db),
 ):
     """Unified search across all company roles. Returns top 15 matches."""
+    _ensure_columns_exist(db)
     if len(q) < 2:
         return []
 
@@ -711,6 +734,7 @@ def get_company(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _ensure_columns_exist(db)
     entity = (
         db.query(CompanyEntity)
         .filter(CompanyEntity.id == entity_id, CompanyEntity.company_id == current_user.company_id)
@@ -1110,6 +1134,7 @@ def list_funeral_homes(
     db: Session = Depends(get_db),
 ):
     """List customer companies with health data for the Funeral Homes dashboard."""
+    _ensure_columns_exist(db)
     from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
 
     query = (
@@ -1334,13 +1359,16 @@ def run_bulk_classification_endpoint(
     db: Session = Depends(get_db),
 ):
     """Run bulk classification on all unclassified companies. Returns stats."""
-    # Always ensure classification columns exist (idempotent)
+    # Ensure classification columns exist
     try:
-        _ensure_classification_columns(db)
-        db.commit()
-        db.expire_all()  # Clear ORM cache so it picks up new columns
+        db.execute(sa.text("SELECT original_name FROM company_entities LIMIT 0"))
     except Exception:
         db.rollback()
+        try:
+            _ensure_classification_columns(db)
+            db.commit()
+        except Exception:
+            db.rollback()
 
     try:
         result = classification_service.run_bulk_classification(db, current_user.company_id, use_google_places=False)
