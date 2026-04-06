@@ -194,6 +194,13 @@ def run_data_seeders():
         print(f"WARNING: Safety training topic seeding failed — {exc}")
         db.rollback()
 
+    try:
+        from app.services.widgets.widget_registry import seed_widget_definitions
+        seed_widget_definitions(db)
+    except Exception as exc:
+        print(f"WARNING: Widget definition seeding failed — {exc}")
+        db.rollback()
+
     finally:
         db.close()
 

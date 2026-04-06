@@ -249,6 +249,9 @@ from app.models.order_personalization_task import OrderPersonalizationTask
 from app.models.production_mold_config import ProductionMoldConfig
 from app.models.training_progress import TrainingProgress
 from app.models.vault_supplier import VaultSupplier
+from app.models.widget_definition import WidgetDefinition
+from app.models.user_widget_layout import UserWidgetLayout
+from app.models.extension_widget import ExtensionWidget
 
 __all__ = [
     "AccountingConnection",
@@ -452,4 +455,7 @@ __all__ = [
     "ProductionMoldConfig",
     "TrainingProgress",
     "VaultSupplier",
+    "WidgetDefinition",
+    "UserWidgetLayout",
+    "ExtensionWidget",
 ]

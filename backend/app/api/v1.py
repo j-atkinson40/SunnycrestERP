@@ -119,6 +119,8 @@ from app.api.routes import (
     website_intelligence,
     vault_molds,
     vault_supplier,
+    widgets,
+    widget_data,
     work_orders,
 )
 
@@ -494,6 +496,12 @@ v1_router.include_router(
 )
 v1_router.include_router(
     vault_supplier.router, prefix="/vault-supplier", tags=["Vault Supplier"]
+)
+v1_router.include_router(
+    widgets.router, prefix="/widgets", tags=["Widget Framework"]
+)
+v1_router.include_router(
+    widget_data.router, prefix="/widget-data", tags=["Widget Data"]
 )
 v1_router.include_router(
     work_orders.router, prefix="/work-orders", tags=["Work Orders"]

@@ -12,6 +12,8 @@ import { useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import apiClient from "@/lib/api-client"
+import DeviceAwarePage from "@/components/ui/DeviceAwarePage"
+import OperationsBoardDesktop from "@/pages/operations/operations-board-desktop"
 import { toast } from "sonner"
 import {
   AlertTriangle,
@@ -506,6 +508,15 @@ function SettingToggle({
 // ── Main Component ──
 
 export default function OperationsBoardPage() {
+  return (
+    <DeviceAwarePage
+      mobile={() => <OperationsBoardMobile />}
+      desktop={() => <OperationsBoardDesktop />}
+    />
+  )
+}
+
+function OperationsBoardMobile() {
   const { hasModule, company } = useAuth()
   const navigate = useNavigate()
 
