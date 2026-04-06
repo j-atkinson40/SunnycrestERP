@@ -1111,6 +1111,7 @@ def get_ar_aging(
         as_of_date = datetime.now(timezone.utc)
 
     from app.utils.company_name_resolver import resolve_customer_name
+    from app.models.company_entity import CompanyEntity
 
     invoices = (
         db.query(Invoice)
@@ -1125,19 +1126,70 @@ def get_ar_aging(
     zero = Decimal("0.00")
     customer_buckets: dict[str, dict] = {}
 
+    # Build map of customer_id → billing group info for consolidated groups
+    # For consolidated_single_payer, roll child AR into the billing contact
+    billing_group_map: dict[str, str] = {}  # child_customer_id → group_display_key
+    group_names: dict[str, str] = {}  # group_display_key → group name
+
+    consolidated_customers = (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == company_id,
+            Customer.billing_group_customer_id.isnot(None),
+        )
+        .all()
+    )
+    for c in consolidated_customers:
+        # Check if the parent's group uses single_payer
+        if c.master_company_id:
+            ce = db.query(CompanyEntity).filter(CompanyEntity.id == c.master_company_id).first()
+            if ce and ce.parent_company_id:
+                parent_group = db.query(CompanyEntity).filter(CompanyEntity.id == ce.parent_company_id).first()
+                if parent_group and parent_group.billing_preference == "consolidated_single_payer":
+                    # Roll up into billing contact
+                    billing_group_map[c.id] = c.billing_group_customer_id
+                    group_names[c.billing_group_customer_id] = parent_group.name
+                elif parent_group and parent_group.billing_preference == "consolidated_split_payment":
+                    # Keep separate but prefix with group name
+                    group_names[c.id] = parent_group.name
+
     for inv in invoices:
         balance = inv.balance_remaining
         if balance <= zero:
             continue
 
         cid = inv.customer_id
-        if cid not in customer_buckets:
-            customer_buckets[cid] = {
-                "customer_id": cid,
-                "customer_name": resolve_customer_name(inv.customer),
+
+        # For single_payer consolidated: redirect to billing contact
+        display_cid = billing_group_map.get(cid, cid)
+
+        if display_cid not in customer_buckets:
+            display_name = resolve_customer_name(inv.customer)
+            if display_cid in group_names and display_cid == cid:
+                # This is the billing contact for a single_payer group — show group name
+                display_name = group_names[display_cid]
+            elif cid in group_names and cid != display_cid:
+                # This invoice will be rolled up, use billing contact info later
+                pass
+            elif cid in group_names:
+                # Split payment — prefix with group name
+                display_name = f"{group_names[cid]} \u2014 {display_name}"
+
+            # If display_cid is the billing contact, we might not have loaded their customer
+            if display_cid != cid:
+                billing_customer = db.query(Customer).options(
+                    joinedload(Customer.company_entity)
+                ).filter(Customer.id == display_cid).first()
+                if billing_customer:
+                    display_name = group_names.get(display_cid, resolve_customer_name(billing_customer))
+
+            customer_buckets[display_cid] = {
+                "customer_id": display_cid,
+                "customer_name": display_name,
                 "account_number": (
                     inv.customer.account_number if inv.customer else None
                 ),
+                "billing_group_name": group_names.get(display_cid),
                 "current": zero,
                 "days_1_30": zero,
                 "days_31_60": zero,
@@ -1148,7 +1200,7 @@ def get_ar_aging(
 
         days_past = (as_of_date - inv.due_date).days if inv.due_date else 0
 
-        bucket = customer_buckets[cid]
+        bucket = customer_buckets[display_cid]
         if days_past <= 0:
             bucket["current"] += balance
         elif days_past <= 30:

@@ -177,7 +177,12 @@ export function FuneralHomePicker({
                 idx === activeIdx && "bg-blue-50",
               )}
             >
-              <span className="flex-1 truncate">{c.display_name ?? c.name}</span>
+              <span className="flex-1 truncate">
+                {c.display_name ?? c.name}
+                {c.billing_group_name && (
+                  <span className="ml-1.5 text-[10px] text-muted-foreground">({c.billing_group_name})</span>
+                )}
+              </span>
               {c.city && (
                 <span className="text-xs text-muted-foreground shrink-0">
                   {c.city}{c.state ? `, ${c.state}` : ""}

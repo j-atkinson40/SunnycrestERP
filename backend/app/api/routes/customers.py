@@ -203,10 +203,20 @@ def list_customers(
         include_hidden,
     )
     from app.utils.company_name_resolver import resolve_customer_name
+    from app.models.company_entity import CompanyEntity
     items = []
     for c in result["items"]:
         item = CustomerListItem.model_validate(c).model_dump()
         item["display_name"] = resolve_customer_name(c)
+        # Add billing group name if customer is in a group
+        group_name = None
+        if c.master_company_id:
+            ce = db.query(CompanyEntity).filter(CompanyEntity.id == c.master_company_id).first()
+            if ce and ce.parent_company_id:
+                parent = db.query(CompanyEntity).filter(CompanyEntity.id == ce.parent_company_id).first()
+                if parent and parent.is_billing_group:
+                    group_name = parent.name
+        item["billing_group_name"] = group_name
         items.append(item)
     return {
         "items": items,

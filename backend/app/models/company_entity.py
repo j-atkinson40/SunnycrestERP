@@ -66,6 +66,15 @@ class CompanyEntity(Base):
     google_places_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     google_places_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # Billing group fields
+    parent_company_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("company_entities.id"), nullable=True
+    )
+    is_billing_group: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    billing_preference: Mapped[str] = mapped_column(
+        String(30), server_default="separate"
+    )  # separate | consolidated_single_payer | consolidated_split_payment
+
     # Notes
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -76,3 +85,8 @@ class CompanyEntity(Base):
 
     # Relationships
     company = relationship("Company")
+    locations = relationship(
+        "CompanyEntity",
+        foreign_keys=[parent_company_id],
+        backref="parent_group",
+    )

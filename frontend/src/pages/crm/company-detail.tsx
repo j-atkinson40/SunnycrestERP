@@ -42,6 +42,9 @@ interface CompanyDetail {
   linked_customer_id: string | null
   linked_vendor_id: string | null
   linked_cemetery_id: string | null
+  is_billing_group: boolean
+  billing_preference: string | null
+  parent_company_id: string | null
   created_at: string | null
   updated_at: string | null
 }
@@ -111,6 +114,10 @@ export default function CompanyDetailPage() {
   const [actFollowDate, setActFollowDate] = useState("")
   const [actSaving, setActSaving] = useState(false)
 
+  // Billing group context
+  const [parentGroup, setParentGroup] = useState<{ id: string; name: string; billing_preference: string } | null>(null)
+  const [groupLocations, setGroupLocations] = useState<{ name: string; company_entity_id: string }[]>([])
+
   const loadCompany = useCallback(async () => {
     if (!id) return
     try {
@@ -138,6 +145,22 @@ export default function CompanyDetailPage() {
 
   useEffect(() => { loadCompany() }, [loadCompany])
   useEffect(() => { if (tab === "activity") loadActivity() }, [tab, loadActivity])
+
+  // Load billing group context
+  useEffect(() => {
+    if (!company) return
+    if (company.parent_company_id) {
+      // This is a child location — load parent group info
+      apiClient.get(`/billing-groups/${company.parent_company_id}`).then(r => {
+        setParentGroup({ id: r.data.id, name: r.data.name, billing_preference: r.data.billing_preference })
+      }).catch(() => {})
+    } else if (company.is_billing_group) {
+      // This is a billing group — load locations
+      apiClient.get(`/billing-groups/${company.id}`).then(r => {
+        setGroupLocations(r.data.locations || [])
+      }).catch(() => {})
+    }
+  }, [company])
 
   async function handleSaveField(field: string, value: string) {
     if (!id) return
@@ -464,6 +487,37 @@ export default function CompanyDetailPage() {
               </div>
             )}
           </Card>
+
+          {/* Billing group context */}
+          {company.is_billing_group && (
+            <Card className="p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Billing Group</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {groupLocations.length} location{groupLocations.length !== 1 ? "s" : ""}
+              </div>
+              {groupLocations.map(l => (
+                <Link key={l.company_entity_id} to={`/crm/companies/${l.company_entity_id}`} className="block text-sm text-blue-600 hover:underline">
+                  {l.name}
+                </Link>
+              ))}
+              <Link to={`/crm/billing-groups/${company.id}`} className="mt-2 block text-xs text-blue-600 hover:underline">
+                Manage group
+              </Link>
+            </Card>
+          )}
+          {parentGroup && (
+            <Card className="p-4 space-y-2">
+              <div className="text-xs text-muted-foreground">Part of</div>
+              <Link to={`/crm/billing-groups/${parentGroup.id}`} className="text-sm font-medium text-blue-600 hover:underline">
+                {parentGroup.name}
+              </Link>
+              <div className="text-xs text-muted-foreground">
+                Billing: {parentGroup.billing_preference === "separate" ? "Independent" : parentGroup.billing_preference === "consolidated_single_payer" ? "Consolidated to group" : "Split payment"}
+              </div>
+            </Card>
+          )}
 
           {/* Contacts (compact) */}
           <Card className="p-4">

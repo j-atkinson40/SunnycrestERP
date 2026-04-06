@@ -21,6 +21,7 @@ from app.api.routes import (
     audit,
     auth,
     billing,
+    billing_groups,
     bom,
     briefings,
     bundles,
@@ -149,6 +150,9 @@ v1_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs"]
 v1_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 v1_router.include_router(
     billing.router, prefix="/billing", tags=["Billing"]
+)
+v1_router.include_router(
+    billing_groups.router, prefix="/billing-groups", tags=["Billing Groups"]
 )
 v1_router.include_router(
     bom.router, prefix="/bom", tags=["Bill of Materials"]

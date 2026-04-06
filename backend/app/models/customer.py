@@ -148,6 +148,11 @@ class Customer(Base):
     # --- CRM master entity link ---
     master_company_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("company_entities.id"), nullable=True)
 
+    # --- Billing group ---
+    billing_group_customer_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("customers.id"), nullable=True
+    )  # Points to parent customer for consolidated billing; null = billed independently
+
     # --- Sage sync ---
     sage_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 

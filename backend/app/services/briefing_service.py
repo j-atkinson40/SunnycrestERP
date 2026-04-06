@@ -369,6 +369,69 @@ def _build_draft_invoice_context(db: Session, company_id: str) -> dict:
         return {"count": 0, "total_amount": "0", "exception_count": 0, "auto_confirmed_count": 0, "customers": []}
 
 
+def _build_top_overdue_accounts(db: Session, company_id: str, overdue_invoices: list) -> list[dict]:
+    """Build top overdue accounts list, consolidating billing group members."""
+    from app.models.company_entity import CompanyEntity
+
+    now = datetime.now(timezone.utc)
+    zero = Decimal("0")
+    per_customer: dict[str, dict] = {}
+
+    # Build billing group map
+    billing_group_map: dict[str, str] = {}  # customer_id → display_key
+    group_names: dict[str, str] = {}
+
+    try:
+        grouped = (
+            db.query(Customer)
+            .filter(
+                Customer.company_id == company_id,
+                Customer.billing_group_customer_id.isnot(None),
+            )
+            .all()
+        )
+        for c in grouped:
+            if c.master_company_id:
+                ce = db.query(CompanyEntity).filter(CompanyEntity.id == c.master_company_id).first()
+                if ce and ce.parent_company_id:
+                    parent = db.query(CompanyEntity).filter(CompanyEntity.id == ce.parent_company_id).first()
+                    if parent and parent.billing_preference == "consolidated_single_payer":
+                        billing_group_map[c.id] = c.billing_group_customer_id
+                        group_names[c.billing_group_customer_id] = parent.name
+    except Exception:
+        pass
+
+    for inv in overdue_invoices:
+        remaining = inv.total - inv.amount_paid
+        if remaining <= zero:
+            continue
+        days = (now - inv.due_date).days if inv.due_date else 0
+
+        display_key = billing_group_map.get(inv.customer_id, inv.customer_id)
+        if display_key not in per_customer:
+            name = group_names.get(display_key, inv.customer.name if inv.customer else "Unknown")
+            per_customer[display_key] = {"name": name, "total": zero, "max_days": 0, "locations": set()}
+
+        per_customer[display_key]["total"] += remaining
+        if days > per_customer[display_key]["max_days"]:
+            per_customer[display_key]["max_days"] = days
+        if inv.customer_id != display_key:
+            per_customer[display_key]["locations"].add(inv.customer.name if inv.customer else "")
+
+    sorted_accounts = sorted(per_customer.values(), key=lambda x: x["total"], reverse=True)[:10]
+    result = []
+    for a in sorted_accounts:
+        entry = {
+            "name": a["name"],
+            "overdue_amount": str(a["total"]),
+            "max_days_overdue": a["max_days"],
+        }
+        if a["locations"]:
+            entry["location_breakdown"] = list(a["locations"])
+        result.append(entry)
+    return result
+
+
 def _build_invoicing_ar_context(
     db: Session, company_id: str
 ) -> dict:
@@ -402,6 +465,9 @@ def _build_invoicing_ar_context(
                 bucket_90_plus += remaining
 
         total_overdue = bucket_30 + bucket_60 + bucket_90_plus
+
+        # Top overdue accounts (consolidated for billing groups)
+        top_overdue = _build_top_overdue_accounts(db, company_id, overdue_invoices)
 
         # Payments received today
         today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
@@ -549,6 +615,7 @@ def _build_invoicing_ar_context(
             "overdue_31_60": str(bucket_60),
             "overdue_90_plus": str(bucket_90_plus),
             "overdue_invoice_count": len(overdue_invoices),
+            "top_overdue_accounts": top_overdue,
             "payments_today_count": payments_today,
             "payments_yesterday": payments_yesterday,
             "outstanding_discounts": outstanding_discounts,

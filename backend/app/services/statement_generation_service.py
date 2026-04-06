@@ -180,8 +180,55 @@ def generate_statement_run(
     total_amount = Decimal(0)
     flagged_count = 0
 
+    # Identify customers in consolidated_single_payer groups —
+    # their data rolls up into the billing contact's statement.
+    consolidated_groups: dict[str, list[str]] = {}  # billing_customer_id → [member customer_ids]
+    skip_individual = set()  # customer IDs handled by consolidated statement
+
     for customer in customers:
+        if customer.billing_group_customer_id and customer.billing_group_customer_id != customer.id:
+            # This customer's AR is consolidated to another customer
+            billing_cid = customer.billing_group_customer_id
+            consolidated_groups.setdefault(billing_cid, []).append(customer.id)
+            skip_individual.add(customer.id)
+
+    for customer in customers:
+        if customer.id in skip_individual:
+            continue
+
+        # Calculate data for this customer
         data = calculate_statement_data(db, tenant_id, customer.id, period_start, period_end)
+
+        # If this customer is the billing contact for a consolidated group,
+        # roll up member data into their statement
+        member_ids = consolidated_groups.get(customer.id, [])
+        location_breakdown = None
+        if member_ids:
+            location_breakdown = [{
+                "customer_id": customer.id,
+                "customer_name": customer.name,
+                "opening_balance": data["opening_balance"],
+                "new_charges": data["invoices_total"],
+                "payments_received": data["payments_total"],
+                "closing_balance": data["closing_balance"],
+            }]
+            for mid in member_ids:
+                member = db.query(Customer).filter(Customer.id == mid).first()
+                mdata = calculate_statement_data(db, tenant_id, mid, period_start, period_end)
+                data["opening_balance"] += mdata["opening_balance"]
+                data["invoices_total"] += mdata["invoices_total"]
+                data["payments_total"] += mdata["payments_total"]
+                data["closing_balance"] += mdata["closing_balance"]
+                data["invoice_count"] += mdata["invoice_count"]
+                if member:
+                    location_breakdown.append({
+                        "customer_id": mid,
+                        "customer_name": member.name,
+                        "opening_balance": mdata["opening_balance"],
+                        "new_charges": mdata["invoices_total"],
+                        "payments_received": mdata["payments_total"],
+                        "closing_balance": mdata["closing_balance"],
+                    })
 
         # Skip if no activity and zero balance
         if data["closing_balance"] == 0 and data["invoices_total"] == 0 and data["payments_total"] == 0:
@@ -206,7 +253,7 @@ def generate_statement_run(
             invoice_count=data["invoice_count"],
             delivery_method=customer.preferred_delivery_method or "email",
             flagged=len(flags) > 0,
-            flag_reasons=flags,
+            flag_reasons=flags if flags else (location_breakdown if location_breakdown else []),
             status="pending",
         )
         db.add(item)

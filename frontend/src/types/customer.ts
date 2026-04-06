@@ -116,6 +116,7 @@ export interface CustomerListItem {
   preferred_confirmation_method: string | null;
   invoice_delivery_preference: string;
   display_name?: string;
+  billing_group_name?: string | null;
 }
 
 // ---------------------------------------------------------------------------

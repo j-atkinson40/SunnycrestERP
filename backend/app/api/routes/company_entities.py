@@ -163,6 +163,9 @@ def _serialize(e: CompanyEntity, db: Session) -> dict:
         "linked_customer_id": customer[0] if customer else None,
         "linked_vendor_id": vendor[0] if vendor else None,
         "linked_cemetery_id": cemetery[0] if cemetery else None,
+        "is_billing_group": getattr(e, "is_billing_group", False),
+        "billing_preference": getattr(e, "billing_preference", "separate"),
+        "parent_company_id": getattr(e, "parent_company_id", None),
         "created_at": e.created_at.isoformat() if e.created_at else None,
         "updated_at": e.updated_at.isoformat() if e.updated_at else None,
     }

@@ -107,6 +107,20 @@ class Invoice(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Consolidated billing
+    is_consolidated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    is_split_payment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    group_company_entity_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("company_entities.id"), nullable=True
+    )
+    parent_invoice_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("invoices.id"), nullable=True
+    )
+
     # Audit
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
@@ -136,6 +150,10 @@ class Invoice(Base):
         "CustomerPaymentApplication", back_populates="invoice"
     )
     creator = relationship("User", foreign_keys=[created_by])
+    billing_group = relationship("CompanyEntity", foreign_keys=[group_company_entity_id])
+    child_invoices = relationship(
+        "Invoice", foreign_keys=[parent_invoice_id], backref="parent_invoice",
+    )
 
 
 class InvoiceLine(Base):
