@@ -1,5 +1,6 @@
 // company-detail.tsx — CRM company detail page with tabs
 // Route: /crm/companies/:id
+// Uses DeviceAwarePage: desktop shows two-column tabs, mobile shows card layout.
 
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate, useParams, Link } from "react-router-dom"
@@ -13,6 +14,8 @@ import { ChevronLeft, Plus, ExternalLink, Phone, Mail, Globe, MapPin, Loader2 } 
 import ContactList from "@/components/crm/ContactList"
 import CompanyChat from "@/components/ai/CompanyChat"
 import VoiceMemoBtn from "@/components/ai/VoiceMemoButton"
+import DeviceAwarePage from "@/components/ui/DeviceAwarePage"
+import CompanyDetailMobile from "./company-detail-mobile"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +92,15 @@ const ACTIVITY_TYPES = [
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function CompanyDetailPage() {
+  return (
+    <DeviceAwarePage
+      desktop={() => <CompanyDetailDesktop />}
+      mobile={() => <CompanyDetailMobile />}
+    />
+  )
+}
+
+function CompanyDetailDesktop() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [company, setCompany] = useState<CompanyDetail | null>(null)

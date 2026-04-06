@@ -1,5 +1,6 @@
 // companies.tsx — CRM companies list page
 // Route: /crm/companies
+// Uses DeviceAwarePage: desktop shows data table, mobile shows card list.
 
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate, useSearchParams, Link } from "react-router-dom"
@@ -9,6 +10,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Plus, Search, Info, X as XIcon } from "lucide-react"
+import DeviceAwarePage from "@/components/ui/DeviceAwarePage"
+import CompaniesListMobile from "./companies-list-mobile"
 
 interface CompanySummary {
   id: string
@@ -59,6 +62,15 @@ const ROLE_BADGES: Record<string, { label: string; className: string }> = {
 }
 
 export default function CompaniesListPage() {
+  return (
+    <DeviceAwarePage
+      desktop={() => <CompaniesListDesktop />}
+      mobile={() => <CompaniesListMobile />}
+    />
+  )
+}
+
+function CompaniesListDesktop() {
   const navigate = useNavigate()
   const [urlParams] = useSearchParams()
   const [items, setItems] = useState<CompanySummary[]>([])
