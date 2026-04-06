@@ -111,6 +111,15 @@ def create_rate(
     db.add(rate)
     db.commit()
     db.refresh(rate)
+
+    # Fire onboarding hook
+    try:
+        from app.services.onboarding_service import check_completion
+        check_completion(db, current_user.company_id, "setup_tax_rates")
+        db.commit()
+    except Exception:
+        pass
+
     return {"id": rate.id}
 
 
