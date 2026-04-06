@@ -236,12 +236,12 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "category": "data_setup",
         "title": "Set up your product catalog",
         "description": (
-            "Tell us which vault lines and equipment you carry — "
-            "we'll build your catalog automatically."
+            "Review your product catalog and add any vault lines or equipment "
+            "that are missing. Products may have been imported or seeded automatically."
         ),
         "estimated_minutes": 15,
         "action_type": "navigate",
-        "action_target": "/onboarding/catalog-builder",
+        "action_target": "/products",
         "sort_order": 6,
     },
     # Sort 7: Company branding — logo and invoice template; done before first invoice
@@ -281,8 +281,9 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "category": "data_setup",
         "title": "Set up charge account terms",
         "description": (
-            "Configure credit limits and billing terms for your funeral home "
-            "customers before you start billing them."
+            "Configure billing terms for your funeral home customers. "
+            "Credit limits imported from your accounting system are pre-filled — "
+            "review and set payment terms (default Net 30)."
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
@@ -1569,6 +1570,10 @@ def get_checklist(db: Session, tenant_id: str) -> OnboardingChecklist | None:
         if condition == "vault_fulfillment_mode_produces":
             if fulfillment_mode not in ("produce", "hybrid"):
                 continue
+        if condition == "hidden_merged":
+            # These steps are merged into the unified import wizard.
+            # Still track completion internally but hide from the checklist UI.
+            continue
         visible_items.append(item)
 
     tier_order = {"must_complete": 0, "should_complete": 1, "optional": 2}

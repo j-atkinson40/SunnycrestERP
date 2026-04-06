@@ -1043,10 +1043,25 @@ def apply_all(db: Session, session_id: str, actor_id: str) -> dict:
         try:
             from app.services.onboarding_service import check_completion
 
+            # Always complete these — unified import replaces them
             check_completion(db, tenant_id, "data_migration")
             check_completion(db, tenant_id, "import_order_history")
             check_completion(db, tenant_id, "review_customer_types")
-            check_completion(db, tenant_id, "setup_cemeteries")
+
+            # Complete setup_cemeteries if cemeteries were imported
+            if counts.get("cemeteries_created", 0) > 0:
+                check_completion(db, tenant_id, "setup_cemeteries")
+
+            # Complete add_products if products already exist (seeded or imported)
+            from app.models.product import Product
+
+            product_count = (
+                db.query(func.count(Product.id))
+                .filter(Product.company_id == tenant_id, Product.is_active == True)
+                .scalar()
+            )
+            if product_count and product_count > 0:
+                check_completion(db, tenant_id, "add_products")
         except Exception:
             logger.exception("Failed to auto-complete onboarding steps after import")
 
