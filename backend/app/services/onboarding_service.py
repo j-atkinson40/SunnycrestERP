@@ -187,50 +187,47 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "item_key": "data_migration",
         "tier": "must_complete",
         "category": "integration",
-        "title": "Import your existing data",
+        "title": "Import your business data",
         "description": (
-            "Import your customers, open invoices, vendors, and chart of accounts "
-            "from Sage 100 or QuickBooks. Upload your exports and we'll map "
-            "everything automatically."
+            "Import your customers, vendors, order history, cemeteries, and funeral homes "
+            "from multiple sources. We'll cross-reference everything for maximum accuracy."
         ),
         "estimated_minutes": 15,
         "action_type": "navigate",
-        "action_target": "/onboarding/data-migration",
+        "action_target": "/onboarding/import",
         "sort_order": 3,
     },
-    # Sort 4: Import order history — depends on data_migration; enriches platform
+    # Sort 4: Import order history — merged into unified import, auto-completes
     {
         "item_key": "import_order_history",
         "tier": "must_complete",
         "category": "data_setup",
         "title": "Import your order history",
         "description": (
-            "Upload historical funeral orders from a CSV or spreadsheet to "
-            "pre-populate your cemetery list, customer profiles, and smart "
-            "suggestions — before your first real order."
+            "Order history is now imported as part of the unified import wizard."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 0,
         "action_type": "navigate",
-        "action_target": "/onboarding/historical-orders",
+        "action_target": "/onboarding/import",
         "depends_on": '["data_migration"]',
         "sort_order": 4,
+        "visibility_condition": "hidden_merged",
     },
-    # Sort 5: Review customer types — depends on data_migration
+    # Sort 5: Review customer types — merged into unified import review phase
     {
         "item_key": "review_customer_types",
         "tier": "must_complete",
         "category": "data_setup",
         "title": "Review customer classifications",
         "description": (
-            "After importing from Sage, verify that each customer is classified "
-            "correctly as a funeral home, cemetery, or contractor. "
-            "Misclassified customers may appear in the wrong tab or be hidden."
+            "Customer classification review is now part of the unified import wizard."
         ),
-        "estimated_minutes": 5,
+        "estimated_minutes": 0,
         "action_type": "navigate",
-        "action_target": "/settings/data/customer-types",
+        "action_target": "/onboarding/import",
         "depends_on": '["data_migration"]',
         "sort_order": 5,
+        "visibility_condition": "hidden_merged",
     },
     # Sort 6: Product catalog — required before quick orders
     {
@@ -300,8 +297,8 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "category": "data_setup",
         "title": "Add your delivery cemeteries",
         "description": (
-            "Find and add the cemeteries in your area. Set which ones provide "
-            "their own equipment so orders fill in correctly automatically."
+            "Review your imported cemeteries and add any that are missing. "
+            "Set which ones provide their own equipment so orders fill in correctly."
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",

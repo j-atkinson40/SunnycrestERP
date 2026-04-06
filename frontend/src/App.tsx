@@ -160,6 +160,7 @@ import FuneralHomeCustomersWizard from "@/pages/onboarding/funeral-home-customer
 import CemeterySetupWizard from "@/pages/onboarding/cemetery-setup";
 import QuickOrdersOnboarding from "@/pages/onboarding/quick-orders";
 import HistoricalOrderImportPage from "@/pages/onboarding/historical-order-import";
+import UnifiedImportPage from "@/pages/onboarding/unified-import";
 import CompanyBrandingPage from "@/pages/onboarding/company-branding";
 import InvoiceSettingsPage from "@/pages/settings/invoice-settings";
 import SeasonalTemplatesSettings from "@/pages/settings/seasonal-templates";
@@ -675,6 +676,7 @@ export default function App() {
                   <Route path="/onboarding/cemeteries" element={<CemeterySetupWizard />} />
                   <Route path="/onboarding/quick-orders" element={<QuickOrdersOnboarding />} />
                   <Route path="/onboarding/historical-orders" element={<HistoricalOrderImportPage />} />
+                  <Route path="/onboarding/import" element={<UnifiedImportPage />} />
                   <Route path="/onboarding/branding" element={<CompanyBrandingPage />} />
                   <Route path="/settings/seasonal-templates" element={<SeasonalTemplatesSettings />} />
                   <Route path="/onboarding/accounting" element={<AccountingSetupPage />} />

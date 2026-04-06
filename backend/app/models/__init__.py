@@ -36,6 +36,7 @@ from app.models.customer import Customer
 from app.models.customer_accounting_mapping import CustomerAccountingMapping
 from app.models.funeral_home_cemetery_history import FuneralHomeCemeteryHistory
 from app.models.historical_order_import import HistoricalOrder, HistoricalOrderImport
+from app.models.import_staging_company import ImportStagingCompany
 from app.models.customer_contact import CustomerContact
 from app.models.customer_note import CustomerNote
 from app.models.carrier import Carrier
@@ -224,6 +225,7 @@ from app.models.tenant_extension import TenantExtension
 from app.models.tenant_feature_flag import TenantFeatureFlag
 from app.models.tenant_module_config import TenantModuleConfig
 from app.models.tenant_notification import TenantNotification
+from app.models.unified_import_session import UnifiedImportSession
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
 from app.models.vehicle import Vehicle
@@ -418,6 +420,7 @@ __all__ = [
     "TenantFeatureFlag",
     "TenantModuleConfig",
     "TenantNotification",
+    "UnifiedImportSession",
     "User",
     "UserPermissionOverride",
     "Vehicle",
@@ -436,6 +439,7 @@ __all__ = [
     "WebsiteIntelligenceSuggestion",
     "HistoricalOrderImport",
     "HistoricalOrder",
+    "ImportStagingCompany",
     "LegacyEmailSettings",
     "LegacyFHEmailConfig",
     "LegacyPrintShopContact",

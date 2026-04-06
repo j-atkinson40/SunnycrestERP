@@ -104,6 +104,7 @@ from app.api.routes import (
     sync_logs,
     tenant_onboarding,
     tenant_onboarding_admin,
+    unified_import,
     users,
     vendor_bills,
     vendor_payments,
@@ -450,6 +451,11 @@ v1_router.include_router(
     tenant_onboarding_admin.router,
     prefix="/admin/tenant-onboarding",
     tags=["Tenant Onboarding Admin"],
+)
+v1_router.include_router(
+    unified_import.router,
+    prefix="/onboarding/import",
+    tags=["Unified Import"],
 )
 v1_router.include_router(users.router, prefix="/users", tags=["User Management"])
 v1_router.include_router(
