@@ -225,13 +225,13 @@ def save_default_terms(
 
     db.commit()
 
-    # Fire onboarding hook
+    # Fire onboarding hook (check_completion commits internally)
     try:
         from app.services.onboarding_service import check_completion
-        check_completion(db, current_user.company_id, "setup_charge_accounts")
-        db.commit()
+        result = check_completion(db, current_user.company_id, "setup_charge_accounts")
+        logger.info("Charge terms onboarding hook result=%s company=%s", result, current_user.company_id)
     except Exception:
-        pass
+        logger.exception("Failed to fire charge terms onboarding hook")
 
     return {
         "applied_count": updated,

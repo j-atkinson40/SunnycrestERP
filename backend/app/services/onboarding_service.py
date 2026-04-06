@@ -1372,8 +1372,18 @@ def check_completion(
             .first()
         )
         if not item:
+            logger.warning(
+                "check_completion: item not found tenant=%s key=%s",
+                tenant_id,
+                item_key,
+            )
             return False
         if item.status == "completed":
+            logger.debug(
+                "check_completion: already completed tenant=%s key=%s",
+                tenant_id,
+                item_key,
+            )
             return False
 
         item.status = "completed"
@@ -1396,6 +1406,11 @@ def check_completion(
             checklist.check_in_call_offered_at = datetime.now(UTC)
 
         db.commit()
+        logger.info(
+            "check_completion: marked completed tenant=%s key=%s",
+            tenant_id,
+            item_key,
+        )
         return True
     except Exception:
         logger.exception(
