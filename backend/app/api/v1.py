@@ -159,9 +159,6 @@ v1_router.include_router(
     bundles.router, prefix="/products", tags=["Product Bundles"]
 )
 v1_router.include_router(
-    company_entities.router, prefix="/companies", tags=["Company Entities"]
-)
-v1_router.include_router(
     carrier_portal.router, prefix="/carrier", tags=["Carrier Portal"]
 )
 v1_router.include_router(
@@ -173,8 +170,14 @@ v1_router.include_router(
 v1_router.include_router(
     charge_library.router, prefix="/charge-library", tags=["Charge Library"]
 )
+# companies.router MUST come before company_entities.router — both share
+# the /companies prefix and company_entities has /{entity_id} catch-all
+# that would swallow /settings, /tenant-settings, etc.
 v1_router.include_router(
     companies.router, prefix="/companies", tags=["Company Management"]
+)
+v1_router.include_router(
+    company_entities.router, prefix="/companies", tags=["Company Entities"]
 )
 v1_router.include_router(
     customers.router, prefix="/customers", tags=["Customers"]
