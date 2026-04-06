@@ -117,6 +117,7 @@ def _serialize_exception(c: Customer, defaults: dict) -> dict:
         "id": c.id,
         "customer_id": c.id,
         "customer_name": resolve_customer_name(c),
+        "customer_type": c.customer_type,
         "net_days": net_days,
         "finance_charge_rate": defaults["finance_charge_rate"],
         "finance_charge_after_days": defaults["finance_charge_after_days"],
