@@ -31,12 +31,13 @@ _columns_checked = False
 
 
 def _ensure_columns_exist(db: Session) -> None:
-    """Check once per process if classification columns exist, create if not."""
+    """Check once per process if all expected columns exist, create if not."""
     global _columns_checked
     if _columns_checked:
         return
     try:
-        db.execute(sa.text("SELECT customer_type FROM company_entities LIMIT 0"))
+        # Check the LATEST column — if it exists, all earlier ones do too
+        db.execute(sa.text("SELECT billing_preference FROM company_entities LIMIT 0"))
         _columns_checked = True
     except Exception:
         db.rollback()
@@ -65,6 +66,9 @@ def _ensure_classification_columns(db: Session) -> None:
         "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS google_places_type VARCHAR(100)",
         "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS original_name VARCHAR(500)",
         "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS name_cleanup_actions JSONB",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS parent_company_id VARCHAR(36) REFERENCES company_entities(id)",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS is_billing_group BOOLEAN DEFAULT false NOT NULL",
+        "ALTER TABLE company_entities ADD COLUMN IF NOT EXISTS billing_preference VARCHAR(30) DEFAULT 'separate' NOT NULL",
     ]:
         db.execute(sa.text(col_sql))
 
