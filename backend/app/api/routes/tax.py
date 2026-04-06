@@ -515,24 +515,29 @@ def get_county_suggestions(
     )
     existing_jurisdictions = [{"county": j.county, "state": j.state} for j in existing]
 
-    # Get customer counties from imported customers
-    customer_rows = (
-        db.query(Customer.state, Customer.county)
-        .filter(
-            Customer.company_id == current_user.company_id,
-            Customer.county.isnot(None),
-            Customer.county != "",
-            Customer.state.isnot(None),
+    # Get customer counties from cemeteries (customers don't have a county field)
+    customer_counties: list[dict] = []
+    try:
+        from app.models.cemetery import Cemetery
+        cemetery_rows = (
+            db.query(Cemetery.county, Cemetery.state)
+            .filter(
+                Cemetery.company_id == current_user.company_id,
+                Cemetery.county.isnot(None),
+                Cemetery.county != "",
+                Cemetery.state.isnot(None),
+            )
+            .distinct()
+            .all()
         )
-        .distinct()
-        .all()
-    )
-    customer_counties = [{"county": r.county, "state": r.state} for r in customer_rows if r.county and r.state]
+        customer_counties = [{"county": r.county, "state": r.state} for r in cemetery_rows if r.county and r.state]
+    except Exception:
+        pass
 
     suggestions = build_suggestions(
         tenant_zip=tenant_zip,
         tenant_state=tenant_state,
-        service_territory_counties=None,  # TODO: query from service territories if available
+        service_territory_counties=None,
         customer_counties=customer_counties if customer_counties else None,
         existing_jurisdictions=existing_jurisdictions,
         radius_miles=radius_miles,
