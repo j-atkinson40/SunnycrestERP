@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
-import { Check, ChevronDown, ChevronUp, Edit2, Plus, Trash2, X } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Edit2, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import apiClient from "@/lib/api-client"
@@ -215,12 +215,10 @@ function TermsForm({
 
 function ExceptionRow({
   ex,
-  defaults,
   onEdit,
   onRemove,
 }: {
   ex: TermsException
-  defaults: DefaultTerms
   onEdit: () => void
   onRemove: () => void
 }) {
@@ -594,7 +592,7 @@ export default function ChargeTermsOnboardingPage() {
                 <ExceptionRow
                   key={ex.customer_id}
                   ex={ex}
-                  defaults={data!.default}
+
                   onEdit={() => startEditException(ex)}
                   onRemove={() => setConfirmRemove(ex.customer_id)}
                 />
