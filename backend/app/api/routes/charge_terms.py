@@ -51,24 +51,15 @@ class ExceptionUpdateBody(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-_FH_TYPES = {"funeral_home"}
-
-# Exclude these customer_type values explicitly
-_EXCLUDE_TYPES = {
-    "contractor", "cemetery", "crematory", "church", "government",
-    "school", "fire_department", "utility", "cod_precast", "aggregate",
-}
+_CHARGE_ACCOUNT_TYPES = {"funeral_home", "licensee"}
 
 
 def _funeral_home_filter(query, company_id: str):
-    """Filter to funeral-home-ish customers only."""
+    """Filter to funeral homes and licensees only."""
     return query.filter(
         Customer.company_id == company_id,
         Customer.is_active == True,
-        ~Customer.customer_type.in_(_EXCLUDE_TYPES),
-    ).filter(
-        (Customer.customer_type.in_(_FH_TYPES))
-        | (Customer.customer_type.is_(None))
+        Customer.customer_type.in_(_CHARGE_ACCOUNT_TYPES),
     )
 
 
