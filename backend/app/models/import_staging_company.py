@@ -3,6 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
+import sqlalchemy as sa
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -42,7 +43,7 @@ class ImportStagingCompany(Base):
     classification_signals: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Cross-reference results
-    matched_sources: Mapped[list] = mapped_column(JSONB, server_default="'[]'")
+    matched_sources: Mapped[list] = mapped_column(JSONB, server_default=sa.text("'[]'::jsonb"))
     cross_ref_confidence: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
 
     # Cluster assignment

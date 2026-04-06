@@ -3,6 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
+import sqlalchemy as sa
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -44,7 +45,7 @@ class UnifiedImportSession(Base):
     processing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Review state
-    review_decisions: Mapped[dict] = mapped_column(JSONB, server_default="'{}'")
+    review_decisions: Mapped[dict] = mapped_column(JSONB, server_default=sa.text("'{}'::jsonb"))
 
     # Staging counts
     staging_customers_count: Mapped[int] = mapped_column(Integer, server_default="0")

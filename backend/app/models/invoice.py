@@ -12,7 +12,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.database import Base
 
@@ -152,7 +152,9 @@ class Invoice(Base):
     creator = relationship("User", foreign_keys=[created_by])
     billing_group = relationship("CompanyEntity", foreign_keys=[group_company_entity_id])
     child_invoices = relationship(
-        "Invoice", foreign_keys=[parent_invoice_id], backref="parent_invoice",
+        "Invoice",
+        foreign_keys=[parent_invoice_id],
+        backref=backref("parent_invoice", remote_side="Invoice.id"),
     )
 
 
