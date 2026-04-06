@@ -343,7 +343,7 @@ export default function ProofGeneratorMobile() {
 
   if (step === "approved") {
     return (
-      <div className="min-h-screen bg-white px-4 py-6 space-y-5">
+      <div className="fixed inset-0 z-40 bg-white overflow-auto px-4 py-6 space-y-5">
         <div className="text-center">
           <div className="inline-flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-full text-sm font-medium mb-3">
             <Check className="h-4 w-4" /> Proof approved
@@ -425,7 +425,7 @@ export default function ProofGeneratorMobile() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="fixed inset-0 z-40 bg-white flex flex-col">
       {/* Header */}
       <div className="border-b px-4 py-3">
         <div className="flex items-center gap-3">
@@ -737,7 +737,7 @@ export default function ProofGeneratorMobile() {
       </div>
 
       {/* Bottom action bar */}
-      <div className="border-t bg-white px-4 py-3 safe-bottom">
+      <div className="border-t bg-white px-4 py-3 pb-[env(safe-area-inset-bottom)]">
         {step === "type" && (
             <Button
               className="w-full"

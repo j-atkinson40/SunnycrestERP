@@ -436,7 +436,7 @@ export default function LegacyCompositorMobile({
         </div>
 
         {/* Bottom actions */}
-        <div className="px-4 py-4 bg-black/80 space-y-2 safe-bottom">
+        <div className="px-4 py-4 bg-black/80 space-y-2 pb-[env(safe-area-inset-bottom)]">
           <Button
             onClick={handleApprove}
             className="w-full bg-green-600 hover:bg-green-700 text-white"
@@ -619,7 +619,7 @@ export default function LegacyCompositorMobile({
       )}
 
       {/* Bottom toolbar */}
-      <div className="bg-gray-900 border-t border-gray-800 px-2 py-2 safe-bottom">
+      <div className="bg-gray-900 border-t border-gray-800 px-2 py-2 pb-[env(safe-area-inset-bottom)]">
         {!selected ? (
           // No selection — general tools
           <div className="flex items-center justify-around">
