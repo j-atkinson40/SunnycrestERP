@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "@/contexts/auth-context";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import CommandBar from "@/components/ai/CommandBar";
 import VoiceMemoButton from "@/components/ai/VoiceMemoButton";
 import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
+import { DeviceProvider } from "@/contexts/device-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
@@ -231,6 +232,12 @@ class ErrorBoundary extends Component<
   }
 }
 
+/** Bridges auth context → DeviceProvider so userId is available */
+function AuthDeviceProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
+  return <DeviceProvider userId={user?.id ?? null}>{children}</DeviceProvider>
+}
+
 export default function App() {
   const [cmdBarOpen, setCmdBarOpen] = useState(false);
 
@@ -264,6 +271,7 @@ export default function App() {
       <AuthProvider>
       <FeatureFlagProvider>
       <ExtensionProvider>
+      <AuthDeviceProvider>
         <ImpersonationBanner />
         <Routes>
           {slug ? (
@@ -860,6 +868,7 @@ export default function App() {
         <div className="fixed bottom-6 right-6 z-40 sm:hidden">
           <VoiceMemoButton compact />
         </div>
+      </AuthDeviceProvider>
       </ExtensionProvider>
       </FeatureFlagProvider>
       </AuthProvider>

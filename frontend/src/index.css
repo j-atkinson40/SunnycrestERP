@@ -196,3 +196,48 @@
     letter-spacing: 0.05em;
   }
 }
+
+/* ── Device-aware utility classes ─────────────────────────── */
+/* These use the same breakpoints as useDeviceType:            */
+/*   mobile: <768px, tablet: 768–1023px, desktop: ≥1024px     */
+
+@layer utilities {
+  /* Show only on specific device sizes */
+  .device-mobile-only {
+    @media (min-width: 768px) { display: none !important; }
+  }
+  .device-tablet-only {
+    @media (max-width: 767px) { display: none !important; }
+    @media (min-width: 1024px) { display: none !important; }
+  }
+  .device-desktop-only {
+    @media (max-width: 1023px) { display: none !important; }
+  }
+
+  /* Hide on specific device sizes */
+  .device-hide-mobile {
+    @media (max-width: 767px) { display: none !important; }
+  }
+  .device-hide-tablet {
+    @media (min-width: 768px) and (max-width: 1023px) { display: none !important; }
+  }
+  .device-hide-desktop {
+    @media (min-width: 1024px) { display: none !important; }
+  }
+
+  /* Touch-friendly spacing */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Stack on small screens, row on larger */
+  .device-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    @media (min-width: 768px) {
+      flex-direction: row;
+    }
+  }
+}
