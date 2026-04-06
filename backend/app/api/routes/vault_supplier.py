@@ -71,6 +71,15 @@ def create_vault_supplier(
     db.add(supplier)
     db.commit()
     db.refresh(supplier)
+
+    # Fire onboarding hook
+    try:
+        from app.services.onboarding_service import check_completion
+        check_completion(db, current_user.company_id, "vault_production_setup")
+        db.commit()
+    except Exception:
+        pass
+
     return supplier
 
 
@@ -89,6 +98,15 @@ def update_fulfillment_mode(
         raise HTTPException(status_code=400, detail="Invalid mode")
     company.vault_fulfillment_mode = mode
     db.commit()
+
+    # Fire onboarding hook
+    try:
+        from app.services.onboarding_service import check_completion
+        check_completion(db, current_user.company_id, "vault_production_setup")
+        db.commit()
+    except Exception:
+        pass
+
     return {"vault_fulfillment_mode": mode}
 
 
