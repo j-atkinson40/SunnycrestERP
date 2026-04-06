@@ -19,6 +19,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SpringBurialWidget } from "@/components/dashboard/spring-burial-widget";
 import { MorningBriefingCard } from "@/components/morning-briefing-card";
+import { MorningBriefingMobile } from "@/components/morning-briefing-mobile";
+import { useDevice } from "@/contexts/device-context";
 import * as onboardingService from "@/services/onboarding-service";
 import apiClient from "@/lib/api-client";
 
@@ -175,6 +177,8 @@ function ComplianceRing({
 
 export function ManufacturingDashboard() {
   const { user, hasModule } = useAuth();
+  const { effectiveDevice } = useDevice();
+  const isMobile = effectiveDevice === "mobile" || effectiveDevice === "tablet";
   const isNpcaEnabled = hasModule("npca_audit_prep");
 
   const [stats, setStats] = useState<DashboardStats>({
@@ -295,7 +299,7 @@ export function ManufacturingDashboard() {
   return (
     <div className="space-y-6 p-6">
       {/* Morning Briefing */}
-      <MorningBriefingCard />
+      {isMobile ? <MorningBriefingMobile /> : <MorningBriefingCard />}
 
       {/* Onboarding Banner — prominent, shows until setup is complete */}
       {onboardingPercent !== null && onboardingPercent < 100 && (

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { MorningBriefingCard } from "@/components/morning-briefing-card";
+import { MorningBriefingMobile } from "@/components/morning-briefing-mobile";
+import { useDevice } from "@/contexts/device-context";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
@@ -1229,6 +1231,8 @@ const TransfersPage = lazy(() => import("@/pages/transfers"));
 // ---------------------------------------------------------------------------
 export default function OrderStation() {
   const navigate = useNavigate();
+  const { effectiveDevice } = useDevice();
+  const isMobileBriefing = effectiveDevice === "mobile" || effectiveDevice === "tablet";
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") || "orders";
   const [templates, setTemplates] = useState<QuickQuoteTemplate[]>([]);
@@ -1523,7 +1527,7 @@ export default function OrderStation() {
     <div className="flex flex-col h-full" data-guided="order-station-main">
       {/* Morning Briefing */}
       <div className="px-6 pt-4">
-        <MorningBriefingCard />
+        {isMobileBriefing ? <MorningBriefingMobile /> : <MorningBriefingCard />}
       </div>
 
       {/* Tab bar */}
