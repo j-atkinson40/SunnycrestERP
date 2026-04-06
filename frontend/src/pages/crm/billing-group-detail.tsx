@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { ArrowLeft, ExternalLink, Plus, Trash2, X } from "lucide-react"
+import { ArrowLeft, ExternalLink, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import apiClient from "@/lib/api-client"

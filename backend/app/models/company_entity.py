@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.database import Base
 
@@ -88,5 +88,5 @@ class CompanyEntity(Base):
     locations = relationship(
         "CompanyEntity",
         foreign_keys=[parent_company_id],
-        backref="parent_group",
+        backref=backref("parent_group", remote_side="CompanyEntity.id"),
     )

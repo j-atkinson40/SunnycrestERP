@@ -5,9 +5,9 @@
  */
 
 import { useCallback, useEffect, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 import { toast } from "sonner"
-import { Building, ChevronRight, Plus, Trash2, X } from "lucide-react"
+import { Building, ChevronRight, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import apiClient from "@/lib/api-client"
