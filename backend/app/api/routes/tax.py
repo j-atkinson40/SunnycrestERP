@@ -502,6 +502,9 @@ def get_county_suggestions(
         getattr(company, "facility_zip", None)
         or getattr(company, "address_zip", None)
     )
+    # Normalize zip to 5 digits (strip ZIP+4 suffix)
+    if tenant_zip:
+        tenant_zip = tenant_zip.strip().split("-")[0][:5]
     tenant_state = (
         getattr(company, "facility_state", None)
         or getattr(company, "address_state", None)
