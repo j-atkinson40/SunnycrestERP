@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { useExtensions } from "@/contexts/extension-context";
 import { parseTenantSettings } from "@/types/company";
 import {
   getNavigation,
@@ -21,6 +22,7 @@ export function PresetThemeProvider({
   children: React.ReactNode;
 }) {
   const { company, enabledModules, permissions, functionalAreas, isAdmin } = useAuth();
+  const { extensions: enabledExtensions } = useExtensions();
 
   const tenantSettings = useMemo(
     () => parseTenantSettings(company),
@@ -35,8 +37,9 @@ export function PresetThemeProvider({
       tenantSettings,
       functionalAreas,
       isAdmin,
+      enabledExtensions,
     );
-  }, [company?.vertical, enabledModules, permissions, tenantSettings, functionalAreas, isAdmin]);
+  }, [company?.vertical, enabledModules, permissions, tenantSettings, functionalAreas, isAdmin, enabledExtensions]);
 
   // Set CSS custom property on root
   useEffect(() => {

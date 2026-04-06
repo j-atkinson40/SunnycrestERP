@@ -357,6 +357,9 @@ def install_extension(
     # Check if this extension activates a new functional area
     _notify_new_functional_area(db, tenant_id, extension_key, ext.display_name, actor_id)
 
+    # Check if extension unlocks CRM-hidden contractor accounts
+    _check_extension_crm_unlock(db, tenant_id, extension_key, ext.display_name)
+
     result = {
         "extension_key": extension_key,
         "status": new_status,
@@ -1363,3 +1366,24 @@ def seed_tenant_extension_defaults(db: Session) -> int:
     if count:
         db.flush()
     return count
+
+
+def _check_extension_crm_unlock(
+    db: Session, tenant_id: str, extension_key: str, display_name: str
+) -> None:
+    """After extension enable, check if contractor accounts become CRM-visible.
+
+    If so, log a message. A future version can create an onboarding checklist
+    item to review newly-visible accounts.
+    """
+    try:
+        from app.services.crm.crm_visibility_service import check_extension_crm_unlock
+        unlocked = check_extension_crm_unlock(db, tenant_id, extension_key)
+        if unlocked > 0:
+            import logging
+            logging.getLogger(__name__).info(
+                "Extension %s unlocked %d contractor accounts in CRM for tenant %s",
+                extension_key, unlocked, tenant_id,
+            )
+    except Exception:
+        pass  # Non-critical — don't block extension install

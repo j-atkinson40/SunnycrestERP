@@ -49,15 +49,17 @@ export function getNavigation(
   tenantSettings?: Record<string, unknown>,
   functionalAreas?: Set<string>,
   isAdmin?: boolean,
+  enabledExtensions?: Set<string>,
 ): NavigationConfig {
   const preset = vertical || "manufacturing";
   const settings = tenantSettings || {};
   const areas = functionalAreas || new Set<string>();
   const admin = isAdmin ?? false;
+  const extensions = enabledExtensions || new Set<string>();
 
   switch (preset) {
     case "manufacturing":
-      return getManufacturingNav(enabledModules, permissions, settings, areas, admin);
+      return getManufacturingNav(enabledModules, permissions, settings, areas, admin, extensions);
     case "funeral_home":
       return getFuneralHomeNav(enabledModules, permissions, admin);
     case "cemetery":
@@ -65,7 +67,7 @@ export function getNavigation(
     case "crematory":
       return getCrematoryNav(enabledModules, permissions, admin);
     default:
-      return getManufacturingNav(enabledModules, permissions, settings, areas, admin);
+      return getManufacturingNav(enabledModules, permissions, settings, areas, admin, extensions);
   }
 }
 
@@ -75,6 +77,7 @@ function getManufacturingNav(
   settings: Record<string, unknown> = {},
   areas: Set<string> = new Set(),
   isAdmin: boolean = false,
+  extensions: Set<string> = new Set(),
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
@@ -234,19 +237,22 @@ function getManufacturingNav(
   });
 
   // CRM
+  const hasContractorExtension =
+    extensions.has("wastewater") || extensions.has("redi_rock") || extensions.has("general_precast");
+  const crmItems: NavItem[] = [
+    { label: "Companies", href: "/crm/companies", icon: "Building2", permission: "customers.view" },
+    { label: "Funeral Homes", href: "/crm/funeral-homes", icon: "Home", permission: "customers.view" },
+    ...(hasContractorExtension
+      ? [{ label: "Contractors", href: "/crm/contractors", icon: "HardHat", permission: "customers.view" }]
+      : []),
+    { label: "Billing Groups", href: "/crm/billing-groups", icon: "Building", permission: "customers.view" },
+    { label: "Classification", href: "/admin/company-classification", icon: "Sparkles", adminOnly: true },
+    { label: "Data Quality", href: "/admin/data-quality", icon: "ClipboardCheck", adminOnly: true },
+    { label: "Settings", href: "/crm/settings", icon: "Settings2", adminOnly: true },
+  ];
   sections.push({
     title: "CRM",
-    items: filterByPermission(
-      [
-        { label: "Companies", href: "/crm/companies", icon: "Building2", permission: "customers.view" },
-        { label: "Funeral Homes", href: "/crm/funeral-homes", icon: "Home", permission: "customers.view" },
-        { label: "Billing Groups", href: "/crm/billing-groups", icon: "Building", permission: "customers.view" },
-        { label: "Classification", href: "/admin/company-classification", icon: "Sparkles", adminOnly: true },
-        { label: "Data Quality", href: "/admin/data-quality", icon: "ClipboardCheck", adminOnly: true },
-        { label: "Settings", href: "/crm/settings", icon: "Settings2", adminOnly: true },
-      ],
-      modules, perms, areas, isAdmin,
-    ),
+    items: filterByPermission(crmItems, modules, perms, areas, isAdmin),
   });
 
   // Training

@@ -21,6 +21,7 @@ from app.services.crm import contact_service
 from app.services.crm import activity_log_service
 from app.services.crm import health_score_service
 from app.services.crm import classification_service
+from app.services.crm import crm_visibility_service
 
 router = APIRouter()
 
@@ -554,6 +555,7 @@ def list_companies(
     q: str = Query("", description="Search by name"),
     role: str = Query("", description="Filter by role: customer, vendor, cemetery, funeral_home, licensee"),
     is_active: bool = Query(True),
+    crm_filter: bool = Query(True, description="Apply CRM visibility filtering (default True for CRM pages)"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -564,6 +566,13 @@ def list_companies(
         CompanyEntity.company_id == current_user.company_id,
         CompanyEntity.is_active == is_active,
     )
+    # Apply CRM visibility filter — hides contractors (unless extension enabled),
+    # individuals, churches, government, unclassified, and aggregate records.
+    # Only applied to CRM pages; operational endpoints (AR, AP, orders) are unaffected.
+    if crm_filter:
+        query = query.filter(
+            crm_visibility_service.get_crm_visible_filter(db, current_user.company_id)
+        )
     if q:
         query = query.filter(CompanyEntity.name.ilike(f"%{q}%"))
     if role:
@@ -613,6 +622,7 @@ def list_companies(
 @router.get("/search")
 def search_companies(
     q: str = Query("", min_length=1),
+    crm_filter: bool = Query(True),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -621,17 +631,17 @@ def search_companies(
     if len(q) < 2:
         return []
 
-    results = (
-        db.query(CompanyEntity)
-        .filter(
-            CompanyEntity.company_id == current_user.company_id,
-            CompanyEntity.is_active == True,
-            CompanyEntity.name.ilike(f"%{q}%"),
-        )
-        .order_by(CompanyEntity.name)
-        .limit(15)
-        .all()
+    base_query = db.query(CompanyEntity).filter(
+        CompanyEntity.company_id == current_user.company_id,
+        CompanyEntity.is_active == True,
+        CompanyEntity.name.ilike(f"%{q}%"),
     )
+    if crm_filter:
+        base_query = base_query.filter(
+            crm_visibility_service.get_crm_visible_filter(db, current_user.company_id)
+        )
+
+    results = base_query.order_by(CompanyEntity.name).limit(15).all()
 
     out = []
     for e in results:
@@ -1232,6 +1242,28 @@ def list_funeral_homes(
 
 
 # ── CRM Settings endpoints ──────────────────────────────────────────────────
+
+# ── CRM Visibility ──────────────────────────────────────────────────────────
+
+@router.get("/crm-hidden-count")
+def get_crm_hidden_count(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return counts of companies hidden from CRM, grouped by reason."""
+    _ensure_columns_exist(db)
+    return crm_visibility_service.get_hidden_count(db, current_user.company_id)
+
+
+@router.get("/crm-hidden-companies")
+def get_crm_hidden_companies(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return companies hidden from CRM, grouped by reason with details."""
+    _ensure_columns_exist(db)
+    return crm_visibility_service.get_hidden_companies(db, current_user.company_id)
+
 
 @router.get("/crm-settings")
 def get_crm_settings(

@@ -2,12 +2,12 @@
 // Route: /admin/data-quality
 
 import { useState, useEffect, useCallback } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Check, X, MapPin, Phone, Globe, Pencil } from "lucide-react"
+import { Loader2, Check, X, MapPin, Phone, Globe, Pencil, ChevronDown, ChevronRight, Info } from "lucide-react"
 
 interface NameSuggestion {
   id: string
@@ -24,8 +24,26 @@ interface NameSuggestion {
   state: string | null
 }
 
+interface HiddenGroup {
+  label: string
+  description: string
+  extension_key: string | null
+  items: Array<{
+    id: string
+    name: string
+    city: string | null
+    state: string | null
+    customer_type: string | null
+    contractor_type: string | null
+  }>
+}
+
+type TabKey = "names" | "duplicates" | "hidden"
+
 export default function DataQualityPage() {
-  const [tab, setTab] = useState<"names" | "duplicates">("names")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = (searchParams.get("tab") as TabKey) || "names"
+  const [tab, setTab] = useState<TabKey>(initialTab)
   const [allSuggestions, setAllSuggestions] = useState<NameSuggestion[]>([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
@@ -35,6 +53,17 @@ export default function DataQualityPage() {
   const [editing, setEditing] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const perPage = 25
+
+  // Hidden tab state
+  const [hiddenGroups, setHiddenGroups] = useState<Record<string, HiddenGroup>>({})
+  const [hiddenLoading, setHiddenLoading] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [hiddenTotal, setHiddenTotal] = useState(0)
+
+  function changeTab(t: TabKey) {
+    setTab(t)
+    setSearchParams({ tab: t }, { replace: true })
+  }
 
   // Load ALL pending suggestions in one shot
   const loadAllSuggestions = useCallback(async () => {
@@ -59,7 +88,24 @@ export default function DataQualityPage() {
     }
   }, [])
 
+  const loadHiddenCompanies = useCallback(async () => {
+    setHiddenLoading(true)
+    try {
+      const [groupsRes, countRes] = await Promise.all([
+        apiClient.get("/companies/crm-hidden-companies"),
+        apiClient.get("/companies/crm-hidden-count"),
+      ])
+      setHiddenGroups(groupsRes.data || {})
+      setHiddenTotal(countRes.data.total_hidden || 0)
+    } catch {
+      setHiddenGroups({})
+    } finally {
+      setHiddenLoading(false)
+    }
+  }, [])
+
   useEffect(() => { loadAllSuggestions() }, [loadAllSuggestions])
+  useEffect(() => { if (tab === "hidden") loadHiddenCompanies() }, [tab, loadHiddenCompanies])
 
   // Paginate locally
   const totalPages = Math.ceil(allSuggestions.length / perPage)
@@ -155,10 +201,13 @@ export default function DataQualityPage() {
     try {
       const res = await apiClient.get("/ai/name-enrichment/run")
       if (res.data.error) { toast.error(res.data.detail || "Agent error"); return }
-      toast.success(`Done — ${res.data.suggestions_created} suggestions created`)
+      toast.success(`Done \u2014 ${res.data.suggestions_created} suggestions created`)
       setPage(1)
       loadAllSuggestions()
-    } catch (err: any) { toast.error(err?.response?.data?.detail || err?.message || "Failed to run enrichment") }
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(detail || "Failed to run enrichment")
+    }
     finally { setRunning(false) }
   }
 
@@ -174,7 +223,21 @@ export default function DataQualityPage() {
     }
   }
 
+  function toggleGroup(key: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
   const TYPE_LABELS: Record<string, string> = { cemetery: "Cemetery", funeral_home: "Funeral Home" }
+
+  const EXTENSION_LABELS: Record<string, string> = {
+    wastewater: "Wastewater",
+    redi_rock: "Redi-Rock",
+    general_precast: "General Precast",
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
@@ -192,17 +255,21 @@ export default function DataQualityPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <button onClick={() => setTab("names")} className={`p-3 rounded-lg border text-center ${tab === "names" ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
+        <button onClick={() => changeTab("names")} className={`p-3 rounded-lg border text-center ${tab === "names" ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
           <div className="text-2xl font-bold">{allSuggestions.length}</div>
           <div className="text-xs text-gray-500">Name suggestions</div>
         </button>
-        <button onClick={() => setTab("duplicates")} className={`p-3 rounded-lg border text-center ${tab === "duplicates" ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
-          <div className="text-2xl font-bold">—</div>
+        <button onClick={() => changeTab("duplicates")} className={`p-3 rounded-lg border text-center ${tab === "duplicates" ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
+          <div className="text-2xl font-bold">&mdash;</div>
           <div className="text-xs text-gray-500">Duplicates</div>
+        </button>
+        <button onClick={() => changeTab("hidden")} className={`p-3 rounded-lg border text-center ${tab === "hidden" ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
+          <div className="text-2xl font-bold">{hiddenTotal || "\u2014"}</div>
+          <div className="text-xs text-gray-500">Hidden from CRM</div>
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* ─── Names tab ─────────────────────────────────────────── */}
       {tab === "names" && (
         <>
           {loading ? (
@@ -303,7 +370,7 @@ export default function DataQualityPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           <span className={`font-medium ${(s.confidence || 0) >= 0.85 ? "text-green-600" : (s.confidence || 0) >= 0.65 ? "text-amber-600" : "text-red-500"}`}>
-                            {s.confidence ? `${Math.round(s.confidence * 100)}%` : "—"}
+                            {s.confidence ? `${Math.round(s.confidence * 100)}%` : "\u2014"}
                           </span>
                           <span className="text-[10px] text-gray-400 ml-1">{s.suggestion_source === "google_places" ? "Google" : "AI"}</span>
                         </td>
@@ -322,8 +389,8 @@ export default function DataQualityPage() {
               {/* Pagination + edit summary */}
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-400">
-                  Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, allSuggestions.length)} of {allSuggestions.length}
-                  {editCount > 0 && <span className="text-blue-500 ml-2">• {editCount} name{editCount !== 1 ? "s" : ""} edited (edits preserved across pages)</span>}
+                  Showing {(page - 1) * perPage + 1}&ndash;{Math.min(page * perPage, allSuggestions.length)} of {allSuggestions.length}
+                  {editCount > 0 && <span className="text-blue-500 ml-2">&bull; {editCount} name{editCount !== 1 ? "s" : ""} edited (edits preserved across pages)</span>}
                 </p>
                 {totalPages > 1 && (
                   <div className="flex gap-2">
@@ -338,10 +405,111 @@ export default function DataQualityPage() {
         </>
       )}
 
+      {/* ─── Duplicates tab ────────────────────────────────────── */}
       {tab === "duplicates" && (
         <div className="text-center py-8">
-          <Link to="/crm/companies/duplicates" className="text-blue-600 hover:underline">Open duplicate review →</Link>
+          <Link to="/crm/companies/duplicates" className="text-blue-600 hover:underline">Open duplicate review &rarr;</Link>
         </div>
+      )}
+
+      {/* ─── Hidden from CRM tab ──────────────────────────────── */}
+      {tab === "hidden" && (
+        <>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-start gap-2 text-sm text-gray-600">
+            <Info className="h-4 w-4 mt-0.5 shrink-0 text-gray-400" />
+            <p>
+              These companies are in your system but not shown in the CRM.
+              They are still fully functional for AR, AP, and order entry.
+            </p>
+          </div>
+
+          {hiddenLoading ? (
+            <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>
+          ) : Object.keys(hiddenGroups).length === 0 ? (
+            <div className="text-center py-16 space-y-2">
+              <div className="inline-flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-full text-sm font-medium">
+                <Check className="h-4 w-4" /> All companies are visible in the CRM
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(hiddenGroups).map(([key, group]) => (
+                <div key={key} className="border rounded-lg overflow-hidden">
+                  <div className="bg-white p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-gray-900">{group.label}</h3>
+                          <Badge variant="secondary" className="text-xs">{group.items.length}</Badge>
+                        </div>
+                        <p className="text-sm text-gray-500 mt-0.5">{group.description}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {group.extension_key && (
+                          <Link
+                            to="/extensions"
+                            className="text-sm text-blue-600 hover:underline"
+                          >
+                            Enable {EXTENSION_LABELS[group.extension_key] || group.extension_key} &rarr;
+                          </Link>
+                        )}
+                        {key === "unclassified" && (
+                          <Link
+                            to="/admin/company-classification"
+                            className="text-sm text-blue-600 hover:underline"
+                          >
+                            Classify now &rarr;
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => toggleGroup(key)}
+                      className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mt-2"
+                    >
+                      {expandedGroups.has(key) ? (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      )}
+                      {expandedGroups.has(key) ? "Hide" : "Show"} {group.items.length} {group.items.length === 1 ? "company" : "companies"}
+                    </button>
+                  </div>
+
+                  {expandedGroups.has(key) && (
+                    <div className="border-t bg-gray-50">
+                      <div className="divide-y divide-gray-100">
+                        {group.items.map((item) => (
+                          <div key={item.id} className="px-4 py-2.5 flex items-center justify-between hover:bg-gray-100">
+                            <div>
+                              <Link
+                                to={`/crm/companies/${item.id}`}
+                                className="text-sm font-medium text-gray-900 hover:text-blue-600"
+                              >
+                                {item.name}
+                              </Link>
+                              <div className="flex gap-2 text-xs text-gray-400">
+                                {item.city && item.state && <span>{item.city}, {item.state}</span>}
+                                {item.customer_type && <Badge className="text-[10px]">{item.customer_type}</Badge>}
+                                {item.contractor_type && <Badge variant="secondary" className="text-[10px]">{item.contractor_type}</Badge>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {key === "always_hidden" && (
+                        <div className="px-4 py-2.5 bg-gray-50 border-t text-xs text-gray-400">
+                          If any of these should be classified differently, you can update their type on their company record.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

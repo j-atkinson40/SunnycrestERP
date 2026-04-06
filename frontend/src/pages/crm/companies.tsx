@@ -2,13 +2,13 @@
 // Route: /crm/companies
 
 import { useState, useEffect, useCallback } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams, Link } from "react-router-dom"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Search } from "lucide-react"
+import { Loader2, Plus, Search, Info, X as XIcon } from "lucide-react"
 
 interface CompanySummary {
   id: string
@@ -26,6 +26,19 @@ interface CompanySummary {
   linked_vendor_id: string | null
   created_at: string | null
   last_activity_date: string | null
+}
+
+interface HiddenCounts {
+  contractors_wastewater: number
+  contractors_redi_rock: number
+  contractors_general: number
+  individuals: number
+  churches: number
+  government: number
+  unclassified: number
+  aggregates: number
+  other: number
+  total_hidden: number
 }
 
 const ROLE_FILTERS = [
@@ -58,6 +71,10 @@ export default function CompaniesListPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [reclassifyTo, setReclassifyTo] = useState("")
   const [reclassifying, setReclassifying] = useState(false)
+  const [hiddenCounts, setHiddenCounts] = useState<HiddenCounts | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => sessionStorage.getItem("crm_hidden_banner_dismissed") === "true"
+  )
 
   const TYPE_OPTIONS = [
     { value: "funeral_home", label: "Funeral Home" },
@@ -131,12 +148,25 @@ export default function CompaniesListPage() {
     }
   }, [search, roleFilter, page])
 
+  const fetchHiddenCounts = useCallback(async () => {
+    try {
+      const res = await apiClient.get("/companies/crm-hidden-count")
+      setHiddenCounts(res.data)
+    } catch { /* non-critical */ }
+  }, [])
+
   useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { fetchHiddenCounts() }, [fetchHiddenCounts])
 
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); fetchData() }, 300)
     return () => clearTimeout(t)
   }, [search])
+
+  function dismissBanner() {
+    sessionStorage.setItem("crm_hidden_banner_dismissed", "true")
+    setBannerDismissed(true)
+  }
 
   function getRoles(item: CompanySummary): string[] {
     const roles: string[] = []
@@ -149,7 +179,7 @@ export default function CompaniesListPage() {
   }
 
   function timeAgo(dateStr: string | null): string {
-    if (!dateStr) return "—"
+    if (!dateStr) return "\u2014"
     const diff = Date.now() - new Date(dateStr).getTime()
     const days = Math.floor(diff / 86400000)
     if (days === 0) return "Today"
@@ -157,6 +187,11 @@ export default function CompaniesListPage() {
     if (days < 30) return `${days}d ago`
     return `${Math.floor(days / 30)}mo ago`
   }
+
+  const showBanner = !bannerDismissed && hiddenCounts && hiddenCounts.total_hidden > 0
+  const hasContractorHidden = hiddenCounts
+    ? (hiddenCounts.contractors_wastewater + hiddenCounts.contractors_redi_rock + hiddenCounts.contractors_general) > 0
+    : false
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
@@ -199,6 +234,47 @@ export default function CompaniesListPage() {
           )}
         </div>
       </div>
+
+      {/* Hidden companies banner */}
+      {showBanner && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 mt-0.5 shrink-0" />
+              <div className="space-y-1">
+                <p className="font-medium">
+                  {hiddenCounts!.total_hidden} {hiddenCounts!.total_hidden === 1 ? "company is" : "companies are"} not shown here
+                  {hasContractorHidden
+                    ? " because they are contractors or other types not relevant to vault manufacturing."
+                    : " because they are individuals, churches, or other non-business entities."}
+                </p>
+                {hasContractorHidden && (
+                  <p className="text-blue-600">
+                    Enable the Wastewater or Redi-Rock extension to manage those relationships here.
+                  </p>
+                )}
+                <div className="flex gap-3 pt-1">
+                  <Link
+                    to="/admin/data-quality?tab=hidden"
+                    className="text-blue-700 font-medium hover:underline"
+                  >
+                    View hidden companies &rarr;
+                  </Link>
+                  <Link
+                    to="/extensions"
+                    className="text-blue-700 font-medium hover:underline"
+                  >
+                    Browse extensions &rarr;
+                  </Link>
+                </div>
+              </div>
+            </div>
+            <button onClick={dismissBanner} className="text-blue-400 hover:text-blue-600 p-0.5">
+              <XIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Reclassify mode banner */}
       {reclassifyMode && (
@@ -262,7 +338,7 @@ export default function CompaniesListPage() {
                   fetchData()
                 } catch (err: unknown) {
                   const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-                  toast.error(detail || "Migration failed — check browser console")
+                  toast.error(detail || "Migration failed \u2014 check browser console")
                   console.error("Migration error:", err)
                 }
               }}
@@ -317,7 +393,7 @@ export default function CompaniesListPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell text-gray-500">
-                      {item.city && item.state ? `${item.city}, ${item.state}` : item.city || item.state || "—"}
+                      {item.city && item.state ? `${item.city}, ${item.state}` : item.city || item.state || "\u2014"}
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">
                       {item.primary_contact ? (
@@ -349,7 +425,7 @@ export default function CompaniesListPage() {
       {total > 20 && (
         <div className="flex items-center justify-between">
           <span className="text-sm text-gray-500">
-            Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} of {total}
+            Showing {(page - 1) * 20 + 1}&ndash;{Math.min(page * 20, total)} of {total}
           </span>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>

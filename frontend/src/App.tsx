@@ -26,6 +26,7 @@ import CompanyDetailPage from "@/pages/crm/company-detail";
 import FuneralHomesPage from "@/pages/crm/funeral-homes";
 import BillingGroupsPage from "@/pages/crm/billing-groups";
 import BillingGroupDetailPage from "@/pages/crm/billing-group-detail";
+import ContractorsPage from "@/pages/crm/contractors";
 import CrmSettingsPage from "@/pages/crm/crm-settings";
 import PipelinePage from "@/pages/crm/pipeline";
 import AiSettingsPage from "@/pages/settings/ai-settings";
@@ -317,6 +318,7 @@ export default function App() {
                   <Route path="/admin/company-classification" element={<CompanyClassificationPage />} />
                   <Route path="/crm/companies/:id" element={<CompanyDetailPage />} />
                   <Route path="/crm/funeral-homes" element={<FuneralHomesPage />} />
+                  <Route path="/crm/contractors" element={<ContractorsPage />} />
                   <Route path="/crm/billing-groups" element={<BillingGroupsPage />} />
                   <Route path="/crm/billing-groups/:id" element={<BillingGroupDetailPage />} />
                   <Route path="/crm/settings" element={<CrmSettingsPage />} />
