@@ -31,6 +31,18 @@ class VaultSupplierUpdate(BaseModel):
     notes: str | None = None
 
 
+class QuickVendorCreate(BaseModel):
+    name: str
+    email: str | None = None
+    phone: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Literal-path routes MUST come before /{supplier_id} to avoid FastAPI
+# matching "fulfillment-mode", "search-vendors", etc. as a supplier_id.
+# ---------------------------------------------------------------------------
+
+
 @router.get("/")
 def list_vault_suppliers(
     db: Session = Depends(get_db),
@@ -62,44 +74,22 @@ def create_vault_supplier(
     return supplier
 
 
-@router.patch("/{supplier_id}")
-def update_vault_supplier(
-    supplier_id: str,
-    data: VaultSupplierUpdate,
+@router.patch("/fulfillment-mode")
+def update_fulfillment_mode(
+    data: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update a vault supplier configuration."""
-    supplier = db.query(VaultSupplier).filter(
-        VaultSupplier.id == supplier_id,
-        VaultSupplier.company_id == current_user.company_id,
-    ).first()
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-    for k, v in data.model_dump(exclude_unset=True).items():
-        setattr(supplier, k, v)
-    supplier.updated_at = datetime.now(timezone.utc)
+    """Update the company's vault fulfillment mode."""
+    company = db.query(Company).filter(Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    mode = data.get("vault_fulfillment_mode")
+    if mode not in ("produce", "purchase", "hybrid"):
+        raise HTTPException(status_code=400, detail="Invalid mode")
+    company.vault_fulfillment_mode = mode
     db.commit()
-    db.refresh(supplier)
-    return supplier
-
-
-@router.delete("/{supplier_id}")
-def delete_vault_supplier(
-    supplier_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Soft-delete a vault supplier."""
-    supplier = db.query(VaultSupplier).filter(
-        VaultSupplier.id == supplier_id,
-        VaultSupplier.company_id == current_user.company_id,
-    ).first()
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-    supplier.is_active = False
-    db.commit()
-    return {"message": "Supplier removed"}
+    return {"vault_fulfillment_mode": mode}
 
 
 @router.get("/inventory-status")
@@ -149,12 +139,6 @@ def get_vault_inventory_status(
         "products": items,
         "suggestion": suggestion,
     }
-
-
-class QuickVendorCreate(BaseModel):
-    name: str
-    email: str | None = None
-    phone: str | None = None
 
 
 @router.post("/create-vendor")
@@ -218,19 +202,46 @@ def search_vendors_for_supplier(
     return [{"id": v.id, "name": v.name} for v in query]
 
 
-@router.patch("/fulfillment-mode")
-def update_fulfillment_mode(
-    data: dict,
+# ---------------------------------------------------------------------------
+# Parameterized routes — /{supplier_id} — MUST be last
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/{supplier_id}")
+def update_vault_supplier(
+    supplier_id: str,
+    data: VaultSupplierUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update the company's vault fulfillment mode."""
-    company = db.query(Company).filter(Company.id == current_user.company_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    mode = data.get("vault_fulfillment_mode")
-    if mode not in ("produce", "purchase", "hybrid"):
-        raise HTTPException(status_code=400, detail="Invalid mode")
-    company.vault_fulfillment_mode = mode
+    """Update a vault supplier configuration."""
+    supplier = db.query(VaultSupplier).filter(
+        VaultSupplier.id == supplier_id,
+        VaultSupplier.company_id == current_user.company_id,
+    ).first()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    for k, v in data.model_dump(exclude_unset=True).items():
+        setattr(supplier, k, v)
+    supplier.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return {"vault_fulfillment_mode": mode}
+    db.refresh(supplier)
+    return supplier
+
+
+@router.delete("/{supplier_id}")
+def delete_vault_supplier(
+    supplier_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft-delete a vault supplier."""
+    supplier = db.query(VaultSupplier).filter(
+        VaultSupplier.id == supplier_id,
+        VaultSupplier.company_id == current_user.company_id,
+    ).first()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    supplier.is_active = False
+    db.commit()
+    return {"message": "Supplier removed"}
