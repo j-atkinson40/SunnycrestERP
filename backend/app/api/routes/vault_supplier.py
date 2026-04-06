@@ -63,14 +63,28 @@ def create_vault_supplier(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new vault supplier configuration."""
-    supplier = VaultSupplier(
-        id=str(uuid.uuid4()),
-        company_id=current_user.company_id,
-        **data.model_dump(),
-    )
-    db.add(supplier)
-    db.commit()
-    db.refresh(supplier)
+    # If this vendor is already configured, update instead of failing on unique constraint
+    existing = db.query(VaultSupplier).filter(
+        VaultSupplier.company_id == current_user.company_id,
+        VaultSupplier.vendor_id == data.vendor_id,
+    ).first()
+    if existing:
+        for k, v in data.model_dump(exclude={"vendor_id"}).items():
+            setattr(existing, k, v)
+        existing.is_active = True
+        existing.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(existing)
+        supplier = existing
+    else:
+        supplier = VaultSupplier(
+            id=str(uuid.uuid4()),
+            company_id=current_user.company_id,
+            **data.model_dump(),
+        )
+        db.add(supplier)
+        db.commit()
+        db.refresh(supplier)
 
     # Fire onboarding hook
     try:
