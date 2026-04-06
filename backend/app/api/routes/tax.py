@@ -498,8 +498,14 @@ def get_county_suggestions(
     from app.services.county_geographic_service import build_suggestions
 
     company = db.query(Company).filter(Company.id == current_user.company_id).first()
-    tenant_zip = getattr(company, "zip", None) or getattr(company, "postal_code", None)
-    tenant_state = getattr(company, "state", None)
+    tenant_zip = (
+        getattr(company, "facility_zip", None)
+        or getattr(company, "address_zip", None)
+    )
+    tenant_state = (
+        getattr(company, "facility_state", None)
+        or getattr(company, "address_state", None)
+    )
 
     # Get existing jurisdictions to mark as already configured
     existing = (
@@ -626,4 +632,14 @@ def bulk_create_jurisdictions_onboarding(
         created_count += 1
 
     db.commit()
+
+    # Fire onboarding hooks — bulk onboarding creates both rates and jurisdictions
+    try:
+        from app.services.onboarding_service import check_completion
+        check_completion(db, tenant_id, "setup_tax_rates")
+        check_completion(db, tenant_id, "setup_tax_jurisdictions")
+        db.commit()
+    except Exception:
+        pass
+
     return {"created": created_count, "total_submitted": len(body.jurisdictions)}

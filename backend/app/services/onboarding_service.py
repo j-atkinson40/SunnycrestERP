@@ -262,23 +262,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "action_target": "/onboarding/branding",
         "sort_order": 7,
     },
-    # Sort 8: Tax rates — depends on data_migration; needed before first invoice
-    {
-        "item_key": "setup_tax_rates",
-        "tier": "must_complete",
-        "category": "data_setup",
-        "title": "Configure your tax rates",
-        "description": (
-            "Add the sales tax rates that apply to your sales. "
-            "We'll use your accounting connection to suggest your tax liability account."
-        ),
-        "estimated_minutes": 5,
-        "action_type": "navigate",
-        "action_target": "/settings/tax",
-        "depends_on": '["data_migration"]',
-        "sort_order": 8,
-    },
-    # Sort 9: Tax jurisdictions — depends on setup_tax_rates
+    # Sort 8: Tax jurisdictions — maps counties and creates rates in one step
     {
         "item_key": "setup_tax_jurisdictions",
         "tier": "must_complete",
@@ -291,8 +275,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         "estimated_minutes": 5,
         "action_type": "navigate",
         "action_target": "/onboarding/tax-jurisdictions",
-        "depends_on": '["setup_tax_rates"]',
-        "sort_order": 9,
+        "sort_order": 8,
     },
     # Sort 10: Charge accounts — credit limits before first billing run
     {
@@ -1136,9 +1119,10 @@ def fix_checklist_targets(db: Session) -> None:
     ).update({"tier": "must_complete"})
 
     # Remove deprecated checklist items that were folded into other items
-    _DEPRECATED_ITEMS = ["configure_delivery_zones"]
+    _DEPRECATED_ITEMS = ["configure_delivery_zones", "setup_tax_rates"]
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key.in_(_DEPRECATED_ITEMS),
+        OnboardingChecklistItem.status.in_(["not_started", "in_progress"]),
     ).delete(synchronize_session=False)
 
     # Remove setup_funeral_home_customers from active checklists (moved to standing feature)
@@ -1195,10 +1179,10 @@ def fix_checklist_targets(db: Session) -> None:
         "depends_on": '["data_migration"]',
     })
 
-    # Fix setup_tax_jurisdictions — sort_order 6, depends on setup_tax_rates
+    # Fix setup_tax_jurisdictions — sort_order 5, no dependency (setup_tax_rates removed)
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key == "setup_tax_jurisdictions",
-    ).update({"sort_order": 6, "depends_on": '["setup_tax_rates"]'})
+    ).update({"sort_order": 5, "depends_on": None})
 
     # Fix setup_price_list — sort_order 7
     db.query(OnboardingChecklistItem).filter(
