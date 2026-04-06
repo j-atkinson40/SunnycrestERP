@@ -41,7 +41,16 @@ def update_item_status(db, tenant_id: str, item_key: str, status: str):
     if not item:
         return None
     item.status = status
+    if status == "not_started":
+        item.completed_at = None
+        item.completed_by = None
     db.commit()
+
+    # Recalculate checklist progress after status change
+    from app.services.onboarding_service import recalculate_progress
+    recalculate_progress(db, tenant_id)
+    db.commit()
+
     db.refresh(item)
     return item
 

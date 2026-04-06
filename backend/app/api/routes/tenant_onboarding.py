@@ -100,6 +100,10 @@ def update_checklist_item(
         return tenant_onboarding_service.update_item_status(
             db, company.id, item_key, "completed"
         )
+    if data.status == "not_started":
+        return tenant_onboarding_service.update_item_status(
+            db, company.id, item_key, "not_started"
+        )
     raise HTTPException(status_code=400, detail="No valid update provided")
 
 
