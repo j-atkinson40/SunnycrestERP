@@ -1119,10 +1119,10 @@ def fix_checklist_targets(db: Session) -> None:
     ).update({"tier": "must_complete"})
 
     # Remove deprecated checklist items that were folded into other items
+    # setup_tax_rates is fully redundant — county mapping creates rates automatically
     _DEPRECATED_ITEMS = ["configure_delivery_zones", "setup_tax_rates"]
     db.query(OnboardingChecklistItem).filter(
         OnboardingChecklistItem.item_key.in_(_DEPRECATED_ITEMS),
-        OnboardingChecklistItem.status.in_(["not_started", "in_progress"]),
     ).delete(synchronize_session=False)
 
     # Remove setup_funeral_home_customers from active checklists (moved to standing feature)
