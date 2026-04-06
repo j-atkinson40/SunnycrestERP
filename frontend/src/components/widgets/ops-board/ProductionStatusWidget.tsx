@@ -1,13 +1,14 @@
 import { Factory } from "lucide-react"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
 interface ProductBreakdown {
   product: string
   units: number
 }
 
-export default function ProductionStatusWidget(props: Record<string, unknown>) {
+export default function ProductionStatusWidget(props: WidgetProps) {
   const { data, isLoading, error, refresh } = useWidgetData<{
     total_units: number
     target: number | null

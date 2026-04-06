@@ -1,6 +1,7 @@
 import { Activity } from "lucide-react"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
 interface ActivityEvent {
   id: string
@@ -21,7 +22,7 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-export default function ActivityFeedWidget(props: Record<string, unknown>) {
+export default function ActivityFeedWidget(props: WidgetProps) {
   const { data, isLoading, error, refresh } = useWidgetData<{
     events: ActivityEvent[]
   }>("/widget-data/activity/recent?limit=10", { refreshInterval: 300_000 })

@@ -1,6 +1,7 @@
 import { Package } from "lucide-react"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
 interface InventoryItem {
   id: string
@@ -16,7 +17,7 @@ const STATUS_INDICATOR: Record<string, { dot: string; label: string }> = {
   out: { dot: "bg-red-500", label: "Out" },
 }
 
-export default function InventoryWidget(props: Record<string, unknown>) {
+export default function InventoryWidget(props: WidgetProps) {
   const { data, isLoading, error, refresh } = useWidgetData<{
     items: InventoryItem[]
   }>("/widget-data/inventory/key-items", { refreshInterval: 600_000 })

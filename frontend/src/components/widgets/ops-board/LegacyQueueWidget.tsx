@@ -2,6 +2,7 @@ import { Image, ChevronRight } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
 interface Proof {
   id: string
@@ -11,7 +12,7 @@ interface Proof {
   status: string
 }
 
-export default function LegacyQueueWidget(props: Record<string, unknown>) {
+export default function LegacyQueueWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data, isLoading, error, refresh } = useWidgetData<{
     pending_count: number

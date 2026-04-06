@@ -1,9 +1,10 @@
 import { Clock } from "lucide-react"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
-export default function TimeClockWidget(props: Record<string, unknown>) {
-  const { data, isLoading, error, refresh } = useWidgetData<{
+export default function TimeClockWidget(props: WidgetProps) {
+  const { isLoading, error, refresh } = useWidgetData<{
     clocked_in: number
     employees: string[]
     overtime_alerts: number

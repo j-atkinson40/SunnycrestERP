@@ -7,7 +7,6 @@ import {
   RefreshCw,
   MoreHorizontal,
   X,
-  Maximize2,
 } from "lucide-react"
 import WidgetSkeleton from "./WidgetSkeleton"
 

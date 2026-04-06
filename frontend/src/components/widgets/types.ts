@@ -40,6 +40,8 @@ export interface WidgetLayout {
 
 export interface WidgetProps {
   onAction?: (action: string, data?: unknown) => void
+  // Internal props passed by WidgetGrid — widgets forward these to WidgetWrapper
+  [key: string]: unknown
 }
 
 /** Maps widget_id → React component */

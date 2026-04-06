@@ -2,6 +2,7 @@ import { Calendar, ChevronRight } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
 interface Order {
   id: string
@@ -21,7 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
   completed: "bg-green-100 text-green-700",
 }
 
-export default function TodaysServicesWidget(props: Record<string, unknown>) {
+export default function TodaysServicesWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data, isLoading, error, refresh } = useWidgetData<{
     count: number

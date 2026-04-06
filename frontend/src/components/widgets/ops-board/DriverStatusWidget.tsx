@@ -2,6 +2,7 @@ import { Truck, Phone, ChevronRight } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
 interface DriverInfo {
   id: string
@@ -19,7 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
   off_duty: "bg-gray-100 text-gray-600",
 }
 
-export default function DriverStatusWidget(props: Record<string, unknown>) {
+export default function DriverStatusWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data, isLoading, error, refresh } = useWidgetData<{
     count: number

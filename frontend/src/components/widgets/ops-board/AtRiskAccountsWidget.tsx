@@ -2,6 +2,7 @@ import { AlertTriangle, ChevronRight } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
 interface AtRiskAccount {
   id: string
@@ -9,7 +10,7 @@ interface AtRiskAccount {
   reason: string
 }
 
-export default function AtRiskAccountsWidget(props: Record<string, unknown>) {
+export default function AtRiskAccountsWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data, isLoading, error, refresh } = useWidgetData<{
     count: number

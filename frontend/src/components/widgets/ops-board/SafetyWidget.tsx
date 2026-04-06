@@ -2,8 +2,9 @@ import { ShieldCheck, ChevronRight } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import WidgetWrapper from "../WidgetWrapper"
 import { useWidgetData } from "../useWidgetData"
+import type { WidgetProps } from "../types"
 
-export default function SafetyWidget(props: Record<string, unknown>) {
+export default function SafetyWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data, isLoading, error, refresh } = useWidgetData<{
     open_incidents: number
