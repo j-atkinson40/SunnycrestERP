@@ -1,5 +1,6 @@
 // proof-generator.tsx — Standalone legacy proof generator
 // Route: /legacy/generator  and  /legacy/generator?legacyId={id}
+// Uses DeviceAwarePage: desktop uses full layout, mobile/tablet uses step wizard.
 
 import { useState, useEffect } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
@@ -8,6 +9,8 @@ import { STANDARD_PRINT_IMAGES, URN_PRINT_IMAGES } from "@/lib/legacy-print-imag
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import DeviceAwarePage from "@/components/ui/DeviceAwarePage"
+import ProofGeneratorMobile from "./proof-generator-mobile"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import { ChevronLeft, Loader2, Check, Download, ExternalLink } from "lucide-react"
@@ -102,6 +105,15 @@ const URN_PRINT_CATEGORIES = [
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function ProofGeneratorPage() {
+  return (
+    <DeviceAwarePage
+      desktop={() => <ProofGeneratorDesktop />}
+      mobile={() => <ProofGeneratorMobile />}
+    />
+  )
+}
+
+function ProofGeneratorDesktop() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const existingId = searchParams.get("legacyId")
