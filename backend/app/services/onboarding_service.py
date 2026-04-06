@@ -289,7 +289,7 @@ MANUFACTURING_CHECKLIST_ITEMS = [
         ),
         "estimated_minutes": 10,
         "action_type": "navigate",
-        "action_target": "/customers",
+        "action_target": "/onboarding/charge-terms",
         "depends_on": '["data_migration"]',
         "sort_order": 10,
     },
@@ -1080,6 +1080,7 @@ def fix_checklist_targets(db: Session) -> None:
         "setup_team_intelligence": "/onboarding/team-intelligence",
         "setup_safety_training": "/onboarding/safety-training",
         "setup_tax_rates": "/settings/tax",
+        "setup_charge_accounts": "/onboarding/charge-terms",
     }
     for item_key, correct_target in _TARGET_FIXES.items():
         db.query(OnboardingChecklistItem).filter(

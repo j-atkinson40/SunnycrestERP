@@ -29,6 +29,7 @@ from app.api.routes import (
     cases,
     cemeteries,
     charge_library,
+    charge_terms,
     companies,
     behavioral_analytics,
     customers,
@@ -169,6 +170,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     charge_library.router, prefix="/charge-library", tags=["Charge Library"]
+)
+v1_router.include_router(
+    charge_terms.router, prefix="/onboarding/charge-terms", tags=["Charge Terms"]
 )
 # companies.router MUST come before company_entities.router — both share
 # the /companies prefix and company_entities has /{entity_id} catch-all

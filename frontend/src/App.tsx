@@ -140,6 +140,7 @@ import ScenarioPlayerPage from "@/pages/onboarding/scenario-player";
 import CatalogBuilder from "@/pages/onboarding/catalog-builder";
 import WebsiteSuggestionsReview from "@/pages/onboarding/website-suggestions-review";
 import ChargeSetupPage from "@/pages/onboarding/charge-setup";
+import ChargeTermsOnboardingPage from "@/pages/onboarding/charge-terms";
 import TeamSetupPage from "@/pages/onboarding/team-setup";
 import SafetyTrainingSetupPage from "@/pages/onboarding/safety-training-setup";
 import TaxJurisdictionsOnboarding from "@/pages/onboarding/tax-jurisdictions";
@@ -665,6 +666,7 @@ export default function App() {
                   <Route path="/onboarding/safety-training" element={<SafetyTrainingSetupPage />} />
                   <Route path="/onboarding/tax-jurisdictions" element={<TaxJurisdictionsOnboarding />} />
                   <Route path="/onboarding/charges" element={<ChargeSetupPage />} />
+                  <Route path="/onboarding/charge-terms" element={<ChargeTermsOnboardingPage />} />
                   <Route path="/onboarding/customers/funeral-homes" element={<FuneralHomeCustomersWizard />} />
                   <Route path="/onboarding/cemeteries" element={<CemeterySetupWizard />} />
                   <Route path="/onboarding/quick-orders" element={<QuickOrdersOnboarding />} />
