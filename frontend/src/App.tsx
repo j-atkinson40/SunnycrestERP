@@ -169,6 +169,7 @@ import InvoiceSettingsPage from "@/pages/settings/invoice-settings";
 import SeasonalTemplatesSettings from "@/pages/settings/seasonal-templates";
 import VaultMoldSettingsPage from "@/pages/settings/vault-mold-settings";
 import VaultSupplierSettingsPage from "@/pages/settings/vault-supplier-settings";
+import CallIntelligenceSettingsPage from "@/pages/settings/call-intelligence-settings";
 import VaultMoldSetupPage from "@/pages/onboarding/vault-mold-setup";
 import VaultSetupPage from "@/pages/onboarding/vault-setup";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
@@ -730,6 +731,7 @@ export default function App() {
                   <Route path="/settings/vault-molds" element={<VaultMoldSettingsPage />} />
                   <Route path="/settings/network/preferences" element={<NetworkPreferencesSettingsPage />} />
                   <Route path="/settings/scheduling" element={<SchedulingSettingsPage />} />
+                  <Route path="/settings/call-intelligence" element={<CallIntelligenceSettingsPage />} />
                   <Route path="/settings/integrations/accounting" element={<SyncHealthDashboardPage />} />
 
                   {/* Extension Catalog — any authenticated user */}

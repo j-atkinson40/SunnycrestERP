@@ -1,5 +1,6 @@
-// call-context.tsx — Global call state + SSE connection for RingCentral integration.
+// call-context.tsx — Global call state + SSE connection for Call Intelligence.
 // Manages active call lifecycle: ringing → active → review → dismissed.
+// Provider: RingCentral (SSE endpoint). Provider-agnostic context interface.
 
 import {
   createContext,

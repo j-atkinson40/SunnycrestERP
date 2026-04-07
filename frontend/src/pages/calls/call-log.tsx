@@ -1,4 +1,4 @@
-// call-log.tsx — Call log page showing recent RingCentral calls with
+// call-log.tsx — Call log page showing recent calls with
 // filtering, search, and expandable rows for extraction details.
 
 import { useCallback, useEffect, useState } from "react";
@@ -218,7 +218,7 @@ export default function CallLogPage() {
         <div>
           <h1 className="text-2xl font-bold">Call Log</h1>
           <p className="text-sm text-muted-foreground">
-            Recent RingCentral calls with AI extraction details
+            Recent calls with AI extraction details
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchCalls} disabled={loading}>

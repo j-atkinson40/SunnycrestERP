@@ -1,4 +1,4 @@
-// CallOverlay.tsx — Global overlay for active RingCentral calls.
+// CallOverlay.tsx — Global overlay for active calls (Call Intelligence).
 // Shows ringing card → active call card → review card with AI extraction.
 
 import { useEffect, useRef, useState } from "react";

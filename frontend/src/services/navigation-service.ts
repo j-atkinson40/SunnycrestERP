@@ -387,6 +387,11 @@ function getManufacturingNav(
           icon: "Plug",
         },
         {
+          label: "Call Intelligence",
+          href: "/settings/call-intelligence",
+          icon: "PhoneCall",
+        },
+        {
           label: "Accounting",
           href: "/settings/integrations/accounting",
           icon: "Calculator",

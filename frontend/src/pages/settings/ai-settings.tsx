@@ -234,7 +234,7 @@ export default function AiSettingsPage() {
       {/* Call Intelligence */}
       <Card className="p-5">
         <h2 className="font-semibold text-base mb-2">Call Intelligence</h2>
-        <p className="text-xs text-gray-400 mb-3">Requires RingCentral integration to be connected.</p>
+        <p className="text-xs text-gray-400 mb-3">Requires a phone system to be connected in Call Intelligence settings.</p>
         {renderFeature({ key: "after_call_intelligence", label: "After-Call Intelligence", cost: "included", defaultOn: true,
           description: "Analyzes call transcripts for key topics, outcomes, and action items." })}
         {renderFeature({ key: "commitment_detection", label: "Commitment Detection", cost: "included", defaultOn: true,
