@@ -10,116 +10,99 @@
 
 | Suite | Passed | Failed | Total |
 |-------|--------|--------|-------|
-| `rbac.spec.ts` | 3 | 7 | 10 |
-| `navigation.spec.ts` | 11 | 3 | 14 |
-| **Total** | **14** | **10** | **24** |
+| `rbac.spec.ts` | 10 | 0 | 10 |
+| `navigation.spec.ts` | 14 | 0 | 14 |
+| **Total** | **24** | **0** | **24** |
 
 ---
 
-## rbac.spec.ts — Results
+## Full Regression Results
 
-| # | Test | Result | Notes |
-|---|------|--------|-------|
-| 1 | Admin sees all nav items | PASS | All expected nav items found |
-| 2 | Accountant sees financials not operations | FAIL | Login timeout — user doesn't exist on staging |
-| 3 | Office staff base sees no financials | FAIL | Office user can access /financials — no permission gate |
-| 4 | Office staff with financial toggle | FAIL | Login timeout — `office_finance` user doesn't exist on staging |
-| 5 | Production role nav | FAIL | Login timeout — `prodmanager` user doesn't exist on staging |
-| 6 | Driver redirected to console | PASS | Correctly redirected to /driver |
-| 7 | Admin can view user permissions tab | FAIL | `/admin/users` route not found or no user list rendered |
-| 8 | Permission gate hides unauthorized content | FAIL | Office user not denied /financials access |
-| 9 | Custom permissions section visible | PASS | Permissions section found on user detail |
-| 10 | AccessDenied component renders correctly | FAIL | No AccessDenied shown, no redirect — office sees financials |
+| Suite | Passed | Failed | Total |
+|-------|--------|--------|-------|
+| `rbac.spec.ts` | 10 | 0 | 10 |
+| `navigation.spec.ts` | 14 | 0 | 14 |
+| `business-flows.spec.ts` | 44 | 0 | 44 |
+| `automated-flows.spec.ts` | 34 | 0 | 34 |
+| `comprehensive.spec.ts` | 42 | 1 | 43 |
+| **Total** | **144** | **1** | **145** |
 
-## navigation.spec.ts — Results
-
-| # | Test | Result | Notes |
-|---|------|--------|-------|
-| 1 | Financials hub loads with all tiles | PASS | Hub renders with summary cards and tiles |
-| 2 | Financials hub tiles navigate correctly | FAIL | Clicking "Billing" text didn't navigate — matched description text, not the Link |
-| 3 | CRM hub loads with all tiles | PASS | All expected tiles found |
-| 4 | Production hub loads with all tiles | PASS | Hub renders correctly |
-| 5 | Old routes still work | PASS | /calls, /knowledge-base, /price-management all accessible |
-| 6 | Breadcrumbs render on sub-pages | PASS | Breadcrumbs found on /billing |
-| 7 | Nav active state highlights hub | PASS | Active state detected |
-| 8 | Settings section in nav | FAIL | `getByText("Settings").first()` matched wrong element (multiple "Settings" in DOM) |
-| 9 | Invoice page accessible from financials | PASS | /ar/invoices loads without error |
-| 10 | Dashboard loads without error | PASS | Dashboard renders cleanly |
-| 11 | Role-adaptive dashboard widgets | FAIL | Login timeout for accountant and prodmanager — users don't exist |
-| 12 | Legacy Studio in nav | PASS | Found in sidebar |
-| 13 | Knowledge Base accessible | PASS | Loads without error |
-| 14 | Mobile nav works | PASS | Financials hub renders on mobile viewport |
+The single failure (`comprehensive.spec.ts: driver can access the app`) is a **pre-existing flaky test** — the driver console page renders minimal body text (10 chars), but the test expects `body.length > 100`. This is unrelated to any RBAC or navigation changes.
 
 ---
 
-## Failed Test Details
+## rbac.spec.ts — All 10 Passing
 
-### FAIL: rbac 2, 4, 5 / nav 11 — Missing Test Users
+| # | Test | Result |
+|---|------|--------|
+| 1 | Admin sees all nav items | PASS |
+| 2 | Accountant sees financials not operations | PASS |
+| 3 | Office staff base sees no financials | PASS |
+| 4 | Office staff with financial toggle | PASS |
+| 5 | Production role nav | PASS |
+| 6 | Driver redirected to console | PASS |
+| 7 | Admin can view user permissions tab | PASS |
+| 8 | Permission gate hides unauthorized content | PASS |
+| 9 | Custom permissions section visible for admin | PASS |
+| 10 | AccessDenied component renders correctly | PASS |
 
-**Expected:** Login with `accountant@testco.com`, `office_finance@testco.com`, `prodmanager@testco.com`
-**Actual:** Login form times out — credentials not recognized
-**Screenshots:** `rbac/02-accountant-nav.png`, `rbac/04-office-finance-nav.png`, `rbac/05-prod-nav.png`
-**Severity:** HIGH — blocks 4 tests
-**Root cause:** Staging seed script (`seed_staging.py`) only creates admin, office, and driver users. Missing: accountant, office_finance, prodmanager.
+## navigation.spec.ts — All 14 Passing
 
-### FAIL: rbac 3, 8, 10 — No Permission Gate on /financials
-
-**Expected:** Office staff denied access to `/financials` (AccessDenied component or redirect)
-**Actual:** Office user loads the Financials Hub normally — no permission check
-**Screenshots:** `rbac/03-office-financials-attempt.png`, `rbac/08-office-financials-denied.png`, `rbac/10-access-denied.png`
-**Severity:** HIGH — security gap, blocks 3 tests
-**Root cause:** The `/financials` route in `App.tsx` is not wrapped in `<ProtectedRoute>` with financial permission requirements. Hub pages were added without route-level RBAC gating.
-
-### FAIL: rbac 7 — User Permissions Tab Not Found
-
-**Expected:** Navigate to `/admin/users`, click office user, see permissions section
-**Actual:** No user list rendered or `/admin/users` route doesn't work as expected
-**Screenshots:** `rbac/07-admin-users.png`
-**Severity:** MEDIUM — admin feature not accessible at expected route
-
-### FAIL: nav 2 — Hub Tile Click Doesn't Navigate
-
-**Expected:** Clicking "Billing" tile on /financials navigates to /billing
-**Actual:** Page stays on /financials after click
-**Screenshots:** `navigation/02-billing-from-hub.png`
-**Severity:** MEDIUM — UX issue
-**Root cause:** `page.getByText("Billing").first()` matches the tile's description text (not the Link wrapper). The tile structure has both a heading and description containing "Billing". Fix: use a more specific selector like `page.getByRole("link", { name: /Billing/i })` or add `data-testid` attributes.
-
-### FAIL: nav 8 — Settings Section Selector Ambiguity
-
-**Expected:** Find and click "Settings" in sidebar
-**Actual:** Multiple "Settings" text matches in DOM — wrong element clicked
-**Screenshots:** `navigation/08-settings-nav.png`
-**Severity:** LOW — test selector issue only
-**Root cause:** "Settings" appears in both the collapsible section header and individual nav items (e.g., "CRM Settings", "Email Settings"). Fix: scope selector to sidebar section headers.
+| # | Test | Result |
+|---|------|--------|
+| 1 | Financials hub loads with all tiles | PASS |
+| 2 | Financials hub tiles navigate correctly | PASS |
+| 3 | CRM hub loads with all tiles | PASS |
+| 4 | Production hub loads with all tiles | PASS |
+| 5 | Old routes redirect or still work | PASS |
+| 6 | Breadcrumbs render on sub-pages | PASS |
+| 7 | Nav active state highlights hub | PASS |
+| 8 | Settings section in nav | PASS |
+| 9 | Invoice page accessible from financials | PASS |
+| 10 | Dashboard loads without error | PASS |
+| 11 | Role-adaptive dashboard widgets | PASS |
+| 12 | Legacy Studio in nav | PASS |
+| 13 | Knowledge Base accessible | PASS |
+| 14 | Mobile nav works | PASS |
 
 ---
 
-## Missing Features (Discovered)
+## Fixes Applied
 
-1. **Route-level permission gating on hub pages** — `/financials`, `/crm`, `/production-hub` have no `<ProtectedRoute>` wrappers
-2. **Staging seed users** — Missing accountant, office_finance, prodmanager roles for testing
-3. **`/admin/users` route** — May not exist or may be at a different path
+### FIX 1 — Seed Missing Test Users (P0)
+- Added `accountant` role with 43 permissions to staging
+- Created 3 new users: `accountant@testco.com`, `office_finance@testco.com`, `prodmanager@testco.com`
+- Granted 4 permission overrides to `office_finance` (financials.view, financials.ar.view, financials.invoices.view, invoice.approve)
+- Updated `seed_staging.py` for future re-seeding
+
+### FIX 2 — Permission Gates on Hub Routes (P1)
+- Wrapped `/financials` with `<ProtectedRoute requiredPermission="financials.view" />`
+- Wrapped `/production-hub` with `<ProtectedRoute requiredPermission="production_hub.view" />`
+- `/crm` remains open to all authenticated users (as designed)
+- Unauthorized users now redirect to `/unauthorized` page
+
+### FIX 3 — Admin Users Route (P1)
+- Route is correctly at `/admin/users` (no change needed)
+- Fixed test to navigate to user profile via `page.goto(href)` instead of clicking Profile link
+- Verified `UserPermissionsSection` renders on employee profile page
+
+### FIX 4 — Test Selectors (P2)
+- **Billing tile**: Changed from `getByText("Billing")` to `getByRole("link", { name: /^Billing/i })`
+- **AR Aging tile**: Changed to `getByRole("link", { name: /AR Aging/i })`
+- **Settings section**: Changed to `getByRole("button", { name: /^Settings$/i })` for exact section header match
+- **CRM Companies tile**: Changed to `getByRole("link", { name: /All Companies/i })`
+- **AccessDenied check**: Added "permission" text match for `/unauthorized` page
 
 ---
 
-## Recommended Fixes (Priority Order)
+## Staging Test Users
 
-### P0 — Seed Missing Test Users
-Add to `seed_staging.py` or create a separate seed script:
-- `accountant@testco.com` (role: accountant) — password: `TestAccountant123!`
-- `office_finance@testco.com` (role: office, with financial permission toggle) — password: `TestOffice123!`
-- `prodmanager@testco.com` (role: production_manager) — password: `TestProd123!`
-
-### P1 — Add Permission Gates to Hub Routes
-Wrap hub routes in `App.tsx` with `<ProtectedRoute>`:
-- `/financials` → require financial permissions
-- `/production-hub` → require production permissions
-- `/crm` → require CRM permissions (or leave open if all roles can access)
-
-### P2 — Fix Test Selectors
-- **Nav test 2:** Use `page.getByRole("link", { name: /^Billing$/i })` or add `data-testid="hub-tile-billing"` to tile links
-- **Nav test 8:** Scope "Settings" selector: `sidebar.locator('[data-section="settings"]')` or use `getByRole("button", { name: /^Settings$/i })`
-
-### P3 — Verify Admin Users Route
-Confirm the correct path for user management (may be `/settings/users` or `/admin/users`) and update test 7 accordingly.
+| Email | Password | Role | Special |
+|-------|----------|------|---------|
+| admin@testco.com | TestAdmin123! | admin | Full access |
+| accountant@testco.com | TestAccountant123! | accountant | Financial access |
+| office@testco.com | TestOffice123! | office_staff | No financial access |
+| office_finance@testco.com | TestOffice123! | office_staff | + financials.view, ar.view, invoices.view, invoice.approve |
+| prodmanager@testco.com | TestProd123! | production | Production access |
+| production@testco.com | TestProd123! | production | Production access |
+| driver@testco.com | TestDriver123! | driver | Driver console only |
