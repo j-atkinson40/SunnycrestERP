@@ -230,19 +230,19 @@ function SalesOrderDetailView({ id }: { id: string }) {
       </div>
 
       {/* Burial details */}
-      {((order as Record<string, unknown>).deceased_name || (order as Record<string, unknown>).scheduled_date) && (
+      {(order.deceased_name || order.scheduled_date) && (
         <Card className="p-6 border-l-4 border-primary">
           <div className="grid grid-cols-2 gap-x-8 gap-y-3 md:grid-cols-4">
-            {(order as Record<string, unknown>).deceased_name && (
+            {order.deceased_name && (
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Deceased</p>
-                <p className="font-semibold">{(order as Record<string, unknown>).deceased_name as string}</p>
+                <p className="font-semibold">{order.deceased_name}</p>
               </div>
             )}
-            {(order as Record<string, unknown>).scheduled_date && (
+            {order.scheduled_date && (
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Burial Date</p>
-                <p className="font-semibold">{fmtDate((order as Record<string, unknown>).scheduled_date as string)}</p>
+                <p className="font-semibold">{fmtDate(order.scheduled_date)}</p>
               </div>
             )}
             {order.service_time && (
@@ -251,10 +251,10 @@ function SalesOrderDetailView({ id }: { id: string }) {
                 <p className="font-semibold">{order.service_time}</p>
               </div>
             )}
-            {(order as Record<string, unknown>).cemetery_name && (
+            {order.cemetery_name && (
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Cemetery</p>
-                <p className="font-semibold">{(order as Record<string, unknown>).cemetery_name as string}</p>
+                <p className="font-semibold">{order.cemetery_name}</p>
               </div>
             )}
           </div>

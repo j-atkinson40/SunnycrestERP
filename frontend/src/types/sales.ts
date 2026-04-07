@@ -165,6 +165,10 @@ export interface SalesOrder {
   service_location_other?: string | null;
   service_time?: string | null;
   eta?: string | null;
+  deceased_name?: string | null;
+  cemetery_id?: string | null;
+  cemetery_name?: string | null;
+  scheduled_date?: string | null;
 }
 
 export interface SalesOrderCreate {
