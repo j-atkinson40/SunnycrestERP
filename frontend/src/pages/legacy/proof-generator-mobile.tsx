@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import LegacyCompositorMobile from "@/components/legacy/LegacyCompositorMobile"
 import type { LegacyLayout, GenerateResult } from "@/components/legacy/LegacyCompositor"
+import { useHideTabBar } from "@/hooks/use-hide-tab-bar"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,7 @@ const URN_PRINT_CATEGORIES = [
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function ProofGeneratorMobile() {
+  useHideTabBar()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const existingId = searchParams.get("legacyId")

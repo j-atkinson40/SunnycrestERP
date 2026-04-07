@@ -6,6 +6,7 @@ import VoiceMemoButton from "@/components/ai/VoiceMemoButton";
 import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
 import { DeviceProvider } from "@/contexts/device-context";
+import { LayoutProvider } from "@/contexts/layout-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
@@ -272,6 +273,7 @@ export default function App() {
       <AuthProvider>
       <FeatureFlagProvider>
       <ExtensionProvider>
+      <LayoutProvider>
       <AuthDeviceProvider>
         <ImpersonationBanner />
         <Routes>
@@ -882,6 +884,7 @@ export default function App() {
           <VoiceMemoButton compact />
         </div>
       </AuthDeviceProvider>
+      </LayoutProvider>
       </ExtensionProvider>
       </FeatureFlagProvider>
       </AuthProvider>

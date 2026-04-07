@@ -31,6 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { usePresetTheme } from "@/contexts/preset-theme-context";
+import { useLayout } from "@/contexts/layout-context";
 import { cn } from "@/lib/utils";
 import type { NavItem } from "@/services/navigation-service";
 
@@ -70,6 +71,7 @@ function resolveIcon(name: string): LucideIcon | null {
 
 export function MobileTabBar() {
   const { navigation, presetAccent } = usePresetTheme();
+  const { hideTabBar } = useLayout();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -88,6 +90,8 @@ export function MobileTabBar() {
   const handleCloseMore = useCallback(() => {
     setMoreOpen(false);
   }, []);
+
+  if (hideTabBar) return null;
 
   return (
     <>

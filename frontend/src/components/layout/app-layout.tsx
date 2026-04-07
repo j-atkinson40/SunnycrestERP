@@ -1,5 +1,6 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
+import { useLayout } from "@/contexts/layout-context";
 import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
 import { NotificationDropdown } from "./notification-dropdown";
@@ -7,9 +8,11 @@ import { AccountingReminderBanner } from "@/components/accounting-reminder-banne
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
 export function AppLayout() {
   const { user, logout } = useAuth();
+  const { hideTabBar } = useLayout();
   const navigate = useNavigate();
 
   function handleLogout() {
@@ -42,7 +45,7 @@ export function AppLayout() {
           </div>
         </header>
         <AccountingReminderBanner />
-        <main className="flex-1 overflow-y-auto p-6 pb-20 md:pb-6">
+        <main className={cn("flex-1 overflow-y-auto p-6 md:pb-6", hideTabBar ? "pb-6" : "pb-20")}>
           <Outlet />
         </main>
       </div>
