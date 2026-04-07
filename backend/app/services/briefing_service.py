@@ -724,6 +724,24 @@ def _build_safety_compliance_context(
         }
 
 
+def _check_kb_extension_notifications(db: Session, company_id: str) -> dict:
+    """Check for new KB extension notifications to include in briefing."""
+    try:
+        from app.services.kb_setup_service import get_pending_notifications
+
+        notifications = get_pending_notifications(db, company_id)
+        if not notifications:
+            return {}
+
+        ext_names = [n["extension_name"] for n in notifications]
+        return {
+            "kb_new_extensions": ext_names,
+            "kb_notification_count": len(notifications),
+        }
+    except Exception:
+        return {}
+
+
 def _build_call_summary(db: Session, company_id: str) -> dict:
     """Build yesterday's call summary for the morning briefing."""
     try:
@@ -840,6 +858,9 @@ def _build_executive_context(
 
         call_summary = _build_call_summary(db, company_id)
 
+        # KB extension notifications
+        kb_notifications = _check_kb_extension_notifications(db, company_id)
+
         return {
             "revenue_this_week": str(revenue_week),
             "outstanding_ar": str(outstanding_ar),
@@ -847,6 +868,7 @@ def _build_executive_context(
             "active_orders": active_orders,
             "sync_errors_24h": sync_errors_24h,
             **call_summary,
+            **kb_notifications,
         }
     except Exception as e:
         logger.warning("Error building executive context: %s", e)

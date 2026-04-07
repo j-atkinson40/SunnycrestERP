@@ -177,6 +177,7 @@ import DataMigrationPage from "@/pages/onboarding/data-migration";
 import AccountingReviewPage from "@/pages/onboarding/accounting-review";
 import TeamDashboardPage from "@/pages/team/team-dashboard";
 import CallLogPage from "@/pages/calls/call-log";
+import KnowledgeBasePage from "@/pages/knowledge-base";
 import AlertsPage from "@/pages/alerts";
 import JournalEntriesPage from "@/pages/journal-entries";
 import TaxSettingsPage from "@/pages/settings/tax-settings";
@@ -688,6 +689,9 @@ export default function App() {
 
                   {/* Call Log — any authenticated user */}
                   <Route path="/calls" element={<CallLogPage />} />
+
+                  {/* Knowledge Base — any authenticated user */}
+                  <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
 
                   {/* Announcements — any authenticated user */}
                   <Route path="/announcements" element={<AnnouncementsPage />} />

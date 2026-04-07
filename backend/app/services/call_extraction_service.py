@@ -65,8 +65,19 @@ Respond ONLY with valid JSON in this format:
   "call_summary": "1-2 sentence summary of the call",
   "call_type": "order"|"inquiry"|"callback_request"|"other",
   "urgency": "standard"|"urgent"|"same_day",
-  "suggested_callback": true/false
-}"""
+  "suggested_callback": true/false,
+  "kb_queries": [
+    {
+      "query": "the question or topic needing a KB lookup",
+      "query_type": "pricing"|"product_specs"|"policy"|"general"
+    }
+  ]
+}
+
+The "kb_queries" array should contain any questions that came up during the call \
+where the employee might need reference information — product pricing, specs, \
+cemetery requirements, company policies, etc. Include the query as the caller \
+phrased it and classify the type. Return an empty array if no KB lookups are needed."""
 
 
 def _parse_date(val: str | None) -> date | None:
@@ -192,13 +203,49 @@ def extract_order_from_transcript(
     db.add(extraction)
     db.flush()
 
+    # Process KB queries if any were detected
+    kb_queries = result.get("kb_queries", [])
+    kb_results = []
+    if kb_queries:
+        try:
+            from app.services.kb_retrieval_service import retrieve_for_call
+
+            for kbq in kb_queries[:5]:  # Cap at 5 queries
+                kr = retrieve_for_call(
+                    db=db,
+                    tenant_id=tenant_id,
+                    query=kbq.get("query", ""),
+                    query_type=kbq.get("query_type", "general"),
+                    caller_company_id=master_company_id,
+                )
+                kb_results.append({
+                    "query": kr.query,
+                    "query_type": kr.query_type,
+                    "synthesis": kr.synthesis,
+                    "confidence": kr.confidence,
+                    "pricing": [
+                        {
+                            "product_name": p.product_name,
+                            "product_code": p.product_code,
+                            "price": str(p.price) if p.price else None,
+                            "price_tier": p.price_tier,
+                            "unit": p.unit,
+                        }
+                        for p in kr.pricing_results
+                    ],
+                    "source_documents": kr.source_documents,
+                })
+        except Exception:
+            logger.exception("KB retrieval failed during extraction for call %s", call_id)
+
     logger.info(
-        "Extraction complete for call %s — type=%s, missing=%d fields",
+        "Extraction complete for call %s — type=%s, missing=%d fields, kb_queries=%d",
         call_id,
         extraction.call_type,
         len(extraction.missing_fields or []),
+        len(kb_results),
     )
-    return extraction
+    return extraction, kb_results
 
 
 def create_draft_order_from_extraction(

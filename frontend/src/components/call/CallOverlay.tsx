@@ -18,6 +18,8 @@ import {
   Building2,
   User,
   X,
+  BookOpen,
+  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -414,21 +416,129 @@ function ReviewCard({
 }
 
 // ---------------------------------------------------------------------------
+// KB Panel — slide-in knowledge base result
+// ---------------------------------------------------------------------------
+
+function KBPanelCard({
+  panel,
+  onDismiss,
+}: {
+  panel: import("@/contexts/call-context").KBPanelResult;
+  onDismiss: () => void;
+}) {
+  const hasPricing = panel.pricing.length > 0;
+
+  return (
+    <div className="w-[380px] rounded-xl border bg-white shadow-lg overflow-hidden animate-in slide-in-from-right-5 fade-in duration-300">
+      {/* Header */}
+      <div className="bg-indigo-50 border-b px-4 py-2.5 flex items-center gap-2">
+        {hasPricing ? (
+          <DollarSign className="h-4 w-4 text-indigo-600" />
+        ) : (
+          <BookOpen className="h-4 w-4 text-indigo-600" />
+        )}
+        <span className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
+          {panel.query_type === "pricing" ? "Pricing" : "Knowledge Base"}
+        </span>
+        <Badge
+          variant="outline"
+          className={cn(
+            "ml-auto text-[10px]",
+            panel.confidence === "high"
+              ? "border-green-300 text-green-700"
+              : panel.confidence === "medium"
+                ? "border-amber-300 text-amber-700"
+                : "border-gray-300 text-gray-500",
+          )}
+        >
+          {panel.confidence}
+        </Badge>
+        <button
+          onClick={onDismiss}
+          className="p-1 rounded hover:bg-indigo-100 transition-colors"
+        >
+          <X className="h-3.5 w-3.5 text-indigo-600" />
+        </button>
+      </div>
+
+      {/* Query */}
+      <div className="px-4 pt-2.5">
+        <p className="text-xs text-muted-foreground italic">"{panel.query}"</p>
+      </div>
+
+      {/* Pricing results */}
+      {hasPricing && (
+        <div className="mx-4 mt-2 rounded-lg border bg-green-50 p-3">
+          <div className="space-y-1.5">
+            {panel.pricing.map((p, i) => (
+              <div key={i} className="flex items-start justify-between text-xs gap-2">
+                <div>
+                  <span className="font-medium text-green-900">
+                    {p.product_name}
+                  </span>
+                  {p.product_code && (
+                    <span className="ml-1 text-green-600">({p.product_code})</span>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  {p.price ? (
+                    <span className="font-semibold text-green-900">
+                      ${p.price}/{p.unit}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">N/A</span>
+                  )}
+                  <p className="text-[10px] text-green-600">{p.price_tier}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Synthesis */}
+      <div className="px-4 py-3">
+        <p className="text-sm text-gray-800 leading-relaxed">{panel.synthesis}</p>
+      </div>
+
+      {/* Sources */}
+      {panel.source_documents.length > 0 && (
+        <div className="px-4 pb-3">
+          <p className="text-[10px] text-muted-foreground">
+            Sources: {panel.source_documents.join(", ")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Overlay
 // ---------------------------------------------------------------------------
 
 export function CallOverlay() {
-  const { activeCall, minimized, preferences, dismissCall, toggleMinimized, answerCall } =
-    useCall();
+  const {
+    activeCall,
+    minimized,
+    preferences,
+    kbPanels,
+    dismissCall,
+    toggleMinimized,
+    answerCall,
+    dismissKBPanel,
+  } = useCall();
 
   if (!preferences.rc_overlay_enabled || !activeCall) return null;
+
+  const visiblePanels = kbPanels.filter((p) => !p.dismissed);
 
   if (minimized) {
     return <MinimizedCallPill call={activeCall} onExpand={toggleMinimized} />;
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 max-md:top-2 max-md:right-2 max-md:left-2">
+    <div className="fixed top-4 right-4 z-50 max-md:top-2 max-md:right-2 max-md:left-2 space-y-3">
       {activeCall.state === "ringing" && (
         <RingingCard
           call={activeCall}
@@ -446,6 +556,15 @@ export function CallOverlay() {
       {activeCall.state === "review" && (
         <ReviewCard call={activeCall} onDismiss={dismissCall} />
       )}
+
+      {/* KB Panels — stacked below the call card */}
+      {visiblePanels.map((panel) => (
+        <KBPanelCard
+          key={panel.id}
+          panel={panel}
+          onDismiss={() => dismissKBPanel(panel.id)}
+        />
+      ))}
     </div>
   );
 }

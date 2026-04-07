@@ -17,6 +17,7 @@ from app.api.routes import (
     announcements,
     call_intelligence,
     driver_announcements,
+    knowledge_base,
     ap,
     api_keys,
     audit,
@@ -342,6 +343,11 @@ v1_router.include_router(
     journal_entries.router,
     prefix="/journal-entries",
     tags=["Journal Entries"],
+)
+v1_router.include_router(
+    knowledge_base.router,
+    prefix="/knowledge-base",
+    tags=["Knowledge Base"],
 )
 v1_router.include_router(
     operations_board.router,

@@ -102,6 +102,11 @@ function getManufacturingNav(
       icon: "Phone",
     },
     {
+      label: "Knowledge Base",
+      href: "/knowledge-base",
+      icon: "BookOpen",
+    },
+    {
       label: "Orders",
       href: "/ar/orders",
       icon: "ClipboardList",

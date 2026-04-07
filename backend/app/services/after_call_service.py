@@ -83,7 +83,7 @@ def process_call_after_end(
         extract_order_from_transcript,
     )
 
-    extraction = extract_order_from_transcript(
+    extraction, kb_results = extract_order_from_transcript(
         db=db,
         transcript=transcript,
         tenant_id=tenant_id,
@@ -99,6 +99,7 @@ def process_call_after_end(
         "deceased": extraction.deceased_name,
         "vault_type": extraction.vault_type,
     }
+    result["kb_results"] = kb_results
 
     # Step 3 — Draft order creation
     if extraction.call_type == "order":
@@ -153,7 +154,7 @@ def process_voicemail(
         extract_order_from_transcript,
     )
 
-    extraction = extract_order_from_transcript(
+    extraction, _kb_results = extract_order_from_transcript(
         db=db,
         transcript=transcript,
         tenant_id=tenant_id,
@@ -191,7 +192,7 @@ def reprocess_call(
 
     from app.services.call_extraction_service import extract_order_from_transcript
 
-    extraction = extract_order_from_transcript(
+    extraction, kb_results = extract_order_from_transcript(
         db=db,
         transcript=call_log.transcription,
         tenant_id=tenant_id,
@@ -205,6 +206,7 @@ def reprocess_call(
         "extraction_id": extraction.id,
         "call_type": extraction.call_type,
         "missing_fields": extraction.missing_fields,
+        "kb_results": kb_results,
     }
 
 

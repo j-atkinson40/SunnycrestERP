@@ -61,15 +61,35 @@ export interface CallPreferences {
   rc_auto_open_order: boolean;
 }
 
+export interface KBPanelResult {
+  id: string;
+  query: string;
+  query_type: string;
+  synthesis: string;
+  confidence: string;
+  pricing: Array<{
+    product_name: string;
+    product_code: string | null;
+    price: string | null;
+    price_tier: string;
+    unit: string;
+  }>;
+  source_documents: string[];
+  dismissed: boolean;
+  received_at: Date;
+}
+
 interface CallContextValue {
   activeCall: ActiveCall | null;
   minimized: boolean;
   preferences: CallPreferences;
   connected: boolean;
+  kbPanels: KBPanelResult[];
   dismissCall: () => void;
   toggleMinimized: () => void;
   answerCall: (callId: string) => Promise<void>;
   updatePreferences: (prefs: Partial<CallPreferences>) => void;
+  dismissKBPanel: (id: string) => void;
 }
 
 const DEFAULT_PREFS: CallPreferences = {
@@ -87,10 +107,12 @@ const CallContext = createContext<CallContextValue>({
   minimized: false,
   preferences: DEFAULT_PREFS,
   connected: false,
+  kbPanels: [],
   dismissCall: () => {},
   toggleMinimized: () => {},
   answerCall: async () => {},
   updatePreferences: () => {},
+  dismissKBPanel: () => {},
 });
 
 export function useCall() {
@@ -107,6 +129,7 @@ export function CallContextProvider({ children }: { children: ReactNode }) {
   const [minimized, setMinimized] = useState(false);
   const [connected, setConnected] = useState(false);
   const [preferences, setPreferences] = useState<CallPreferences>(DEFAULT_PREFS);
+  const [kbPanels, setKBPanels] = useState<KBPanelResult[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
@@ -136,6 +159,13 @@ export function CallContextProvider({ children }: { children: ReactNode }) {
   const dismissCall = useCallback(() => {
     setActiveCall(null);
     setMinimized(false);
+    setKBPanels([]);
+  }, []);
+
+  const dismissKBPanel = useCallback((id: string) => {
+    setKBPanels((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, dismissed: true } : p)),
+    );
   }, []);
 
   const toggleMinimized = useCallback(() => {
@@ -231,6 +261,42 @@ export function CallContextProvider({ children }: { children: ReactNode }) {
               : prev,
           );
           setMinimized(false);
+
+          // Process KB results from the extraction pipeline
+          if (data.kb_results && Array.isArray(data.kb_results)) {
+            const panels: KBPanelResult[] = data.kb_results.map(
+              (r: Record<string, unknown>, i: number) => ({
+                id: `${data.call_id}-kb-${i}`,
+                query: r.query || "",
+                query_type: r.query_type || "general",
+                synthesis: r.synthesis || "",
+                confidence: r.confidence || "low",
+                pricing: r.pricing || [],
+                source_documents: r.source_documents || [],
+                dismissed: false,
+                received_at: new Date(),
+              }),
+            );
+            setKBPanels((prev) => [...prev, ...panels]);
+          }
+        } catch {}
+      });
+
+      es.addEventListener("kb_result", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const panel: KBPanelResult = {
+            id: data.id || `kb-${Date.now()}`,
+            query: data.query || "",
+            query_type: data.query_type || "general",
+            synthesis: data.synthesis || "",
+            confidence: data.confidence || "low",
+            pricing: data.pricing || [],
+            source_documents: data.source_documents || [],
+            dismissed: false,
+            received_at: new Date(),
+          };
+          setKBPanels((prev) => [...prev, panel]);
         } catch {}
       });
 
@@ -263,10 +329,12 @@ export function CallContextProvider({ children }: { children: ReactNode }) {
         minimized,
         preferences,
         connected,
+        kbPanels,
         dismissCall,
         toggleMinimized,
         answerCall,
         updatePreferences,
+        dismissKBPanel,
       }}
     >
       {children}
