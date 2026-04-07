@@ -425,9 +425,12 @@ export default function ProofGeneratorMobile() {
   }
 
   return (
-    <div className="fixed inset-0 z-40 bg-white flex flex-col">
-      {/* Header */}
-      <div className="border-b px-4 py-3">
+    <div
+      className="fixed inset-x-0 top-0 z-40 flex flex-col overflow-hidden bg-white"
+      style={{ height: "100dvh" }}
+    >
+      {/* ── Sticky header — step indicator always visible ────────────── */}
+      <div className="shrink-0 border-b bg-white px-4 py-3">
         <div className="flex items-center gap-3">
           <button onClick={goBack} className="text-gray-500">
             <ChevronLeft className="h-5 w-5" />
@@ -465,8 +468,8 @@ export default function ProofGeneratorMobile() {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto px-4 py-5 space-y-5">
+      {/* ── Scrollable content area ─────────────────────────────────── */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 space-y-5">
         {/* ── STEP: TYPE ──────────────────────────────────────────────── */}
         {step === "type" && (
           <>
@@ -736,36 +739,39 @@ export default function ProofGeneratorMobile() {
         )}
       </div>
 
-      {/* Bottom action bar */}
-      <div className="border-t bg-white px-4 py-3 pb-[env(safe-area-inset-bottom)]">
+      {/* ── Sticky footer — Continue button always visible ───────────── */}
+      <div
+        className="shrink-0 border-t bg-white px-4 py-3"
+        style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
+      >
         {step === "type" && (
-            <Button
-              className="w-full"
-              disabled={!canProceedFromType}
-              onClick={() => setStep("print")}
-            >
-              Next — Select print <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          )}
+          <Button
+            className="w-full py-3.5 text-base font-semibold"
+            disabled={!canProceedFromType}
+            onClick={() => setStep("print")}
+          >
+            Continue — Select print <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        )}
 
-          {step === "print" && (
-            <Button
-              className="w-full"
-              disabled={!canProceedFromPrint}
-              onClick={() => setStep("inscription")}
-            >
-              Next — Inscription <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          )}
+        {step === "print" && (
+          <Button
+            className="w-full py-3.5 text-base font-semibold"
+            disabled={!canProceedFromPrint}
+            onClick={() => setStep("inscription")}
+          >
+            Continue — Inscription <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        )}
 
-          {step === "inscription" && (
-            <Button
-              className="w-full"
-              disabled={!canProceedFromInscription}
-              onClick={handleOpenCompositor}
-            >
-              Open Compositor <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
+        {step === "inscription" && (
+          <Button
+            className="w-full py-3.5 text-base font-semibold"
+            disabled={!canProceedFromInscription}
+            onClick={handleOpenCompositor}
+          >
+            Open Compositor <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
         )}
       </div>
     </div>
