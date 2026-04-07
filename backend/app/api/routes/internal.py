@@ -1,13 +1,14 @@
 """Internal endpoints — job triggers, scheduler health."""
 
 import logging
+import threading
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.user import User
 
@@ -22,14 +23,11 @@ class TriggerRequest(BaseModel):
 @router.post("/jobs/trigger")
 def trigger_job(
     body: TriggerRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Manually trigger a scheduled job. Admin only."""
+    """Manually trigger a scheduled job. Admin only. Runs async in background."""
     from app.scheduler import JOB_REGISTRY
-
-    if current_user.role and current_user.role.slug != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
 
     func = JOB_REGISTRY.get(body.job_type)
     if not func:
@@ -40,17 +38,14 @@ def trigger_job(
         )
 
     logger.info(f"Manual trigger: {body.job_type} by {current_user.email}")
-    try:
-        func()
-        return {
-            "status": "completed",
-            "job_type": body.job_type,
-            "triggered_by": current_user.email,
-            "triggered_at": datetime.now(timezone.utc).isoformat(),
-        }
-    except Exception as e:
-        logger.error(f"Manual trigger failed: {body.job_type}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Job failed: {str(e)}")
+    thread = threading.Thread(target=func, daemon=True)
+    thread.start()
+    return {
+        "status": "triggered_async",
+        "job_type": body.job_type,
+        "triggered_by": current_user.email,
+        "triggered_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.get("/jobs/registry")
