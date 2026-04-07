@@ -76,6 +76,7 @@ export default function LegacyCompositorMobile({
   const [showProof, setShowProof] = useState(!!initialProofUrl)
   const [dragging, setDragging] = useState<{ type: "photo" | "text"; id?: string } | null>(null)
   const [bgLoaded, setBgLoaded] = useState(false)
+  const [bgError, setBgError] = useState(false)
 
   // Mobile-specific state
   const [selected, setSelected] = useState<SelectedLayer>(null)
@@ -83,11 +84,28 @@ export default function LegacyCompositorMobile({
 
   // Load background image
   useEffect(() => {
+    setBgLoaded(false)
+    setBgError(false)
+
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => {
       bgImageRef.current = img
       setBgLoaded(true)
+    }
+    img.onerror = () => {
+      // Retry without crossOrigin — some servers don't send CORS headers
+      // but same-origin images load fine without the attribute
+      const retry = new Image()
+      retry.onload = () => {
+        bgImageRef.current = retry
+        setBgLoaded(true)
+      }
+      retry.onerror = () => {
+        setBgError(true)
+        toast.error("Failed to load background image")
+      }
+      retry.src = backgroundUrl
     }
     img.src = backgroundUrl
   }, [backgroundUrl])
@@ -101,6 +119,15 @@ export default function LegacyCompositorMobile({
         img.onload = () => {
           photoImagesRef.current.set(photo.id, img)
           renderCanvas()
+        }
+        img.onerror = () => {
+          // Retry without crossOrigin
+          const retry = new Image()
+          retry.onload = () => {
+            photoImagesRef.current.set(photo.id, retry)
+            renderCanvas()
+          }
+          retry.src = photo.url
         }
         img.src = photo.url
       }
@@ -412,7 +439,10 @@ export default function LegacyCompositorMobile({
 
   if (showProof && proofUrl) {
     return (
-      <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      <div
+        className="fixed inset-x-0 top-0 z-50 flex flex-col overflow-hidden bg-black"
+        style={{ height: "100dvh" }}
+      >
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 py-3 bg-black/80">
           <button
@@ -458,9 +488,12 @@ export default function LegacyCompositorMobile({
   // ── Main compositor layout ────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-40 bg-gray-950 flex flex-col">
+    <div
+      className="fixed inset-x-0 top-0 z-50 flex flex-col overflow-hidden bg-gray-950"
+      style={{ height: "100dvh" }}
+    >
       {/* Top bar */}
-      <div className="flex items-center justify-between px-3 py-2.5 bg-gray-900 border-b border-gray-800">
+      <div className="shrink-0 flex items-center justify-between px-3 py-2.5 bg-gray-900 border-b border-gray-800">
         <button
           onClick={onCancel}
           className="flex items-center gap-1 text-gray-300 text-sm"
@@ -481,21 +514,38 @@ export default function LegacyCompositorMobile({
       </div>
 
       {/* Canvas area — takes remaining space */}
-      <div className="flex-1 overflow-hidden flex items-center justify-center bg-gray-950 px-2">
-        <canvas
-          ref={canvasRef}
-          width={canvasWidth}
-          height={canvasHeight}
-          className="w-full max-h-full rounded-lg cursor-move touch-none"
-          style={{ objectFit: "contain" }}
-          onMouseDown={handlePointerDown}
-          onMouseMove={handlePointerMove}
-          onMouseUp={handlePointerUp}
-          onMouseLeave={handlePointerUp}
-          onTouchStart={handlePointerDown}
-          onTouchMove={handlePointerMove}
-          onTouchEnd={handlePointerUp}
-        />
+      <div className="min-h-0 flex-1 overflow-hidden flex items-center justify-center bg-gray-950 px-2">
+        {bgError ? (
+          <div className="text-center px-6">
+            <p className="text-red-400 text-sm font-medium">Failed to load background</p>
+            <p className="text-gray-500 text-xs mt-1">Check your connection and try again</p>
+            <button
+              onClick={onCancel}
+              className="mt-4 text-sm text-blue-400 underline"
+            >
+              Go back
+            </button>
+          </div>
+        ) : !bgLoaded ? (
+          <div className="text-center">
+            <div className="h-8 w-8 mx-auto animate-spin rounded-full border-2 border-gray-700 border-t-gray-300" />
+            <p className="text-gray-500 text-xs mt-3">Loading background...</p>
+          </div>
+        ) : (
+          <canvas
+            ref={canvasRef}
+            width={canvasWidth}
+            height={canvasHeight}
+            className="w-full max-h-full rounded-lg cursor-move touch-none"
+            onMouseDown={handlePointerDown}
+            onMouseMove={handlePointerMove}
+            onMouseUp={handlePointerUp}
+            onMouseLeave={handlePointerUp}
+            onTouchStart={handlePointerDown}
+            onTouchMove={handlePointerMove}
+            onTouchEnd={handlePointerUp}
+          />
+        )}
       </div>
 
       {/* Hidden file input */}
@@ -619,7 +669,10 @@ export default function LegacyCompositorMobile({
       )}
 
       {/* Bottom toolbar */}
-      <div className="bg-gray-900 border-t border-gray-800 px-2 py-2 pb-[env(safe-area-inset-bottom)]">
+      <div
+        className="shrink-0 bg-gray-900 border-t border-gray-800 px-2 py-2"
+        style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
+      >
         {!selected ? (
           // No selection — general tools
           <div className="flex items-center justify-around">
