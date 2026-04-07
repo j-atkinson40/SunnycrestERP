@@ -32,6 +32,7 @@ PERMISSIONS: dict[str, list[str]] = {
         "view",
         "create_quote",
         "create_order",
+        "update_order",
         "create_invoice",
         "record_payment",
         "void",
@@ -102,6 +103,7 @@ ACCOUNTING_DEFAULT_PERMISSIONS = [
     "ar.view",
     "ar.create_quote",
     "ar.create_order",
+    "ar.update_order",
     "ar.create_invoice",
     "ar.record_payment",
     "ar.void",
@@ -122,6 +124,7 @@ OFFICE_STAFF_DEFAULT_PERMISSIONS = [
     "ar.view",
     "ar.create_quote",
     "ar.create_order",
+    "ar.update_order",
     "ar.create_invoice",
     "ar.record_payment",
     "delivery.view",
@@ -141,6 +144,8 @@ OFFICE_STAFF_DEFAULT_PERMISSIONS = [
 
 DRIVER_DEFAULT_PERMISSIONS = [
     "dashboard.view",
+    "ar.view",
+    "ar.update_order",
     "delivery.view",
     "routes.view",
     "drivers.view",
@@ -149,6 +154,8 @@ DRIVER_DEFAULT_PERMISSIONS = [
 
 PRODUCTION_DEFAULT_PERMISSIONS = [
     "dashboard.view",
+    "ar.view",
+    "ar.update_order",
     "production_log.view",
     "production_log.create",
     "production_log.edit",

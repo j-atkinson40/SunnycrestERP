@@ -86,12 +86,20 @@ def get_crm_visible_filter(db: Session, tenant_id: str):
             CompanyEntity.is_cemetery.is_(False),
         ),
         # Unclassified (null type without trusted classification source) → data quality only
+        # BUT: records with explicit role flags (is_funeral_home, is_cemetery, etc.)
+        # are considered classified by role even if customer_type is NULL.
         and_(
             CompanyEntity.customer_type.is_(None),
             or_(
                 CompanyEntity.classification_source.is_(None),
                 CompanyEntity.classification_source.notin_(["manual", "auto_high", "auto_google"]),
             ),
+            # Don't hide records that have a role flag set — those are classified by role
+            CompanyEntity.is_funeral_home.isnot(True),
+            CompanyEntity.is_cemetery.isnot(True),
+            CompanyEntity.is_licensee.isnot(True),
+            CompanyEntity.is_crematory.isnot(True),
+            CompanyEntity.is_vendor.isnot(True),
         ),
     )
 
@@ -173,6 +181,12 @@ def get_hidden_count(db: Session, tenant_id: str) -> dict:
             CompanyEntity.classification_source.is_(None),
             CompanyEntity.classification_source.notin_(["manual", "auto_high", "auto_google"]),
         ),
+        # Exclude records with role flags — they are classified by role
+        CompanyEntity.is_funeral_home.isnot(True),
+        CompanyEntity.is_cemetery.isnot(True),
+        CompanyEntity.is_licensee.isnot(True),
+        CompanyEntity.is_crematory.isnot(True),
+        CompanyEntity.is_vendor.isnot(True),
     ).count()
 
     aggregates = base.filter(CompanyEntity.is_aggregate.is_(True)).count()
@@ -298,6 +312,12 @@ def get_hidden_companies(db: Session, tenant_id: str) -> dict:
             CompanyEntity.classification_source.is_(None),
             CompanyEntity.classification_source.notin_(["manual", "auto_high", "auto_google"]),
         ),
+        # Exclude records with role flags — they are classified by role
+        CompanyEntity.is_funeral_home.isnot(True),
+        CompanyEntity.is_cemetery.isnot(True),
+        CompanyEntity.is_licensee.isnot(True),
+        CompanyEntity.is_crematory.isnot(True),
+        CompanyEntity.is_vendor.isnot(True),
     ))
     if unclassified:
         groups["unclassified"] = {

@@ -353,7 +353,7 @@ def update_sales_order(
     data: SalesOrderUpdate,
     db: Session = Depends(get_db),
     _module: User = Depends(require_module("sales")),
-    current_user: User = Depends(require_permission("ar.create_order")),
+    current_user: User = Depends(require_permission("ar.update_order")),
 ):
     order = sales_service.update_sales_order(
         db, current_user.company_id, current_user.id, order_id, data

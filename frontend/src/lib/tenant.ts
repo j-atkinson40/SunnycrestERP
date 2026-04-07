@@ -1,8 +1,35 @@
 /**
+ * On first load, check for a ?slug= query parameter and persist it.
+ * This lets staging/Railway URLs enter tenant context via:
+ *   https://determined-renewal-staging.up.railway.app?slug=testco
+ *
+ * Runs once at module load time before any component renders.
+ */
+(function bootstrapSlugFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const slugParam = params.get("slug");
+    if (slugParam) {
+      localStorage.setItem("company_slug", slugParam);
+      // Strip the ?slug= param from the URL so it doesn't persist in the address bar
+      params.delete("slug");
+      const clean = params.toString();
+      const newUrl =
+        window.location.pathname + (clean ? `?${clean}` : "") + window.location.hash;
+      window.history.replaceState(null, "", newUrl);
+    }
+  } catch {
+    // Ignore — localStorage or URL API unavailable
+  }
+})();
+
+/**
  * Extract the company slug from the current hostname.
  *
- * Production: acme.getbridgeable.com -> "acme"
- * Development: reads from localStorage fallback.
+ * Resolution order:
+ *   1. Subdomain: acme.getbridgeable.com → "acme"
+ *   2. *.localhost subdomain: acme.localhost → "acme"
+ *   3. localStorage fallback (covers Railway URLs, ?slug= bootstrap, dev)
  *
  * Returns empty string if on the root domain (no tenant).
  */
@@ -35,7 +62,7 @@ export function getCompanySlug(): string {
   }
 
   // No custom domain configured — fall back to localStorage
-  // (covers Railway URLs like xxx.up.railway.app)
+  // (covers Railway URLs like xxx.up.railway.app, and ?slug= bootstrap)
   return localStorage.getItem("company_slug") || "";
 }
 

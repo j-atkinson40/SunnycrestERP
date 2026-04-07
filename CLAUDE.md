@@ -352,16 +352,16 @@ All jobs use `_run_per_tenant()` or `_run_global()` wrappers with per-session DB
 
 | Metric | Count |
 |--------|-------|
-| Database tables | ~235 |
-| ORM model files | 157 |
-| ORM model exports (`__init__.py`) | 170 |
-| API route files | 102 |
-| API endpoints | 904 |
-| Route modules registered in v1.py | 92 |
-| Frontend routes | 146 |
-| Backend service files | 109 |
-| Migration files | 112 |
-| Migration head | `r7_create_missing` |
+| Database tables | ~250 |
+| ORM model files | 157+ |
+| ORM model exports (`__init__.py`) | 170+ |
+| API route files | 102+ |
+| API endpoints | 904+ |
+| Route modules registered in v1.py | 92+ |
+| Frontend routes | 146+ |
+| Backend service files | 109+ |
+| Migration files | 112+ |
+| Migration head | `z9g4h5i6j7k8` |
 | Agent jobs (scheduled) | 13 |
 | Agent jobs (not yet built) | ~30 |
 | TypeScript errors | 0 |
@@ -486,7 +486,242 @@ Once received:
 
 ### Medium Term
 - Build actual NPCA Audit Prep feature (compliance score engine, gap analysis, audit package ZIP)
-- Staging environment on Railway
-- End-to-end testing with real Sunnycrest data
+- ~~Staging environment on Railway~~ ✅ Done (April 2026)
+- ~~End-to-end testing with real Sunnycrest data~~ ✅ Done (April 2026)
 - Performance optimization for report generation
 - Migrate FastAPI `@app.on_event` to lifespan context manager
+
+## 16. Recent Build Sessions
+
+### Session: April 7, 2026 — Call Intelligence, Knowledge Base, Price Management, Platform Email, Staging Environment
+
+---
+
+#### Call Intelligence (Complete)
+
+Feature formerly called "RingCentral Integration" — rebranded to "Call Intelligence" throughout UI. RingCentral is a provider underneath, not the feature name. No user-visible text says "RingCentral" except the Connect button and provider dropdown in settings.
+
+**Three prompts fully built and deployed:**
+
+**PROMPT 1 — OAuth + Webhook Infrastructure**
+- Tables: `ringcentral_connections`, `ringcentral_extension_mappings`, `ringcentral_call_log`
+- OAuth flow: `/settings/call-intelligence`
+- Webhook: `POST /api/v1/integrations/ringcentral/webhook`
+- SSE endpoint for real-time call events
+- Extension → Bridgeable user mapping UI
+- Token refresh background task
+- Webhook renewal task
+
+**PROMPT 2 — Transcription + Extraction Pipeline**
+- Tables: `ringcentral_call_extractions`
+- Services:
+  - `transcription_service.py` — Deepgram Nova-2, speaker diarization
+  - `call_extraction_service.py` — Claude extraction, fuzzy company match, draft order creation
+  - `after_call_service.py` — orchestrator: transcribe → extract → draft order, 10s delay after call ends
+- Voicemail handling (RC transcription + Deepgram fallback)
+- Morning briefing integration
+- Reprocess endpoint for re-running extraction
+
+**PROMPT 3 — CallOverlay UI (Complete)**
+- `contexts/call-context.tsx` — SSE connection, call state, preferences
+- `components/call/CallOverlay.tsx` — 3 states: ringing / active / review
+  - KB panel slides in at top when knowledge query detected
+  - Pushes order sections down
+  - Dismisses after configurable timer or when price is detected spoken (Phase 2 — timer is Phase 1 fallback)
+- `components/call/MinimizedCallPill.tsx`
+- `pages/calls/call-log.tsx`
+- `App.tsx`: `CallContextProvider` + `CallOverlay` mounted globally
+
+**Key design decisions:**
+- Answer via physical RC phone (not WebRTC)
+- Deepgram post-call transcription (Phase 1)
+- Live streaming transcription = Phase 2
+- After-call fires ONLY if no order created during call (prevents duplicates)
+- "Still Needed" panel is primary feature — catches what FD forgot to mention
+- Missing fields are tappable → shows callback number
+
+**ENV VARS REQUIRED:**
+- `RINGCENTRAL_CLIENT_ID`, `RINGCENTRAL_CLIENT_SECRET`, `DEEPGRAM_API_KEY`
+- RC App: production, private, server-side web app
+- Redirect URI: `https://api.getbridgeable.com/api/v1/integrations/ringcentral/oauth/callback`
+- Scopes: Call Control, Read Accounts, Read Call Recording, Read Presence, Webhook Subscriptions, Read Call Log
+
+---
+
+#### Call Intelligence Knowledge Base (Complete)
+
+Platform-wide feature powering live call assistance, mid-call price lookup, and future AI answering service.
+
+**Tables:**
+- `kb_categories` — per tenant, system + custom
+- `kb_documents` — uploaded or manual text
+- `kb_chunks` — parsed content for retrieval
+- `kb_pricing_entries` — structured price data
+- `kb_extension_notifications` — briefing hooks
+
+**Services:**
+- `kb_parsing_service.py` — Claude parses uploaded documents; extracts structured pricing into `kb_pricing_entries` automatically; supports PDF, DOCX, TXT, CSV, manual
+- `kb_retrieval_service.py` — `retrieve_for_call()` called mid-call; pricing tier logic: matched CRM company → contractor tier, unmatched caller → show both tiers; returns brief answer for overlay display
+- `kb_setup_service.py` — `seed_categories_for_tenant()` called on tenant create + extension enable
+
+**Pages:**
+- `/knowledge-base` — main KB page
+- `/knowledge-base/{slug}` — category detail with document list + upload
+
+**KB Coaching Banner:**
+- `KBCoachingBanner.tsx` — adapts copy based on vertical + enabled extensions; dismissible per user (localStorage); re-shows when new extension enabled
+
+**System categories by vertical:**
+- ALL: Company Policies
+- Manufacturing: Pricing, Product Specs, Personalization Options
+- Manufacturing + Cemetery ext: Cemetery Policies
+- Funeral Home: GPL, Service Packages, Grief Resources
+- Cemetery: Equipment Policies, Section Policies
+
+**Extension install notifications:**
+- When extension activated → inserts into `kb_extension_notifications` with `briefing_date = tomorrow`
+- Admin morning briefing shows recommendation to add related KB content
+
+---
+
+#### Price Management + PDF Generation (Complete)
+
+**Tables:**
+- `price_list_versions` — version history
+- `price_list_items` — items per version (includes previous prices for comparison)
+- `price_list_templates` — PDF layout settings
+- `price_update_settings` — rounding prefs per tenant
+
+**Pages:**
+- `/pricing` — 3 tabs: Current Price List, Price Increase Tool (4-step wizard), Version History
+- `/pricing/templates` — template builder with live HTML preview
+- `/pricing/{version_id}/send` — bulk email UI
+
+**Price Increase Tool flow:**
+1. Select scope (entire list / category / individual items)
+2. Set percentage + tiers (standard / contractor / homeowner); multiple rules allowed (different % per category)
+3. Rounding from settings (none / nearest $1 / nearest $5 / nearest $10 / manual)
+4. Schedule with effective date
+
+**Effective date logic:**
+- Orders created ON OR AFTER effective date get new pricing
+- Orders created BEFORE effective date keep original pricing regardless of status
+- Draft orders keep old pricing
+- Activates automatically at midnight
+- Day-before reminder to admins at 8am
+- Midnight notification to all office staff
+
+**PDF Generation:**
+- weasyprint (HTML → PDF)
+- Layouts: grouped (by category) or flat; 1 or 2 column
+- Branding: logo, primary color, header/footer text
+- Layout replication: upload existing PDF → Claude analyzes structure → applies detected settings
+- Sunnycrest layout reference: 2 pages, 2-column, navy category headers, medium blue sub-category headers, logo top-left in circle, serif headers, bullet point items, right-aligned prices
+
+**Cross-tenant pricing (foundation only):**
+- Architecture placeholder in `activate_price_version()`
+- Full implementation deferred until funeral home vertical is built
+- Will use `platform_tenant_relationships`
+
+**Services:**
+- `price_increase_service.py` — `calculate_price_increase()`, `apply_price_increase()`, `activate_price_version()`
+- `price_list_pdf_service.py` — `generate_price_list_pdf()`
+- `price_activation_task.py` — midnight activation scheduler, 8am day-before reminder
+
+---
+
+#### Platform Email Infrastructure (Complete)
+
+**Tables:**
+- `platform_email_settings` — per tenant
+- `email_sends` — audit log of all emails
+
+**Sending modes:**
+- **Platform mode (default):** Resend API (`RESEND_API_KEY` in Railway); from: `noreply@mail.getbridgeable.com`; reply-to: tenant's real email
+- **SMTP mode (optional):** Tenant provides own SMTP credentials; encrypted at rest; test send verification before saving
+
+**Service:** `email_service.py`
+- `send_email()` — single email
+- `send_price_list_email()` — bulk to FH list; generates PDF once, sends to all; individual or all funeral home customers
+
+**Page:** `/settings/email`
+- Sending mode toggle, from name + reply-to config, SMTP credentials (optional), test send button, BCC preferences, email history table
+
+**Used by:** invoices, statements, legacy proofs, price lists (all email goes through this service)
+
+**ENV VARS:** `RESEND_API_KEY` (already in Railway); domain verified: `getbridgeable.com` — SPF/DKIM records in Cloudflare
+
+---
+
+#### Staging Environment (Complete)
+
+**Railway staging environment** — created by duplicating production, separate PostgreSQL instance.
+
+| Service | URL |
+|---------|-----|
+| Backend | `sunnycresterp-staging.up.railway.app` |
+| Frontend | `determined-renewal-staging.up.railway.app` |
+| Postgres | Separate staging DB |
+
+**Migration status:** `z9g4h5i6j7k8` (head)
+
+**Seed data** (`backend/scripts/seed_staging.py`):
+- Tenant: `staging-test-001` / Test Vault Co
+- Users: admin, office, driver, production (passwords: `TestAdmin123!` etc.)
+- 8 company entities (5 FH + 3 cemeteries)
+- 10 contacts, 25 products across 6 categories
+- 10 orders in various states, 3 invoices (paid/outstanding/overdue)
+- 1 active price list version, 5 KB categories + 1 manual doc
+
+**Test suites:**
+
+| Suite | File | Results |
+|-------|------|---------|
+| API | `backend/tests/test_comprehensive.py` | 43/44 passed, 1 skipped |
+| E2E | `frontend/tests/e2e/comprehensive.spec.ts` | 42/43 passed, 1 flaky |
+
+```bash
+# Run API tests
+cd backend && source .venv/bin/activate
+python3 -m pytest tests/test_comprehensive.py -v --tb=short
+
+# Run E2E tests
+cd frontend && npx playwright test --project=chromium
+```
+
+**Known staging quirk:** Tenant slug not auto-detected from Railway URL — use `?slug=testco` query parameter on first visit (persists to localStorage automatically). Fixed in codebase: `frontend/src/lib/tenant.ts` bootstraps slug from `?slug=` param.
+
+---
+
+#### CRM Visibility Bug Fix (April 7, 2026)
+
+**Bug:** `crm_visibility_service.py` `never_visible` filter hid records where `customer_type IS NULL` — even when `is_funeral_home=True` or `is_cemetery=True`. This caused all company entities without an explicit `customer_type` to be invisible in the CRM.
+
+**Fix:** Added role flag guards (`is_funeral_home`, `is_cemetery`, `is_licensee`, `is_crematory`, `is_vendor`) to the unclassified exclusion in all 3 functions: `get_crm_visible_filter()`, `get_hidden_count()`, `get_hidden_companies()`. Records with role flags are no longer treated as "unclassified."
+
+**Impact:** Affected any tenant where company_entities were created with role flags but without `customer_type` set. Staging data patched (28 FH + 255 cemetery entities).
+
+---
+
+#### Production Status
+
+**Sunnycrest is live at:** `sunnycrest.getbridgeable.com`
+
+- Go-live date: April 7, 2026
+- First tenant: Sunnycrest Vault (James Atkinson)
+- Migration head: `z9g4h5i6j7k8`
+
+**All core features production-ready:**
+- ✅ Order management
+- ✅ Invoice + AR system
+- ✅ CRM (`company_entities`)
+- ✅ Cemetery system
+- ✅ Call Intelligence (RC connected)
+- ✅ Knowledge Base
+- ✅ Price Management
+- ✅ Platform Email (Resend)
+- ✅ Morning Briefing
+- ✅ Onboarding checklist
+- ✅ Staging environment + test suites
+
+**Next build focus:** Funeral Home vertical — Phase FH-1 prompts ready. Key dependency: 70-field case file data model (design with AI Arrangement Scribe in mind from day one).
