@@ -724,6 +724,57 @@ def _build_safety_compliance_context(
         }
 
 
+def _build_call_summary(db: Session, company_id: str) -> dict:
+    """Build yesterday's call summary for the morning briefing."""
+    try:
+        from app.models.ringcentral_call_log import RingCentralCallLog
+        from app.models.ringcentral_call_extraction import RingCentralCallExtraction
+    except ImportError:
+        return {}
+
+    yesterday = date.today() - timedelta(days=1)
+    yesterday_start = datetime.combine(yesterday, datetime.min.time()).replace(tzinfo=timezone.utc)
+    yesterday_end = datetime.combine(yesterday + timedelta(days=1), datetime.min.time()).replace(tzinfo=timezone.utc)
+
+    try:
+        base = db.query(RingCentralCallLog).filter(
+            RingCentralCallLog.tenant_id == company_id,
+            RingCentralCallLog.started_at >= yesterday_start,
+            RingCentralCallLog.started_at < yesterday_end,
+        )
+
+        total_calls = base.count()
+        if total_calls == 0:
+            return {}
+
+        answered = base.filter(RingCentralCallLog.call_status == "completed").count()
+        missed = base.filter(RingCentralCallLog.call_status == "missed").count()
+        voicemails = base.filter(RingCentralCallLog.call_status == "voicemail").count()
+        orders_created = base.filter(RingCentralCallLog.order_created.is_(True)).count()
+
+        # Calls still needing follow-up: missed + voicemails without orders
+        followup_needed = (
+            base.filter(
+                RingCentralCallLog.call_status.in_(["missed", "voicemail"]),
+                RingCentralCallLog.order_created.is_(False),
+            ).count()
+        )
+
+        return {
+            "calls_yesterday": {
+                "total": total_calls,
+                "answered": answered,
+                "missed": missed,
+                "voicemails": voicemails,
+                "orders_created": orders_created,
+                "followup_needed": followup_needed,
+            }
+        }
+    except Exception as e:
+        logger.debug("Call summary build failed: %s", e)
+        return {}
+
+
 def _build_executive_context(
     db: Session, company_id: str
 ) -> dict:
@@ -787,12 +838,15 @@ def _build_executive_context(
             .scalar()
         ) or 0
 
+        call_summary = _build_call_summary(db, company_id)
+
         return {
             "revenue_this_week": str(revenue_week),
             "outstanding_ar": str(outstanding_ar),
             "today_delivery_count": today_deliveries,
             "active_orders": active_orders,
             "sync_errors_24h": sync_errors_24h,
+            **call_summary,
         }
     except Exception as e:
         logger.warning("Error building executive context: %s", e)

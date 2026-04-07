@@ -15,6 +15,7 @@ from app.api.routes import (
     ai_settings,
     ancillary_orders,
     announcements,
+    call_intelligence,
     driver_announcements,
     ap,
     api_keys,
@@ -156,6 +157,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     billing_groups.router, prefix="/billing-groups", tags=["Billing Groups"]
+)
+v1_router.include_router(
+    call_intelligence.router,
+    prefix="/integrations/ringcentral",
+    tags=["Call Intelligence"],
 )
 v1_router.include_router(
     bom.router, prefix="/bom", tags=["Bill of Materials"]

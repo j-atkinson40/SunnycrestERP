@@ -244,6 +244,8 @@ from app.models.website_intelligence import TenantWebsiteIntelligence, WebsiteIn
 from app.models.legacy_email_settings import LegacyEmailSettings, LegacyFHEmailConfig
 from app.models.legacy_proof import LegacyProof, LegacyProofVersion, LegacyProofPhoto
 from app.models.legacy_settings import LegacySettings, LegacyPrintShopContact
+from app.models.ringcentral_call_log import RingCentralCallLog
+from app.models.ringcentral_call_extraction import RingCentralCallExtraction
 from app.models.order_personalization_photo import OrderPersonalizationPhoto
 from app.models.order_personalization_task import OrderPersonalizationTask
 from app.models.production_mold_config import ProductionMoldConfig
@@ -458,4 +460,6 @@ __all__ = [
     "WidgetDefinition",
     "UserWidgetLayout",
     "ExtensionWidget",
+    "RingCentralCallLog",
+    "RingCentralCallExtraction",
 ]
