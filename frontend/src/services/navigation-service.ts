@@ -78,7 +78,7 @@ function getManufacturingNav(
   settings: Record<string, unknown> = {},
   areas: Set<string> = new Set(),
   isAdmin: boolean = false,
-  extensions: Set<string> = new Set(),
+  _extensions: Set<string> = new Set(),
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
