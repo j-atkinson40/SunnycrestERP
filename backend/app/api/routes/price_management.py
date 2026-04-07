@@ -252,12 +252,16 @@ def get_rounding_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from app.services.price_increase_service import get_or_create_settings
-    s = get_or_create_settings(db, current_user.company_id)
-    return {
-        "rounding_mode": s.rounding_mode,
-        "accept_manufacturer_updates": s.accept_manufacturer_updates,
-    }
+    try:
+        from app.services.price_increase_service import get_or_create_settings
+        s = get_or_create_settings(db, current_user.company_id)
+        return {
+            "rounding_mode": s.rounding_mode,
+            "accept_manufacturer_updates": s.accept_manufacturer_updates,
+        }
+    except Exception as e:
+        logger.exception("Failed to load rounding settings")
+        return {"rounding_mode": "none", "accept_manufacturer_updates": False}
 
 
 @router.put("/settings/rounding")
@@ -266,12 +270,16 @@ def update_rounding_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from app.services.price_increase_service import update_settings
-    s = update_settings(db, current_user.company_id, body.model_dump())
-    return {
-        "rounding_mode": s.rounding_mode,
-        "accept_manufacturer_updates": s.accept_manufacturer_updates,
-    }
+    try:
+        from app.services.price_increase_service import update_settings
+        s = update_settings(db, current_user.company_id, body.model_dump())
+        return {
+            "rounding_mode": s.rounding_mode,
+            "accept_manufacturer_updates": s.accept_manufacturer_updates,
+        }
+    except Exception as e:
+        logger.exception("Failed to update rounding settings")
+        raise HTTPException(500, str(e))
 
 
 # ── PDF Templates ────────────────────────────────────────────────────────
@@ -281,9 +289,13 @@ def list_templates(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from app.services.price_list_pdf_service import get_templates
-    templates = get_templates(db, current_user.company_id)
-    return [_serialize_template(t) for t in templates]
+    try:
+        from app.services.price_list_pdf_service import get_templates
+        templates = get_templates(db, current_user.company_id)
+        return [_serialize_template(t) for t in templates]
+    except Exception:
+        logger.exception("Failed to load templates")
+        return []
 
 
 @router.post("/templates")
@@ -354,9 +366,19 @@ def get_email_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from app.services.platform_email_service import get_or_create_email_settings
-    s = get_or_create_email_settings(db, current_user.company_id)
-    return _serialize_email_settings(s)
+    try:
+        from app.services.platform_email_service import get_or_create_email_settings
+        s = get_or_create_email_settings(db, current_user.company_id)
+        return _serialize_email_settings(s)
+    except Exception:
+        logger.exception("Failed to load email settings")
+        return {
+            "id": "", "sending_mode": "platform", "from_name": None,
+            "reply_to_email": None, "smtp_host": None, "smtp_port": 587,
+            "smtp_username": None, "smtp_use_tls": True, "smtp_from_email": None,
+            "smtp_verified": False, "smtp_verified_at": None,
+            "invoice_bcc_email": None, "price_list_bcc_email": None,
+        }
 
 
 @router.put("/settings/email")
@@ -389,8 +411,12 @@ def list_email_sends(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from app.services.platform_email_service import get_email_sends
-    sends = get_email_sends(db, current_user.company_id, limit, offset, email_type)
+    try:
+        from app.services.platform_email_service import get_email_sends
+        sends = get_email_sends(db, current_user.company_id, limit, offset, email_type)
+    except Exception:
+        logger.exception("Failed to load email sends")
+        return []
     return [{
         "id": s.id,
         "email_type": s.email_type,
