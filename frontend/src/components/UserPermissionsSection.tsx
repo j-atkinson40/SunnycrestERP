@@ -5,8 +5,6 @@ import { permissionService } from "@/services/permission-service";
 import type {
   CustomPermission,
   PermissionAuditEntry,
-  PermissionCategory,
-  RoleWithPermissions,
   UserPermissionDetails,
 } from "@/services/permission-service";
 import { Button } from "@/components/ui/button";
