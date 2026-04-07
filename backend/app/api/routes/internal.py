@@ -98,9 +98,9 @@ def preview_auto_delivery(
 ):
     """Preview which orders are eligible for auto-delivery today."""
     from datetime import date
-    from sqlalchemy import func
     from app.models.sales_order import SalesOrder
     from app.models.invoice import Invoice
+    from app.models.customer import Customer
 
     today = date.today()
     tenant_id = current_user.company_id
@@ -119,11 +119,14 @@ def preview_auto_delivery(
             SalesOrder.company_id == tenant_id,
             ~SalesOrder.status.in_(skip_statuses),
             SalesOrder.status.in_(["confirmed", "processing", "shipped", "delivered"]),
-            (SalesOrder.order_type == "funeral") | (SalesOrder.order_type.is_(None)),
         )
         .order_by(SalesOrder.scheduled_date.asc().nullslast())
         .all()
     )
+
+    # Batch load customer names
+    cust_ids = {o.customer_id for o in all_orders if o.customer_id}
+    customers = {c.id: c.name for c in db.query(Customer).filter(Customer.id.in_(cust_ids)).all()} if cust_ids else {}
 
     eligible = []
     ineligible = []
@@ -132,7 +135,7 @@ def preview_auto_delivery(
         info = {
             "order_id": o.id,
             "order_number": o.number,
-            "customer_name": o.customer_name,
+            "customer_name": customers.get(o.customer_id, "Unknown"),
             "scheduled_date": str(o.scheduled_date) if o.scheduled_date else None,
             "required_date": str(o.required_date) if o.required_date else None,
             "status": o.status,
@@ -144,14 +147,12 @@ def preview_auto_delivery(
             eligible.append({**info, "reason_eligible": f"scheduled_date {o.scheduled_date} <= today"})
         elif o.scheduled_date and o.scheduled_date > today:
             ineligible.append({**info, "reason_skipped": f"scheduled for {o.scheduled_date} (future)"})
-        elif o.required_date and func.date(o.required_date) is not None:
-            req_date = o.required_date if isinstance(o.required_date, date) else None
-            if req_date and req_date <= today:
+        elif o.required_date:
+            req_date = o.required_date.date() if hasattr(o.required_date, "date") else o.required_date
+            if req_date <= today:
                 eligible.append({**info, "reason_eligible": f"required_date {req_date} <= today (no scheduled_date)"})
-            elif req_date:
-                ineligible.append({**info, "reason_skipped": f"required_date {req_date} is future"})
             else:
-                ineligible.append({**info, "reason_skipped": "no scheduled_date set"})
+                ineligible.append({**info, "reason_skipped": f"required_date {req_date} is future"})
         else:
             ineligible.append({**info, "reason_skipped": "no scheduled_date or required_date set"})
 
