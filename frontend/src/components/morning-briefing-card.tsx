@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { X, RefreshCw, Check, ChevronRight, Pin, AlertTriangle, FileText } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { X, RefreshCw, Check, ChevronRight, Pin, AlertTriangle, FileText, Eye, CreditCard, Send, CheckCircle, BookOpen, Clock, Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { RecordPaymentDialog } from "@/components/record-payment-dialog";
+import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 
 // ── Types ──
@@ -165,6 +168,342 @@ function sortAnnouncements(items: AnnouncementItem[]): AnnouncementItem[] {
   });
 }
 
+// ── Action Items Types ──
+
+interface ActionItemOrder {
+  delivery_id: string;
+  order_id: string | null;
+  order_number: string | null;
+  customer_name: string | null;
+  deceased_name: string | null;
+  cemetery_name: string | null;
+  service_time: string | null;
+  status: string;
+  priority: string | null;
+  assigned_driver_id: string | null;
+}
+
+interface ActionItemInvoice {
+  id: string;
+  number: string;
+  customer_id: string;
+  customer_name: string | null;
+  total: string;
+  amount_paid: string;
+  balance_remaining: string;
+  days_overdue: number;
+  due_date: string | null;
+  has_email: boolean;
+}
+
+interface ActionItemDraft {
+  id: string;
+  number: string;
+  customer_name: string | null;
+  total: string;
+  has_exceptions: boolean;
+  created_at: string | null;
+}
+
+interface ActionItems {
+  orders_due_today: ActionItemOrder[];
+  overdue_invoices: ActionItemInvoice[];
+  draft_invoices: ActionItemDraft[];
+  kb_recommendation: { show: boolean; document_count: number } | null;
+}
+
+function fmtCurrency(n: string | number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n));
+}
+
+// ── BriefingActionItems sub-component ──
+
+function BriefingActionItems({ items, onRefresh }: { items: ActionItems; onRefresh: () => void }) {
+  const navigate = useNavigate();
+  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string; invoiceId: string } | null>(null);
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+  const [approvingInvoiceId, setApprovingInvoiceId] = useState<string | null>(null);
+
+  const handleSendInvoice = async (invoiceId: string) => {
+    setSendingInvoiceId(invoiceId);
+    try {
+      await apiClient.post(`/sales/invoices/${invoiceId}/send`);
+      toast.success("Invoice sent");
+      onRefresh();
+    } catch {
+      toast.error("Failed to send invoice");
+    } finally {
+      setSendingInvoiceId(null);
+    }
+  };
+
+  const handleApproveAndSend = async (invoiceId: string) => {
+    setApprovingInvoiceId(invoiceId);
+    try {
+      await apiClient.post(`/sales/invoices/${invoiceId}/approve`);
+      try {
+        await apiClient.post(`/sales/invoices/${invoiceId}/send`);
+        toast.success("Invoice approved and sent");
+      } catch {
+        toast.success("Invoice approved (email send failed — send manually)");
+      }
+      onRefresh();
+    } catch {
+      toast.error("Failed to approve invoice");
+    } finally {
+      setApprovingInvoiceId(null);
+    }
+  };
+
+  const hasContent =
+    items.orders_due_today.length > 0 ||
+    items.overdue_invoices.length > 0 ||
+    items.draft_invoices.length > 0 ||
+    items.kb_recommendation?.show;
+
+  if (!hasContent) return null;
+
+  return (
+    <>
+      <div className="mt-4 pt-3 border-t border-gray-100 space-y-4">
+        {/* Orders Due Today */}
+        {items.orders_due_today.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Truck className="h-3.5 w-3.5 text-blue-600" />
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Orders Due Today
+              </h4>
+              <Badge variant="secondary" className="text-[10px] ml-1">
+                {items.orders_due_today.length}
+              </Badge>
+            </div>
+            <div className="space-y-1.5">
+              {items.orders_due_today.map((order) => (
+                <div
+                  key={order.delivery_id}
+                  className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-gray-50 group"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {order.order_number || "Delivery"}
+                      </span>
+                      {order.service_time && (
+                        <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                          <Clock className="h-3 w-3" />
+                          {order.service_time}
+                        </span>
+                      )}
+                      {!order.assigned_driver_id && (
+                        <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                          No driver
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">
+                      {[order.customer_name, order.deceased_name, order.cemetery_name]
+                        .filter(Boolean)
+                        .join(" — ")}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    onClick={() => navigate(order.order_id ? `/ar/orders/${order.order_id}` : "/scheduling")}
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Overdue Invoices */}
+        {items.overdue_invoices.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <CreditCard className="h-3.5 w-3.5 text-red-600" />
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Overdue Invoices
+              </h4>
+              <Badge variant="secondary" className="text-[10px] ml-1 border-red-200 text-red-700 bg-red-50">
+                {items.overdue_invoices.length}
+              </Badge>
+            </div>
+            <div className="space-y-1.5">
+              {items.overdue_invoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-gray-50 group"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        to={`/ar/invoices/${inv.id}`}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {inv.number}
+                      </Link>
+                      <span className="text-xs text-gray-500">{inv.customer_name}</span>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[10px]",
+                          inv.days_overdue > 60
+                            ? "border-red-300 text-red-700"
+                            : inv.days_overdue > 30
+                              ? "border-amber-300 text-amber-700"
+                              : "border-yellow-300 text-yellow-700",
+                        )}
+                      >
+                        {inv.days_overdue}d overdue
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Balance: {fmtCurrency(inv.balance_remaining)}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setPaymentTarget({
+                        id: inv.customer_id,
+                        name: inv.customer_name || "Customer",
+                        invoiceId: inv.id,
+                      })}
+                    >
+                      <CreditCard className="h-3 w-3 mr-1" />
+                      Pay
+                    </Button>
+                    {inv.has_email && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={sendingInvoiceId === inv.id}
+                        onClick={() => handleSendInvoice(inv.id)}
+                      >
+                        <Send className="h-3 w-3 mr-1" />
+                        {sendingInvoiceId === inv.id ? "..." : "Send"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Draft Invoices */}
+        {items.draft_invoices.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <FileText className="h-3.5 w-3.5 text-gray-600" />
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Draft Invoices
+              </h4>
+              <Badge variant="secondary" className="text-[10px] ml-1">
+                {items.draft_invoices.length}
+              </Badge>
+            </div>
+            <div className="space-y-1.5">
+              {items.draft_invoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-gray-50 group"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        to={`/ar/invoices/${inv.id}`}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {inv.number}
+                      </Link>
+                      <span className="text-xs text-gray-500">{inv.customer_name}</span>
+                      <span className="text-xs font-medium text-gray-700">{fmtCurrency(inv.total)}</span>
+                      {inv.has_exceptions && (
+                        <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                          Exceptions
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => navigate(`/ar/invoices/${inv.id}`)}
+                    >
+                      <Eye className="h-3 w-3 mr-1" />
+                      Review
+                    </Button>
+                    {!inv.has_exceptions && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={approvingInvoiceId === inv.id}
+                        onClick={() => handleApproveAndSend(inv.id)}
+                      >
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        {approvingInvoiceId === inv.id ? "..." : "Approve & Send"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* KB Recommendation */}
+        {items.kb_recommendation?.show && (
+          <div className="flex items-center gap-3 py-2 px-2 rounded-md bg-indigo-50/50">
+            <BookOpen className="h-4 w-4 text-indigo-600 shrink-0" />
+            <p className="text-sm text-gray-700 flex-1">
+              {items.kb_recommendation.document_count === 0
+                ? "Upload documents to your Knowledge Base to power Call Intelligence."
+                : `Your Knowledge Base has ${items.kb_recommendation.document_count} documents — add more for better call assistance.`}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs shrink-0"
+              onClick={() => navigate("/knowledge-base")}
+            >
+              <BookOpen className="h-3 w-3 mr-1" />
+              Open KB
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Payment Dialog */}
+      {paymentTarget && (
+        <RecordPaymentDialog
+          open={!!paymentTarget}
+          onClose={() => setPaymentTarget(null)}
+          onSuccess={() => {
+            setPaymentTarget(null);
+            onRefresh();
+          }}
+          customerId={paymentTarget.id}
+          customerName={paymentTarget.name}
+          defaultInvoiceId={paymentTarget.invoiceId}
+        />
+      )}
+    </>
+  );
+}
+
 // ── Component ──
 
 export function MorningBriefingCard() {
@@ -182,6 +521,9 @@ export function MorningBriefingCard() {
   const autoDismissTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoDismissTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // Action items (structured data with entity IDs)
+  const [actionItems, setActionItems] = useState<ActionItems | null>(null);
 
   // AI-enhanced briefing items
   const [aiNarrative, setAiNarrative] = useState<string | null>(null);
@@ -245,17 +587,27 @@ export function MorningBriefingCard() {
     }
   }, []);
 
+  // Fetch action items
+  const fetchActionItems = useCallback(async () => {
+    try {
+      const res = await apiClient.get<ActionItems>("/briefings/action-items");
+      setActionItems(res.data);
+    } catch {
+      setActionItems(null);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await Promise.all([fetchBriefing(), fetchAnnouncements()]);
+      await Promise.all([fetchBriefing(), fetchAnnouncements(), fetchActionItems()]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [fetchBriefing, fetchAnnouncements]);
+  }, [fetchBriefing, fetchAnnouncements, fetchActionItems]);
 
   // Mark unread announcements as read (fire-and-forget)
   useEffect(() => {
@@ -779,6 +1131,11 @@ export function MorningBriefingCard() {
             );
           })}
         </div>
+
+        {/* Action Items */}
+        {actionItems && (
+          <BriefingActionItems items={actionItems} onRefresh={fetchActionItems} />
+        )}
 
         {/* Footer / Refresh */}
         <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">

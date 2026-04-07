@@ -1,5 +1,5 @@
 // knowledge-base.tsx — Knowledge Base management page.
-// Category grid, document management, pricing entries, and upload flow.
+// Category grid, document management, pricing entries, upload flow, and drag-and-drop.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import apiClient from "@/lib/api-client";
@@ -23,6 +23,8 @@ import {
   Trash2,
   RotateCcw,
   Loader2,
+  FolderUp,
+  X,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -89,6 +91,163 @@ function CategoryIcon({ icon, className }: { icon: string | null; className?: st
 }
 
 // ---------------------------------------------------------------------------
+// Drag-and-drop helpers
+// ---------------------------------------------------------------------------
+
+const ALLOWED_EXTENSIONS = new Set(["pdf", "docx", "csv", "txt"]);
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+function getFileExtension(filename: string): string {
+  return filename.split(".").pop()?.toLowerCase() || "";
+}
+
+function validateDroppedFile(file: File): string | null {
+  const ext = getFileExtension(file.name);
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return `"${file.name}" is not a supported file type. Use PDF, DOCX, CSV, or TXT.`;
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    return `"${file.name}" exceeds the 10 MB size limit.`;
+  }
+  return null;
+}
+
+/** Detect the most likely KB category based on filename patterns. */
+function detectCategory(
+  filename: string,
+  categories: KBCategory[],
+): { category: KBCategory; confidence: "high" | "medium" | "low" } | null {
+  const lower = filename.toLowerCase();
+
+  // Price patterns → Pricing category
+  if (/price|pricing|rate\s?sheet|rate\s?card|price\s?list|cost/i.test(lower)) {
+    const cat = categories.find((c) => c.slug === "pricing" || c.name.toLowerCase().includes("pricing"));
+    if (cat) return { category: cat, confidence: "high" };
+  }
+
+  // Product spec patterns → Product Specs
+  if (/spec|dimension|weight|material|product\s?info|catalog|datasheet/i.test(lower)) {
+    const cat = categories.find((c) => c.slug === "product_specs" || c.name.toLowerCase().includes("spec"));
+    if (cat) return { category: cat, confidence: "high" };
+  }
+
+  // Policy patterns → Company Policies
+  if (/policy|policies|procedure|handbook|manual|guidelines|terms/i.test(lower)) {
+    const cat = categories.find((c) => c.slug === "company_policies" || c.name.toLowerCase().includes("polic"));
+    if (cat) return { category: cat, confidence: "high" };
+  }
+
+  // Cemetery patterns → Cemetery Policies
+  if (/cemetery|burial|interment|plot|section|grave/i.test(lower)) {
+    const cat = categories.find((c) => c.slug === "cemetery_policies" || c.name.toLowerCase().includes("cemetery"));
+    if (cat) return { category: cat, confidence: "high" };
+  }
+
+  // Personalization patterns
+  if (/personali[sz]|engrav|custom|emblem|panel|medallion/i.test(lower)) {
+    const cat = categories.find((c) => c.slug === "personalization_options" || c.name.toLowerCase().includes("personal"));
+    if (cat) return { category: cat, confidence: "medium" };
+  }
+
+  return null;
+}
+
+/** Drag overlay component */
+function DropOverlay({
+  active,
+  categoryName,
+}: {
+  active: boolean;
+  categoryName?: string;
+}) {
+  if (!active) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-indigo-600/10 backdrop-blur-sm pointer-events-none">
+      <div className="rounded-2xl border-2 border-dashed border-indigo-400 bg-white/90 p-10 text-center shadow-xl">
+        <FolderUp className="h-12 w-12 text-indigo-500 mx-auto mb-3" />
+        <p className="text-lg font-semibold text-gray-900">
+          {categoryName ? `Drop to upload to ${categoryName}` : "Drop file to upload"}
+        </p>
+        <p className="text-sm text-muted-foreground mt-1">
+          PDF, DOCX, CSV, or TXT — up to 10 MB
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Category picker modal for dropped files on the main page */
+function CategoryPickerModal({
+  file,
+  categories,
+  detectedCategory,
+  onSelect,
+  onCancel,
+}: {
+  file: File;
+  categories: KBCategory[];
+  detectedCategory: { category: KBCategory; confidence: string } | null;
+  onSelect: (categoryId: string) => void;
+  onCancel: () => void;
+}) {
+  const uploadCategories = categories.filter((c) => c.slug !== "pricing");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="rounded-xl bg-white p-6 shadow-xl max-w-md w-full mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Choose a Category</h3>
+          <button
+            onClick={onCancel}
+            className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground mb-1">
+          Uploading: <span className="font-medium text-gray-900">{file.name}</span>
+        </p>
+        {detectedCategory && (
+          <p className="text-sm text-indigo-600 mb-3">
+            Suggested: <span className="font-semibold">{detectedCategory.category.name}</span>
+          </p>
+        )}
+        <div className="space-y-1.5 max-h-64 overflow-y-auto mt-3">
+          {/* Show detected category first if available */}
+          {detectedCategory && (
+            <button
+              onClick={() => onSelect(detectedCategory.category.id)}
+              className="w-full text-left rounded-lg border-2 border-indigo-300 bg-indigo-50 p-3 hover:bg-indigo-100 transition-colors flex items-center gap-3"
+            >
+              <CategoryIcon icon={detectedCategory.category.icon} className="h-5 w-5 text-indigo-600" />
+              <div>
+                <p className="font-medium text-sm">{detectedCategory.category.name}</p>
+                <p className="text-xs text-indigo-600">Recommended</p>
+              </div>
+            </button>
+          )}
+          {uploadCategories
+            .filter((c) => !detectedCategory || c.id !== detectedCategory.category.id)
+            .map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => onSelect(cat.id)}
+                className="w-full text-left rounded-lg border p-3 hover:bg-gray-50 transition-colors flex items-center gap-3"
+              >
+                <CategoryIcon icon={cat.icon} className="h-5 w-5 text-indigo-600" />
+                <div>
+                  <p className="font-medium text-sm">{cat.name}</p>
+                  <p className="text-xs text-muted-foreground">{cat.document_count} docs</p>
+                </div>
+              </button>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -104,6 +263,38 @@ export default function KnowledgeBasePage() {
   const [pricingSearch, setPricingSearch] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drag-and-drop state
+  const [dragActive, setDragActive] = useState(false);
+  const [pendingDrop, setPendingDrop] = useState<{
+    file: File;
+    detected: { category: KBCategory; confidence: string } | null;
+  } | null>(null);
+  const dragCounter = useRef(0);
+
+  // Drag-and-drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer?.types.includes("Files")) {
+      setDragActive(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
 
   // Fetch categories (backend auto-seeds on first access)
   const loadCategories = useCallback(async () => {
@@ -220,6 +411,72 @@ export default function KnowledgeBasePage() {
     }
   };
 
+  // Drag-and-drop upload
+  const uploadFileToCategory = useCallback(
+    async (file: File, categoryId: string) => {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        await apiClient.post(
+          `/knowledge-base/documents/upload?category_id=${categoryId}&title=${encodeURIComponent(file.name)}`,
+          formData,
+          { headers: { "Content-Type": "multipart/form-data" } },
+        );
+        toast.success(`"${file.name}" uploaded and parsed`);
+        if (selectedCategory) {
+          loadDocuments(selectedCategory.id);
+        }
+        loadCategories();
+      } catch {
+        toast.error(`Failed to upload "${file.name}"`);
+      } finally {
+        setUploading(false);
+      }
+    },
+    [selectedCategory, loadDocuments, loadCategories],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter.current = 0;
+      setDragActive(false);
+
+      const files = Array.from(e.dataTransfer?.files || []);
+      if (files.length === 0) return;
+
+      const file = files[0];
+      const error = validateDroppedFile(file);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+
+      // In document view → upload directly to selected category
+      if (viewMode === "documents" && selectedCategory) {
+        uploadFileToCategory(file, selectedCategory.id);
+        return;
+      }
+
+      // On main categories page → detect category and show picker
+      const detected = detectCategory(file.name, categories);
+      setPendingDrop({ file, detected });
+    },
+    [viewMode, selectedCategory, categories, uploadFileToCategory],
+  );
+
+  const handleCategoryPick = useCallback(
+    (categoryId: string) => {
+      if (!pendingDrop) return;
+      uploadFileToCategory(pendingDrop.file, categoryId);
+      setPendingDrop(null);
+    },
+    [pendingDrop, uploadFileToCategory],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -229,13 +486,36 @@ export default function KnowledgeBasePage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div
+      className="space-y-6 p-6 relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      <DropOverlay
+        active={dragActive}
+        categoryName={viewMode === "documents" && selectedCategory ? selectedCategory.name : undefined}
+      />
+
+      {/* Category picker modal for dropped files */}
+      {pendingDrop && (
+        <CategoryPickerModal
+          file={pendingDrop.file}
+          categories={categories}
+          detectedCategory={pendingDrop.detected}
+          onSelect={handleCategoryPick}
+          onCancel={() => setPendingDrop(null)}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Knowledge Base</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Upload documents to power Call Intelligence with product pricing, specs,
-            and company policies.
+            and company policies. Drag and drop files anywhere on this page.
           </p>
         </div>
       </div>

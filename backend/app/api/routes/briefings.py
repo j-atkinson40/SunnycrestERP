@@ -187,6 +187,173 @@ def refresh_briefing(
     )
 
 
+@router.get("/action-items")
+def get_action_items(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return structured actionable items for the morning briefing.
+
+    Unlike the AI-generated briefing text, these are real database records
+    with entity IDs so the frontend can render action buttons (View, Pay,
+    Send, Approve, etc.).
+    """
+    from datetime import datetime, timedelta, timezone
+    from decimal import Decimal
+    from sqlalchemy import func
+    from app.models.invoice import Invoice
+    from app.models.sales_order import SalesOrder
+    from app.models.customer import Customer
+    from app.models.delivery import Delivery
+
+    company_id = current_user.company_id
+    today = date.today()
+    now = datetime.now(timezone.utc)
+
+    # 1. Orders due today (deliveries scheduled for today)
+    orders_due_today = []
+    try:
+        deliveries = (
+            db.query(Delivery)
+            .filter(
+                Delivery.company_id == company_id,
+                Delivery.requested_date == today,
+                Delivery.status != "cancelled",
+            )
+            .all()
+        )
+        for d in deliveries:
+            customer_name = None
+            if d.customer_id:
+                cust = db.query(Customer.name).filter(Customer.id == d.customer_id).first()
+                customer_name = cust[0] if cust else None
+
+            # Try to get order details
+            order_number = None
+            deceased_name = None
+            cemetery_name = None
+            service_time = None
+            order_id = None
+            if d.sales_order_id:
+                order = db.query(SalesOrder).filter(SalesOrder.id == d.sales_order_id).first()
+                if order:
+                    order_id = order.id
+                    order_number = order.number
+                    deceased_name = getattr(order, "deceased_name", None)
+                    service_time = str(order.service_time) if getattr(order, "service_time", None) else None
+                    if getattr(order, "cemetery", None):
+                        cemetery_name = order.cemetery.name
+
+            orders_due_today.append({
+                "delivery_id": d.id,
+                "order_id": order_id,
+                "order_number": order_number,
+                "customer_name": customer_name,
+                "deceased_name": deceased_name,
+                "cemetery_name": cemetery_name,
+                "service_time": service_time,
+                "status": d.status,
+                "priority": d.priority,
+                "assigned_driver_id": d.assigned_driver_id,
+            })
+    except Exception as e:
+        logger.warning("Error fetching orders due today: %s", e)
+
+    # 2. Overdue invoices
+    overdue_invoices = []
+    try:
+        invoices = (
+            db.query(Invoice)
+            .filter(
+                Invoice.company_id == company_id,
+                Invoice.status.in_(["sent", "partial", "overdue", "open"]),
+                Invoice.due_date < now,
+            )
+            .order_by(Invoice.due_date.asc())
+            .limit(10)
+            .all()
+        )
+        for inv in invoices:
+            remaining = float(inv.total - inv.amount_paid) if inv.total and inv.amount_paid is not None else float(inv.total or 0)
+            if remaining <= 0:
+                continue
+            days_overdue = (now - inv.due_date).days if inv.due_date else 0
+            customer_name = None
+            customer_id = inv.customer_id
+            if customer_id:
+                cust = db.query(Customer.name).filter(Customer.id == customer_id).first()
+                customer_name = cust[0] if cust else None
+
+            overdue_invoices.append({
+                "id": inv.id,
+                "number": inv.number,
+                "customer_id": customer_id,
+                "customer_name": customer_name,
+                "total": str(inv.total),
+                "amount_paid": str(inv.amount_paid or 0),
+                "balance_remaining": f"{remaining:.2f}",
+                "days_overdue": days_overdue,
+                "due_date": inv.due_date.isoformat() if inv.due_date else None,
+                "has_email": bool(
+                    db.query(Customer.email)
+                    .filter(Customer.id == customer_id)
+                    .first()
+                ) if customer_id else False,
+            })
+    except Exception as e:
+        logger.warning("Error fetching overdue invoices: %s", e)
+
+    # 3. Draft invoices pending review
+    draft_invoices = []
+    try:
+        drafts = (
+            db.query(Invoice)
+            .filter(
+                Invoice.company_id == company_id,
+                Invoice.status == "draft",
+            )
+            .order_by(Invoice.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        for inv in drafts:
+            customer_name = None
+            if inv.customer_id:
+                cust = db.query(Customer.name).filter(Customer.id == inv.customer_id).first()
+                customer_name = cust[0] if cust else None
+
+            draft_invoices.append({
+                "id": inv.id,
+                "number": inv.number,
+                "customer_name": customer_name,
+                "total": str(inv.total),
+                "has_exceptions": bool(getattr(inv, "has_exceptions", False)),
+                "created_at": inv.created_at.isoformat() if inv.created_at else None,
+            })
+    except Exception as e:
+        logger.warning("Error fetching draft invoices: %s", e)
+
+    # 4. KB recommendation
+    kb_recommendation = None
+    try:
+        from app.models.kb_document import KBDocument
+        doc_count = db.query(func.count(KBDocument.id)).filter(
+            KBDocument.tenant_id == company_id,
+            KBDocument.is_active == True,  # noqa: E712
+        ).scalar() or 0
+        if doc_count < 3:
+            kb_recommendation = {"show": True, "document_count": doc_count}
+    except Exception:
+        pass
+
+    return {
+        "orders_due_today": orders_due_today,
+        "overdue_invoices": overdue_invoices,
+        "draft_invoices": draft_invoices,
+        "kb_recommendation": kb_recommendation,
+    }
+
+
 @router.get("/briefing/settings", response_model=BriefingSettingsOut)
 def get_briefing_settings(
     current_user: User = Depends(get_current_user),
