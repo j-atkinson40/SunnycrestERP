@@ -18,6 +18,7 @@ from app.api.routes import (
     call_intelligence,
     driver_announcements,
     knowledge_base,
+    price_management,
     ap,
     api_keys,
     audit,
@@ -348,6 +349,11 @@ v1_router.include_router(
     knowledge_base.router,
     prefix="/knowledge-base",
     tags=["Knowledge Base"],
+)
+v1_router.include_router(
+    price_management.router,
+    prefix="/price-management",
+    tags=["Price Management"],
 )
 v1_router.include_router(
     operations_board.router,

@@ -107,6 +107,11 @@ function getManufacturingNav(
       icon: "BookOpen",
     },
     {
+      label: "Price Management",
+      href: "/price-management",
+      icon: "DollarSign",
+    },
+    {
       label: "Orders",
       href: "/ar/orders",
       icon: "ClipboardList",

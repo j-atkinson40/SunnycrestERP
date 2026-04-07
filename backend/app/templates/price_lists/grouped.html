@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ title }}</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0.6in 0.65in 0.8in 0.65in;
+    @bottom-center {
+      {% if show_page_numbers %}
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 8pt;
+      color: #888;
+      {% endif %}
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: {{ font_family }}, Helvetica, Arial, sans-serif;
+    font-size: 9.5pt;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+
+  /* ── Header ────────────────────────────────────────────── */
+  .header {
+    background: {{ primary_color }};
+    color: #ffffff;
+    padding: 18pt 24pt 14pt;
+    margin-bottom: 16pt;
+  }
+  .header-inner { display: table; width: 100%; }
+  .header-left { display: table-cell; vertical-align: middle; width: 60%; }
+  .header-right { display: table-cell; vertical-align: middle; text-align: right; width: 40%; }
+  .header h1 { font-size: 18pt; font-weight: 700; margin-bottom: 4pt; }
+  .header p { font-size: 9pt; opacity: 0.9; }
+
+  /* ── Content ───────────────────────────────────────────── */
+  .content { padding: 0 24pt; }
+
+  .header-text {
+    font-size: 9pt;
+    color: #555;
+    margin-bottom: 14pt;
+    line-height: 1.5;
+  }
+
+  /* ── Category ──────────────────────────────────────────── */
+  .category-header {
+    background: {{ primary_color }}11;
+    border-left: 3pt solid {{ primary_color }};
+    padding: 6pt 10pt;
+    margin: 14pt 0 6pt;
+    font-weight: 700;
+    font-size: 10pt;
+    color: {{ primary_color }};
+  }
+
+  /* ── Table ─────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4pt;
+  }
+  thead th {
+    text-align: left;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    color: #666;
+    padding: 5pt 8pt;
+    border-bottom: 1.5pt solid #ddd;
+  }
+  thead th.price { text-align: right; }
+  tbody td {
+    padding: 5pt 8pt;
+    border-bottom: 0.5pt solid #eee;
+    font-size: 9pt;
+  }
+  tbody td.price {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+  }
+  tbody td.code { color: #888; font-size: 8.5pt; }
+  tbody td.desc { color: #666; font-size: 8pt; }
+  tbody td.unit { color: #888; font-size: 8pt; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+
+  /* ── Footer ────────────────────────────────────────────── */
+  .footer-text {
+    margin-top: 20pt;
+    padding-top: 10pt;
+    border-top: 1pt solid #ddd;
+    font-size: 8pt;
+    color: #888;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-inner">
+      <div class="header-left">
+        <h1>{{ title }}</h1>
+        <p>{{ company_name }}</p>
+      </div>
+      <div class="header-right">
+        {% if show_effective_date and effective_date %}
+        <p style="font-size: 9pt;">Effective: {{ effective_date }}</p>
+        {% endif %}
+        {% if version_label %}
+        <p style="font-size: 8pt; opacity: 0.8;">{{ version_label }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    {% if header_text %}
+    <div class="header-text">{{ header_text }}</div>
+    {% endif %}
+
+    {% for category, items in grouped_items.items() %}
+      {% if show_category_headers %}
+      <div class="category-header">{{ category }}</div>
+      {% endif %}
+
+      <table>
+        <thead>
+          <tr>
+            {% if show_product_codes %}<th style="width: 12%;">Code</th>{% endif %}
+            <th>Product</th>
+            {% if show_descriptions %}<th style="width: 25%;">Description</th>{% endif %}
+            <th class="price" style="width: 12%;">Price</th>
+            {% if show_contractor_price %}<th class="price" style="width: 12%;">Contractor</th>{% endif %}
+            {% if show_homeowner_price %}<th class="price" style="width: 12%;">Homeowner</th>{% endif %}
+            <th style="width: 8%;">Unit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            {% if show_product_codes %}<td class="code">{{ item.product_code or '' }}</td>{% endif %}
+            <td>{{ item.product_name }}</td>
+            {% if show_descriptions %}<td class="desc">{{ item.description or '' }}</td>{% endif %}
+            <td class="price">{{ item.standard_price_fmt }}</td>
+            {% if show_contractor_price %}<td class="price">{{ item.contractor_price_fmt }}</td>{% endif %}
+            {% if show_homeowner_price %}<td class="price">{{ item.homeowner_price_fmt }}</td>{% endif %}
+            <td class="unit">{{ item.unit }}</td>
+          </tr>
+          {% if show_notes and item.notes %}
+          <tr>
+            <td colspan="10" class="desc" style="padding-left: 20pt; border-bottom: none;">↳ {{ item.notes }}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+
+    {% if footer_text %}
+    <div class="footer-text">{{ footer_text }}</div>
+    {% endif %}
+  </div>
+</body>
+</html>

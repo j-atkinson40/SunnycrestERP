@@ -178,6 +178,10 @@ import AccountingReviewPage from "@/pages/onboarding/accounting-review";
 import TeamDashboardPage from "@/pages/team/team-dashboard";
 import CallLogPage from "@/pages/calls/call-log";
 import KnowledgeBasePage from "@/pages/knowledge-base";
+import PriceManagementPage from "@/pages/price-management";
+import PriceManagementTemplatesPage from "@/pages/price-management-templates";
+import PriceManagementEmailSettingsPage from "@/pages/price-management-email-settings";
+import PriceManagementSendPage from "@/pages/price-management-send";
 import AlertsPage from "@/pages/alerts";
 import JournalEntriesPage from "@/pages/journal-entries";
 import TaxSettingsPage from "@/pages/settings/tax-settings";
@@ -692,6 +696,12 @@ export default function App() {
 
                   {/* Knowledge Base — any authenticated user */}
                   <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
+
+                  {/* Price Management */}
+                  <Route path="/price-management" element={<PriceManagementPage />} />
+                  <Route path="/price-management/templates" element={<PriceManagementTemplatesPage />} />
+                  <Route path="/price-management/email-settings" element={<PriceManagementEmailSettingsPage />} />
+                  <Route path="/price-management/send" element={<PriceManagementSendPage />} />
 
                   {/* Announcements — any authenticated user */}
                   <Route path="/announcements" element={<AnnouncementsPage />} />

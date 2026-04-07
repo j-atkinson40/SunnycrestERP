@@ -259,6 +259,12 @@ from app.models.vault_supplier import VaultSupplier
 from app.models.widget_definition import WidgetDefinition
 from app.models.user_widget_layout import UserWidgetLayout
 from app.models.extension_widget import ExtensionWidget
+from app.models.price_list_version import PriceListVersion
+from app.models.price_list_item import PriceListItem
+from app.models.price_list_template import PriceListTemplate
+from app.models.price_update_settings import PriceUpdateSettings
+from app.models.platform_email_settings import PlatformEmailSettings
+from app.models.email_send import EmailSend
 
 __all__ = [
     "AccountingConnection",
@@ -472,4 +478,10 @@ __all__ = [
     "KBChunk",
     "KBPricingEntry",
     "KBExtensionNotification",
+    "PriceListVersion",
+    "PriceListItem",
+    "PriceListTemplate",
+    "PriceUpdateSettings",
+    "PlatformEmailSettings",
+    "EmailSend",
 ]

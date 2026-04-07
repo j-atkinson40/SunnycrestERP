@@ -193,6 +193,12 @@ def job_onboarding_pattern():
     logger.info(f"[ONBOARDING_PATTERN] Complete: {success} ok, {errors} errors")
 
 
+def job_price_version_activation():
+    """Midnight job — activate any scheduled price versions whose effective date has arrived."""
+    from app.services.price_increase_service import activate_scheduled_versions
+    _run_global("PRICE_VERSION_ACTIVATION", activate_scheduled_versions)
+
+
 # ---------------------------------------------------------------------------
 # Job registry — maps names to wrapper functions (for manual trigger)
 # ---------------------------------------------------------------------------
@@ -217,6 +223,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "network_snapshot": job_network_snapshot,
     "onboarding_pattern": job_onboarding_pattern,
     "profile_update": job_profile_update,
+    "price_version_activation": job_price_version_activation,
 }
 
 
@@ -357,6 +364,16 @@ def register_all_jobs():
         name="network_readiness",
         replace_existing=True,
         misfire_grace_time=7200,
+    )
+
+    # DAILY at midnight ET — price version activation
+    scheduler.add_job(
+        job_price_version_activation,
+        CronTrigger(hour=0, minute=1),
+        id="price_version_activation",
+        name="price_version_activation",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
 
     logger.info(f"Registered {len(scheduler.get_jobs())} scheduled jobs")
