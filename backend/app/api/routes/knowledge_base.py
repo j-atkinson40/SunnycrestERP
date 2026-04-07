@@ -99,12 +99,16 @@ def list_categories(
     db: Session = Depends(get_db),
 ):
     """List all KB categories for the tenant. Auto-seeds if empty."""
-    categories = (
-        db.query(KBCategory)
-        .filter(KBCategory.tenant_id == current_user.company_id)
-        .order_by(KBCategory.display_order, KBCategory.name)
-        .all()
-    )
+    try:
+        categories = (
+            db.query(KBCategory)
+            .filter(KBCategory.tenant_id == current_user.company_id)
+            .order_by(KBCategory.display_order, KBCategory.name)
+            .all()
+        )
+    except Exception:
+        logger.exception("KB categories query failed — tables may not exist yet")
+        return []
 
     # Auto-seed system categories on first access
     if not categories:
@@ -127,6 +131,7 @@ def list_categories(
             )
         except Exception:
             logger.exception("Auto-seed KB categories failed")
+            return []
 
     return [_serialize_category(c, db) for c in categories]
 
@@ -558,31 +563,35 @@ def get_kb_stats(
     db: Session = Depends(get_db),
 ):
     """Get KB statistics for the tenant."""
-    tenant_id = current_user.company_id
-    from sqlalchemy import func
+    try:
+        tenant_id = current_user.company_id
+        from sqlalchemy import func
 
-    doc_count = db.query(func.count(KBDocument.id)).filter(
-        KBDocument.tenant_id == tenant_id, KBDocument.is_active == True  # noqa: E712
-    ).scalar() or 0
+        doc_count = db.query(func.count(KBDocument.id)).filter(
+            KBDocument.tenant_id == tenant_id, KBDocument.is_active == True  # noqa: E712
+        ).scalar() or 0
 
-    chunk_count = db.query(func.count(KBChunk.id)).filter(
-        KBChunk.tenant_id == tenant_id
-    ).scalar() or 0
+        chunk_count = db.query(func.count(KBChunk.id)).filter(
+            KBChunk.tenant_id == tenant_id
+        ).scalar() or 0
 
-    pricing_count = db.query(func.count(KBPricingEntry.id)).filter(
-        KBPricingEntry.tenant_id == tenant_id, KBPricingEntry.is_active == True  # noqa: E712
-    ).scalar() or 0
+        pricing_count = db.query(func.count(KBPricingEntry.id)).filter(
+            KBPricingEntry.tenant_id == tenant_id, KBPricingEntry.is_active == True  # noqa: E712
+        ).scalar() or 0
 
-    category_count = db.query(func.count(KBCategory.id)).filter(
-        KBCategory.tenant_id == tenant_id
-    ).scalar() or 0
+        category_count = db.query(func.count(KBCategory.id)).filter(
+            KBCategory.tenant_id == tenant_id
+        ).scalar() or 0
 
-    return {
-        "documents": doc_count,
-        "chunks": chunk_count,
-        "pricing_entries": pricing_count,
-        "categories": category_count,
-    }
+        return {
+            "documents": doc_count,
+            "chunks": chunk_count,
+            "pricing_entries": pricing_count,
+            "categories": category_count,
+        }
+    except Exception:
+        logger.exception("KB stats query failed — tables may not exist yet")
+        return {"documents": 0, "chunks": 0, "pricing_entries": 0, "categories": 0}
 
 
 # ---------------------------------------------------------------------------
