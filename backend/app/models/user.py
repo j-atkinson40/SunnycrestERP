@@ -72,7 +72,8 @@ class User(Base):
     company = relationship("Company", back_populates="users", foreign_keys=[company_id])
     role_obj = relationship("Role", back_populates="users", foreign_keys=[role_id])
     permission_overrides = relationship(
-        "UserPermissionOverride", back_populates="user", cascade="all, delete-orphan"
+        "UserPermissionOverride", back_populates="user", cascade="all, delete-orphan",
+        foreign_keys="[UserPermissionOverride.user_id]",
     )
     profile = relationship(
         "EmployeeProfile", back_populates="user", uselist=False, cascade="all, delete-orphan",
