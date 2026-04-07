@@ -22,7 +22,7 @@ import { Link } from "react-router-dom";
 // ---------------------------------------------------------------------------
 
 interface PDFTemplate {
-  id: string;
+  id: string | null;
   name: string;
   is_default: boolean;
   layout_type: string;
@@ -42,7 +42,7 @@ interface PDFTemplate {
   show_homeowner_price: boolean;
 }
 
-const EMPTY_TEMPLATE: Omit<PDFTemplate, "id"> & { id: string | null } = {
+const EMPTY_TEMPLATE: PDFTemplate = {
   id: null,
   name: "New Template",
   is_default: false,
@@ -69,7 +69,7 @@ const EMPTY_TEMPLATE: Omit<PDFTemplate, "id"> & { id: string | null } = {
 
 export default function PriceManagementTemplatesPage() {
   const [templates, setTemplates] = useState<PDFTemplate[]>([]);
-  const [selected, setSelected] = useState<(PDFTemplate & { id: string | null }) | null>(null);
+  const [selected, setSelected] = useState<PDFTemplate | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -264,7 +264,7 @@ export default function PriceManagementTemplatesPage() {
                 <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={Boolean((selected as Record<string, unknown>)[key])}
+                    checked={Boolean((selected as unknown as Record<string, unknown>)[key])}
                     onChange={(e) => setSelected({ ...selected, [key]: e.target.checked })}
                     className="rounded border-gray-300"
                   />

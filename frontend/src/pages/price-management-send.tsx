@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import {
   ChevronLeft,
   Loader2,
-  Mail,
   Plus,
   Send,
   Trash2,
