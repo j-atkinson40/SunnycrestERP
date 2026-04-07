@@ -105,28 +105,12 @@ export default function KnowledgeBasePage() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch categories
+  // Fetch categories (backend auto-seeds on first access)
   const loadCategories = useCallback(async () => {
-    try {
-      const res = await apiClient.get("/knowledge-base/categories");
-      setCategories(res.data);
-    } catch {
-      toast.error("Failed to load categories");
-    }
-  }, []);
-
-  // Seed categories if none exist
-  const seedIfNeeded = useCallback(async () => {
     setLoading(true);
     try {
       const res = await apiClient.get("/knowledge-base/categories");
-      if (res.data.length === 0) {
-        await apiClient.post("/knowledge-base/seed", { vertical: "manufacturing" });
-        const res2 = await apiClient.get("/knowledge-base/categories");
-        setCategories(res2.data);
-      } else {
-        setCategories(res.data);
-      }
+      setCategories(res.data);
     } catch {
       toast.error("Failed to load knowledge base");
     } finally {
@@ -135,8 +119,8 @@ export default function KnowledgeBasePage() {
   }, []);
 
   useEffect(() => {
-    seedIfNeeded();
-  }, [seedIfNeeded]);
+    loadCategories();
+  }, [loadCategories]);
 
   // Load documents for a category
   const loadDocuments = useCallback(async (categoryId: string) => {

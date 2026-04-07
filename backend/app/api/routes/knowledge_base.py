@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
 from app.database import get_db
+from app.models.company import Company
 from app.models.kb_category import KBCategory
 from app.models.kb_chunk import KBChunk
 from app.models.kb_document import KBDocument
@@ -97,13 +98,36 @@ def list_categories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all KB categories for the tenant."""
+    """List all KB categories for the tenant. Auto-seeds if empty."""
     categories = (
         db.query(KBCategory)
         .filter(KBCategory.tenant_id == current_user.company_id)
         .order_by(KBCategory.display_order, KBCategory.name)
         .all()
     )
+
+    # Auto-seed system categories on first access
+    if not categories:
+        try:
+            from app.services.kb_setup_service import seed_categories as do_seed
+
+            company = db.query(Company).filter_by(id=current_user.company_id).first()
+            vertical = "manufacturing"
+            if company and hasattr(company, "settings"):
+                vertical = (company.settings or {}).get("vertical", "manufacturing")
+
+            do_seed(db=db, tenant_id=current_user.company_id, vertical=vertical)
+            db.commit()
+
+            categories = (
+                db.query(KBCategory)
+                .filter(KBCategory.tenant_id == current_user.company_id)
+                .order_by(KBCategory.display_order, KBCategory.name)
+                .all()
+            )
+        except Exception:
+            logger.exception("Auto-seed KB categories failed")
+
     return [_serialize_category(c, db) for c in categories]
 
 
