@@ -99,6 +99,15 @@ function todayISO(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+const SHOTS = "tests/e2e/screenshots";
+
+async function snap(page: Page, flow: string, step: number, desc: string) {
+  await page.screenshot({
+    path: `${SHOTS}/${flow}-step${step}-${desc}.png`,
+    fullPage: true,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Shared state across flows
 // ---------------------------------------------------------------------------
@@ -155,6 +164,7 @@ test.describe.serial("Flow 1: Complete Order Lifecycle", () => {
     await page.goto(`/ar/orders/${state.flow1OrderId}`);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
+    await snap(page, "order-lifecycle", 2, "order-detail-draft");
     const content = await page.locator("body").textContent();
     expect(content).toContain(state.flow1OrderNumber!);
   });
@@ -202,6 +212,7 @@ test.describe.serial("Flow 1: Complete Order Lifecycle", () => {
     await page.goto(`/ar/orders/${state.flow1OrderId}`);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
+    await snap(page, "order-lifecycle", 6, "order-shipped");
     const content = await page.locator("body").textContent();
     // Should show shipped/delivered status
     expect(
@@ -232,6 +243,7 @@ test.describe.serial("Flow 1: Complete Order Lifecycle", () => {
     await page.goto(`/ar/invoices/${state.flow1InvoiceId}`);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
+    await snap(page, "order-lifecycle", 8, "invoice-generated");
     const content = await page.locator("body").textContent();
     expect(content).toContain(state.flow1InvoiceNumber!);
     expect(content).toContain("Johnson Funeral Home");
@@ -292,6 +304,7 @@ test.describe.serial("Flow 1: Complete Order Lifecycle", () => {
     await page.goto(`/ar/invoices/${state.flow1InvoiceId}`);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
+    await snap(page, "order-lifecycle", 12, "invoice-paid");
     const content = await page.locator("body").textContent();
     // Should show paid status and payment details
     expect(
@@ -409,6 +422,7 @@ test.describe.serial("Flow 2: Overdue Invoice + AR Aging", () => {
     await page.goto("/ar/aging");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(3000);
+    await snap(page, "ar-aging", 4, "aging-report");
     const content = await page.locator("body").textContent();
     // Should show aging buckets
     expect(
@@ -503,6 +517,7 @@ test.describe.serial("Flow 3: Price Increase Flow", () => {
     await page.goto("/price-management");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(3000);
+    await snap(page, "price-increase", 5, "price-management-page");
     const content = await page.locator("body").textContent();
     expect(
       content?.includes("E2E Test 5%") ||
@@ -566,6 +581,7 @@ test.describe.serial("Flow 4: Knowledge Base + Pricing", () => {
     await page.goto("/knowledge-base");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(3000);
+    await snap(page, "knowledge-base", 2, "kb-categories");
     const content = await page.locator("body").textContent();
     expect(
       content?.includes("Pricing") || content?.includes("Knowledge")
@@ -714,6 +730,7 @@ test.describe.serial("Flow 5: Multi-User Workflow", () => {
     await page.goto(`/ar/orders/${state.flow5OrderId}`);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
+    await snap(page, "multi-user", 6, "office-order-delivered");
     const content = await page.locator("body").textContent();
     expect(content).toContain(state.flow5OrderNumber!);
     expect(content).toContain("Memorial Chapel");
@@ -735,6 +752,7 @@ test.describe("Flow 6: Onboarding", () => {
     await page.goto("/onboarding");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(3000);
+    await snap(page, "onboarding", 1, "checklist-loaded");
     const content = await page.locator("body").textContent();
     expect(
       content?.includes("Onboarding") ||
@@ -760,6 +778,7 @@ test.describe("Flow 6: Onboarding", () => {
       await links.first().click();
       await page.waitForLoadState("networkidle");
       await page.waitForTimeout(1000);
+      await snap(page, "onboarding", 2, "checklist-link-navigated");
       // Should have navigated away from onboarding
       const body = await page.locator("body").textContent();
       expect(body?.length).toBeGreaterThan(50);
@@ -771,6 +790,7 @@ test.describe("Flow 6: Onboarding", () => {
     await page.goto("/onboarding");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
+    await snap(page, "onboarding", 3, "progress-indicator");
     const content = await page.locator("body").textContent();
     // Should show progress like "0 of 13" or percentage
     expect(
@@ -792,6 +812,7 @@ test.describe("Flow 7: Invoice List + Filtering", () => {
     await page.goto("/ar/invoices");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(3000);
+    await snap(page, "invoices", 1, "invoice-list");
     const content = await page.locator("body").textContent();
     expect(content).toContain("INV-");
   });
@@ -812,6 +833,7 @@ test.describe("Flow 7: Invoice List + Filtering", () => {
       if (await paidBtn.first().isVisible().catch(() => false)) {
         await paidBtn.first().click();
         await page.waitForTimeout(2000);
+        await snap(page, "invoices", 2, "filtered-by-status");
       }
     }
     // Page should still be functional
@@ -825,6 +847,7 @@ test.describe("Flow 7: Invoice List + Filtering", () => {
     await page.goto(`/ar/invoices/${state.flow1InvoiceId}`);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
+    await snap(page, "invoices", 3, "invoice-detail-with-payment");
     const content = await page.locator("body").textContent();
     // Should show payment info
     expect(
@@ -846,12 +869,14 @@ test.describe("Flow 8: Customer CRM Detail", () => {
     await page.goto("/crm/companies");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
+    await snap(page, "crm-detail", 1, "companies-list");
 
     const johnsonLink = page.locator('a:has-text("Johnson")').first();
     if (await johnsonLink.isVisible().catch(() => false)) {
       await johnsonLink.click();
       await page.waitForLoadState("networkidle");
       await page.waitForTimeout(2000);
+      await snap(page, "crm-detail", 1, "johnson-detail");
       const content = await page.locator("body").textContent();
       expect(content).toContain("Johnson");
     }

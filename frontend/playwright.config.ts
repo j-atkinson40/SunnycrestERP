@@ -17,8 +17,8 @@ export default defineConfig({
   use: {
     baseURL: STAGING_FRONTEND,
     trace: "on-first-retry",
-    screenshot: "only-on-failure",
-    video: "off",
+    screenshot: "on",
+    video: "on",
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },
