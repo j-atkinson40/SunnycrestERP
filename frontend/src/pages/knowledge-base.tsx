@@ -108,7 +108,7 @@ export default function KnowledgeBasePage() {
   // Fetch categories
   const loadCategories = useCallback(async () => {
     try {
-      const res = await apiClient.get("/api/v1/knowledge-base/categories");
+      const res = await apiClient.get("/knowledge-base/categories");
       setCategories(res.data);
     } catch {
       toast.error("Failed to load categories");
@@ -119,10 +119,10 @@ export default function KnowledgeBasePage() {
   const seedIfNeeded = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get("/api/v1/knowledge-base/categories");
+      const res = await apiClient.get("/knowledge-base/categories");
       if (res.data.length === 0) {
-        await apiClient.post("/api/v1/knowledge-base/seed", { vertical: "manufacturing" });
-        const res2 = await apiClient.get("/api/v1/knowledge-base/categories");
+        await apiClient.post("/knowledge-base/seed", { vertical: "manufacturing" });
+        const res2 = await apiClient.get("/knowledge-base/categories");
         setCategories(res2.data);
       } else {
         setCategories(res.data);
@@ -141,7 +141,7 @@ export default function KnowledgeBasePage() {
   // Load documents for a category
   const loadDocuments = useCallback(async (categoryId: string) => {
     try {
-      const res = await apiClient.get("/api/v1/knowledge-base/documents", {
+      const res = await apiClient.get("/knowledge-base/documents", {
         params: { category_id: categoryId },
       });
       setDocuments(res.data);
@@ -153,7 +153,7 @@ export default function KnowledgeBasePage() {
   // Load pricing entries
   const loadPricing = useCallback(async (search?: string) => {
     try {
-      const res = await apiClient.get("/api/v1/knowledge-base/pricing", {
+      const res = await apiClient.get("/knowledge-base/pricing", {
         params: search ? { search } : {},
       });
       setPricingEntries(res.data);
@@ -190,7 +190,7 @@ export default function KnowledgeBasePage() {
 
     try {
       await apiClient.post(
-        `/api/v1/knowledge-base/documents/upload?category_id=${selectedCategory.id}&title=${encodeURIComponent(file.name)}`,
+        `/knowledge-base/documents/upload?category_id=${selectedCategory.id}&title=${encodeURIComponent(file.name)}`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } },
       );
@@ -206,7 +206,7 @@ export default function KnowledgeBasePage() {
 
   const handleReparse = async (docId: string) => {
     try {
-      await apiClient.post(`/api/v1/knowledge-base/documents/${docId}/reparse`);
+      await apiClient.post(`/knowledge-base/documents/${docId}/reparse`);
       toast.success("Document re-parsed");
       if (selectedCategory) loadDocuments(selectedCategory.id);
     } catch {
@@ -216,7 +216,7 @@ export default function KnowledgeBasePage() {
 
   const handleDeleteDoc = async (docId: string) => {
     try {
-      await apiClient.delete(`/api/v1/knowledge-base/documents/${docId}`);
+      await apiClient.delete(`/knowledge-base/documents/${docId}`);
       toast.success("Document deleted");
       if (selectedCategory) loadDocuments(selectedCategory.id);
     } catch {

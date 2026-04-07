@@ -56,7 +56,7 @@ export function KBCoachingBanner({ onNavigate }: { onNavigate?: (section: string
 
   useEffect(() => {
     apiClient
-      .get("/api/v1/knowledge-base/stats")
+      .get("/knowledge-base/stats")
       .then((r) => setStats(r.data))
       .catch(() => {});
   }, []);
