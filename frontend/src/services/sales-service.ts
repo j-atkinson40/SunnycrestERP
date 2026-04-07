@@ -133,6 +133,9 @@ export const salesService = {
     perPage = 20,
     status?: string,
     customerId?: string,
+    search?: string,
+    dateFrom?: string,
+    dateTo?: string,
   ): Promise<PaginatedInvoices> {
     const params = new URLSearchParams({
       page: String(page),
@@ -140,6 +143,9 @@ export const salesService = {
     });
     if (status) params.set("status", status);
     if (customerId) params.set("customer_id", customerId);
+    if (search) params.set("q", search);
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
     const r = await apiClient.get<PaginatedInvoices>(
       `/sales/invoices?${params.toString()}`,
     );

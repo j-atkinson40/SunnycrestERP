@@ -63,23 +63,23 @@ export default function ARAgingPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border p-4 bg-green-50 dark:bg-green-950/20">
           <p className="text-sm text-muted-foreground">Current</p>
           <p className="text-2xl font-bold">{fmtCurrency(report.company_summary.current)}</p>
         </div>
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border p-4 bg-yellow-50 dark:bg-yellow-950/20">
           <p className="text-sm text-muted-foreground">1-30 Days</p>
           <p className="text-2xl font-bold">{fmtCurrency(report.company_summary.days_1_30)}</p>
         </div>
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border p-4 bg-amber-50 dark:bg-amber-950/20">
           <p className="text-sm text-muted-foreground">31-60 Days</p>
           <p className="text-2xl font-bold">{fmtCurrency(report.company_summary.days_31_60)}</p>
         </div>
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border p-4 bg-orange-50 dark:bg-orange-950/20">
           <p className="text-sm text-muted-foreground">61-90 Days</p>
           <p className="text-2xl font-bold">{fmtCurrency(report.company_summary.days_61_90)}</p>
         </div>
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border p-4 bg-red-50 dark:bg-red-950/20">
           <p className="text-sm text-muted-foreground">90+ Days</p>
           <p className="text-2xl font-bold">{fmtCurrency(report.company_summary.days_over_90)}</p>
         </div>

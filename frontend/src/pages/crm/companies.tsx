@@ -414,7 +414,7 @@ function CompaniesListDesktop() {
                           {item.primary_contact.phone && <div className="text-xs text-gray-400">{item.primary_contact.phone}</div>}
                         </div>
                       ) : (
-                        <span className="text-gray-400">No contact</span>
+                        <span className="text-gray-400">{"\u2014"}</span>
                       )}
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-gray-400 text-xs">

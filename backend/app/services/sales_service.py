@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func
+from sqlalchemy import and_, or_ as db_or, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.customer import Customer
@@ -346,6 +346,7 @@ def get_sales_order(db: Session, company_id: str, order_id: str) -> SalesOrder:
             joinedload(SalesOrder.customer),
             joinedload(SalesOrder.lines),
             joinedload(SalesOrder.creator),
+            joinedload(SalesOrder.cemetery),
         )
         .filter(SalesOrder.id == order_id, SalesOrder.company_id == company_id)
         .first()
@@ -571,12 +572,27 @@ def get_invoices(
     per_page: int = 20,
     status_filter: str | None = None,
     customer_id: str | None = None,
+    search: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> dict:
     query = db.query(Invoice).filter(Invoice.company_id == company_id)
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
     if customer_id:
         query = query.filter(Invoice.customer_id == customer_id)
+    if search:
+        pattern = f"%{search}%"
+        query = query.outerjoin(Invoice.customer).filter(
+            db_or(
+                Invoice.number.ilike(pattern),
+                Customer.name.ilike(pattern),
+            )
+        )
+    if date_from:
+        query = query.filter(Invoice.invoice_date >= date_from)
+    if date_to:
+        query = query.filter(Invoice.invoice_date <= date_to)
 
     total = query.count()
     items = (

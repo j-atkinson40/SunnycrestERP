@@ -766,11 +766,11 @@ def _seed_price_list(db: Session, product_map: dict, admin_id: str):
 def _seed_kb(db: Session, admin_id: str, product_map: dict):
     """Create KB categories and one manual document."""
     kb_cats = [
-        ("Pricing", "pricing", "Product pricing information and price lists", "dollar-sign", 1),
-        ("Product Specs", "product-specs", "Technical specifications for burial vaults", "package", 2),
-        ("Personalization Options", "personalization", "Vault personalization and customization options", "palette", 3),
-        ("Company Policies", "company-policies", "Internal company policies and procedures", "shield", 4),
-        ("Cemetery Policies", "cemetery-policies", "Cemetery-specific policies and requirements", "map-pin", 5),
+        ("Product Pricing", "pricing", "Product pricing information and price lists", "DollarSign", 1),
+        ("Product Specifications", "product_specs", "Technical specifications for burial vaults", "Package", 2),
+        ("Personalization Options", "personalization_options", "Vault personalization and customization options", "Palette", 3),
+        ("Company Policies", "company_policies", "Internal company policies and procedures", "FileText", 4),
+        ("Cemetery Requirements", "cemetery_policies", "Cemetery-specific policies and requirements", "MapPin", 5),
     ]
 
     cat_ids = {}

@@ -34,6 +34,14 @@ function fmtDate(d: string | null) {
   return new Date(d).toLocaleDateString();
 }
 
+function statusLabel(status: string): string {
+  switch (status) {
+    case "shipped": return "Delivered";
+    case "processing": return "In Production";
+    default: return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+}
+
 function statusBadge(status: string) {
   switch (status) {
     case "draft":
@@ -47,13 +55,13 @@ function statusBadge(status: string) {
     case "processing":
       return (
         <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-          Processing
+          In Production
         </Badge>
       );
     case "shipped":
       return (
         <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-          Shipped
+          Delivered
         </Badge>
       );
     case "completed":
@@ -67,6 +75,11 @@ function statusBadge(status: string) {
     default:
       return <Badge variant="outline">{status}</Badge>;
   }
+}
+
+function fmtQty(n: string | number): string {
+  const num = Number(n);
+  return Number.isInteger(num) ? String(num) : num.toFixed(2);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +138,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
           : {}),
       });
       setOrder(updated);
-      toast.success(`Order marked as ${newStatus}`);
+      toast.success(`Order marked as ${statusLabel(newStatus)}`);
     } catch {
       toast.error("Failed to update status.");
     } finally {
@@ -182,7 +195,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
               disabled={actionBusy}
               onClick={() => handleStatusUpdate("processing")}
             >
-              Mark as Processing
+              Move to Production
             </Button>
           )}
           {order.status === "processing" && (
@@ -191,7 +204,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
               disabled={actionBusy}
               onClick={() => handleStatusUpdate("shipped")}
             >
-              Mark as Shipped
+              Mark as Delivered
             </Button>
           )}
           {order.status === "shipped" && (
@@ -216,6 +229,38 @@ function SalesOrderDetailView({ id }: { id: string }) {
         </div>
       </div>
 
+      {/* Burial details */}
+      {((order as Record<string, unknown>).deceased_name || (order as Record<string, unknown>).scheduled_date) && (
+        <Card className="p-6 border-l-4 border-primary">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-3 md:grid-cols-4">
+            {(order as Record<string, unknown>).deceased_name && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Deceased</p>
+                <p className="font-semibold">{(order as Record<string, unknown>).deceased_name as string}</p>
+              </div>
+            )}
+            {(order as Record<string, unknown>).scheduled_date && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Burial Date</p>
+                <p className="font-semibold">{fmtDate((order as Record<string, unknown>).scheduled_date as string)}</p>
+              </div>
+            )}
+            {order.service_time && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Burial Time</p>
+                <p className="font-semibold">{order.service_time}</p>
+              </div>
+            )}
+            {(order as Record<string, unknown>).cemetery_name && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Cemetery</p>
+                <p className="font-semibold">{(order as Record<string, unknown>).cemetery_name as string}</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* Order info */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card className="p-4">
@@ -231,7 +276,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
           <p className="font-medium">{fmtDate(order.required_date)}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Shipped Date</p>
+          <p className="text-sm text-muted-foreground">Delivered Date</p>
           <p className="font-medium">{fmtDate(order.shipped_date)}</p>
         </Card>
         <Card className="p-4">
@@ -239,7 +284,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
           <p className="font-medium">{order.payment_terms || "—"}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Ship To</p>
+          <p className="text-sm text-muted-foreground">Deliver To</p>
           <p className="font-medium text-sm">
             {order.ship_to_name
               ? `${order.ship_to_name}${order.ship_to_address ? `, ${order.ship_to_address}` : ""}`
@@ -266,7 +311,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
                 <TableHead className="w-[35%]">Description</TableHead>
                 <TableHead>Product</TableHead>
                 <TableHead>Qty</TableHead>
-                <TableHead>Shipped</TableHead>
+                <TableHead>Delivered</TableHead>
                 <TableHead>Unit Price</TableHead>
                 <TableHead className="text-right">Line Total</TableHead>
               </TableRow>
@@ -282,7 +327,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
                       <span className="text-muted-foreground text-sm">—</span>
                     )}
                   </TableCell>
-                  <TableCell>{line.quantity}</TableCell>
+                  <TableCell>{fmtQty(line.quantity)}</TableCell>
                   <TableCell>
                     <span
                       className={
@@ -291,7 +336,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
                           : ""
                       }
                     >
-                      {line.quantity_shipped}
+                      {fmtQty(line.quantity_shipped)}
                     </span>
                     {Number(line.quantity_shipped) >= Number(line.quantity) && (
                       <span className="ml-1 text-green-600">&check;</span>

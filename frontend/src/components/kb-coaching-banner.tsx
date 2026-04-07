@@ -101,6 +101,7 @@ export function KBCoachingBanner({ onNavigate }: { onNavigate?: (section: string
           {step.action && (
             <Button
               size="sm"
+              variant="outline"
               className="mt-3"
               onClick={() => onNavigate?.(stats.documents === 0 ? "upload" : "pricing")}
             >

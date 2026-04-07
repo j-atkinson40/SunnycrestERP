@@ -46,9 +46,12 @@ function fmtDate(d: string | null) {
 }
 
 function statusBadge(status: string) {
-  switch (status) {
+  const s = status.toLowerCase();
+  switch (s) {
     case "draft":
-      return <Badge variant="outline">Draft</Badge>;
+      return <Badge className="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">Draft</Badge>;
+    case "open":
+      return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Open</Badge>;
     case "sent":
       return (
         <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
@@ -68,18 +71,23 @@ function statusBadge(status: string) {
         </Badge>
       );
     case "overdue":
-      return <Badge variant="destructive">Overdue</Badge>;
+      return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Overdue</Badge>;
     case "void":
       return (
-        <Badge variant="outline" className="text-gray-400">
+        <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
           Void
         </Badge>
       );
     case "write_off":
-      return <Badge variant="outline">Write-Off</Badge>;
+      return <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Write-Off</Badge>;
     default:
-      return <Badge variant="outline">{status}</Badge>;
+      return <Badge className="bg-gray-100 text-gray-700">{status.charAt(0).toUpperCase() + status.slice(1)}</Badge>;
   }
+}
+
+function fmtQty(n: string | number): string {
+  const num = Number(n);
+  return Number.isInteger(num) ? String(num) : num.toFixed(2);
 }
 
 // ---------------------------------------------------------------------------
@@ -277,9 +285,10 @@ export default function InvoiceDetailPage() {
               {invoice.sales_order_id ? (
                 <Link
                   to={`/ar/orders/${invoice.sales_order_id}`}
-                  className="text-primary hover:underline"
+                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium inline-flex items-center gap-1"
                 >
                   View Order
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </Link>
               ) : (
                 "—"
@@ -347,7 +356,7 @@ export default function InvoiceDetailPage() {
                     <TableCell className="text-muted-foreground">
                       {line.product_name || "—"}
                     </TableCell>
-                    <TableCell className="text-right">{line.quantity}</TableCell>
+                    <TableCell className="text-right">{fmtQty(line.quantity)}</TableCell>
                     <TableCell className="text-right">
                       {fmtCurrency(line.unit_price)}
                     </TableCell>
@@ -413,10 +422,10 @@ export default function InvoiceDetailPage() {
         </div>
       )}
 
-      {/* Payment history */}
+      {/* Payments Applied */}
       {(hasPayments || paymentHistory.length > 0) && (
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4">Payment History</h2>
+          <h2 className="text-lg font-semibold mb-4">Payments Applied</h2>
           {loadingPayments ? (
             <p className="text-sm text-muted-foreground">Loading...</p>
           ) : paymentHistory.length === 0 ? (
@@ -427,40 +436,56 @@ export default function InvoiceDetailPage() {
               </span>
             </p>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead className="text-right">Amount Applied</TableHead>
-                    <TableHead>Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paymentHistory.map((p) => (
-                    <TableRow key={p.payment_id}>
-                      <TableCell className="text-muted-foreground whitespace-nowrap">
-                        {fmtDate(p.payment_date)}
-                      </TableCell>
-                      <TableCell className="capitalize">
-                        {p.payment_method.replace("_", " ")}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {p.reference_number ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
-                        {fmtCurrency(p.amount_applied)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {p.notes ?? "—"}
-                      </TableCell>
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Reference</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Notes</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentHistory.map((p) => (
+                      <TableRow key={p.payment_id}>
+                        <TableCell className="text-muted-foreground whitespace-nowrap">
+                          {fmtDate(p.payment_date)}
+                        </TableCell>
+                        <TableCell className="capitalize">
+                          {p.payment_method.replace("_", " ")}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {p.reference_number ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
+                          {fmtCurrency(p.amount_applied)}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {p.notes ?? "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex justify-end mt-3">
+                <div className="space-y-1 text-right min-w-[200px]">
+                  <div className="flex justify-between gap-8 text-sm">
+                    <span className="text-muted-foreground">Total Payments</span>
+                    <span className="font-medium text-green-600 dark:text-green-400">{fmtCurrency(invoice.amount_paid)}</span>
+                  </div>
+                  <div className="flex justify-between gap-8 text-sm border-t pt-1">
+                    <span className="font-semibold">Remaining Balance</span>
+                    <span className={`font-bold ${balanceNum > 0 ? "text-red-600" : "text-green-600"}`}>
+                      {fmtCurrency(invoice.balance_remaining)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </Card>
       )}

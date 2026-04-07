@@ -98,6 +98,11 @@ def _order_to_response(o) -> dict:
         "total": o.total,
         "ship_to_name": o.ship_to_name,
         "ship_to_address": o.ship_to_address,
+        "deceased_name": getattr(o, "deceased_name", None),
+        "cemetery_id": getattr(o, "cemetery_id", None),
+        "cemetery_name": o.cemetery.name if getattr(o, "cemetery", None) else None,
+        "scheduled_date": str(o.scheduled_date) if getattr(o, "scheduled_date", None) else None,
+        "service_time": str(o.service_time) if getattr(o, "service_time", None) else None,
         "notes": o.notes,
         "created_by": o.created_by,
         "created_by_name": (
@@ -389,12 +394,16 @@ def list_invoices(
     per_page: int = Query(20, ge=1, le=100),
     status: str | None = None,
     customer_id: str | None = None,
+    q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     db: Session = Depends(get_db),
     _module: User = Depends(require_module("sales")),
     current_user: User = Depends(require_permission("ar.view")),
 ):
     result = sales_service.get_invoices(
-        db, current_user.company_id, page, per_page, status, customer_id
+        db, current_user.company_id, page, per_page, status, customer_id,
+        search=q, date_from=date_from, date_to=date_to,
     )
     result["items"] = [_invoice_to_response(inv) for inv in result["items"]]
     return result

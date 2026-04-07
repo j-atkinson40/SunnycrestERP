@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { X } from "lucide-react";
+import { X, Search } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { usePresetTheme } from "@/contexts/preset-theme-context";
 import { salesService } from "@/services/sales-service";
 import type { Invoice } from "@/types/sales";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -31,9 +32,12 @@ function isOverdue(dueDate: string, status: string) {
 }
 
 function invoiceStatusBadge(status: string) {
-  switch (status) {
+  const s = status.toLowerCase();
+  switch (s) {
     case "draft":
-      return <Badge variant="outline">Draft</Badge>;
+      return <Badge className="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">Draft</Badge>;
+    case "open":
+      return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Open</Badge>;
     case "sent":
       return (
         <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
@@ -53,21 +57,21 @@ function invoiceStatusBadge(status: string) {
         </Badge>
       );
     case "overdue":
-      return <Badge variant="destructive">Overdue</Badge>;
+      return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Overdue</Badge>;
     case "void":
       return (
-        <Badge variant="outline" className="text-muted-foreground">
+        <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
           Void
         </Badge>
       );
     case "write_off":
       return (
-        <Badge variant="outline" className="text-muted-foreground">
+        <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
           Write-Off
         </Badge>
       );
     default:
-      return <Badge variant="outline">{status}</Badge>;
+      return <Badge className="bg-gray-100 text-gray-700">{status.charAt(0).toUpperCase() + status.slice(1)}</Badge>;
   }
 }
 
@@ -94,6 +98,9 @@ export default function InvoicesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [syncBannerDismissed, setSyncBannerDismissed] = useState(() => {
     return sessionStorage.getItem(SYNC_BANNER_DISMISS_KEY) === "true";
@@ -123,17 +130,29 @@ export default function InvoicesPage() {
   const loadInvoices = useCallback(async () => {
     setLoading(true);
     try {
+      const params: Record<string, string> = {
+        page: String(page),
+        per_page: String(PER_PAGE),
+      };
+      if (filterStatus) params.status = filterStatus;
+      if (searchQuery) params.q = searchQuery;
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
       const data = await salesService.getInvoices(
         page,
         PER_PAGE,
         filterStatus || undefined,
+        undefined,
+        searchQuery || undefined,
+        dateFrom || undefined,
+        dateTo || undefined,
       );
       setInvoices(data.items);
       setTotal(data.total);
     } finally {
       setLoading(false);
     }
-  }, [page, filterStatus]);
+  }, [page, filterStatus, searchQuery, dateFrom, dateTo]);
 
   useEffect(() => {
     loadInvoices();
@@ -175,7 +194,19 @@ export default function InvoicesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by customer or invoice #..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
+            className="pl-9"
+          />
+        </div>
         <select
           className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
           value={filterStatus}
@@ -184,14 +215,39 @@ export default function InvoicesPage() {
             setPage(1);
           }}
         >
-          <option value="">All</option>
+          <option value="">All Statuses</option>
           <option value="draft">Draft</option>
+          <option value="open">Open</option>
           <option value="sent">Sent</option>
           <option value="partial">Partial</option>
           <option value="paid">Paid</option>
           <option value="overdue">Overdue</option>
           <option value="void">Void</option>
         </select>
+        <Input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+          className="w-[140px] h-9"
+          placeholder="From"
+        />
+        <span className="text-muted-foreground text-sm">\u2013</span>
+        <Input
+          type="date"
+          value={dateTo}
+          onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+          className="w-[140px] h-9"
+          placeholder="To"
+        />
+        {(searchQuery || dateFrom || dateTo || filterStatus) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setSearchQuery(""); setDateFrom(""); setDateTo(""); setFilterStatus(""); setPage(1); }}
+          >
+            <X className="h-4 w-4 mr-1" /> Clear
+          </Button>
+        )}
       </div>
 
       {/* Table */}

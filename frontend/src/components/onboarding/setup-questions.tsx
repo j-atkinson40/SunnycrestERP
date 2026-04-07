@@ -106,14 +106,22 @@ export function SetupQuestions({ vertical, onComplete }: SetupQuestionsProps) {
 
       {/* Continue button */}
       <div className="flex justify-end">
-        <Button
-          disabled={springBurials === null || saving}
-          onClick={handleContinue}
-          className="gap-2"
-        >
-          {saving ? "Saving..." : "Continue to Setup Checklist"}
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+        <div className="relative group">
+          <Button
+            disabled={springBurials === null || saving}
+            onClick={handleContinue}
+            className="gap-2 transition-opacity"
+          >
+            {saving ? "Saving..." : "Continue to Setup Checklist"}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          {springBurials === null && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 text-xs text-white bg-gray-900 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+              Select an option to continue
+              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-gray-900" />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

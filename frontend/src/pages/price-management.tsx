@@ -1,7 +1,7 @@
 // price-management.tsx — Price Management page with 3 tabs:
 // Current Prices, Price Increase Tool, Version History
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -149,10 +149,16 @@ export default function PriceManagementPage() {
 // Current Prices Tab
 // ---------------------------------------------------------------------------
 
+function fmtPrice(n: string | number | null): string {
+  if (n == null) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n));
+}
+
 function CurrentPricesTab() {
   const [prices, setPrices] = useState<ProductPrice[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"grouped" | "flat">("grouped");
 
   const load = useCallback(async (q?: string) => {
     try {
@@ -169,13 +175,37 @@ function CurrentPricesTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  const hasCostData = prices.some((p) => p.cost_price != null && Number(p.cost_price) > 0);
+
+  // Group by category
+  const grouped = useMemo(() => {
+    const map = new Map<string, ProductPrice[]>();
+    for (const p of prices) {
+      const cat = p.category_name || "Uncategorized";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(p);
+    }
+    return map;
+  }, [prices]);
+
   if (loading) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
 
+  const renderRow = (p: ProductPrice) => (
+    <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
+      <td className="px-4 py-2.5 font-medium">{p.name}</td>
+      <td className="px-4 py-2.5 text-muted-foreground">{p.sku || "—"}</td>
+      {viewMode === "flat" && <td className="px-4 py-2.5 text-muted-foreground">{p.category_name || "—"}</td>}
+      <td className="px-4 py-2.5 text-right font-mono">{fmtPrice(p.price)}</td>
+      {hasCostData && <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{fmtPrice(p.cost_price)}</td>}
+      <td className="px-4 py-2.5 text-muted-foreground">{p.unit}</td>
+    </tr>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-3">
+      <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -188,12 +218,48 @@ function CurrentPricesTab() {
             className="pl-9"
           />
         </div>
+        <div className="flex rounded-lg border overflow-hidden text-xs">
+          <button
+            onClick={() => setViewMode("grouped")}
+            className={cn("px-3 py-1.5 font-medium transition-colors", viewMode === "grouped" ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50")}
+          >
+            Grouped
+          </button>
+          <button
+            onClick={() => setViewMode("flat")}
+            className={cn("px-3 py-1.5 font-medium transition-colors border-l", viewMode === "flat" ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50")}
+          >
+            Flat List
+          </button>
+        </div>
       </div>
 
       {prices.length === 0 ? (
         <div className="rounded-xl border bg-gray-50 p-10 text-center">
           <DollarSign className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
           <p className="text-muted-foreground">No products found.</p>
+        </div>
+      ) : viewMode === "grouped" ? (
+        <div className="space-y-6">
+          {[...grouped.entries()].map(([category, items]) => (
+            <div key={category}>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2 px-1">{category}</h3>
+              <div className="rounded-xl border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="text-left px-4 py-2.5 font-medium">Product</th>
+                      <th className="text-left px-4 py-2.5 font-medium">SKU</th>
+                      <th className="text-right px-4 py-2.5 font-medium">Price</th>
+                      {hasCostData && <th className="text-right px-4 py-2.5 font-medium">Cost</th>}
+                      <th className="text-left px-4 py-2.5 font-medium">Unit</th>
+                    </tr>
+                  </thead>
+                  <tbody>{items.map(renderRow)}</tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="rounded-xl border overflow-hidden">
@@ -204,26 +270,11 @@ function CurrentPricesTab() {
                 <th className="text-left px-4 py-2.5 font-medium">SKU</th>
                 <th className="text-left px-4 py-2.5 font-medium">Category</th>
                 <th className="text-right px-4 py-2.5 font-medium">Price</th>
-                <th className="text-right px-4 py-2.5 font-medium">Cost</th>
+                {hasCostData && <th className="text-right px-4 py-2.5 font-medium">Cost</th>}
                 <th className="text-left px-4 py-2.5 font-medium">Unit</th>
               </tr>
             </thead>
-            <tbody>
-              {prices.map((p) => (
-                <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-2.5 font-medium">{p.name}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{p.sku || "—"}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{p.category_name || "—"}</td>
-                  <td className="px-4 py-2.5 text-right font-mono">
-                    {p.price ? `$${Number(p.price).toFixed(2)}` : "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">
-                    {p.cost_price ? `$${Number(p.cost_price).toFixed(2)}` : "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{p.unit}</td>
-                </tr>
-              ))}
-            </tbody>
+            <tbody>{prices.map(renderRow)}</tbody>
           </table>
         </div>
       )}
@@ -395,8 +446,8 @@ function PriceIncreaseTab() {
                     <tr key={item.product_id} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="px-4 py-2.5 font-medium">{item.product_name}</td>
                       <td className="px-4 py-2.5 text-muted-foreground">{item.product_code || "—"}</td>
-                      <td className="px-4 py-2.5 text-right font-mono">${item.current_price}</td>
-                      <td className="px-4 py-2.5 text-right font-mono font-semibold">${item.new_price}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{fmtPrice(item.current_price)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold">{fmtPrice(item.new_price)}</td>
                       <td className={cn(
                         "px-4 py-2.5 text-right font-mono",
                         change > 0 ? "text-green-600" : change < 0 ? "text-red-600" : "",

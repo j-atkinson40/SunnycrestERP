@@ -35,13 +35,13 @@ function statusBadge(status: string) {
     case "processing":
       return (
         <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-          Processing
+          In Production
         </Badge>
       );
     case "shipped":
       return (
         <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-          Shipped
+          Delivered
         </Badge>
       );
     case "completed":
@@ -189,8 +189,8 @@ function OrdersTable() {
           <option value="">All</option>
           <option value="draft">Draft</option>
           <option value="confirmed">Confirmed</option>
-          <option value="processing">Processing</option>
-          <option value="shipped">Shipped</option>
+          <option value="processing">In Production</option>
+          <option value="shipped">Delivered</option>
           <option value="completed">Completed</option>
           <option value="canceled">Canceled</option>
         </select>
