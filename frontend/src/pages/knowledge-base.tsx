@@ -111,8 +111,13 @@ export default function KnowledgeBasePage() {
     try {
       const res = await apiClient.get("/knowledge-base/categories");
       setCategories(res.data);
-    } catch {
-      toast.error("Failed to load knowledge base");
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string }; status?: number } })?.response?.data?.detail
+        || (err as { response?: { status?: number } })?.response?.status
+        || (err as Error)?.message
+        || "Unknown error";
+      toast.error(`Failed to load knowledge base: ${msg}`);
+      console.error("KB load error:", err);
     } finally {
       setLoading(false);
     }
