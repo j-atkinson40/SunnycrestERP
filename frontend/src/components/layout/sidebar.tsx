@@ -15,6 +15,7 @@ import {
   CircleDollarSign,
   ClipboardCheck,
   ClipboardList,
+  DollarSign,
   Factory,
   FileText,
   FlaskConical,
@@ -37,6 +38,8 @@ import {
   MoreHorizontal,
   Package,
   Percent,
+  Phone,
+  PhoneCall,
   Plug,
   Plus,
   Puzzle,
@@ -48,6 +51,7 @@ import {
   Snowflake,
   Sparkles,
   Truck,
+  Upload,
   UserCircle,
   Users,
   Wand2,
@@ -80,6 +84,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   CircleDollarSign,
   ClipboardCheck,
   ClipboardList,
+  DollarSign,
   Factory,
   FileText,
   FlaskConical,
@@ -102,6 +107,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   MoreHorizontal,
   Package,
   Percent,
+  Phone,
+  PhoneCall,
   PieChart,
   Plug,
   Plus,
@@ -114,6 +121,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Snowflake,
   Sparkles,
   Truck,
+  Upload,
   UserCircle,
   Users,
   Wand2,
@@ -312,30 +320,32 @@ function SidebarSection({
 
   return (
     <div>
-      {/* Section header */}
-      {isCollapsible ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          className={cn(
-            "flex w-full items-center justify-between rounded-md px-2 py-1",
-            "text-[11px] font-semibold uppercase tracking-wider",
-            "text-muted-foreground/60 hover:text-muted-foreground transition-colors",
-          )}
-        >
-          {section.title}
-          <ChevronRight
+      {/* Section header — hidden for unnamed sections */}
+      {section.title ? (
+        isCollapsible ? (
+          <button
+            type="button"
+            onClick={onToggle}
             className={cn(
-              "size-3.5 transition-transform duration-200",
-              isOpen && "rotate-90",
+              "flex w-full items-center justify-between rounded-md px-2 py-1",
+              "text-[11px] font-semibold uppercase tracking-wider",
+              "text-muted-foreground/60 hover:text-muted-foreground transition-colors",
             )}
-          />
-        </button>
-      ) : (
-        <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-          {section.title}
-        </div>
-      )}
+          >
+            {section.title}
+            <ChevronRight
+              className={cn(
+                "size-3.5 transition-transform duration-200",
+                isOpen && "rotate-90",
+              )}
+            />
+          </button>
+        ) : (
+          <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            {section.title}
+          </div>
+        )
+      ) : null}
 
       {/* Items */}
       {isOpen && (

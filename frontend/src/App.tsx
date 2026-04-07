@@ -191,6 +191,9 @@ import CemeteryDeliverySettingsPage from "@/pages/settings/cemeteries";
 import CemeteryProfilePage from "@/pages/settings/cemetery-profile";
 import ReportsPage from "@/pages/reports";
 import FinancialsBoardPage from "@/pages/financials-board";
+import FinancialsHub from "@/pages/hubs/financials-hub";
+import CRMHub from "@/pages/hubs/crm-hub";
+import ProductionHub from "@/pages/hubs/production-hub";
 import StatementsPage from "@/pages/statements";
 import CollectionsReviewPage from "@/pages/ar/collections-review";
 import InvoiceReviewQueuePage from "@/pages/ar/invoice-review-queue";
@@ -348,6 +351,11 @@ export default function App() {
                       element={<CompanyMigrationReviewPage />}
                     />
                   </Route>
+
+                  {/* Hub Pages */}
+                  <Route path="/financials" element={<FinancialsHub />} />
+                  <Route path="/crm" element={<CRMHub />} />
+                  <Route path="/production-hub" element={<ProductionHub />} />
 
                   {/* CRM */}
                   <Route path="/crm/companies" element={<CompaniesListPage />} />
@@ -528,7 +536,7 @@ export default function App() {
                     <Route path="/journal-entries" element={<JournalEntriesPage />} />
                     <Route path="/settings/tax" element={<TaxSettingsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
-                    <Route path="/financials" element={<FinancialsBoardPage />} />
+                    <Route path="/financials/board" element={<FinancialsBoardPage />} />
                     <Route path="/ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />
                     <Route
                       path="/ap/payments"

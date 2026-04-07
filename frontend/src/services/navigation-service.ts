@@ -8,6 +8,7 @@ export interface NavItem {
   functionalArea?: string; // employee must have this area assigned
   adminOnly?: boolean; // only show for admin role
   children?: NavItem[]; // nested sub-items shown when parent is expanded
+  isHub?: boolean; // hub items get a slightly different visual treatment
 }
 
 export interface NavSection {
@@ -81,14 +82,9 @@ function getManufacturingNav(
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
-  // Operations
-  const opsItems: NavItem[] = [
-    { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
-    {
-      label: "Announcements",
-      href: "/announcements",
-      icon: "Megaphone",
-    },
+  // ── Primary ──
+  const primaryItems: NavItem[] = [
+    { label: "Home", href: "/dashboard", icon: "Home" },
     {
       label: "Order Station",
       href: "/order-station",
@@ -97,39 +93,10 @@ function getManufacturingNav(
       requiresModule: "sales",
     },
     {
-      label: "Call Log",
-      href: "/calls",
-      icon: "Phone",
-    },
-    {
-      label: "Knowledge Base",
-      href: "/knowledge-base",
-      icon: "BookOpen",
-    },
-    {
-      label: "Price Management",
-      href: "/price-management",
-      icon: "DollarSign",
-    },
-    {
-      label: "Orders",
-      href: "/ar/orders",
-      icon: "ClipboardList",
-      permission: "orders.view",
-    },
-    {
-      label: "Statements",
-      href: "/ar/statements",
-      icon: "FileText",
-      permission: "ar.view",
-      functionalArea: "invoicing_ar",
-    },
-    // Customers moved to CRM → /crm/companies?role=customer
-    {
-      label: "Products",
-      href: "/products",
-      icon: "Package",
-      permission: "products.view",
+      label: "Operations Board",
+      href: "/console/operations",
+      icon: "LayoutDashboard",
+      functionalArea: "production_log",
     },
     {
       label: "Scheduling Board",
@@ -139,52 +106,74 @@ function getManufacturingNav(
       requiresModule: "driver_delivery",
       functionalArea: "funeral_scheduling",
     },
-    {
-      label: "Inventory",
-      href: "/inventory",
-      icon: "Package",
-      permission: "inventory.view",
-      functionalArea: "production_log",
-    },
-    {
-      label: "Production Log",
-      href: "/production-log",
-      icon: "Factory",
-      permission: "production_log.view",
-      requiresModule: "daily_production_log",
-      functionalArea: "production_log",
-    },
-    {
-      label: "Operations Board",
-      href: "/console/operations",
-      icon: "LayoutDashboard",
-      functionalArea: "production_log",
-    },
-    // Transfers moved to Orders page tab — no standalone nav item
   ];
-
-  // Extension-added items
-  if (modules.has("work_orders")) {
-    opsItems.push({
-      label: "Work Orders",
-      href: "/work-orders",
-      icon: "Wrench",
-      permission: "work_orders.view",
-    });
-    opsItems.push({
-      label: "Production Board",
-      href: "/production",
-      icon: "Kanban",
-      permission: "work_orders.view",
-    });
-  }
-
   sections.push({
-    title: "Operations",
-    items: filterByPermission(opsItems, modules, perms, areas, isAdmin),
+    title: "",
+    items: filterByPermission(primaryItems, modules, perms, areas, isAdmin),
   });
 
-  // Compliance
+  // ── Hubs ──
+  const hasSyncError =
+    settings.accounting_connection_status === "connected" &&
+    settings.last_sync_error;
+  const hubItems: NavItem[] = [
+    {
+      label: "Financials",
+      href: "/financials",
+      icon: "BarChart3",
+      isHub: true,
+      functionalArea: "invoicing_ar",
+      ...(hasSyncError ? { badge: "!" } : {}),
+    },
+    {
+      label: "CRM",
+      href: "/crm",
+      icon: "Building2",
+      isHub: true,
+      permission: "customers.view",
+    },
+    {
+      label: "Production",
+      href: "/production-hub",
+      icon: "Factory",
+      isHub: true,
+      functionalArea: "production_log",
+    },
+  ];
+  const filteredHubs = filterByPermission(hubItems, modules, perms, areas, isAdmin);
+  if (filteredHubs.length > 0) {
+    sections.push({ title: "Hubs", items: filteredHubs });
+  }
+
+  // ── Tools ──
+  const toolItems: NavItem[] = [
+    {
+      label: "Knowledge Base",
+      href: "/knowledge-base",
+      icon: "BookOpen",
+    },
+    {
+      label: "Call Log",
+      href: "/calls",
+      icon: "Phone",
+    },
+    {
+      label: "Price Management",
+      href: "/price-management",
+      icon: "DollarSign",
+    },
+    {
+      label: "Announcements",
+      href: "/announcements",
+      icon: "Megaphone",
+    },
+  ];
+  sections.push({
+    title: "Tools",
+    items: filterByPermission(toolItems, modules, perms, areas, isAdmin),
+  });
+
+  // ── Compliance ──
   const complianceItems: NavItem[] = [
     {
       label: "Safety & OSHA",
@@ -216,68 +205,49 @@ function getManufacturingNav(
       requiresModule: "npca_audit_prep",
     });
   }
-  const filteredCompliance = filterByPermission(
-    complianceItems,
-    modules,
-    perms,
-    areas,
-    isAdmin,
-  );
+  const filteredCompliance = filterByPermission(complianceItems, modules, perms, areas, isAdmin);
   if (filteredCompliance.length > 0) {
     sections.push({ title: "Compliance", items: filteredCompliance });
   }
 
-  // Training
+  // ── Legacy Studio ──
   sections.push({
     title: "Legacy Studio",
-    items: [
-      {
-        label: "Proof Generator",
-        href: "/legacy/generator",
-        icon: "Wand2",
-        permission: "legacy_studio.create",
-      },
-      {
-        label: "Library",
-        href: "/legacy/library",
-        icon: "Library",
-        permission: "legacy_studio.view",
-      },
-      {
-        label: "Settings",
-        href: "/legacy/settings",
-        icon: "Settings",
-        permission: "legacy_studio.create",
-      },
-      {
-        label: "Template Upload",
-        href: "/legacy/templates/upload",
-        icon: "Upload",
-        permission: "legacy_studio.create",
-      },
-    ],
+    items: filterByPermission(
+      [
+        {
+          label: "Proof Generator",
+          href: "/legacy/generator",
+          icon: "Wand2",
+          permission: "legacy_studio.create",
+        },
+        {
+          label: "Library",
+          href: "/legacy/library",
+          icon: "Library",
+          permission: "legacy_studio.view",
+        },
+        {
+          label: "Settings",
+          href: "/legacy/settings",
+          icon: "Settings2",
+          permission: "legacy_studio.create",
+        },
+        {
+          label: "Template Upload",
+          href: "/legacy/templates/upload",
+          icon: "Upload",
+          permission: "legacy_studio.create",
+        },
+      ],
+      modules,
+      perms,
+      areas,
+      isAdmin,
+    ),
   });
 
-  // CRM
-  const hasContractorExtension =
-    extensions.has("wastewater") || extensions.has("redi_rock") || extensions.has("general_precast");
-  const crmItems: NavItem[] = [
-    { label: "Companies", href: "/crm/companies", icon: "Building2", permission: "customers.view" },
-    { label: "Funeral Homes", href: "/crm/funeral-homes", icon: "Home", permission: "customers.view" },
-    ...(hasContractorExtension
-      ? [{ label: "Contractors", href: "/crm/contractors", icon: "HardHat", permission: "customers.view" }]
-      : []),
-    { label: "Billing Groups", href: "/crm/billing-groups", icon: "Building", permission: "customers.view" },
-    { label: "Classification", href: "/admin/company-classification", icon: "Sparkles", adminOnly: true },
-    { label: "Data Quality", href: "/admin/data-quality", icon: "ClipboardCheck", adminOnly: true },
-    { label: "Settings", href: "/crm/settings", icon: "Settings2", adminOnly: true },
-  ];
-  sections.push({
-    title: "CRM",
-    items: filterByPermission(crmItems, modules, perms, areas, isAdmin),
-  });
-
-  // Training
+  // ── Training ──
   sections.push({
     title: "Training",
     items: [
@@ -294,69 +264,13 @@ function getManufacturingNav(
     ],
   });
 
-  // Finance
-  const hasSyncError =
-    settings.accounting_connection_status === "connected" &&
-    settings.last_sync_error;
-  const financeItems = filterByPermission(
-    [
-      {
-        label: "Financials Board",
-        href: "/financials",
-        icon: "BarChart3",
-        functionalArea: "invoicing_ar",
-      },
-      {
-        label: "Billing",
-        href: "/billing",
-        icon: "Receipt",
-        permission: "invoices.view",
-        functionalArea: "invoicing_ar",
-        ...(hasSyncError ? { badge: "!" } : {}),
-      },
-      {
-        label: "Invoice Review",
-        href: "/ar/invoices/review",
-        icon: "ClipboardCheck",
-        permission: "ar.create_invoice",
-        functionalArea: "invoicing_ar",
-      },
-      {
-        label: "Vendors & Bills",
-        href: "/ap/bills",
-        icon: "Receipt",
-        permission: "ap.view",
-        functionalArea: "invoicing_ar",
-      },
-      {
-        label: "Journal Entries",
-        href: "/journal-entries",
-        icon: "BookOpen",
-        functionalArea: "invoicing_ar",
-      },
-      {
-        label: "Reports",
-        href: "/reports",
-        icon: "PieChart",
-        functionalArea: "invoicing_ar",
-      },
-    ],
-    modules,
-    perms,
-    areas,
-    isAdmin,
-  );
-  if (financeItems.length > 0) {
-    sections.push({ title: "Finance", items: financeItems });
-  }
-
-  // Team
+  // ── Team ──
   const teamItems = filterByPermission(
     [
       {
         label: "Team Dashboard",
         href: "/team",
-        icon: "LayoutDashboard",
+        icon: "Users",
         permission: "users.view",
       },
       {
@@ -375,13 +289,18 @@ function getManufacturingNav(
     sections.push({ title: "Team", items: teamItems });
   }
 
-  // Settings
+  // ── Settings (collapsible, bottom) ──
   sections.push({
     title: "Settings",
     collapsible: true,
     defaultCollapsed: true,
     items: filterByPermission(
       [
+        {
+          label: "Company Profile",
+          href: "/admin/settings",
+          icon: "Building2",
+        },
         {
           label: "AI & Intelligence",
           href: "/settings/ai-intelligence",
@@ -392,16 +311,6 @@ function getManufacturingNav(
           label: "Team Intelligence",
           href: "/settings/team-intelligence",
           icon: "BrainCircuit",
-        },
-        {
-          label: "Company Profile",
-          href: "/admin/settings",
-          icon: "Building2",
-        },
-        {
-          label: "Integrations",
-          href: "/admin/accounting",
-          icon: "Plug",
         },
         {
           label: "Call Intelligence",
@@ -415,15 +324,15 @@ function getManufacturingNav(
           ...(hasSyncError ? { badge: "\u2022" } : {}),
         },
         {
-          label: "Cemeteries",
-          href: "/settings/cemeteries",
-          icon: "MapPin",
+          label: "Integrations",
+          href: "/admin/accounting",
+          icon: "Plug",
         },
         {
-          label: "Charge Library",
-          href: "/settings/charges",
-          icon: "CircleDollarSign",
-          permission: "products.view",
+          label: "Invoice & Statements",
+          href: "/settings/invoice",
+          icon: "FileText",
+          functionalArea: "invoicing_ar",
         },
         {
           label: "Tax Configuration",
@@ -437,17 +346,16 @@ function getManufacturingNav(
           icon: "Landmark",
           functionalArea: "invoicing_ar",
         },
-        { label: "Extensions", href: "/extensions", icon: "Puzzle" },
         {
-          label: "Network Preferences",
-          href: "/settings/network/preferences",
-          icon: "Link",
+          label: "Cemeteries",
+          href: "/settings/cemeteries",
+          icon: "MapPin",
         },
         {
-          label: "Invoice & Statements",
-          href: "/settings/invoice",
-          icon: "FileText",
-          functionalArea: "invoicing_ar",
+          label: "Charge Library",
+          href: "/settings/charges",
+          icon: "CircleDollarSign",
+          permission: "products.view",
         },
         {
           label: "Vault Production Capacity",
@@ -455,16 +363,22 @@ function getManufacturingNav(
           icon: "Factory",
         },
         {
+          label: "Seasonal Templates",
+          href: "/settings/seasonal-templates",
+          icon: "CalendarDays",
+        },
+        {
+          label: "Network Preferences",
+          href: "/settings/network/preferences",
+          icon: "Link",
+        },
+        {
           label: "Driver Portal Preview",
           href: "/settings/driver-portal-preview",
           icon: "Monitor",
           adminOnly: true,
         },
-        {
-          label: "Seasonal Templates",
-          href: "/settings/seasonal-templates",
-          icon: "CalendarDays",
-        },
+        { label: "Extensions", href: "/extensions", icon: "Puzzle" },
         {
           label: "Notifications",
           href: "/notifications",
@@ -481,11 +395,11 @@ function getManufacturingNav(
   return {
     sections,
     mobileTabs: [
-      { label: "My Deliveries", href: "/driver", icon: "Truck" },
-      { label: "Orders", href: "/ar/orders", icon: "ClipboardList" },
+      { label: "Home", href: "/dashboard", icon: "Home" },
+      { label: "Orders", href: "/order-station", icon: "Zap" },
       { label: "Schedule", href: "/scheduling", icon: "Kanban" },
-      { label: "Inventory", href: "/inventory", icon: "Package" },
-      { label: "Production", href: "/production-log", icon: "Factory" },
+      { label: "Financials", href: "/financials", icon: "BarChart3" },
+      { label: "CRM", href: "/crm", icon: "Building2" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder: "Order, schedule, log production...",
@@ -502,9 +416,9 @@ function getFuneralHomeNav(
 ): NavigationConfig {
   const sections: NavSection[] = [];
 
-  // Cases
+  // Primary
   const caseItems: NavItem[] = [
-    { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
+    { label: "Home", href: "/dashboard", icon: "Home" },
     {
       label: "Active Cases",
       href: "/cases",
@@ -530,6 +444,16 @@ function getFuneralHomeNav(
     items: filterByPermission(caseItems, modules, perms, undefined, isAdmin),
   });
 
+  // Hubs
+  const hubItems: NavItem[] = [
+    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true },
+    { label: "CRM", href: "/crm", icon: "Building2", isHub: true, permission: "customers.view" },
+  ];
+  const filteredHubs = filterByPermission(hubItems, modules, perms, undefined, isAdmin);
+  if (filteredHubs.length > 0) {
+    sections.push({ title: "Hubs", items: filteredHubs });
+  }
+
   // Compliance
   const complianceItems = filterByPermission(
     [
@@ -545,30 +469,6 @@ function getFuneralHomeNav(
   );
   if (complianceItems.length > 0) {
     sections.push({ title: "Compliance", items: complianceItems });
-  }
-
-  // Finance
-  const financeItems = filterByPermission(
-    [
-      { label: "Financials Board", href: "/financials", icon: "BarChart3" },
-      {
-        label: "Billing",
-        href: "/billing",
-        icon: "Receipt",
-        permission: "fh_invoices.view",
-      },
-      {
-        label: "Vendors & Bills",
-        href: "/ap/bills",
-        icon: "Receipt",
-        permission: "ap.view",
-      },
-    ],
-    modules,
-    perms,
-  );
-  if (financeItems.length > 0) {
-    sections.push({ title: "Finance", items: financeItems });
   }
 
   // Team
@@ -595,28 +495,16 @@ function getFuneralHomeNav(
     defaultCollapsed: true,
     items: filterByPermission(
       [
-        {
-          label: "Company Profile",
-          href: "/admin/settings",
-          icon: "Building2",
-        },
+        { label: "Company Profile", href: "/admin/settings", icon: "Building2" },
         {
           label: "Price List",
           href: "/funeral-home/price-list",
           icon: "ListOrdered",
           permission: "fh_price_list.view",
         },
-        {
-          label: "Integrations",
-          href: "/admin/accounting",
-          icon: "Plug",
-        },
+        { label: "Integrations", href: "/admin/accounting", icon: "Plug" },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
-        {
-          label: "Notifications",
-          href: "/notifications",
-          icon: "Bell",
-        },
+        { label: "Notifications", href: "/notifications", icon: "Bell" },
       ],
       modules,
       perms,
@@ -626,10 +514,10 @@ function getFuneralHomeNav(
   return {
     sections,
     mobileTabs: [
+      { label: "Home", href: "/dashboard", icon: "Home" },
       { label: "Cases", href: "/cases", icon: "FolderOpen" },
-      { label: "New Case", href: "/cases/new", icon: "Plus" },
-      { label: "FTC", href: "/funeral-home/compliance", icon: "Scale" },
-      { label: "Billing", href: "/billing", icon: "Receipt" },
+      { label: "Financials", href: "/financials", icon: "BarChart3" },
+      { label: "CRM", href: "/crm", icon: "Building2" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder: "First call, order vault, record payment...",
@@ -654,7 +542,7 @@ function getCemeteryNav(
     title: "Operations",
     items: filterByPermission(
       [
-        { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
+        { label: "Home", href: "/dashboard", icon: "Home" },
         { label: "Interments", href: "/interments", icon: "MapPin" },
         { label: "Plot Map", href: "/plots", icon: "Map" },
         { label: "Deeds", href: "/deeds", icon: "FileText" },
@@ -664,23 +552,11 @@ function getCemeteryNav(
     ),
   });
 
-  const financeItems = filterByPermission(
-    [
-      { label: "Financials Board", href: "/financials", icon: "BarChart3" },
-      { label: "Billing", href: "/billing", icon: "Receipt" },
-      {
-        label: "Vendors & Bills",
-        href: "/ap/bills",
-        icon: "Receipt",
-        permission: "ap.view",
-      },
-    ],
-    modules,
-    perms,
-  );
-  if (financeItems.length > 0) {
-    sections.push({ title: "Finance", items: financeItems });
-  }
+  // Hubs
+  const hubItems: NavItem[] = [
+    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true },
+  ];
+  sections.push({ title: "Hubs", items: hubItems });
 
   sections.push({
     title: "Settings",
@@ -688,11 +564,7 @@ function getCemeteryNav(
     defaultCollapsed: true,
     items: filterByPermission(
       [
-        {
-          label: "Company Profile",
-          href: "/admin/settings",
-          icon: "Building2",
-        },
+        { label: "Company Profile", href: "/admin/settings", icon: "Building2" },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
       ],
       modules,
@@ -703,10 +575,10 @@ function getCemeteryNav(
   return {
     sections,
     mobileTabs: [
+      { label: "Home", href: "/dashboard", icon: "Home" },
       { label: "Interments", href: "/interments", icon: "MapPin" },
       { label: "Plots", href: "/plots", icon: "Map" },
-      { label: "Deeds", href: "/deeds", icon: "FileText" },
-      { label: "Billing", href: "/billing", icon: "Receipt" },
+      { label: "Financials", href: "/financials", icon: "BarChart3" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder:
@@ -728,17 +600,9 @@ function getCrematoryNav(
     title: "Operations",
     items: filterByPermission(
       [
-        { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
-        {
-          label: "Cases",
-          href: "/crematory/cases",
-          icon: "FolderOpen",
-        },
-        {
-          label: "Schedule",
-          href: "/crematory/schedule",
-          icon: "Calendar",
-        },
+        { label: "Home", href: "/dashboard", icon: "Home" },
+        { label: "Cases", href: "/crematory/cases", icon: "FolderOpen" },
+        { label: "Schedule", href: "/crematory/schedule", icon: "Calendar" },
       ],
       modules,
       perms,
@@ -747,11 +611,7 @@ function getCrematoryNav(
 
   const complianceItems = filterByPermission(
     [
-      {
-        label: "Chain of Custody",
-        href: "/crematory/custody",
-        icon: "Link",
-      },
+      { label: "Chain of Custody", href: "/crematory/custody", icon: "Link" },
     ],
     modules,
     perms,
@@ -760,23 +620,11 @@ function getCrematoryNav(
     sections.push({ title: "Compliance", items: complianceItems });
   }
 
-  const financeItems = filterByPermission(
-    [
-      { label: "Financials Board", href: "/financials", icon: "BarChart3" },
-      { label: "Billing", href: "/billing", icon: "Receipt" },
-      {
-        label: "Vendors & Bills",
-        href: "/ap/bills",
-        icon: "Receipt",
-        permission: "ap.view",
-      },
-    ],
-    modules,
-    perms,
-  );
-  if (financeItems.length > 0) {
-    sections.push({ title: "Finance", items: financeItems });
-  }
+  // Hubs
+  const hubItems: NavItem[] = [
+    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true },
+  ];
+  sections.push({ title: "Hubs", items: hubItems });
 
   sections.push({
     title: "Settings",
@@ -784,11 +632,7 @@ function getCrematoryNav(
     defaultCollapsed: true,
     items: filterByPermission(
       [
-        {
-          label: "Company Profile",
-          href: "/admin/settings",
-          icon: "Building2",
-        },
+        { label: "Company Profile", href: "/admin/settings", icon: "Building2" },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
       ],
       modules,
@@ -799,10 +643,10 @@ function getCrematoryNav(
   return {
     sections,
     mobileTabs: [
+      { label: "Home", href: "/dashboard", icon: "Home" },
       { label: "Cases", href: "/crematory/cases", icon: "FolderOpen" },
       { label: "Schedule", href: "/crematory/schedule", icon: "Calendar" },
-      { label: "Custody", href: "/crematory/custody", icon: "Link" },
-      { label: "Billing", href: "/billing", icon: "Receipt" },
+      { label: "Financials", href: "/financials", icon: "BarChart3" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder: "New case, update status, schedule cremation...",
