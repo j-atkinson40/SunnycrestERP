@@ -353,9 +353,13 @@ export default function App() {
                   </Route>
 
                   {/* Hub Pages */}
-                  <Route path="/financials" element={<FinancialsHub />} />
+                  <Route element={<ProtectedRoute requiredPermission="financials.view" />}>
+                    <Route path="/financials" element={<FinancialsHub />} />
+                  </Route>
                   <Route path="/crm" element={<CRMHub />} />
-                  <Route path="/production-hub" element={<ProductionHub />} />
+                  <Route element={<ProtectedRoute requiredPermission="production_hub.view" />}>
+                    <Route path="/production-hub" element={<ProductionHub />} />
+                  </Route>
 
                   {/* CRM */}
                   <Route path="/crm/companies" element={<CompaniesListPage />} />

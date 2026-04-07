@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.core.permissions import (
+    ACCOUNTANT_DEFAULT_PERMISSIONS,
     OFFICE_STAFF_DEFAULT_PERMISSIONS,
     DRIVER_DEFAULT_PERMISSIONS,
     PRODUCTION_DEFAULT_PERMISSIONS,
@@ -117,6 +118,10 @@ def main():
         # ---- 3. Users ----
         print("[3] Creating users...")
         admin_id = _seed_users(db, role_ids)
+
+        # ---- 3b. Permission overrides for office_finance ----
+        print("[3b] Creating permission overrides...")
+        _seed_permission_overrides(db, admin_id)
 
         # ---- 4. Company Entities + Customers ----
         print("[4] Creating funeral homes (company_entities + customers)...")
@@ -285,12 +290,14 @@ def _seed_company(db: Session):
 def _seed_roles(db: Session):
     roles = [
         ("admin", "Admin", "Full access to all features"),
+        ("accountant", "Accountant", "Financial operations and reporting"),
         ("office_staff", "Office Staff", "Office operations and order management"),
         ("driver", "Driver", "Delivery routes and confirmations"),
         ("production", "Production", "Production floor and inventory"),
     ]
     # Permission sets per role (admin gets wildcard via permission_service, no rows needed)
     role_permissions_map = {
+        "accountant": ACCOUNTANT_DEFAULT_PERMISSIONS,
         "office_staff": OFFICE_STAFF_DEFAULT_PERMISSIONS,
         "driver": DRIVER_DEFAULT_PERMISSIONS,
         "production": PRODUCTION_DEFAULT_PERMISSIONS,
@@ -341,9 +348,12 @@ def _seed_roles(db: Session):
 def _seed_users(db: Session, role_ids: dict) -> str:
     users = [
         ("admin@testco.com", "TestAdmin123!", "Admin", "User", "admin"),
+        ("accountant@testco.com", "TestAccountant123!", "Alex", "Accountant", "accountant"),
         ("office@testco.com", "TestOffice123!", "Office", "Staff", "office_staff"),
+        ("office_finance@testco.com", "TestOffice123!", "Fiona", "Finance", "office_staff"),
         ("driver@testco.com", "TestDriver123!", "Dave", "Driver", "driver"),
         ("production@testco.com", "TestProd123!", "Paul", "Producer", "production"),
+        ("prodmanager@testco.com", "TestProd123!", "Pete", "Manager", "production"),
     ]
     admin_id = None
     for email, password, first, last, role_slug in users:
@@ -377,6 +387,40 @@ def _seed_users(db: Session, role_ids: dict) -> str:
             counts["users"] += 1
     db.flush()
     return admin_id
+
+
+def _seed_permission_overrides(db: Session, admin_id: str):
+    """Grant financial permissions to office_finance user via permission overrides."""
+    # Find office_finance user
+    row = db.execute(text("""
+        SELECT id FROM users WHERE company_id = :cid AND email = :email
+    """), {"cid": CFG["company_id"], "email": "office_finance@testco.com"}).fetchone()
+    if not row:
+        print("    -> office_finance user not found, skipping overrides")
+        return
+    user_id = row[0]
+
+    overrides = [
+        "financials.view",
+        "financials.ar.view",
+        "financials.invoices.view",
+        "invoice.approve",
+    ]
+    for perm_key in overrides:
+        existing = db.execute(text("""
+            SELECT id FROM user_permission_overrides
+            WHERE user_id = :uid AND permission_key = :perm
+        """), {"uid": user_id, "perm": perm_key}).fetchone()
+        if existing:
+            continue
+        db.execute(text("""
+            INSERT INTO user_permission_overrides (id, user_id, permission_key, granted,
+                granted_by_user_id, notes, created_at)
+            VALUES (:id, :uid, :perm, true, :admin, :notes, :now)
+        """), {"id": uid(), "uid": user_id, "perm": perm_key, "admin": admin_id,
+               "notes": "Seeded for testing — office staff with financial access", "now": NOW})
+    print(f"    -> Granted {len(overrides)} permission overrides to office_finance")
+    db.flush()
 
 
 def _seed_funeral_homes(db: Session, admin_id: str):
