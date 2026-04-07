@@ -332,6 +332,12 @@ function getManufacturingNav(
   const teamItems = filterByPermission(
     [
       {
+        label: "Team Dashboard",
+        href: "/team",
+        icon: "LayoutDashboard",
+        permission: "users.view",
+      },
+      {
         label: "Employees",
         href: "/admin/users",
         icon: "UserCircle",

@@ -173,6 +173,7 @@ import VaultSetupPage from "@/pages/onboarding/vault-setup";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import DataMigrationPage from "@/pages/onboarding/data-migration";
 import AccountingReviewPage from "@/pages/onboarding/accounting-review";
+import TeamDashboardPage from "@/pages/team/team-dashboard";
 import AlertsPage from "@/pages/alerts";
 import JournalEntriesPage from "@/pages/journal-entries";
 import TaxSettingsPage from "@/pages/settings/tax-settings";
@@ -302,6 +303,18 @@ export default function App() {
                     <Route
                       path="/admin/users"
                       element={<UserManagement />}
+                    />
+                  </Route>
+
+                  {/* Team dashboard — requires users.view permission */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="users.view" />
+                    }
+                  >
+                    <Route
+                      path="/team"
+                      element={<TeamDashboardPage />}
                     />
                   </Route>
 
