@@ -99,6 +99,7 @@ def initiate_run(
         .first()
     )
     if existing:
+        existing._already_existed = True
         return existing
 
     customers = get_eligible_customers(db, tenant_id)

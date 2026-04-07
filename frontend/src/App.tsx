@@ -120,6 +120,7 @@ import DriverHomePage from "@/pages/driver/home";
 import DriverRoutePage from "@/pages/driver/route";
 import StopDetailPage from "@/pages/driver/stop-detail";
 import MileagePage from "@/pages/driver/mileage";
+import DriverConsolePage from "@/pages/driver/driver-console";
 import CarrierDeliveriesPage from "@/pages/carrier/deliveries";
 import ExtensionCatalogPage from "@/pages/extensions/extension-catalog";
 import ExtensionInstalledPage from "@/pages/extensions/extension-installed";
@@ -848,7 +849,8 @@ export default function App() {
               {/* Driver mobile — uses DriverLayout (no sidebar) */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<DriverLayout />}>
-                  <Route path="/driver" element={<DriverHomePage />} />
+                  <Route path="/driver" element={<DriverConsolePage />} />
+                  <Route path="/driver/home" element={<DriverHomePage />} />
                   <Route path="/driver/route" element={<DriverRoutePage />} />
                   <Route path="/driver/stops/:stopId" element={<StopDetailPage />} />
                   <Route path="/driver/mileage" element={<MileagePage />} />

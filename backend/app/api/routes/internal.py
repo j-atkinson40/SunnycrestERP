@@ -91,6 +91,101 @@ def list_job_runs(
     ]
 
 
+@router.get("/trigger-auto-delivery")
+def preview_auto_delivery(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Preview which orders are eligible for auto-delivery today."""
+    from datetime import date
+    from sqlalchemy import func
+    from app.models.sales_order import SalesOrder
+    from app.models.invoice import Invoice
+
+    today = date.today()
+    tenant_id = current_user.company_id
+
+    skip_statuses = {"canceled", "cancelled", "postponed"}
+    already_invoiced = set(
+        r[0] for r in db.query(Invoice.sales_order_id)
+        .filter(Invoice.company_id == tenant_id, Invoice.sales_order_id.isnot(None))
+        .all()
+    )
+
+    # All non-terminal funeral orders
+    all_orders = (
+        db.query(SalesOrder)
+        .filter(
+            SalesOrder.company_id == tenant_id,
+            ~SalesOrder.status.in_(skip_statuses),
+            SalesOrder.status.in_(["confirmed", "processing", "shipped", "delivered"]),
+            (SalesOrder.order_type == "funeral") | (SalesOrder.order_type.is_(None)),
+        )
+        .order_by(SalesOrder.scheduled_date.asc().nullslast())
+        .all()
+    )
+
+    eligible = []
+    ineligible = []
+
+    for o in all_orders:
+        info = {
+            "order_id": o.id,
+            "order_number": o.number,
+            "customer_name": o.customer_name,
+            "scheduled_date": str(o.scheduled_date) if o.scheduled_date else None,
+            "required_date": str(o.required_date) if o.required_date else None,
+            "status": o.status,
+        }
+
+        if o.id in already_invoiced:
+            ineligible.append({**info, "reason_skipped": "already invoiced"})
+        elif o.scheduled_date and o.scheduled_date <= today:
+            eligible.append({**info, "reason_eligible": f"scheduled_date {o.scheduled_date} <= today"})
+        elif o.scheduled_date and o.scheduled_date > today:
+            ineligible.append({**info, "reason_skipped": f"scheduled for {o.scheduled_date} (future)"})
+        elif o.required_date and func.date(o.required_date) is not None:
+            req_date = o.required_date if isinstance(o.required_date, date) else None
+            if req_date and req_date <= today:
+                eligible.append({**info, "reason_eligible": f"required_date {req_date} <= today (no scheduled_date)"})
+            elif req_date:
+                ineligible.append({**info, "reason_skipped": f"required_date {req_date} is future"})
+            else:
+                ineligible.append({**info, "reason_skipped": "no scheduled_date set"})
+        else:
+            ineligible.append({**info, "reason_skipped": "no scheduled_date or required_date set"})
+
+    return {
+        "date": str(today),
+        "tenant_id": tenant_id,
+        "eligible_count": len(eligible),
+        "ineligible_count": len(ineligible),
+        "eligible_orders": eligible,
+        "ineligible_orders": ineligible,
+    }
+
+
+@router.post("/trigger-auto-delivery")
+def execute_auto_delivery(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Execute the auto-delivery job for the current tenant only."""
+    from app.services.draft_invoice_service import generate_draft_invoices
+
+    logger.info(f"Manual auto-delivery trigger by {current_user.email}")
+    try:
+        generate_draft_invoices(db, current_user.company_id)
+        return {
+            "status": "completed",
+            "triggered_by": current_user.email,
+            "triggered_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Auto-delivery trigger failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/scheduler/status")
 def scheduler_status(
     current_user: User = Depends(get_current_user),

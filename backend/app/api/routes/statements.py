@@ -81,6 +81,16 @@ def start_run(
     except Exception as e:
         logger.error(f"Statement run initiation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Statement run failed: {str(e)}")
+
+    # Check if this was an existing run (idempotent return)
+    if getattr(run, "_already_existed", False):
+        return {
+            "id": run.id,
+            "status": "already_exists",
+            "existing_status": run.status,
+            "message": f"Statements already generated for {body.month}/{body.year}. View existing run or generate for a different period.",
+        }
+
     # Generate all statements in background
     background_tasks.add_task(
         generate_all_for_run, db, run.id, current_user.company_id

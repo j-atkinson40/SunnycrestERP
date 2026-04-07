@@ -159,11 +159,18 @@ export default function StatementsPage() {
   async function handleGenerate() {
     setGenerating(true);
     try {
-      await apiClient.post("/api/v1/statements/runs", {
+      const res = await apiClient.post("/api/v1/statements/runs", {
         month: currentMonth,
         year: currentYear,
       });
-      toast.success("Statement run started");
+      if (res.data?.status === "already_exists") {
+        toast.info(
+          `Statements already exist for ${currentMonth}/${currentYear}. Viewing existing run.`,
+        );
+        setActiveTab("current");
+      } else {
+        toast.success("Statement run started");
+      }
       await fetchData();
     } catch (err: unknown) {
       const msg =

@@ -481,6 +481,7 @@ function getManufacturingNav(
   return {
     sections,
     mobileTabs: [
+      { label: "My Deliveries", href: "/driver", icon: "Truck" },
       { label: "Orders", href: "/ar/orders", icon: "ClipboardList" },
       { label: "Schedule", href: "/scheduling", icon: "Kanban" },
       { label: "Inventory", href: "/inventory", icon: "Package" },

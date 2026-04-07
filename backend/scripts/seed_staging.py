@@ -585,21 +585,21 @@ def _seed_orders(db: Session, customer_ids: dict, cemetery_ids: dict,
     """Create 10 orders spread across the last 30 days."""
 
     orders_spec = [
-        # (customer, cemetery, deceased, vault, equip, status, days_ago)
-        ("Johnson Funeral Home", "Oakwood Cemetery", "Margaret Sullivan", "Bronze Triune", "Full Equipment (with product)", "draft", 2),
-        ("Smith & Sons Funeral Home", "St. Mary's Cemetery", "Robert Williams", "SST Triune", "Lowering Device & Grass (with)", "draft", 1),
-        ("Johnson Funeral Home", "Oakwood Cemetery", "Dorothy Anderson", "Venetian", "Full Equipment (with product)", "confirmed", 8),
-        ("Smith & Sons Funeral Home", "Oakwood Cemetery", "James Mitchell", "Tribute", "Tent Only (with)", "confirmed", 12),
-        ("Johnson Funeral Home", "St. Mary's Cemetery", "Patricia Thompson", "Continental", "Full Equipment (with product)", "confirmed", 15),
-        ("Smith & Sons Funeral Home", "St. Mary's Cemetery", "William Davis", "Salute", "Lowering Device & Grass (with)", "processing", 18),
-        ("Johnson Funeral Home", "Oakwood Cemetery", "Barbara Wilson", "Monticello", "Tent Only (with)", "processing", 20),
-        ("Smith & Sons Funeral Home", "Oakwood Cemetery", "Richard Johnson", "Copper Triune", "Full Equipment (with product)", "completed", 22),
-        ("Johnson Funeral Home", "St. Mary's Cemetery", "Helen Martinez", "Cameo Rose", "Full Equipment (with product)", "completed", 25),
-        ("Smith & Sons Funeral Home", "St. Mary's Cemetery", "Charles Brown", "Veteran Triune", "Lowering Device & Grass (with)", "completed", 28),
+        # (customer, cemetery, deceased, vault, equip, status, days_ago, sched_today)
+        ("Johnson Funeral Home", "Oakwood Cemetery", "Margaret Sullivan", "Bronze Triune", "Full Equipment (with product)", "draft", 2, False),
+        ("Smith & Sons Funeral Home", "St. Mary's Cemetery", "Robert Williams", "SST Triune", "Lowering Device & Grass (with)", "draft", 1, False),
+        ("Johnson Funeral Home", "Oakwood Cemetery", "Dorothy Anderson", "Venetian", "Full Equipment (with product)", "confirmed", 8, False),
+        ("Smith & Sons Funeral Home", "Oakwood Cemetery", "James Mitchell", "Tribute", "Tent Only (with)", "confirmed", 0, True),
+        ("Johnson Funeral Home", "St. Mary's Cemetery", "Patricia Thompson", "Continental", "Full Equipment (with product)", "confirmed", 15, False),
+        ("Smith & Sons Funeral Home", "St. Mary's Cemetery", "William Davis", "Salute", "Lowering Device & Grass (with)", "processing", 0, True),
+        ("Johnson Funeral Home", "Oakwood Cemetery", "Barbara Wilson", "Monticello", "Tent Only (with)", "processing", 0, True),
+        ("Smith & Sons Funeral Home", "Oakwood Cemetery", "Richard Johnson", "Copper Triune", "Full Equipment (with product)", "completed", 22, False),
+        ("Johnson Funeral Home", "St. Mary's Cemetery", "Helen Martinez", "Cameo Rose", "Full Equipment (with product)", "completed", 25, False),
+        ("Smith & Sons Funeral Home", "St. Mary's Cemetery", "Charles Brown", "Veteran Triune", "Lowering Device & Grass (with)", "completed", 28, False),
     ]
 
     order_ids = []
-    for i, (cust_name, cem_name, deceased, vault, equip, status, days_ago) in enumerate(orders_spec, 1):
+    for i, (cust_name, cem_name, deceased, vault, equip, status, days_ago, sched_today) in enumerate(orders_spec, 1):
         oid = uid()
         order_date = NOW - timedelta(days=days_ago)
         so_number = f"SO-2026-{i:04d}"
@@ -608,7 +608,12 @@ def _seed_orders(db: Session, customer_ids: dict, cemetery_ids: dict,
         subtotal = vault_price + equip_price
 
         delivered_at = order_date + timedelta(days=1) if status == "completed" else None
-        scheduled = (order_date + timedelta(days=1)).date() if status != "draft" else None
+        if sched_today:
+            scheduled = date.today()
+        elif status != "draft":
+            scheduled = (order_date + timedelta(days=1)).date()
+        else:
+            scheduled = None
 
         db.execute(text("""
             INSERT INTO sales_orders (id, company_id, number, customer_id, cemetery_id,

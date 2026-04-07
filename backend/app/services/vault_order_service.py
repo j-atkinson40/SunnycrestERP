@@ -23,7 +23,8 @@ _MANUFACTURER_STATUS_MAP = {
     "draft": "submitted",
     "confirmed": "confirmed",
     "processing": "in_production",
-    "shipped": "scheduled_for_delivery",
+    "delivered": "scheduled_for_delivery",
+    "shipped": "scheduled_for_delivery",  # backward compat
     "completed": "delivered",
     "canceled": "cancelled",
 }

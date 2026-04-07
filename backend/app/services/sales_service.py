@@ -1297,7 +1297,7 @@ def get_sales_stats(db: Session, company_id: str) -> SalesStats:
         db.query(func.count(SalesOrder.id))
         .filter(
             SalesOrder.company_id == company_id,
-            SalesOrder.status.in_(["draft", "confirmed", "processing", "shipped"]),
+            SalesOrder.status.in_(["draft", "confirmed", "processing", "shipped", "delivered"]),
         )
         .scalar()
         or 0

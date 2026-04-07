@@ -149,18 +149,22 @@ def generate_draft_invoices(db: Session, tenant_id: str) -> None:
         .all()
     )
 
-    # Base query: funeral orders scheduled today, not cancelled, not yet invoiced
+    # Base query: funeral orders due today or overdue, not cancelled, not yet invoiced
+    # Eligibility: scheduled_date <= today, or if no scheduled_date then required_date <= today
+    # Orders with neither date set are never auto-delivered (require explicit scheduling)
     base_q = (
         db.query(SalesOrder)
         .filter(
             SalesOrder.company_id == tenant_id,
+            SalesOrder.status.in_(["confirmed", "processing", "shipped", "delivered"]),
             ~SalesOrder.status.in_(SKIP_STATUSES),
         )
         .filter(
-            (SalesOrder.scheduled_date == today)
+            (SalesOrder.scheduled_date <= today)
             | (
                 SalesOrder.scheduled_date.is_(None)
-                & (func.date(SalesOrder.required_date) == today)
+                & (func.date(SalesOrder.required_date) <= today)
+                & SalesOrder.required_date.isnot(None)
             )
         )
         .filter(

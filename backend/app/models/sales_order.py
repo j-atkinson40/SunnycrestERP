@@ -40,7 +40,7 @@ class SalesOrder(Base):
     )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="draft"
-    )  # draft, confirmed, processing, shipped, completed, canceled
+    )  # draft, confirmed, processing, delivered, completed, canceled
 
     order_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

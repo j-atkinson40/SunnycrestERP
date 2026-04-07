@@ -36,6 +36,7 @@ function fmtDate(d: string | null) {
 
 function statusLabel(status: string): string {
   switch (status) {
+    case "delivered":
     case "shipped": return "Delivered";
     case "processing": return "In Production";
     default: return status.charAt(0).toUpperCase() + status.slice(1);
@@ -58,6 +59,7 @@ function statusBadge(status: string) {
           In Production
         </Badge>
       );
+    case "delivered":
     case "shipped":
       return (
         <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
@@ -133,7 +135,7 @@ function SalesOrderDetailView({ id }: { id: string }) {
     try {
       const updated = await salesService.updateSalesOrder(order.id, {
         status: newStatus,
-        ...(newStatus === "shipped"
+        ...(newStatus === "delivered"
           ? { shipped_date: new Date().toISOString().split("T")[0] }
           : {}),
       });
@@ -202,12 +204,12 @@ function SalesOrderDetailView({ id }: { id: string }) {
             <Button
               variant="outline"
               disabled={actionBusy}
-              onClick={() => handleStatusUpdate("shipped")}
+              onClick={() => handleStatusUpdate("delivered")}
             >
               Mark as Delivered
             </Button>
           )}
-          {order.status === "shipped" && (
+          {(order.status === "delivered" || order.status === "shipped") && (
             <Button
               variant="outline"
               disabled={actionBusy}
