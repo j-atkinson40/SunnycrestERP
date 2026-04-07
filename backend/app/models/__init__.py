@@ -229,6 +229,8 @@ from app.models.tenant_notification import TenantNotification
 from app.models.unified_import_session import UnifiedImportSession
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
+from app.models.permission_catalog import PermissionCatalog
+from app.models.custom_permission import CustomPermission
 from app.models.vehicle import Vehicle
 from app.models.vertical_preset import VerticalPreset
 from app.models.work_order import WorkOrder
@@ -441,6 +443,8 @@ __all__ = [
     "UnifiedImportSession",
     "User",
     "UserPermissionOverride",
+    "PermissionCatalog",
+    "CustomPermission",
     "Vehicle",
     "VerticalPreset",
     "WorkOrder",

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -24,10 +24,14 @@ class UserPermissionOverride(Base):
         nullable=False,
         index=True,
     )
-    permission_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    permission_key: Mapped[str] = mapped_column(String(200), nullable=False)
     granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    granted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    user = relationship("User", back_populates="permission_overrides")
+    user = relationship("User", back_populates="permission_overrides", foreign_keys=[user_id])

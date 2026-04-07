@@ -673,12 +673,14 @@ Platform-wide feature powering live call assistance, mid-call price lookup, and 
 - 10 orders in various states, 3 invoices (paid/outstanding/overdue)
 - 1 active price list version, 5 KB categories + 1 manual doc
 
-**Test suites:**
+**Test Suite Results (Final):**
 
 | Suite | File | Results |
 |-------|------|---------|
-| API | `backend/tests/test_comprehensive.py` | 43/44 passed, 1 skipped |
-| E2E | `frontend/tests/e2e/comprehensive.spec.ts` | 42/43 passed, 1 flaky |
+| API | `backend/tests/test_comprehensive.py` | 43/44 passed, 1 skipped (contacts route path, non-blocking) |
+| Business flows | `frontend/tests/e2e/business-flows.spec.ts` | 44/44 passed |
+| Automated flows | `frontend/tests/e2e/automated-flows.spec.ts` | 34/34 passed |
+| **Total** | | **121/122 passing** |
 
 ```bash
 # Run API tests
@@ -688,6 +690,14 @@ python3 -m pytest tests/test_comprehensive.py -v --tb=short
 # Run E2E tests
 cd frontend && npx playwright test --project=chromium
 ```
+
+**Critical fixes deployed to staging:**
+- Driver permissions + console page at `/driver`
+- Auto-delivery eligibility fix (`scheduled_date <= today`, `required_date` fallback)
+- Statement run page at `/ar/statements`
+- Internal trigger endpoints at `/api/v1/internal/` (preview + execute auto-delivery)
+- Job audit logging (`job_runs` table)
+- `shipped` → `delivered` status rename throughout (migration + backward compat)
 
 **Known staging quirk:** Tenant slug not auto-detected from Railway URL — use `?slug=testco` query parameter on first visit (persists to localStorage automatically). Fixed in codebase: `frontend/src/lib/tenant.ts` bootstraps slug from `?slug=` param.
 
@@ -722,6 +732,10 @@ cd frontend && npx playwright test --project=chromium
 - ✅ Platform Email (Resend)
 - ✅ Morning Briefing
 - ✅ Onboarding checklist
-- ✅ Staging environment + test suites
+- ✅ Staging environment + test suites (121/122 passing)
+- ✅ Driver console (`/driver`)
+- ✅ Monthly statements (`/ar/statements`)
+- ✅ Auto-delivery with eligibility preview (`/api/v1/internal/trigger-auto-delivery`)
+- ✅ Job audit logging (`job_runs` table)
 
 **Next build focus:** Funeral Home vertical — Phase FH-1 prompts ready. Key dependency: 70-field case file data model (design with AI Arrangement Scribe in mind from day one).

@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 
 export function RootRedirect() {
-  const { isLoading, isAuthenticated, track, consoleAccess } = useAuth();
+  const { user, isLoading, isAuthenticated, track, consoleAccess } = useAuth();
 
   if (isLoading) {
     return (
@@ -14,6 +14,11 @@ export function RootRedirect() {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Driver role → redirect immediately to driver console
+  if (user?.role_slug === "driver") {
+    return <Navigate to="/driver" replace />;
   }
 
   // Production users go to console

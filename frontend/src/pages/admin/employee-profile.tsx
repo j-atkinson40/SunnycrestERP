@@ -29,6 +29,7 @@ import EquipmentSection from "@/components/equipment-section";
 import OnboardingSection from "@/components/onboarding-section";
 import PerformanceNotesSection from "@/components/performance-notes-section";
 import FunctionalAreaMatrix from "@/components/functional-area-matrix";
+import UserPermissionsSection from "@/components/UserPermissionsSection";
 import apiClient from "@/lib/api-client";
 
 export default function AdminEmployeeProfile() {
@@ -620,6 +621,15 @@ export default function AdminEmployeeProfile() {
           </div>
         )}
       </form>
+
+      {/* Permissions */}
+      {userId && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Permissions</h2>
+          <Separator className="my-4" />
+          <UserPermissionsSection userId={userId} canEdit={canEdit} />
+        </Card>
+      )}
 
       {/* Documents — outside the form */}
       {userId && (

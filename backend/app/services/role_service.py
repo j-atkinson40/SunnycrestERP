@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.permissions import (
+    ACCOUNTANT_DEFAULT_PERMISSIONS,
     ACCOUNTING_DEFAULT_PERMISSIONS,
     DRIVER_DEFAULT_PERMISSIONS,
     EMPLOYEE_DEFAULT_PERMISSIONS,
@@ -36,9 +37,9 @@ ROLE_FUNCTIONAL_AREAS: dict[str, list[str]] = {
 
 _SYSTEM_ROLES = [
     {
-        "name": "Admin",
+        "name": "Administrator",
         "slug": "admin",
-        "description": "Full system access",
+        "description": "Full access to everything",
         "permissions": [],  # Wildcard — handled by permission_service.py
     },
     {
@@ -50,13 +51,19 @@ _SYSTEM_ROLES = [
     {
         "name": "Office Staff",
         "slug": "office_staff",
-        "description": "Order entry, billing, AR, scheduling, and Legacy Studio",
+        "description": "Operations and CRM access, no financials by default",
         "permissions": OFFICE_STAFF_DEFAULT_PERMISSIONS,
+    },
+    {
+        "name": "Accountant",
+        "slug": "accountant",
+        "description": "Full financial access, view-only on operations",
+        "permissions": ACCOUNTANT_DEFAULT_PERMISSIONS,
     },
     {
         "name": "Accounting",
         "slug": "accounting",
-        "description": "Read access to financial and operational data",
+        "description": "Full financial access, view-only on operations",
         "permissions": ACCOUNTING_DEFAULT_PERMISSIONS,
     },
     {
@@ -68,13 +75,13 @@ _SYSTEM_ROLES = [
     {
         "name": "Driver",
         "slug": "driver",
-        "description": "Driver portal and route management only",
+        "description": "Driver console only, direct redirect on login",
         "permissions": DRIVER_DEFAULT_PERMISSIONS,
     },
     {
-        "name": "Production",
+        "name": "Production / Plant Manager",
         "slug": "production",
-        "description": "Operations board, production logging, safety, and QC",
+        "description": "Operations board and production hub full access",
         "permissions": PRODUCTION_DEFAULT_PERMISSIONS,
     },
     {

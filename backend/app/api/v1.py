@@ -78,6 +78,7 @@ from app.api.routes import (
     notifications,
     onboarding,
     operations_board,
+    permissions,
     purchasing,
     reconciliation,
     reports,
@@ -451,6 +452,9 @@ v1_router.include_router(
     statements.router, prefix="/statements", tags=["Statements"]
 )
 v1_router.include_router(roles.router, prefix="/roles", tags=["Role Management"])
+v1_router.include_router(
+    permissions.router, prefix="/permissions", tags=["Permission Management"]
+)
 v1_router.include_router(
     sage_exports.router, prefix="/sage-exports", tags=["Sage Exports"]
 )

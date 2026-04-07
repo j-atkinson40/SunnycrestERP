@@ -1464,6 +1464,94 @@ def _serialize_context_to_text(
 
 
 # ---------------------------------------------------------------------------
+# Permission-based briefing items
+# ---------------------------------------------------------------------------
+
+
+def _get_permission_based_items(db: Session, user: User) -> list[str]:
+    """Gather briefing items based on user's effective permissions."""
+    from app.services.permission_service import get_user_permissions
+
+    perms = get_user_permissions(user, db)
+    items: list[str] = []
+
+    # invoice.approve → draft invoices pending approval
+    if "invoice.approve" in perms:
+        try:
+            draft_count = (
+                db.query(Invoice)
+                .filter(
+                    Invoice.company_id == user.company_id,
+                    Invoice.status == "draft",
+                )
+                .count()
+            )
+            if draft_count > 0:
+                items.append(
+                    f"{draft_count} draft invoice(s) pending your approval."
+                )
+        except Exception:
+            pass
+
+    # financials.ar.view → overdue invoice summary
+    if "financials.ar.view" in perms:
+        try:
+            overdue_count = (
+                db.query(Invoice)
+                .filter(
+                    Invoice.company_id == user.company_id,
+                    Invoice.status == "overdue",
+                )
+                .count()
+            )
+            if overdue_count > 0:
+                items.append(f"{overdue_count} overdue invoice(s) need attention.")
+        except Exception:
+            pass
+
+    # operations.view → orders due today
+    if "operations.view" in perms:
+        try:
+            today = date.today()
+            due_today = (
+                db.query(SalesOrder)
+                .filter(
+                    SalesOrder.company_id == user.company_id,
+                    SalesOrder.scheduled_date == today,
+                    SalesOrder.status.in_(["confirmed", "processing"]),
+                )
+                .count()
+            )
+            if due_today > 0:
+                items.append(f"{due_today} order(s) scheduled for delivery today.")
+        except Exception:
+            pass
+
+    # Check custom permissions with notification_routing
+    try:
+        from app.models.custom_permission import CustomPermission
+
+        custom_perms = (
+            db.query(CustomPermission)
+            .filter(
+                CustomPermission.tenant_id == user.company_id,
+                CustomPermission.notification_routing.is_(True),
+            )
+            .all()
+        )
+        for cp in custom_perms:
+            if cp.slug in perms:
+                items.append(
+                    f"[{cp.name}] You have the '{cp.name}' specialty permission — "
+                    f"check for related items."
+                )
+    except Exception:
+        pass
+
+    return items
+
+
+# ---------------------------------------------------------------------------
 # Functional area briefing generation
 # ---------------------------------------------------------------------------
 
@@ -1506,6 +1594,13 @@ def generate_functional_area_briefing(
         user_prompt += "\n\nCRITICAL ITEMS FROM OTHER AREAS:"
         for item in secondary_items:
             user_prompt += f"\n- [{item['priority'].upper()}] {item['text']}"
+
+    # Inject permission-based briefing items
+    perm_items = _get_permission_based_items(db, user)
+    if perm_items:
+        user_prompt += "\n\nPERMISSION-BASED ACTION ITEMS:"
+        for item in perm_items:
+            user_prompt += f"\n- {item}"
 
     # Inject historical seasonal context if available
     hist = _get_historical_context(db, user.company_id)
