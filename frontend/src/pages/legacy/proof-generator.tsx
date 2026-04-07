@@ -108,6 +108,7 @@ export default function ProofGeneratorPage() {
   return (
     <DeviceAwarePage
       desktop={() => <ProofGeneratorDesktop />}
+      tablet={() => <ProofGeneratorMobile />}
       mobile={() => <ProofGeneratorMobile />}
     />
   )
