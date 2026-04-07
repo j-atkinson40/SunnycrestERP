@@ -1,0 +1,74 @@
+
+Running 43 tests using 1 worker
+
+  ✓   1 [chromium] › tests/e2e/comprehensive.spec.ts:87:3 › Auth › login page loads with tenant name and form (1.3s)
+  ✓   2 [chromium] › tests/e2e/comprehensive.spec.ts:100:3 › Auth › typing email switches to password mode (1.6s)
+  ✘   3 [chromium] › tests/e2e/comprehensive.spec.ts:116:3 › Auth › admin can log in (2.7s)
+  ✓   4 [chromium] › tests/e2e/comprehensive.spec.ts:116:3 › Auth › admin can log in (retry #1) (2.6s)
+  ✓   5 [chromium] › tests/e2e/comprehensive.spec.ts:123:3 › Auth › invalid credentials show error (5.2s)
+  ✓   6 [chromium] › tests/e2e/comprehensive.spec.ts:143:3 › Auth › office staff can log in (2.3s)
+  ✓   7 [chromium] › tests/e2e/comprehensive.spec.ts:148:3 › Auth › driver can log in (2.3s)
+  ✓   8 [chromium] › tests/e2e/comprehensive.spec.ts:153:3 › Auth › production can log in (2.7s)
+  ✓   9 [chromium] › tests/e2e/comprehensive.spec.ts:158:3 › Auth › logout and return to login (4.8s)
+  ✓  10 [chromium] › tests/e2e/comprehensive.spec.ts:200:3 › Navigation › sidebar/nav is visible (2.6s)
+  ✓  11 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to dashboard (5.5s)
+  ✓  12 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to orders (7.6s)
+  ✓  13 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to CRM companies (6.0s)
+  ✓  14 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to products (5.6s)
+  ✓  15 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to invoices (5.4s)
+  ✓  16 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to knowledge base (5.7s)
+  ✓  17 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to price management (6.4s)
+  ✓  18 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to onboarding (5.9s)
+  ✓  19 [chromium] › tests/e2e/comprehensive.spec.ts:218:5 › Navigation › can navigate to calls (4.8s)
+  ✓  20 [chromium] › tests/e2e/comprehensive.spec.ts:238:3 › Dashboard › loads without crash (5.8s)
+  ✓  21 [chromium] › tests/e2e/comprehensive.spec.ts:246:3 › Dashboard › no uncaught JS errors (6.9s)
+  ✓  22 [chromium] › tests/e2e/comprehensive.spec.ts:272:3 › Orders › page loads with content (6.0s)
+  ✓  23 [chromium] › tests/e2e/comprehensive.spec.ts:280:3 › Orders › shows order data from seed (7.0s)
+  ✓  24 [chromium] › tests/e2e/comprehensive.spec.ts:296:3 › Orders › can click into order detail (5.8s)
+  ✓  25 [chromium] › tests/e2e/comprehensive.spec.ts:319:3 › CRM / Companies › companies list loads (7.5s)
+  ✓  26 [chromium] › tests/e2e/comprehensive.spec.ts:335:3 › CRM / Companies › search filters companies (9.7s)
+  ✓  27 [chromium] › tests/e2e/comprehensive.spec.ts:350:3 › CRM / Companies › can open company detail (6.0s)
+  ✓  28 [chromium] › tests/e2e/comprehensive.spec.ts:369:3 › Cemeteries › cemeteries settings page loads (6.0s)
+  ✓  29 [chromium] › tests/e2e/comprehensive.spec.ts:394:3 › Invoices › invoices page loads (5.7s)
+  ✓  30 [chromium] › tests/e2e/comprehensive.spec.ts:409:3 › Invoices › AR aging page loads (5.9s)
+  ✓  31 [chromium] › tests/e2e/comprehensive.spec.ts:423:3 › Knowledge Base › page loads with categories (5.9s)
+  ✓  32 [chromium] › tests/e2e/comprehensive.spec.ts:444:3 › Products › page loads with products (5.8s)
+  ✓  33 [chromium] › tests/e2e/comprehensive.spec.ts:469:3 › Price Management › main page loads (5.8s)
+  ✓  34 [chromium] › tests/e2e/comprehensive.spec.ts:479:3 › Price Management › PDF templates page loads (6.0s)
+  ✓  35 [chromium] › tests/e2e/comprehensive.spec.ts:495:3 › Call Intelligence › call log page loads (5.8s)
+  ✓  36 [chromium] › tests/e2e/comprehensive.spec.ts:512:3 › Onboarding › onboarding hub loads (5.9s)
+  ✓  37 [chromium] › tests/e2e/comprehensive.spec.ts:532:3 › Role-Based Access › office staff can access the app (2.4s)
+  ✓  38 [chromium] › tests/e2e/comprehensive.spec.ts:538:3 › Role-Based Access › driver can access the app (2.3s)
+  ✓  39 [chromium] › tests/e2e/comprehensive.spec.ts:544:3 › Role-Based Access › production can access the app (2.2s)
+  ✓  40 [chromium] › tests/e2e/comprehensive.spec.ts:556:3 › Mobile Responsive › login works on mobile (2.4s)
+  ✓  41 [chromium] › tests/e2e/comprehensive.spec.ts:561:3 › Mobile Responsive › pages render on mobile viewport (11.5s)
+  ✓  42 [chromium] › tests/e2e/comprehensive.spec.ts:573:3 › Mobile Responsive › no excessive horizontal scroll (6.1s)
+  ✓  43 [chromium] › tests/e2e/comprehensive.spec.ts:589:3 › Error Handling › 404 for invalid route (4.6s)
+  ✓  44 [chromium] › tests/e2e/comprehensive.spec.ts:602:3 › Error Handling › no critical JS errors on main pages (17.6s)
+
+
+  1) [chromium] › tests/e2e/comprehensive.spec.ts:116:3 › Auth › admin can log in ──────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeGreaterThan[2m([22m[32mexpected[39m[2m)[22m
+
+    Expected: > [32m100[39m
+    Received:   [31m10[39m
+
+      118 |     await expect(page).not.toHaveURL(/\/login/);
+      119 |     const body = await page.locator("body").textContent();
+    > 120 |     expect(body?.length).toBeGreaterThan(100);
+          |                          ^
+      121 |   });
+      122 |
+      123 |   test("invalid credentials show error", async ({ page }) => {
+        at /Users/Jimmy1/Library/CloudStorage/GoogleDrive-ssbball40@gmail.com/My Drive/Claude Code/Sunnycrest ERP/frontend/tests/e2e/comprehensive.spec.ts:120:26
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    tests/e2e/screenshots/comprehensive-Auth-admin-can-log-in-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/e2e/screenshots/comprehensive-Auth-admin-can-log-in-chromium/error-context.md
+
+  1 flaky
+    [chromium] › tests/e2e/comprehensive.spec.ts:116:3 › Auth › admin can log in ───────────────────
+  42 passed (4.0m)
