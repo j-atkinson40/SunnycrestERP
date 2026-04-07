@@ -175,6 +175,7 @@ import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
 import DataMigrationPage from "@/pages/onboarding/data-migration";
 import AccountingReviewPage from "@/pages/onboarding/accounting-review";
 import TeamDashboardPage from "@/pages/team/team-dashboard";
+import CallLogPage from "@/pages/calls/call-log";
 import AlertsPage from "@/pages/alerts";
 import JournalEntriesPage from "@/pages/journal-entries";
 import TaxSettingsPage from "@/pages/settings/tax-settings";
@@ -197,6 +198,8 @@ import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import CompanyRegisterPage from "@/pages/company-register";
 import PlatformAdminEntry from "@/pages/platform-admin-entry";
+import { CallContextProvider } from "@/contexts/call-context";
+import { CallOverlay } from "@/components/call/CallOverlay";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 class ErrorBoundary extends Component<
@@ -275,7 +278,9 @@ export default function App() {
       <ExtensionProvider>
       <LayoutProvider>
       <AuthDeviceProvider>
+      <CallContextProvider>
         <ImpersonationBanner />
+        <CallOverlay />
         <Routes>
           {slug ? (
             <>
@@ -680,6 +685,9 @@ export default function App() {
                     <Route path="/funeral-home/price-list" element={<FHPriceListPage />} />
                   </Route>
 
+                  {/* Call Log — any authenticated user */}
+                  <Route path="/calls" element={<CallLogPage />} />
+
                   {/* Announcements — any authenticated user */}
                   <Route path="/announcements" element={<AnnouncementsPage />} />
 
@@ -883,6 +891,7 @@ export default function App() {
         <div className="fixed bottom-6 right-6 z-40 sm:hidden">
           <VoiceMemoButton compact />
         </div>
+      </CallContextProvider>
       </AuthDeviceProvider>
       </LayoutProvider>
       </ExtensionProvider>

@@ -97,6 +97,11 @@ function getManufacturingNav(
       requiresModule: "sales",
     },
     {
+      label: "Call Log",
+      href: "/calls",
+      icon: "Phone",
+    },
+    {
       label: "Orders",
       href: "/ar/orders",
       icon: "ClipboardList",

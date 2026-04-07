@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { useCall } from "@/contexts/call-context";
 import { authService } from "@/services/auth-service";
 import { employeeProfileService } from "@/services/employee-profile-service";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -8,8 +9,73 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { Phone } from "lucide-react";
 import type { EmployeeProfile } from "@/types/employee-profile";
+
+function CallSettingsCard() {
+  const { preferences, updatePreferences, connected } = useCall();
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center gap-2">
+        <Phone className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">RingCentral Call Settings</h2>
+        {connected ? (
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-green-600">
+            <span className="h-2 w-2 rounded-full bg-green-500" />
+            Connected
+          </span>
+        ) : (
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-gray-300" />
+            Disconnected
+          </span>
+        )}
+      </div>
+      <Separator className="my-4" />
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Call overlay</Label>
+            <p className="text-xs text-muted-foreground">
+              Show incoming call popup and live extraction panel
+            </p>
+          </div>
+          <Switch
+            checked={preferences.rc_overlay_enabled}
+            onCheckedChange={(v) => updatePreferences({ rc_overlay_enabled: v })}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Sound notifications</Label>
+            <p className="text-xs text-muted-foreground">
+              Play a ring tone for incoming calls
+            </p>
+          </div>
+          <Switch
+            checked={preferences.rc_sound_enabled}
+            onCheckedChange={(v) => updatePreferences({ rc_sound_enabled: v })}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Auto-open order form</Label>
+            <p className="text-xs text-muted-foreground">
+              Automatically open Order Station when a call ends
+            </p>
+          </div>
+          <Switch
+            checked={preferences.rc_auto_open_order}
+            onCheckedChange={(v) => updatePreferences({ rc_auto_open_order: v })}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export default function MyProfile() {
   const { user, hasPermission } = useAuth();
@@ -267,6 +333,9 @@ export default function MyProfile() {
           </Button>
         </div>
       </form>
+
+      {/* RingCentral Call Settings */}
+      <CallSettingsCard />
 
       {/* Change Password — separate form */}
       <form onSubmit={handleChangePassword} className="space-y-6">
