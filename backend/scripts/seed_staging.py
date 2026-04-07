@@ -150,6 +150,14 @@ def main():
         print("[11] Creating knowledge base...")
         _seed_kb(db, admin_id, product_map)
 
+        # ---- 12. Modules ----
+        print("[12] Enabling modules...")
+        _seed_modules(db)
+
+        # ---- 13. Delivery settings ----
+        print("[13] Creating delivery settings...")
+        _seed_delivery_settings(db)
+
         db.commit()
         print()
 
@@ -837,6 +845,78 @@ def _seed_kb(db: Session, admin_id: str, product_map: dict):
         "admin": admin_id, "now": NOW,
     })
     counts["kb_documents"] += 1
+    db.flush()
+
+
+def _seed_modules(db: Session):
+    """Enable all core modules for the staging tenant."""
+    modules = [
+        "sales", "products", "inventory", "driver_delivery", "purchasing",
+        "safety", "hr_time", "pos",
+    ]
+    for mod in modules:
+        existing = db.execute(text("""
+            SELECT id FROM company_modules WHERE company_id = :cid AND module = :mod
+        """), {"cid": CFG["company_id"], "mod": mod}).fetchone()
+        if existing:
+            db.execute(text("""
+                UPDATE company_modules SET enabled = true WHERE id = :id
+            """), {"id": existing[0]})
+        else:
+            db.execute(text("""
+                INSERT INTO company_modules (id, company_id, module, enabled, created_at, updated_at)
+                VALUES (:id, :cid, :mod, true, :now, :now)
+            """), {"id": uid(), "cid": CFG["company_id"], "mod": mod, "now": NOW})
+    print(f"    -> Enabled {len(modules)} modules")
+    db.flush()
+
+
+def _seed_delivery_settings(db: Session):
+    """Create delivery_settings row for auto-delivery to work."""
+    existing = db.execute(text("""
+        SELECT id FROM delivery_settings WHERE company_id = :cid
+    """), {"cid": CFG["company_id"]}).fetchone()
+    if existing:
+        db.execute(text("""
+            UPDATE delivery_settings SET invoice_generation_mode = 'end_of_day',
+                require_driver_status_updates = false, modified_at = :now
+            WHERE id = :id
+        """), {"id": existing[0], "now": NOW})
+        print("    -> Delivery settings already exist (updated)")
+    else:
+        db.execute(text("""
+            INSERT INTO delivery_settings (id, company_id, preset, invoice_generation_mode,
+                require_driver_status_updates,
+                require_photo_on_delivery, require_signature, require_weight_ticket,
+                require_setup_confirmation, require_departure_photo, require_mileage_entry,
+                allow_partial_delivery, allow_driver_resequence, track_gps,
+                notify_customer_on_dispatch, notify_customer_on_arrival,
+                notify_customer_on_complete, notify_connected_tenant_on_arrival,
+                notify_connected_tenant_on_setup,
+                enable_driver_messaging, enable_delivery_portal,
+                auto_create_delivery_from_order, auto_invoice_on_complete,
+                show_en_route_button, show_exception_button, show_delivered_button,
+                show_equipment_checklist, show_funeral_home_contact,
+                show_cemetery_contact, show_get_directions, show_call_office_button,
+                require_personalization_complete, sms_carrier_updates, carrier_portal,
+                created_at)
+            VALUES (:id, :cid, 'standard', 'end_of_day',
+                false,
+                false, false, false,
+                false, false, false,
+                false, false, false,
+                false, false,
+                false, false,
+                false,
+                false, false,
+                true, false,
+                true, true, true,
+                false, true,
+                true, true, true,
+                false, false, false,
+                :now)
+        """), {"id": uid(), "cid": CFG["company_id"], "now": NOW})
+        print("    -> Created delivery settings (end_of_day mode)")
     db.flush()
 
 

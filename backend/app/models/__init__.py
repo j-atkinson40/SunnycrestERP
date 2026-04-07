@@ -77,6 +77,7 @@ from app.models.fh_service import FHService
 from app.models.fh_vault_order import FHVaultOrder
 from app.models.impersonation_session import ImpersonationSession
 from app.models.job_queue import Job
+from app.models.job_run import JobRun
 from app.models.flag_audit_log import FlagAuditLog
 from app.models.network_relationship import NetworkRelationship
 from app.models.network_transaction import NetworkTransaction
@@ -337,6 +338,7 @@ __all__ = [
     "FHService",
     "FHVaultOrder",
     "Job",
+    "JobRun",
     "FeeRateConfig",
     "FlagAuditLog",
     "NetworkRelationship",

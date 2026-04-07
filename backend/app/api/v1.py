@@ -17,6 +17,7 @@ from app.api.routes import (
     announcements,
     call_intelligence,
     driver_announcements,
+    internal,
     knowledge_base,
     price_management,
     ap,
@@ -280,6 +281,9 @@ v1_router.include_router(
     historical_order_import.router,
     prefix="/historical-orders",
     tags=["Historical Order Import"],
+)
+v1_router.include_router(
+    internal.router, prefix="/internal", tags=["Internal"]
 )
 v1_router.include_router(
     inventory.router, prefix="/inventory", tags=["Inventory"]

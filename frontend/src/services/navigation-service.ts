@@ -117,6 +117,13 @@ function getManufacturingNav(
       icon: "ClipboardList",
       permission: "orders.view",
     },
+    {
+      label: "Statements",
+      href: "/ar/statements",
+      icon: "FileText",
+      permission: "ar.view",
+      functionalArea: "invoicing_ar",
+    },
     // Customers moved to CRM → /crm/companies?role=customer
     {
       label: "Products",

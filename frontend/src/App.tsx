@@ -190,6 +190,7 @@ import CemeteryDeliverySettingsPage from "@/pages/settings/cemeteries";
 import CemeteryProfilePage from "@/pages/settings/cemetery-profile";
 import ReportsPage from "@/pages/reports";
 import FinancialsBoardPage from "@/pages/financials-board";
+import StatementsPage from "@/pages/statements";
 import CollectionsReviewPage from "@/pages/ar/collections-review";
 import InvoiceReviewQueuePage from "@/pages/ar/invoice-review-queue";
 import SyncHealthDashboardPage from "@/pages/admin/sync-health-dashboard";
@@ -472,6 +473,10 @@ export default function App() {
                     <Route
                       path="/ar/aging"
                       element={<ARAgingPage2 />}
+                    />
+                    <Route
+                      path="/ar/statements"
+                      element={<StatementsPage />}
                     />
                   </Route>
 

@@ -69,14 +69,18 @@ def start_run(
     db: Session = Depends(get_db),
 ):
     """Initiate a statement run for a given month/year."""
-    run = initiate_run(
-        db,
-        current_user.company_id,
-        current_user.id,
-        body.month,
-        body.year,
-        body.custom_message,
-    )
+    try:
+        run = initiate_run(
+            db,
+            current_user.company_id,
+            current_user.id,
+            body.month,
+            body.year,
+            body.custom_message,
+        )
+    except Exception as e:
+        logger.error(f"Statement run initiation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Statement run failed: {str(e)}")
     # Generate all statements in background
     background_tasks.add_task(
         generate_all_for_run, db, run.id, current_user.company_id

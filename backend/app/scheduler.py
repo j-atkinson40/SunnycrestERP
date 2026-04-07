@@ -5,6 +5,8 @@ catches errors without crashing, and logs execution details.
 """
 
 import logging
+import time
+import uuid
 from datetime import date, datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -36,12 +38,63 @@ def _get_active_tenant_ids() -> list[str]:
         db.close()
 
 
+def _log_job_run(
+    job_type: str,
+    trigger: str = "scheduled",
+    status: str = "running",
+    **kwargs,
+) -> str:
+    """Insert a job_runs record and return its ID. Best-effort — never raises."""
+    run_id = str(uuid.uuid4())
+    db = SessionLocal()
+    try:
+        from app.models.job_run import JobRun
+        run = JobRun(
+            id=run_id,
+            job_type=job_type,
+            trigger=trigger,
+            status=status,
+            started_at=datetime.now(timezone.utc),
+            **kwargs,
+        )
+        db.add(run)
+        db.commit()
+    except Exception as e:
+        logger.debug(f"job_runs logging skipped: {e}")
+    finally:
+        db.close()
+    return run_id
+
+
+def _complete_job_run(run_id: str, status: str, duration: float, **kwargs):
+    """Update a job_runs record on completion. Best-effort."""
+    db = SessionLocal()
+    try:
+        from app.models.job_run import JobRun
+        run = db.query(JobRun).filter(JobRun.id == run_id).first()
+        if run:
+            run.status = status
+            run.duration_seconds = duration
+            run.completed_at = datetime.now(timezone.utc)
+            for k, v in kwargs.items():
+                if hasattr(run, k):
+                    setattr(run, k, v)
+            db.commit()
+    except Exception as e:
+        logger.debug(f"job_runs update skipped: {e}")
+    finally:
+        db.close()
+
+
 def _run_per_tenant(job_name: str, func, *extra_args):
     """Run a function for each active tenant with its own DB session."""
+    run_id = _log_job_run(job_name)
+    t0 = time.monotonic()
     tenant_ids = _get_active_tenant_ids()
     logger.info(f"[{job_name}] Starting for {len(tenant_ids)} tenants")
     success = 0
     errors = 0
+    last_error = None
     for tid in tenant_ids:
         db = SessionLocal()
         try:
@@ -49,21 +102,38 @@ def _run_per_tenant(job_name: str, func, *extra_args):
             success += 1
         except Exception as e:
             errors += 1
+            last_error = str(e)
             logger.error(f"[{job_name}] Error for tenant {tid}: {e}", exc_info=True)
         finally:
             db.close()
-    logger.info(f"[{job_name}] Complete: {success} ok, {errors} errors")
+    duration = time.monotonic() - t0
+    logger.info(f"[{job_name}] Complete: {success} ok, {errors} errors ({duration:.1f}s)")
+    _complete_job_run(
+        run_id,
+        status="completed" if errors == 0 else "failed",
+        duration=duration,
+        tenant_count=len(tenant_ids),
+        success_count=success,
+        error_count=errors,
+        error_message=last_error,
+    )
 
 
 def _run_global(job_name: str, func):
     """Run a function once with its own DB session (not per-tenant)."""
+    run_id = _log_job_run(job_name)
+    t0 = time.monotonic()
     logger.info(f"[{job_name}] Starting")
     db = SessionLocal()
     try:
         result = func(db)
-        logger.info(f"[{job_name}] Complete: {result}")
+        duration = time.monotonic() - t0
+        logger.info(f"[{job_name}] Complete: {result} ({duration:.1f}s)")
+        _complete_job_run(run_id, status="completed", duration=duration)
     except Exception as e:
+        duration = time.monotonic() - t0
         logger.error(f"[{job_name}] Error: {e}", exc_info=True)
+        _complete_job_run(run_id, status="failed", duration=duration, error_message=str(e))
     finally:
         db.close()
 
