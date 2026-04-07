@@ -1,15 +1,15 @@
 // proof-generator.tsx — Standalone legacy proof generator
 // Route: /legacy/generator  and  /legacy/generator?legacyId={id}
-// Uses DeviceAwarePage: desktop uses full layout, mobile/tablet uses step wizard.
+// Mobile/tablet uses step wizard; desktop uses full layout.
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import apiClient from "@/lib/api-client"
 import { STANDARD_PRINT_IMAGES, URN_PRINT_IMAGES } from "@/lib/legacy-print-images"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import DeviceAwarePage from "@/components/ui/DeviceAwarePage"
+import { useDevice } from "@/contexts/device-context"
 import ProofGeneratorMobile from "./proof-generator-mobile"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
@@ -105,13 +105,15 @@ const URN_PRINT_CATEGORIES = [
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function ProofGeneratorPage() {
-  return (
-    <DeviceAwarePage
-      desktop={() => <ProofGeneratorDesktop />}
-      tablet={() => <ProofGeneratorMobile />}
-      mobile={() => <ProofGeneratorMobile />}
-    />
-  )
+  const { effectiveDevice } = useDevice()
+  // Lock in the layout choice at mount time so orientation changes
+  // don't unmount the active wizard and lose user progress.
+  const layoutRef = useRef(effectiveDevice === "desktop" ? "desktop" : "mobile")
+
+  if (layoutRef.current === "mobile") {
+    return <ProofGeneratorMobile />
+  }
+  return <ProofGeneratorDesktop />
 }
 
 function ProofGeneratorDesktop() {
