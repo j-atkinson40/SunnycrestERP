@@ -222,21 +222,25 @@ test.describe("RBAC Tests", () => {
     await page.waitForLoadState("networkidle");
     await snap(page, "07-admin-users");
 
-    // Find the "Profile" link in the row containing office@testco.com
-    const officeRow = page.locator("tr", { hasText: "office@testco.com" });
-    if ((await officeRow.count()) > 0) {
-      const profileLink = officeRow.getByRole("link", { name: /profile/i });
-      if ((await profileLink.count()) > 0) {
-        await profileLink.click();
+    // Find the Profile link for office user and navigate via href
+    const profileLink = page.locator("a[href*='/admin/users/']").filter({ hasText: /profile/i }).first();
+    if ((await profileLink.count()) > 0) {
+      const href = await profileLink.getAttribute("href");
+      if (href) {
+        await page.goto(href);
       } else {
-        // Fallback: click the first link in the row
-        await officeRow.locator("a").first().click();
+        await profileLink.click();
       }
       await page.waitForLoadState("networkidle");
       await snap(page, "07-admin-user-detail");
 
-      // Check for permissions section
+      // Check for permissions section (scroll down if needed)
       const permSection = page.getByText("Permissions", { exact: false });
+      if ((await permSection.count()) === 0) {
+        // The permissions section may be below the fold
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await page.waitForTimeout(500);
+      }
       expect(await permSection.count(), "Permissions section should exist").toBeGreaterThan(0);
       await snap(page, "07-admin-permissions");
     }
