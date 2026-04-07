@@ -106,8 +106,16 @@ def initiate_run(
     mail = sum(1 for c in customers if c["delivery_method"] == "mail")
     none_count = sum(1 for c in customers if c["delivery_method"] == "none")
 
+    import calendar
+    period_start = date(year, month, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    period_end = date(year, month, last_day)
+
     run = StatementRun(
         tenant_id=tenant_id,
+        run_date=date.today(),
+        period_start=period_start,
+        period_end=period_end,
         statement_period_month=month,
         statement_period_year=year,
         status="generating",
