@@ -4,7 +4,7 @@ Moves disinterment from the module system to the extension catalog so it
 appears in the Extension Library UI for tenant self-service install.
 
 Revision ID: r8_disinterment_ext
-Revises: r7_create_missing
+Revises: z9o3p4q5r6s7
 Create Date: 2026-04-08
 """
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "r8_disinterment_ext"
-down_revision = "r7_create_missing"
+down_revision = "z9o3p4q5r6s7"
 branch_labels = None
 depends_on = None
 
