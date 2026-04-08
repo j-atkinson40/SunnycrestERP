@@ -36,6 +36,8 @@ class AgentRunner:
         from app.services.agents.estimated_tax_prep_agent import EstimatedTaxPrepAgent
         from app.services.agents.inventory_reconciliation_agent import InventoryReconciliationAgent
         from app.services.agents.budget_vs_actual_agent import BudgetVsActualAgent
+        from app.services.agents.prep_1099_agent import Prep1099Agent
+        from app.services.agents.annual_budget_agent import AnnualBudgetAgent
         cls.AGENT_REGISTRY[AgentJobType.MONTH_END_CLOSE] = MonthEndCloseAgent
         cls.AGENT_REGISTRY[AgentJobType.AR_COLLECTIONS] = ARCollectionsAgent
         cls.AGENT_REGISTRY[AgentJobType.UNBILLED_ORDERS] = UnbilledOrdersAgent
@@ -44,6 +46,8 @@ class AgentRunner:
         cls.AGENT_REGISTRY[AgentJobType.ESTIMATED_TAX_PREP] = EstimatedTaxPrepAgent
         cls.AGENT_REGISTRY[AgentJobType.INVENTORY_RECONCILIATION] = InventoryReconciliationAgent
         cls.AGENT_REGISTRY[AgentJobType.BUDGET_VS_ACTUAL] = BudgetVsActualAgent
+        cls.AGENT_REGISTRY[AgentJobType.PREP_1099] = Prep1099Agent
+        cls.AGENT_REGISTRY[AgentJobType.ANNUAL_BUDGET] = AnnualBudgetAgent
 
     @staticmethod
     def create_job(
