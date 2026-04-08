@@ -312,6 +312,63 @@ def job_platform_health_recalculate():
         db.close()
 
 
+def job_platform_incident_dispatcher():
+    """Every 15 min — dispatch pending auto_fix / auto_remediate incidents."""
+    run_id = _log_job_run("PLATFORM_INCIDENT_DISPATCHER")
+    t0 = time.monotonic()
+    logger.info("[PLATFORM_INCIDENT_DISPATCHER] Starting")
+    db = SessionLocal()
+    try:
+        from app.services.platform.responders.dispatcher import (
+            dispatch_pending_incidents,
+        )
+
+        result = dispatch_pending_incidents(db)
+        db.commit()
+        duration = time.monotonic() - t0
+
+        if result["resolved"] > 0 or result["escalated"] > 0:
+            logger.info(
+                f"[PLATFORM_INCIDENT_DISPATCHER] "
+                f"{result['resolved']} resolved, "
+                f"{result['escalated']} escalated, "
+                f"{result['no_handler']} no handler, "
+                f"out of {result['total']} pending "
+                f"({duration:.1f}s)"
+            )
+        else:
+            logger.debug(
+                f"[PLATFORM_INCIDENT_DISPATCHER] "
+                f"{result['total']} pending, none actionable ({duration:.1f}s)"
+            )
+        _complete_job_run(run_id, status="completed", duration=duration)
+    except Exception as e:
+        duration = time.monotonic() - t0
+        logger.error(
+            f"[PLATFORM_INCIDENT_DISPATCHER] Error: {e}", exc_info=True
+        )
+        _complete_job_run(
+            run_id, status="failed", duration=duration, error_message=str(e)
+        )
+        # Self-report
+        try:
+            from app.services.platform.platform_health_service import log_incident
+
+            log_incident(
+                db,
+                category="background_job",
+                error_message="platform_incident_dispatcher failed",
+                source="background_job",
+                severity="medium",
+                context={"error": str(e)},
+            )
+            db.commit()
+        except Exception:
+            logger.debug("Failed to self-report dispatcher failure")
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Job registry — maps names to wrapper functions (for manual trigger)
 # ---------------------------------------------------------------------------
@@ -338,6 +395,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "profile_update": job_profile_update,
     "price_version_activation": job_price_version_activation,
     "platform_health_recalculate": job_platform_health_recalculate,
+    "platform_incident_dispatcher": job_platform_incident_dispatcher,
 }
 
 
@@ -488,6 +546,16 @@ def register_all_jobs():
         name="platform_health_recalculate",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+
+    # EVERY 15 MINUTES — incident auto-fix dispatcher
+    scheduler.add_job(
+        job_platform_incident_dispatcher,
+        CronTrigger(minute="*/15"),
+        id="platform_incident_dispatcher",
+        name="platform_incident_dispatcher",
+        replace_existing=True,
+        misfire_grace_time=900,
     )
 
     # DAILY at midnight ET — price version activation
