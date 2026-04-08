@@ -8,6 +8,8 @@ import type {
   HealthIncidentListResponse,
   HealthSummaryResponse,
   ImpersonateResponse,
+  NotificationListResponse,
+  PatternsResponse,
   PlatformUser,
   RecalculateResponse,
   SystemHealth,
@@ -19,6 +21,7 @@ import type {
   TenantModuleConfig,
   OnboardTenantRequest,
   OnboardTenantResponse,
+  TimelineResponse,
 } from "@/types/platform";
 
 // ---- Auth ----
@@ -304,6 +307,7 @@ export async function getHealthIncidents(params?: {
   status?: string;
   category?: string;
   limit?: number;
+  offset?: number;
 }) {
   const { data } = await platformClient.get<HealthIncidentListResponse>(
     "/health/incidents",
@@ -338,6 +342,36 @@ export async function triggerSmokeTest(tenantId: string) {
     duration_ms: number;
     error?: string;
   }>("/health/smoke-trigger", { tenant_id: tenantId }, { timeout: 150_000 });
+  return data;
+}
+
+export async function getNotifications(params?: { dismissed?: boolean }) {
+  const { data } = await platformClient.get<NotificationListResponse>(
+    "/health/notifications",
+    { params }
+  );
+  return data;
+}
+
+export async function dismissNotification(notificationId: string) {
+  const { data } = await platformClient.patch(
+    `/health/notifications/${notificationId}/dismiss`
+  );
+  return data;
+}
+
+export async function getRepeatPatterns() {
+  const { data } = await platformClient.get<PatternsResponse>(
+    "/health/patterns"
+  );
+  return data;
+}
+
+export async function getHealthTimeline(tenantId: string, days = 30) {
+  const { data } = await platformClient.get<TimelineResponse>(
+    "/health/timeline",
+    { params: { tenant_id: tenantId, days } }
+  );
   return data;
 }
 

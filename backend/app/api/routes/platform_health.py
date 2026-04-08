@@ -11,12 +11,13 @@ import json
 import logging
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from jose import JWTError
 from pydantic import BaseModel
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -24,6 +25,7 @@ from app.core.security import decode_token
 from app.database import get_db
 from app.models.company import Company
 from app.models.platform_incident import PlatformIncident
+from app.models.platform_notification import PlatformNotification
 from app.models.platform_user import PlatformUser
 from app.models.tenant_health_score import TenantHealthScore
 from app.services.platform.platform_health_service import (
@@ -33,6 +35,7 @@ from app.services.platform.platform_health_service import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +113,7 @@ class HealthSummary(BaseModel):
     critical: int
     unknown: int
     last_updated: Optional[datetime] = None
+    avg_resolution_seconds_7d: Optional[float] = None
 
 
 class HealthSummaryResponse(BaseModel):
@@ -126,6 +130,7 @@ class IncidentListItem(BaseModel):
     source: Optional[str] = None
     resolution_tier: Optional[str] = None
     resolution_status: str
+    resolution_action: Optional[str] = None
     error_message: Optional[str] = None
     was_repeat: bool
     created_at: datetime
@@ -150,8 +155,59 @@ class RecalculateResponse(BaseModel):
     unknown: int
 
 
+# ---- Notification schemas ----
+
+
+class NotificationItem(BaseModel):
+    id: str
+    tenant_id: Optional[str] = None
+    tenant_name: Optional[str] = None
+    incident_id: Optional[str] = None
+    level: str
+    title: str
+    body: Optional[str] = None
+    is_dismissed: bool
+    created_at: datetime
+
+
+class NotificationListResponse(BaseModel):
+    notifications: list[NotificationItem]
+    total: int
+
+
+# ---- Pattern schemas ----
+
+
+class RepeatPatternItem(BaseModel):
+    fingerprint: str
+    category: str
+    first_error: str
+    count: int
+    tenants_affected: list[str]
+    last_seen: datetime
+    resolution_rate: float
+    avg_resolution_seconds: Optional[float] = None
+
+
+class PatternsResponse(BaseModel):
+    patterns: list[RepeatPatternItem]
+
+
+# ---- Timeline schemas ----
+
+
+class TimelineEntry(BaseModel):
+    date: str
+    score: str
+    incident_count: int
+
+
+class TimelineResponse(BaseModel):
+    timeline: list[TimelineEntry]
+
+
 # ---------------------------------------------------------------------------
-# Endpoints
+# Endpoints — Summary
 # ---------------------------------------------------------------------------
 
 
@@ -229,6 +285,17 @@ def get_health_summary(
     if calculated_dates:
         last_updated = max(calculated_dates)
 
+    # Avg resolution time (7 days)
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    avg_res = (
+        db.query(func.avg(PlatformIncident.resolution_duration_seconds))
+        .filter(
+            PlatformIncident.resolution_status == "resolved",
+            PlatformIncident.resolved_at >= seven_days_ago,
+        )
+        .scalar()
+    )
+
     return HealthSummaryResponse(
         summary=HealthSummary(
             total_tenants=len(tenant_ids),
@@ -238,9 +305,15 @@ def get_health_summary(
             critical=counts["critical"],
             unknown=counts["unknown"],
             last_updated=last_updated,
+            avg_resolution_seconds_7d=float(avg_res) if avg_res is not None else None,
         ),
         tenants=tenants,
     )
+
+
+# ---------------------------------------------------------------------------
+# Endpoints — Incidents
+# ---------------------------------------------------------------------------
 
 
 @router.get("/incidents", response_model=IncidentListResponse)
@@ -249,6 +322,7 @@ def get_health_incidents(
     status: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     _auth=Depends(require_platform_or_internal_key),
     db: Session = Depends(get_db),
 ):
@@ -267,17 +341,18 @@ def get_health_incidents(
 
     incidents = (
         q.order_by(PlatformIncident.created_at.desc())
+        .offset(offset)
         .limit(limit)
         .all()
     )
 
     # Resolve tenant names
-    tenant_ids = {i.tenant_id for i in incidents if i.tenant_id}
+    tenant_ids_set = {i.tenant_id for i in incidents if i.tenant_id}
     tenant_names = {}
-    if tenant_ids:
+    if tenant_ids_set:
         rows = (
             db.query(Company.id, Company.name)
-            .filter(Company.id.in_(tenant_ids))
+            .filter(Company.id.in_(tenant_ids_set))
             .all()
         )
         tenant_names = {r.id: r.name for r in rows}
@@ -292,6 +367,7 @@ def get_health_incidents(
             source=i.source,
             resolution_tier=i.resolution_tier,
             resolution_status=i.resolution_status,
+            resolution_action=i.resolution_action,
             error_message=i.error_message,
             was_repeat=i.was_repeat,
             created_at=i.created_at,
@@ -350,10 +426,274 @@ def recalculate_all_health(
 
 
 # ---------------------------------------------------------------------------
-# Smoke test trigger
+# Endpoints — Notifications
 # ---------------------------------------------------------------------------
 
-logger = logging.getLogger(__name__)
+
+@router.get("/notifications", response_model=NotificationListResponse)
+def get_notifications(
+    dismissed: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    _auth=Depends(require_platform_or_internal_key),
+    db: Session = Depends(get_db),
+):
+    """List platform notifications for the operator dashboard."""
+    q = db.query(PlatformNotification).filter(
+        PlatformNotification.is_dismissed == dismissed
+    )
+
+    total = q.count()
+
+    notifs = (
+        q.order_by(PlatformNotification.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    # Resolve tenant names
+    tenant_ids_set = {n.tenant_id for n in notifs if n.tenant_id}
+    tenant_names = {}
+    if tenant_ids_set:
+        rows = (
+            db.query(Company.id, Company.name)
+            .filter(Company.id.in_(tenant_ids_set))
+            .all()
+        )
+        tenant_names = {r.id: r.name for r in rows}
+
+    items = [
+        NotificationItem(
+            id=n.id,
+            tenant_id=n.tenant_id,
+            tenant_name=tenant_names.get(n.tenant_id) if n.tenant_id else None,
+            incident_id=n.incident_id,
+            level=n.level,
+            title=n.title,
+            body=n.body,
+            is_dismissed=n.is_dismissed,
+            created_at=n.created_at,
+        )
+        for n in notifs
+    ]
+
+    return NotificationListResponse(notifications=items, total=total)
+
+
+@router.patch("/notifications/{notification_id}/dismiss")
+def dismiss_notification(
+    notification_id: str,
+    _auth=Depends(require_platform_or_internal_key),
+    db: Session = Depends(get_db),
+):
+    """Dismiss a platform notification."""
+    notif = (
+        db.query(PlatformNotification)
+        .filter(PlatformNotification.id == notification_id)
+        .first()
+    )
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    notif.is_dismissed = True
+    notif.dismissed_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {
+        "id": notif.id,
+        "is_dismissed": notif.is_dismissed,
+        "dismissed_at": notif.dismissed_at,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Endpoints — Repeat patterns
+# ---------------------------------------------------------------------------
+
+
+@router.get("/patterns", response_model=PatternsResponse)
+def get_repeat_patterns(
+    _auth=Depends(require_platform_or_internal_key),
+    db: Session = Depends(get_db),
+):
+    """Return fingerprint clusters with 2+ incidents in the last 30 days."""
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+
+    rows = (
+        db.query(
+            PlatformIncident.fingerprint,
+            PlatformIncident.category,
+            func.min(PlatformIncident.error_message).label("first_error"),
+            func.count().label("count"),
+            func.max(PlatformIncident.created_at).label("last_seen"),
+            func.avg(
+                case(
+                    (
+                        PlatformIncident.resolution_status == "resolved",
+                        PlatformIncident.resolution_duration_seconds,
+                    ),
+                    else_=None,
+                )
+            ).label("avg_resolution_seconds"),
+            func.sum(
+                case(
+                    (PlatformIncident.resolution_status == "resolved", 1),
+                    else_=0,
+                )
+            ).label("resolved_count"),
+        )
+        .filter(
+            PlatformIncident.created_at >= thirty_days_ago,
+            PlatformIncident.fingerprint.isnot(None),
+        )
+        .group_by(PlatformIncident.fingerprint, PlatformIncident.category)
+        .having(func.count() >= 2)
+        .order_by(func.count().desc())
+        .all()
+    )
+
+    # Collect tenant IDs per fingerprint
+    fingerprints = [r.fingerprint for r in rows]
+    tenant_data: dict[str, set[str]] = {fp: set() for fp in fingerprints}
+
+    if fingerprints:
+        tenant_rows = (
+            db.query(
+                PlatformIncident.fingerprint,
+                PlatformIncident.tenant_id,
+            )
+            .filter(
+                PlatformIncident.fingerprint.in_(fingerprints),
+                PlatformIncident.tenant_id.isnot(None),
+                PlatformIncident.created_at >= thirty_days_ago,
+            )
+            .distinct()
+            .all()
+        )
+        for tr in tenant_rows:
+            if tr.fingerprint in tenant_data:
+                tenant_data[tr.fingerprint].add(tr.tenant_id)
+
+    # Resolve tenant names
+    all_tenant_ids = set()
+    for tids in tenant_data.values():
+        all_tenant_ids.update(tids)
+
+    tenant_names: dict[str, str] = {}
+    if all_tenant_ids:
+        name_rows = (
+            db.query(Company.id, Company.name)
+            .filter(Company.id.in_(all_tenant_ids))
+            .all()
+        )
+        tenant_names = {r.id: r.name for r in name_rows}
+
+    patterns = []
+    for r in rows:
+        count = r.count
+        resolved_count = r.resolved_count or 0
+        resolution_rate = resolved_count / count if count > 0 else 0.0
+
+        affected_names = [
+            tenant_names.get(tid, tid[:12])
+            for tid in tenant_data.get(r.fingerprint, set())
+        ]
+
+        patterns.append(
+            RepeatPatternItem(
+                fingerprint=r.fingerprint,
+                category=r.category,
+                first_error=r.first_error or "Unknown error",
+                count=count,
+                tenants_affected=sorted(affected_names),
+                last_seen=r.last_seen,
+                resolution_rate=round(resolution_rate, 2),
+                avg_resolution_seconds=(
+                    round(float(r.avg_resolution_seconds))
+                    if r.avg_resolution_seconds is not None
+                    else None
+                ),
+            )
+        )
+
+    return PatternsResponse(patterns=patterns)
+
+
+# ---------------------------------------------------------------------------
+# Endpoints — Health timeline
+# ---------------------------------------------------------------------------
+
+
+@router.get("/timeline", response_model=TimelineResponse)
+def get_health_timeline(
+    tenant_id: str = Query(...),
+    days: int = Query(30, ge=1, le=90),
+    _auth=Depends(require_platform_or_internal_key),
+    db: Session = Depends(get_db),
+):
+    """Approximate daily health score for a tenant over the last N days.
+
+    Derived from incident data — not from stored snapshots.
+    For each day, counts open incidents at end of day and derives a score.
+    """
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=days)
+
+    # Get all incidents for this tenant in the window
+    incidents = (
+        db.query(PlatformIncident)
+        .filter(
+            PlatformIncident.tenant_id == tenant_id,
+            PlatformIncident.created_at >= start - timedelta(days=30),  # older incidents may still be open
+        )
+        .all()
+    )
+
+    timeline: list[TimelineEntry] = []
+
+    for day_offset in range(days):
+        day = start + timedelta(days=day_offset)
+        day_end = day.replace(hour=23, minute=59, second=59)
+
+        # Count incidents that were open at end of this day
+        open_at_day = []
+        for inc in incidents:
+            created = inc.created_at
+            resolved = inc.resolved_at
+            if created <= day_end:
+                if resolved is None or resolved > day_end:
+                    open_at_day.append(inc)
+
+        # Derive score using same logic as calculate_tenant_health
+        escalate_open = sum(1 for i in open_at_day if i.resolution_tier == "escalate")
+        remediate_open = sum(1 for i in open_at_day if i.resolution_tier == "auto_remediate")
+        fix_open = sum(1 for i in open_at_day if i.resolution_tier == "auto_fix")
+        has_high = any(i.severity in ("high", "critical") for i in open_at_day)
+
+        if escalate_open >= 1:
+            score = "critical"
+        elif remediate_open >= 2:
+            score = "degraded"
+        elif remediate_open == 1 or fix_open >= 3:
+            score = "watch"
+        elif fix_open <= 2 and not has_high:
+            score = "healthy"
+        else:
+            score = "watch"
+
+        timeline.append(
+            TimelineEntry(
+                date=day.strftime("%Y-%m-%d"),
+                score=score,
+                incident_count=len(open_at_day),
+            )
+        )
+
+    return TimelineResponse(timeline=timeline)
+
+
+# ---------------------------------------------------------------------------
+# Smoke test trigger
+# ---------------------------------------------------------------------------
 
 
 class SmokeTriggerRequest(BaseModel):
@@ -452,16 +792,15 @@ def trigger_smoke_test(
     except (json.JSONDecodeError, KeyError):
         # Fall back to counting from exit code
         if result.returncode == 0:
-            # Count test lines from stderr (playwright outputs to stderr)
             passed = result.stderr.count(" passed")
             if passed == 0:
-                passed = 5  # Default smoke test count
+                passed = 5
         else:
             failed = 1
 
     return SmokeTriggerResponse(
         passed=passed,
         failed=failed,
-        incidents_logged=failed,  # Reporter logs one incident per failure
+        incidents_logged=failed,
         duration_ms=duration_ms,
     )

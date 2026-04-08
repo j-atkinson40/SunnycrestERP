@@ -210,6 +210,7 @@ export interface HealthSummary {
   critical: number;
   unknown: number;
   last_updated: string | null;
+  avg_resolution_seconds_7d: number | null;
 }
 
 export interface HealthSummaryResponse {
@@ -226,6 +227,7 @@ export interface HealthIncident {
   source: string | null;
   resolution_tier: string | null;
   resolution_status: string;
+  resolution_action: string | null;
   error_message: string | null;
   was_repeat: boolean;
   created_at: string;
@@ -244,4 +246,52 @@ export interface RecalculateResponse {
   degraded: number;
   critical: number;
   unknown: number;
+}
+
+// ---- Notifications ----
+
+export interface PlatformNotificationItem {
+  id: string;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  incident_id: string | null;
+  level: string;
+  title: string;
+  body: string | null;
+  is_dismissed: boolean;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  notifications: PlatformNotificationItem[];
+  total: number;
+}
+
+// ---- Repeat patterns ----
+
+export interface RepeatPattern {
+  fingerprint: string;
+  category: string;
+  first_error: string;
+  count: number;
+  tenants_affected: string[];
+  last_seen: string;
+  resolution_rate: number;
+  avg_resolution_seconds: number | null;
+}
+
+export interface PatternsResponse {
+  patterns: RepeatPattern[];
+}
+
+// ---- Health timeline ----
+
+export interface TimelineEntry {
+  date: string;
+  score: string;
+  incident_count: number;
+}
+
+export interface TimelineResponse {
+  timeline: TimelineEntry[];
 }
