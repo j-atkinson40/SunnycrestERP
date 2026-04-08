@@ -75,6 +75,11 @@ class CompanyEntity(Base):
         String(30), server_default="separate"
     )  # separate | consolidated_single_payer | consolidated_split_payment
 
+    # Cemetery location mapping — which tenant location fulfills jobs at this cemetery
+    fulfilling_location_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Notes
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -89,4 +94,7 @@ class CompanyEntity(Base):
         "CompanyEntity",
         foreign_keys=[parent_company_id],
         backref=backref("parent_group", remote_side="CompanyEntity.id"),
+    )
+    fulfilling_location = relationship(
+        "Company", foreign_keys=[fulfilling_location_id]
     )

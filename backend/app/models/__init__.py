@@ -44,6 +44,8 @@ from app.models.charge_library_item import ChargeLibraryItem
 from app.models.cure_schedule import CureSchedule
 from app.models.customer_payment import CustomerPayment, CustomerPaymentApplication
 from app.models.directory_fetch_log import DirectoryFetchLog
+from app.models.disinterment_case import DisintermentCase
+from app.models.disinterment_charge_type import DisintermentChargeType
 from app.models.delivery import Delivery
 from app.models.delivery_event import DeliveryEvent
 from app.models.delivery_media import DeliveryMedia
@@ -226,6 +228,11 @@ from app.models.tenant_extension import TenantExtension
 from app.models.tenant_feature_flag import TenantFeatureFlag
 from app.models.tenant_module_config import TenantModuleConfig
 from app.models.tenant_notification import TenantNotification
+from app.models.union_rotation import (
+    UnionRotationAssignment,
+    UnionRotationList,
+    UnionRotationMember,
+)
 from app.models.unified_import_session import UnifiedImportSession
 from app.models.user import User
 from app.models.user_permission_override import UserPermissionOverride
@@ -496,4 +503,9 @@ __all__ = [
     "PlatformIncident",
     "PlatformNotification",
     "TenantHealthScore",
+    "DisintermentCase",
+    "DisintermentChargeType",
+    "UnionRotationList",
+    "UnionRotationMember",
+    "UnionRotationAssignment",
 ]

@@ -33,6 +33,11 @@ from app.api.routes import (
     carrier_portal,
     cases,
     cemeteries,
+    disinterments,
+    disinterment_charge_types,
+    docusign_webhook,
+    intake,
+    union_rotations,
     charge_library,
     charge_terms,
     companies,
@@ -184,6 +189,23 @@ v1_router.include_router(
 )
 v1_router.include_router(
     cemeteries.router, prefix="/cemeteries", tags=["Cemeteries"]
+)
+v1_router.include_router(
+    disinterments.router, prefix="/disinterments", tags=["Disinterments"]
+)
+v1_router.include_router(
+    disinterment_charge_types.router,
+    prefix="/disinterment-charge-types",
+    tags=["Disinterment Charge Types"],
+)
+v1_router.include_router(
+    docusign_webhook.router, prefix="/docusign", tags=["DocuSign"]
+)
+v1_router.include_router(
+    intake.router, prefix="/intake", tags=["Public Intake"]
+)
+v1_router.include_router(
+    union_rotations.router, prefix="/union-rotations", tags=["Union Rotations"]
 )
 v1_router.include_router(
     charge_library.router, prefix="/charge-library", tags=["Charge Library"]

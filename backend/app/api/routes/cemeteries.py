@@ -260,6 +260,32 @@ def link_billing_customer(
     )
 
 
+@router.patch("/{cemetery_id}/location")
+def set_fulfilling_location(
+    cemetery_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("disinterments.manage")),
+):
+    """Set which tenant location fulfills jobs at this cemetery."""
+    from app.services import cemetery_location_service
+
+    location_id = data.get("fulfilling_location_id")
+    if not location_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="fulfilling_location_id is required")
+
+    cemetery = cemetery_location_service.set_fulfilling_location(
+        db, cemetery_id, location_id, current_user.company_id
+    )
+    return {
+        "id": cemetery.id,
+        "name": cemetery.name,
+        "fulfilling_location_id": cemetery.fulfilling_location_id,
+    }
+
+
 @router.post("/{cemetery_id}/create-billing-account", status_code=201)
 def create_billing_account(
     cemetery_id: str,
