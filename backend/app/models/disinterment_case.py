@@ -169,7 +169,7 @@ class DisintermentCase(Base):
     )
 
     # Relationships
-    company = relationship("Company")
+    company = relationship("Company", foreign_keys=[company_id])
     cemetery = relationship("CompanyEntity", foreign_keys=[cemetery_id])
     funeral_home = relationship("CompanyEntity", foreign_keys=[funeral_home_id])
     funeral_director_contact = relationship("Contact")

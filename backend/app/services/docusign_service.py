@@ -129,11 +129,15 @@ def create_envelope(
             raise ValueError("At least one signer email is required")
 
         # Build envelope
+        # Generate pre-filled release form PDF
+        from app.services.disinterment_pdf_service import generate_release_form_base64
+        pdf_b64 = generate_release_form_base64(db, case_id, company_id)
+
         envelope_definition = EnvelopeDefinition(
             email_subject=f"Disinterment Release Form — {decedent_name} ({case_number})",
             documents=[
                 DSDocument(
-                    document_base64="",  # TODO: Generate PDF from case data
+                    document_base64=pdf_b64,
                     name=f"Disinterment Release — {case_number}",
                     file_extension="pdf",
                     document_id="1",

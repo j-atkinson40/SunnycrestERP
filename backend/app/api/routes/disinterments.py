@@ -141,9 +141,9 @@ def complete_case(
     _mod: User = Depends(require_module("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.manage")),
 ):
-    """Mark case as complete."""
+    """Mark case as complete and auto-generate invoice."""
     return disinterment_service.complete_case(
-        db, case_id, current_user.company_id
+        db, case_id, current_user.company_id, current_user.id
     )
 
 

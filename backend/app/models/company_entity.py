@@ -89,7 +89,7 @@ class CompanyEntity(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
-    company = relationship("Company")
+    company = relationship("Company", foreign_keys=[company_id])
     locations = relationship(
         "CompanyEntity",
         foreign_keys=[parent_company_id],

@@ -205,6 +205,11 @@ import NetworkPreferencesSettingsPage from "@/pages/admin/network-preferences";
 import SchedulingSettingsPage from "@/pages/admin/scheduling-settings";
 import UrnCatalogPage from "@/pages/products/urn-catalog";
 import UrnImportWizard from "@/pages/products/urn-import-wizard";
+import DisintermentListPage from "@/pages/disinterments/disinterment-list";
+import DisintermentDetailPage from "@/pages/disinterments/disinterment-detail";
+import DisintermentSettingsPage from "@/pages/settings/disinterment-settings";
+import UnionRotationsPage from "@/pages/settings/union-rotations";
+import DisintermentIntakePage from "@/pages/intake/disinterment-intake";
 import Unauthorized from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -713,6 +718,30 @@ export default function App() {
                     <Route path="/funeral-home/price-list" element={<FHPriceListPage />} />
                   </Route>
 
+                  {/* Disinterment Management — requires disinterment_management module */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="disinterments.view" requiredModule="disinterment_management" />
+                    }
+                  >
+                    <Route path="/disinterments" element={<DisintermentListPage />} />
+                    <Route path="/disinterments/:id" element={<DisintermentDetailPage />} />
+                  </Route>
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="disinterment_settings.manage" requiredModule="disinterment_management" />
+                    }
+                  >
+                    <Route path="/settings/disinterment" element={<DisintermentSettingsPage />} />
+                  </Route>
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="union_rotations.view" requiredModule="union_rotation" />
+                    }
+                  >
+                    <Route path="/settings/union-rotations" element={<UnionRotationsPage />} />
+                  </Route>
+
                   {/* Call Log — any authenticated user */}
                   <Route path="/calls" element={<CallLogPage />} />
 
@@ -900,6 +929,9 @@ export default function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/m/production-log" element={<MobileProductionLog />} />
               </Route>
+
+              {/* Public intake form — no auth required */}
+              <Route path="/intake/disinterment/:token" element={<DisintermentIntakePage />} />
 
               {/* Family portal — no auth required, standalone page */}
               <Route path="/portal/:token" element={<FHPortalPage />} />

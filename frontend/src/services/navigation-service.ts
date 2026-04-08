@@ -154,6 +154,27 @@ function getManufacturingNav(
     sections.push({ title: "", items: filteredHubs });
   }
 
+  // ── Disinterment (module-gated) ──
+  const disintermentItems: NavItem[] = filterByPermission(
+    [
+      {
+        label: "Disinterments",
+        href: "/disinterments",
+        icon: "Skull",
+        permission: "disinterments.view",
+        requiresModule: "disinterment_management",
+        isDividerBefore: true,
+      },
+    ],
+    modules,
+    perms,
+    areas,
+    isAdmin,
+  );
+  if (disintermentItems.length > 0) {
+    sections.push({ title: "", items: disintermentItems });
+  }
+
   // ── Tools (Knowledge Base + Legacy Studio collapsible) ──
   const legacyChildren: NavItem[] = filterByPermission(
     [
@@ -304,6 +325,23 @@ function getManufacturingNav(
           label: "API Keys",
           href: "/admin/accounting",
           icon: "Plug",
+          settingsGroup: "Integrations",
+        },
+        // Disinterment
+        {
+          label: "Disinterment",
+          href: "/settings/disinterment",
+          icon: "Skull",
+          permission: "disinterment_settings.manage",
+          requiresModule: "disinterment_management",
+          settingsGroup: "Integrations",
+        },
+        {
+          label: "Union Rotations",
+          href: "/settings/union-rotations",
+          icon: "RefreshCcw",
+          permission: "union_rotations.manage",
+          requiresModule: "union_rotation",
           settingsGroup: "Integrations",
         },
         // Platform

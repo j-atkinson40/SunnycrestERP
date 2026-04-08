@@ -51,6 +51,11 @@ PERMISSION_CATEGORIES: dict[str, dict[str, list[str]]] = {
         "legacy_studio": ["view", "create", "edit", "approve", "send", "delete"],
         "personalization": ["view", "create", "complete", "approve"],
     },
+    "disinterment": {
+        "disinterments": ["view", "manage", "schedule", "sign"],
+        "disinterment_settings": ["manage"],
+        "union_rotations": ["view", "manage"],
+    },
     "knowledge_training": {
         "knowledge_base": ["view", "edit"],
         "training": ["view", "edit", "admin"],
@@ -210,6 +215,14 @@ PERMISSION_DISPLAY_NAMES: dict[str, str] = {
     "settings.billing.edit": "Edit Billing",
     "settings.integrations.manage": "Manage Integrations",
     "settings.permissions.manage": "Manage Permissions",
+    # Disinterment
+    "disinterments.view": "View Disinterment Cases",
+    "disinterments.manage": "Manage Disinterment Cases",
+    "disinterments.schedule": "Schedule Disinterments",
+    "disinterments.sign": "Sign Disinterment Documents",
+    "disinterment_settings.manage": "Manage Disinterment Settings",
+    "union_rotations.view": "View Union Rotation Lists",
+    "union_rotations.manage": "Manage Union Rotation Lists",
 }
 
 
@@ -307,6 +320,9 @@ OFFICE_STAFF_DEFAULT_PERMISSIONS = [
     "equipment.view",
     "work_orders.view",
     "personalization.view",
+    # Disinterment
+    "disinterments.view",
+    "disinterments.manage",
 ]
 
 # Optional toggles for office_staff (off by default, can be granted per-user)
@@ -350,6 +366,11 @@ PRODUCTION_DEFAULT_PERMISSIONS = [
     "inventory.view",
     "announcements.view",
     "personalization.view",
+    # Disinterment
+    "disinterments.view",
+    "disinterments.manage",
+    "disinterments.schedule",
+    "union_rotations.view",
 ]
 
 # Optional toggles for production (off by default)

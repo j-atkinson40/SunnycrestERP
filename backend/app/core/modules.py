@@ -90,6 +90,18 @@ AVAILABLE_MODULES: dict[str, dict] = {
         "default_enabled": False,
         "locked": False,
     },
+    "disinterment_management": {
+        "label": "Disinterment Case Management",
+        "description": "5-stage disinterment pipeline with DocuSign e-signatures, configurable charge types, and public intake forms.",
+        "default_enabled": False,
+        "locked": False,
+    },
+    "union_rotation": {
+        "label": "Union Rotation Lists",
+        "description": "Location-aware rotation lists for union job assignment — disinterment hazard pay, Saturday/Sunday scheduling.",
+        "default_enabled": False,
+        "locked": False,
+    },
 }
 
 

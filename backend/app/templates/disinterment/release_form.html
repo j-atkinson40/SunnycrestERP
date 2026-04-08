@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: letter; margin: 1in 0.75in; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11pt; color: #1a1a1a; line-height: 1.5; }
+  h1 { text-align: center; font-size: 18pt; margin-bottom: 4px; color: #1e293b; }
+  .subtitle { text-align: center; font-size: 10pt; color: #64748b; margin-bottom: 24px; }
+  .company-name { text-align: center; font-size: 13pt; font-weight: bold; color: #334155; margin-bottom: 2px; }
+  .section { margin-bottom: 16px; }
+  .section-title { font-size: 12pt; font-weight: bold; color: #1e293b; border-bottom: 2px solid #cbd5e1; padding-bottom: 4px; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  td { padding: 4px 8px; vertical-align: top; }
+  .label { font-weight: bold; color: #475569; width: 180px; }
+  .value { color: #1a1a1a; }
+  .amount-box { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 12px 16px; text-align: center; margin: 16px 0; }
+  .amount-box .amount { font-size: 16pt; font-weight: bold; color: #1e293b; }
+  .amount-box .amount-label { font-size: 9pt; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+  .sig-grid { display: table; width: 100%; margin-top: 32px; }
+  .sig-row { display: table-row; }
+  .sig-cell { display: table-cell; width: 50%; padding: 12px 16px; vertical-align: top; }
+  .sig-block { border: 1px solid #e2e8f0; border-radius: 4px; padding: 16px; min-height: 100px; }
+  .sig-block .sig-title { font-size: 10pt; font-weight: bold; color: #334155; margin-bottom: 8px; }
+  .sig-line { border-bottom: 1px solid #1a1a1a; margin-top: 40px; margin-bottom: 4px; }
+  .sig-label { font-size: 8pt; color: #64748b; }
+  .sig-anchor { color: white; font-size: 1px; }
+  .nok-list { margin: 4px 0; padding-left: 0; list-style: none; }
+  .nok-list li { margin-bottom: 2px; }
+  .footer { margin-top: 32px; text-align: center; font-size: 8pt; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="company-name">{{ company_name }}</div>
+<h1>Disinterment Release Authorization</h1>
+<div class="subtitle">Case {{ case_number }} &mdash; Generated {{ generated_date }}</div>
+
+<div class="section">
+  <div class="section-title">Decedent Information</div>
+  <table>
+    <tr><td class="label">Full Name</td><td class="value">{{ decedent_name }}</td></tr>
+    <tr><td class="label">Date of Death</td><td class="value">{{ date_of_death or 'N/A' }}</td></tr>
+    <tr><td class="label">Date of Burial</td><td class="value">{{ date_of_burial or 'N/A' }}</td></tr>
+    <tr><td class="label">Vault Description</td><td class="value">{{ vault_description or 'N/A' }}</td></tr>
+  </table>
+</div>
+
+<div class="section">
+  <div class="section-title">Cemetery &amp; Location</div>
+  <table>
+    <tr><td class="label">Cemetery</td><td class="value">{{ cemetery_name or 'N/A' }}</td></tr>
+    <tr><td class="label">Lot / Section</td><td class="value">{{ cemetery_lot_section or 'N/A' }}</td></tr>
+    <tr><td class="label">Lot / Space</td><td class="value">{{ cemetery_lot_space or 'N/A' }}</td></tr>
+  </table>
+</div>
+
+<div class="section">
+  <div class="section-title">Reason &amp; Destination</div>
+  <table>
+    <tr><td class="label">Reason for Disinterment</td><td class="value">{{ reason or 'N/A' }}</td></tr>
+    <tr><td class="label">Destination</td><td class="value">{{ destination or 'N/A' }}</td></tr>
+  </table>
+</div>
+
+{% if next_of_kin %}
+<div class="section">
+  <div class="section-title">Next of Kin</div>
+  <ul class="nok-list">
+  {% for nok in next_of_kin %}
+    <li><strong>{{ nok.name }}</strong> ({{ nok.relationship }}) &mdash; {{ nok.email }}{% if nok.phone %}, {{ nok.phone }}{% endif %}</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="amount-box">
+  <div class="amount-label">Accepted Quote Amount</div>
+  <div class="amount">${{ '{:,.2f}'.format(accepted_quote_amount|float) if accepted_quote_amount else '0.00' }}</div>
+</div>
+
+<div class="section">
+  <div class="section-title">Authorization Signatures</div>
+  <p style="font-size: 9pt; color: #64748b;">By signing below, each party authorizes the disinterment of the above-named decedent under the terms described.</p>
+
+  <div class="sig-grid">
+    <div class="sig-row">
+      <div class="sig-cell">
+        <div class="sig-block">
+          <div class="sig-title">Funeral Director</div>
+          <span class="sig-anchor">/sig_funeral_home/</span>
+          <div class="sig-line"></div>
+          <div class="sig-label">Signature &amp; Date</div>
+        </div>
+      </div>
+      <div class="sig-cell">
+        <div class="sig-block">
+          <div class="sig-title">Cemetery Representative</div>
+          <span class="sig-anchor">/sig_cemetery/</span>
+          <div class="sig-line"></div>
+          <div class="sig-label">Signature &amp; Date</div>
+        </div>
+      </div>
+    </div>
+    <div class="sig-row">
+      <div class="sig-cell">
+        <div class="sig-block">
+          <div class="sig-title">Next of Kin</div>
+          <span class="sig-anchor">/sig_next_of_kin/</span>
+          <div class="sig-line"></div>
+          <div class="sig-label">Signature &amp; Date</div>
+        </div>
+      </div>
+      <div class="sig-cell">
+        <div class="sig-block">
+          <div class="sig-title">Vault Manufacturer</div>
+          <span class="sig-anchor">/sig_manufacturer/</span>
+          <div class="sig-line"></div>
+          <div class="sig-label">Signature &amp; Date</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  {{ company_name }} &bull; Disinterment Release Authorization &bull; Case {{ case_number }}
+</div>
+
+</body>
+</html>

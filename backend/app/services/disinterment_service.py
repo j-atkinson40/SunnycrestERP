@@ -629,18 +629,125 @@ def schedule_case(
 # ---------------------------------------------------------------------------
 
 
-def complete_case(db: Session, case_id: str, company_id: str) -> dict:
-    """Mark a case as complete."""
+def complete_case(
+    db: Session, case_id: str, company_id: str, user_id: str | None = None
+) -> dict:
+    """Mark a case as complete and auto-generate an invoice from accepted quote."""
     case = _load_case(db, case_id, company_id)
     _assert_status(case, "scheduled")
 
-    case.completed_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    case.completed_at = now
     case.status = "complete"
-    case.updated_at = datetime.now(timezone.utc)
+    case.updated_at = now
+
+    # Auto-generate invoice from accepted quote amount
+    if case.accepted_quote_amount and case.funeral_home_id:
+        try:
+            invoice = _create_invoice_from_case(db, case, company_id, user_id)
+            case.invoice_id = invoice.id
+            logger.info(
+                "Invoice %s auto-generated for case %s",
+                invoice.number,
+                case.case_number,
+            )
+        except Exception as e:
+            logger.error("Failed to auto-generate invoice for case %s: %s", case.case_number, e)
+
     db.commit()
 
     logger.info("Case %s completed", case.case_number)
     return _case_to_response(_load_case(db, case_id, company_id))
+
+
+def _create_invoice_from_case(
+    db: Session, case: DisintermentCase, company_id: str, user_id: str | None
+):
+    """Create an invoice from a completed disinterment case.
+
+    Follows the same pattern as sales_service.create_invoice_from_order().
+    """
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from app.models.customer import Customer
+    from app.models.invoice import Invoice, InvoiceLine
+
+    # Find the customer linked to the funeral home
+    customer = (
+        db.query(Customer)
+        .filter(
+            Customer.company_id == company_id,
+            Customer.master_company_id == case.funeral_home_id,
+        )
+        .first()
+    )
+    if not customer:
+        raise ValueError(
+            f"No customer record found for funeral home {case.funeral_home_id}"
+        )
+
+    # Generate invoice number
+    year = datetime.now(timezone.utc).year
+    prefix = f"INV-{year}-"
+    last = (
+        db.query(Invoice.number)
+        .filter(
+            Invoice.company_id == company_id,
+            Invoice.number.like(f"{prefix}%"),
+        )
+        .order_by(Invoice.number.desc())
+        .first()
+    )
+    seq = 1
+    if last and last[0]:
+        try:
+            seq = int(last[0].replace(prefix, "")) + 1
+        except ValueError:
+            pass
+    inv_number = f"{prefix}{seq:04d}"
+
+    now = datetime.now(timezone.utc)
+    due_date = now + timedelta(days=30)
+    total = case.accepted_quote_amount or Decimal("0.00")
+
+    invoice = Invoice(
+        id=str(uuid.uuid4()),
+        company_id=company_id,
+        number=inv_number,
+        customer_id=customer.id,
+        status="draft",
+        invoice_date=now,
+        due_date=due_date,
+        payment_terms="Net 30",
+        subtotal=total,
+        tax_rate=Decimal("0.00"),
+        tax_amount=Decimal("0.00"),
+        total=total,
+        notes=f"Disinterment — {case.decedent_name} ({case.case_number})",
+        deceased_name=case.decedent_name,
+        created_by=user_id,
+    )
+    db.add(invoice)
+    db.flush()
+
+    # Single line item for the disinterment service
+    line = InvoiceLine(
+        id=str(uuid.uuid4()),
+        invoice_id=invoice.id,
+        description=f"Disinterment services — {case.decedent_name}",
+        quantity=Decimal("1"),
+        unit_price=total,
+        line_total=total,
+        sort_order=0,
+    )
+    db.add(line)
+
+    # Update customer balance
+    customer.current_balance = (customer.current_balance or Decimal("0.00")) + total
+
+    db.flush()
+    return invoice
 
 
 # ---------------------------------------------------------------------------
