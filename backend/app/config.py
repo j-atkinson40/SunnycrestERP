@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     TWILIO_FROM_NUMBER: str = ""
     DEEPGRAM_API_KEY: str = ""
 
+    # RingCentral (Call Intelligence)
+    RINGCENTRAL_CLIENT_ID: str = ""
+    RINGCENTRAL_CLIENT_SECRET: str = ""
+    RINGCENTRAL_SERVER_URL: str = "https://platform.ringcentral.com"
+
     # Internal API key for automated systems (Playwright reporter, healthchecks)
     INTERNAL_API_KEY: str = ""
 

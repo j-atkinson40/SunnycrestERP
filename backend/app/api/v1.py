@@ -16,6 +16,7 @@ from app.api.routes import (
     ancillary_orders,
     announcements,
     call_intelligence,
+    ringcentral,
     driver_announcements,
     internal,
     knowledge_base,
@@ -169,6 +170,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     call_intelligence.router,
+    prefix="/integrations/ringcentral",
+    tags=["Call Intelligence"],
+)
+v1_router.include_router(
+    ringcentral.router,
     prefix="/integrations/ringcentral",
     tags=["Call Intelligence"],
 )

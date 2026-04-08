@@ -39,6 +39,14 @@ export interface CallExtraction {
 
 export type CallState = "ringing" | "active" | "review";
 
+export interface InvoiceMetadata {
+  invoice_number: string;
+  invoice_date: string;
+  total: number;
+  status: string;
+  customer_name?: string;
+}
+
 export interface ActiveCall {
   call_id: string;
   state: CallState;
@@ -49,6 +57,7 @@ export interface ActiveCall {
   company_id: string | null;
   last_order_date: string | null;
   open_ar_balance: number | null;
+  recent_invoices: InvoiceMetadata[];
   started_at: Date;
   answered_at: Date | null;
   ended_at: Date | null;
@@ -217,6 +226,7 @@ export function CallContextProvider({ children }: { children: ReactNode }) {
             company_id: data.company_id || null,
             last_order_date: data.last_order_date || null,
             open_ar_balance: data.open_ar_balance ?? null,
+            recent_invoices: data.recent_invoices || [],
             started_at: new Date(),
             answered_at: null,
             ended_at: null,

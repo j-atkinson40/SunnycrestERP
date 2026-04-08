@@ -28,3 +28,4 @@ google-auth-oauthlib>=1.2.0
 google-api-python-client>=2.114.0
 Pillow>=10.0.0
 numpy>=1.26.0
+sse-starlette>=1.6.0,<2.0.0

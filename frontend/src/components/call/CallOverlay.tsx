@@ -82,23 +82,69 @@ function CallerInfo({ call }: { call: ActiveCall }) {
 }
 
 function CustomerContext({ call }: { call: ActiveCall }) {
-  if (!call.last_order_date && call.open_ar_balance == null) return null;
+  const hasContext = call.last_order_date || call.open_ar_balance != null;
+  const hasInvoices = call.recent_invoices && call.recent_invoices.length > 0;
+  if (!hasContext && !hasInvoices) return null;
   return (
-    <div className="flex gap-4 text-xs text-muted-foreground border-t pt-2 mt-2">
-      {call.last_order_date && (
-        <span>Last order: {call.last_order_date}</span>
+    <div className="border-t pt-2 mt-2 space-y-2">
+      {hasContext && (
+        <div className="flex gap-4 text-xs text-muted-foreground">
+          {call.last_order_date && (
+            <span>Last order: {call.last_order_date}</span>
+          )}
+          {call.open_ar_balance != null && (
+            <span>
+              AR:{" "}
+              <span
+                className={cn(
+                  call.open_ar_balance > 0 ? "text-amber-600 font-medium" : "",
+                )}
+              >
+                ${call.open_ar_balance.toLocaleString()}
+              </span>
+            </span>
+          )}
+        </div>
       )}
-      {call.open_ar_balance != null && (
-        <span>
-          AR:{" "}
-          <span
-            className={cn(
-              call.open_ar_balance > 0 ? "text-amber-600 font-medium" : "",
-            )}
-          >
-            ${call.open_ar_balance.toLocaleString()}
-          </span>
-        </span>
+      {hasInvoices && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <FileText className="h-3 w-3" />
+            Recent Invoices
+          </p>
+          <div className="space-y-0.5">
+            {call.recent_invoices.slice(0, 3).map((inv, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between text-xs text-muted-foreground"
+              >
+                <span>
+                  #{inv.invoice_number}{" "}
+                  <span className="text-muted-foreground/60">
+                    {inv.invoice_date}
+                  </span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span
+                    className={cn(
+                      "px-1 py-0.5 rounded text-[10px]",
+                      inv.status === "paid"
+                        ? "bg-green-50 text-green-700"
+                        : inv.status === "overdue"
+                          ? "bg-red-50 text-red-700"
+                          : "bg-amber-50 text-amber-700",
+                    )}
+                  >
+                    {inv.status}
+                  </span>
+                  <span className="font-medium">
+                    ${inv.total.toLocaleString()}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
