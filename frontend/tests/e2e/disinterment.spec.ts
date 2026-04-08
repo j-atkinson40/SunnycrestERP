@@ -142,23 +142,14 @@ test.describe.serial("Disinterment Flow Tests", () => {
     // Enable required modules
     await ensureModulesEnabled(request, state.token);
 
-    // Discover driver user ID for scheduling
-    const meRes = await request.get(`${API_BASE}/auth/me`, {
-      headers: apiHeaders(state.token),
+    // Discover driver user ID by logging in as driver and calling /auth/me
+    const driverToken = await getApiToken(request, "driver");
+    const driverMeRes = await request.get(`${API_BASE}/auth/me`, {
+      headers: apiHeaders(driverToken),
     });
-    const meBody = await meRes.json();
-    const companyId = meBody.company_id;
-
-    // Get users to find driver
-    const usersRes = await request.get(`${API_BASE}/admin/users`, {
-      headers: apiHeaders(state.token),
-    });
-    if (usersRes.ok()) {
-      const users = await usersRes.json();
-      const driverUser = (Array.isArray(users) ? users : users.items || []).find(
-        (u: { email?: string }) => u.email === CREDS.driver.email
-      );
-      if (driverUser) state.driverUserId = driverUser.id;
+    if (driverMeRes.ok()) {
+      const driverMe = await driverMeRes.json();
+      state.driverUserId = driverMe.id;
     }
 
     // Seed charge types (3 total, 1 hazard pay)
@@ -737,16 +728,14 @@ test.describe.serial("Union Rotation Tests", () => {
   test.beforeAll(async ({ request }) => {
     rotState.token = await getApiToken(request, "admin");
 
-    // Get driver user ID
-    const usersRes = await request.get(`${API_BASE}/admin/users`, {
-      headers: apiHeaders(rotState.token),
+    // Get driver user ID by logging in as driver
+    const driverToken = await getApiToken(request, "driver");
+    const driverMeRes = await request.get(`${API_BASE}/auth/me`, {
+      headers: apiHeaders(driverToken),
     });
-    if (usersRes.ok()) {
-      const users = await usersRes.json();
-      const driverUser = (Array.isArray(users) ? users : users.items || []).find(
-        (u: { email?: string }) => u.email === CREDS.driver.email
-      );
-      if (driverUser) rotState.driverUserId = driverUser.id;
+    if (driverMeRes.ok()) {
+      const driverMe = await driverMeRes.json();
+      rotState.driverUserId = driverMe.id;
     }
   });
 
