@@ -415,7 +415,7 @@ class TestAgentRunner:
         job = AgentRunner.create_job(
             db=db,
             tenant_id=tenant.id,
-            job_type=AgentJobType.MONTH_END_CLOSE,
+            job_type=AgentJobType.AR_COLLECTIONS,  # Not yet implemented
             period_start=date(2025, 5, 1),
             period_end=date(2025, 5, 31),
             triggered_by=user.id,

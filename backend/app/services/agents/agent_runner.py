@@ -21,8 +21,15 @@ class AgentRunner:
     """Factory for creating and dispatching accounting agent jobs."""
 
     # Registry of job_type → agent class. Populated as phases are built.
-    # Phase 2 will add: AgentJobType.MONTH_END_CLOSE: MonthEndCloseAgent
     AGENT_REGISTRY: dict[AgentJobType, type] = {}
+
+    @classmethod
+    def _ensure_registry(cls) -> None:
+        """Lazy-load agent classes to avoid circular imports."""
+        if cls.AGENT_REGISTRY:
+            return
+        from app.services.agents.month_end_close_agent import MonthEndCloseAgent
+        cls.AGENT_REGISTRY[AgentJobType.MONTH_END_CLOSE] = MonthEndCloseAgent
 
     @staticmethod
     def create_job(
@@ -71,6 +78,30 @@ class AgentRunner:
                 detail=f"A {job_type.value} job for this period is already {existing.status}",
             )
 
+        # Check statement run conflict for month_end_close (unless dry_run)
+        if not dry_run and job_type == AgentJobType.MONTH_END_CLOSE:
+            from app.models.statement import StatementRun
+            existing_run = (
+                db.query(StatementRun)
+                .filter(
+                    StatementRun.tenant_id == tenant_id,
+                    StatementRun.statement_period_month == period_start.month,
+                    StatementRun.statement_period_year == period_start.year,
+                    StatementRun.status.notin_(["draft", "failed"]),
+                )
+                .first()
+            )
+            if existing_run:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"A statement run for this period already exists "
+                        f"with status '{existing_run.status}'. "
+                        f"Use dry_run=True to preview, or resolve the "
+                        f"existing statement run first."
+                    ),
+                )
+
         # Check period lock (unless dry_run)
         if not dry_run:
             from app.services.agents.period_lock import PeriodLockService
@@ -109,6 +140,8 @@ class AgentRunner:
 
         Called from a background task so the API returns immediately.
         """
+        AgentRunner._ensure_registry()
+
         job = db.query(AgentJob).filter(AgentJob.id == job_id).first()
         if not job:
             raise ValueError(f"AgentJob {job_id} not found")

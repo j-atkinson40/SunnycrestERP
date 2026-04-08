@@ -163,13 +163,21 @@ class ApprovalGateService:
     def _process_approve(
         job: AgentJob, action: ApprovalAction, db: Session
     ) -> AgentJob:
-        """Handle approval: lock period, mark complete."""
+        """Handle approval: lock period, mark complete.
+
+        For month_end_close jobs, also triggers statement generation
+        and auto-approves unflagged statement items.
+        """
         from app.services.agents.period_lock import PeriodAlreadyLockedError, PeriodLockService
 
         job.status = "approved"
         job.approved_at = datetime.now(timezone.utc)
         # approved_by will be set by the route if user is authenticated
         db.flush()
+
+        # Month-end close: generate statement run on approval
+        if job.job_type == "month_end_close" and not job.dry_run and job.period_start and job.period_end:
+            ApprovalGateService._trigger_statement_run(job, db)
 
         # Lock the period (skip if dry_run)
         if not job.dry_run and job.period_start and job.period_end:
@@ -194,6 +202,101 @@ class ApprovalGateService:
 
         logger.info("Job %s approved and completed", job.id)
         return job
+
+    @staticmethod
+    def _trigger_statement_run(job: AgentJob, db: Session) -> None:
+        """Generate statement run and auto-approve unflagged items on month-end close approval."""
+        from app.models.agent_anomaly import AgentAnomaly
+        from app.models.statement import CustomerStatement, StatementRun
+        from app.services.statement_generation_service import (
+            approve_item,
+            generate_statement_run,
+        )
+
+        try:
+            # Check for existing statement run conflict from step data
+            steps = (job.report_payload or {}).get("steps", {})
+            cs_data = steps.get("customer_statements", {})
+            existing_run_id = cs_data.get("existing_statement_run_id")
+
+            if existing_run_id:
+                existing_run = db.query(StatementRun).filter(StatementRun.id == existing_run_id).first()
+                if existing_run and existing_run.status not in ("draft", "failed"):
+                    # Link to existing run instead of creating a new one
+                    payload = dict(job.report_payload or {})
+                    payload["statement_run_id"] = str(existing_run.id)
+                    payload["statement_run_status"] = existing_run.status
+                    payload["statement_run_note"] = "Linked to existing run (conflict detected)"
+                    job.report_payload = payload
+                    db.flush()
+                    logger.info("Linked job %s to existing statement run %s", job.id, existing_run.id)
+                    return
+
+            # Generate statement run
+            user_id = str(job.approved_by) if job.approved_by else str(job.triggered_by or "")
+            statement_run = generate_statement_run(
+                db=db,
+                tenant_id=str(job.tenant_id),
+                user_id=user_id,
+                period_start=job.period_start,
+                period_end=job.period_end,
+            )
+
+            # Auto-approve unflagged items — skip customers with unresolved CRITICAL anomalies
+            critical_customer_ids = set()
+            critical_anomalies = (
+                db.query(AgentAnomaly)
+                .filter(
+                    AgentAnomaly.agent_job_id == job.id,
+                    AgentAnomaly.severity == "critical",
+                    AgentAnomaly.entity_type == "customer",
+                    AgentAnomaly.resolved == False,
+                )
+                .all()
+            )
+            for a in critical_anomalies:
+                if a.entity_id:
+                    critical_customer_ids.add(a.entity_id)
+
+            # Get all statement items for this run
+            statement_items = (
+                db.query(CustomerStatement)
+                .filter(CustomerStatement.run_id == statement_run.id)
+                .all()
+            )
+
+            auto_approved = 0
+            for item in statement_items:
+                if item.customer_id not in critical_customer_ids:
+                    approve_item(
+                        db=db,
+                        item_id=item.id,
+                        tenant_id=str(job.tenant_id),
+                        user_id=user_id,
+                        note="Auto-approved by month-end close agent",
+                    )
+                    auto_approved += 1
+
+            # Store link in report_payload
+            payload = dict(job.report_payload or {})
+            payload["statement_run_id"] = str(statement_run.id)
+            payload["statement_run_status"] = statement_run.status
+            payload["statement_items_auto_approved"] = auto_approved
+            payload["statement_items_total"] = len(statement_items)
+            job.report_payload = payload
+            db.flush()
+
+            logger.info(
+                "Statement run %s created for job %s. %d/%d items auto-approved.",
+                statement_run.id, job.id, auto_approved, len(statement_items),
+            )
+
+        except Exception as e:
+            logger.error("Failed to trigger statement run for job %s: %s", job.id, e)
+            payload = dict(job.report_payload or {})
+            payload["statement_run_error"] = str(e)
+            job.report_payload = payload
+            db.flush()
 
     @staticmethod
     def _process_reject(
@@ -230,7 +333,8 @@ class ApprovalGateService:
             for a in anomalies:
                 sev = a.get("severity", "info")
                 badge_color = {"critical": "#dc2626", "warning": "#d97706", "info": "#2563eb"}.get(sev, "#6b7280")
-                amount_str = f"${a['amount']:,.2f}" if a.get("amount") else ""
+                raw_amount = a.get("amount")
+                amount_str = f"${float(raw_amount):,.2f}" if raw_amount is not None else ""
                 anomaly_html += f"""
                 <tr>
                     <td><span style="background:{badge_color};color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;">{sev}</span></td>
