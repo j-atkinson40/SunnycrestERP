@@ -4,6 +4,8 @@ const STAGING_FRONTEND = "https://determined-renewal-staging.up.railway.app";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  globalSetup: "./tests/e2e/global-setup.ts",
+  globalTeardown: "./tests/e2e/global-teardown.ts",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 1,
@@ -11,6 +13,7 @@ export default defineConfig({
   reporter: [
     ["list"],
     ["html", { outputFolder: "tests/e2e/report", open: "never" }],
+    ["./tests/e2e/incident-reporter.ts"],
   ],
   timeout: 60_000,
   expect: { timeout: 15_000 },

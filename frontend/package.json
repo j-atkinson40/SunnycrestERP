@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test --project=chromium",
+    "test:smoke": "playwright test tests/e2e/smoke.spec.ts --project=chromium --reporter=list,./tests/e2e/incident-reporter.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

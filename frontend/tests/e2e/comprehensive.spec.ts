@@ -534,20 +534,44 @@ test.describe("Onboarding", () => {
 test.describe("Role-Based Access", () => {
   test("office staff can access the app", async ({ page }) => {
     await login(page, "office");
-    const body = await page.locator("body").textContent();
-    expect(body?.length).toBeGreaterThan(100);
+    // Wait for nav/content to render (sidebar or sign out link)
+    await page.waitForSelector("text=Sign Out", { timeout: 10000 }).catch(() => {});
+    const hasContent = await page
+      .locator("text=Home")
+      .or(page.locator("text=Sign Out"))
+      .or(page.locator("text=Office Staff"))
+      .first()
+      .isVisible()
+      .catch(() => false);
+    expect(hasContent).toBe(true);
   });
 
   test("driver can access the app", async ({ page }) => {
     await login(page, "driver");
-    const body = await page.locator("body").textContent();
-    expect(body?.length).toBeGreaterThan(100);
+    // Wait for driver page to render
+    await page.waitForSelector("text=Sign Out", { timeout: 10000 }).catch(() => {});
+    const hasContent = await page
+      .locator("text=Deliveries")
+      .or(page.locator("text=Driver"))
+      .or(page.locator("text=Sign Out"))
+      .first()
+      .isVisible()
+      .catch(() => false);
+    expect(hasContent).toBe(true);
   });
 
   test("production can access the app", async ({ page }) => {
     await login(page, "production");
-    const body = await page.locator("body").textContent();
-    expect(body?.length).toBeGreaterThan(100);
+    // Wait for nav/content to render
+    await page.waitForSelector("text=Sign Out", { timeout: 10000 }).catch(() => {});
+    const hasContent = await page
+      .locator("text=Home")
+      .or(page.locator("text=Sign Out"))
+      .or(page.locator("text=Production"))
+      .first()
+      .isVisible()
+      .catch(() => false);
+    expect(hasContent).toBe(true);
   });
 });
 

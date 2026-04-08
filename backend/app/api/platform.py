@@ -12,6 +12,7 @@ from app.api.routes import (
     platform_extensions,
     platform_feature_flags,
     platform_impersonation,
+    platform_incidents,
     platform_modules,
     platform_system,
     platform_tenants,
@@ -57,4 +58,8 @@ platform_router.include_router(
     platform_training.router,
     prefix="/training",
     tags=["Platform Training Content"],
+)
+platform_router.include_router(
+    platform_incidents.router,
+    tags=["Platform Incidents"],
 )

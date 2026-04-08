@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     TWILIO_FROM_NUMBER: str = ""
     DEEPGRAM_API_KEY: str = ""
 
+    # Internal API key for automated systems (Playwright reporter, healthchecks)
+    INTERNAL_API_KEY: str = ""
+
     # Platform admin seed (optional — creates initial super admin on startup)
     PLATFORM_ADMIN_EMAIL: str = ""
     PLATFORM_ADMIN_PASSWORD: str = ""

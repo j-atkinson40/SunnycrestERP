@@ -269,6 +269,49 @@ def job_price_version_activation():
     _run_global("PRICE_VERSION_ACTIVATION", activate_scheduled_versions)
 
 
+def job_platform_health_recalculate():
+    """Daily 2am — recalculate tenant health scores from open incidents."""
+    run_id = _log_job_run("PLATFORM_HEALTH_RECALCULATE")
+    t0 = time.monotonic()
+    logger.info("[PLATFORM_HEALTH_RECALCULATE] Starting")
+    db = SessionLocal()
+    try:
+        from app.services.platform.platform_health_service import (
+            calculate_all_tenant_health,
+        )
+        results = calculate_all_tenant_health(db)
+        duration = time.monotonic() - t0
+        logger.info(
+            f"[PLATFORM_HEALTH_RECALCULATE] Complete: "
+            f"{len(results)} tenants ({duration:.1f}s)"
+        )
+        _complete_job_run(run_id, status="completed", duration=duration)
+    except Exception as e:
+        duration = time.monotonic() - t0
+        logger.error(
+            f"[PLATFORM_HEALTH_RECALCULATE] Error: {e}", exc_info=True
+        )
+        _complete_job_run(
+            run_id, status="failed", duration=duration, error_message=str(e)
+        )
+        # Self-report: log as a platform incident
+        try:
+            from app.services.platform.platform_health_service import log_incident
+            log_incident(
+                db,
+                category="background_job",
+                error_message="platform_health_recalculate failed",
+                source="background_job",
+                severity="medium",
+                context={"error": str(e)},
+            )
+            db.commit()
+        except Exception:
+            logger.debug("Failed to self-report health job failure")
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Job registry — maps names to wrapper functions (for manual trigger)
 # ---------------------------------------------------------------------------
@@ -294,6 +337,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "onboarding_pattern": job_onboarding_pattern,
     "profile_update": job_profile_update,
     "price_version_activation": job_price_version_activation,
+    "platform_health_recalculate": job_platform_health_recalculate,
 }
 
 
@@ -434,6 +478,16 @@ def register_all_jobs():
         name="network_readiness",
         replace_existing=True,
         misfire_grace_time=7200,
+    )
+
+    # DAILY at 2:15am ET — platform health recalculation
+    scheduler.add_job(
+        job_platform_health_recalculate,
+        CronTrigger(hour=2, minute=15),
+        id="platform_health_recalculate",
+        name="platform_health_recalculate",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
 
     # DAILY at midnight ET — price version activation
