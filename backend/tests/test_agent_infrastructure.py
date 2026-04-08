@@ -411,18 +411,21 @@ class TestAgentRunner:
             )
         assert exc_info.value.status_code == 409
 
-    def test_run_unregistered_agent(self, db, tenant, user):
-        job = AgentRunner.create_job(
-            db=db,
+    def test_run_unknown_job_type(self, db, tenant, user):
+        """A job with a raw job_type string not in AgentJobType raises ValueError."""
+        job = AgentJob(
+            id=str(uuid.uuid4()),
             tenant_id=tenant.id,
-            job_type=AgentJobType.YEAR_END_CLOSE,  # Not yet implemented
+            job_type="nonexistent_agent_type",
+            status="pending",
             period_start=date(2025, 5, 1),
             period_end=date(2025, 5, 31),
-            triggered_by=user.id,
+            run_log=[],
         )
-        result = AgentRunner.run_job(job.id, db)
-        assert result.status == "failed"
-        assert "not yet implemented" in result.error_message
+        db.add(job)
+        db.flush()
+        with pytest.raises(ValueError, match="Unknown job type"):
+            AgentRunner.run_job(job.id, db)
 
 
 # ---------------------------------------------------------------------------

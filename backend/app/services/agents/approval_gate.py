@@ -173,6 +173,7 @@ class ApprovalGateService:
         "budget_vs_actual",     # TODO Phase 9b: when Annual Budget Agent (Phase 13) is built, budget figures become the comparison basis automatically
         "1099_prep",            # Informational only — no financial writes on approval
         "annual_budget",        # Informational only — budget stored in report_payload for Phase 9 consumption
+        "tax_package",          # Read-only capstone — compiles other agent outputs, no financial writes
     }
 
     @staticmethod
@@ -207,8 +208,8 @@ class ApprovalGateService:
             logger.info("Job %s approved and completed (simple path)", job.id)
             return job
 
-        # Month-end close: generate statement run on approval
-        if job.job_type == "month_end_close" and not job.dry_run and job.period_start and job.period_end:
+        # Month-end / year-end close: generate statement run on approval
+        if job.job_type in ("month_end_close", "year_end_close") and not job.dry_run and job.period_start and job.period_end:
             ApprovalGateService._trigger_statement_run(job, db)
 
         # Lock the period (skip if dry_run)
