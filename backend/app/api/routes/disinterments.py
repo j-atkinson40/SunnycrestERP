@@ -79,7 +79,7 @@ def update_intake(
 @router.post("/{case_id}/accept-quote")
 def accept_quote(
     case_id: str,
-    quote_id: str = Query(...),
+    quote_id: str | None = Query(None),
     quote_amount: float = Query(...),
     has_hazard_pay: bool = Query(False),
     db: Session = Depends(get_db),

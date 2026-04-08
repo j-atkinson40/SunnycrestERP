@@ -405,13 +405,14 @@ def submit_intake(db: Session, token: str, data) -> dict:
 
 
 def accept_quote(
-    db: Session, case_id: str, company_id: str, quote_id: str, quote_amount: float
+    db: Session, case_id: str, company_id: str, quote_id: str | None, quote_amount: float
 ) -> dict:
     """Accept a quote — set quote_id, check hazard pay, advance to quote_accepted."""
     case = _load_case(db, case_id, company_id)
     _assert_status(case, "intake", "quoted")
 
-    case.quote_id = quote_id
+    if quote_id:
+        case.quote_id = quote_id
     case.accepted_quote_amount = quote_amount
 
     # Check hazard pay — look at charge types used in the quote
