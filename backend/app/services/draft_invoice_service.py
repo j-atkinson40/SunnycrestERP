@@ -81,6 +81,44 @@ def _try_send_invoice_email(db: Session, inv: Invoice) -> None:
             reply_to=company.email if company else None,
         )
 
+        # Persist PDF to R2 (non-blocking, idempotent)
+        if pdf_bytes:
+            try:
+                from app.services.document_r2_service import save_generated_document
+                from app.models.document import Document as DocModel
+
+                filename = f"Invoice-{inv.number}.pdf"
+                r2_key = f"tenants/{inv.company_id}/invoices/{inv.id}/invoice/{filename}"
+                existing = db.query(DocModel).filter(DocModel.r2_key == r2_key).first()
+
+                if not existing:
+                    save_generated_document(
+                        db,
+                        company_id=inv.company_id,
+                        entity_type="invoice",
+                        entity_id=str(inv.id),
+                        document_type="invoice",
+                        file_name=filename,
+                        file_bytes=pdf_bytes,
+                        mime_type="application/pdf",
+                        generated_by=None,
+                        metadata={
+                            "invoice_id": str(inv.id),
+                            "invoice_number": inv.number,
+                            "customer_id": str(inv.customer_id),
+                            "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+                            "due_date": inv.due_date.isoformat() if inv.due_date else None,
+                            "total": str(inv.total),
+                            "amount_paid": str(inv.amount_paid),
+                            "balance_remaining": str(inv.balance_remaining),
+                            "status": inv.status,
+                            "deceased_name": inv.deceased_name,
+                            "payment_terms": inv.payment_terms,
+                        },
+                    )
+            except Exception as e:
+                logger.warning(f"Invoice PDF persistence failed (non-blocking): {e}")
+
         if result.get("success"):
             now = datetime.now(timezone.utc)
             inv.sent_at = now

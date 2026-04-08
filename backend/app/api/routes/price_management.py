@@ -338,6 +338,51 @@ def download_pdf(
     pdf = generate_price_list_pdf(db, current_user.company_id, version_id, template_id)
     if not pdf:
         raise HTTPException(500, "PDF generation failed")
+
+    # Persist PDF to R2 (non-blocking, idempotent)
+    try:
+        from app.services.document_r2_service import save_generated_document
+        from app.models.document import Document as DocModel
+        from app.models.price_list_version import PriceListVersion
+
+        version = db.query(PriceListVersion).filter(
+            PriceListVersion.id == version_id,
+            PriceListVersion.tenant_id == current_user.company_id,
+        ).first()
+
+        filename = f"price-list-{version_id[:8]}.pdf"
+        r2_key = f"tenants/{current_user.company_id}/price_lists/{version_id}/price_list/{filename}"
+        existing = db.query(DocModel).filter(DocModel.r2_key == r2_key).first()
+
+        if not existing and version:
+            from app.models.price_list_item import PriceListItem
+            item_count = db.query(PriceListItem).filter(
+                PriceListItem.version_id == version_id,
+            ).count()
+
+            save_generated_document(
+                db,
+                company_id=current_user.company_id,
+                entity_type="price_list",
+                entity_id=version_id,
+                document_type="price_list",
+                file_name=filename,
+                file_bytes=pdf,
+                mime_type="application/pdf",
+                generated_by=str(current_user.id),
+                metadata={
+                    "version_id": version_id,
+                    "version_number": version.version_number,
+                    "label": version.label,
+                    "status": version.status,
+                    "effective_date": version.effective_date.isoformat() if version.effective_date else None,
+                    "item_count": item_count,
+                },
+            )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("Price list PDF persistence failed (non-blocking)", exc_info=True)
+
     return Response(
         content=pdf,
         media_type="application/pdf",
@@ -455,6 +500,45 @@ def send_price_list(
 
     company = db.query(Company).filter(Company.id == current_user.company_id).first()
     company_name = company.name if company else "Your Company"
+
+    # Persist PDF to R2 (non-blocking, idempotent)
+    try:
+        from app.services.document_r2_service import save_generated_document
+        from app.models.document import Document as DocModel
+        from app.models.price_list_item import PriceListItem
+
+        filename = f"price-list-{body.version_id[:8]}.pdf"
+        r2_key = f"tenants/{current_user.company_id}/price_lists/{body.version_id}/price_list/{filename}"
+        existing = db.query(DocModel).filter(DocModel.r2_key == r2_key).first()
+
+        if not existing:
+            item_count = db.query(PriceListItem).filter(
+                PriceListItem.version_id == body.version_id,
+            ).count()
+
+            save_generated_document(
+                db,
+                company_id=current_user.company_id,
+                entity_type="price_list",
+                entity_id=body.version_id,
+                document_type="price_list",
+                file_name=filename,
+                file_bytes=pdf,
+                mime_type="application/pdf",
+                generated_by=str(current_user.id),
+                metadata={
+                    "version_id": body.version_id,
+                    "version_number": version.version_number,
+                    "label": version.label,
+                    "status": version.status,
+                    "effective_date": version.effective_date.isoformat() if version.effective_date else None,
+                    "item_count": item_count,
+                    "recipients_count": len(body.recipients),
+                },
+            )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("Price list PDF persistence failed (non-blocking)", exc_info=True)
 
     results = []
     for r in body.recipients:

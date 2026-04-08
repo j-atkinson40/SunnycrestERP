@@ -133,6 +133,44 @@ def create_envelope(
         from app.services.disinterment_pdf_service import generate_release_form_base64
         pdf_b64 = generate_release_form_base64(db, case_id, company_id)
 
+        # Persist release form PDF to R2 (non-blocking, idempotent)
+        try:
+            import base64 as _b64
+            from app.services.document_r2_service import save_generated_document
+            from app.models.document import Document as DocModel
+            from app.models.disinterment_case import DisintermentCase
+
+            case = db.query(DisintermentCase).filter(DisintermentCase.id == case_id).first()
+            release_filename = f"Release-Form-{case_number}.pdf"
+            r2_key = f"tenants/{company_id}/disinterment_cases/{case_id}/release_form/{release_filename}"
+            existing = db.query(DocModel).filter(DocModel.r2_key == r2_key).first()
+
+            if not existing:
+                pdf_raw = _b64.b64decode(pdf_b64)
+                save_generated_document(
+                    db,
+                    company_id=company_id,
+                    entity_type="disinterment_case",
+                    entity_id=case_id,
+                    document_type="release_form",
+                    file_name=release_filename,
+                    file_bytes=pdf_raw,
+                    mime_type="application/pdf",
+                    generated_by=None,
+                    metadata={
+                        "case_id": case_id,
+                        "case_number": case_number,
+                        "decedent_name": decedent_name,
+                        "funeral_home_id": str(case.funeral_home_id) if case and case.funeral_home_id else None,
+                        "cemetery_id": str(case.cemetery_id) if case and case.cemetery_id else None,
+                        "accepted_quote_amount": str(case.accepted_quote_amount) if case and case.accepted_quote_amount else None,
+                        "status": case.status if case else None,
+                        "signers": [s.email for s in signers],
+                    },
+                )
+        except Exception as _e:
+            logger.warning(f"Disinterment release form PDF persistence failed (non-blocking): {_e}")
+
         envelope_definition = EnvelopeDefinition(
             email_subject=f"Disinterment Release Form — {decedent_name} ({case_number})",
             documents=[
