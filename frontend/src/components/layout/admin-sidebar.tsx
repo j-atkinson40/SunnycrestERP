@@ -26,6 +26,7 @@ import {
   DollarSign,
   CreditCard,
   Settings,
+  Shield,
   Users,
   ChevronDown,
   ChevronRight,
@@ -73,6 +74,7 @@ const sections: NavSection[] = [
   {
     title: "Platform Health",
     items: [
+      { label: "Platform Health", href: "/platform-health", icon: Shield },
       { label: "Integration Monitor", href: "/system", icon: Activity },
       { label: "Sync Jobs", href: "/sync-jobs", icon: RefreshCw },
       { label: "Error Log", href: "/error-log", icon: AlertTriangle },

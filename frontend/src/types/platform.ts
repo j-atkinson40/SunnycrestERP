@@ -180,3 +180,68 @@ export interface OnboardTenantResponse {
   slug: string;
   modules_enabled: number;
 }
+
+// ---- Platform Health / Operator Dashboard ----
+
+export interface ComponentScores {
+  api: string;
+  auth: string;
+  data: string;
+  background_job: string;
+}
+
+export interface TenantHealthItem {
+  tenant_id: string;
+  tenant_name: string;
+  score: string;
+  open_incident_count: number;
+  last_incident_at: string | null;
+  last_healthy_at: string | null;
+  last_calculated: string | null;
+  reasons: string[];
+  component_scores: ComponentScores;
+}
+
+export interface HealthSummary {
+  total_tenants: number;
+  healthy: number;
+  watch: number;
+  degraded: number;
+  critical: number;
+  unknown: number;
+  last_updated: string | null;
+}
+
+export interface HealthSummaryResponse {
+  summary: HealthSummary;
+  tenants: TenantHealthItem[];
+}
+
+export interface HealthIncident {
+  id: string;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  category: string;
+  severity: string;
+  source: string | null;
+  resolution_tier: string | null;
+  resolution_status: string;
+  error_message: string | null;
+  was_repeat: boolean;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface HealthIncidentListResponse {
+  incidents: HealthIncident[];
+  total: number;
+}
+
+export interface RecalculateResponse {
+  recalculated: number;
+  healthy: number;
+  watch: number;
+  degraded: number;
+  critical: number;
+  unknown: number;
+}

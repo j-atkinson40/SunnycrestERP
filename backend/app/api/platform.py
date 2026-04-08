@@ -11,6 +11,7 @@ from app.api.routes import (
     platform_auth,
     platform_extensions,
     platform_feature_flags,
+    platform_health,
     platform_impersonation,
     platform_incidents,
     platform_modules,
@@ -62,4 +63,9 @@ platform_router.include_router(
 platform_router.include_router(
     platform_incidents.router,
     tags=["Platform Incidents"],
+)
+platform_router.include_router(
+    platform_health.router,
+    prefix="/health",
+    tags=["Platform Health"],
 )

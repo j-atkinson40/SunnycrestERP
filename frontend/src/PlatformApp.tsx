@@ -21,6 +21,7 @@ import SystemHealthPage from "@/pages/platform/system-health";
 import ImpersonationLogPage from "@/pages/platform/impersonation-log";
 import PlatformUsersPage from "@/pages/platform/platform-users";
 import TrainingContentPage from "@/pages/admin/training-content";
+import PlatformHealthPage from "@/pages/platform/platform-health";
 
 export default function PlatformApp() {
   return (
@@ -64,6 +65,7 @@ export default function PlatformApp() {
             />
             <Route path="/users" element={<PlatformUsersPage />} />
             <Route path="/training-content" element={<TrainingContentPage />} />
+            <Route path="/platform-health" element={<PlatformHealthPage />} />
           </Route>
         </Route>
 

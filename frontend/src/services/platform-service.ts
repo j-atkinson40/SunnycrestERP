@@ -5,8 +5,11 @@
 import platformClient from "@/lib/platform-api-client";
 import type {
   FeatureFlagMatrix,
+  HealthIncidentListResponse,
+  HealthSummaryResponse,
   ImpersonateResponse,
   PlatformUser,
+  RecalculateResponse,
   SystemHealth,
   TenantDetail,
   TenantOverview,
@@ -286,6 +289,48 @@ export async function onboardTenant(payload: OnboardTenantRequest) {
   );
   return data;
 }
+
+// ---- Platform Health ----
+
+export async function getHealthSummary() {
+  const { data } = await platformClient.get<HealthSummaryResponse>(
+    "/health/summary"
+  );
+  return data;
+}
+
+export async function getHealthIncidents(params?: {
+  tenant_id?: string;
+  status?: string;
+  category?: string;
+  limit?: number;
+}) {
+  const { data } = await platformClient.get<HealthIncidentListResponse>(
+    "/health/incidents",
+    { params }
+  );
+  return data;
+}
+
+export async function recalculateAllHealth() {
+  const { data } = await platformClient.post<RecalculateResponse>(
+    "/health/recalculate"
+  );
+  return data;
+}
+
+export async function resolveIncident(
+  incidentId: string,
+  resolutionAction: string
+) {
+  const { data } = await platformClient.patch(
+    `/health/incidents/${incidentId}/resolve`,
+    { resolution_action: resolutionAction }
+  );
+  return data;
+}
+
+// ---- Website Intelligence ----
 
 export async function rescrapeWebsiteIntelligence(tenantId: string) {
   const { data } = await platformClient.post<{ status: string; tenant_id: string }>(
