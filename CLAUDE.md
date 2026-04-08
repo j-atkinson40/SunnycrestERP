@@ -418,8 +418,11 @@ Add function in the appropriate service file. Add wrapper in `backend/app/schedu
 **Key files:**
 - `backend/app/services/agents/base_agent.py` — Abstract base class all agents extend
 - `backend/app/services/agents/agent_runner.py` — Job creation, validation, execution orchestrator
-- `backend/app/services/agents/approval_gate.py` — Token-based email approval workflow
+- `backend/app/services/agents/approval_gate.py` — Token-based email approval workflow (simple path for weekly agents, full path with period lock for month-end)
 - `backend/app/services/agents/period_lock.py` — Financial period locking service
+- `backend/app/services/agents/ar_collections_agent.py` — AR Collections Agent (Phase 3)
+- `backend/app/services/agents/unbilled_orders_agent.py` — Unbilled Orders Agent (Phase 4)
+- `backend/app/services/agents/cash_receipts_agent.py` — Cash Receipts Matching Agent (Phase 5)
 - `backend/app/schemas/agent.py` — All Pydantic schemas (enums, request/response models)
 - `backend/app/api/routes/agents.py` — API endpoints (under `/api/v1/agents/accounting`)
 - `frontend/src/pages/agents/AgentDashboard.tsx` — Run agents, view history, manage period locks
@@ -493,6 +496,7 @@ Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` in
 
 ## 13. Recent Changes
 
+- **Three Weekly Agents (Phases 3–5):** ARCollectionsAgent, UnbilledOrdersAgent, CashReceiptsAgent. All registered in `AgentRunner.AGENT_REGISTRY`. Approval gate updated with `SIMPLE_APPROVAL_TYPES` set for weekly agents — no period lock, no statement run on approval. ARCollectionsAgent: 4 steps (AR snapshot, tier classification, Claude-drafted collection emails with fallback templates, report). UnbilledOrdersAgent: 3 steps (find unbilled delivered orders, pattern analysis — repeat customers/backlog growth/high value, report). CashReceiptsAgent: 4 steps (collect unmatched payments, auto-match via 4 rules — exact+customer/exact+any/subset-sum/unresolvable, flag stale payments, report). Auto-match writes only in non-dry-run mode via `guard_write()`. 15 tests in `test_phase_3_4_5_agents.py`. Total agent tests: 49 passing.
 - **MonthEndCloseAgent (Phase 2):** First real agent implementation. 8-step pre-flight verification: invoice coverage, payment reconciliation, AR aging snapshot, revenue summary with adaptive outlier detection, customer statement flag detection (reuses `statement_generation_service`), cross-step anomaly checks, prior period comparison, executive report generation. On approval: triggers `generate_statement_run()`, auto-approves unflagged statement items, locks period. Agent registered in `AgentRunner.AGENT_REGISTRY`. Anomaly types: `uninvoiced_delivery`, `invoice_amount_mismatch`, `unmatched_payment`, `duplicate_payment`, `overdue_ar_90plus`, `revenue_outlier`, `low_collection_rate`, `inactive_customer`, `low_invoice_volume`, `statement_run_conflict`, and 6 statement flags (`statement_open_dispute`, `statement_high_balance_variance`, etc.). Seed script: `scripts/seed_agent_test.py`. 11 tests.
 - **Accounting Agent Infrastructure (Phase 1):** Built shared foundation for 13 accounting agents. 5 tables (`agent_run_steps`, `agent_anomalies`, `agent_schedules`, `period_locks` + extended `agent_jobs`), base agent class, approval gate with token-based email workflow, period lock service with financial write guards on invoices/payments, agent runner with validation, full API endpoints, frontend dashboard + approval review page. Migration `r10_agent_infra`. 22 tests passing.
 - **Document Service R2 Migration:** `document_service.py` rewritten for Cloudflare R2 storage. Download route returns 307 redirect to signed URLs. Lazy migration for existing local files. Admin bulk migration endpoint.

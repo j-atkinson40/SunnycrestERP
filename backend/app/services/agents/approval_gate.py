@@ -159,6 +159,13 @@ class ApprovalGateService:
         else:
             return ApprovalGateService._process_reject(job, action, db)
 
+    # Job types that use simplified approval (no period lock, no statement run)
+    SIMPLE_APPROVAL_TYPES = {
+        "ar_collections",       # TODO Phase 3b: trigger email sends for approved collection drafts
+        "unbilled_orders",      # TODO Phase 4b: on approval, optionally create draft invoices for HIGH urgency orders
+        "cash_receipts_matching",
+    }
+
     @staticmethod
     def _process_approve(
         job: AgentJob, action: ApprovalAction, db: Session
@@ -167,6 +174,9 @@ class ApprovalGateService:
 
         For month_end_close jobs, also triggers statement generation
         and auto-approves unflagged statement items.
+
+        For weekly agents (ar_collections, unbilled_orders, cash_receipts_matching),
+        uses simplified approval — no period lock, no statement run.
         """
         from app.services.agents.period_lock import PeriodAlreadyLockedError, PeriodLockService
 
@@ -174,6 +184,15 @@ class ApprovalGateService:
         job.approved_at = datetime.now(timezone.utc)
         # approved_by will be set by the route if user is authenticated
         db.flush()
+
+        # Simplified approval path for weekly agents
+        if job.job_type in ApprovalGateService.SIMPLE_APPROVAL_TYPES:
+            job.status = "complete"
+            job.completed_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(job)
+            logger.info("Job %s approved and completed (simple path)", job.id)
+            return job
 
         # Month-end close: generate statement run on approval
         if job.job_type == "month_end_close" and not job.dry_run and job.period_start and job.period_end:

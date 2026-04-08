@@ -29,7 +29,13 @@ class AgentRunner:
         if cls.AGENT_REGISTRY:
             return
         from app.services.agents.month_end_close_agent import MonthEndCloseAgent
+        from app.services.agents.ar_collections_agent import ARCollectionsAgent
+        from app.services.agents.unbilled_orders_agent import UnbilledOrdersAgent
+        from app.services.agents.cash_receipts_agent import CashReceiptsAgent
         cls.AGENT_REGISTRY[AgentJobType.MONTH_END_CLOSE] = MonthEndCloseAgent
+        cls.AGENT_REGISTRY[AgentJobType.AR_COLLECTIONS] = ARCollectionsAgent
+        cls.AGENT_REGISTRY[AgentJobType.UNBILLED_ORDERS] = UnbilledOrdersAgent
+        cls.AGENT_REGISTRY[AgentJobType.CASH_RECEIPTS_MATCHING] = CashReceiptsAgent
 
     @staticmethod
     def create_job(
