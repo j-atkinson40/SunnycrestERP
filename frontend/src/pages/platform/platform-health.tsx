@@ -24,7 +24,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock,
   Loader2,
   RefreshCw,
   AlertTriangle,
@@ -137,7 +136,7 @@ export default function PlatformHealthPage() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveAction, setResolveAction] = useState("");
   const [justUpdated, setJustUpdated] = useState(false);
-  const fadeTimer = useRef<ReturnType<typeof setTimeout>>();
+  const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // ---- Data fetching ----
 
@@ -247,10 +246,6 @@ export default function PlatformHealthPage() {
 
   const summary = data?.summary;
   const tenants = data?.tenants ?? [];
-  const openIncidentCount = incidents.filter(
-    (i) => i.resolution_status === "pending" || i.resolution_status === "in_progress"
-  ).length;
-
   // ---- Empty state: no tenants ----
 
   if (summary && summary.total_tenants === 0) {
