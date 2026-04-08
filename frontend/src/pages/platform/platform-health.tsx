@@ -13,6 +13,7 @@ import {
   getHealthIncidents,
   recalculateAllHealth,
   resolveIncident,
+  triggerSmokeTest,
 } from "@/services/platform-service";
 import type {
   HealthSummaryResponse,
@@ -25,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Play,
   RefreshCw,
   AlertTriangle,
 } from "lucide-react";
@@ -405,6 +407,7 @@ export default function PlatformHealthPage() {
                     setFilterTenantId(id);
                     setIncidentsExpanded(true);
                   }}
+                  onRefresh={() => fetchData(true)}
                 />
               ))}
             </tbody>
@@ -596,16 +599,44 @@ export default function PlatformHealthPage() {
 function TenantRow({
   tenant,
   onFilterIncidents,
+  onRefresh,
 }: {
   tenant: TenantHealthItem;
   onFilterIncidents: (tenantId: string) => void;
+  onRefresh: () => void;
 }) {
+  const [smokeRunning, setSmokeRunning] = useState(false);
   const t = tenant;
   const cs = t.component_scores;
   const lastCalcAgo = timeAgo(t.last_calculated);
   const isStale =
     !t.last_calculated ||
     Date.now() - new Date(t.last_calculated).getTime() > 24 * 60 * 60 * 1000;
+
+  async function handleSmokeTest() {
+    setSmokeRunning(true);
+    try {
+      const result = await triggerSmokeTest(t.tenant_id);
+      if (result.error) {
+        toast(result.error, { description: "Run smoke tests locally or via CI." });
+      } else if (result.failed > 0) {
+        toast.warning(
+          `Smoke test complete — ${result.incidents_logged} incident(s) logged`,
+          { description: `${result.passed} passed, ${result.failed} failed (${Math.round(result.duration_ms / 1000)}s)` }
+        );
+      } else {
+        toast.success(
+          "Smoke test passed — all healthy",
+          { description: `${result.passed} passed (${Math.round(result.duration_ms / 1000)}s)` }
+        );
+      }
+      onRefresh();
+    } catch {
+      toast.error("Failed to trigger smoke test");
+    } finally {
+      setSmokeRunning(false);
+    }
+  }
 
   return (
     <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
@@ -654,14 +685,31 @@ function TenantRow({
         </span>
       </td>
       <td className="px-4 py-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => onFilterIncidents(t.tenant_id)}
-        >
-          View incidents &rarr;
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={handleSmokeTest}
+            disabled={smokeRunning}
+            title="Run smoke tests for this tenant"
+          >
+            {smokeRunning ? (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            ) : (
+              <Play className="mr-1 h-3 w-3" />
+            )}
+            {smokeRunning ? "Running…" : "Run smoke test"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => onFilterIncidents(t.tenant_id)}
+          >
+            View incidents &rarr;
+          </Button>
+        </div>
       </td>
     </tr>
   );

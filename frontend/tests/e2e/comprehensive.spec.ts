@@ -79,6 +79,12 @@ async function loginAsAdmin(page: Page) {
   await login(page, "admin");
 }
 
+// ===========================================================================
+// OUTERMOST WRAPPER — tenant tag for incident reporter
+// ===========================================================================
+
+test.describe("@tenant:sunnycrest Comprehensive Tests", () => {
+
 // ---------------------------------------------------------------------------
 // 1. AUTH TESTS
 // ---------------------------------------------------------------------------
@@ -651,3 +657,5 @@ test.describe("Error Handling", () => {
     expect(critical.length).toBeLessThanOrEqual(3);
   });
 });
+
+}); // end @tenant:sunnycrest

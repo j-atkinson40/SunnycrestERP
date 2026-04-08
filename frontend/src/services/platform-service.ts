@@ -330,6 +330,17 @@ export async function resolveIncident(
   return data;
 }
 
+export async function triggerSmokeTest(tenantId: string) {
+  const { data } = await platformClient.post<{
+    passed: number;
+    failed: number;
+    incidents_logged: number;
+    duration_ms: number;
+    error?: string;
+  }>("/health/smoke-trigger", { tenant_id: tenantId }, { timeout: 150_000 });
+  return data;
+}
+
 // ---- Website Intelligence ----
 
 export async function rescrapeWebsiteIntelligence(tenantId: string) {

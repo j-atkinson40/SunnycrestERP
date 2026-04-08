@@ -48,11 +48,19 @@ class IncidentReporter implements Reporter {
     // Extract tenant_id from test title or file path.
     // Tests named with @tenant:sunnycrest or file paths containing
     // tenant_<slug> will map to that tenant.
+    const titlePath = test.titlePath().join("/");
     const tenantMatch =
       test.title.match(/@tenant:(\S+)/) ||
-      test.titlePath().join("/").match(/@tenant:(\S+)/) ||
-      test.titlePath().join("/").match(/tenant[_-]([a-z0-9]+)/i);
+      titlePath.match(/@tenant:(\S+)/) ||
+      titlePath.match(/tenant[_-]([a-z0-9]+)/i);
     const tenantId = tenantMatch ? tenantMatch[1] : null;
+
+    // Verify extraction works for tagged tests
+    if (titlePath.includes("@tenant:") && !tenantId) {
+      console.error(
+        `[IncidentReporter] BUG: @tenant tag found in titlePath but extraction failed: ${titlePath}`
+      );
+    }
 
     this.failedTests.push({
       testTitle: test.title,

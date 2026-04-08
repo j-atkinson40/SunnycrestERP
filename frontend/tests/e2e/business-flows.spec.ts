@@ -123,6 +123,12 @@ const state: {
 } = {};
 
 // ===========================================================================
+// OUTERMOST WRAPPER — tenant tag for incident reporter
+// ===========================================================================
+
+test.describe("@tenant:sunnycrest Business Flows", () => {
+
+// ===========================================================================
 // FLOW 1 — COMPLETE ORDER LIFECYCLE
 // ===========================================================================
 
@@ -905,3 +911,5 @@ test.describe("Flow 8: Customer CRM Detail", () => {
     expect(data.items.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+}); // end @tenant:sunnycrest
