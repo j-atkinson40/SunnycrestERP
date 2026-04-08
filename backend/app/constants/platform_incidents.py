@@ -37,6 +37,8 @@ INCIDENT_CATEGORIES: dict[str, dict[str, str]] = {
         "default_tier": "escalate",
         "description": "FK violation, orphaned record, corrupt state",
     },
+    # billing category: manual logging only until billing system is integrated.
+    # Future: wire to Stripe webhook handler for payment anomaly detection.
     "billing": {
         "label": "Billing",
         "default_tier": "escalate",

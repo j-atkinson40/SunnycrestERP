@@ -60,6 +60,20 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> dict:
         company_id=company.id,
     )
     db.add(user)
+
+    # Create TenantHealthScore so the tenant appears on the operator dashboard
+    try:
+        import uuid as _uuid
+        from app.models.tenant_health_score import TenantHealthScore
+        health_row = TenantHealthScore(
+            id=str(_uuid.uuid4()),
+            tenant_id=str(company.id),
+            score="unknown",
+        )
+        db.add(health_row)
+    except Exception:
+        pass  # non-critical — score will be created on first health calc
+
     db.commit()
     db.refresh(company)
     db.refresh(user)

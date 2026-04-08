@@ -295,3 +295,20 @@ export interface TimelineEntry {
 export interface TimelineResponse {
   timeline: TimelineEntry[];
 }
+
+// ---- Self-repair system health ----
+
+export interface SystemHealthChecks {
+  dispatcher_last_run: string | null;
+  dispatcher_running: boolean;
+  nightly_job_last_run: string | null;
+  open_critical_incidents: number;
+  undismissed_notifications: number;
+  total_tenants_monitored: number;
+  responders_registered: number;
+}
+
+export interface SystemHealthResponse {
+  status: "operational" | "degraded" | "down";
+  checks: SystemHealthChecks;
+}

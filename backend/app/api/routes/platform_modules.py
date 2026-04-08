@@ -342,6 +342,20 @@ def _do_onboard_tenant(data, user, db):
                 company_id=company.id, module="npca_audit_prep", enabled=True
             ))
 
+    # Create TenantHealthScore row so the tenant appears on operator dashboard
+    try:
+        from app.models.tenant_health_score import TenantHealthScore
+        health_row = TenantHealthScore(
+            id=str(__import__("uuid").uuid4()),
+            tenant_id=str(company.id),
+            score="unknown",
+        )
+        db.add(health_row)
+        db.flush()
+    except Exception:
+        import logging as _hlog
+        _hlog.getLogger(__name__).warning("Failed to create TenantHealthScore for new tenant")
+
     # Commit the core tenant data first so the session is clean
     db.commit()
 

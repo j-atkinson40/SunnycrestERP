@@ -692,6 +692,136 @@ def get_health_timeline(
 
 
 # ---------------------------------------------------------------------------
+# Self-repair system health check
+# ---------------------------------------------------------------------------
+
+
+class SystemHealthCheck(BaseModel):
+    dispatcher_last_run: Optional[datetime] = None
+    dispatcher_running: bool = False
+    nightly_job_last_run: Optional[datetime] = None
+    open_critical_incidents: int = 0
+    undismissed_notifications: int = 0
+    total_tenants_monitored: int = 0
+    responders_registered: int = 0
+
+
+class SystemHealthResponse(BaseModel):
+    status: str  # 'operational' | 'degraded' | 'down'
+    checks: SystemHealthCheck
+
+
+@router.get("/system", response_model=SystemHealthResponse)
+def get_system_health(
+    _auth=Depends(require_platform_or_internal_key),
+    db: Session = Depends(get_db),
+):
+    """Health check for the self-repair system itself."""
+    now = datetime.now(timezone.utc)
+
+    # 1. Dispatcher last run — most recently resolved auto_fix/auto_remediate incident
+    last_auto_resolved = (
+        db.query(func.max(PlatformIncident.resolved_at))
+        .filter(
+            PlatformIncident.resolution_status == "resolved",
+            PlatformIncident.resolution_tier.in_(["auto_fix", "auto_remediate"]),
+        )
+        .scalar()
+    )
+
+    # 2. Dispatcher running — check if APScheduler is running
+    dispatcher_running = False
+    try:
+        from app.scheduler import scheduler as _sched
+        dispatcher_running = _sched.running
+    except Exception:
+        pass
+
+    # 3. Nightly job last run — most recent last_calculated on TenantHealthScore
+    nightly_last = (
+        db.query(func.max(TenantHealthScore.last_calculated)).scalar()
+    )
+
+    # 4. Open critical incidents
+    open_critical = (
+        db.query(func.count())
+        .select_from(PlatformIncident)
+        .filter(
+            PlatformIncident.resolution_status.in_(["pending", "in_progress"]),
+            PlatformIncident.severity.in_(["critical", "high"]),
+        )
+        .scalar()
+    ) or 0
+
+    # 5. Undismissed notifications
+    undismissed = (
+        db.query(func.count())
+        .select_from(PlatformNotification)
+        .filter(PlatformNotification.is_dismissed.is_(False))
+        .scalar()
+    ) or 0
+
+    # 6. Total tenants monitored
+    total_tenants = (
+        db.query(func.count())
+        .select_from(Company)
+        .filter(Company.is_active.is_(True))
+        .scalar()
+    ) or 0
+
+    # 7. Responders registered
+    try:
+        from app.services.platform.responders.registry import RESPONDER_REGISTRY
+        responder_count = len(RESPONDER_REGISTRY)
+    except Exception:
+        responder_count = 0
+
+    # Derive status
+    dispatcher_age_minutes = None
+    if last_auto_resolved:
+        dispatcher_age_minutes = (now - last_auto_resolved).total_seconds() / 60
+
+    nightly_age_hours = None
+    if nightly_last:
+        nightly_age_hours = (now - nightly_last).total_seconds() / 3600
+
+    # status = 'down' if dispatcher has not run in 2 hours
+    # status = 'degraded' if open_critical > 0 OR dispatcher not run in 30 min
+    # status = 'operational' otherwise
+    if dispatcher_age_minutes is not None and dispatcher_age_minutes > 120:
+        status = "down"
+    elif open_critical > 0:
+        status = "degraded"
+    elif dispatcher_age_minutes is not None and dispatcher_age_minutes > 30:
+        status = "degraded"
+    elif nightly_age_hours is not None and nightly_age_hours > 25:
+        status = "degraded"
+    elif not dispatcher_running:
+        # Scheduler not running — but no incidents to process, so degraded not down
+        status = "degraded"
+    else:
+        status = "operational"
+
+    # Special case: if there are no auto-resolved incidents at all,
+    # the dispatcher hasn't had anything to process — don't mark as down.
+    if last_auto_resolved is None and dispatcher_running:
+        status = "operational" if open_critical == 0 else "degraded"
+
+    return SystemHealthResponse(
+        status=status,
+        checks=SystemHealthCheck(
+            dispatcher_last_run=last_auto_resolved,
+            dispatcher_running=dispatcher_running,
+            nightly_job_last_run=nightly_last,
+            open_critical_incidents=open_critical,
+            undismissed_notifications=undismissed,
+            total_tenants_monitored=total_tenants,
+            responders_registered=responder_count,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Smoke test trigger
 # ---------------------------------------------------------------------------
 

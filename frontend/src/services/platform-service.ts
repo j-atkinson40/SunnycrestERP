@@ -22,6 +22,7 @@ import type {
   OnboardTenantRequest,
   OnboardTenantResponse,
   TimelineResponse,
+  SystemHealthResponse,
 } from "@/types/platform";
 
 // ---- Auth ----
@@ -371,6 +372,13 @@ export async function getHealthTimeline(tenantId: string, days = 30) {
   const { data } = await platformClient.get<TimelineResponse>(
     "/health/timeline",
     { params: { tenant_id: tenantId, days } }
+  );
+  return data;
+}
+
+export async function getSystemHealth() {
+  const { data } = await platformClient.get<SystemHealthResponse>(
+    "/health/system"
   );
   return data;
 }

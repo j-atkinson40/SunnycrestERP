@@ -19,6 +19,7 @@ import {
   dismissNotification,
   getRepeatPatterns,
   getHealthTimeline,
+  getSystemHealth,
 } from "@/services/platform-service";
 import type {
   HealthSummaryResponse,
@@ -27,6 +28,7 @@ import type {
   PlatformNotificationItem,
   RepeatPattern,
   TimelineEntry,
+  SystemHealthResponse,
 } from "@/types/platform";
 import {
   Activity,
@@ -113,6 +115,12 @@ const NOTIF_BAR_COLORS: Record<string, string> = {
   info: "bg-blue-500",
 };
 
+const SYSTEM_STATUS_COLORS: Record<string, { dot: string; text: string; label: string }> = {
+  operational: { dot: "bg-green-500", text: "text-green-700 dark:text-green-300", label: "Operational" },
+  degraded: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-300", label: "Degraded" },
+  down: { dot: "bg-red-500", text: "text-red-700 dark:text-red-300", label: "System down" },
+};
+
 // ---------------------------------------------------------------------------
 // Small sub-components
 // ---------------------------------------------------------------------------
@@ -186,6 +194,7 @@ export default function PlatformHealthPage() {
   const [resolveAction, setResolveAction] = useState("");
   const [justUpdated, setJustUpdated] = useState(false);
   const [expandedTenantId, setExpandedTenantId] = useState<string | null>(null);
+  const [systemHealth, setSystemHealth] = useState<SystemHealthResponse | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // ---- Data fetching ----
@@ -193,7 +202,7 @@ export default function PlatformHealthPage() {
   const fetchData = useCallback(
     async (showUpdated = false) => {
       try {
-        const [summaryRes, incidentRes, notifRes, patternRes] = await Promise.all([
+        const [summaryRes, incidentRes, notifRes, patternRes, sysRes] = await Promise.all([
           getHealthSummary(),
           getHealthIncidents({
             tenant_id: filterTenantId ?? undefined,
@@ -201,6 +210,7 @@ export default function PlatformHealthPage() {
           }),
           getNotifications({ dismissed: false }),
           getRepeatPatterns(),
+          getSystemHealth().catch(() => null),
         ]);
         setData(summaryRes);
         setIncidents(incidentRes.incidents);
@@ -208,6 +218,7 @@ export default function PlatformHealthPage() {
         setNotifications(notifRes.notifications);
         setNotifTotal(notifRes.total);
         setPatterns(patternRes.patterns);
+        if (sysRes) setSystemHealth(sysRes);
         if (showUpdated) {
           setJustUpdated(true);
           clearTimeout(fadeTimer.current);
@@ -321,7 +332,18 @@ export default function PlatformHealthPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Platform Health</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Platform Health</h1>
+            {systemHealth && (() => {
+              const s = SYSTEM_STATUS_COLORS[systemHealth.status] ?? SYSTEM_STATUS_COLORS.degraded;
+              return (
+                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${s.text}`}>
+                  <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+                  {s.label}
+                </span>
+              );
+            })()}
+          </div>
           <p className="text-muted-foreground">Tenant health scores and open incidents</p>
         </div>
         <div className="flex flex-col items-end gap-1">
