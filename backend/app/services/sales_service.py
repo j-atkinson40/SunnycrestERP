@@ -499,6 +499,14 @@ def create_invoice_from_order(
             detail="Cannot invoice a canceled order",
         )
 
+    # Period lock guard — prevent invoicing into a closed period
+    from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
+    lock = PeriodLockService.check_date_in_locked_period(
+        db, company_id, datetime.now(timezone.utc).date()
+    )
+    if lock:
+        raise PeriodLockedError(lock)
+
     inv_number = _next_number(db, company_id, Invoice, "INV")
     now = datetime.now(timezone.utc)
     days = _parse_payment_terms_days(order.payment_terms)
@@ -626,6 +634,13 @@ def get_invoice(db: Session, company_id: str, invoice_id: str) -> Invoice:
 
 def create_invoice(db: Session, company_id: str, user_id: str, data) -> Invoice:
     customer = _get_customer_or_404(db, company_id, data.customer_id)
+
+    # Period lock guard — prevent invoicing into a closed period
+    from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
+    invoice_date = data.invoice_date.date() if hasattr(data.invoice_date, 'date') else data.invoice_date
+    lock = PeriodLockService.check_date_in_locked_period(db, company_id, invoice_date)
+    if lock:
+        raise PeriodLockedError(lock)
 
     subtotal, tax_amount, total = _compute_totals(data.lines, data.tax_rate)
     number = _next_number(db, company_id, Invoice, "INV")
@@ -963,6 +978,13 @@ def create_customer_payment(
     db: Session, company_id: str, user_id: str, data
 ) -> CustomerPayment:
     customer = _get_customer_or_404(db, company_id, data.customer_id)
+
+    # Period lock guard — prevent payments into a closed period
+    from app.services.agents.period_lock import PeriodLockService, PeriodLockedError
+    payment_date = data.payment_date.date() if hasattr(data, 'payment_date') and hasattr(data.payment_date, 'date') else datetime.now(timezone.utc).date()
+    lock = PeriodLockService.check_date_in_locked_period(db, company_id, payment_date)
+    if lock:
+        raise PeriodLockedError(lock)
 
     # Validate sum of applications matches total_amount
     app_total = sum(a.amount_applied for a in data.applications)

@@ -1,10 +1,11 @@
 """Agent models — jobs, alerts, activity log, collection sequences."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSON, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,14 +16,46 @@ class AgentJob(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False, index=True)
-    job_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), server_default="pending")
+    job_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), server_default="pending")
+
+    # Period tracking (new — accounting agents)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    dry_run: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Trigger info
+    triggered_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    trigger_type: Mapped[str] = mapped_column(String(50), nullable=False, default="manual")
+
+    # Legacy fields (existing nightly agents)
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Structured run data (new)
+    run_log: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    report_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    report_pdf_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    anomaly_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Approval workflow
+    approval_token: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True)
+    approved_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Status tracking
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    result_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    triggerer = relationship("User", foreign_keys=[triggered_by])
+    approver = relationship("User", foreign_keys=[approved_by])
+    steps = relationship("AgentRunStep", back_populates="job", order_by="AgentRunStep.step_number", cascade="all, delete-orphan")
+    anomalies_list = relationship("AgentAnomaly", back_populates="job", cascade="all, delete-orphan")
 
 
 class AgentAlert(Base):

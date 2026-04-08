@@ -1,4 +1,8 @@
 from app.models.agent import AgentActivityLog, AgentAlert, AgentCollectionSequence, AgentJob
+from app.models.agent_anomaly import AgentAnomaly
+from app.models.agent_run_step import AgentRunStep
+from app.models.agent_schedule import AgentSchedule
+from app.models.period_lock import PeriodLock
 from app.models.accounting_analysis import (
     TenantAccountingAnalysis,
     TenantAccountingImportStaging,
@@ -281,6 +285,13 @@ from app.models.tenant_health_score import TenantHealthScore
 
 __all__ = [
     "AccountingConnection",
+    "AgentActivityLog",
+    "AgentAlert",
+    "AgentAnomaly",
+    "AgentCollectionSequence",
+    "AgentJob",
+    "AgentRunStep",
+    "AgentSchedule",
     "Announcement",
     "AnnouncementRead",
     "APSettings",
@@ -356,6 +367,7 @@ __all__ = [
     "NetworkRelationship",
     "NetworkTransaction",
     "PlatformFee",
+    "PeriodLock",
     "PlatformUser",
     "PresetModule",
     "ImpersonationSession",

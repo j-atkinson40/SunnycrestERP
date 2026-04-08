@@ -83,7 +83,7 @@ Tenant settings are stored as a JSONB field on the `companies` table (`settings_
 ## 4. Database
 
 - **~235 tables** (ORM models for all but the orphaned `tenant_settings` table)
-- **Current migration head:** `r7_create_missing`
+- **Current migration head:** `r10_agent_infra`
 - **112 migration files** in `backend/alembic/versions/`
 - **Single root:** `e1e2120b6b65` (create_users_table)
 
@@ -361,7 +361,7 @@ All jobs use `_run_per_tenant()` or `_run_global()` wrappers with per-session DB
 | Frontend routes | 146+ |
 | Backend service files | 109+ |
 | Migration files | 112+ |
-| Migration head | `z9g4h5i6j7k8` |
+| Migration head | `r10_agent_infra` |
 | Agent jobs (scheduled) | 13 |
 | Agent jobs (not yet built) | ~30 |
 | TypeScript errors | 0 |
@@ -408,8 +408,63 @@ export default function FeaturePage() {
 ```
 Register route in `frontend/src/App.tsx`. Add nav item in `frontend/src/services/navigation-service.ts`.
 
-### Agent Jobs
+### Nightly Agent Jobs
 Add function in the appropriate service file. Add wrapper in `backend/app/scheduler.py`. Add to `JOB_REGISTRY`. Per-tenant jobs use `_run_per_tenant()`.
+
+### Accounting Agents (Phase 1 Infrastructure)
+
+**Architecture:** Shared infrastructure for 13 accounting agents (month-end close, AR collections, unbilled orders, etc.). Agents run as background jobs with a human-in-the-loop approval gate before committing changes.
+
+**Key files:**
+- `backend/app/services/agents/base_agent.py` — Abstract base class all agents extend
+- `backend/app/services/agents/agent_runner.py` — Job creation, validation, execution orchestrator
+- `backend/app/services/agents/approval_gate.py` — Token-based email approval workflow
+- `backend/app/services/agents/period_lock.py` — Financial period locking service
+- `backend/app/schemas/agent.py` — All Pydantic schemas (enums, request/response models)
+- `backend/app/api/routes/agents.py` — API endpoints (under `/api/v1/agents/accounting`)
+- `frontend/src/pages/agents/AgentDashboard.tsx` — Run agents, view history, manage period locks
+- `frontend/src/pages/agents/ApprovalReview.tsx` — Review anomalies, approve/reject with period lock
+
+**Database tables:** `agent_jobs` (extended), `agent_run_steps`, `agent_anomalies`, `agent_schedules`, `period_locks`
+
+**Job lifecycle:** `pending` → `running` → `awaiting_approval` → `approved` → `complete` (or `rejected`/`failed`)
+
+**Creating a new agent (Phase 2+):**
+```python
+from app.services.agents.base_agent import BaseAgent
+from app.schemas.agent import StepResult, AnomalySeverity
+
+class MonthEndCloseAgent(BaseAgent):
+    STEPS = ["validate_balances", "post_accruals", "reconcile"]
+
+    def run_step(self, step_name: str) -> StepResult:
+        if step_name == "validate_balances":
+            # Read-only analysis — always safe
+            issues = self._check_balances()
+            for issue in issues:
+                self.add_anomaly(
+                    severity=AnomalySeverity.WARNING,
+                    anomaly_type="balance_mismatch",
+                    description=issue["desc"],
+                    amount=issue["amount"],
+                )
+            return StepResult(message=f"Found {len(issues)} issues", data={"issues": issues})
+        elif step_name == "post_accruals":
+            self.guard_write()  # Raises DryRunGuardError if dry_run=True
+            # ... commit financial writes ...
+            return StepResult(message="Posted accruals", data={})
+```
+Register in `AgentRunner.AGENT_REGISTRY`:
+```python
+from app.schemas.agent import AgentJobType
+AgentRunner.AGENT_REGISTRY[AgentJobType.MONTH_END_CLOSE] = MonthEndCloseAgent
+```
+
+**Period lock integration:** `PeriodLockService.check_date_in_locked_period()` is called in `sales_service.py` before creating invoices or recording payments. Returns `PeriodLockedError` (HTTP 409) if the date falls in a locked period.
+
+**Dry-run mode:** Default for all agent runs. `guard_write()` prevents any database mutations. Produces the same report/anomalies as a live run without committing changes.
+
+**Approval gate:** After agent completes, generates a `secrets.token_urlsafe(48)` token, sends HTML email with approve/reject buttons. Token expires after 72 hours. No auth required — the token IS the auth. Approval locks the period; rejection does not.
 
 ### shadcn/ui v4
 Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` instead. Use `buttonVariants()` for styling Links as buttons.
@@ -438,6 +493,8 @@ Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` in
 
 ## 13. Recent Changes
 
+- **Accounting Agent Infrastructure (Phase 1):** Built shared foundation for 13 accounting agents. 5 tables (`agent_run_steps`, `agent_anomalies`, `agent_schedules`, `period_locks` + extended `agent_jobs`), base agent class, approval gate with token-based email workflow, period lock service with financial write guards on invoices/payments, agent runner with validation, full API endpoints, frontend dashboard + approval review page. Migration `r10_agent_infra`. 22 tests passing.
+- **Document Service R2 Migration:** `document_service.py` rewritten for Cloudflare R2 storage. Download route returns 307 redirect to signed URLs. Lazy migration for existing local files. Admin bulk migration endpoint.
 - **Platform rename:** "ERP Platform" → "Bridgeable" throughout frontend. `VITE_APP_NAME=Bridgeable` in `.env`. `APP_NAME` default in `config.py` changed to `"Bridgeable"`. `SUPPORT_EMAIL` changed to `"support@getbridgeable.com"`.
 - **Domain migration:** All `yourerp.com` references replaced with `VITE_APP_DOMAIN`. `platform.app` fallbacks replaced with `getbridgeable.com`. `tenant.ts` comments updated. `company-register.tsx` fallback fixed.
 - **`backend/.env.example`:** Updated header, corrected `DATABASE_URL` to `bridgeable_dev`, documented all vars (Twilio, Google Places, `PLATFORM_ADMIN_*`).

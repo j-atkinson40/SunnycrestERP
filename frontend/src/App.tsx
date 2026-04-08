@@ -192,6 +192,8 @@ import CemeteryDeliverySettingsPage from "@/pages/settings/cemeteries";
 import CemeteryProfilePage from "@/pages/settings/cemetery-profile";
 import ReportsPage from "@/pages/reports";
 import FinancialsBoardPage from "@/pages/financials-board";
+import AgentDashboard from "@/pages/agents/AgentDashboard";
+import ApprovalReview from "@/pages/agents/ApprovalReview";
 import FinancialsHub from "@/pages/hubs/financials-hub";
 import CRMHub from "@/pages/hubs/crm-hub";
 import ProductionHub from "@/pages/hubs/production-hub";
@@ -547,6 +549,8 @@ export default function App() {
                     <Route path="/settings/tax" element={<TaxSettingsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
                     <Route path="/financials/board" element={<FinancialsBoardPage />} />
+                    <Route path="/agents" element={<AgentDashboard />} />
+                    <Route path="/agents/:jobId/review" element={<ApprovalReview />} />
                     <Route path="/ar/collections/:sequenceId/review" element={<CollectionsReviewPage />} />
                     <Route
                       path="/ap/payments"

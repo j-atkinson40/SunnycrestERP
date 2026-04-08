@@ -132,6 +132,12 @@ function getManufacturingNav(
       ...(hasSyncError ? { badge: "!" } : {}),
     },
     {
+      label: "Agents",
+      href: "/agents",
+      icon: "Bot",
+      functionalArea: "invoicing_ar",
+    },
+    {
       label: "CRM",
       href: "/crm",
       icon: "Building2",
