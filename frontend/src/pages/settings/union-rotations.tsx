@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { apiClient } from "@/lib/api-client";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
-import { Plus, Users, Clock, ArrowUpDown, ChevronRight, GripVertical } from "lucide-react";
+import { Plus, Users, ChevronRight } from "lucide-react";
 
 interface RotationList {
   id: string; name: string; description: string | null;
@@ -39,7 +39,7 @@ export default function UnionRotationsPage() {
   const fetchLists = () => {
     setLoading(true);
     apiClient.get("/union-rotations")
-      .then((r) => setLists(r.data || []))
+      .then((r: { data: RotationList[] }) => setLists(r.data || []))
       .catch(() => toast.error("Failed to load rotation lists"))
       .finally(() => setLoading(false));
   };
@@ -118,12 +118,12 @@ function CreateListForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
       <div className="grid gap-4 sm:grid-cols-3">
         <div><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Disinterment — Main Shop" /></div>
         <div><Label>Trigger</Label>
-          <Select value={triggerType} onValueChange={setTriggerType}><SelectTrigger><SelectValue /></SelectTrigger>
+          <Select value={triggerType} onValueChange={(v) => v && setTriggerType(v)}><SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="hazard_pay">Hazard Pay</SelectItem><SelectItem value="day_of_week">Day of Week</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
           </Select>
         </div>
         <div><Label>Mode</Label>
-          <Select value={mode} onValueChange={setMode}><SelectTrigger><SelectValue /></SelectTrigger>
+          <Select value={mode} onValueChange={(v) => v && setMode(v)}><SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="sole_driver">Sole Driver</SelectItem><SelectItem value="longest_day">Longest Day</SelectItem></SelectContent>
           </Select>
         </div>
@@ -146,7 +146,7 @@ function RotationDetail({ listId, onBack }: { listId: string; onBack: () => void
     Promise.all([
       apiClient.get(`/union-rotations/${listId}/members`),
       apiClient.get(`/union-rotations/${listId}/history`),
-    ]).then(([mRes, hRes]) => {
+    ]).then(([mRes, hRes]: [{ data: RotationMember[] }, { data?: { items?: Assignment[] } }]) => {
       setMembers(mRes.data || []);
       setHistory(hRes.data?.items || []);
     }).catch(() => toast.error("Failed to load"))

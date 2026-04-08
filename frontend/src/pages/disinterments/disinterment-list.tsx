@@ -4,12 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { apiClient } from "@/lib/api-client";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Plus,
   Search,
-  Copy,
   ChevronLeft,
   ChevronRight,
   Skull,
@@ -110,7 +109,7 @@ export default function DisintermentListPage() {
 
     apiClient
       .get("/disinterments", { params })
-      .then((r) => setData(r.data))
+      .then((r: { data: PaginatedResponse }) => setData(r.data))
       .catch(() => toast.error("Failed to load disinterment cases"))
       .finally(() => setLoading(false));
   };

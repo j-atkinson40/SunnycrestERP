@@ -6,9 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { apiClient } from "@/lib/api-client";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
-import { Plus, GripVertical, Trash2, Check, Loader2 } from "lucide-react";
+import { Plus, Trash2, Check, Loader2 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -64,7 +64,7 @@ function ChargeTypesTab() {
     setLoading(true);
     apiClient
       .get("/disinterment-charge-types", { params: { include_inactive: true } })
-      .then((r) => setTypes(r.data || []))
+      .then((r: { data: ChargeType[] }) => setTypes(r.data || []))
       .catch(() => toast.error("Failed to load charge types"))
       .finally(() => setLoading(false));
   };
@@ -210,7 +210,7 @@ function ChargeTypeForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: 
           </div>
           <div>
             <Label>Calculation Type</Label>
-            <Select value={calcType} onValueChange={setCalcType}>
+            <Select value={calcType} onValueChange={(v) => v && setCalcType(v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="flat">Flat Rate</SelectItem>
@@ -262,7 +262,7 @@ function DocuSignTab() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiClient.get("/companies/settings").then((r) => {
+    apiClient.get("/companies/settings").then((r: { data?: { settings?: Record<string, string> } }) => {
       const s = r.data?.settings || {};
       setConfig({
         integration_key: s.docusign_integration_key || "",

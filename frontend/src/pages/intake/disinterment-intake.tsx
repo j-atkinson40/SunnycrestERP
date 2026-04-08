@@ -76,9 +76,7 @@ const STEPS = [
 /* API helpers — no auth, raw fetch                                    */
 /* ------------------------------------------------------------------ */
 
-const API_BASE =
-  (import.meta as Record<string, Record<string, string>>).env?.VITE_API_URL ||
-  "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 async function apiGet<T>(path: string): Promise<T> {
   const r = await fetch(`${API_BASE}/api/v1${path}`);
@@ -525,7 +523,7 @@ function ReasonStep({
         </Label>
         <Textarea
           value={form.reason}
-          onChange={(e) => updateForm({ reason: e.target.value })}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => updateForm({ reason: e.target.value })}
           placeholder="e.g. Relocation to family plot, transfer to another cemetery..."
           rows={3}
         />
@@ -536,7 +534,7 @@ function ReasonStep({
         </Label>
         <Textarea
           value={form.destination}
-          onChange={(e) => updateForm({ destination: e.target.value })}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => updateForm({ destination: e.target.value })}
           placeholder="Where the remains will be transferred to (cemetery name, address, etc.)"
           rows={3}
         />

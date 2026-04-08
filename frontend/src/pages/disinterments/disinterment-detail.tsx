@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { apiClient } from "@/lib/api-client";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -137,7 +137,7 @@ export default function DisintermentDetailPage() {
     setLoading(true);
     apiClient
       .get(`/disinterments/${id}`)
-      .then((r) => setCaseData(r.data))
+      .then((r: { data: CaseDetail }) => setCaseData(r.data))
       .catch(() => toast.error("Failed to load case"))
       .finally(() => setLoading(false));
   };
@@ -443,7 +443,7 @@ function IntakeStage({
               <Label>Reason for Disinterment</Label>
               <Textarea
                 value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm({ ...form, reason: e.target.value })}
                 rows={2}
               />
             </div>
@@ -451,7 +451,7 @@ function IntakeStage({
               <Label>Destination</Label>
               <Textarea
                 value={form.destination}
-                onChange={(e) =>
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                   setForm({ ...form, destination: e.target.value })
                 }
                 rows={2}

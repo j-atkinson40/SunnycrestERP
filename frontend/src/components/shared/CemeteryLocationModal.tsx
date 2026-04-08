@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { apiClient } from "@/lib/api-client";
+import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
 import { MapPin } from "lucide-react";
 
@@ -42,12 +42,12 @@ export function CemeteryLocationModal({
     if (open) {
       apiClient
         .get("/companies/locations")
-        .then((r) => setLocations(r.data || []))
+        .then((r: { data: Location[] }) => setLocations(r.data || []))
         .catch(() => {
           // Fallback: fetch the company itself as a single location
-          apiClient.get("/companies/settings").then((r) => {
+          apiClient.get("/companies/settings").then((r: { data: { id?: string; name?: string } }) => {
             if (r.data?.id) {
-              setLocations([{ id: r.data.id, name: r.data.name }]);
+              setLocations([{ id: r.data.id, name: r.data.name || "" }]);
             }
           });
         });
@@ -129,7 +129,7 @@ export function useCemeteryLocation(cemeteryId: string | null | undefined) {
     }
     apiClient
       .get(`/cemeteries/${cemeteryId}`)
-      .then((r) => {
+      .then((r: { data?: { fulfilling_location_id?: string } }) => {
         setNeedsMapping(!r.data?.fulfilling_location_id);
       })
       .catch(() => setNeedsMapping(false));
@@ -140,7 +140,7 @@ export function useCemeteryLocation(cemeteryId: string | null | undefined) {
     modalOpen,
     openModal: () => setModalOpen(true),
     closeModal: () => setModalOpen(false),
-    onConfirm: (locationId: string) => {
+    onConfirm: (_locationId: string) => {
       setNeedsMapping(false);
       setModalOpen(false);
     },
