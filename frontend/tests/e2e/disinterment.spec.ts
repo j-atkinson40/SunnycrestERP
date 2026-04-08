@@ -118,13 +118,23 @@ const state: {
 // Seed helper — enables modules and creates test data via API
 // ---------------------------------------------------------------------------
 
-async function ensureModulesEnabled(
+async function ensureExtensionsEnabled(
   request: APIRequestContext,
   token: string
 ): Promise<void> {
-  // Enable disinterment_management and union_rotation modules via PUT /modules/{mod}
-  for (const mod of ["disinterment_management", "union_rotation"]) {
-    await request.put(`${API_BASE}/modules/${mod}`, {
+  // Install disinterment_management extension via POST /extensions/{key}/install
+  const res = await request.post(
+    `${API_BASE}/extensions/disinterment_management/install`,
+    { headers: apiHeaders(token) }
+  );
+  // 200 = installed, 409 = already installed — both OK
+  if (!res.ok() && res.status() !== 409) {
+    // Fallback: try enabling as a module (pre-migration staging)
+    await request.put(`${API_BASE}/modules/disinterment_management`, {
+      headers: apiHeaders(token),
+      data: { enabled: true },
+    });
+    await request.put(`${API_BASE}/modules/union_rotation`, {
       headers: apiHeaders(token),
       data: { enabled: true },
     });
@@ -139,8 +149,8 @@ test.describe.serial("Disinterment Flow Tests", () => {
   test.beforeAll(async ({ request }) => {
     state.token = await getApiToken(request, "admin");
 
-    // Enable required modules
-    await ensureModulesEnabled(request, state.token);
+    // Enable required extensions
+    await ensureExtensionsEnabled(request, state.token);
 
     // Discover driver user ID by logging in as driver and calling /auth/me
     const driverToken = await getApiToken(request, "driver");

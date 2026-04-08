@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db, require_module, require_permission
+from app.api.deps import get_current_user, get_db, require_extension, require_permission
 from app.models.user import User
 from app.schemas.disinterment import (
     RotationListCreate,
@@ -24,7 +24,7 @@ router = APIRouter()
 @router.get("")
 def list_rotation_lists(
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("union_rotation")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("union_rotations.view")),
 ):
     """List all rotation lists for the tenant."""
@@ -35,7 +35,7 @@ def list_rotation_lists(
 def create_rotation_list(
     data: RotationListCreate,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("union_rotation")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("union_rotations.manage")),
 ):
     """Create a new rotation list."""
@@ -53,7 +53,7 @@ def update_rotation_list(
     list_id: str,
     data: RotationListUpdate,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("union_rotation")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("union_rotations.manage")),
 ):
     """Update a rotation list."""
@@ -65,7 +65,7 @@ def update_rotation_list(
 def delete_rotation_list(
     list_id: str,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("union_rotation")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("union_rotations.manage")),
 ):
     """Soft-delete a rotation list."""
@@ -81,7 +81,7 @@ def delete_rotation_list(
 def get_members(
     list_id: str,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("union_rotation")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("union_rotations.view")),
 ):
     """Get members of a rotation list with rotation order."""
@@ -93,7 +93,7 @@ def replace_members(
     list_id: str,
     data: RotationMemberReorder,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("union_rotation")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("union_rotations.manage")),
 ):
     """Replace full member order (drag-drop save)."""
@@ -106,7 +106,7 @@ def toggle_member(
     member_id: str,
     data: RotationMemberToggle,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("union_rotation")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("union_rotations.manage")),
 ):
     """Toggle a member's active/inactive status."""
@@ -126,7 +126,7 @@ def get_history(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("union_rotation")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("union_rotations.view")),
 ):
     """Assignment history for a rotation list."""

@@ -5,6 +5,7 @@ export interface NavItem {
   badge?: number | string;
   permission?: string;
   requiresModule?: string;
+  requiresExtension?: string;
   functionalArea?: string; // employee must have this area assigned
   adminOnly?: boolean; // only show for admin role
   children?: NavItem[]; // nested sub-items shown when parent is expanded
@@ -154,7 +155,7 @@ function getManufacturingNav(
     sections.push({ title: "", items: filteredHubs });
   }
 
-  // ── Disinterment (module-gated) ──
+  // ── Disinterment (extension-gated) ──
   const disintermentItems: NavItem[] = filterByPermission(
     [
       {
@@ -162,7 +163,7 @@ function getManufacturingNav(
         href: "/disinterments",
         icon: "Skull",
         permission: "disinterments.view",
-        requiresModule: "disinterment_management",
+        requiresExtension: "disinterment_management",
         isDividerBefore: true,
       },
     ],
@@ -170,6 +171,7 @@ function getManufacturingNav(
     perms,
     areas,
     isAdmin,
+    _extensions,
   );
   if (disintermentItems.length > 0) {
     sections.push({ title: "", items: disintermentItems });
@@ -333,7 +335,7 @@ function getManufacturingNav(
           href: "/settings/disinterment",
           icon: "Skull",
           permission: "disinterment_settings.manage",
-          requiresModule: "disinterment_management",
+          requiresExtension: "disinterment_management",
           settingsGroup: "Integrations",
         },
         {
@@ -341,7 +343,7 @@ function getManufacturingNav(
           href: "/settings/union-rotations",
           icon: "RefreshCcw",
           permission: "union_rotations.manage",
-          requiresModule: "union_rotation",
+          requiresExtension: "disinterment_management",
           settingsGroup: "Integrations",
         },
         // Platform
@@ -370,6 +372,7 @@ function getManufacturingNav(
       perms,
       undefined,
       isAdmin,
+      _extensions,
     ),
   });
 
@@ -645,12 +648,15 @@ function filterByPermission(
   perms: Set<string>,
   areas?: Set<string>,
   isAdmin?: boolean,
+  extensions?: Set<string>,
 ): NavItem[] {
   return items.filter((item) => {
     // Admin-only items
     if (item.adminOnly && !isAdmin) return false;
     // Module gating
     if (item.requiresModule && !modules.has(item.requiresModule)) return false;
+    // Extension gating
+    if (item.requiresExtension && !(extensions || new Set<string>()).has(item.requiresExtension)) return false;
     // Permission gating (admins bypass)
     if (item.permission && !isAdmin && !perms.has(item.permission)) return false;
     // Functional area filtering — only applied when areas are configured

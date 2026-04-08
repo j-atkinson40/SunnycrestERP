@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db, require_module, require_permission
+from app.api.deps import get_current_user, get_db, require_extension, require_permission
 from app.models.user import User
 from app.schemas.disinterment import (
     ChargeTypeCreate,
@@ -19,7 +19,7 @@ router = APIRouter()
 def list_charge_types(
     include_inactive: bool = Query(False),
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.view")),
 ):
     """List all charge types for the tenant."""
@@ -31,7 +31,7 @@ def list_charge_types(
 def create_charge_type(
     data: ChargeTypeCreate,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterment_settings.manage")),
 ):
     """Create a new charge type."""
@@ -44,7 +44,7 @@ def update_charge_type(
     charge_type_id: str,
     data: ChargeTypeUpdate,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterment_settings.manage")),
 ):
     """Update a charge type."""
@@ -56,7 +56,7 @@ def update_charge_type(
 def delete_charge_type(
     charge_type_id: str,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterment_settings.manage")),
 ):
     """Soft-delete a charge type."""

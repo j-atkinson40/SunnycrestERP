@@ -7,7 +7,7 @@ scheduling, and completion.
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db, require_module, require_permission
+from app.api.deps import get_current_user, get_db, require_extension, require_permission
 from app.models.user import User
 from app.schemas.disinterment import (
     DisintermentCaseCreate,
@@ -25,7 +25,7 @@ router = APIRouter()
 def create_case(
     data: DisintermentCaseCreate | None = None,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.manage")),
 ):
     """Create a new disinterment case shell. Returns case + intake_token."""
@@ -42,7 +42,7 @@ def list_cases(
     status: str | None = Query(None),
     search: str | None = Query(None),
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.view")),
 ):
     """List cases for tenant, filterable by status and search."""
@@ -55,7 +55,7 @@ def list_cases(
 def get_case(
     case_id: str,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.view")),
 ):
     """Get full case detail with pipeline state."""
@@ -67,7 +67,7 @@ def update_intake(
     case_id: str,
     data: DisintermentCaseUpdate,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.manage")),
 ):
     """Staff review/edit of submitted intake data."""
@@ -83,7 +83,7 @@ def accept_quote(
     quote_amount: float = Query(...),
     has_hazard_pay: bool = Query(False),
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.manage")),
 ):
     """Accept a quote for this case — advances to quote_accepted."""
@@ -105,7 +105,7 @@ def accept_quote(
 def send_for_signatures(
     case_id: str,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.manage")),
 ):
     """Trigger DocuSign envelope creation with 4 signers."""
@@ -119,7 +119,7 @@ def schedule_case(
     case_id: str,
     data: DisintermentScheduleRequest,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.schedule")),
 ):
     """Schedule a disinterment — guarded by signatures_complete."""
@@ -138,7 +138,7 @@ def schedule_case(
 def complete_case(
     case_id: str,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.manage")),
 ):
     """Mark case as complete and auto-generate invoice."""
@@ -151,7 +151,7 @@ def complete_case(
 def cancel_case(
     case_id: str,
     db: Session = Depends(get_db),
-    _mod: User = Depends(require_module("disinterment_management")),
+    _mod: User = Depends(require_extension("disinterment_management")),
     current_user: User = Depends(require_permission("disinterments.manage")),
 ):
     """Cancel a case from any non-complete stage."""

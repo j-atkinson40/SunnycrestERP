@@ -718,10 +718,10 @@ export default function App() {
                     <Route path="/funeral-home/price-list" element={<FHPriceListPage />} />
                   </Route>
 
-                  {/* Disinterment Management — requires disinterment_management module */}
+                  {/* Disinterment Management — requires disinterment_management extension */}
                   <Route
                     element={
-                      <ProtectedRoute requiredPermission="disinterments.view" requiredModule="disinterment_management" />
+                      <ProtectedRoute requiredPermission="disinterments.view" requiredExtension="disinterment_management" />
                     }
                   >
                     <Route path="/disinterments" element={<DisintermentListPage />} />
@@ -729,14 +729,14 @@ export default function App() {
                   </Route>
                   <Route
                     element={
-                      <ProtectedRoute requiredPermission="disinterment_settings.manage" requiredModule="disinterment_management" />
+                      <ProtectedRoute requiredPermission="disinterment_settings.manage" requiredExtension="disinterment_management" />
                     }
                   >
                     <Route path="/settings/disinterment" element={<DisintermentSettingsPage />} />
                   </Route>
                   <Route
                     element={
-                      <ProtectedRoute requiredPermission="union_rotations.view" requiredModule="union_rotation" />
+                      <ProtectedRoute requiredPermission="union_rotations.view" requiredExtension="disinterment_management" />
                     }
                   >
                     <Route path="/settings/union-rotations" element={<UnionRotationsPage />} />

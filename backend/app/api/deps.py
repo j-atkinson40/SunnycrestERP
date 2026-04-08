@@ -188,6 +188,39 @@ def require_module(module_name: str):
     return _check_module
 
 
+def require_extension(extension_key: str):
+    """
+    Dependency factory for extension-based authorization.
+
+    Usage: Depends(require_extension("disinterment_management"))
+    """
+
+    def _check_extension(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        from app.models.tenant_extension import TenantExtension
+
+        te = (
+            db.query(TenantExtension)
+            .filter(
+                TenantExtension.tenant_id == current_user.company_id,
+                TenantExtension.extension_key == extension_key,
+                TenantExtension.enabled.is_(True),
+                TenantExtension.status == "active",
+            )
+            .first()
+        )
+        if not te:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Extension '{extension_key}' is not enabled for this company",
+            )
+        return current_user
+
+    return _check_extension
+
+
 def require_console_access(console_key: str):
     """
     Dependency factory for console-based authorization.
