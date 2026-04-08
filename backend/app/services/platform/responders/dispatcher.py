@@ -23,7 +23,9 @@ def dispatch_pending_incidents(db: Session) -> dict:
         db.query(PlatformIncident)
         .filter(
             PlatformIncident.resolution_status == "pending",
-            PlatformIncident.resolution_tier.in_(["auto_fix", "auto_remediate"]),
+            PlatformIncident.resolution_tier.in_(
+                ["auto_fix", "auto_remediate", "escalate"]
+            ),
         )
         .order_by(PlatformIncident.created_at.asc())
         .all()

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.constants.platform_incidents import INCIDENT_CATEGORIES
 from app.models.platform_incident import PlatformIncident
+from app.models.platform_notification import PlatformNotification
 from app.models.tenant_health_score import TenantHealthScore
 
 logger = logging.getLogger(__name__)
@@ -265,3 +266,31 @@ def calculate_all_tenant_health(db: Session) -> list[TenantHealthScore]:
         f"{sum(1 for r in results if r.score != 'healthy')} non-healthy"
     )
     return results
+
+
+# ---------------------------------------------------------------------------
+# Platform notifications
+# ---------------------------------------------------------------------------
+
+
+def create_notification(
+    db: Session,
+    title: str,
+    body: str,
+    level: str = "info",
+    tenant_id: str | None = None,
+    incident_id: str | None = None,
+) -> PlatformNotification:
+    """Create a platform notification for the operator dashboard."""
+    notif = PlatformNotification(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        incident_id=incident_id,
+        level=level,
+        title=title,
+        body=body,
+    )
+    db.add(notif)
+    db.flush()
+    logger.info(f"Notification created: [{level}] {title}")
+    return notif

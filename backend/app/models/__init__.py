@@ -269,6 +269,7 @@ from app.models.price_update_settings import PriceUpdateSettings
 from app.models.platform_email_settings import PlatformEmailSettings
 from app.models.email_send import EmailSend
 from app.models.platform_incident import PlatformIncident
+from app.models.platform_notification import PlatformNotification
 from app.models.tenant_health_score import TenantHealthScore
 
 __all__ = [
@@ -493,5 +494,6 @@ __all__ = [
     "PlatformEmailSettings",
     "EmailSend",
     "PlatformIncident",
+    "PlatformNotification",
     "TenantHealthScore",
 ]
