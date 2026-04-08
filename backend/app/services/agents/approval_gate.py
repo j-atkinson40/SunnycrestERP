@@ -169,6 +169,8 @@ class ApprovalGateService:
         "cash_receipts_matching",
         "expense_categorization",
         "estimated_tax_prep",   # TODO Phase 7b: on approval, optionally create a VendorBill draft for the estimated tax payment amount so it appears in AP
+        "inventory_reconciliation",  # TODO Phase 8b: on approval, optionally create InventoryTransaction of type 'count' for reconciliation adjustments
+        "budget_vs_actual",     # TODO Phase 9b: when Annual Budget Agent (Phase 13) is built, budget figures become the comparison basis automatically
     }
 
     @staticmethod
