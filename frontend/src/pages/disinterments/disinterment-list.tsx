@@ -143,10 +143,14 @@ export default function DisintermentListPage() {
     try {
       const r = await apiClient.post("/disinterments");
       const c = r.data;
-      // Copy intake link to clipboard
+      // Copy intake link to clipboard (non-blocking — clipboard may be unavailable)
       const intakeUrl = `${window.location.origin}/intake/disinterment/${c.intake_token}`;
-      await navigator.clipboard.writeText(intakeUrl);
-      toast.success("Case created — intake link copied to clipboard");
+      try {
+        await navigator.clipboard.writeText(intakeUrl);
+        toast.success("Case created — intake link copied to clipboard");
+      } catch {
+        toast.success("Case created");
+      }
       // Navigate to the new case
       window.location.href = `/disinterments/${c.id}`;
     } catch {
