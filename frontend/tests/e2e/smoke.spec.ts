@@ -12,15 +12,14 @@
  *   4. Order station loads
  *   5. API returns no 500 errors
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 
 const STAGING_BACKEND =
   process.env.BACKEND_URL ||
   "https://sunnycresterp-staging.up.railway.app";
 
-const STAGING_FRONTEND =
-  process.env.STAGING_URL ||
-  "https://determined-renewal-staging.up.railway.app";
+const PROD_API = "https://api.getbridgeable.com";
+const TENANT_SLUG = "testco";
 
 // ---------------------------------------------------------------------------
 // Login helper (copied from other test files for independence)
@@ -30,33 +29,50 @@ const CREDS: Record<string, { email: string; password: string }> = {
   admin: { email: "admin@testco.com", password: "TestAdmin123!" },
 };
 
-async function login(page: import("@playwright/test").Page) {
+/**
+ * Setup: intercept prod API → staging backend, set tenant slug in localStorage.
+ * Must be called before any page navigation in browser-based tests.
+ */
+async function setupPage(page: Page) {
+  await page.route(`${PROD_API}/**`, async (route) => {
+    const url = route.request().url().replace(PROD_API, STAGING_BACKEND);
+    try {
+      const response = await route.fetch({ url });
+      await route.fulfill({ response });
+    } catch {
+      await route.continue();
+    }
+  });
+
+  await page.goto("/", { waitUntil: "commit" });
+  await page.evaluate((slug) => {
+    localStorage.setItem("company_slug", slug);
+  }, TENANT_SLUG);
+}
+
+async function login(page: Page) {
+  await setupPage(page);
+
   await page.goto("/login");
   await page.waitForLoadState("networkidle");
 
-  const emailInput = page.locator('input[type="email"], input[name="email"]');
-  if ((await emailInput.count()) > 0) {
-    await emailInput.fill(CREDS.admin.email);
-    await page.waitForTimeout(300);
-  }
+  // Identifier field — typing an email triggers password mode
+  const identifierInput = page.locator("#identifier");
+  await identifierInput.waitFor({ state: "visible", timeout: 10_000 });
+  await identifierInput.fill(CREDS.admin.email);
+  await page.waitForTimeout(300); // Let React re-render
 
-  const passwordInput = page.locator(
-    'input[type="password"], input[name="password"]'
-  );
-  if ((await passwordInput.count()) > 0) {
-    await passwordInput.fill(CREDS.admin.password);
-  }
+  // Password field appears after email is entered
+  const passwordInput = page.locator("#password");
+  await passwordInput.waitFor({ state: "visible", timeout: 5_000 });
+  await passwordInput.fill(CREDS.admin.password);
 
-  const submitBtn = page.locator(
-    'button[type="submit"], button:has-text("Sign In"), button:has-text("Log In")'
-  );
-  if ((await submitBtn.count()) > 0) {
-    await submitBtn.first().click();
-  }
+  // Click Sign In
+  await page.getByRole("button", { name: /sign\s*in/i }).click();
 
   // Wait for redirect away from /login
   await page.waitForURL((url) => !url.pathname.includes("/login"), {
-    timeout: 15000,
+    timeout: 20_000,
   });
 }
 
