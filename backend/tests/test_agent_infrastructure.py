@@ -415,7 +415,7 @@ class TestAgentRunner:
         job = AgentRunner.create_job(
             db=db,
             tenant_id=tenant.id,
-            job_type=AgentJobType.EXPENSE_CATEGORIZATION,  # Not yet implemented
+            job_type=AgentJobType.INVENTORY_RECONCILIATION,  # Not yet implemented
             period_start=date(2025, 5, 1),
             period_end=date(2025, 5, 31),
             triggered_by=user.id,

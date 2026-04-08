@@ -32,10 +32,14 @@ class AgentRunner:
         from app.services.agents.ar_collections_agent import ARCollectionsAgent
         from app.services.agents.unbilled_orders_agent import UnbilledOrdersAgent
         from app.services.agents.cash_receipts_agent import CashReceiptsAgent
+        from app.services.agents.expense_categorization_agent import ExpenseCategorizationAgent
+        from app.services.agents.estimated_tax_prep_agent import EstimatedTaxPrepAgent
         cls.AGENT_REGISTRY[AgentJobType.MONTH_END_CLOSE] = MonthEndCloseAgent
         cls.AGENT_REGISTRY[AgentJobType.AR_COLLECTIONS] = ARCollectionsAgent
         cls.AGENT_REGISTRY[AgentJobType.UNBILLED_ORDERS] = UnbilledOrdersAgent
         cls.AGENT_REGISTRY[AgentJobType.CASH_RECEIPTS_MATCHING] = CashReceiptsAgent
+        cls.AGENT_REGISTRY[AgentJobType.EXPENSE_CATEGORIZATION] = ExpenseCategorizationAgent
+        cls.AGENT_REGISTRY[AgentJobType.ESTIMATED_TAX_PREP] = EstimatedTaxPrepAgent
 
     @staticmethod
     def create_job(

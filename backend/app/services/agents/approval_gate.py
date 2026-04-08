@@ -137,7 +137,10 @@ class ApprovalGateService:
 
         # Check expiry
         if job.created_at:
-            expiry = job.created_at + timedelta(hours=TOKEN_EXPIRY_HOURS)
+            created = job.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            expiry = created + timedelta(hours=TOKEN_EXPIRY_HOURS)
             if datetime.now(timezone.utc) > expiry:
                 raise HTTPException(
                     status_code=status.HTTP_410_GONE,
@@ -164,6 +167,8 @@ class ApprovalGateService:
         "ar_collections",       # TODO Phase 3b: trigger email sends for approved collection drafts
         "unbilled_orders",      # TODO Phase 4b: on approval, optionally create draft invoices for HIGH urgency orders
         "cash_receipts_matching",
+        "expense_categorization",
+        "estimated_tax_prep",   # TODO Phase 7b: on approval, optionally create a VendorBill draft for the estimated tax payment amount so it appears in AP
     }
 
     @staticmethod
@@ -187,6 +192,10 @@ class ApprovalGateService:
 
         # Simplified approval path for weekly agents
         if job.job_type in ApprovalGateService.SIMPLE_APPROVAL_TYPES:
+            # Expense categorization: write high-confidence categories on approval
+            if job.job_type == "expense_categorization" and not job.dry_run:
+                ApprovalGateService._apply_expense_categories(job, db)
+
             job.status = "complete"
             job.completed_at = datetime.now(timezone.utc)
             db.commit()
@@ -316,6 +325,37 @@ class ApprovalGateService:
             payload["statement_run_error"] = str(e)
             job.report_payload = payload
             db.flush()
+
+    @staticmethod
+    def _apply_expense_categories(job: AgentJob, db: Session) -> None:
+        """Write high-confidence expense categories to VendorBillLines on approval.
+
+        Only updates lines classified with confidence >= 0.85 that also have
+        a valid GL mapping. NEEDS_REVIEW lines are NOT written.
+        TODO Phase 6b: add per-line approval endpoint so reviewer can
+        confirm/override individual categorizations before posting.
+        """
+        from app.models.vendor_bill_line import VendorBillLine
+
+        payload = job.report_payload or {}
+        steps = payload.get("steps", {})
+        gl_data = steps.get("map_to_gl_accounts", {})
+        mappings = gl_data.get("mappings", [])
+
+        updated = 0
+        for m in mappings:
+            if m.get("mapping_status") == "mapped":
+                line = db.query(VendorBillLine).filter(VendorBillLine.id == m["line_id"]).first()
+                if line:
+                    line.expense_category = m["proposed_category"]
+                    updated += 1
+
+        if updated:
+            db.flush()
+            logger.info(
+                "Expense categorization job %s: updated %d vendor bill lines",
+                job.id, updated,
+            )
 
     @staticmethod
     def _process_reject(
