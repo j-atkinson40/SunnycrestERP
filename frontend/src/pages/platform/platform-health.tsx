@@ -19,7 +19,7 @@ import {
   dismissNotification,
   getRepeatPatterns,
   getHealthTimeline,
-  getSystemHealth,
+  getSelfRepairHealth,
 } from "@/services/platform-service";
 import type {
   HealthSummaryResponse,
@@ -210,7 +210,7 @@ export default function PlatformHealthPage() {
           }),
           getNotifications({ dismissed: false }),
           getRepeatPatterns(),
-          getSystemHealth().catch(() => null),
+          getSelfRepairHealth().catch(() => null),
         ]);
         setData(summaryRes);
         setIncidents(incidentRes.incidents);

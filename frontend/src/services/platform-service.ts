@@ -376,7 +376,7 @@ export async function getHealthTimeline(tenantId: string, days = 30) {
   return data;
 }
 
-export async function getSystemHealth() {
+export async function getSelfRepairHealth() {
   const { data } = await platformClient.get<SystemHealthResponse>(
     "/health/system"
   );
