@@ -1,15 +1,17 @@
 from fastapi import APIRouter, Depends, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_permission
+from app.api.deps import require_admin, require_permission
 from app.database import get_db
 from app.models.user import User
 from app.schemas.document import DocumentResponse
 from app.services.document_service import (
+    bulk_migrate_local_documents,
     delete_document,
     get_document,
     get_documents,
+    get_download_url,
     upload_document,
 )
 
@@ -57,7 +59,17 @@ def download(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("employees.view")),
 ):
-    doc = get_document(db, document_id, current_user.company_id)
+    """Download a document. Returns a 307 redirect to a signed R2 URL.
+
+    Falls back to streaming from local disk for legacy documents that
+    haven't been migrated yet.
+    """
+    doc, signed_url = get_download_url(db, document_id, current_user.company_id)
+
+    if signed_url:
+        return RedirectResponse(url=signed_url, status_code=307)
+
+    # Fallback: serve local file directly (pre-R2 legacy document)
     return FileResponse(
         path=doc.file_path,
         filename=doc.file_name,
@@ -73,3 +85,18 @@ def remove(
 ):
     delete_document(db, document_id, current_user.company_id)
     return {"detail": "Document deleted"}
+
+
+@router.post("/admin/migrate-local-docs")
+def migrate_local_docs(
+    company_id: str | None = Query(None, description="Scope to a specific tenant (optional)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Bulk-migrate all remaining local-path documents to R2.
+
+    Admin-only endpoint. Scans for Document records with no r2_key,
+    reads the local file, uploads to R2, and updates the record.
+    """
+    stats = bulk_migrate_local_documents(db, company_id=company_id)
+    return stats

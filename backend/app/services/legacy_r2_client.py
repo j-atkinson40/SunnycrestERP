@@ -78,6 +78,26 @@ def exists(r2_key: str) -> bool:
         return False
 
 
+def delete_object(r2_key: str) -> None:
+    """Delete an object from R2."""
+    client = _get_client()
+    if not client:
+        raise RuntimeError("R2 not configured")
+    client.delete_object(Bucket=settings.R2_BUCKET_NAME, Key=r2_key)
+
+
+def generate_signed_url(r2_key: str, expires_in: int = 3600) -> str:
+    """Generate a time-limited signed URL for private R2 object access."""
+    client = _get_client()
+    if not client:
+        raise RuntimeError("R2 not configured")
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.R2_BUCKET_NAME, "Key": r2_key},
+        ExpiresIn=expires_in,
+    )
+
+
 def get_public_url(r2_key: str) -> str:
     """Return the public URL for an R2 key."""
     base = settings.R2_PUBLIC_URL.rstrip("/")
