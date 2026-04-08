@@ -87,6 +87,7 @@ import QCMobilePage from "@/pages/qc/qc-mobile";
 import QCDashboardPage from "@/pages/qc/qc-dashboard";
 import QCInspectionDetailPage from "@/pages/qc/qc-inspection-detail";
 import NpcaAuditPrepPage from "@/pages/compliance/npca-audit-prep";
+import TrainingHubPage from "@/pages/training/training-hub";
 import SafetyDashboardPage from "@/pages/safety/safety-dashboard";
 import SafetyInspectPage from "@/pages/safety/safety-inspect";
 import SafetyIncidentPage from "@/pages/safety/safety-incidents";
@@ -614,6 +615,9 @@ export default function App() {
                     <Route path="/qc/inspections/:inspectionId" element={<QCInspectionDetailPage />} />
                     <Route path="/qc/mobile/:inspectionId" element={<QCMobilePage />} />
                   </Route>
+
+                  {/* Training hub — accessible to all, tiles gated individually */}
+                  <Route path="/training" element={<TrainingHubPage />} />
 
                   {/* Safety Management — requires safety_management module */}
                   <Route

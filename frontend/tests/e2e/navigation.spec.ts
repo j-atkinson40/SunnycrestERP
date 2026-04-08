@@ -297,7 +297,7 @@ test.describe("Navigation Tests", () => {
     await page.waitForTimeout(500);
     await snap(page, "08-settings-expanded");
 
-    // Check for sub-items
+    // Check for sub-items — Company Profile is the first item in the Business group
     const companyProfile = sidebar.getByText("Company Profile", { exact: false });
     expect(await companyProfile.count(), "Company Profile should be in settings").toBeGreaterThan(0);
   });
@@ -384,8 +384,13 @@ test.describe("Navigation Tests", () => {
     await snap(page, "12-legacy-studio-nav");
 
     const sidebar = page.locator("aside");
-    const legacySection = sidebar.getByText("Legacy Studio", { exact: false });
-    expect(await legacySection.count(), "Legacy Studio should be in nav").toBeGreaterThan(0);
+    const legacyLabel = sidebar.getByText("Legacy Studio", { exact: false });
+    expect(await legacyLabel.count(), "Legacy Studio should be in nav").toBeGreaterThan(0);
+
+    // Legacy Studio is now a collapsible item — click to expand
+    await legacyLabel.first().click();
+    await page.waitForTimeout(300);
+    await snap(page, "12-legacy-studio-expanded");
 
     // Check for Proof Generator sub-item
     const proofGen = sidebar.getByText("Proof Generator", { exact: false });

@@ -9,6 +9,9 @@ export interface NavItem {
   adminOnly?: boolean; // only show for admin role
   children?: NavItem[]; // nested sub-items shown when parent is expanded
   isHub?: boolean; // hub items get a slightly different visual treatment
+  isDividerBefore?: boolean; // render a subtle divider line before this item
+  isDividerAfter?: boolean; // render a subtle divider line after this item
+  settingsGroup?: string; // group label inside the Settings section
 }
 
 export interface NavSection {
@@ -96,13 +99,14 @@ function getManufacturingNav(
       label: "Operations Board",
       href: "/console/operations",
       icon: "LayoutDashboard",
+      permission: "operations_board.view",
       functionalArea: "production_log",
     },
     {
       label: "Scheduling Board",
       href: "/scheduling",
       icon: "Kanban",
-      permission: "deliveries.view",
+      permission: "scheduling_board.view",
       requiresModule: "driver_delivery",
       functionalArea: "funeral_scheduling",
     },
@@ -112,7 +116,7 @@ function getManufacturingNav(
     items: filterByPermission(primaryItems, modules, perms, areas, isAdmin),
   });
 
-  // ── Hubs ──
+  // ── Hubs (no section label — dividers handled in sidebar) ──
   const hasSyncError =
     settings.accounting_connection_status === "connected" &&
     settings.last_sync_error;
@@ -122,6 +126,7 @@ function getManufacturingNav(
       href: "/financials",
       icon: "BarChart3",
       isHub: true,
+      isDividerBefore: true,
       functionalArea: "invoicing_ar",
       ...(hasSyncError ? { badge: "!" } : {}),
     },
@@ -137,107 +142,85 @@ function getManufacturingNav(
       href: "/production-hub",
       icon: "Factory",
       isHub: true,
+      isDividerAfter: true,
       functionalArea: "production_log",
     },
   ];
   const filteredHubs = filterByPermission(hubItems, modules, perms, areas, isAdmin);
   if (filteredHubs.length > 0) {
-    sections.push({ title: "Hubs", items: filteredHubs });
+    // Set dividers on first/last of filtered items
+    filteredHubs[0].isDividerBefore = true;
+    filteredHubs[filteredHubs.length - 1].isDividerAfter = true;
+    sections.push({ title: "", items: filteredHubs });
   }
 
-  // ── Tools ──
+  // ── Tools (Knowledge Base + Legacy Studio collapsible) ──
+  const legacyChildren: NavItem[] = filterByPermission(
+    [
+      {
+        label: "Proof Generator",
+        href: "/legacy/generator",
+        icon: "Wand2",
+        permission: "legacy_studio.create",
+      },
+      {
+        label: "Library",
+        href: "/legacy/library",
+        icon: "Library",
+        permission: "legacy_studio.view",
+      },
+      {
+        label: "Settings",
+        href: "/legacy/settings",
+        icon: "Settings2",
+        permission: "legacy_studio.create",
+      },
+      {
+        label: "Template Upload",
+        href: "/legacy/templates/upload",
+        icon: "Upload",
+        permission: "legacy_studio.create",
+      },
+    ],
+    modules,
+    perms,
+    areas,
+    isAdmin,
+  );
+
   const toolItems: NavItem[] = [
     {
       label: "Knowledge Base",
       href: "/knowledge-base",
       icon: "BookOpen",
     },
-    {
-      label: "Call Log",
-      href: "/calls",
-      icon: "Phone",
-    },
-    {
-      label: "Price Management",
-      href: "/price-management",
-      icon: "DollarSign",
-    },
-    {
-      label: "Announcements",
-      href: "/announcements",
-      icon: "Megaphone",
-    },
   ];
+
+  if (legacyChildren.length > 0) {
+    toolItems.push({
+      label: "Legacy Studio",
+      href: "/legacy/generator",
+      icon: "Gem",
+      permission: "legacy.view",
+      children: legacyChildren,
+    });
+  }
+
   sections.push({
     title: "Tools",
     items: filterByPermission(toolItems, modules, perms, areas, isAdmin),
   });
 
-  // ── Compliance ──
-  const complianceItems: NavItem[] = [
-    {
-      label: "Safety & OSHA",
-      href: "/safety",
-      icon: "ShieldCheck",
-      permission: "safety.view",
-      requiresModule: "safety_management",
-      functionalArea: "safety_compliance",
-      children: [
-        { label: "Dashboard", href: "/safety", icon: "LayoutDashboard" },
-        { label: "Training Calendar", href: "/safety/training/calendar", icon: "CalendarDays" },
-        { label: "Inspections", href: "/safety/inspections/new", icon: "ClipboardCheck" },
-        { label: "Toolbox Talks", href: "/safety/toolbox-talks", icon: "MessageSquare" },
-        { label: "Incidents", href: "/safety/incidents", icon: "AlertTriangle" },
-        { label: "Safety Notices", href: "/safety/notices", icon: "ShieldAlert" },
-        { label: "OSHA 300 Log", href: "/safety/osha-300", icon: "FileText" },
-        { label: "SDS / HazCom", href: "/safety/chemicals", icon: "FlaskConical" },
-        { label: "LOTO Procedures", href: "/safety/loto", icon: "Lock" },
-        { label: "Programs", href: "/safety/programs", icon: "BookOpen" },
-      ],
-    },
-  ];
-  if (modules.has("npca_audit_prep")) {
-    complianceItems.push({
-      label: "NPCA Audit Prep",
-      href: "/npca",
-      icon: "Award",
-      permission: "npca.view",
-      requiresModule: "npca_audit_prep",
-    });
-  }
-  const filteredCompliance = filterByPermission(complianceItems, modules, perms, areas, isAdmin);
-  if (filteredCompliance.length > 0) {
-    sections.push({ title: "Compliance", items: filteredCompliance });
-  }
-
-  // ── Legacy Studio ──
+  // ── Training (single hub item) ──
   sections.push({
-    title: "Legacy Studio",
+    title: "Training",
     items: filterByPermission(
       [
         {
-          label: "Proof Generator",
-          href: "/legacy/generator",
-          icon: "Wand2",
-          permission: "legacy_studio.create",
-        },
-        {
-          label: "Library",
-          href: "/legacy/library",
-          icon: "Library",
-          permission: "legacy_studio.view",
-        },
-        {
-          label: "Settings",
-          href: "/legacy/settings",
-          icon: "Settings2",
-          permission: "legacy_studio.create",
-        },
-        {
-          label: "Template Upload",
-          href: "/legacy/templates/upload",
-          icon: "Upload",
-          permission: "legacy_studio.create",
+          label: "Training",
+          href: "/training",
+          icon: "GraduationCap",
+          permission: "training.view",
         },
       ],
       modules,
@@ -247,142 +230,102 @@ function getManufacturingNav(
     ),
   });
 
-  // ── Training ──
-  sections.push({
-    title: "Training",
-    items: [
-      {
-        label: "Vault Order Lifecycle",
-        href: "/training/vault-order-lifecycle",
-        icon: "GraduationCap",
-      },
-      {
-        label: "Procedure Library",
-        href: "/training/procedures",
-        icon: "BookOpen",
-      },
-    ],
-  });
-
-  // ── Team ──
-  const teamItems = filterByPermission(
-    [
-      {
-        label: "Team Dashboard",
-        href: "/team",
-        icon: "Users",
-        permission: "users.view",
-      },
-      {
-        label: "Employees",
-        href: "/admin/users",
-        icon: "UserCircle",
-        permission: "users.view",
-      },
-    ],
-    modules,
-    perms,
-    undefined,
-    isAdmin,
-  );
-  if (teamItems.length > 0) {
-    sections.push({ title: "Team", items: teamItems });
-  }
-
-  // ── Settings (collapsible, bottom) ──
+  // ── Settings (collapsible, grouped sub-sections) ──
   sections.push({
     title: "Settings",
     collapsible: true,
     defaultCollapsed: true,
     items: filterByPermission(
       [
+        // Business
         {
           label: "Company Profile",
           href: "/admin/settings",
           icon: "Building2",
+          settingsGroup: "Business",
         },
         {
-          label: "AI & Intelligence",
-          href: "/settings/ai-intelligence",
-          icon: "Sparkles",
-          adminOnly: true,
+          label: "Branding",
+          href: "/settings/branding",
+          icon: "Gem",
+          settingsGroup: "Business",
+        },
+        // People
+        {
+          label: "Team Dashboard",
+          href: "/team",
+          icon: "Users",
+          permission: "users.view",
+          settingsGroup: "People",
         },
         {
-          label: "Team Intelligence",
-          href: "/settings/team-intelligence",
-          icon: "BrainCircuit",
+          label: "Employees",
+          href: "/admin/users",
+          icon: "UserCircle",
+          permission: "users.view",
+          settingsGroup: "People",
         },
+        {
+          label: "Users & Roles",
+          href: "/admin/roles",
+          icon: "ShieldCheck",
+          permission: "settings.users.manage",
+          settingsGroup: "People",
+        },
+        {
+          label: "Permissions",
+          href: "/admin/permissions",
+          icon: "Lock",
+          permission: "settings.users.manage",
+          settingsGroup: "People",
+        },
+        // Communication
+        {
+          label: "Email",
+          href: "/settings/email",
+          icon: "MessageSquare",
+          settingsGroup: "Communication",
+        },
+        // Integrations
         {
           label: "Call Intelligence",
           href: "/settings/call-intelligence",
           icon: "PhoneCall",
+          settingsGroup: "Integrations",
         },
         {
           label: "Accounting",
           href: "/settings/integrations/accounting",
           icon: "Calculator",
+          settingsGroup: "Integrations",
           ...(hasSyncError ? { badge: "\u2022" } : {}),
         },
         {
-          label: "Integrations",
+          label: "API Keys",
           href: "/admin/accounting",
           icon: "Plug",
+          settingsGroup: "Integrations",
         },
+        // Platform
         {
-          label: "Invoice & Statements",
-          href: "/settings/invoice",
-          icon: "FileText",
-          functionalArea: "invoicing_ar",
-        },
-        {
-          label: "Tax Configuration",
-          href: "/settings/tax",
-          icon: "Percent",
-          functionalArea: "invoicing_ar",
-        },
-        {
-          label: "Financial Accounts",
-          href: "/settings/accounts",
-          icon: "Landmark",
-          functionalArea: "invoicing_ar",
-        },
-        {
-          label: "Cemeteries",
-          href: "/settings/cemeteries",
-          icon: "MapPin",
-        },
-        {
-          label: "Charge Library",
-          href: "/settings/charges",
-          icon: "CircleDollarSign",
-          permission: "products.view",
-        },
-        {
-          label: "Vault Production Capacity",
-          href: "/settings/vault-molds",
-          icon: "Factory",
-        },
-        {
-          label: "Seasonal Templates",
-          href: "/settings/seasonal-templates",
-          icon: "CalendarDays",
-        },
-        {
-          label: "Network Preferences",
-          href: "/settings/network/preferences",
-          icon: "Link",
-        },
-        {
-          label: "Driver Portal Preview",
-          href: "/settings/driver-portal-preview",
-          icon: "Monitor",
+          label: "Billing",
+          href: "/settings/billing",
+          icon: "Receipt",
           adminOnly: true,
+          settingsGroup: "Platform",
         },
-        { label: "Extensions", href: "/extensions", icon: "Puzzle" },
         {
-          label: "Notifications",
-          href: "/notifications",
-          icon: "Bell",
+          label: "Extensions",
+          href: "/extensions",
+          icon: "Puzzle",
+          settingsGroup: "Platform",
+        },
+        {
+          label: "Onboarding",
+          href: "/onboarding",
+          icon: "Rocket",
+          adminOnly: true,
+          settingsGroup: "Platform",
         },
       ],
       modules,
@@ -446,12 +389,14 @@ function getFuneralHomeNav(
 
   // Hubs
   const hubItems: NavItem[] = [
-    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true },
-    { label: "CRM", href: "/crm", icon: "Building2", isHub: true, permission: "customers.view" },
+    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true, isDividerBefore: true },
+    { label: "CRM", href: "/crm", icon: "Building2", isHub: true, permission: "customers.view", isDividerAfter: true },
   ];
   const filteredHubs = filterByPermission(hubItems, modules, perms, undefined, isAdmin);
   if (filteredHubs.length > 0) {
-    sections.push({ title: "Hubs", items: filteredHubs });
+    filteredHubs[0].isDividerBefore = true;
+    filteredHubs[filteredHubs.length - 1].isDividerAfter = true;
+    sections.push({ title: "", items: filteredHubs });
   }
 
   // Compliance
@@ -554,9 +499,9 @@ function getCemeteryNav(
 
   // Hubs
   const hubItems: NavItem[] = [
-    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true },
+    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true, isDividerBefore: true, isDividerAfter: true },
   ];
-  sections.push({ title: "Hubs", items: hubItems });
+  sections.push({ title: "", items: hubItems });
 
   sections.push({
     title: "Settings",
@@ -622,9 +567,9 @@ function getCrematoryNav(
 
   // Hubs
   const hubItems: NavItem[] = [
-    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true },
+    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true, isDividerBefore: true, isDividerAfter: true },
   ];
-  sections.push({ title: "Hubs", items: hubItems });
+  sections.push({ title: "", items: hubItems });
 
   sections.push({
     title: "Settings",

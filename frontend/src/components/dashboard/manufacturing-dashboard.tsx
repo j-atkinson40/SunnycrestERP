@@ -12,6 +12,8 @@ import {
   ChevronRight,
   ArrowRight,
   Rocket,
+  Megaphone,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -67,6 +69,15 @@ interface ComplianceAlert {
   severity: "critical" | "warning" | "info";
   message: string;
   created_at: string;
+}
+
+interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  urgency: string;
+  created_at: string;
+  created_by_name?: string;
 }
 
 // ── Helpers ──
@@ -191,6 +202,14 @@ export function ManufacturingDashboard() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [upcomingDeliveries, setUpcomingDeliveries] = useState<UpcomingDelivery[]>([]);
   const [complianceAlerts, setComplianceAlerts] = useState<ComplianceAlert[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem("dismissed-announcements");
+      if (raw) return new Set(JSON.parse(raw));
+    } catch { /* ignore */ }
+    return new Set();
+  });
   const [loading, setLoading] = useState(true);
   const [onboardingPercent, setOnboardingPercent] = useState<number | null>(null);
   const [onboardingCompleted, setOnboardingCompleted] = useState(0);
@@ -222,6 +241,7 @@ export function ManufacturingDashboard() {
         apiClient.get("/deliveries/upcoming", { params: { days: 7 } }).then((r) => r.data),
         apiClient.get("/compliance/alerts").then((r) => r.data),
         apiClient.get("/dashboard/manufacturing/stats").then((r) => r.data),
+        apiClient.get("/announcements", { params: { limit: 5, active: true } }).then((r) => r.data),
       ]);
 
       // Production log
@@ -260,6 +280,13 @@ export function ManufacturingDashboard() {
         setComplianceAlerts(
           Array.isArray(alertData) ? alertData : alertData.alerts ?? [],
         );
+      }
+
+      // Announcements
+      if (results[5].status === "fulfilled") {
+        const annData = results[5].value;
+        const items = Array.isArray(annData) ? annData : annData.items ?? [];
+        setAnnouncements(items);
       }
 
       // Stats
@@ -587,6 +614,68 @@ export function ManufacturingDashboard() {
               </CardContent>
             </Card>
           )}
+
+          {/* Announcements Widget */}
+          {(() => {
+            const visible = announcements.filter((a) => !dismissedAnnouncements.has(a.id)).slice(0, 3);
+            if (visible.length === 0) return null;
+            return (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Megaphone className="h-5 w-5 text-muted-foreground" />
+                    Announcements
+                  </CardTitle>
+                  <Link
+                    to="/announcements"
+                    className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    View All <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {visible.map((ann) => (
+                      <div
+                        key={ann.id}
+                        className={cn(
+                          "flex items-start gap-2 rounded-md border px-3 py-2.5",
+                          ann.urgency === "urgent" ? "border-amber-200 bg-amber-50/50" :
+                          ann.urgency === "safety" ? "border-red-200 bg-red-50/50" :
+                          "border-border",
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">{ann.title}</p>
+                          {ann.body && (
+                            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                              {ann.body}
+                            </p>
+                          )}
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {fmtDate(ann.created_at)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = new Set(dismissedAnnouncements);
+                            next.add(ann.id);
+                            setDismissedAnnouncements(next);
+                            localStorage.setItem("dismissed-announcements", JSON.stringify([...next]));
+                          }}
+                          className="shrink-0 rounded p-0.5 text-muted-foreground/50 hover:text-muted-foreground"
+                          title="Dismiss"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* Spring Burial Widget */}
           <SpringBurialWidget />

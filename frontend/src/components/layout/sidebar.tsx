@@ -40,10 +40,12 @@ import {
   Percent,
   Phone,
   PhoneCall,
+  PieChart,
   Plug,
   Plus,
   Puzzle,
   Receipt,
+  Rocket,
   Scale,
   Settings2,
   ShieldAlert,
@@ -60,7 +62,6 @@ import {
   type LucideIcon,
   ArrowRightLeft,
   BarChart3,
-  PieChart,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { usePresetTheme } from "@/contexts/preset-theme-context";
@@ -114,6 +115,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Plus,
   Puzzle,
   Receipt,
+  Rocket,
   Scale,
   Settings2,
   ShieldAlert,
@@ -190,7 +192,9 @@ export function Sidebar() {
   useEffect(() => {
     for (const section of navigation.sections) {
       if (section.collapsible) {
-        const hasActive = section.items.some((item) => isActive(item.href));
+        const hasActive = section.items.some(
+          (item) => isActive(item.href) || item.children?.some((c) => isActive(c.href)),
+        );
         if (hasActive && collapsed.has(section.title)) {
           setCollapsed((prev) => {
             const next = new Set(prev);
@@ -273,9 +277,9 @@ export function Sidebar() {
       {/* Navigation sections */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
         <div className="space-y-4">
-          {navigation.sections.map((section) => (
+          {navigation.sections.map((section, idx) => (
             <SidebarSection
-              key={section.title}
+              key={section.title || `section-${idx}`}
               section={section}
               collapsed={collapsed.has(section.title)}
               onToggle={() => toggleSection(section.title)}
@@ -318,6 +322,9 @@ function SidebarSection({
   const isCollapsible = section.collapsible ?? false;
   const isOpen = !collapsed;
 
+  // Check if any item has settingsGroup — if so, render grouped layout
+  const hasGroups = section.items.some((i) => i.settingsGroup);
+
   return (
     <div>
       {/* Section header — hidden for unnamed sections */}
@@ -349,19 +356,97 @@ function SidebarSection({
 
       {/* Items */}
       {isOpen && (
-        <div className="mt-0.5 space-y-0.5">
-          {section.items.map((item) => (
-            <SidebarItem
-              key={item.href}
-              item={item}
-              active={isActive(item.href)}
-              presetAccent={presetAccent}
-              isActive={isActive}
-            />
-          ))}
-        </div>
+        hasGroups ? (
+          <SettingsGroupedItems items={section.items} isActive={isActive} presetAccent={presetAccent} />
+        ) : (
+          <div className="mt-0.5 space-y-0.5">
+            {section.items.map((item) => (
+              <SidebarItemWithDividers
+                key={item.href}
+                item={item}
+                isActive={isActive}
+                presetAccent={presetAccent}
+              />
+            ))}
+          </div>
+        )
       )}
     </div>
+  );
+}
+
+// ---- Settings grouped items ----
+function SettingsGroupedItems({
+  items,
+  isActive,
+  presetAccent,
+}: {
+  items: NavItem[];
+  isActive: (href: string) => boolean;
+  presetAccent: string;
+}) {
+  // Group items by settingsGroup
+  const groups: { label: string; items: NavItem[] }[] = [];
+  let currentGroup: string | undefined;
+
+  for (const item of items) {
+    const group = item.settingsGroup || "Other";
+    if (group !== currentGroup) {
+      groups.push({ label: group, items: [] });
+      currentGroup = group;
+    }
+    groups[groups.length - 1].items.push(item);
+  }
+
+  return (
+    <div className="mt-1 space-y-3">
+      {groups.map((group) => (
+        <div key={group.label}>
+          <div className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/40">
+            {group.label}
+          </div>
+          <div className="mt-0.5 space-y-0.5">
+            {group.items.map((item) => (
+              <SidebarItem
+                key={item.href}
+                item={item}
+                active={isActive(item.href)}
+                presetAccent={presetAccent}
+                isActive={isActive}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- Item with divider support ----
+function SidebarItemWithDividers({
+  item,
+  isActive,
+  presetAccent,
+}: {
+  item: NavItem;
+  isActive: (href: string) => boolean;
+  presetAccent: string;
+}) {
+  return (
+    <>
+      {item.isDividerBefore && (
+        <div className="my-1.5 border-t border-sidebar-border" />
+      )}
+      <SidebarItem
+        item={item}
+        active={isActive(item.href)}
+        presetAccent={presetAccent}
+        isActive={isActive}
+      />
+      {item.isDividerAfter && (
+        <div className="my-1.5 border-t border-sidebar-border" />
+      )}
+    </>
   );
 }
 
