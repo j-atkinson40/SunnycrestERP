@@ -1,9 +1,12 @@
 """Urn Sales extension — API routes."""
 
 import base64
+import csv
+import io
+import tempfile
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -11,16 +14,23 @@ from app.api.deps import get_current_user, get_db, require_admin, require_extens
 from app.models.user import User
 from app.schemas.urns import (
     AncillaryItemResponse,
+    CatalogIngestionRequest,
+    CatalogIngestionResponse,
     CatalogSyncLogResponse,
     CorrectionSummaryResponse,
     DropShipFeedItemResponse,
     FHApprovalRequest,
     FHChangeRequest,
+    UrnBulkMarkupRequest,
+    UrnBulkMarkupResponse,
     UrnEngravingJobResponse,
     UrnEngravingSpecsUpdate,
     UrnOrderCreate,
     UrnOrderFromExtraction,
     UrnOrderResponse,
+    UrnPriceImportRequest,
+    UrnPriceImportResponse,
+    UrnPricingUpdate,
     UrnProductCreate,
     UrnProductResponse,
     UrnProductSearchResult,
@@ -551,28 +561,216 @@ def get_drop_ship_feed(
 
 
 # ---------------------------------------------------------------------------
-# Catalog sync
+# Catalog ingestion (PDF + web)
 # ---------------------------------------------------------------------------
 
 
-@router.post("/catalog/sync", response_model=CatalogSyncLogResponse)
-def trigger_catalog_sync(
+@router.post("/catalog/ingest-pdf", response_model=CatalogIngestionResponse)
+def ingest_from_pdf(
+    file: UploadFile = File(...),
+    enrich_from_website: bool = Query(False),
     current_user: User = Depends(urn_ext),
     db: Session = Depends(get_db),
 ):
-    from app.services.urn_catalog_scraper import UrnCatalogScraper
+    """Upload a Wilbert catalog PDF and ingest all products."""
+    from app.services.wilbert_ingestion_service import WilbertIngestionService
 
-    return UrnCatalogScraper.run_full_scrape(db, current_user.company_id)
+    # Save uploaded file to temp location
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        content = file.file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    log = WilbertIngestionService.ingest_from_pdf(
+        db, current_user.company_id, tmp_path,
+        enrich_from_website=enrich_from_website,
+    )
+
+    # Clean up temp file
+    import os
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
+
+    return CatalogIngestionResponse(
+        sync_log_id=log.id,
+        products_added=log.products_added,
+        products_updated=log.products_updated,
+        products_skipped=log.products_skipped,
+        status=log.status,
+    )
 
 
-@router.post("/catalog/delta-sync", response_model=CatalogSyncLogResponse)
-def trigger_delta_sync(
+@router.post("/catalog/enrich-from-web", response_model=CatalogSyncLogResponse)
+def enrich_from_website(
     current_user: User = Depends(urn_ext),
     db: Session = Depends(get_db),
 ):
+    """Enrich existing products with descriptions and images from wilbert.com."""
+    from app.models.urn_catalog_sync_log import UrnCatalogSyncLog as SyncLog
     from app.services.urn_catalog_scraper import UrnCatalogScraper
+    from app.models.urn_product import UrnProduct
+    from datetime import datetime, timezone
 
-    return UrnCatalogScraper.run_delta_sync(db, current_user.company_id)
+    log = SyncLog(
+        tenant_id=current_user.company_id,
+        status="running",
+        sync_type="website",
+    )
+    db.add(log)
+    db.commit()
+
+    try:
+        products = (
+            db.query(UrnProduct)
+            .filter(
+                UrnProduct.tenant_id == current_user.company_id,
+                UrnProduct.source_type == "drop_ship",
+                UrnProduct.is_active == True,
+            )
+            .all()
+        )
+
+        enriched, not_found = UrnCatalogScraper.enrich_products_from_web(
+            db, current_user.company_id, products
+        )
+
+        log.products_updated = enriched
+        log.products_skipped = not_found
+        log.status = "completed"
+        log.completed_at = datetime.now(timezone.utc)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log = db.query(SyncLog).filter(SyncLog.id == log.id).first()
+        if log:
+            log.status = "failed"
+            log.error_message = str(e)[:2000]
+            log.completed_at = datetime.now(timezone.utc)
+            db.commit()
+
+    return log
+
+
+# ---------------------------------------------------------------------------
+# Pricing management
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/products/{product_id}/pricing", response_model=UrnProductResponse)
+def update_product_pricing(
+    product_id: str,
+    data: UrnPricingUpdate,
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Update cost and/or retail price for a single product."""
+    from app.services.urn_product_service import UrnProductService
+
+    product = UrnProductService.get_product(db, current_user.company_id, product_id)
+
+    if data.base_cost is not None:
+        product.base_cost = data.base_cost
+    if data.retail_price is not None:
+        product.retail_price = data.retail_price
+
+    db.commit()
+    db.refresh(product)
+    return product
+
+
+@router.post("/pricing/bulk-markup", response_model=UrnBulkMarkupResponse)
+def apply_bulk_markup(
+    data: UrnBulkMarkupRequest,
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Apply markup percentage to products' base_cost → retail_price."""
+    from app.services.wilbert_ingestion_service import WilbertIngestionService
+
+    updated, skipped = WilbertIngestionService.apply_bulk_markup(
+        db, current_user.company_id,
+        markup_percent=data.markup_percent,
+        rounding=data.rounding,
+        material=data.material,
+        product_type=data.product_type,
+        only_unpriced=data.only_unpriced,
+    )
+    db.commit()
+    return UrnBulkMarkupResponse(updated_count=updated, skipped_count=skipped)
+
+
+@router.post("/pricing/import-csv", response_model=UrnPriceImportResponse)
+def import_prices_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Import prices from CSV (columns: sku, base_cost, retail_price)."""
+    from app.services.wilbert_ingestion_service import WilbertIngestionService
+    from decimal import Decimal, InvalidOperation
+
+    content = file.file.read().decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(content))
+
+    rows = []
+    for row in reader:
+        sku = (row.get("sku") or row.get("SKU") or "").strip()
+        if not sku:
+            continue
+
+        entry = {"sku": sku}
+        cost_raw = (row.get("base_cost") or row.get("cost") or row.get("wholesale_cost") or "").strip()
+        price_raw = (row.get("retail_price") or row.get("price") or row.get("selling_price") or "").strip()
+
+        try:
+            if cost_raw:
+                entry["base_cost"] = float(cost_raw.replace("$", "").replace(",", ""))
+            if price_raw:
+                entry["retail_price"] = float(price_raw.replace("$", "").replace(",", ""))
+        except (ValueError, InvalidOperation):
+            continue
+
+        rows.append(entry)
+
+    result = WilbertIngestionService.import_prices_from_csv(
+        db, current_user.company_id, rows,
+    )
+    db.commit()
+
+    return UrnPriceImportResponse(
+        matched=result["matched"],
+        updated=result["updated"],
+        not_found=result["not_found"],
+    )
+
+
+@router.post("/pricing/import-json", response_model=UrnPriceImportResponse)
+def import_prices_json(
+    data: UrnPriceImportRequest,
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Import prices from JSON payload."""
+    from app.services.wilbert_ingestion_service import WilbertIngestionService
+
+    rows = [r.model_dump() for r in data.rows]
+    result = WilbertIngestionService.import_prices_from_csv(
+        db, current_user.company_id, rows,
+    )
+    db.commit()
+
+    return UrnPriceImportResponse(
+        matched=result["matched"],
+        updated=result["updated"],
+        not_found=result["not_found"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Catalog sync log
+# ---------------------------------------------------------------------------
 
 
 @router.get("/catalog/sync-log", response_model=list[CatalogSyncLogResponse])

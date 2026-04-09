@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -33,6 +33,21 @@ class UrnProduct(Base):
     style: Mapped[str | None] = mapped_column(String(200), nullable=True)
     available_colors: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # JSON array of color strings
+    color_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Specific color variant name (e.g., "Opal", "Violet")
+    product_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Urn | Memento | Heart | Pendant
+
+    # Dimensions (from Wilbert PDF catalog)
+    height: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    width_or_diameter: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    depth: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    cubic_inches: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Companion / keepsake linkage
+    companion_of_sku: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )  # parent SKU for mementos
 
     # Keepsake sets
     is_keepsake_set: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -53,11 +68,17 @@ class UrnProduct(Base):
         Numeric(12, 2), nullable=True
     )
 
+    # Descriptions (from Wilbert catalog)
+    wilbert_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    wilbert_long_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Catalog references
     image_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    r2_image_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     wilbert_catalog_url: Mapped[str | None] = mapped_column(
         String(2000), nullable=True
     )
+    catalog_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Status
     discontinued: Mapped[bool] = mapped_column(Boolean, default=False)

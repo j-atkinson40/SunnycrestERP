@@ -37,5 +37,12 @@ class UrnCatalogSyncLog(Base):
 
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Ingestion metadata
+    sync_type: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # pdf | website | full_pipeline
+    pdf_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    products_skipped: Mapped[int] = mapped_column(Integer, default=0)
+
     # Relationships
     tenant = relationship("Company", foreign_keys=[tenant_id])

@@ -1,6 +1,14 @@
-"""UrnCatalogScraper — crawls Wilbert's public catalog for urn products."""
+"""UrnCatalogScraper — crawls Wilbert's public catalog for urn product data.
+
+Scrapes wilbert.com category listing pages and individual product detail pages
+to extract descriptions, images, and related product links. Uses real CSS
+selectors discovered during site research (April 2026).
+
+Website is server-rendered ASP.NET WebForms — no JS/headless browser needed.
+"""
 
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
@@ -9,279 +17,251 @@ from sqlalchemy.orm import Session
 from app.models.urn_catalog_sync_log import UrnCatalogSyncLog
 from app.models.urn_product import UrnProduct
 from app.services.wilbert_scraper_config import (
-    CATALOG_BASE_URL,
+    CATEGORY_URLS,
     DETAIL_SELECTORS,
-    FIELD_MAPPING,
+    LISTING_SELECTORS,
     MAX_PRODUCTS_PER_RUN,
-    PRODUCT_SELECTORS,
-    SCRAPE_DELAY_MS,
+    SCRAPE_DELAY_S,
+    SITE_ORIGIN,
     USER_AGENT,
 )
 
 logger = logging.getLogger(__name__)
 
 
+def _get_http_client():
+    """Lazy import httpx to avoid import errors when not installed."""
+    import httpx
+    return httpx.Client(
+        headers={"User-Agent": USER_AGENT},
+        timeout=30,
+        follow_redirects=True,
+    )
+
+
+def _get_soup(html: str):
+    """Lazy import BeautifulSoup."""
+    from bs4 import BeautifulSoup
+    return BeautifulSoup(html, "html.parser")
+
+
 class UrnCatalogScraper:
 
     @staticmethod
-    def run_full_scrape(db: Session, tenant_id: str) -> UrnCatalogSyncLog:
-        """Crawl Wilbert's public catalog and populate UrnProduct table.
+    def scrape_all_categories() -> list[dict]:
+        """Scrape all category listing pages and detail pages.
 
-        Seeds new products; updates existing ones by SKU match.
-        Logs results to UrnCatalogSyncLog.
+        Returns list of product dicts with keys:
+            name, sku (inferred), image_url, catalog_url,
+            short_description, long_description, material,
+            related_items (list of {name, item_number})
         """
-        log = UrnCatalogSyncLog(
-            tenant_id=tenant_id,
-            status="running",
-        )
-        db.add(log)
-        db.commit()
+        client = _get_http_client()
+        all_products = []
 
-        try:
-            products_data = UrnCatalogScraper._fetch_catalog(CATALOG_BASE_URL)
+        for category_name, category_path in CATEGORY_URLS.items():
+            url = SITE_ORIGIN + category_path
+            logger.info("Scraping category: %s (%s)", category_name, url)
 
-            added = 0
-            updated = 0
-            for pdata in products_data[:MAX_PRODUCTS_PER_RUN]:
-                sku = pdata.get("sku")
-                if not sku:
+            try:
+                resp = client.get(url)
+                resp.raise_for_status()
+            except Exception as e:
+                logger.error("Failed to fetch category %s: %s", category_name, e)
+                continue
+
+            soup = _get_soup(resp.text)
+            product_links = soup.select(LISTING_SELECTORS["product_link"])
+
+            seen_urls = set()
+            for link_el in product_links:
+                href = link_el.get("href", "")
+                if not href or href in seen_urls:
                     continue
+                seen_urls.add(href)
 
-                existing = (
-                    db.query(UrnProduct)
-                    .filter(
-                        UrnProduct.tenant_id == tenant_id,
-                        UrnProduct.sku == sku,
-                    )
-                    .first()
+                # Extract name from image alt text
+                img = link_el.select_one("img")
+                listing_name = img.get("alt", "").strip() if img else ""
+                listing_image = ""
+                if img:
+                    src = img.get("src", "")
+                    if src and not src.startswith("http"):
+                        src = SITE_ORIGIN + src
+                    listing_image = src
+
+                # Build full detail URL
+                detail_url = href
+                if not detail_url.startswith("http"):
+                    detail_url = SITE_ORIGIN + detail_url
+
+                all_products.append({
+                    "listing_name": listing_name,
+                    "listing_image": listing_image,
+                    "detail_url": detail_url,
+                    "material": category_name.lower(),
+                    "material_category": category_name,
+                })
+
+                if len(all_products) >= MAX_PRODUCTS_PER_RUN:
+                    break
+
+            time.sleep(SCRAPE_DELAY_S)
+
+        # Now fetch each detail page
+        enriched = []
+        for pdata in all_products:
+            try:
+                detail = UrnCatalogScraper._fetch_detail_page(
+                    client, pdata["detail_url"]
                 )
-
-                if existing:
-                    changed = False
-                    for catalog_field, model_field in FIELD_MAPPING.items():
-                        new_val = pdata.get(catalog_field)
-                        if new_val is not None and getattr(existing, model_field, None) != new_val:
-                            setattr(existing, model_field, new_val)
-                            changed = True
-                    if changed:
-                        existing.discontinued = False
-                        updated += 1
-                else:
-                    product = UrnProduct(
-                        tenant_id=tenant_id,
-                        source_type="drop_ship",
-                        engravable=True,
-                    )
-                    for catalog_field, model_field in FIELD_MAPPING.items():
-                        val = pdata.get(catalog_field)
-                        if val is not None:
-                            setattr(product, model_field, val)
-                    db.add(product)
-                    added += 1
-
-            db.flush()
-
-            log.products_added = added
-            log.products_updated = updated
-            log.status = "completed"
-            log.completed_at = datetime.now(timezone.utc)
-            db.commit()
-
-        except Exception as e:
-            logger.error("Catalog scrape failed: %s", e)
-            db.rollback()
-            log = db.query(UrnCatalogSyncLog).filter(UrnCatalogSyncLog.id == log.id).first()
-            if log:
-                log.status = "failed"
-                log.error_message = str(e)[:2000]
-                log.completed_at = datetime.now(timezone.utc)
-                db.commit()
-
-        return log
-
-    @staticmethod
-    def run_delta_sync(db: Session, tenant_id: str) -> UrnCatalogSyncLog:
-        """Re-crawl known catalog URLs, diff against existing records.
-
-        Soft-discontinues removed products.
-        """
-        log = UrnCatalogSyncLog(
-            tenant_id=tenant_id,
-            status="running",
-        )
-        db.add(log)
-        db.commit()
-
-        try:
-            existing_products = (
-                db.query(UrnProduct)
-                .filter(
-                    UrnProduct.tenant_id == tenant_id,
-                    UrnProduct.source_type == "drop_ship",
-                    UrnProduct.wilbert_catalog_url.isnot(None),
-                    UrnProduct.discontinued == False,
+                if detail:
+                    pdata.update(detail)
+                enriched.append(pdata)
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch detail for %s: %s",
+                    pdata.get("listing_name", "unknown"),
+                    e,
                 )
-                .all()
-            )
+                enriched.append(pdata)  # keep listing data even without detail
 
-            updated = 0
-            discontinued = 0
-            seen_skus = set()
+            time.sleep(SCRAPE_DELAY_S)
 
-            for product in existing_products:
-                try:
-                    page_data = UrnCatalogScraper._fetch_product_page(
-                        product.wilbert_catalog_url
-                    )
-                    if page_data:
-                        changed = False
-                        for catalog_field, model_field in FIELD_MAPPING.items():
-                            new_val = page_data.get(catalog_field)
-                            if new_val is not None and getattr(product, model_field, None) != new_val:
-                                setattr(product, model_field, new_val)
-                                changed = True
-                        if changed:
-                            updated += 1
-                        if product.sku:
-                            seen_skus.add(product.sku)
-                    else:
-                        # Page gone — soft discontinue
-                        product.discontinued = True
-                        discontinued += 1
-
-                    time.sleep(SCRAPE_DELAY_MS / 1000)
-
-                except Exception as e:
-                    logger.warning(
-                        "Failed to sync product %s: %s", product.id, e
-                    )
-
-            log.products_updated = updated
-            log.products_discontinued = discontinued
-            log.status = "completed"
-            log.completed_at = datetime.now(timezone.utc)
-            db.commit()
-
-        except Exception as e:
-            logger.error("Delta sync failed: %s", e)
-            db.rollback()
-            log = db.query(UrnCatalogSyncLog).filter(UrnCatalogSyncLog.id == log.id).first()
-            if log:
-                log.status = "failed"
-                log.error_message = str(e)[:2000]
-                log.completed_at = datetime.now(timezone.utc)
-                db.commit()
-
-        return log
+        client.close()
+        return enriched
 
     @staticmethod
-    def _fetch_catalog(base_url: str) -> list[dict]:
-        """Fetch and parse the Wilbert catalog listing page.
-
-        Returns list of product data dicts extracted using PRODUCT_SELECTORS.
-        """
+    def _fetch_detail_page(client, url: str) -> dict | None:
+        """Fetch a product detail page and extract structured data."""
         try:
-            import httpx
-            resp = httpx.get(
-                base_url,
-                headers={"User-Agent": USER_AGENT},
-                timeout=30,
-                follow_redirects=True,
-            )
-            resp.raise_for_status()
-        except Exception as e:
-            logger.error("Failed to fetch catalog at %s: %s", base_url, e)
-            return []
-
-        try:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(resp.text, "html.parser")
-        except ImportError:
-            logger.error("beautifulsoup4 not installed — cannot parse catalog")
-            return []
-
-        products = []
-        cards = soup.select(PRODUCT_SELECTORS["product_card"])
-        for card in cards:
-            pdata = {}
-            for field, selector in PRODUCT_SELECTORS.items():
-                if field == "product_card":
-                    continue
-                el = card.select_one(selector)
-                if el:
-                    if field == "image":
-                        pdata["image_url"] = el.get("src", "")
-                    elif field == "colors":
-                        pdata["colors"] = [
-                            e.get("title", e.text.strip())
-                            for e in card.select(selector)
-                        ]
-                    elif field == "fonts":
-                        pdata["fonts"] = [
-                            e.text.strip() for e in card.select(selector)
-                        ]
-                    elif field == "detail_link":
-                        href = el.get("href", "")
-                        if href and not href.startswith("http"):
-                            href = base_url.rstrip("/") + "/" + href.lstrip("/")
-                        pdata["catalog_url"] = href
-                    elif field == "photo_etch_badge":
-                        pdata["photo_etch"] = True
-                    elif field == "keepsake_badge":
-                        pdata["is_keepsake"] = True
-                    else:
-                        pdata[field] = el.text.strip()
-
-            if pdata.get("name") or pdata.get("sku"):
-                products.append(pdata)
-
-            time.sleep(SCRAPE_DELAY_MS / 1000)
-
-        return products
-
-    @staticmethod
-    def _fetch_product_page(url: str) -> dict | None:
-        """Fetch and parse a single product detail page.
-
-        Returns product data dict or None if page not found.
-        """
-        try:
-            import httpx
-            resp = httpx.get(
-                url,
-                headers={"User-Agent": USER_AGENT},
-                timeout=30,
-                follow_redirects=True,
-            )
+            resp = client.get(url)
             if resp.status_code == 404:
                 return None
             resp.raise_for_status()
         except Exception as e:
-            logger.warning("Failed to fetch product page %s: %s", url, e)
+            logger.warning("Failed to fetch %s: %s", url, e)
             return None
 
+        soup = _get_soup(resp.text)
+        data = {}
+
+        # Product name
+        name_el = soup.select_one(DETAIL_SELECTORS["product_name"])
+        if name_el:
+            data["name"] = name_el.text.strip()
+
+        # Main image
+        img_el = soup.select_one(DETAIL_SELECTORS["main_image"])
+        if img_el:
+            src = img_el.get("src", "")
+            if src and not src.startswith("http"):
+                src = SITE_ORIGIN + src
+            data["image_url"] = src
+
+            # Infer SKU from image filename (e.g., P2013-CloisonneOpal-750.jpg)
+            sku_match = re.search(DETAIL_SELECTORS["image_sku_regex"], src)
+            if sku_match:
+                data["sku_from_image"] = sku_match.group(1)
+
+        # Short description
+        short_el = soup.select_one(DETAIL_SELECTORS["short_description"])
+        if short_el:
+            data["short_description"] = short_el.text.strip()
+
+        # Long description
+        long_el = soup.select_one(DETAIL_SELECTORS["long_description"])
+        if long_el:
+            data["long_description"] = long_el.text.strip()
+
+        # Related products (mementos, companions)
+        related_section = soup.select_one(DETAIL_SELECTORS["related_section"])
+        if related_section:
+            related_items = []
+            # Extract item numbers from text
+            text = related_section.get_text()
+            item_matches = re.findall(r"Item Number:\s*(P\d{4}|D\d{4})", text)
+            for item_num in item_matches:
+                related_items.append({"item_number": item_num})
+            data["related_items"] = related_items
+
+        data["catalog_url"] = url
+        return data
+
+    @staticmethod
+    def enrich_products_from_web(
+        db: Session,
+        tenant_id: str,
+        products: list[UrnProduct],
+    ) -> tuple[int, int]:
+        """Enrich existing UrnProduct records with website data.
+
+        Matches by SKU (from image filename) or by name similarity.
+        Returns (enriched_count, not_found_count).
+        """
+        web_data = UrnCatalogScraper.scrape_all_categories()
+
+        # Build lookup by SKU and by normalized name
+        by_sku: dict[str, dict] = {}
+        by_name: dict[str, dict] = {}
+        for wd in web_data:
+            sku = wd.get("sku_from_image")
+            if sku:
+                by_sku[sku.upper()] = wd
+            name = wd.get("name") or wd.get("listing_name") or ""
+            # Normalize: "Opal Cloisonne Urn" -> "opal cloisonne"
+            norm_name = re.sub(r"\s+(urn|memento|heart|pendant)$", "", name.lower()).strip()
+            if norm_name:
+                by_name[norm_name] = wd
+
+        enriched = 0
+        not_found = 0
+
+        for product in products:
+            wd = None
+
+            # Try SKU match first
+            if product.sku:
+                wd = by_sku.get(product.sku.upper())
+
+            # Try name match
+            if not wd and product.name:
+                norm = re.sub(r"\s+(urn|memento|heart|pendant)$", "", product.name.lower()).strip()
+                wd = by_name.get(norm)
+
+            if wd:
+                changed = False
+                if wd.get("short_description") and not product.wilbert_description:
+                    product.wilbert_description = wd["short_description"]
+                    changed = True
+                if wd.get("long_description") and not product.wilbert_long_description:
+                    product.wilbert_long_description = wd["long_description"]
+                    changed = True
+                if wd.get("image_url") and not product.image_url:
+                    product.image_url = wd["image_url"]
+                    changed = True
+                if wd.get("catalog_url") and not product.wilbert_catalog_url:
+                    product.wilbert_catalog_url = wd["catalog_url"]
+                    changed = True
+                if changed:
+                    enriched += 1
+            else:
+                not_found += 1
+
+        if enriched > 0:
+            db.flush()
+
+        return enriched, not_found
+
+    @staticmethod
+    def download_product_image(image_url: str) -> bytes | None:
+        """Download a product image from wilbert.com. Returns bytes or None."""
         try:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(resp.text, "html.parser")
-        except ImportError:
+            client = _get_http_client()
+            resp = client.get(image_url)
+            resp.raise_for_status()
+            client.close()
+            return resp.content
+        except Exception as e:
+            logger.warning("Failed to download image %s: %s", image_url, e)
             return None
-
-        pdata = {}
-        for field, selector in {**PRODUCT_SELECTORS, **DETAIL_SELECTORS}.items():
-            if field in ("product_card", "detail_link"):
-                continue
-            el = soup.select_one(selector)
-            if el:
-                if field == "image":
-                    pdata["image_url"] = el.get("src", "")
-                elif field in ("colors", "color_gallery"):
-                    pdata["colors"] = [
-                        e.get("title", e.get("alt", ""))
-                        for e in soup.select(selector)
-                    ]
-                elif field in ("fonts", "font_samples"):
-                    pdata["fonts"] = [e.text.strip() for e in soup.select(selector)]
-                else:
-                    pdata[field] = el.text.strip()
-
-        return pdata if pdata else None

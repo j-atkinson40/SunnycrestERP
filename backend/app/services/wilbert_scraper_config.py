@@ -1,40 +1,89 @@
 """Wilbert catalog scraper configuration.
 
-All Wilbert-specific selectors and field mappings live here.
+All Wilbert-specific URLs, selectors and field mappings live here.
 Zero selectors should be hardcoded in scraper logic.
+
+Based on research crawl of wilbert.com (April 2026):
+- Server-rendered ASP.NET WebForms — no JS required
+- Product images are 750x750 PNG/JPG
+- Detail pages at /{product-slug}/ (root-level, NOT under /store/)
 """
 
-# Wilbert's public catalog root
-CATALOG_BASE_URL = "https://www.wilbert.com/urns"
+# ---------------------------------------------------------------------------
+# URLs
+# ---------------------------------------------------------------------------
 
-# CSS selectors for product data extraction
-PRODUCT_SELECTORS = {
-    "product_card": ".product-card, .product-item",
-    "name": ".product-name, .product-title, h3",
-    "sku": ".product-sku, [data-sku]",
-    "material": ".product-material, .material-type",
-    "style": ".product-style, .style-name",
-    "colors": ".color-option, .color-swatch",
-    "fonts": ".font-option, .font-name",
-    "image": ".product-image img, .product-photo img",
-    "detail_link": "a.product-link, .product-card a",
-    "price": ".product-price, .price",
-    "photo_etch_badge": ".photo-etch, .photo-capable",
-    "keepsake_badge": ".keepsake-set, .companion-set",
-    "companion_items": ".companion-item, .set-piece",
+CATALOG_BASE_URL = "https://www.wilbert.com/store/cremation/urns/"
+
+CATEGORY_URLS = {
+    "Ceramic": "/store/cremation/urns/ceramic/",
+    "Cloisonne": "/store/cremation/urns/cloisonne/",
+    "Cultured Marble": "/store/cremation/urns/cultured-marble/",
+    "Eco": "/store/cremation/urns/eco/",
+    "Glass": "/store/cremation/urns/glass/",
+    "Metal": "/store/cremation/urns/metal/",
+    "Stone": "/store/cremation/urns/stone/",
+    "Synthetic": "/store/cremation/urns/synthetic/",
+    "Wood": "/store/cremation/urns/wood/",
 }
 
-# Selectors for product detail pages
+MEMENTO_URL = "/store/cremation/mementos/"
+JEWELRY_URL = "/store/cremation/memorial-jewelry/"
+
+SITE_ORIGIN = "https://www.wilbert.com"
+
+# ---------------------------------------------------------------------------
+# CSS selectors — Listing page (/store/cremation/urns/{material}/)
+# ---------------------------------------------------------------------------
+
+LISTING_SELECTORS = {
+    # Product grid
+    "product_grid": ".product-list",
+    "product_items": ".product-list > a, .product-list > div > a",
+    "product_image": ".product-list img",
+    "product_name": ".product-list img[alt]",  # name is in alt attribute
+    "product_link": ".product-list a[href]",
+
+    # Category navigation
+    "category_nav": ".sub-nav",
+    "active_category": ".sub-nav a.current",
+    "category_links": ".sub-nav a[href*='/urns/']",
+
+    # Pagination (if exists)
+    "pagination": ".pagination, .pager",
+}
+
+# ---------------------------------------------------------------------------
+# CSS selectors — Product detail page (/{product-slug}/)
+# ---------------------------------------------------------------------------
+
 DETAIL_SELECTORS = {
-    "description": ".product-description, .product-details",
-    "dimensions": ".product-dimensions, .dimensions",
-    "capacity": ".product-capacity, .capacity",
-    "color_gallery": ".color-gallery img, .color-options img",
-    "font_samples": ".font-samples, .available-fonts",
+    # Core product info
+    "product_name": "h1.item-name",
+    "main_image": "#productImage img.main-image",
+    "image_src": "#productImage img.main-image",
+    "schema_product": "div[itemscope][itemtype='http://schema.org/Product']",
+
+    # Descriptions
+    "short_description": "div.item-desc p:first-child",
+    "long_description": "div.item-desc p:nth-child(2)",
+    "all_descriptions": "div.item-desc p",
+
+    # Related products (mementos, companions)
+    "related_section": "div.recommendation",
+    "related_items": "div.recommendation .product-card, div.recommendation a",
+
+    # SKU inference from image filename
+    # Pattern: /(P\d{4}|D\d{4})-/ in img src
+    "image_sku_regex": r"(P\d{4}|D\d{4})",
 }
 
-# Polite crawl delay (milliseconds)
-SCRAPE_DELAY_MS = 1500
+# ---------------------------------------------------------------------------
+# Crawl settings
+# ---------------------------------------------------------------------------
+
+# Polite crawl delay (seconds)
+SCRAPE_DELAY_S = 1.5
 
 # User agent string for scraper requests
 USER_AGENT = (
@@ -45,17 +94,18 @@ USER_AGENT = (
 # Maximum products per scrape run (safety limit)
 MAX_PRODUCTS_PER_RUN = 500
 
-# Field mapping: Wilbert catalog field → UrnProduct model field
+# ---------------------------------------------------------------------------
+# Field mapping: scraped field → UrnProduct model field
+# ---------------------------------------------------------------------------
+
 FIELD_MAPPING = {
     "name": "name",
     "sku": "sku",
     "material": "material",
     "style": "style",
     "colors": "available_colors",
-    "fonts": "available_fonts",
     "image_url": "image_url",
     "catalog_url": "wilbert_catalog_url",
-    "photo_etch": "photo_etch_capable",
-    "is_keepsake": "is_keepsake_set",
-    "companions": "companion_skus",
+    "short_description": "wilbert_description",
+    "long_description": "wilbert_long_description",
 }

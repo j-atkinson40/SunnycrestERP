@@ -19,6 +19,13 @@ class UrnProductCreate(BaseModel):
     material: str | None = None
     style: str | None = None
     available_colors: list[str] | None = None
+    color_name: str | None = None
+    product_type: str | None = None  # Urn | Memento | Heart | Pendant
+    height: str | None = None
+    width_or_diameter: str | None = None
+    depth: str | None = None
+    cubic_inches: int | None = None
+    companion_of_sku: str | None = None
     is_keepsake_set: bool = False
     companion_skus: list[str] | None = None
     engravable: bool = True
@@ -28,6 +35,9 @@ class UrnProductCreate(BaseModel):
     retail_price: Decimal | None = None
     image_url: str | None = None
     wilbert_catalog_url: str | None = None
+    wilbert_description: str | None = None
+    wilbert_long_description: str | None = None
+    catalog_page: int | None = None
 
 
 class UrnProductUpdate(BaseModel):
@@ -36,6 +46,13 @@ class UrnProductUpdate(BaseModel):
     material: str | None = None
     style: str | None = None
     available_colors: list[str] | None = None
+    color_name: str | None = None
+    product_type: str | None = None
+    height: str | None = None
+    width_or_diameter: str | None = None
+    depth: str | None = None
+    cubic_inches: int | None = None
+    companion_of_sku: str | None = None
     is_keepsake_set: bool | None = None
     companion_skus: list[str] | None = None
     engravable: bool | None = None
@@ -45,6 +62,9 @@ class UrnProductUpdate(BaseModel):
     retail_price: Decimal | None = None
     image_url: str | None = None
     wilbert_catalog_url: str | None = None
+    wilbert_description: str | None = None
+    wilbert_long_description: str | None = None
+    catalog_page: int | None = None
     discontinued: bool | None = None
 
 
@@ -68,6 +88,13 @@ class UrnProductResponse(BaseModel):
     material: str | None = None
     style: str | None = None
     available_colors: list[str] | None = None
+    color_name: str | None = None
+    product_type: str | None = None
+    height: str | None = None
+    width_or_diameter: str | None = None
+    depth: str | None = None
+    cubic_inches: int | None = None
+    companion_of_sku: str | None = None
     is_keepsake_set: bool
     companion_skus: list[str] | None = None
     engravable: bool
@@ -75,8 +102,13 @@ class UrnProductResponse(BaseModel):
     available_fonts: list[str] | None = None
     base_cost: Decimal | None = None
     retail_price: Decimal | None = None
+    margin_percent: float | None = None  # computed
     image_url: str | None = None
+    r2_image_key: str | None = None
     wilbert_catalog_url: str | None = None
+    wilbert_description: str | None = None
+    wilbert_long_description: str | None = None
+    catalog_page: int | None = None
     discontinued: bool
     is_active: bool
     inventory: UrnInventoryResponse | None = None
@@ -274,6 +306,9 @@ class CatalogSyncLogResponse(BaseModel):
     products_added: int
     products_updated: int
     products_discontinued: int
+    products_skipped: int = 0
+    sync_type: str | None = None
+    pdf_filename: str | None = None
     status: str
     error_message: str | None = None
 
@@ -319,3 +354,62 @@ class UrnTenantSettingsResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Pricing management
+# ---------------------------------------------------------------------------
+
+
+class UrnPricingUpdate(BaseModel):
+    """Update cost and/or retail price for a single product."""
+    base_cost: Decimal | None = None
+    retail_price: Decimal | None = None
+
+
+class UrnBulkMarkupRequest(BaseModel):
+    """Apply markup to a set of products by material or all."""
+    material: str | None = None  # None = all products
+    product_type: str | None = None  # further filter
+    markup_percent: float  # e.g., 40.0 for 40%
+    rounding: str = "1.00"  # "0.01", "0.50", "1.00", "5.00"
+    only_unpriced: bool = False  # only apply to products without retail_price
+
+
+class UrnBulkMarkupResponse(BaseModel):
+    updated_count: int
+    skipped_count: int
+
+
+class UrnPriceImportRow(BaseModel):
+    sku: str
+    base_cost: Decimal | None = None
+    retail_price: Decimal | None = None
+
+
+class UrnPriceImportRequest(BaseModel):
+    rows: list[UrnPriceImportRow]
+
+
+class UrnPriceImportResponse(BaseModel):
+    matched: int
+    updated: int
+    not_found: list[str] = []  # SKUs that didn't match
+
+
+# ---------------------------------------------------------------------------
+# Catalog ingestion
+# ---------------------------------------------------------------------------
+
+
+class CatalogIngestionRequest(BaseModel):
+    """Request to ingest from Wilbert PDF catalog."""
+    enrich_from_website: bool = True  # also scrape website for descriptions/images
+
+
+class CatalogIngestionResponse(BaseModel):
+    sync_log_id: str
+    products_added: int
+    products_updated: int
+    products_skipped: int
+    status: str
