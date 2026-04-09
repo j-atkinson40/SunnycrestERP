@@ -87,6 +87,24 @@ function getManufacturingNav(
   const sections: NavSection[] = [];
 
   // ── Primary ──
+  // Build Order Station children (Disinterments as sub-item)
+  const orderStationChildren: NavItem[] = filterByPermission(
+    [
+      {
+        label: "Disinterments",
+        href: "/disinterments",
+        icon: "Shovel",
+        permission: "disinterments.view",
+        requiresExtension: "disinterment_management",
+      },
+    ],
+    modules,
+    perms,
+    areas,
+    isAdmin,
+    _extensions,
+  );
+
   const primaryItems: NavItem[] = [
     { label: "Home", href: "/dashboard", icon: "Home" },
     {
@@ -95,6 +113,7 @@ function getManufacturingNav(
       icon: "Zap",
       permission: "ar.view",
       requiresModule: "sales",
+      ...(orderStationChildren.length > 0 ? { children: orderStationChildren } : {}),
     },
     {
       label: "Operations Board",
@@ -121,6 +140,30 @@ function getManufacturingNav(
   const hasSyncError =
     settings.accounting_connection_status === "connected" &&
     settings.last_sync_error;
+
+  // Build Compliance children (SS Certificates + NPCA)
+  const complianceChildren: NavItem[] = filterByPermission(
+    [
+      {
+        label: "SS Certificates",
+        href: "/social-service-certificates",
+        icon: "FileCheck",
+        permission: "invoice.approve",
+      },
+      {
+        label: "NPCA Audit Prep",
+        href: "/npca",
+        icon: "ClipboardCheck",
+        requiresModule: "npca_audit_prep",
+      },
+    ],
+    modules,
+    perms,
+    areas,
+    isAdmin,
+    _extensions,
+  );
+
   const hubItems: NavItem[] = [
     {
       label: "Financials",
@@ -152,88 +195,29 @@ function getManufacturingNav(
       functionalArea: "production_log",
     },
     {
+      label: "Resale",
+      href: "/resale",
+      icon: "Store",
+      isHub: true,
+      requiresExtension: "urn_sales",
+    },
+    {
       label: "Compliance",
       href: "/compliance",
-      icon: "Shield",
+      icon: "ShieldCheck",
       isHub: true,
       isDividerAfter: true,
       permission: "safety.view",
       requiresModule: "safety_management",
+      ...(complianceChildren.length > 0 ? { children: complianceChildren } : {}),
     },
   ];
-  const filteredHubs = filterByPermission(hubItems, modules, perms, areas, isAdmin);
+  const filteredHubs = filterByPermission(hubItems, modules, perms, areas, isAdmin, _extensions);
   if (filteredHubs.length > 0) {
     // Set dividers on first/last of filtered items
     filteredHubs[0].isDividerBefore = true;
     filteredHubs[filteredHubs.length - 1].isDividerAfter = true;
     sections.push({ title: "", items: filteredHubs });
-  }
-
-  // ── Disinterment (extension-gated) ──
-  const disintermentItems: NavItem[] = filterByPermission(
-    [
-      {
-        label: "Disinterments",
-        href: "/disinterments",
-        icon: "Skull",
-        permission: "disinterments.view",
-        requiresExtension: "disinterment_management",
-        isDividerBefore: true,
-      },
-    ],
-    modules,
-    perms,
-    areas,
-    isAdmin,
-    _extensions,
-  );
-  if (disintermentItems.length > 0) {
-    sections.push({ title: "", items: disintermentItems });
-  }
-
-  // ── Urn Sales (extension-gated) ──
-  const urnItems: NavItem[] = filterByPermission(
-    [
-      {
-        label: "Urn Catalog",
-        href: "/urns/catalog",
-        icon: "Package",
-        requiresExtension: "urn_sales",
-      },
-      {
-        label: "Urn Orders",
-        href: "/urns/orders",
-        icon: "ShoppingBag",
-        requiresExtension: "urn_sales",
-      },
-    ],
-    modules,
-    perms,
-    areas,
-    isAdmin,
-    _extensions,
-  );
-  if (urnItems.length > 0) {
-    sections.push({ title: "", items: urnItems });
-  }
-
-  // ── Social Service Certificates ──
-  const sscItems: NavItem[] = filterByPermission(
-    [
-      {
-        label: "SS Certificates",
-        href: "/social-service-certificates",
-        icon: "ShieldCheck",
-        permission: "invoice.approve",
-      },
-    ],
-    modules,
-    perms,
-    areas,
-    isAdmin,
-  );
-  if (sscItems.length > 0) {
-    sections.push({ title: "", items: sscItems });
   }
 
   // ── Tools (Knowledge Base + Legacy Studio collapsible) ──

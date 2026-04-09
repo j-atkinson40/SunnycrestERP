@@ -214,6 +214,8 @@ import UrnOrderForm from "@/pages/urns/urn-order-form";
 import UrnOrdersPage from "@/pages/urns/urn-orders";
 import ProofReviewPage from "@/pages/urns/proof-review";
 import FHApprovalPage from "@/pages/urns/fh-approval";
+import ResaleHub from "@/pages/resale/resale-hub";
+import ResaleInventory from "@/pages/resale/resale-inventory";
 import DisintermentListPage from "@/pages/disinterments/disinterment-list";
 import DisintermentDetailPage from "@/pages/disinterments/disinterment-detail";
 import DisintermentSettingsPage from "@/pages/settings/disinterment-settings";
@@ -426,6 +428,12 @@ export default function App() {
                   <Route path="/urns/orders" element={<UrnOrdersPage />} />
                   <Route path="/urns/orders/new" element={<UrnOrderForm />} />
                   <Route path="/urns/proof-review/:orderId" element={<ProofReviewPage />} />
+
+                  {/* Resale hub — aliases urn pages + stub inventory */}
+                  <Route path="/resale" element={<ResaleHub />} />
+                  <Route path="/resale/catalog" element={<UrnSalesCatalog />} />
+                  <Route path="/resale/orders" element={<UrnOrdersPage />} />
+                  <Route path="/resale/inventory" element={<ResaleInventory />} />
 
                   {/* Customers — requires sales module + customers.view permission */}
                   <Route

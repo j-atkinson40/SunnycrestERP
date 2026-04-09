@@ -635,6 +635,20 @@ Once received:
 
 ## 17. Recent Build Sessions
 
+### Session: April 9, 2026 — Nav Reorganization + Resale Hub Shell
+
+- Created Resale hub (`/resale`) gated by `urn_sales` extension
+- `/resale/catalog` and `/resale/orders` alias existing urn pages
+- `/resale/inventory` stub page added
+- Removed standalone Urn Catalog, Urn Orders, Disinterments top-level nav items
+- Disinterments added as sub-item under Order Station
+- SS Certificates added as sub-item under Compliance (alongside NPCA)
+- Added missing icons: Agents → Bot, Compliance → ShieldCheck, Disinterments → Shovel, Resale → Store
+- Compliance and Order Station use same expand/collapse sub-nav pattern as Legacy Studio
+- Added Store, Shovel, FileCheck, Bot, Shield, ShoppingBag, Boxes, Skull to sidebar ICON_MAP
+
+---
+
 ### Session: April 9, 2026 — Social Service Certificates + Urn Catalog PDF Auto-Fetch
 
 ---
