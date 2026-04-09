@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Loader2, Search } from "lucide-react"
 import apiClient from "@/lib/api-client"
@@ -83,7 +83,7 @@ export default function UrnOrderForm() {
 
     apiClient
       .post("/urns/orders", payload)
-      .then((r) => {
+      .then(() => {
         toast.success("Order created")
         navigate(`/urns/orders`)
       })
