@@ -12,6 +12,8 @@ import {
   ChevronRight,
   AlertTriangle,
   RefreshCw,
+  Trash2,
+  FileUp,
 } from "lucide-react"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
@@ -90,6 +92,10 @@ export default function UrnCatalog() {
   const [showSync, setShowSync] = useState(false)
   const [showBulkMarkup, setShowBulkMarkup] = useState(false)
   const [showCsvImport, setShowCsvImport] = useState(false)
+  const [showProductImport, setShowProductImport] = useState(false)
+  const [showBulkDelete, setShowBulkDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
 
   // Inline price editing
   const [editingPrice, setEditingPrice] = useState<{
@@ -280,6 +286,50 @@ export default function UrnCatalog() {
       .catch(() => toast.error("CSV import failed"))
   }
 
+  const handleProductCsvImport = (file: File) => {
+    const formData = new FormData()
+    formData.append("file", file)
+    apiClient
+      .post("/urns/catalog/import-csv", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => {
+        const d = r.data
+        let msg = `${d.products_created} created, ${d.products_updated} updated`
+        if (d.rows_skipped > 0) msg += `, ${d.rows_skipped} skipped`
+        if (d.errors?.length > 0) msg += `. ${d.errors.length} error(s).`
+        toast.success(msg)
+        setShowProductImport(false)
+        load()
+      })
+      .catch((e) => toast.error(e.response?.data?.detail || "Product import failed"))
+  }
+
+  const handleBulkDelete = () => {
+    setDeleting(true)
+    apiClient
+      .post("/urns/products/bulk-delete", { delete_all: true })
+      .then((r) => {
+        toast.success(`Deleted ${r.data.deleted_count} products`)
+        setShowBulkDelete(false)
+        setDeleteConfirmText("")
+        load()
+      })
+      .catch((e) => toast.error(e.response?.data?.detail || "Delete failed"))
+      .finally(() => setDeleting(false))
+  }
+
+  const handleDeleteSingle = (productId: string, productName: string) => {
+    if (!window.confirm(`Delete "${productName}"? This cannot be undone.`)) return
+    apiClient
+      .delete(`/urns/products/${productId}`)
+      .then(() => {
+        toast.success("Product deleted")
+        load()
+      })
+      .catch((e) => toast.error(e.response?.data?.detail || "Delete failed"))
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -301,6 +351,10 @@ export default function UrnCatalog() {
             <Upload className="mr-2 h-4 w-4" />
             Sync from Wilbert
           </Button>
+          <Button variant="outline" onClick={() => setShowProductImport(true)}>
+            <FileUp className="mr-2 h-4 w-4" />
+            Import CSV
+          </Button>
           <Button variant="outline" onClick={() => setShowBulkMarkup(true)}>
             <Percent className="mr-2 h-4 w-4" />
             Bulk Markup
@@ -309,6 +363,12 @@ export default function UrnCatalog() {
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Import Prices
           </Button>
+          {products.length > 0 && (
+            <Button variant="outline" className="text-red-600 hover:text-red-700" onClick={() => setShowBulkDelete(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete All
+            </Button>
+          )}
           <Button onClick={() => setShowAdd(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Product
@@ -592,6 +652,18 @@ export default function UrnCatalog() {
                                 </div>
                               )}
                             </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 text-red-600 hover:text-red-700"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteSingle(p.id, p.name)
+                              }}
+                            >
+                              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                              Delete Product
+                            </Button>
                           </div>
                         </div>
                       </TableCell>
@@ -898,6 +970,97 @@ export default function UrnCatalog() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCsvImport(false)}>
               Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Full Product CSV Import Dialog */}
+      <Dialog open={showProductImport} onOpenChange={setShowProductImport}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Products from CSV</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Upload a CSV to create or update products. Products with matching SKUs
+              will be updated; new SKUs will be created.
+            </p>
+            <div className="rounded-md bg-muted p-3 text-xs space-y-1">
+              <p className="font-medium">Supported columns:</p>
+              <p>
+                <code>name</code>, <code>sku</code>, <code>material</code>,{" "}
+                <code>product_type</code>, <code>source_type</code>,{" "}
+                <code>height</code>, <code>width</code>, <code>depth</code>,{" "}
+                <code>cubic_inches</code>, <code>engravable</code>,{" "}
+                <code>base_cost</code>, <code>retail_price</code>,{" "}
+                <code>style</code>, <code>color</code>, <code>description</code>
+              </p>
+              <p className="text-muted-foreground mt-1">
+                Only <code>name</code> or <code>sku</code> is required per row.
+                Column names are flexible (e.g., "cost" works for "base_cost").
+              </p>
+            </div>
+            <Input
+              type="file"
+              accept=".csv"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleProductCsvImport(file)
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowProductImport(false)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog open={showBulkDelete} onOpenChange={(open) => {
+        setShowBulkDelete(open)
+        if (!open) setDeleteConfirmText("")
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Delete All Products</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              This will permanently delete <strong>{products.length} products</strong> from your
+              catalog. Products with existing orders will be skipped.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Type <code className="rounded bg-muted px-1 font-bold">DELETE</code> to confirm:
+            </p>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="Type DELETE to confirm"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowBulkDelete(false); setDeleteConfirmText("") }}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={deleteConfirmText !== "DELETE" || deleting}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete All Products
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

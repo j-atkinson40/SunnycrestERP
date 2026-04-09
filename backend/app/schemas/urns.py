@@ -405,6 +405,25 @@ class UrnPriceImportResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class UrnProductCsvImportResponse(BaseModel):
+    """Response from full product CSV import."""
+    products_created: int = 0
+    products_updated: int = 0
+    rows_skipped: int = 0
+    errors: list[str] = []
+
+
+class UrnBulkDeleteRequest(BaseModel):
+    """Request to bulk delete products."""
+    product_ids: list[str] | None = None  # specific IDs
+    source_type: str | None = None  # delete all of this source type
+    delete_all: bool = False  # nuclear option
+
+
+class UrnBulkDeleteResponse(BaseModel):
+    deleted_count: int
+
+
 class CatalogIngestionRequest(BaseModel):
     """Request to ingest from Wilbert PDF catalog."""
     enrich_from_website: bool = True  # also scrape website for descriptions/images

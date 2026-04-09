@@ -213,6 +213,254 @@ class WilbertIngestionService:
         return added, updated, skipped
 
     @staticmethod
+    def import_products_from_csv(
+        db: Session,
+        tenant_id: str,
+        rows: list[dict],
+    ) -> dict:
+        """Import full product data from CSV rows.
+
+        Each row can contain: name, sku, source_type, material, product_type,
+        height, width_or_diameter, depth, cubic_inches, engravable,
+        base_cost, retail_price, style, color_name, wilbert_description, etc.
+
+        Upserts by SKU (if provided), otherwise creates new.
+
+        Returns: {products_created, products_updated, rows_skipped, errors}
+        """
+        from decimal import Decimal, InvalidOperation
+
+        created = 0
+        updated = 0
+        skipped = 0
+        errors = []
+
+        # Normalize column names — accept common variations
+        COLUMN_MAP = {
+            "name": "name",
+            "product_name": "name",
+            "product name": "name",
+            "sku": "sku",
+            "item_number": "sku",
+            "item number": "sku",
+            "item_no": "sku",
+            "source_type": "source_type",
+            "source type": "source_type",
+            "source": "source_type",
+            "material": "material",
+            "material_category": "material",
+            "material category": "material",
+            "product_type": "product_type",
+            "product type": "product_type",
+            "type": "product_type",
+            "height": "height",
+            "width": "width_or_diameter",
+            "width_or_diameter": "width_or_diameter",
+            "diameter": "width_or_diameter",
+            "depth": "depth",
+            "cubic_inches": "cubic_inches",
+            "cubic inches": "cubic_inches",
+            "capacity": "cubic_inches",
+            "engravable": "engravable",
+            "base_cost": "base_cost",
+            "cost": "base_cost",
+            "wholesale_cost": "base_cost",
+            "wholesale": "base_cost",
+            "retail_price": "retail_price",
+            "price": "retail_price",
+            "retail": "retail_price",
+            "selling_price": "retail_price",
+            "style": "style",
+            "color": "color_name",
+            "color_name": "color_name",
+            "description": "wilbert_description",
+            "wilbert_description": "wilbert_description",
+            "companion_of_sku": "companion_of_sku",
+            "companion_of": "companion_of_sku",
+            "catalog_page": "catalog_page",
+            "page": "catalog_page",
+        }
+
+        BOOL_TRUE = {"true", "yes", "1", "y", "x"}
+        BOOL_FALSE = {"false", "no", "0", "n", ""}
+
+        def _normalize_row(raw: dict) -> dict:
+            """Map raw CSV column names to canonical field names."""
+            result = {}
+            for key, val in raw.items():
+                canonical = COLUMN_MAP.get(key.strip().lower())
+                if canonical and val is not None:
+                    v = str(val).strip() if val is not None else ""
+                    if v:
+                        result[canonical] = v
+            return result
+
+        def _parse_bool(val: str) -> bool | None:
+            v = val.strip().lower()
+            if v in BOOL_TRUE:
+                return True
+            if v in BOOL_FALSE:
+                return False
+            return None
+
+        def _parse_decimal(val: str) -> Decimal | None:
+            try:
+                cleaned = val.replace("$", "").replace(",", "").strip()
+                if not cleaned:
+                    return None
+                return Decimal(cleaned)
+            except (InvalidOperation, ValueError):
+                return None
+
+        def _parse_int(val: str) -> int | None:
+            try:
+                cleaned = val.replace(",", "").strip()
+                if not cleaned:
+                    return None
+                return int(float(cleaned))
+            except (ValueError, TypeError):
+                return None
+
+        for i, raw_row in enumerate(rows, start=1):
+            try:
+                row = _normalize_row(raw_row)
+                name = row.get("name", "").strip()
+                sku = row.get("sku", "").strip()
+
+                if not name and not sku:
+                    skipped += 1
+                    continue
+
+                # Try to find existing by SKU
+                existing = None
+                if sku:
+                    existing = (
+                        db.query(UrnProduct)
+                        .filter(
+                            UrnProduct.tenant_id == tenant_id,
+                            UrnProduct.sku == sku,
+                        )
+                        .first()
+                    )
+
+                # Parse fields
+                base_cost = _parse_decimal(row.get("base_cost", ""))
+                retail_price = _parse_decimal(row.get("retail_price", ""))
+                cubic_inches = _parse_int(row.get("cubic_inches", ""))
+                catalog_page = _parse_int(row.get("catalog_page", ""))
+                engravable_val = _parse_bool(row.get("engravable", ""))
+
+                # Normalize source_type
+                source_type = row.get("source_type", "").lower().strip()
+                if source_type not in ("stocked", "drop_ship"):
+                    source_type = "drop_ship"
+
+                if existing:
+                    # Update existing product
+                    changed = False
+                    if name and name != existing.name:
+                        existing.name = name
+                        changed = True
+                    if row.get("material") and row["material"] != existing.material:
+                        existing.material = row["material"]
+                        changed = True
+                    if row.get("product_type") and row["product_type"] != existing.product_type:
+                        existing.product_type = row["product_type"]
+                        changed = True
+                    if row.get("height") and row["height"] != existing.height:
+                        existing.height = row["height"]
+                        changed = True
+                    if row.get("width_or_diameter") and row["width_or_diameter"] != existing.width_or_diameter:
+                        existing.width_or_diameter = row["width_or_diameter"]
+                        changed = True
+                    if row.get("depth") and row["depth"] != existing.depth:
+                        existing.depth = row["depth"]
+                        changed = True
+                    if cubic_inches is not None and cubic_inches != existing.cubic_inches:
+                        existing.cubic_inches = cubic_inches
+                        changed = True
+                    if engravable_val is not None and engravable_val != existing.engravable:
+                        existing.engravable = engravable_val
+                        changed = True
+                    if base_cost is not None:
+                        existing.base_cost = base_cost
+                        changed = True
+                    if retail_price is not None:
+                        existing.retail_price = retail_price
+                        changed = True
+                    if row.get("style") and row["style"] != existing.style:
+                        existing.style = row["style"]
+                        changed = True
+                    if row.get("color_name") and row["color_name"] != existing.color_name:
+                        existing.color_name = row["color_name"]
+                        changed = True
+                    if row.get("wilbert_description") and row["wilbert_description"] != existing.wilbert_description:
+                        existing.wilbert_description = row["wilbert_description"]
+                        changed = True
+                    if row.get("companion_of_sku") and row["companion_of_sku"] != existing.companion_of_sku:
+                        existing.companion_of_sku = row["companion_of_sku"]
+                        changed = True
+                    if catalog_page is not None and catalog_page != existing.catalog_page:
+                        existing.catalog_page = catalog_page
+                        changed = True
+                    if row.get("source_type") and source_type != existing.source_type:
+                        existing.source_type = source_type
+                        changed = True
+
+                    # Re-activate if discontinued
+                    if existing.discontinued:
+                        existing.discontinued = False
+                        changed = True
+                    if not existing.is_active:
+                        existing.is_active = True
+                        changed = True
+
+                    if changed:
+                        updated += 1
+                else:
+                    # Create new product
+                    if not name:
+                        name = sku or f"Product Row {i}"
+
+                    product = UrnProduct(
+                        tenant_id=tenant_id,
+                        name=name,
+                        sku=sku or None,
+                        source_type=source_type,
+                        material=row.get("material"),
+                        product_type=row.get("product_type"),
+                        height=row.get("height"),
+                        width_or_diameter=row.get("width_or_diameter"),
+                        depth=row.get("depth"),
+                        cubic_inches=cubic_inches,
+                        engravable=engravable_val if engravable_val is not None else True,
+                        base_cost=base_cost,
+                        retail_price=retail_price,
+                        style=row.get("style"),
+                        color_name=row.get("color_name"),
+                        wilbert_description=row.get("wilbert_description"),
+                        companion_of_sku=row.get("companion_of_sku"),
+                        catalog_page=catalog_page,
+                        is_keepsake_set=row.get("product_type", "") in ("Memento", "Heart"),
+                    )
+                    db.add(product)
+                    created += 1
+
+            except Exception as e:
+                errors.append(f"Row {i}: {str(e)[:200]}")
+                skipped += 1
+
+        if created > 0 or updated > 0:
+            db.flush()
+
+        return {
+            "products_created": created,
+            "products_updated": updated,
+            "rows_skipped": skipped,
+            "errors": errors[:20],  # cap at 20 error messages
+        }
+
+    @staticmethod
     def apply_bulk_markup(
         db: Session,
         tenant_id: str,

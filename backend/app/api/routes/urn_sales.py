@@ -22,6 +22,8 @@ from app.schemas.urns import (
     DropShipFeedItemResponse,
     FHApprovalRequest,
     FHChangeRequest,
+    UrnBulkDeleteRequest,
+    UrnBulkDeleteResponse,
     UrnBulkMarkupRequest,
     UrnBulkMarkupResponse,
     UrnEngravingJobResponse,
@@ -33,6 +35,7 @@ from app.schemas.urns import (
     UrnPriceImportResponse,
     UrnPricingUpdate,
     UrnProductCreate,
+    UrnProductCsvImportResponse,
     UrnProductResponse,
     UrnProductSearchResult,
     UrnProductUpdate,
@@ -130,6 +133,141 @@ def update_product(
 
     return UrnProductService.update_product(
         db, current_user.company_id, product_id, data,
+    )
+
+
+@router.delete("/products/{product_id}")
+def delete_product(
+    product_id: str,
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Hard-delete a single urn product (only if no orders reference it)."""
+    from app.models.urn_product import UrnProduct
+    from app.models.urn_order import UrnOrder
+
+    product = (
+        db.query(UrnProduct)
+        .filter(
+            UrnProduct.id == product_id,
+            UrnProduct.tenant_id == current_user.company_id,
+        )
+        .first()
+    )
+    if not product:
+        raise HTTPException(404, "Product not found")
+
+    # Check if any orders reference this product
+    order_count = (
+        db.query(UrnOrder)
+        .filter(UrnOrder.urn_product_id == product_id)
+        .count()
+    )
+    if order_count > 0:
+        raise HTTPException(
+            409,
+            f"Cannot delete — {order_count} order(s) reference this product. "
+            "Mark it discontinued instead.",
+        )
+
+    db.delete(product)
+    db.commit()
+    return {"deleted": True, "product_id": product_id}
+
+
+@router.post("/products/bulk-delete", response_model=UrnBulkDeleteResponse)
+def bulk_delete_products(
+    data: UrnBulkDeleteRequest,
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Bulk delete urn products.
+
+    Three modes:
+    - product_ids: delete specific products by ID
+    - source_type: delete all products of that source type
+    - delete_all: delete all urn products for this tenant
+
+    Products with existing orders are skipped (not deleted).
+    """
+    from app.models.urn_product import UrnProduct
+    from app.models.urn_order import UrnOrder
+
+    q = db.query(UrnProduct).filter(
+        UrnProduct.tenant_id == current_user.company_id,
+    )
+
+    if data.product_ids:
+        q = q.filter(UrnProduct.id.in_(data.product_ids))
+    elif data.source_type:
+        q = q.filter(UrnProduct.source_type == data.source_type)
+    elif data.delete_all:
+        pass  # no additional filter
+    else:
+        raise HTTPException(400, "Provide product_ids, source_type, or delete_all=true")
+
+    products = q.all()
+
+    # Find products with orders — skip those
+    product_ids = [p.id for p in products]
+    if product_ids:
+        ordered_ids = set(
+            pid
+            for (pid,) in db.query(UrnOrder.urn_product_id)
+            .filter(UrnOrder.urn_product_id.in_(product_ids))
+            .distinct()
+            .all()
+        )
+    else:
+        ordered_ids = set()
+
+    deleted = 0
+    for p in products:
+        if p.id in ordered_ids:
+            continue
+        db.delete(p)
+        deleted += 1
+
+    if deleted > 0:
+        db.commit()
+
+    return UrnBulkDeleteResponse(deleted_count=deleted)
+
+
+@router.post("/catalog/import-csv", response_model=UrnProductCsvImportResponse)
+def import_products_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Import full product data from CSV.
+
+    Creates new products or updates existing (matched by SKU).
+
+    Supported columns (flexible naming):
+      name, sku, source_type, material, product_type, height, width,
+      depth, cubic_inches, engravable, base_cost, retail_price, style,
+      color, description, companion_of_sku, catalog_page
+    """
+    from app.services.wilbert_ingestion_service import WilbertIngestionService
+
+    content = file.file.read().decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(content))
+
+    rows = []
+    for row in reader:
+        rows.append(dict(row))
+
+    result = WilbertIngestionService.import_products_from_csv(
+        db, current_user.company_id, rows,
+    )
+    db.commit()
+
+    return UrnProductCsvImportResponse(
+        products_created=result["products_created"],
+        products_updated=result["products_updated"],
+        rows_skipped=result["rows_skipped"],
+        errors=result["errors"],
     )
 
 
