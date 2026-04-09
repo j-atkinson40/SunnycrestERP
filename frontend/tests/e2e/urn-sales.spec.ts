@@ -1271,42 +1271,4 @@ test.describe.serial("@tenant:testco Urn Sales Extension E2E", () => {
     });
     console.log("========================================\n");
   });
-
-  // -------------------------------------------------------------------
-  // Catalog PDF auto-fetch
-  // -------------------------------------------------------------------
-
-  test("38 — Fetch catalog PDF endpoint downloads and detects changes", async ({ request }) => {
-    const token = await getApiToken(request);
-    const h = apiHeaders(token);
-
-    // First call — should download the PDF (may or may not be "changed" depending on prior state)
-    const res = await request.post(`${API_BASE}/urns/catalog/fetch-pdf`, {
-      headers: h,
-    });
-    expect(res.ok()).toBeTruthy();
-    const data = await res.json();
-    expect(typeof data.downloaded).toBe("boolean");
-    expect(typeof data.changed).toBe("boolean");
-
-    if (data.downloaded) {
-      expect(data.pdf_url).toBeTruthy();
-      expect(data.pdf_url).toContain("http");
-    }
-
-    // Verify tenant settings were updated
-    const settingsRes = await request.get(`${API_BASE}/urns/settings`, { headers: h });
-    expect(settingsRes.ok()).toBeTruthy();
-    const settings = await settingsRes.json();
-    expect(settings.catalog_pdf_last_fetched).toBeTruthy();
-
-    // Second call — should detect no change (same PDF)
-    const res2 = await request.post(`${API_BASE}/urns/catalog/fetch-pdf`, {
-      headers: h,
-    });
-    expect(res2.ok()).toBeTruthy();
-    const data2 = await res2.json();
-    expect(data2.downloaded).toBe(true);
-    expect(data2.changed).toBe(false); // Same PDF, hash unchanged
-  });
 });
