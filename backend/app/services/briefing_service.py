@@ -1527,6 +1527,78 @@ def _get_permission_based_items(db: Session, user: User) -> list[str]:
         except Exception:
             pass
 
+    # safety.trainer.view → safety program generation status
+    if "safety.trainer.view" in perms:
+        try:
+            from app.models.safety_program_generation import SafetyProgramGeneration
+            from datetime import datetime as _dt, timezone as _tz
+
+            now = _dt.now(_tz.utc)
+            current_month = now.month
+            current_year = now.year
+
+            # Check for pending review programs
+            pending_review = (
+                db.query(SafetyProgramGeneration)
+                .filter(
+                    SafetyProgramGeneration.tenant_id == user.company_id,
+                    SafetyProgramGeneration.status == "pending_review",
+                )
+                .count()
+            )
+            if pending_review > 0:
+                items.append(
+                    f"{pending_review} written safety program(s) awaiting your review and approval."
+                )
+
+            # Check if this month's program has been generated
+            this_month_gen = (
+                db.query(SafetyProgramGeneration)
+                .filter(
+                    SafetyProgramGeneration.tenant_id == user.company_id,
+                    SafetyProgramGeneration.year == current_year,
+                    SafetyProgramGeneration.month_number == current_month,
+                )
+                .first()
+            )
+            if not this_month_gen:
+                from app.models.tenant_training_schedule import TenantTrainingSchedule as _TTS
+                from app.models.safety_training_topic import SafetyTrainingTopic as _STT
+
+                schedule = (
+                    db.query(_TTS)
+                    .filter(
+                        _TTS.tenant_id == user.company_id,
+                        _TTS.year == current_year,
+                        _TTS.month_number == current_month,
+                    )
+                    .first()
+                )
+                if schedule:
+                    topic = db.query(_STT).filter(_STT.id == schedule.topic_id).first()
+                    topic_name = topic.title if topic else "this month's topic"
+                    items.append(
+                        f"No written safety program generated yet for {topic_name}. "
+                        f"Generate one from the Safety Programs page."
+                    )
+
+            # Check for failed generations
+            failed = (
+                db.query(SafetyProgramGeneration)
+                .filter(
+                    SafetyProgramGeneration.tenant_id == user.company_id,
+                    SafetyProgramGeneration.generation_status == "failed",
+                    SafetyProgramGeneration.year == current_year,
+                )
+                .count()
+            )
+            if failed > 0:
+                items.append(
+                    f"{failed} safety program generation(s) failed — check error details and retry."
+                )
+        except Exception:
+            pass
+
     # Check custom permissions with notification_routing
     try:
         from app.models.custom_permission import CustomPermission

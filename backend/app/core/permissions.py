@@ -86,6 +86,7 @@ PERMISSION_CATEGORIES: dict[str, dict[str, list[str]]] = {
         "routes": ["view", "create", "edit", "delete", "dispatch"],
         "carriers": ["view", "create", "edit", "delete"],
         "safety": ["view", "create", "edit", "delete"],
+        "safety.trainer": ["view", "generate", "approve"],
         "announcements": ["view", "create", "edit", "delete"],
         # Funeral home modules
         "fh_cases": ["view", "create", "edit", "delete"],
@@ -223,6 +224,10 @@ PERMISSION_DISPLAY_NAMES: dict[str, str] = {
     "disinterment_settings.manage": "Manage Disinterment Settings",
     "union_rotations.view": "View Union Rotation Lists",
     "union_rotations.manage": "Manage Union Rotation Lists",
+    # Safety trainer
+    "safety.trainer.view": "View Safety Programs",
+    "safety.trainer.generate": "Generate Safety Programs",
+    "safety.trainer.approve": "Approve Safety Programs",
 }
 
 

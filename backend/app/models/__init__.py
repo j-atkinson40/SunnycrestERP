@@ -184,6 +184,7 @@ from app.models.safety_inspection import (
 )
 from app.models.safety_loto import SafetyLotoProcedure
 from app.models.safety_program import SafetyProgram
+from app.models.safety_program_generation import SafetyProgramGeneration
 from app.models.safety_training import (
     EmployeeTrainingRecord,
     SafetyTrainingEvent,
@@ -429,6 +430,7 @@ __all__ = [
     "SafetyInspectionTemplate",
     "SafetyLotoProcedure",
     "SafetyProgram",
+    "SafetyProgramGeneration",
     "SafetyTrainingEvent",
     "SafetyTrainingRequirement",
     "PlatformTenantRelationship",

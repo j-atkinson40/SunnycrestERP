@@ -263,6 +263,12 @@ def job_onboarding_pattern():
     logger.info(f"[ONBOARDING_PATTERN] Complete: {success} ok, {errors} errors")
 
 
+def job_safety_program_generation():
+    """Monthly 1st at 6am — generate written safety programs for the month."""
+    from app.services.safety_program_generation_service import run_monthly_generation
+    _run_per_tenant("SAFETY_PROGRAM_GENERATION", run_monthly_generation)
+
+
 def job_price_version_activation():
     """Midnight job — activate any scheduled price versions whose effective date has arrived."""
     from app.services.price_increase_service import activate_scheduled_versions
@@ -396,6 +402,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "price_version_activation": job_price_version_activation,
     "platform_health_recalculate": job_platform_health_recalculate,
     "platform_incident_dispatcher": job_platform_incident_dispatcher,
+    "safety_program_generation": job_safety_program_generation,
 }
 
 
@@ -556,6 +563,16 @@ def register_all_jobs():
         name="platform_incident_dispatcher",
         replace_existing=True,
         misfire_grace_time=900,
+    )
+
+    # MONTHLY 1st at 6am — safety program generation
+    scheduler.add_job(
+        job_safety_program_generation,
+        CronTrigger(day=1, hour=6, minute=0),
+        id="safety_program_generation",
+        name="safety_program_generation",
+        replace_existing=True,
+        misfire_grace_time=86400,
     )
 
     # DAILY at midnight ET — price version activation

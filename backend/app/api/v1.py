@@ -106,6 +106,7 @@ from app.api.routes import (
     purchase_orders,
     qc,
     safety,
+    safety_program_generation,
     safety_training_system,
     statements,
     roles,
@@ -472,6 +473,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     qc.router, prefix="/qc", tags=["Quality Control"]
+)
+v1_router.include_router(
+    safety_program_generation.router,
+    prefix="/safety/programs",
+    tags=["Safety Program Generation"],
 )
 v1_router.include_router(
     safety.router, prefix="/safety", tags=["Safety Management"]
