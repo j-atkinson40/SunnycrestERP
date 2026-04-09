@@ -25,6 +25,9 @@
 | APScheduler | >=3.10.0 |
 | Anthropic SDK | >=0.42.0 |
 | PostgreSQL | 16 |
+| PyMuPDF (fitz) | >=1.24 |
+| httpx | >=0.27 |
+| BeautifulSoup4 | >=4.12 |
 | Uvicorn | 0.34.0 |
 
 ### Frontend
@@ -73,7 +76,9 @@ Singleton registry (`frontend/src/services/operations-board-registry.ts`) where 
 - **Accounting Analysis**: Uses `claude-haiku-4-5-20250514` for COA classification (confidence threshold 0.85 for auto-approve)
 
 ### Extension System
-Extensions (Wastewater, Redi-Rock, Rosetta, NPCA Audit Prep) are tracked in `tenant_extensions`. When enabled, they register contributors to the Operations Board registry, add navigation items, and unlock features. Core modules are always available; extensions are per-tenant opt-in.
+Extensions (Wastewater, Redi-Rock, Rosetta, NPCA Audit Prep, Urn Sales) are tracked in `tenant_extensions`. When enabled, they register contributors to the Operations Board registry, add navigation items, and unlock features. Core modules are always available; extensions are per-tenant opt-in.
+
+**Urn Sales:** `urn_sales` extension — full urn product catalog, order lifecycle (stocked + drop-ship), two-gate engraving proof approval, Wilbert catalog ingestion pipeline, pricing tools. All routes gated by `require_extension("urn_sales")`. 6 tables, 41 API endpoints, 37 E2E tests.
 
 **NPCA:** `npca_audit_prep` is a proper extension. All dashboard elements and nav items are gated by `hasModule("npca_audit_prep")`. Auto-enables when `npca_certification_status = "certified"` is set during platform admin tenant setup.
 
@@ -129,11 +134,18 @@ backend/
 │   │   ├── onboarding_service.py    # MANUFACTURING_CHECKLIST_ITEMS
 │   │   ├── accounting_analysis_service.py  # COA AI analysis (Haiku)
 │   │   ├── accounting/              # QBO + Sage providers
+│   │   ├── urn_product_service.py   # Urn CRUD + AI search
+│   │   ├── urn_order_service.py     # Urn order lifecycle + scheduling feeds
+│   │   ├── urn_engraving_service.py # Two-gate proof approval, Wilbert form PDF
+│   │   ├── wilbert_pdf_parser.py    # PyMuPDF catalog parser (259 SKUs)
+│   │   ├── wilbert_ingestion_service.py  # PDF→upsert→web enrich orchestrator
+│   │   ├── urn_catalog_scraper.py   # Wilbert.com web scraper
+│   │   ├── wilbert_scraper_config.py # CSS selectors + category URLs
 │   │   └── ...
 │   ├── api/
-│   │   ├── v1.py            # Route aggregator (92 modules registered)
+│   │   ├── v1.py            # Route aggregator (94+ modules registered)
 │   │   ├── deps.py          # Auth dependencies (get_current_user, require_admin)
-│   │   ├── routes/          # 102 route files, 904 total endpoints
+│   │   ├── routes/          # 104 route files, 945+ total endpoints
 │   │   └── platform.py      # Platform admin routes
 │   ├── core/
 │   │   └── security.py      # JWT + bcrypt utilities
@@ -141,7 +153,7 @@ backend/
 │       └── __init__.py      # Job handler registry
 ├── alembic/
 │   ├── env.py               # Idempotent op wrappers
-│   └── versions/            # 112 migration files
+│   └── versions/            # 114 migration files
 ├── data/
 │   ├── us-county-tax-rates.json
 │   └── us-zip-county-mapping.json
@@ -151,7 +163,7 @@ backend/
 
 frontend/
 ├── src/
-│   ├── App.tsx              # 146 route definitions, platform admin detection
+│   ├── App.tsx              # 150+ route definitions, platform admin detection
 │   ├── contexts/
 │   │   └── auth-context.tsx # JWT auth state, token refresh
 │   ├── lib/
@@ -167,6 +179,11 @@ frontend/
 │   │   ├── confirmation-card.tsx
 │   │   └── protected-route.tsx
 │   ├── pages/               # Page components organized by feature
+│   │   ├── urns/
+│   │   │   ├── urn-catalog.tsx      # Product catalog + pricing + sync
+│   │   │   ├── urn-orders.tsx       # Order dashboard + status filters
+│   │   │   ├── urn-order-form.tsx   # Create/edit order
+│   │   │   └── proof-approval.tsx   # Public FH proof approval (token)
 │   │   └── compliance/
 │   │       └── npca-audit-prep.tsx  # Placeholder — feature not yet built
 │   ├── services/
@@ -286,6 +303,20 @@ First live tenant: `sunnycrest.getbridgeable.com`
 | Cross-Licensee Transfers | Built | `licensee_transfer.py`, `licensee_transfer_service.py` |
 | Inter-Licensee Pricing | Built | `inter_licensee_pricing.py` |
 
+### Urn Sales Extension
+| Feature | Status | Key Files |
+|---------|--------|-----------|
+| Urn Product Catalog | Built | `urn_product.py`, `urn_product_service.py`, `urn-catalog.tsx` |
+| Wilbert PDF Ingestion | Built | `wilbert_pdf_parser.py`, `wilbert_ingestion_service.py` |
+| Website Enrichment | Built | `urn_catalog_scraper.py`, `wilbert_scraper_config.py` |
+| Pricing Tools (inline, bulk, CSV) | Built | `wilbert_ingestion_service.py`, `urn-catalog.tsx` |
+| Stocked + Drop Ship Orders | Built | `urn_order.py`, `urn_order_service.py` |
+| Engraving Workflow (two-gate) | Built | `urn_engraving_job.py`, `urn_engraving_service.py` |
+| FH Proof Approval (token-based) | Built | `urn_engraving_service.py`, `proof-approval.tsx` |
+| Scheduling Board Integration | Built | `urn_order_service.py` (ancillary + drop-ship feeds) |
+| Urn Inventory Tracking | Built | `urn_inventory.py` |
+| Tenant Settings | Built | `urn_tenant_settings.py` |
+
 ### Safety & Compliance
 | Feature | Status | Key Files |
 |---------|--------|-----------|
@@ -352,19 +383,20 @@ All jobs use `_run_per_tenant()` or `_run_global()` wrappers with per-session DB
 
 | Metric | Count |
 |--------|-------|
-| Database tables | ~250 |
-| ORM model files | 157+ |
-| ORM model exports (`__init__.py`) | 170+ |
-| API route files | 102+ |
-| API endpoints | 904+ |
-| Route modules registered in v1.py | 92+ |
-| Frontend routes | 146+ |
-| Backend service files | 109+ |
-| Migration files | 112+ |
-| Migration head | `r10_agent_infra` |
+| Database tables | ~256 |
+| ORM model files | 163+ |
+| ORM model exports (`__init__.py`) | 176+ |
+| API route files | 104+ |
+| API endpoints | 945+ |
+| Route modules registered in v1.py | 94+ |
+| Frontend routes | 150+ |
+| Backend service files | 115+ |
+| Migration files | 114 |
+| Migration head | `r12_urn_catalog_ingestion` |
 | Agent jobs (scheduled) | 13 |
 | Accounting agents (registered) | 12/12 (complete) |
 | Accounting agent tests | 105 passing |
+| Urn Sales E2E tests | 37/37 passing |
 | Agent jobs (not yet built) | ~30 |
 | TypeScript errors | 0 |
 | Backend import errors | 0 |
@@ -492,6 +524,7 @@ Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` in
 
 ### Product Lines
 - **Funeral Service** (core) — burial vaults, urn vaults, cemetery equipment
+- **Urn Sales** (extension) — cremation urns (stocked + Wilbert drop-ship), engraving workflow, Wilbert catalog ingestion
 - **Wastewater** (extension) — septic tanks, precast wastewater products
 - **Redi-Rock** (extension) — retaining wall blocks for contractors
 - **Rosetta Hardscapes** (extension) — hardscape products
@@ -506,6 +539,8 @@ Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` in
 
 ## 13. Recent Changes
 
+- **Wilbert Urn Catalog Ingestion Pipeline:** Full ingestion system for Wilbert's 88-page PDF catalog. `wilbert_pdf_parser.py`: PyMuPDF-based line-by-line state machine parser extracts 259 products with SKUs (P-prefix urns, D-prefix jewelry), dimensions (height, width/diameter, depth, cubic inches), engravability flags, material categories (Metal/Wood/Stone/Glass/Ceramic/etc.), companion/memento linkage, and catalog page numbers. `wilbert_ingestion_service.py`: orchestrator with `ingest_from_pdf()` (PDF→upsert by SKU), `apply_bulk_markup()` (cost→retail with rounding), `import_prices_from_csv()`. `urn_catalog_scraper.py`: rewritten with real CSS selectors from wilbert.com research crawl (`.product-list`, `h1.item-name`, `div.item-desc p`, `#productImage img.main-image`), 9 category URLs, SKU inference from image filenames, `enrich_products_from_web()` for descriptions/images. `wilbert_scraper_config.py`: all real selectors, category URLs, site origin. Migration `r12_urn_catalog_ingestion`: 11 new columns on `urn_products` (height, width_or_diameter, depth, cubic_inches, product_type, companion_of_sku, wilbert_description, wilbert_long_description, color_name, catalog_page, r2_image_key), 3 new columns on `urn_catalog_sync_logs` (sync_type, pdf_filename, products_skipped), 2 new indexes. 6 new API endpoints: `POST /urns/catalog/ingest-pdf` (file upload), `POST /urns/catalog/enrich-from-web`, `PATCH /urns/products/{id}/pricing`, `POST /urns/pricing/bulk-markup`, `POST /urns/pricing/import-csv`, `POST /urns/pricing/import-json`. Frontend `urn-catalog.tsx` rewritten: pricing columns (Cost, Retail, Margin%) with inline click-to-edit, "Sync from Wilbert" dialog (PDF upload + optional web enrichment), Bulk Markup tool (filter by material/type, % + rounding), CSV Price Import, material/type filter dropdowns, expandable detail rows (dimensions, descriptions, companion links), unpriced product amber warnings. Design decisions: prices uploaded/entered in-platform (no WilbertDirect scraping), Wilbert marketing materials/images OK (licensee rights), font options deferred to tenant settings.
+- **Urn Sales Extension (Complete):** Full urn sales lifecycle as a tenant extension (`urn_sales`). 6 tables: `urn_products` (product catalog with stocked/drop-ship source), `urn_inventory` (stocked product tracking), `urn_orders` (order management with fulfillment_type), `urn_engraving_jobs` (two-gate proof approval), `urn_tenant_settings` (configurable lead times, approval windows), `urn_catalog_sync_logs` (sync audit trail). `urn_product_service.py`: CRUD + AI-powered search (Claude extracts search terms, ILIKE query with relevance scoring). `urn_order_service.py`: create/confirm/cancel/deliver lifecycle, stocked inventory reservation on confirm, auto-release on cancel, ancillary items for scheduling board (configurable window, default 3 days), drop-ship visibility feed, search by FH/decedent. `urn_engraving_service.py`: two-gate proof approval — Gate 1: FH approval via token-based email (72hr expiry, no auth required), Gate 2: staff approve/reject. Wilbert form generation (PDF via weasyprint). Auto-send FH email when `fh_contact_email` exists on proof upload. Keepsake set support: scaffolds N engraving jobs from companion_skus, propagate specs to companions, all-jobs approval gate. Verbal approval flagging (stores transcript excerpt, does NOT auto-approve). Correction summary for resubmissions. `urn_intake_agent.py`: email intake + proof matching. 41 API endpoints under `/api/v1/urns/`. Frontend: `urn-catalog.tsx` (product management), `urn-orders.tsx` (order dashboard with status filters), `urn-order-form.tsx` (create order), `proof-approval.tsx` (public FH approval page). Migration `r11_urn_sales`. Extension gated via `require_extension("urn_sales")`. 37 E2E Playwright tests (all passing).
 - **Year-End Close + Tax Package Agents (Phases 11 & 12) — ACCOUNTING AGENT SUITE COMPLETE:** YearEndCloseAgent (Phase 11): Extends MonthEndCloseAgent (not BaseAgent) — inherits all 8 month-end steps + 5 new year-end steps (13 total). execute() validates Dec 1–Dec 31 period, fails immediately if invalid. New steps: full_year_summary (full year + 4 quarters income statement, vs approved AnnualBudgetAgent with 15% variance threshold, vs prior year), depreciation_review (JournalEntryLine pattern matching for depreciation/amortization, 20% monthly variance threshold excluding December), accruals_review (December accrual keyword matching with January reversal check), inventory_valuation (InventoryItem × Product.cost_price, flags no-cost products), retained_earnings_summary (net income from step 9, distribution keyword matching, beginning RE from equity accounts). Uses FULL approval path (statement run + period lock, same as MonthEndCloseAgent). TaxPackageAgent (Phase 12): READ-ONLY capstone agent, extends BaseAgent. 5 steps: collect_agent_outputs (queries completed agent_jobs for tax year, groups by job_type, tracks month_end_closes 0-12), assess_completeness (CRITICAL gaps: missing year_end_close/1099_prep, WARNING: months not closed/missing tax estimates, INFO: optional agents; readiness_score = required_score × 0.6 + recommended_score × 0.4), compile_financial_statements (extracts from year_end_close report_payload), compile_supporting_schedules (6 schedules: A=1099 vendors, B=tax estimates, C=inventory, D=AR aging, E=budget vs actual, F=anomaly summary), generate_report (professional HTML with cover page, TOC, financial statements, supporting schedules, CPA disclaimer). Uses SIMPLE approval (no period lock). All 12 AgentJobType enum values now registered in AgentRunner. 19 tests in `test_phase_11_12_agents.py`. Total agent tests: 105 passing.
 - **1099 Prep + Annual Budget Agents (Phases 10 & 13):** Prep1099Agent: 4 steps (compute vendor payment totals via VendorPaymentApplication.amount_applied, classify 1099 eligibility — INCLUDE/NEEDS_REVIEW/BELOW_THRESHOLD based on is_1099_vendor flag and $600 IRS threshold, flag data gaps — missing tax IDs CRITICAL, unreviewed vendors WARNING, w9_tracking_not_implemented INFO always, orphaned payments WARNING, generate HTML report with filing deadline banner and CPA disclaimer). `mask_tax_id()` helper — never stores or displays full tax IDs. AnnualBudgetAgent: 5 steps (pull prior year actuals via get_income_statement for full year + 4 quarters, compute quarterly seasonal shares, apply growth assumptions — defaults 5% rev / 3% COGS / 3% expense overridable via report_payload.assumptions, generate budget lines with quarterly_breakdown matching Phase 9 _extract_budget_for_period contract Q1-Q4 keys, generate HTML report with assumptions banner and scenario re-run guidance). Flags budget_projects_loss WARNING if net income < 0. Budget stored at report_payload.budget for Phase 9 consumption. Both added to SIMPLE_APPROVAL_TYPES — no financial writes, no period lock. 10 agents now registered in AgentRunner. 17 tests in `test_phase_10_13_agents.py`. Total agent tests: 86 passing.
 - **Inventory Reconciliation + Budget vs. Actual Agents (Phases 8–9):** InventoryReconciliationAgent: 6 steps (snapshot current inventory with last transaction lookup, verify transaction integrity — InventoryItem.quantity_on_hand vs InventoryTransaction.quantity_after, compute reserved quantity from confirmed/processing SalesOrderLines, reconcile production vs deliveries — two-method comparison of transaction ledger vs ProductionLogEntry-minus-delivered, check physical count freshness with 90/180 day thresholds, generate HTML report). Anomaly types: `inventory_balance_mismatch` (CRITICAL), `inventory_no_transaction_history`, `inventory_oversold` (CRITICAL), `inventory_at_risk`, `inventory_reconciliation_variance` (WARNING ≤2 units, CRITICAL >2), `inventory_unplanned_production`, `inventory_count_overdue`, `inventory_large_count_adjustment`. BudgetVsActualAgent: 4 steps (get income statement for period + YTD via get_income_statement(), get comparison basis with priority: formal_budget > prior_year_same_period > prior_quarter > none, compute variances at summary + GL line level with 15% threshold, generate HTML report with comparison basis banner). Favorable direction: revenue/gross_profit/net_income ABOVE = favorable; COGS/expenses BELOW = favorable. Both added to SIMPLE_APPROVAL_TYPES — no financial writes, no period lock on approval. 8 agents now registered in AgentRunner. 16 tests in `test_phase_8_9_agents.py`. Total agent tests: 69 passing.
@@ -568,6 +603,97 @@ Once received:
 - Migrate FastAPI `@app.on_event` to lifespan context manager
 
 ## 16. Recent Build Sessions
+
+### Session: April 9, 2026 — Urn Sales Extension + Wilbert Catalog Ingestion Pipeline
+
+---
+
+#### Urn Sales Extension (Complete)
+
+Full urn sales lifecycle as a tenant extension (`urn_sales`), gated by `require_extension("urn_sales")`.
+
+**Tables (6):** `urn_products`, `urn_inventory`, `urn_orders`, `urn_engraving_jobs`, `urn_tenant_settings`, `urn_catalog_sync_logs`
+
+**Two fulfillment paths:**
+- **Stocked**: Inventory reserved on confirm, released on cancel, decremented on deliver
+- **Drop Ship**: Ordered from Wilbert, tracked via `wilbert_order_ref` + `tracking_number`
+
+**Engraving workflow — two-gate proof approval:**
+- Gate 1: FH approval via token-based email (`secrets.token_urlsafe(48)`, 72hr expiry, no auth)
+- Gate 2: Staff approve/reject with notes
+- Auto-sends FH email when `fh_contact_email` exists on proof upload
+- Keepsake sets: scaffold N engraving jobs from `companion_skus`, propagate specs, all-jobs approval gate
+- Verbal approval: stores transcript excerpt, flags but does NOT auto-approve
+- Correction summary tracks resubmission history
+
+**Scheduling board integration:**
+- Ancillary items feed: stocked orders with `need_by_date` within configurable window (default 3 days)
+- Drop-ship visibility feed: all pending drop-ship orders with tracking
+
+**Key services:**
+- `urn_product_service.py` — CRUD + Claude-powered natural language search
+- `urn_order_service.py` — full lifecycle + scheduling feeds
+- `urn_engraving_service.py` — two-gate proofs, Wilbert form PDF, keepsake propagation
+- `urn_intake_agent.py` — email intake + proof matching
+
+**Frontend pages:** `/urns/catalog`, `/urns/orders`, `/urns/orders/new`, `/proof-approval/{token}` (public)
+
+**API:** 41 endpoints under `/api/v1/urns/`
+
+**Migration:** `r11_urn_sales` (revises `r10_agent_infra`)
+
+---
+
+#### Wilbert Catalog Ingestion Pipeline (Complete)
+
+Ingests Wilbert's 88-page PDF catalog (Volume 11) into `urn_products`, with optional website enrichment.
+
+**PDF Parser (`wilbert_pdf_parser.py`):**
+- PyMuPDF (`fitz`) text extraction → line-by-line state machine
+- Handles Wilbert's two-line dimension format (label on one line, value on next)
+- Extracts 259 products: SKU (P-prefix urns, D-prefix jewelry), product type (Urn/Memento/Heart/Pendant), dimensions, cubic inches, engravability flag, material category, companion linkage, catalog page
+- Section-aware: maps page ranges to material categories (Metal 4-17, Wood 18-31, Stone 32-36, etc.)
+- Deduplicates by SKU (keeps latest occurrence)
+
+**Website Scraper (`urn_catalog_scraper.py`):**
+- Real CSS selectors from research crawl: `.product-list`, `h1.item-name`, `div.item-desc p`, `#productImage img.main-image`
+- 9 category URLs under `/store/cremation/urns/{material}/`
+- SKU inference from image filenames (e.g., `P2013-CloisonneOpal-750.jpg`)
+- Enriches with short/long descriptions and hi-res product images
+- Polite crawl: 1.5s delay, custom User-Agent
+
+**Ingestion Orchestrator (`wilbert_ingestion_service.py`):**
+- `ingest_from_pdf()` — full pipeline: parse PDF → upsert by SKU → optional web enrichment
+- `apply_bulk_markup()` — cost → retail with configurable % and rounding ($0.01/$0.50/$1/$5)
+- `import_prices_from_csv()` — match by SKU, update cost/retail
+
+**Migration:** `r12_urn_catalog_ingestion` (revises `r11_urn_sales`) — 11 new columns on `urn_products`, 3 on `urn_catalog_sync_logs`, 2 indexes
+
+**6 new API endpoints:**
+- `POST /urns/catalog/ingest-pdf` — file upload + parse
+- `POST /urns/catalog/enrich-from-web` — website enrichment pass
+- `PATCH /urns/products/{id}/pricing` — inline single-product price edit
+- `POST /urns/pricing/bulk-markup` — bulk markup by material/type
+- `POST /urns/pricing/import-csv` — CSV price import
+- `POST /urns/pricing/import-json` — JSON price import
+
+**Frontend (`urn-catalog.tsx` rewrite):**
+- Pricing columns: Cost, Retail, Margin% with inline click-to-edit
+- "Sync from Wilbert" dialog: PDF upload + optional web enrichment toggle
+- Bulk Markup tool: filter by material/type, set %, choose rounding, only-unpriced option
+- CSV Price Import dialog
+- Material and Type filter dropdowns (populated from data)
+- Expandable detail rows: dimensions, descriptions, companion links, catalog page
+- Unpriced product warnings (count in header, amber row highlight)
+
+**Design decisions:**
+- Prices uploaded or manually entered in-platform (no WilbertDirect scraping — avoid stepping on Wilbert's toes)
+- Wilbert marketing materials/images are OK (licensee rights)
+- Font options deferred to tenant settings (future)
+
+**E2E Tests:** 37/37 passing (Playwright, staging)
+
+---
 
 ### Session: April 7, 2026 — Call Intelligence, Knowledge Base, Price Management, Platform Email, Staging Environment
 
@@ -795,7 +921,7 @@ cd frontend && npx playwright test --project=chromium
 
 - Go-live date: April 7, 2026
 - First tenant: Sunnycrest Vault (James Atkinson)
-- Migration head: `z9g4h5i6j7k8`
+- Migration head: `r12_urn_catalog_ingestion`
 
 **All core features production-ready:**
 - ✅ Order management
@@ -813,5 +939,7 @@ cd frontend && npx playwright test --project=chromium
 - ✅ Monthly statements (`/ar/statements`)
 - ✅ Auto-delivery with eligibility preview (`/api/v1/internal/trigger-auto-delivery`)
 - ✅ Job audit logging (`job_runs` table)
+- ✅ Urn Sales extension (37/37 E2E passing)
+- ✅ Wilbert catalog ingestion pipeline (PDF + web + pricing)
 
 **Next build focus:** Funeral Home vertical — Phase FH-1 prompts ready. Key dependency: 70-field case file data model (design with AI Arrangement Scribe in mind from day one).
