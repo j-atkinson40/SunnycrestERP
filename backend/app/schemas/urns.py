@@ -154,6 +154,8 @@ class UrnEngravingJobResponse(BaseModel):
     proof_status: str
     proof_file_id: str | None = None
     proof_received_at: datetime | None = None
+    fh_approval_token: str | None = None
+    fh_approval_token_expires_at: datetime | None = None
     fh_approved_by_name: str | None = None
     fh_approved_at: datetime | None = None
     fh_change_request_notes: str | None = None

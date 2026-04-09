@@ -213,6 +213,7 @@ class UrnEngravingService:
         if order and order.fh_contact_email:
             try:
                 UrnEngravingService.send_fh_approval_email(db, tenant_id, job_id)
+                db.refresh(job)
             except Exception as e:
                 logger.warning("Could not auto-send FH approval email: %s", e)
 
