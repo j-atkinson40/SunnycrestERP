@@ -209,6 +209,25 @@ function getManufacturingNav(
     sections.push({ title: "", items: urnItems });
   }
 
+  // ── Social Service Certificates ──
+  const sscItems: NavItem[] = filterByPermission(
+    [
+      {
+        label: "SS Certificates",
+        href: "/social-service-certificates",
+        icon: "ShieldCheck",
+        permission: "invoice.approve",
+      },
+    ],
+    modules,
+    perms,
+    areas,
+    isAdmin,
+  );
+  if (sscItems.length > 0) {
+    sections.push({ title: "", items: sscItems });
+  }
+
   // ── Tools (Knowledge Base + Legacy Studio collapsible) ──
   const legacyChildren: NavItem[] = filterByPermission(
     [

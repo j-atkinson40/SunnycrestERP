@@ -112,6 +112,7 @@ from app.api.routes import (
     sage_exports,
     service_territory,
     sales,
+    social_service_certificates,
     super_admin,
     sync_logs,
     tenant_onboarding,
@@ -495,6 +496,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     sales.router, prefix="/sales", tags=["Sales & AR"]
+)
+v1_router.include_router(
+    social_service_certificates.router,
+    prefix="/social-service-certificates",
+    tags=["Social Service Certificates"],
 )
 v1_router.include_router(
     super_admin.router, prefix="/super-admin", tags=["Super Admin"]

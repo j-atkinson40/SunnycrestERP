@@ -611,6 +611,22 @@ def complete_delivery(
             "on_delivery_completed hook error for delivery %s: %s", delivery_id, exc
         )
 
+    # Social Service Certificate — auto-generate if order has SS Graveliner
+    if delivery.order_id and order:
+        try:
+            from app.services.social_service_certificate_service import (
+                SocialServiceCertificateService,
+            )
+            if SocialServiceCertificateService.is_social_service_order(order):
+                SocialServiceCertificateService.generate_pending(
+                    order.id, db, delivered_at=now
+                )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error(
+                "SSC generation error for delivery %s: %s", delivery_id, exc
+            )
+
     # Create real-time alert if exceptions were reported
     if has_exceptions:
         try:

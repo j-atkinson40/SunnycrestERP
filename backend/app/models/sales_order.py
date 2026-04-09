@@ -158,6 +158,9 @@ class SalesOrder(Base):
         order_by="SalesOrderLine.sort_order",
     )
     invoices = relationship("Invoice", back_populates="sales_order")
+    social_service_certificate = relationship(
+        "SocialServiceCertificate", back_populates="order", uselist=False
+    )
     creator = relationship("User", foreign_keys=[created_by])
 
 

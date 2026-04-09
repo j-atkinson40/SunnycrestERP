@@ -282,6 +282,7 @@ from app.models.email_send import EmailSend
 from app.models.platform_incident import PlatformIncident
 from app.models.platform_notification import PlatformNotification
 from app.models.tenant_health_score import TenantHealthScore
+from app.models.social_service_certificate import SocialServiceCertificate
 from app.models.urn_product import UrnProduct
 from app.models.urn_inventory import UrnInventory
 from app.models.urn_order import UrnOrder
@@ -526,6 +527,7 @@ __all__ = [
     "UnionRotationList",
     "UnionRotationMember",
     "UnionRotationAssignment",
+    "SocialServiceCertificate",
     "UrnProduct",
     "UrnInventory",
     "UrnOrder",

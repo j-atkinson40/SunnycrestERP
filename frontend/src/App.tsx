@@ -191,6 +191,7 @@ import CustomerTypesPage from "@/pages/settings/customer-types";
 import CemeteryDeliverySettingsPage from "@/pages/settings/cemeteries";
 import CemeteryProfilePage from "@/pages/settings/cemetery-profile";
 import ReportsPage from "@/pages/reports";
+import SocialServiceCertificatesPage from "@/pages/social-service-certificates";
 import FinancialsBoardPage from "@/pages/financials-board";
 import AgentDashboard from "@/pages/agents/AgentDashboard";
 import ApprovalReview from "@/pages/agents/ApprovalReview";
@@ -559,6 +560,7 @@ export default function App() {
                     <Route path="/journal-entries" element={<JournalEntriesPage />} />
                     <Route path="/settings/tax" element={<TaxSettingsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/social-service-certificates" element={<SocialServiceCertificatesPage />} />
                     <Route path="/financials/board" element={<FinancialsBoardPage />} />
                     <Route path="/agents" element={<AgentDashboard />} />
                     <Route path="/agents/:jobId/review" element={<ApprovalReview />} />

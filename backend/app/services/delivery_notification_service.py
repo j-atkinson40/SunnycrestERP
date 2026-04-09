@@ -165,6 +165,26 @@ def on_delivery_complete(db: Session, delivery: Delivery) -> None:
     except Exception as exc:
         logger.error("Auto-invoice hook failed for delivery %s: %s", delivery.id, exc)
 
+    # Social Service Certificate — auto-generate if order has SS Graveliner
+    if delivery.order_id:
+        try:
+            from app.models.sales_order import SalesOrder
+            from app.services.social_service_certificate_service import (
+                SocialServiceCertificateService,
+            )
+
+            order = (
+                db.query(SalesOrder)
+                .filter(SalesOrder.id == delivery.order_id)
+                .first()
+            )
+            if order and SocialServiceCertificateService.is_social_service_order(order):
+                SocialServiceCertificateService.generate_pending(
+                    order.id, db, delivered_at=delivery.completed_at
+                )
+        except Exception as exc:
+            logger.error("SSC generation error for delivery %s: %s", delivery.id, exc)
+
 
 def on_delivery_scheduled(db: Session, delivery: Delivery) -> None:
     """Called when a delivery is assigned to a driver/schedule (Scheduled milestone).

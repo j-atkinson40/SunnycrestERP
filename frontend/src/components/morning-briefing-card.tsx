@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { X, RefreshCw, Check, ChevronRight, Pin, AlertTriangle, FileText, Eye, CreditCard, Send, CheckCircle, BookOpen, Clock, Truck } from "lucide-react";
+import { X, RefreshCw, Check, ChevronRight, Pin, AlertTriangle, FileText, Eye, CreditCard, Send, CheckCircle, BookOpen, Clock, Truck, ShieldCheck, Ban, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -212,8 +212,189 @@ interface ActionItems {
   kb_recommendation: { show: boolean; document_count: number } | null;
 }
 
+interface PendingCertificate {
+  id: string;
+  certificate_number: string;
+  status: string;
+  deceased_name: string | null;
+  funeral_home_name: string | null;
+  cemetery_name: string | null;
+  product_price: string | null;
+  delivered_at: string | null;
+  generated_at: string;
+}
+
 function fmtCurrency(n: string | number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n));
+}
+
+// ── Social Service Certificate block ──
+
+function SocialServiceCertificateBlock({
+  certs,
+  onRefresh,
+}: {
+  certs: PendingCertificate[];
+  onRefresh: () => void;
+}) {
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+
+  const handleApprove = async (id: string) => {
+    setApprovingId(id);
+    try {
+      await apiClient.post(`/social-service-certificates/${id}/approve`);
+      toast.success("Certificate approved and sent");
+      onRefresh();
+    } catch {
+      toast.error("Failed to approve certificate");
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleVoid = async (id: string) => {
+    if (!voidReason.trim()) {
+      toast.error("Please enter a void reason");
+      return;
+    }
+    try {
+      await apiClient.post(`/social-service-certificates/${id}/void`, {
+        reason: voidReason.trim(),
+      });
+      toast.success("Certificate voided");
+      setVoidingId(null);
+      setVoidReason("");
+      onRefresh();
+    } catch {
+      toast.error("Failed to void certificate");
+    }
+  };
+
+  const handlePreview = async (id: string) => {
+    try {
+      const res = await apiClient.get<{ url: string }>(
+        `/social-service-certificates/${id}/pdf`
+      );
+      window.open(res.data.url, "_blank");
+    } catch {
+      toast.error("Failed to load PDF preview");
+    }
+  };
+
+  const fmtDelivered = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }) + " at " + d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  return (
+    <div className="mt-4 pt-3 border-t border-gray-100 space-y-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <ShieldCheck className="h-3.5 w-3.5 text-purple-600" />
+        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          Social Service Certificates — Pending Approval
+        </h4>
+        <Badge variant="secondary" className="text-[10px] ml-1">
+          {certs.length}
+        </Badge>
+      </div>
+
+      {certs.map((cert) => (
+        <div
+          key={cert.id}
+          className="py-2.5 px-3 rounded-lg bg-purple-50/50 border border-purple-100 space-y-2"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">
+                {cert.deceased_name || "Unknown"}
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">
+                {cert.funeral_home_name || "Unknown FH"}
+                {cert.cemetery_name ? ` \u2192 ${cert.cemetery_name}` : ""}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Delivered {fmtDelivered(cert.delivered_at)}
+                {cert.product_price ? ` \u00B7 ${fmtCurrency(cert.product_price)}` : ""}
+              </p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Cert No: {cert.certificate_number}
+              </p>
+            </div>
+          </div>
+
+          {voidingId === cert.id ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                placeholder="Void reason..."
+                className="flex-1 text-xs px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-purple-400"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleVoid(cert.id);
+                  if (e.key === "Escape") {
+                    setVoidingId(null);
+                    setVoidReason("");
+                  }
+                }}
+                autoFocus
+              />
+              <button
+                onClick={() => handleVoid(cert.id)}
+                className="text-xs px-2 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => {
+                  setVoidingId(null);
+                  setVoidReason("");
+                }}
+                className="text-xs px-2 py-1.5 text-gray-500 hover:text-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePreview(cert.id)}
+                className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Preview
+              </button>
+              <button
+                onClick={() => handleApprove(cert.id)}
+                disabled={approvingId === cert.id}
+                className="inline-flex items-center gap-1 text-xs font-medium text-green-700 hover:text-green-900 px-2 py-1 rounded hover:bg-green-50 transition-colors disabled:opacity-50"
+              >
+                <CheckCircle className="h-3 w-3" />
+                {approvingId === cert.id ? "Approving..." : "Approve"}
+              </button>
+              <button
+                onClick={() => setVoidingId(cert.id)}
+                className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+              >
+                <Ban className="h-3 w-3" />
+                Void
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ── BriefingActionItems sub-component ──
@@ -507,7 +688,7 @@ function BriefingActionItems({ items, onRefresh }: { items: ActionItems; onRefre
 // ── Component ──
 
 export function MorningBriefingCard() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [data, setData] = useState<BriefingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -524,6 +705,9 @@ export function MorningBriefingCard() {
 
   // Action items (structured data with entity IDs)
   const [actionItems, setActionItems] = useState<ActionItems | null>(null);
+
+  // Social Service Certificates — pending approval
+  const [pendingCerts, setPendingCerts] = useState<PendingCertificate[]>([]);
 
   // AI-enhanced briefing items
   const [aiNarrative, setAiNarrative] = useState<string | null>(null);
@@ -597,17 +781,28 @@ export function MorningBriefingCard() {
     }
   }, []);
 
+  // Fetch pending Social Service Certificates (invoice.approve users only)
+  const fetchPendingCerts = useCallback(async () => {
+    if (!hasPermission("invoice.approve")) return;
+    try {
+      const res = await apiClient.get<PendingCertificate[]>("/social-service-certificates/pending");
+      setPendingCerts(res.data);
+    } catch {
+      setPendingCerts([]);
+    }
+  }, [hasPermission]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await Promise.all([fetchBriefing(), fetchAnnouncements(), fetchActionItems()]);
+      await Promise.all([fetchBriefing(), fetchAnnouncements(), fetchActionItems(), fetchPendingCerts()]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [fetchBriefing, fetchAnnouncements, fetchActionItems]);
+  }, [fetchBriefing, fetchAnnouncements, fetchActionItems, fetchPendingCerts]);
 
   // Mark unread announcements as read (fire-and-forget)
   useEffect(() => {
@@ -1131,6 +1326,14 @@ export function MorningBriefingCard() {
             );
           })}
         </div>
+
+        {/* Social Service Certificates — Pending Approval */}
+        {pendingCerts.length > 0 && (
+          <SocialServiceCertificateBlock
+            certs={pendingCerts}
+            onRefresh={fetchPendingCerts}
+          />
+        )}
 
         {/* Action Items */}
         {actionItems && (
