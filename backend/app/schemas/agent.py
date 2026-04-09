@@ -131,6 +131,7 @@ class AgentJobResponse(BaseModel):
     completed_at: Optional[datetime] = None
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
+    approval_token: Optional[str] = None
     rejection_reason: Optional[str] = None
     error_message: Optional[str] = None
     created_at: Optional[datetime] = None

@@ -100,6 +100,7 @@ from app.api.routes import (
     catalog_builder,
     spring_burials,
     urn_catalog,
+    urn_sales,
     products,
     projects,
     purchase_orders,
@@ -458,6 +459,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     urn_catalog.router, prefix="/products", tags=["Urn Catalog"]
+)
+v1_router.include_router(
+    urn_sales.router, prefix="/urns", tags=["Urn Sales"]
 )
 v1_router.include_router(
     projects.router, prefix="/projects", tags=["Project Management"]

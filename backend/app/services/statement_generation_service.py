@@ -168,6 +168,8 @@ def generate_statement_run(
 
     run = StatementRun(
         tenant_id=tenant_id,
+        period_start=period_start,
+        period_end=period_end,
         statement_period_month=period_start.month,
         statement_period_year=period_start.year,
         status="draft",

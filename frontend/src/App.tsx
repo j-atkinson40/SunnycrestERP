@@ -207,6 +207,11 @@ import NetworkPreferencesSettingsPage from "@/pages/admin/network-preferences";
 import SchedulingSettingsPage from "@/pages/admin/scheduling-settings";
 import UrnCatalogPage from "@/pages/products/urn-catalog";
 import UrnImportWizard from "@/pages/products/urn-import-wizard";
+import UrnSalesCatalog from "@/pages/urns/urn-catalog";
+import UrnOrderForm from "@/pages/urns/urn-order-form";
+import UrnOrdersPage from "@/pages/urns/urn-orders";
+import ProofReviewPage from "@/pages/urns/proof-review";
+import FHApprovalPage from "@/pages/urns/fh-approval";
 import DisintermentListPage from "@/pages/disinterments/disinterment-list";
 import DisintermentDetailPage from "@/pages/disinterments/disinterment-detail";
 import DisintermentSettingsPage from "@/pages/settings/disinterment-settings";
@@ -410,6 +415,12 @@ export default function App() {
                       element={<Navigate to="/products?tab=bundles" replace />}
                     />
                   </Route>
+
+                  {/* Urn Sales extension */}
+                  <Route path="/urns/catalog" element={<UrnSalesCatalog />} />
+                  <Route path="/urns/orders" element={<UrnOrdersPage />} />
+                  <Route path="/urns/orders/new" element={<UrnOrderForm />} />
+                  <Route path="/urns/proof-review/:orderId" element={<ProofReviewPage />} />
 
                   {/* Customers — requires sales module + customers.view permission */}
                   <Route
@@ -936,6 +947,9 @@ export default function App() {
 
               {/* Public intake form — no auth required */}
               <Route path="/intake/disinterment/:token" element={<DisintermentIntakePage />} />
+
+              {/* FH proof approval — public, token-validated */}
+              <Route path="/proof-approval/:token" element={<FHApprovalPage />} />
 
               {/* Family portal — no auth required, standalone page */}
               <Route path="/portal/:token" element={<FHPortalPage />} />

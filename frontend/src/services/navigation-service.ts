@@ -183,6 +183,32 @@ function getManufacturingNav(
     sections.push({ title: "", items: disintermentItems });
   }
 
+  // ── Urn Sales (extension-gated) ──
+  const urnItems: NavItem[] = filterByPermission(
+    [
+      {
+        label: "Urn Catalog",
+        href: "/urns/catalog",
+        icon: "Package",
+        requiresExtension: "urn_sales",
+      },
+      {
+        label: "Urn Orders",
+        href: "/urns/orders",
+        icon: "ShoppingBag",
+        requiresExtension: "urn_sales",
+      },
+    ],
+    modules,
+    perms,
+    areas,
+    isAdmin,
+    _extensions,
+  );
+  if (urnItems.length > 0) {
+    sections.push({ title: "", items: urnItems });
+  }
+
   // ── Tools (Knowledge Base + Legacy Studio collapsible) ──
   const legacyChildren: NavItem[] = filterByPermission(
     [

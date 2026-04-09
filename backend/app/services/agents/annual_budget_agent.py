@@ -626,8 +626,9 @@ class AnnualBudgetAgent(BaseAgent):
         # Monthly revenue table
         monthly = budget_data.get("monthly", {})
         month_headers = "".join(f"<th>{m.capitalize()}</th>" for m in MONTH_NAMES)
+        _empty = {}
         month_cells = "".join(
-            f'<td style="text-align:right;">${monthly.get(m, {{}}).get("revenue", 0):,.0f}</td>'
+            f'<td style="text-align:right;">${monthly.get(m, _empty).get("revenue", 0):,.0f}</td>'
             for m in MONTH_NAMES
         )
 

@@ -275,9 +275,13 @@ class BudgetVsActualAgent(BaseAgent):
 
         Returns None if no matching quarter data is found.
         """
-        # Annual budget report_payload stores quarterly breakdowns
-        steps = budget_payload.get("steps", {})
-        quarters = steps.get("quarterly_breakdown", {})
+        # Annual budget report_payload stores quarterly breakdowns under "budget"
+        budget = budget_payload.get("budget", {})
+        quarters = budget.get("quarterly_breakdown", {})
+        if not quarters:
+            # Fallback: check steps for legacy structure
+            steps = budget_payload.get("steps", {})
+            quarters = steps.get("quarterly_breakdown", {})
         if not quarters:
             return None
 

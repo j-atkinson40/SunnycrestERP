@@ -282,6 +282,12 @@ from app.models.email_send import EmailSend
 from app.models.platform_incident import PlatformIncident
 from app.models.platform_notification import PlatformNotification
 from app.models.tenant_health_score import TenantHealthScore
+from app.models.urn_product import UrnProduct
+from app.models.urn_inventory import UrnInventory
+from app.models.urn_order import UrnOrder
+from app.models.urn_engraving_job import UrnEngravingJob
+from app.models.urn_catalog_sync_log import UrnCatalogSyncLog
+from app.models.urn_tenant_settings import UrnTenantSettings
 
 __all__ = [
     "AccountingConnection",
@@ -520,4 +526,10 @@ __all__ = [
     "UnionRotationList",
     "UnionRotationMember",
     "UnionRotationAssignment",
+    "UrnProduct",
+    "UrnInventory",
+    "UrnOrder",
+    "UrnEngravingJob",
+    "UrnCatalogSyncLog",
+    "UrnTenantSettings",
 ]
