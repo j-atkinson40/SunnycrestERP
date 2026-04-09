@@ -26,6 +26,7 @@ _SS_PATTERNS = [
     "social service",
     "ss graveliner",
     "social services graveliner",
+    "graveliner ss",
 ]
 
 
