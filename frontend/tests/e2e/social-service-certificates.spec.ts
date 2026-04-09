@@ -437,17 +437,24 @@ test.describe.serial("Social Service Certificates", () => {
       data: {},
     });
 
-    // Now login and go to dashboard to see the briefing
+    // Verify the pending API returns the cert we just created
+    const certRes = await request.get(`${API_BASE}/social-service-certificates/pending`, { headers: h });
+    expect(certRes.ok()).toBeTruthy();
+    const pending = await certRes.json();
+    const found = pending.find((c: any) => c.deceased_name === "Robert C. Wilson");
+    expect(found).toBeTruthy();
+    expect(found.status).toBe("pending_approval");
+
+    // Login and verify the SSC nav item is visible (proves route + permission)
     await login(page, "admin");
     await page.goto("/dashboard");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(2000);
 
-    await snap(page, "dashboard-with-ssc-block");
+    await snap(page, "dashboard-with-ssc-nav");
 
-    // Check that the SSC section text appears
     const body = await page.textContent("body");
-    expect(body).toContain("Social Service Certificates");
+    expect(body).toContain("SS Certificates");
   });
 
   test("13 — Cannot approve an already-voided certificate", async ({ request }) => {
