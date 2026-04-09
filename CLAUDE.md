@@ -348,6 +348,7 @@ First live tenant: `sunnycrest.getbridgeable.com`
 | Equipment Inspections | Built | `safety_service.py` |
 | Toolbox Talks + Suggestions | Built | `toolbox_suggestion_service.py` |
 | OSHA 300 Log | Built | `osha_300_entry.py` |
+| Monthly Safety Program Generation | Built | `safety_program_generation_service.py`, `osha_scraper_service.py` |
 | NPCA Audit Prep | Extension — placeholder UI | `pages/compliance/npca-audit-prep.tsx` |
 
 ### Intelligence Layer
@@ -397,6 +398,7 @@ First live tenant: `sunnycrest.getbridgeable.com`
 | `reorder_suggestion` | Monday 6:12am ET | `proactive_agents.py` |
 | `network_snapshot` | 1st of month 2:17am ET | `network_intelligence_service.py` |
 | `onboarding_pattern` | 1st of month 4:13am ET | `network_intelligence_service.py` |
+| `safety_program_generation` | 1st of month 6:00am ET | `safety_program_generation_service.py` |
 
 All jobs use `_run_per_tenant()` or `_run_global()` wrappers with per-session DB isolation and error logging. All are manually triggerable via `JOB_REGISTRY` dict and the agent trigger API endpoint.
 
@@ -415,12 +417,13 @@ All jobs use `_run_per_tenant()` or `_run_global()` wrappers with per-session DB
 | Route modules registered in v1.py | 94+ |
 | Frontend routes | 150+ |
 | Backend service files | 115+ |
-| Migration files | 116 |
-| Migration head | `r14_urn_catalog_pdf_fetch` |
-| Agent jobs (scheduled) | 13 |
+| Migration files | 117 |
+| Migration head | `r15_safety_program_generation` |
+| Agent jobs (scheduled) | 14 |
 | Accounting agents (registered) | 12/12 (complete) |
 | Accounting agent tests | 105 passing |
 | Urn Sales E2E tests | 39/39 passing |
+| Safety Program Generation E2E tests | 12/12 passing |
 | Agent jobs (not yet built) | ~30 |
 | TypeScript errors | 0 |
 | Backend import errors | 0 |
@@ -563,6 +566,7 @@ Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` in
 
 ## 14. Recent Changes
 
+- **Monthly Safety Program Generation:** AI-powered monthly safety program creation with OSHA regulatory scraping. Full pipeline: `osha_scraper_service.py` scrapes OSHA standard pages (httpx + BeautifulSoup, 14 standard URL mappings), `safety_program_generation_service.py` generates 7-section programs via Claude Sonnet (Purpose/Scope, Responsibilities, Definitions, Procedures, Training, Recordkeeping, Review), WeasyPrint renders professional PDF with cover page. Table: `safety_program_generations` with full lifecycle tracking (OSHA scrape → generation → PDF → approval). Approval workflow: draft → pending_review → approved/rejected. On approve: creates/updates `SafetyProgram` record. Scheduler job: 1st of month at 6am ET via `job_safety_program_generation`. Morning briefing integration: shows pending reviews count, missing monthly generations, failed generations. Permission: `safety.trainer` (view, generate, approve). 7 API endpoints under `/safety/programs/` (list, detail, generate, ad-hoc topic, approve, reject, regenerate-pdf). Frontend: `safety-programs.tsx` rewritten with AI Generated + Manual tabs. Migration `r15_safety_program_generation`. 12 E2E tests (all passing). Route ordering fix: generation router registered before safety router to prevent `{program_id}` catch-all conflict.
 - **Urn Catalog PDF Auto-Fetch:** One-click "Fetch & Sync Catalog" replaces manual PDF upload. `UrnCatalogScraper.fetch_catalog_pdf()` downloads the Wilbert catalog PDF from a direct URL (`https://www.wilbert.com/assets/1/7/CCV8-Cremation_Choices_Catalog.pdf`), computes MD5 hash for change detection, archives to R2, and triggers `ingest_from_pdf()` if changed. Fallback URL resolver (`_resolve_pdf_url()`) scrapes the catalog landing page if the direct URL changes. Web enrichment runs automatically in background via FastAPI `BackgroundTasks` (creates its own DB session to avoid lifecycle issues). UI button always uses `force=true`; hash-based skip is for automated/scheduled runs. 3 new columns on `urn_tenant_settings` (catalog_pdf_hash, catalog_pdf_last_fetched, catalog_pdf_r2_key). Migration `r14_urn_catalog_pdf_fetch`. Frontend simplified: single "Fetch & Sync Catalog" button with collapsed manual upload fallback. 2 new E2E tests in standalone `urn-catalog-pdf-fetch.spec.ts`. PyMuPDF (`fitz`) dependency added to `requirements.txt` (was documented but missing, causing silent 0-product returns on staging).
 - **Social Service Certificates:** Government benefit program delivery confirmations auto-generated when Social Service Graveliner orders are delivered. Table: `social_service_certificates` with status lifecycle (pending_approval → approved → sent, or voided). `social_service_certificate_service.py`: `generate_pending()` auto-creates on delivery completion (identifies SS products by pattern matching), `approve()` triggers PDF email to funeral home, `void()` with reason. WeasyPrint PDF generator (`pdf_generators/social_service_certificate_pdf.py`) produces professional letter-size document with company letterhead, deceased info, product details, and delivery timestamp. 6 API endpoints under `/api/v1/social-service-certificates/` (requires `invoice.approve` permission): pending list, all with status filter, detail, approve, void, PDF download (presigned R2 URL). Frontend page with status filter, approve/void/view-pdf actions, color-coded status badges. Migration `r13_social_service_certificates`.
 - **Wilbert Urn Catalog Ingestion Pipeline:** Full ingestion system for Wilbert's 88-page PDF catalog. `wilbert_pdf_parser.py`: PyMuPDF-based line-by-line state machine parser extracts 259 products with SKUs (P-prefix urns, D-prefix jewelry), dimensions (height, width/diameter, depth, cubic inches), engravability flags, material categories (Metal/Wood/Stone/Glass/Ceramic/etc.), companion/memento linkage, and catalog page numbers. `wilbert_ingestion_service.py`: orchestrator with `ingest_from_pdf()` (PDF→upsert by SKU), `apply_bulk_markup()` (cost→retail with rounding), `import_prices_from_csv()`. `urn_catalog_scraper.py`: rewritten with real CSS selectors from wilbert.com research crawl (`.product-list`, `h1.item-name`, `div.item-desc p`, `#productImage img.main-image`), 9 category URLs, SKU inference from image filenames, `enrich_products_from_web()` for descriptions/images. `wilbert_scraper_config.py`: all real selectors, category URLs, site origin. Migration `r12_urn_catalog_ingestion`: 11 new columns on `urn_products` (height, width_or_diameter, depth, cubic_inches, product_type, companion_of_sku, wilbert_description, wilbert_long_description, color_name, catalog_page, r2_image_key), 3 new columns on `urn_catalog_sync_logs` (sync_type, pdf_filename, products_skipped), 2 new indexes. 6 new API endpoints: `POST /urns/catalog/ingest-pdf` (file upload), `POST /urns/catalog/enrich-from-web`, `PATCH /urns/products/{id}/pricing`, `POST /urns/pricing/bulk-markup`, `POST /urns/pricing/import-csv`, `POST /urns/pricing/import-json`. Frontend `urn-catalog.tsx` rewritten: pricing columns (Cost, Retail, Margin%) with inline click-to-edit, "Sync from Wilbert" dialog (PDF upload + optional web enrichment), Bulk Markup tool (filter by material/type, % + rounding), CSV Price Import, material/type filter dropdowns, expandable detail rows (dimensions, descriptions, companion links), unpriced product amber warnings. Design decisions: prices uploaded/entered in-platform (no WilbertDirect scraping), Wilbert marketing materials/images OK (licensee rights), font options deferred to tenant settings.
@@ -1005,7 +1009,7 @@ cd frontend && npx playwright test --project=chromium
 
 - Go-live date: April 7, 2026
 - First tenant: Sunnycrest Vault (James Atkinson)
-- Migration head: `r14_urn_catalog_pdf_fetch`
+- Migration head: `r15_safety_program_generation`
 
 **All core features production-ready:**
 - ✅ Order management
@@ -1027,5 +1031,6 @@ cd frontend && npx playwright test --project=chromium
 - ✅ Wilbert catalog ingestion pipeline (PDF + web + pricing)
 - ✅ Catalog PDF auto-fetch with hash-based change detection
 - ✅ Social Service Certificates (auto-generate + approve + email)
+- ✅ Monthly Safety Program Generation (OSHA scrape + Claude AI + PDF + approval workflow, 12/12 E2E passing)
 
 **Next build focus:** Funeral Home vertical — Phase FH-1 prompts ready. Key dependency: 70-field case file data model (design with AI Arrangement Scribe in mind from day one).

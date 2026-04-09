@@ -198,6 +198,7 @@ import ApprovalReview from "@/pages/agents/ApprovalReview";
 import FinancialsHub from "@/pages/hubs/financials-hub";
 import CRMHub from "@/pages/hubs/crm-hub";
 import ProductionHub from "@/pages/hubs/production-hub";
+import ComplianceHub from "@/pages/hubs/compliance-hub";
 import StatementsPage from "@/pages/statements";
 import CollectionsReviewPage from "@/pages/ar/collections-review";
 import InvoiceReviewQueuePage from "@/pages/ar/invoice-review-queue";
@@ -373,6 +374,9 @@ export default function App() {
                   <Route path="/crm" element={<CRMHub />} />
                   <Route element={<ProtectedRoute requiredPermission="production_hub.view" />}>
                     <Route path="/production-hub" element={<ProductionHub />} />
+                  </Route>
+                  <Route element={<ProtectedRoute requiredPermission="safety.view" requiredModule="safety_management" />}>
+                    <Route path="/compliance" element={<ComplianceHub />} />
                   </Route>
 
                   {/* CRM */}
@@ -674,6 +678,14 @@ export default function App() {
                     <Route path="/safety/training/documents" element={<SafetyTrainingDocumentsPage />} />
                     <Route path="/safety/osha-300" element={<SafetyOSHA300Page />} />
                     <Route path="/safety/osha-300/year-end/:year" element={<SafetyOSHA300YearEndPage />} />
+                  </Route>
+
+                  {/* NPCA Audit Prep — requires npca_audit_prep extension */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredModule="npca_audit_prep" />
+                    }
+                  >
                     <Route path="/npca" element={<NpcaAuditPrepPage />} />
                   </Route>
 

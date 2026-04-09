@@ -149,8 +149,16 @@ function getManufacturingNav(
       href: "/production-hub",
       icon: "Factory",
       isHub: true,
-      isDividerAfter: true,
       functionalArea: "production_log",
+    },
+    {
+      label: "Compliance",
+      href: "/compliance",
+      icon: "Shield",
+      isHub: true,
+      isDividerAfter: true,
+      permission: "safety.view",
+      requiresModule: "safety_management",
     },
   ];
   const filteredHubs = filterByPermission(hubItems, modules, perms, areas, isAdmin);

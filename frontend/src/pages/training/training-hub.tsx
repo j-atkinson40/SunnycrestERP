@@ -36,22 +36,22 @@ const TILES: TrainingTile[] = [
     color: "bg-purple-50 text-purple-600",
   },
   {
-    title: "Safety & OSHA",
-    description:
-      "Safety training calendar, inspections, toolbox talks, OSHA 300 log, and compliance programs.",
-    href: "/safety",
-    icon: ShieldCheck,
-    color: "bg-green-50 text-green-600",
-    permission: "safety.view",
-    requiresModule: "safety_management",
-  },
-  {
-    title: "Training Records",
+    title: "Safety Training Calendar",
     description:
       "Track employee training completions, certifications, and upcoming renewals.",
     href: "/safety/training/calendar",
     icon: ClipboardList,
     color: "bg-amber-50 text-amber-600",
+    requiresModule: "safety_management",
+  },
+  {
+    title: "Compliance Hub",
+    description:
+      "Safety programs, OSHA compliance, inspections, and audit readiness.",
+    href: "/compliance",
+    icon: ShieldCheck,
+    color: "bg-green-50 text-green-600",
+    permission: "safety.view",
     requiresModule: "safety_management",
   },
 ];
@@ -71,7 +71,7 @@ export default function TrainingHubPage() {
       <div>
         <h1 className="text-2xl font-bold">Training</h1>
         <p className="text-muted-foreground">
-          Training resources, safety programs, and procedure documentation
+          Training resources, procedures, and employee development
         </p>
       </div>
 

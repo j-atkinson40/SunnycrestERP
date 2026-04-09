@@ -1,7 +1,15 @@
 import { Award } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { useAuth } from "@/contexts/auth-context";
+import { Navigate } from "react-router-dom";
 
 export default function NpcaAuditPrepPage() {
+  const { hasModule } = useAuth();
+
+  if (!hasModule("npca_audit_prep")) {
+    return <Navigate to="/compliance" replace />;
+  }
+
   return (
     <div className="space-y-6 p-6">
       <div>

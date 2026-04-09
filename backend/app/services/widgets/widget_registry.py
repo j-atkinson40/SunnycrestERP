@@ -129,7 +129,7 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_size": "1x1",
         "min_size": "1x1",
         "supported_sizes": ["1x1", "2x1"],
-        "required_extension": "npca",
+        "required_extension": "npca_audit_prep",
         "category": "production",
         "icon": "CheckSquare",
         "default_enabled": True,
