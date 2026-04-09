@@ -6,7 +6,7 @@ import io
 import tempfile
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -657,6 +657,7 @@ def enrich_from_website(
 @router.post("/catalog/fetch-pdf", response_model=CatalogPdfFetchResponse)
 def fetch_catalog_pdf(
     force: bool = Query(False, description="Force re-parse even if PDF unchanged"),
+    background_tasks: BackgroundTasks = None,
     current_user: User = Depends(urn_ext),
     db: Session = Depends(get_db),
 ):
@@ -664,7 +665,8 @@ def fetch_catalog_pdf(
 
     Downloads the PDF, compares its MD5 hash against the previously stored
     version, and triggers a parse + ingestion if the catalog has changed.
-    Cheap to call frequently — skips parsing when the PDF hasn't changed.
+    Web enrichment (descriptions + images from wilbert.com) runs in the
+    background after the response is sent.
     """
     from app.services.urn_catalog_scraper import UrnCatalogScraper
 
@@ -679,6 +681,44 @@ def fetch_catalog_pdf(
             os.unlink(result["path"])
         except OSError:
             pass
+
+    # Kick off web enrichment in the background if products were parsed
+    if result.get("changed") and background_tasks is not None:
+        tenant_id = current_user.company_id
+
+        def _enrich_in_background():
+            import logging
+            from app.database import SessionLocal
+            from app.models.urn_product import UrnProduct
+
+            _log = logging.getLogger(__name__)
+            _log.info("Background web enrichment starting for tenant %s", tenant_id)
+            _db = SessionLocal()
+            try:
+                products = (
+                    _db.query(UrnProduct)
+                    .filter(
+                        UrnProduct.tenant_id == tenant_id,
+                        UrnProduct.source_type == "drop_ship",
+                        UrnProduct.is_active == True,
+                    )
+                    .all()
+                )
+                enriched, not_found = UrnCatalogScraper.enrich_products_from_web(
+                    _db, tenant_id, products
+                )
+                _db.commit()
+                _log.info(
+                    "Background web enrichment done: %d enriched, %d not found",
+                    enriched, not_found,
+                )
+            except Exception as exc:
+                _log.error("Background web enrichment failed: %s", exc)
+                _db.rollback()
+            finally:
+                _db.close()
+
+        background_tasks.add_task(_enrich_in_background)
 
     return CatalogPdfFetchResponse(
         downloaded=result["downloaded"],
