@@ -488,10 +488,10 @@ test.describe.serial("Social Service Certificates", () => {
     await page.waitForLoadState("networkidle");
     await page.waitForSelector("table", { timeout: 10_000 });
 
-    // Filter to voided only
-    await page.click("button:has-text('All statuses')");
+    // Filter to voided only — shadcn Select renders as combobox
+    await page.locator("[role='combobox']").click();
     await page.waitForTimeout(300);
-    await page.click("[role='option']:has-text('Voided')");
+    await page.locator("[role='option']").filter({ hasText: "Voided" }).click();
     await page.waitForTimeout(1000);
 
     await snap(page, "filtered-voided");
