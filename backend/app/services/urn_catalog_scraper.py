@@ -421,11 +421,11 @@ class UrnCatalogScraper:
         settings.catalog_pdf_r2_key = r2_key
         db.commit()
 
-        # Trigger ingestion
+        # Trigger ingestion — always enrich from website too
         from app.services.wilbert_ingestion_service import WilbertIngestionService
 
         log = WilbertIngestionService.ingest_from_pdf(
-            db, tenant_id, tmp.name, enrich_from_website=False
+            db, tenant_id, tmp.name, enrich_from_website=True
         )
         result["sync_log_id"] = log.id
         result["products_added"] = log.products_added

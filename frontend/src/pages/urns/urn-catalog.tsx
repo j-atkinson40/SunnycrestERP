@@ -12,7 +12,6 @@ import {
   ChevronRight,
   AlertTriangle,
   RefreshCw,
-  Globe,
 } from "lucide-react"
 import apiClient from "@/lib/api-client"
 import { toast } from "sonner"
@@ -102,7 +101,6 @@ export default function UrnCatalog() {
   // Sync state
   const [syncing, setSyncing] = useState(false)
   const [syncFile, setSyncFile] = useState<File | null>(null)
-  const [enrichFromWeb, setEnrichFromWeb] = useState(false)
 
   // Bulk markup state
   const [markupForm, setMarkupForm] = useState({
@@ -208,9 +206,9 @@ export default function UrnCatalog() {
     const formData = new FormData()
     formData.append("file", syncFile)
     apiClient
-      .post(`/urns/catalog/ingest-pdf?enrich_from_website=${enrichFromWeb}`, formData, {
+      .post("/urns/catalog/ingest-pdf?enrich_from_website=true", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 300000, // 5 min — PDF is 367MB
+        timeout: 300000,
       })
       .then((r) => {
         const d = r.data
@@ -225,36 +223,23 @@ export default function UrnCatalog() {
       .finally(() => setSyncing(false))
   }
 
-  const handleFetchPdf = (force = false) => {
+  const handleFetchPdf = () => {
     setSyncing(true)
     apiClient
-      .post(`/urns/catalog/fetch-pdf?force=${force}`, null, { timeout: 300000 })
+      .post("/urns/catalog/fetch-pdf?force=true", null, { timeout: 300000 })
       .then((r) => {
         const d = r.data
         if (!d.downloaded) {
           toast.error("Could not download catalog PDF from Wilbert")
-        } else if (!d.changed) {
-          toast.info("Catalog PDF is unchanged — no update needed")
         } else {
           toast.success(
-            `New catalog imported: ${d.products_added} added, ${d.products_updated} updated, ${d.products_skipped} skipped`
+            `Catalog synced: ${d.products_added} added, ${d.products_updated} updated, ${d.products_skipped} skipped`
           )
+          setShowSync(false)
           load()
         }
       })
       .catch((e) => toast.error(e.response?.data?.detail || "PDF fetch failed"))
-      .finally(() => setSyncing(false))
-  }
-
-  const handleWebEnrich = () => {
-    setSyncing(true)
-    apiClient
-      .post("/urns/catalog/enrich-from-web", null, { timeout: 300000 })
-      .then((r) => {
-        toast.success(`Enriched ${r.data.products_updated} products from website`)
-        load()
-      })
-      .catch(() => toast.error("Web enrichment failed"))
       .finally(() => setSyncing(false))
   }
 
@@ -731,75 +716,38 @@ export default function UrnCatalog() {
             <DialogTitle>Sync from Wilbert Catalog</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Auto-fetch from Wilbert */}
-            <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
-              <Label className="text-blue-900 font-medium">Fetch Latest Catalog PDF</Label>
-              <p className="mb-2 text-xs text-blue-700">
-                Automatically downloads the latest Cremation Choices catalog from
-                wilbert.com. Only re-parses if the catalog has changed.
-              </p>
-              <Button
-                className="w-full"
-                onClick={() => handleFetchPdf(false)}
-                disabled={syncing}
-              >
-                {syncing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Fetching...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Fetch Latest Catalog PDF
-                  </>
-                )}
-              </Button>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Downloads the latest Cremation Choices catalog PDF from wilbert.com,
+              extracts all products with SKUs and dimensions, and enriches them with
+              descriptions and images from Wilbert's website.
+            </p>
+            <Button
+              className="w-full"
+              onClick={handleFetchPdf}
+              disabled={syncing}
+            >
+              {syncing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Syncing catalog...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Fetch &amp; Sync Catalog
+                </>
+              )}
+            </Button>
 
             <div className="border-t pt-3">
-              <Label>Or upload a PDF manually</Label>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Upload the Wilbert Cremation Choices catalog PDF. All products will be
-                extracted with SKUs, dimensions, and material categories.
+              <p className="mb-2 text-xs text-muted-foreground font-medium">
+                Or upload a PDF manually
               </p>
               <Input
                 type="file"
                 accept=".pdf"
                 onChange={(e) => setSyncFile(e.target.files?.[0] || null)}
               />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="enrich-web"
-                checked={enrichFromWeb}
-                onChange={(e) => setEnrichFromWeb(e.target.checked)}
-              />
-              <label htmlFor="enrich-web" className="text-sm">
-                Also enrich from wilbert.com (descriptions + images)
-              </label>
-            </div>
-            {enrichFromWeb && (
-              <p className="text-xs text-amber-600">
-                Web enrichment adds descriptions and product images but takes longer
-                (scrapes ~100 product pages from wilbert.com).
-              </p>
-            )}
-
-            <div className="border-t pt-3">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleWebEnrich}
-                disabled={syncing}
-              >
-                <Globe className="mr-2 h-4 w-4" />
-                Enrich existing products from website only
-              </Button>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Adds descriptions and images to existing catalog products
-              </p>
             </div>
           </div>
           <DialogFooter>
