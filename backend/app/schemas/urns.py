@@ -164,6 +164,7 @@ class UrnEngravingJobResponse(BaseModel):
     rejection_notes: str | None = None
     resubmission_count: int = 0
     verbal_approval_flagged: bool = False
+    verbal_approval_transcript_excerpt: str | None = None
     submitted_at: datetime | None = None
     created_at: datetime | None = None
 
