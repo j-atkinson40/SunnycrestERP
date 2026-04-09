@@ -15,6 +15,12 @@ Based on research crawl of wilbert.com (April 2026):
 
 CATALOG_BASE_URL = "https://www.wilbert.com/store/cremation/urns/"
 
+# Direct URL to the Wilbert Cremation Choices catalog PDF (Volume 11)
+CATALOG_PDF_URL = "https://www.wilbert.com/assets/1/7/CCV8-Cremation_Choices_Catalog.pdf"
+
+# Landing page that links to the PDF (fallback — scan for .pdf links if direct URL changes)
+CATALOG_PDF_PAGE_URL = "https://www.wilbert.com/cremation/cremation-choices-catalog/"
+
 CATEGORY_URLS = {
     "Ceramic": "/store/cremation/urns/ceramic/",
     "Cloisonne": "/store/cremation/urns/cloisonne/",

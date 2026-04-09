@@ -225,6 +225,27 @@ export default function UrnCatalog() {
       .finally(() => setSyncing(false))
   }
 
+  const handleFetchPdf = (force = false) => {
+    setSyncing(true)
+    apiClient
+      .post(`/urns/catalog/fetch-pdf?force=${force}`, null, { timeout: 300000 })
+      .then((r) => {
+        const d = r.data
+        if (!d.downloaded) {
+          toast.error("Could not download catalog PDF from Wilbert")
+        } else if (!d.changed) {
+          toast.info("Catalog PDF is unchanged — no update needed")
+        } else {
+          toast.success(
+            `New catalog imported: ${d.products_added} added, ${d.products_updated} updated, ${d.products_skipped} skipped`
+          )
+          load()
+        }
+      })
+      .catch((e) => toast.error(e.response?.data?.detail || "PDF fetch failed"))
+      .finally(() => setSyncing(false))
+  }
+
   const handleWebEnrich = () => {
     setSyncing(true)
     apiClient
@@ -710,8 +731,34 @@ export default function UrnCatalog() {
             <DialogTitle>Sync from Wilbert Catalog</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>Upload Wilbert PDF Catalog</Label>
+            {/* Auto-fetch from Wilbert */}
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+              <Label className="text-blue-900 font-medium">Fetch Latest Catalog PDF</Label>
+              <p className="mb-2 text-xs text-blue-700">
+                Automatically downloads the latest Cremation Choices catalog from
+                wilbert.com. Only re-parses if the catalog has changed.
+              </p>
+              <Button
+                className="w-full"
+                onClick={() => handleFetchPdf(false)}
+                disabled={syncing}
+              >
+                {syncing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Fetching...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Fetch Latest Catalog PDF
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="border-t pt-3">
+              <Label>Or upload a PDF manually</Label>
               <p className="mb-2 text-xs text-muted-foreground">
                 Upload the Wilbert Cremation Choices catalog PDF. All products will be
                 extracted with SKUs, dimensions, and material categories.
@@ -770,8 +817,8 @@ export default function UrnCatalog() {
                 </>
               ) : (
                 <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Start Sync
+                  <Upload className="mr-2 h-4 w-4" />
+                  Upload &amp; Sync
                 </>
               )}
             </Button>

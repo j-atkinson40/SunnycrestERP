@@ -5,18 +5,27 @@ to extract descriptions, images, and related product links. Uses real CSS
 selectors discovered during site research (April 2026).
 
 Website is server-rendered ASP.NET WebForms — no JS/headless browser needed.
+
+Also supports automatic PDF catalog fetching via fetch_catalog_pdf() — downloads
+the Cremation Choices catalog PDF from Wilbert's public URL, detects changes via
+MD5 hash comparison, and triggers re-parsing when a new version is found.
 """
 
+import hashlib
 import logging
 import re
+import tempfile
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.models.urn_catalog_sync_log import UrnCatalogSyncLog
 from app.models.urn_product import UrnProduct
 from app.services.wilbert_scraper_config import (
+    CATALOG_PDF_PAGE_URL,
+    CATALOG_PDF_URL,
     CATEGORY_URLS,
     DETAIL_SELECTORS,
     LISTING_SELECTORS,
@@ -265,3 +274,281 @@ class UrnCatalogScraper:
         except Exception as e:
             logger.warning("Failed to download image %s: %s", image_url, e)
             return None
+
+    # ------------------------------------------------------------------
+    # Automatic PDF catalog fetch
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_pdf_url() -> str | None:
+        """Return the direct PDF URL.
+
+        First tries the known static URL.  If that 404s, falls back to
+        scraping the catalog landing page for any .pdf link.
+        """
+        client = _get_http_client()
+        try:
+            resp = client.head(CATALOG_PDF_URL, follow_redirects=True)
+            if resp.status_code < 400:
+                return CATALOG_PDF_URL
+        except Exception:
+            pass
+
+        # Fallback: scrape the landing page for a PDF link
+        try:
+            resp = client.get(CATALOG_PDF_PAGE_URL)
+            resp.raise_for_status()
+            soup = _get_soup(resp.text)
+            for a in soup.select("a[href$='.pdf']"):
+                href = a.get("href", "")
+                if "cremation" in href.lower() or "catalog" in href.lower():
+                    if not href.startswith("http"):
+                        href = SITE_ORIGIN + href
+                    return href
+        except Exception as e:
+            logger.warning("Failed to scrape catalog landing page: %s", e)
+        finally:
+            client.close()
+
+        return None
+
+    @staticmethod
+    def fetch_catalog_pdf(
+        db: Session,
+        tenant_id: str,
+        *,
+        force: bool = False,
+    ) -> dict:
+        """Download the Wilbert catalog PDF and trigger parsing if changed.
+
+        Returns dict with keys:
+            downloaded (bool) — whether a PDF was fetched
+            changed (bool) — whether the PDF differs from the stored version
+            path (str|None) — temp path to the downloaded file (caller should delete)
+            pdf_url (str|None) — the resolved download URL
+            sync_log_id (str|None) — ID of the ingestion sync log if parsing ran
+            products_added (int)
+            products_updated (int)
+            products_skipped (int)
+        """
+        from app.models.urn_tenant_settings import UrnTenantSettings
+
+        result = {
+            "downloaded": False,
+            "changed": False,
+            "path": None,
+            "pdf_url": None,
+            "sync_log_id": None,
+            "products_added": 0,
+            "products_updated": 0,
+            "products_skipped": 0,
+        }
+
+        # Resolve the PDF URL
+        pdf_url = UrnCatalogScraper._resolve_pdf_url()
+        if not pdf_url:
+            logger.error("SSC: could not resolve Wilbert catalog PDF URL")
+            return result
+        result["pdf_url"] = pdf_url
+
+        # Download the PDF
+        client = _get_http_client()
+        try:
+            logger.info("Fetching catalog PDF from %s", pdf_url)
+            resp = client.get(pdf_url)
+            resp.raise_for_status()
+            pdf_bytes = resp.content
+            result["downloaded"] = True
+        except Exception as e:
+            logger.error("Failed to download catalog PDF: %s", e)
+            return result
+        finally:
+            client.close()
+
+        # Compute MD5 hash
+        new_hash = hashlib.md5(pdf_bytes).hexdigest()
+
+        # Get or create tenant settings
+        settings = (
+            db.query(UrnTenantSettings)
+            .filter(UrnTenantSettings.tenant_id == tenant_id)
+            .first()
+        )
+        if not settings:
+            settings = UrnTenantSettings(tenant_id=tenant_id)
+            db.add(settings)
+            db.flush()
+
+        old_hash = settings.catalog_pdf_hash
+
+        if old_hash == new_hash and not force:
+            logger.info(
+                "Catalog PDF unchanged (hash %s) — skipping parse", new_hash[:12]
+            )
+            settings.catalog_pdf_last_fetched = datetime.now(timezone.utc)
+            db.commit()
+            return result
+
+        result["changed"] = True
+
+        # Save to temp file for parsing
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".pdf", prefix="wilbert_catalog_", delete=False
+        )
+        tmp.write(pdf_bytes)
+        tmp.close()
+        result["path"] = tmp.name
+        logger.info(
+            "Catalog PDF changed (old=%s new=%s) — saved to %s",
+            (old_hash or "none")[:12],
+            new_hash[:12],
+            tmp.name,
+        )
+
+        # Upload to R2 for archival
+        r2_key = f"catalogs/wilbert/cremation-choices-{new_hash[:12]}.pdf"
+        try:
+            from app.services.legacy_r2_client import upload_bytes
+
+            upload_bytes(pdf_bytes, r2_key, content_type="application/pdf")
+        except Exception as exc:
+            logger.warning("R2 upload of catalog PDF failed (non-fatal): %s", exc)
+            r2_key = settings.catalog_pdf_r2_key  # keep old key
+
+        # Update tenant settings
+        settings.catalog_pdf_hash = new_hash
+        settings.catalog_pdf_last_fetched = datetime.now(timezone.utc)
+        settings.catalog_pdf_r2_key = r2_key
+        db.commit()
+
+        # Trigger ingestion
+        from app.services.wilbert_ingestion_service import WilbertIngestionService
+
+        log = WilbertIngestionService.ingest_from_pdf(
+            db, tenant_id, tmp.name, enrich_from_website=False
+        )
+        result["sync_log_id"] = log.id
+        result["products_added"] = log.products_added
+        result["products_updated"] = log.products_updated
+        result["products_skipped"] = log.products_skipped
+
+        return result
+
+    @staticmethod
+    def run_full_scrape(
+        db: Session,
+        tenant_id: str,
+    ) -> dict:
+        """Run a complete catalog sync: PDF fetch + website enrichment.
+
+        Steps:
+        1. fetch_catalog_pdf() — downloads and parses PDF if changed
+        2. Website enrichment — scrapes wilbert.com for descriptions/images
+        3. Cross-reference — flags products in PDF not found on website
+        4. Returns combined results
+
+        Returns dict with pdf_result, web_enriched, web_not_found, sync_log_id.
+        """
+        # Step 1: PDF fetch
+        pdf_result = UrnCatalogScraper.fetch_catalog_pdf(db, tenant_id)
+
+        # Clean up temp file
+        if pdf_result.get("path"):
+            import os
+            try:
+                os.unlink(pdf_result["path"])
+            except OSError:
+                pass
+
+        # Step 2: Website enrichment
+        products = (
+            db.query(UrnProduct)
+            .filter(
+                UrnProduct.tenant_id == tenant_id,
+                UrnProduct.source_type == "drop_ship",
+                UrnProduct.is_active == True,
+            )
+            .all()
+        )
+
+        web_enriched = 0
+        web_not_found = 0
+        try:
+            web_enriched, web_not_found = UrnCatalogScraper.enrich_products_from_web(
+                db, tenant_id, products
+            )
+        except Exception as e:
+            logger.warning("Website enrichment failed (non-fatal): %s", e)
+
+        # Step 3: Cross-reference — products in DB without web descriptions
+        missing_web = (
+            db.query(UrnProduct)
+            .filter(
+                UrnProduct.tenant_id == tenant_id,
+                UrnProduct.source_type == "drop_ship",
+                UrnProduct.is_active == True,
+                UrnProduct.wilbert_description.is_(None),
+                UrnProduct.wilbert_long_description.is_(None),
+            )
+            .count()
+        )
+        if missing_web > 0:
+            logger.info(
+                "Cross-reference: %d products from PDF have no website description",
+                missing_web,
+            )
+
+        # Create combined sync log
+        log = UrnCatalogSyncLog(
+            tenant_id=tenant_id,
+            status="completed",
+            sync_type="full_pipeline",
+            products_added=pdf_result["products_added"],
+            products_updated=pdf_result["products_updated"] + web_enriched,
+            products_skipped=pdf_result["products_skipped"],
+            completed_at=datetime.now(timezone.utc),
+        )
+        db.add(log)
+        db.commit()
+
+        return {
+            "pdf_downloaded": pdf_result["downloaded"],
+            "pdf_changed": pdf_result["changed"],
+            "pdf_url": pdf_result.get("pdf_url"),
+            "products_added": pdf_result["products_added"],
+            "products_updated": pdf_result["products_updated"],
+            "products_skipped": pdf_result["products_skipped"],
+            "web_enriched": web_enriched,
+            "web_not_found": web_not_found,
+            "missing_web_descriptions": missing_web,
+            "sync_log_id": log.id,
+        }
+
+    @staticmethod
+    def run_delta_sync(
+        db: Session,
+        tenant_id: str,
+    ) -> dict:
+        """Lightweight sync: fetch PDF (hash check makes it cheap) only.
+
+        Only re-parses if Wilbert published a new catalog version.
+        """
+        pdf_result = UrnCatalogScraper.fetch_catalog_pdf(db, tenant_id)
+
+        # Clean up temp file
+        if pdf_result.get("path"):
+            import os
+            try:
+                os.unlink(pdf_result["path"])
+            except OSError:
+                pass
+
+        return {
+            "pdf_downloaded": pdf_result["downloaded"],
+            "pdf_changed": pdf_result["changed"],
+            "pdf_url": pdf_result.get("pdf_url"),
+            "products_added": pdf_result["products_added"],
+            "products_updated": pdf_result["products_updated"],
+            "products_skipped": pdf_result["products_skipped"],
+            "sync_log_id": pdf_result.get("sync_log_id"),
+        }

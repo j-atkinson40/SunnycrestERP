@@ -16,6 +16,7 @@ from app.schemas.urns import (
     AncillaryItemResponse,
     CatalogIngestionRequest,
     CatalogIngestionResponse,
+    CatalogPdfFetchResponse,
     CatalogSyncLogResponse,
     CorrectionSummaryResponse,
     DropShipFeedItemResponse,
@@ -651,6 +652,43 @@ def enrich_from_website(
             db.commit()
 
     return log
+
+
+@router.post("/catalog/fetch-pdf", response_model=CatalogPdfFetchResponse)
+def fetch_catalog_pdf(
+    force: bool = Query(False, description="Force re-parse even if PDF unchanged"),
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Fetch the latest Wilbert catalog PDF from their website.
+
+    Downloads the PDF, compares its MD5 hash against the previously stored
+    version, and triggers a parse + ingestion if the catalog has changed.
+    Cheap to call frequently — skips parsing when the PDF hasn't changed.
+    """
+    from app.services.urn_catalog_scraper import UrnCatalogScraper
+
+    result = UrnCatalogScraper.fetch_catalog_pdf(
+        db, current_user.company_id, force=force
+    )
+
+    # Clean up temp file
+    if result.get("path"):
+        import os
+        try:
+            os.unlink(result["path"])
+        except OSError:
+            pass
+
+    return CatalogPdfFetchResponse(
+        downloaded=result["downloaded"],
+        changed=result["changed"],
+        pdf_url=result.get("pdf_url"),
+        sync_log_id=result.get("sync_log_id"),
+        products_added=result.get("products_added", 0),
+        products_updated=result.get("products_updated", 0),
+        products_skipped=result.get("products_skipped", 0),
+    )
 
 
 # ---------------------------------------------------------------------------

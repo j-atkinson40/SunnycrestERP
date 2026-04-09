@@ -351,6 +351,9 @@ class UrnTenantSettingsResponse(BaseModel):
     fh_approval_token_expiry_days: int
     proof_email_address: str | None = None
     wilbert_submission_email: str | None = None
+    catalog_pdf_hash: str | None = None
+    catalog_pdf_last_fetched: datetime | None = None
+    catalog_pdf_r2_key: str | None = None
 
     class Config:
         from_attributes = True
@@ -413,3 +416,14 @@ class CatalogIngestionResponse(BaseModel):
     products_updated: int
     products_skipped: int
     status: str
+
+
+class CatalogPdfFetchResponse(BaseModel):
+    """Response from the automatic PDF catalog fetch endpoint."""
+    downloaded: bool
+    changed: bool
+    pdf_url: str | None = None
+    sync_log_id: str | None = None
+    products_added: int = 0
+    products_updated: int = 0
+    products_skipped: int = 0

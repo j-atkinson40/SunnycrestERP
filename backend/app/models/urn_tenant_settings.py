@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -29,6 +29,17 @@ class UrnTenantSettings(Base):
     wilbert_submission_email: Mapped[str | None] = mapped_column(
         String(500), nullable=True
     )
+
+    # Catalog PDF auto-fetch
+    catalog_pdf_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )  # MD5 hex digest of last fetched PDF
+    catalog_pdf_last_fetched: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    catalog_pdf_r2_key: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )  # R2 storage key for cached PDF
 
     # Audit
     created_at: Mapped[datetime] = mapped_column(
