@@ -227,34 +227,44 @@ class UrnCatalogScraper:
         not_found = 0
 
         for product in products:
-            wd = None
+            try:
+                wd = None
 
-            # Try SKU match first
-            if product.sku:
-                wd = by_sku.get(product.sku.upper())
+                # Try SKU match first
+                if product.sku:
+                    wd = by_sku.get(product.sku.upper())
 
-            # Try name match
-            if not wd and product.name:
-                norm = re.sub(r"\s+(urn|memento|heart|pendant)$", "", product.name.lower()).strip()
-                wd = by_name.get(norm)
+                # Try name match
+                if not wd and product.name:
+                    norm = re.sub(r"\s+(urn|memento|heart|pendant)$", "", product.name.lower()).strip()
+                    wd = by_name.get(norm)
 
-            if wd:
-                changed = False
-                if wd.get("short_description") and not product.wilbert_description:
-                    product.wilbert_description = wd["short_description"]
-                    changed = True
-                if wd.get("long_description") and not product.wilbert_long_description:
-                    product.wilbert_long_description = wd["long_description"]
-                    changed = True
-                if wd.get("image_url") and not product.image_url:
-                    product.image_url = wd["image_url"]
-                    changed = True
-                if wd.get("catalog_url") and not product.wilbert_catalog_url:
-                    product.wilbert_catalog_url = wd["catalog_url"]
-                    changed = True
-                if changed:
-                    enriched += 1
-            else:
+                if wd:
+                    changed = False
+                    if wd.get("short_description") and not product.wilbert_description:
+                        product.wilbert_description = wd["short_description"]
+                        changed = True
+                    if wd.get("long_description") and not product.wilbert_long_description:
+                        product.wilbert_long_description = wd["long_description"]
+                        changed = True
+                    # Only set image_url from web if product has no R2 image (PDF-extracted)
+                    if wd.get("image_url") and not product.image_url and not product.r2_image_key:
+                        product.image_url = wd["image_url"]
+                        changed = True
+                    if wd.get("catalog_url") and not product.wilbert_catalog_url:
+                        product.wilbert_catalog_url = wd["catalog_url"]
+                        changed = True
+                    if changed:
+                        enriched += 1
+                else:
+                    not_found += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to enrich product %s (%s): %s",
+                    product.sku or product.name,
+                    product.id,
+                    e,
+                )
                 not_found += 1
 
         if enriched > 0:
@@ -342,6 +352,7 @@ class UrnCatalogScraper:
             "products_added": 0,
             "products_updated": 0,
             "products_skipped": 0,
+            "images_uploaded": 0,
         }
 
         # Resolve the PDF URL
@@ -431,6 +442,7 @@ class UrnCatalogScraper:
         result["products_added"] = log.products_added
         result["products_updated"] = log.products_updated
         result["products_skipped"] = log.products_skipped
+        result["images_uploaded"] = getattr(log, "_images_uploaded", 0)
 
         return result
 

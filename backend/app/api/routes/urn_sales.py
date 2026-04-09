@@ -53,6 +53,17 @@ urn_ext = require_extension("urn_sales")
 # ---------------------------------------------------------------------------
 
 
+def _resolve_product_image_url(product) -> str | None:
+    """Return the best image URL for a product: R2 public URL > wilbert.com URL."""
+    if product.r2_image_key:
+        try:
+            from app.services.legacy_r2_client import get_public_url
+            return get_public_url(product.r2_image_key)
+        except Exception:
+            pass
+    return product.image_url
+
+
 @router.get("/products", response_model=list[UrnProductResponse])
 def list_products(
     source_type: str | None = None,
@@ -66,12 +77,18 @@ def list_products(
 ):
     from app.services.urn_product_service import UrnProductService
 
-    return UrnProductService.list_products(
+    products = UrnProductService.list_products(
         db, current_user.company_id,
         source_type=source_type, material=material,
         active=active, discontinued=discontinued,
         limit=limit, offset=offset,
     )
+    # Resolve R2 image keys to public URLs for frontend display
+    for p in products:
+        resolved = _resolve_product_image_url(p)
+        if resolved and resolved != p.image_url:
+            p.image_url = resolved
+    return products
 
 
 @router.get("/products/search", response_model=list[UrnProductSearchResult])
@@ -108,7 +125,11 @@ def get_product(
 ):
     from app.services.urn_product_service import UrnProductService
 
-    return UrnProductService.get_product(db, current_user.company_id, product_id)
+    product = UrnProductService.get_product(db, current_user.company_id, product_id)
+    resolved = _resolve_product_image_url(product)
+    if resolved and resolved != product.image_url:
+        product.image_url = resolved
+    return product
 
 
 @router.post("/products", response_model=UrnProductResponse, status_code=201)
@@ -737,6 +758,7 @@ def ingest_from_pdf(
         products_added=log.products_added,
         products_updated=log.products_updated,
         products_skipped=log.products_skipped,
+        images_uploaded=getattr(log, "_images_uploaded", 0),
         status=log.status,
     )
 
@@ -866,7 +888,96 @@ def fetch_catalog_pdf(
         products_added=result.get("products_added", 0),
         products_updated=result.get("products_updated", 0),
         products_skipped=result.get("products_skipped", 0),
+        images_uploaded=result.get("images_uploaded", 0),
     )
+
+
+@router.get("/catalog/sync-status")
+def get_catalog_sync_status(
+    current_user: User = Depends(urn_ext),
+    db: Session = Depends(get_db),
+):
+    """Get catalog sync status: last sync info + product completeness metrics."""
+    from app.models.urn_catalog_sync_log import UrnCatalogSyncLog as SyncLog
+    from app.models.urn_product import UrnProduct
+    from app.models.urn_tenant_settings import UrnTenantSettings
+
+    tenant_id = current_user.company_id
+
+    # Last sync log
+    last_sync = (
+        db.query(SyncLog)
+        .filter(SyncLog.tenant_id == tenant_id)
+        .order_by(SyncLog.started_at.desc())
+        .first()
+    )
+
+    # Tenant settings for PDF hash / last fetched
+    settings = (
+        db.query(UrnTenantSettings)
+        .filter(UrnTenantSettings.tenant_id == tenant_id)
+        .first()
+    )
+
+    # Product completeness metrics
+    total = db.query(UrnProduct).filter(
+        UrnProduct.tenant_id == tenant_id,
+        UrnProduct.is_active == True,
+        UrnProduct.source_type == "drop_ship",
+    ).count()
+
+    with_image = db.query(UrnProduct).filter(
+        UrnProduct.tenant_id == tenant_id,
+        UrnProduct.is_active == True,
+        UrnProduct.source_type == "drop_ship",
+        (UrnProduct.r2_image_key.isnot(None)) | (UrnProduct.image_url.isnot(None)),
+    ).count()
+
+    with_description = db.query(UrnProduct).filter(
+        UrnProduct.tenant_id == tenant_id,
+        UrnProduct.is_active == True,
+        UrnProduct.source_type == "drop_ship",
+        (UrnProduct.wilbert_description.isnot(None)) | (UrnProduct.wilbert_long_description.isnot(None)),
+    ).count()
+
+    with_price = db.query(UrnProduct).filter(
+        UrnProduct.tenant_id == tenant_id,
+        UrnProduct.is_active == True,
+        UrnProduct.source_type == "drop_ship",
+        UrnProduct.retail_price.isnot(None),
+    ).count()
+
+    with_dimensions = db.query(UrnProduct).filter(
+        UrnProduct.tenant_id == tenant_id,
+        UrnProduct.is_active == True,
+        UrnProduct.source_type == "drop_ship",
+        UrnProduct.height.isnot(None),
+    ).count()
+
+    return {
+        "total_products": total,
+        "with_image": with_image,
+        "with_description": with_description,
+        "with_price": with_price,
+        "with_dimensions": with_dimensions,
+        "missing_image": total - with_image,
+        "missing_description": total - with_description,
+        "missing_price": total - with_price,
+        "missing_dimensions": total - with_dimensions,
+        "catalog_pdf_hash": settings.catalog_pdf_hash if settings else None,
+        "catalog_pdf_last_fetched": settings.catalog_pdf_last_fetched.isoformat() if settings and settings.catalog_pdf_last_fetched else None,
+        "last_sync": {
+            "id": last_sync.id,
+            "started_at": last_sync.started_at.isoformat() if last_sync.started_at else None,
+            "completed_at": last_sync.completed_at.isoformat() if last_sync.completed_at else None,
+            "status": last_sync.status,
+            "sync_type": last_sync.sync_type,
+            "products_added": last_sync.products_added,
+            "products_updated": last_sync.products_updated,
+            "products_skipped": last_sync.products_skipped,
+            "error_message": last_sync.error_message,
+        } if last_sync else None,
+    }
 
 
 # ---------------------------------------------------------------------------

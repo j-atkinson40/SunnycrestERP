@@ -7,6 +7,11 @@ Based on research crawl of wilbert.com (April 2026):
 - Server-rendered ASP.NET WebForms — no JS required
 - Product images are 750x750 PNG/JPG
 - Detail pages at /{product-slug}/ (root-level, NOT under /store/)
+
+CSS selectors last verified: April 9, 2026 against live wilbert.com.
+Note: Web enrichment is OPTIONAL — the PDF catalog is the primary data source.
+Images are extracted directly from the PDF (extract_product_images) and uploaded
+to R2. Web scraping supplements with descriptions and higher-res images only.
 """
 
 # ---------------------------------------------------------------------------
@@ -15,7 +20,7 @@ Based on research crawl of wilbert.com (April 2026):
 
 CATALOG_BASE_URL = "https://www.wilbert.com/store/cremation/urns/"
 
-# Direct URL to the Wilbert Cremation Choices catalog PDF (Volume 11)
+# Direct URL to the Wilbert Cremation Choices catalog PDF (Volume 8)
 CATALOG_PDF_URL = "https://www.wilbert.com/assets/1/7/CCV8-Cremation_Choices_Catalog.pdf"
 
 # Landing page that links to the PDF (fallback — scan for .pdf links if direct URL changes)

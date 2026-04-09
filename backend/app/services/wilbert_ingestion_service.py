@@ -1,10 +1,12 @@
-"""Wilbert Ingestion Service — orchestrates PDF parsing + web enrichment.
+"""Wilbert Ingestion Service — orchestrates PDF parsing + image extraction + web enrichment.
 
 Pipeline:
-1. Parse uploaded Wilbert PDF catalog → extract 270 SKUs with dimensions
-2. Upsert into urn_products table (match by SKU)
-3. Optionally enrich from wilbert.com (descriptions, images)
-4. Log results to urn_catalog_sync_logs
+1. Parse uploaded Wilbert PDF catalog → extract SKUs with dimensions
+2. Extract embedded product images from PDF pages
+3. Upload images to R2 and set r2_image_key on products
+4. Upsert into urn_products table (match by SKU)
+5. Optionally enrich from wilbert.com (descriptions, additional images)
+6. Log results to urn_catalog_sync_logs
 """
 
 import logging
@@ -15,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.urn_catalog_sync_log import UrnCatalogSyncLog
 from app.models.urn_product import UrnProduct
-from app.services.wilbert_pdf_parser import parse_pdf_to_dicts
+from app.services.wilbert_pdf_parser import extract_product_images, parse_pdf_to_dicts
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,14 @@ class WilbertIngestionService:
             log.products_updated = updated
             log.products_skipped = skipped
 
-            # Step 3: Optional web enrichment
+            # Step 3: Extract and upload product images from PDF
+            images_uploaded = WilbertIngestionService._extract_and_upload_images(
+                db, tenant_id, pdf_path, products_data
+            )
+            if images_uploaded > 0:
+                logger.info("Uploaded %d product images from PDF to R2", images_uploaded)
+
+            # Step 4: Optional web enrichment
             if enrich_from_website:
                 try:
                     logger.info("Enriching from wilbert.com...")
@@ -99,6 +108,9 @@ class WilbertIngestionService:
                 except Exception as e:
                     logger.warning("Web enrichment failed (non-fatal): %s", e)
                     log.error_message = f"Web enrichment failed: {e}"
+
+            # Store images_uploaded as a non-persisted attribute for API response
+            log._images_uploaded = images_uploaded
 
             log.status = "completed"
             log.completed_at = datetime.now(timezone.utc)
@@ -211,6 +223,85 @@ class WilbertIngestionService:
                 added += 1
 
         return added, updated, skipped
+
+    @staticmethod
+    def _extract_and_upload_images(
+        db: Session,
+        tenant_id: str,
+        pdf_path: str | Path,
+        products_data: list[dict],
+    ) -> int:
+        """Extract embedded images from the PDF and upload to R2.
+
+        Associates each image with its product via r2_image_key.
+        Skips products that already have an r2_image_key (preserves manual uploads).
+
+        Returns the number of images uploaded.
+        """
+        # Build SKU → catalog_page mapping from parsed data
+        product_pages: dict[str, int] = {}
+        for pdata in products_data:
+            sku = pdata.get("sku")
+            page = pdata.get("catalog_page")
+            if sku and page:
+                product_pages[sku] = page
+
+        if not product_pages:
+            logger.info("No product pages to extract images from")
+            return 0
+
+        # Extract images from PDF
+        try:
+            sku_images = extract_product_images(pdf_path, product_pages)
+        except Exception as e:
+            logger.warning("PDF image extraction failed (non-fatal): %s", e)
+            return 0
+
+        if not sku_images:
+            logger.info("No images extracted from PDF")
+            return 0
+
+        logger.info("Extracted %d images from PDF, uploading to R2...", len(sku_images))
+
+        uploaded = 0
+        for sku, jpeg_bytes in sku_images.items():
+            # Skip non-SKU keys (page_N fallback keys)
+            if sku.startswith("page_"):
+                continue
+
+            # Find the product in the database
+            product = (
+                db.query(UrnProduct)
+                .filter(
+                    UrnProduct.tenant_id == tenant_id,
+                    UrnProduct.sku == sku,
+                )
+                .first()
+            )
+
+            if not product:
+                continue
+
+            # Don't overwrite existing R2 images (preserves manual uploads)
+            if product.r2_image_key:
+                continue
+
+            # Upload to R2
+            r2_key = f"tenants/{tenant_id}/urn_catalog/images/{sku.lower()}.jpg"
+            try:
+                from app.services.legacy_r2_client import upload_bytes
+
+                upload_bytes(jpeg_bytes, r2_key, content_type="image/jpeg")
+                product.r2_image_key = r2_key
+                uploaded += 1
+            except Exception as e:
+                logger.warning("Failed to upload image for %s: %s", sku, e)
+                continue
+
+        if uploaded > 0:
+            db.flush()
+
+        return uploaded
 
     @staticmethod
     def import_products_from_csv(

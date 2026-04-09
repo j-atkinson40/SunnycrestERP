@@ -60,12 +60,38 @@ interface UrnProduct {
   retail_price: number | null
   margin_percent: number | null
   image_url: string | null
+  r2_image_key: string | null
   wilbert_description: string | null
   wilbert_long_description: string | null
   catalog_page: number | null
   discontinued: boolean
   is_active: boolean
   inventory: { qty_on_hand: number; qty_reserved: number } | null
+}
+
+interface SyncStatus {
+  total_products: number
+  with_image: number
+  with_description: number
+  with_price: number
+  with_dimensions: number
+  missing_image: number
+  missing_description: number
+  missing_price: number
+  missing_dimensions: number
+  catalog_pdf_hash: string | null
+  catalog_pdf_last_fetched: string | null
+  last_sync: {
+    id: string
+    started_at: string | null
+    completed_at: string | null
+    status: string
+    sync_type: string | null
+    products_added: number
+    products_updated: number
+    products_skipped: number
+    error_message: string | null
+  } | null
 }
 
 function marginPercent(cost: number | null, price: number | null): string {
@@ -107,6 +133,7 @@ export default function UrnCatalog() {
   // Sync state
   const [syncing, setSyncing] = useState(false)
   const [syncFile, setSyncFile] = useState<File | null>(null)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
 
   // Bulk markup state
   const [markupForm, setMarkupForm] = useState({
@@ -141,9 +168,17 @@ export default function UrnCatalog() {
       .finally(() => setLoading(false))
   }, [sourceFilter, materialFilter])
 
+  const loadSyncStatus = useCallback(() => {
+    apiClient
+      .get("/urns/catalog/sync-status")
+      .then((r) => setSyncStatus(r.data))
+      .catch(() => {}) // silently fail — not critical
+  }, [])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadSyncStatus()
+  }, [load, loadSyncStatus])
 
   // Derive unique materials and types from data
   const materials = [...new Set(products.map((p) => p.material).filter(Boolean))] as string[]
@@ -218,12 +253,14 @@ export default function UrnCatalog() {
       })
       .then((r) => {
         const d = r.data
+        const imgMsg = d.images_uploaded ? `, ${d.images_uploaded} images` : ""
         toast.success(
-          `Sync complete: ${d.products_added} added, ${d.products_updated} updated, ${d.products_skipped} skipped`
+          `Sync complete: ${d.products_added} added, ${d.products_updated} updated${imgMsg}`
         )
         setShowSync(false)
         setSyncFile(null)
         load()
+        loadSyncStatus()
       })
       .catch((e) => toast.error(e.response?.data?.detail || "Sync failed"))
       .finally(() => setSyncing(false))
@@ -238,11 +275,13 @@ export default function UrnCatalog() {
         if (!d.downloaded) {
           toast.error("Could not download catalog PDF from Wilbert")
         } else {
+          const imgMsg = d.images_uploaded ? `, ${d.images_uploaded} images` : ""
           toast.success(
-            `Catalog synced: ${d.products_added} added, ${d.products_updated} updated, ${d.products_skipped} skipped`
+            `Catalog synced: ${d.products_added} added, ${d.products_updated} updated${imgMsg}`
           )
           setShowSync(false)
           load()
+          loadSyncStatus()
         }
       })
       .catch((e) => toast.error(e.response?.data?.detail || "PDF fetch failed"))
@@ -375,6 +414,34 @@ export default function UrnCatalog() {
           </Button>
         </div>
       </div>
+
+      {/* Sync Status Bar */}
+      {syncStatus && syncStatus.total_products > 0 && (
+        <div className="flex items-center gap-4 rounded-lg border bg-muted/30 px-4 py-2.5 text-sm">
+          <span className="font-medium text-muted-foreground">Data completeness:</span>
+          <div className="flex items-center gap-1">
+            <div className={`h-2 w-2 rounded-full ${syncStatus.missing_image === 0 ? 'bg-green-500' : 'bg-amber-500'}`} />
+            <span>{syncStatus.with_image}/{syncStatus.total_products} images</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className={`h-2 w-2 rounded-full ${syncStatus.missing_description === 0 ? 'bg-green-500' : 'bg-amber-500'}`} />
+            <span>{syncStatus.with_description}/{syncStatus.total_products} descriptions</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className={`h-2 w-2 rounded-full ${syncStatus.missing_price === 0 ? 'bg-green-500' : 'bg-amber-500'}`} />
+            <span>{syncStatus.with_price}/{syncStatus.total_products} priced</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className={`h-2 w-2 rounded-full ${syncStatus.missing_dimensions === 0 ? 'bg-green-500' : 'bg-amber-500'}`} />
+            <span>{syncStatus.with_dimensions}/{syncStatus.total_products} dimensions</span>
+          </div>
+          {syncStatus.catalog_pdf_last_fetched && (
+            <span className="ml-auto text-xs text-muted-foreground">
+              Last synced: {new Date(syncStatus.catalog_pdf_last_fetched).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex gap-3">
@@ -587,17 +654,37 @@ export default function UrnCatalog() {
                   {expandedRow === p.id && (
                     <TableRow key={`${p.id}-detail`}>
                       <TableCell colSpan={10} className="bg-muted/30 p-4">
-                        <div className="grid grid-cols-3 gap-6">
+                        <div className="grid grid-cols-4 gap-6">
+                          {/* Product image - larger view */}
+                          <div className="flex flex-col items-center">
+                            {p.image_url ? (
+                              <img
+                                src={p.image_url}
+                                alt={p.name}
+                                className="h-40 w-40 rounded-lg object-cover shadow-sm"
+                              />
+                            ) : (
+                              <div className="flex h-40 w-40 items-center justify-center rounded-lg bg-muted">
+                                <Package className="h-12 w-12 text-muted-foreground" />
+                              </div>
+                            )}
+                            {p.r2_image_key && (
+                              <span className="mt-1 text-xs text-green-600">PDF image</span>
+                            )}
+                            {!p.image_url && !p.r2_image_key && (
+                              <span className="mt-1 text-xs text-amber-600">No image</span>
+                            )}
+                          </div>
                           <div>
                             <h4 className="mb-2 text-sm font-semibold">Dimensions</h4>
                             <div className="space-y-1 text-sm">
                               <div>
                                 <span className="text-muted-foreground">Height:</span>{" "}
-                                {p.height || "—"}
+                                {p.height || <span className="text-amber-500">—</span>}
                               </div>
                               <div>
                                 <span className="text-muted-foreground">Width/Diameter:</span>{" "}
-                                {p.width_or_diameter || "—"}
+                                {p.width_or_diameter || <span className="text-amber-500">—</span>}
                               </div>
                               {p.depth && (
                                 <div>
@@ -607,14 +694,16 @@ export default function UrnCatalog() {
                               )}
                               <div>
                                 <span className="text-muted-foreground">Cubic Inches:</span>{" "}
-                                {p.cubic_inches ?? "—"}
+                                {p.cubic_inches ?? <span className="text-amber-500">—</span>}
                               </div>
                             </div>
                           </div>
                           <div>
                             <h4 className="mb-2 text-sm font-semibold">Description</h4>
                             <p className="text-sm text-muted-foreground">
-                              {p.wilbert_description || p.wilbert_long_description || "No description available"}
+                              {p.wilbert_description || p.wilbert_long_description || (
+                                <span className="text-amber-500">No description available</span>
+                              )}
                             </p>
                             {p.companion_of_sku && (
                               <div className="mt-2 text-sm">
@@ -790,8 +879,8 @@ export default function UrnCatalog() {
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Downloads the latest Cremation Choices catalog PDF from wilbert.com,
-              extracts all products with SKUs and dimensions, and enriches them with
-              descriptions and images from Wilbert's website.
+              extracts all products with SKUs, dimensions, and product images directly
+              from the PDF. Descriptions are enriched from Wilbert's website in the background.
             </p>
             <Button
               className="w-full"

@@ -434,6 +434,7 @@ class CatalogIngestionResponse(BaseModel):
     products_added: int
     products_updated: int
     products_skipped: int
+    images_uploaded: int = 0
     status: str
 
 
@@ -446,3 +447,4 @@ class CatalogPdfFetchResponse(BaseModel):
     products_added: int = 0
     products_updated: int = 0
     products_skipped: int = 0
+    images_uploaded: int = 0
