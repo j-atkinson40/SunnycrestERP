@@ -243,7 +243,7 @@ def get_active_extension_keys(db: Session, tenant_id: str) -> list[str]:
 # Install / disable / configure
 # ---------------------------------------------------------------------------
 
-_PRODUCT_LINE_EXTENSIONS: frozenset[str] = frozenset({"wastewater", "redi_rock", "rosetta"})
+_PRODUCT_LINE_EXTENSIONS: frozenset[str] = frozenset({"wastewater", "redi_rock", "rosetta", "urn_sales"})
 
 
 def _update_extension_visibility(
@@ -1010,6 +1010,30 @@ EXTENSION_CATALOG = [
         ],
         "setup_required": True,
         "sort_order": 3,
+    },
+    {
+        "extension_key": "urn_sales",
+        "module_key": "products",
+        "display_name": "Urn Sales & Catalog",
+        "tagline": "Cremation urn catalog with Wilbert PDF ingestion, web enrichment, and markup pricing",
+        "description": "Full cremation urn product management for Wilbert licensees. Import your Wilbert catalog PDF to populate 250+ SKUs with dimensions, materials, and product types automatically. Enrich with descriptions and images from wilbert.com. Set retail prices with bulk markup tools, CSV import, or inline editing. Track inventory for in-stock urns and manage drop-ship orders through Wilbert.",
+        "section": "product_lines",
+        "category": "workflow",
+        "applicable_verticals": ["manufacturing"],
+        "default_enabled_for": [],
+        "cannot_disable": False,
+        "access_model": "included",
+        "status": "available",
+        "version": "1.0.0",
+        "feature_bullets": [
+            "Import Wilbert PDF catalog — extracts SKUs, dimensions, materials, and product types automatically",
+            "Web enrichment from wilbert.com — pulls descriptions, images, and related items",
+            "Bulk markup pricing — set retail prices by material, type, or entire catalog with configurable rounding",
+            "CSV and inline price editing — update costs and retail prices individually or in bulk",
+            "In-stock and drop-ship inventory tracking with reorder points and Wilbert order management",
+        ],
+        "setup_required": True,
+        "sort_order": 4,
     },
 
     # ── BASIC OPERATIONS (section: basic_operations) ──
