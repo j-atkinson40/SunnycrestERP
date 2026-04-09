@@ -1023,7 +1023,7 @@ EXTENSION_CATALOG = [
         "default_enabled_for": [],
         "cannot_disable": False,
         "access_model": "included",
-        "status": "available",
+        "status": "active",
         "version": "1.0.0",
         "feature_bullets": [
             "Import Wilbert PDF catalog — extracts SKUs, dimensions, materials, and product types automatically",
