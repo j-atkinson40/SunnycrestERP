@@ -195,6 +195,12 @@ export default function ComplianceHub() {
             />
           </>
         )}
+        <HubTile
+          label="SS Certificates"
+          description="Social Service certificate generation and tracking"
+          href="/social-service-certificates"
+          icon={FileCheck}
+        />
         {hasNpca && (
           <HubTile
             label="NPCA Audit Prep"

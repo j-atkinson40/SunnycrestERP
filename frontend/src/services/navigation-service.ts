@@ -141,29 +141,6 @@ function getManufacturingNav(
     settings.accounting_connection_status === "connected" &&
     settings.last_sync_error;
 
-  // Build Compliance children (SS Certificates + NPCA)
-  const complianceChildren: NavItem[] = filterByPermission(
-    [
-      {
-        label: "SS Certificates",
-        href: "/social-service-certificates",
-        icon: "FileCheck",
-        permission: "invoice.approve",
-      },
-      {
-        label: "NPCA Audit Prep",
-        href: "/npca",
-        icon: "ClipboardCheck",
-        requiresModule: "npca_audit_prep",
-      },
-    ],
-    modules,
-    perms,
-    areas,
-    isAdmin,
-    _extensions,
-  );
-
   const hubItems: NavItem[] = [
     {
       label: "Financials",
@@ -209,7 +186,6 @@ function getManufacturingNav(
       isDividerAfter: true,
       permission: "safety.view",
       requiresModule: "safety_management",
-      ...(complianceChildren.length > 0 ? { children: complianceChildren } : {}),
     },
   ];
   const filteredHubs = filterByPermission(hubItems, modules, perms, areas, isAdmin, _extensions);

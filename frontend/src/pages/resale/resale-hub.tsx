@@ -4,8 +4,8 @@ import { Store, Package, ShoppingBag, Boxes, ArrowRight } from "lucide-react";
 
 const TILES = [
   {
-    label: "Catalog",
-    description: "Browse and manage your resale product catalog",
+    label: "Urn Catalog",
+    description: "Browse and manage cremation urns, mementos, and jewelry",
     href: "/resale/catalog",
     icon: Package,
     color: "bg-blue-50 text-blue-600",
