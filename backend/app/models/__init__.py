@@ -295,6 +295,13 @@ from app.models.location import Location
 from app.models.user_location_access import UserLocationAccess
 from app.models.vault import Vault
 from app.models.vault_item import VaultItem
+from app.models.wilbert_territory import WilbertTerritory
+from app.models.wilbert_program_enrollment import WilbertProgramEnrollment
+from app.models.historical_product import HistoricalProduct
+from app.models.product_alias import ProductAlias
+from app.models.data_import_session import DataImportSession
+from app.models.configurable_item_registry import ConfigurableItemRegistry
+from app.models.tenant_item_config import TenantItemConfig
 
 __all__ = [
     "AccountingConnection",
@@ -546,4 +553,11 @@ __all__ = [
     "UserLocationAccess",
     "Vault",
     "VaultItem",
+    "WilbertTerritory",
+    "WilbertProgramEnrollment",
+    "HistoricalProduct",
+    "ProductAlias",
+    "DataImportSession",
+    "ConfigurableItemRegistry",
+    "TenantItemConfig",
 ]

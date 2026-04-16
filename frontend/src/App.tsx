@@ -138,6 +138,7 @@ import SpringBurialList from "@/pages/spring-burials/spring-burial-list";
 import OrderStation from "@/pages/orders/order-station";
 import AnnouncementsPage from "@/pages/announcements";
 import OnboardingHub from "@/pages/onboarding/onboarding-hub";
+import OnboardingFlow from "@/pages/onboarding/onboarding-flow";
 import IntegrationSetupPage from "@/pages/onboarding/integration-setup";
 import OnboardingAnalyticsPage from "@/pages/onboarding/onboarding-analytics";
 import ProductLibraryPage from "@/pages/onboarding/product-library";
@@ -171,6 +172,9 @@ import SeasonalTemplatesSettings from "@/pages/settings/seasonal-templates";
 import VaultMoldSettingsPage from "@/pages/settings/vault-mold-settings";
 import VaultSupplierSettingsPage from "@/pages/settings/vault-supplier-settings";
 import CallIntelligenceSettingsPage from "@/pages/settings/call-intelligence-settings";
+import ImportMatchingPage from "@/pages/onboarding/import-matching";
+import ProgramsSettingsPage from "@/pages/settings/programs-settings";
+import ComplianceConfigPage from "@/pages/settings/compliance-config";
 import VaultMoldSetupPage from "@/pages/onboarding/vault-mold-setup";
 import VaultSetupPage from "@/pages/onboarding/vault-setup";
 import AccountingSetupPage from "@/pages/onboarding/accounting-setup";
@@ -786,6 +790,8 @@ export default function App() {
 
                   {/* Onboarding — any authenticated user */}
                   <Route path="/onboarding" element={<OnboardingHub />} />
+                  <Route path="/onboarding/flow" element={<OnboardingFlow />} />
+                  <Route path="/onboarding/import-matching" element={<ImportMatchingPage />} />
                   <Route path="/onboarding/integrations/:type" element={<IntegrationSetupPage />} />
                   <Route path="/onboarding/product-library" element={<ProductLibraryPage />} />
                   <Route path="/onboarding/import/:type" element={<ImportWizardPage />} />
@@ -824,6 +830,8 @@ export default function App() {
                   <Route path="/settings/network/preferences" element={<NetworkPreferencesSettingsPage />} />
                   <Route path="/settings/scheduling" element={<SchedulingSettingsPage />} />
                   <Route path="/settings/call-intelligence" element={<CallIntelligenceSettingsPage />} />
+                  <Route path="/settings/programs" element={<ProgramsSettingsPage />} />
+                  <Route path="/settings/compliance" element={<ComplianceConfigPage />} />
                   <Route path="/settings/integrations/accounting" element={<SyncHealthDashboardPage />} />
 
                   {/* Locations — admin only */}

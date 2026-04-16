@@ -347,6 +347,19 @@ function getManufacturingNav(
           requiresExtension: "disinterment_management",
           settingsGroup: "Integrations",
         },
+        // Operations
+        {
+          label: "Programs & Products",
+          href: "/settings/programs",
+          icon: "Package",
+          settingsGroup: "Operations",
+        },
+        {
+          label: "Compliance Config",
+          href: "/settings/compliance",
+          icon: "ShieldCheck",
+          settingsGroup: "Operations",
+        },
         // Network
         {
           label: "Locations",

@@ -14,10 +14,12 @@ from app.api.routes import (
     ai_command,
     ai_settings,
     core,
+    configurable_items,
     ancillary_orders,
     announcements,
     call_intelligence,
     ringcentral,
+    data_import,
     driver_announcements,
     internal,
     knowledge_base,
@@ -85,8 +87,10 @@ from app.api.routes import (
     journal_entries,
     notifications,
     onboarding,
+    onboarding_flow,
     operations_board,
     permissions,
+    programs,
     purchasing,
     reconciliation,
     reports,
@@ -235,6 +239,9 @@ v1_router.include_router(
     company_entities.router, prefix="/companies", tags=["Company Entities"]
 )
 v1_router.include_router(
+    configurable_items.router, prefix="/configurable", tags=["Configurable Items"]
+)
+v1_router.include_router(
     core.router, prefix="/core", tags=["Core UI"]
 )
 v1_router.include_router(
@@ -251,6 +258,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     behavioral_analytics.router, prefix="/behavioral", tags=["Behavioral Analytics"]
+)
+v1_router.include_router(
+    data_import.router, prefix="/data-import", tags=["Data Import"]
 )
 v1_router.include_router(
     delivery_portal.router, prefix="/portal", tags=["Delivery Portal"]
@@ -343,6 +353,9 @@ v1_router.include_router(
     onboarding.router, prefix="/onboarding", tags=["Onboarding"]
 )
 v1_router.include_router(
+    onboarding_flow.router, prefix="/onboarding-flow", tags=["Onboarding Flow"]
+)
+v1_router.include_router(
     agents.router,
     prefix="/agents",
     tags=["Agents"],
@@ -406,6 +419,9 @@ v1_router.include_router(
     operations_board.router,
     prefix="/operations-board",
     tags=["Operations Board"],
+)
+v1_router.include_router(
+    programs.router, prefix="/programs", tags=["Programs"]
 )
 v1_router.include_router(
     purchasing.router,
