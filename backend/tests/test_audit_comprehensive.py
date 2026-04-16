@@ -801,7 +801,11 @@ class TestDataImport:
             pytest.xfail(f"Data import sessions 500 — likely missing migration: {r.text[:200]}")
         assert r.status_code == 200
         data = r.json()
-        items = data.get("items", data) if isinstance(data, dict) else data
+        # Response may be {"sessions": []} or {"items": []} or just []
+        if isinstance(data, dict):
+            items = data.get("sessions", data.get("items", data))
+        else:
+            items = data
         assert isinstance(items, list)
 
 
