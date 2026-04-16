@@ -68,13 +68,21 @@ export const adminApi = makeAdminClient()
 
 export async function adminLogin(email: string, password: string): Promise<{ token: string; user: any }> {
   const baseUrl = getAdminBaseUrl()
-  const { data } = await axios.post(
+  // POST /platform/auth/login returns { access_token, refresh_token, token_type } only.
+  // We must then call /platform/auth/me to get the user profile.
+  const { data: tokenData } = await axios.post(
     `${baseUrl}/api/platform/auth/login`,
     { email, password }
   )
-  const token = data.access_token
+  const token = tokenData.access_token
+  if (!token) {
+    throw new Error("Login response missing access_token")
+  }
   setAdminToken(token)
-  return { token, user: data.user }
+
+  // Fetch user profile with the new token (adminApi uses getAdminToken())
+  const { data: userData } = await adminApi.get("/api/platform/auth/me")
+  return { token, user: userData }
 }
 
 export async function adminMe(): Promise<any | null> {
