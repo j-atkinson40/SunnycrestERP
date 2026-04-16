@@ -51,6 +51,35 @@ WILBERT_PROGRAMS = {
         "default_enabled": False,
         "description": "Champion, Pierce, Dodge and other embalming chemical brands",
     },
+    "stationery": {
+        "code": "stationery",
+        "name": "Memorial Stationery",
+        "tier": 2,
+        "default_enabled": True,
+        "can_disable": True,
+        "program_type": "platform_native",
+        "description": "Memorial stationery for families — programs, cards, bookmarks. Territory revenue on every order. No handling required by default.",
+        "catalog_key": "stationery_catalog",
+        "composer": "stationery_composer",
+        "fulfillment_options": [
+            {"key": "bridgeable_partner", "label": "Through Bridgeable (recommended)", "description": "We handle print, QC, and shipping. You earn territory revenue.", "is_default": True, "requires_config": False},
+            {"key": "self_fulfill", "label": "I handle fulfillment", "description": "You manage print vendor and delivery. We handle ordering and payment.", "is_default": False, "requires_config": True},
+            {"key": "funeral_home_vendor", "label": "Route to funeral home's vendor", "description": "Order recorded, revenue tracked, funeral home manages production.", "is_default": False, "requires_config": False},
+        ],
+        "settings_tabs": ["general", "fulfillment", "design_approvals", "notifications", "permissions"],
+    },
+    "digital_products": {
+        "code": "digital_products",
+        "name": "Digital Products and Memorial Experiences",
+        "tier": 1,
+        "default_enabled": True,
+        "can_disable": False,
+        "program_type": "platform_native",
+        "description": "Memory books, tribute videos, digital memorials, legacy portraits. Territory revenue generated automatically. No handling required.",
+        "catalog_key": "digital_products_catalog",
+        "composer": "digital_composer",
+        "settings_tabs": ["general", "revenue_visibility", "payout_settings", "notifications", "permissions"],
+    },
 }
 
 
@@ -58,9 +87,41 @@ class WilbertProgramService:
     """Manages Wilbert program enrollments for licensee companies."""
 
     @staticmethod
-    def get_catalog() -> dict:
-        """Return the full WILBERT_PROGRAMS catalog dict."""
-        return WILBERT_PROGRAMS
+    def get_catalog(db: Session = None, company_id: str = None) -> dict:
+        """Return the full WILBERT_PROGRAMS catalog dict with enrollment status.
+
+        If db and company_id are provided, each program entry includes
+        'enrolled' (bool) and 'enrollment' (dict or None) fields.
+        """
+        import copy
+
+        catalog = copy.deepcopy(WILBERT_PROGRAMS)
+
+        if db and company_id:
+            enrollments = (
+                db.query(WilbertProgramEnrollment)
+                .filter(WilbertProgramEnrollment.company_id == company_id)
+                .all()
+            )
+            enrollment_map = {e.program_code: e for e in enrollments}
+
+            for code, program in catalog.items():
+                enrollment = enrollment_map.get(code)
+                if enrollment and enrollment.is_active:
+                    program["enrolled"] = True
+                    program["enrollment"] = {
+                        "id": enrollment.id,
+                        "is_active": enrollment.is_active,
+                        "program_type": enrollment.program_type,
+                        "fulfillment_path": enrollment.fulfillment_path,
+                        "territory_ids": enrollment.territory_ids,
+                        "uses_vault_territory": enrollment.uses_vault_territory,
+                    }
+                else:
+                    program["enrolled"] = False
+                    program["enrollment"] = None
+
+        return catalog
 
     @staticmethod
     def get_company_programs(db: Session, company_id: str) -> list[WilbertProgramEnrollment]:
@@ -83,6 +144,13 @@ class WilbertProgramService:
         territory_ids: list[str] | None = None,
         uses_vault_territory: bool = True,
         enabled_product_ids: list[str] | None = None,
+        program_type: str | None = None,
+        fulfillment_path: str | None = None,
+        personalization_config: dict | None = None,
+        permissions_config: dict | None = None,
+        notifications_config: dict | None = None,
+        fulfillment_config: dict | None = None,
+        payout_config: dict | None = None,
     ) -> WilbertProgramEnrollment:
         """Create a new program enrollment record.
 
@@ -108,6 +176,20 @@ class WilbertProgramService:
             existing.territory_ids = territory_ids
             existing.uses_vault_territory = uses_vault_territory
             existing.enabled_product_ids = enabled_product_ids
+            if program_type is not None:
+                existing.program_type = program_type
+            if fulfillment_path is not None:
+                existing.fulfillment_path = fulfillment_path
+            if personalization_config is not None:
+                existing.personalization_config = personalization_config
+            if permissions_config is not None:
+                existing.permissions_config = permissions_config
+            if notifications_config is not None:
+                existing.notifications_config = notifications_config
+            if fulfillment_config is not None:
+                existing.fulfillment_config = fulfillment_config
+            if payout_config is not None:
+                existing.payout_config = payout_config
             existing.updated_at = datetime.now(timezone.utc)
             db.flush()
             logger.info(
@@ -126,6 +208,13 @@ class WilbertProgramService:
             territory_ids=territory_ids,
             uses_vault_territory=uses_vault_territory,
             enabled_product_ids=enabled_product_ids,
+            program_type=program_type or program_def.get("program_type", "wilbert"),
+            fulfillment_path=fulfillment_path,
+            personalization_config=personalization_config,
+            permissions_config=permissions_config,
+            notifications_config=notifications_config,
+            fulfillment_config=fulfillment_config,
+            payout_config=payout_config,
         )
         db.add(enrollment)
         db.flush()
@@ -286,17 +375,31 @@ class WilbertProgramService:
 
     @staticmethod
     def setup_defaults(db: Session, company_id: str) -> list[WilbertProgramEnrollment]:
-        """Enroll in tier-2 default programs (vault + urn).
+        """Enroll in default programs (vault, urn, stationery, digital_products).
 
         Called during onboarding. Idempotent — skips already-enrolled programs.
+        Tier 1 and 2 programs with default_enabled=True are enrolled.
         """
         enrolled = []
         for code, program_def in WILBERT_PROGRAMS.items():
-            if program_def.get("default_enabled") and program_def.get("tier", 99) <= 2:
-                enrollment = WilbertProgramService.enroll_in_program(
-                    db, company_id, code
-                )
-                enrolled.append(enrollment)
+            if not program_def.get("default_enabled"):
+                continue
+            if program_def.get("tier", 99) > 2:
+                continue
+
+            # Build extra kwargs for platform-native programs
+            extra_kwargs: dict = {}
+            if code == "stationery":
+                extra_kwargs["fulfillment_path"] = "bridgeable_partner"
+                extra_kwargs["program_type"] = "platform_native"
+            elif code == "digital_products":
+                extra_kwargs["permissions_config"] = {"view_revenue": ["admin"]}
+                extra_kwargs["program_type"] = "platform_native"
+
+            enrollment = WilbertProgramService.enroll_in_program(
+                db, company_id, code, **extra_kwargs
+            )
+            enrolled.append(enrollment)
         db.commit()
         logger.info(
             "Setup default programs for company=%s: %s",

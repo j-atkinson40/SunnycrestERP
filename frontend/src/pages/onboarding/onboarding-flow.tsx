@@ -700,6 +700,17 @@ function ProgramsStep({ onComplete, renderNav }: StepProps) {
   const [saving, setSaving] = useState(false);
   const [customLines, setCustomLines] = useState<string[]>([]);
 
+  // Platform-native program inline config state
+  const [digitalExpanded, setDigitalExpanded] = useState(false);
+  const [stationeryExpanded, setStationeryExpanded] = useState(false);
+  const [digitalRevVisibility, setDigitalRevVisibility] = useState<"admin_only" | "all_visible" | "off">("admin_only");
+  const [stationeryFulfillment, setStationeryFulfillment] = useState<"bridgeable" | "self_fulfill" | "hybrid">("bridgeable");
+  const [stationeryLeadTime, setStationeryLeadTime] = useState(5);
+
+  // Vault personalization inline state
+  const [vaultPersonalization, setVaultPersonalization] = useState<"yes" | "no" | null>(null);
+  const [vaultProofApproval, setVaultProofApproval] = useState<"yes" | "no" | null>(null);
+
   useEffect(() => {
     async function fetchCatalog() {
       try {
@@ -732,6 +743,19 @@ function ProgramsStep({ onComplete, renderNav }: StepProps) {
       await apiClient.post("/onboarding-flow/steps/programs", {
         enrollments: selected,
         custom_lines: customLines.filter(Boolean),
+        platform_config: {
+          digital_products: { revenue_visibility: digitalRevVisibility },
+          stationery: {
+            fulfillment_path: stationeryFulfillment,
+            lead_time_days: stationeryFulfillment === "self_fulfill" ? stationeryLeadTime : undefined,
+          },
+        },
+        vault_personalization: enrollments["vault"]
+          ? {
+              enabled: vaultPersonalization === "yes",
+              family_proof: vaultProofApproval === "yes",
+            }
+          : undefined,
       });
       onComplete();
     } catch {
@@ -749,86 +773,298 @@ function ProgramsStep({ onComplete, renderNav }: StepProps) {
     );
   }
 
+  // Separate Wilbert programs from platform-native ones
+  const wilbertPrograms = catalog.filter((p) =>
+    ["vault", "urn", "casket", "monument", "chemical"].includes(p.code)
+  );
+
   return (
     <>
-      <div className="mb-4 text-center">
-        <h2 className="text-xl font-semibold">
-          Which Wilbert programs do you participate in?
-        </h2>
+      <div className="mb-6 text-center">
+        <h2 className="text-xl font-semibold">Programs & Revenue Streams</h2>
         <p className="mt-1 text-muted-foreground">
-          We will pre-configure products, pricing tools, and reporting for each program you enable.
+          Platform programs are included automatically. Wilbert programs are configured based on your territory.
         </p>
       </div>
 
-      <div className="space-y-3">
-        {catalog.map((program) => (
-          <Card
-            key={program.code}
-            className={cn(
-              "cursor-pointer transition-all",
-              enrollments[program.code] && "ring-2 ring-primary",
-            )}
-          >
-            <CardContent className="flex items-center gap-4 py-4">
-              <div
-                className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                  enrollments[program.code]
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground",
-                )}
-              >
-                <Package className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{program.name}</span>
-                  {program.category === "core" && (
-                    <Badge variant="secondary" className="text-xs">Core</Badge>
-                  )}
+      {/* SECTION 1: Included in Your Platform */}
+      <div className="mb-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Included in Your Platform
+        </p>
+        <div className="space-y-3">
+          {/* Digital Products */}
+          <Card>
+            <CardContent className="py-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <Sparkles className="h-5 w-5" />
                 </div>
-                <p className="text-sm text-muted-foreground">{program.description}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Digital Products</span>
+                    <Badge variant="secondary" className="text-xs">Included</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Territory revenue generated automatically. No handling required.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDigitalExpanded(!digitalExpanded)}
+                >
+                  {digitalExpanded ? "Close" : "Configure"}
+                </Button>
               </div>
-              <Switch
-                checked={enrollments[program.code] ?? false}
-                onCheckedChange={() => toggleProgram(program.code)}
-                disabled={program.category === "core"}
-              />
+
+              {digitalExpanded && (
+                <div className="mt-4 space-y-3 rounded-lg border bg-muted/30 p-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Revenue visibility</Label>
+                    <div className="space-y-2">
+                      {(
+                        [
+                          { value: "admin_only", label: "Admin only" },
+                          { value: "all_visible", label: "All staff with access" },
+                          { value: "off", label: "Hide from briefing" },
+                        ] as const
+                      ).map((opt) => (
+                        <label key={opt.value} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            name="digital-rev-vis"
+                            checked={digitalRevVisibility === opt.value}
+                            onChange={() => setDigitalRevVisibility(opt.value)}
+                            className="h-4 w-4"
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Payout setup can be configured in Settings after onboarding.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
-        ))}
 
-        {/* Custom product lines */}
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={() => setCustomLines((prev) => [...prev, ""])}
-            className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-          >
-            <Plus className="h-4 w-4" />
-            Add a non-Wilbert product line
-          </button>
-          {customLines.map((line, idx) => (
-            <div key={idx} className="mt-2 flex items-center gap-2">
-              <Input
-                value={line}
-                onChange={(e) => {
-                  const updated = [...customLines];
-                  updated[idx] = e.target.value;
-                  setCustomLines(updated);
-                }}
-                placeholder="e.g. Septic Tanks, Retaining Walls"
-                className="flex-1"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setCustomLines((prev) => prev.filter((_, i) => i !== idx))}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+          {/* Stationery */}
+          <Card>
+            <CardContent className="py-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Stationery</span>
+                    <Badge variant="secondary" className="text-xs">Included</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Fulfillment: Bridgeable handles by default.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStationeryExpanded(!stationeryExpanded)}
+                >
+                  {stationeryExpanded ? "Close" : "Configure"}
+                </Button>
+              </div>
+
+              {stationeryExpanded && (
+                <div className="mt-4 space-y-3 rounded-lg border bg-muted/30 p-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Fulfillment path</Label>
+                    <div className="space-y-2">
+                      {(
+                        [
+                          { value: "bridgeable", label: "Bridgeable handles fulfillment (recommended)" },
+                          { value: "self_fulfill", label: "We fulfill orders ourselves" },
+                          { value: "hybrid", label: "Hybrid (choose per order)" },
+                        ] as const
+                      ).map((opt) => (
+                        <label key={opt.value} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            name="stationery-fulfill"
+                            checked={stationeryFulfillment === opt.value}
+                            onChange={() => setStationeryFulfillment(opt.value)}
+                            className="h-4 w-4"
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {stationeryFulfillment === "self_fulfill" && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Lead time (business days)</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        className="w-24"
+                        value={stationeryLeadTime}
+                        onChange={(e) => setStationeryLeadTime(parseInt(e.target.value) || 5)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* SECTION 2: Your Wilbert Programs */}
+      <div className="mb-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Your Wilbert Programs
+        </p>
+        <div className="space-y-3">
+          {wilbertPrograms.map((program) => (
+            <Card
+              key={program.code}
+              className={cn(
+                "transition-all",
+                enrollments[program.code] && "ring-2 ring-primary",
+              )}
+            >
+              <CardContent className="py-4">
+                <div className="flex items-center gap-4">
+                  <div
+                    className={cn(
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                      enrollments[program.code]
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    <Package className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{program.name}</span>
+                      {program.category === "core" && (
+                        <Badge variant="secondary" className="text-xs">Core</Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{program.description}</p>
+                  </div>
+                  <Switch
+                    checked={enrollments[program.code] ?? false}
+                    onCheckedChange={() => toggleProgram(program.code)}
+                    disabled={program.category === "core"}
+                  />
+                </div>
+
+                {/* Vault personalization inline config */}
+                {program.code === "vault" && enrollments["vault"] && (
+                  <div className="mt-4 space-y-3 rounded-lg border bg-muted/30 p-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        Do you offer vault personalization?
+                      </Label>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            name="vault-pers"
+                            checked={vaultPersonalization === "yes"}
+                            onChange={() => setVaultPersonalization("yes")}
+                            className="h-4 w-4"
+                          />
+                          Yes
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            name="vault-pers"
+                            checked={vaultPersonalization === "no"}
+                            onChange={() => setVaultPersonalization("no")}
+                            className="h-4 w-4"
+                          />
+                          No
+                        </label>
+                      </div>
+                    </div>
+
+                    {vaultPersonalization === "yes" && (
+                      <>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">
+                            Does the family approve a proof before production?
+                          </Label>
+                          <div className="flex items-center gap-4">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="radio"
+                                name="vault-proof"
+                                checked={vaultProofApproval === "yes"}
+                                onChange={() => setVaultProofApproval("yes")}
+                                className="h-4 w-4"
+                              />
+                              Yes
+                            </label>
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="radio"
+                                name="vault-proof"
+                                checked={vaultProofApproval === "no"}
+                                onChange={() => setVaultProofApproval("no")}
+                                className="h-4 w-4"
+                              />
+                              No
+                            </label>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Configure emblem categories and detailed personalization options in Settings.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           ))}
+
+          {/* Custom product lines */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setCustomLines((prev) => [...prev, ""])}
+              className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+            >
+              <Plus className="h-4 w-4" />
+              Add a non-Wilbert product line
+            </button>
+            {customLines.map((line, idx) => (
+              <div key={idx} className="mt-2 flex items-center gap-2">
+                <Input
+                  value={line}
+                  onChange={(e) => {
+                    const updated = [...customLines];
+                    updated[idx] = e.target.value;
+                    setCustomLines(updated);
+                  }}
+                  placeholder="e.g. Septic Tanks, Retaining Walls"
+                  className="flex-1"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCustomLines((prev) => prev.filter((_, i) => i !== idx))}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

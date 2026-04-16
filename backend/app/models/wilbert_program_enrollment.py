@@ -25,6 +25,13 @@ class WilbertProgramEnrollment(Base):
     uses_vault_territory: Mapped[bool] = mapped_column(Boolean, default=True)
     enabled_product_ids: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     metadata_json: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
+    program_type: Mapped[Optional[str]] = mapped_column(String(50), server_default="wilbert", nullable=True)
+    fulfillment_path: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    personalization_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    permissions_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    notifications_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    fulfillment_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    payout_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -37,6 +37,13 @@ def upgrade() -> None:
         sa.Column("uses_vault_territory", sa.Boolean, nullable=False, server_default="true"),
         sa.Column("enabled_product_ids", sa.JSON, nullable=True),
         sa.Column("metadata", sa.JSON, nullable=True),
+        sa.Column("program_type", sa.String(50), server_default="wilbert", nullable=True),
+        sa.Column("fulfillment_path", sa.String(50), nullable=True),
+        sa.Column("personalization_config", sa.JSON, nullable=True),
+        sa.Column("permissions_config", sa.JSON, nullable=True),
+        sa.Column("notifications_config", sa.JSON, nullable=True),
+        sa.Column("fulfillment_config", sa.JSON, nullable=True),
+        sa.Column("payout_config", sa.JSON, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )

@@ -121,6 +121,50 @@ MANUFACTURING_COMPLIANCE_ITEMS = [
 ]
 
 
+VAULT_PERSONALIZATION_OPTIONS = [
+    {
+        "item_key": "personalization.standard_colors",
+        "display_name": "Standard Wilbert Color Palette",
+        "description": "Classic, Heritage, Bronze, Midnight Blue, and all standard Wilbert colors.",
+        "tier": 1,
+        "tags": ["vault", "color", "standard"],
+        "default_config": {"applicable": "all", "price_configurable": False},
+    },
+    {
+        "item_key": "personalization.emblems_nameplates",
+        "display_name": "Emblems and Nameplates",
+        "description": "Religious, military, sports, occupation, cultural, and custom emblems.",
+        "tier": 2,
+        "tags": ["vault", "casket", "monument", "emblem"],
+        "default_config": {"applicable": "all", "price_configurable": True},
+    },
+    {
+        "item_key": "personalization.legacy_photo",
+        "display_name": "Legacy Family Photo Design",
+        "description": "Family photo printed on vault top lid panel. Requires family-supplied digital photo.",
+        "tier": 2,
+        "tags": ["vault", "photo", "custom"],
+        "default_config": {"applicable": "all", "price_configurable": True},
+    },
+    {
+        "item_key": "personalization.custom_paint",
+        "display_name": "Custom Paint Colors",
+        "description": "Custom color matching via RAL or Pantone. Not all licensees offer this.",
+        "tier": 3,
+        "tags": ["vault", "paint", "custom"],
+        "default_config": {"applicable": [], "price_configurable": True},
+    },
+    {
+        "item_key": "personalization.specialty_finish",
+        "display_name": "Specialty Finish",
+        "description": "Bronze coating or high-polish finish. Available on select products.",
+        "tier": 3,
+        "tags": ["vault", "finish", "premium"],
+        "default_config": {"applicable": [], "price_configurable": True},
+    },
+]
+
+
 class ConfigurableItemService:
     """Manages platform-wide configurable item registry and per-tenant config."""
 
@@ -407,19 +451,24 @@ class ConfigurableItemService:
         return enabled
 
     @staticmethod
-    def seed_registry(db: Session) -> int:
-        """Seed the platform-wide registry from MANUFACTURING_COMPLIANCE_ITEMS.
+    def _seed_items(
+        db: Session,
+        items: list[dict],
+        registry_type: str,
+        vertical: str,
+    ) -> int:
+        """Seed a list of item definitions into the registry.
 
         Idempotent — skips items that already exist (matched by item_key + registry_type).
         Returns the count of newly created items.
         """
         created = 0
-        for idx, item_def in enumerate(MANUFACTURING_COMPLIANCE_ITEMS):
+        for idx, item_def in enumerate(items):
             existing = (
                 db.query(ConfigurableItemRegistry)
                 .filter(
                     ConfigurableItemRegistry.item_key == item_def["item_key"],
-                    ConfigurableItemRegistry.registry_type == "compliance",
+                    ConfigurableItemRegistry.registry_type == registry_type,
                 )
                 .first()
             )
@@ -428,12 +477,12 @@ class ConfigurableItemService:
 
             registry_item = ConfigurableItemRegistry(
                 id=str(uuid.uuid4()),
-                registry_type="compliance",
+                registry_type=registry_type,
                 item_key=item_def["item_key"],
                 display_name=item_def["display_name"],
                 description=item_def.get("description"),
                 tier=item_def["tier"],
-                vertical="manufacturing",
+                vertical=vertical,
                 tags=item_def.get("tags", []),
                 default_config=item_def.get("default_config", {}),
                 is_active=True,
@@ -442,7 +491,25 @@ class ConfigurableItemService:
             db.add(registry_item)
             created += 1
 
-        if created:
-            db.commit()
-            logger.info("Seeded %d compliance items into registry", created)
         return created
+
+    @staticmethod
+    def seed_registry(db: Session) -> int:
+        """Seed the platform-wide registry from all item definition lists.
+
+        Idempotent — skips items that already exist (matched by item_key + registry_type).
+        Returns the total count of newly created items.
+        """
+        total_created = 0
+
+        total_created += ConfigurableItemService._seed_items(
+            db, MANUFACTURING_COMPLIANCE_ITEMS, "compliance", "manufacturing"
+        )
+        total_created += ConfigurableItemService._seed_items(
+            db, VAULT_PERSONALIZATION_OPTIONS, "personalization_option", "manufacturing"
+        )
+
+        if total_created:
+            db.commit()
+            logger.info("Seeded %d items into registry", total_created)
+        return total_created
