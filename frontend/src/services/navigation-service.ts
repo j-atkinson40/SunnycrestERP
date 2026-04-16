@@ -87,24 +87,6 @@ function getManufacturingNav(
   const sections: NavSection[] = [];
 
   // ── Primary ──
-  // Build Order Station children (Disinterments as sub-item)
-  const orderStationChildren: NavItem[] = filterByPermission(
-    [
-      {
-        label: "Disinterments",
-        href: "/disinterments",
-        icon: "Shovel",
-        permission: "disinterments.view",
-        requiresExtension: "disinterment_management",
-      },
-    ],
-    modules,
-    perms,
-    areas,
-    isAdmin,
-    _extensions,
-  );
-
   const primaryItems: NavItem[] = [
     { label: "Home", href: "/dashboard", icon: "Home" },
     {
@@ -113,7 +95,6 @@ function getManufacturingNav(
       icon: "Zap",
       permission: "ar.view",
       requiresModule: "sales",
-      ...(orderStationChildren.length > 0 ? { children: orderStationChildren } : {}),
     },
     {
       label: "Operations Board",
