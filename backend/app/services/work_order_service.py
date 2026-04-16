@@ -1,11 +1,14 @@
 """Work order and production management service."""
 
+import logging
 import uuid
 from datetime import UTC, datetime, date, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sa_func
+
+logger = logging.getLogger(__name__)
 
 from app.models.work_order import WorkOrder
 from app.models.pour_event import PourEvent, PourEventWorkOrder
@@ -485,6 +488,10 @@ def create_pour_event(
 
     db.commit()
     db.refresh(pe)
+
+    # Dual-write: pour event → vault
+    _sync_pour_event_to_vault(db, pe, actor_id)
+
     return get_pour_event(db, company_id, pe_id)
 
 
@@ -1026,3 +1033,44 @@ def delete_replenishment_rule(
         raise HTTPException(status_code=404, detail="Replenishment rule not found")
     db.delete(rule)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Vault dual-write helpers
+# ---------------------------------------------------------------------------
+
+
+def _sync_pour_event_to_vault(db: Session, pe: PourEvent, actor_id: str | None = None) -> None:
+    """Create a VaultItem mirror of a pour event (dual-write pattern)."""
+    try:
+        from app.services.vault_service import create_vault_item
+        from datetime import timezone
+
+        event_start = None
+        if pe.pour_date:
+            event_start = datetime.combine(pe.pour_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+
+        create_vault_item(
+            db,
+            company_id=pe.company_id,
+            item_type="event",
+            title=f"Pour {pe.pour_event_number}",
+            description=pe.crew_notes,
+            event_start=event_start,
+            event_type="production_pour",
+            status="active",
+            source="system_generated",
+            source_entity_id=pe.id,
+            created_by=actor_id,
+            metadata_json={
+                "pour_event_number": pe.pour_event_number,
+                "pour_time": pe.pour_time,
+                "status": pe.status,
+                "batch_ticket_id": pe.batch_ticket_id,
+                "cure_schedule_id": pe.cure_schedule_id,
+            },
+        )
+        db.commit()
+    except Exception:
+        logger.warning("Vault dual-write failed for pour event %s", pe.id, exc_info=True)
+        db.rollback()

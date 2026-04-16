@@ -131,6 +131,7 @@ from app.api.routes import (
     training_lifecycle,
     webhooks,
     website_intelligence,
+    vault,
     vault_molds,
     vault_supplier,
     widgets,
@@ -560,6 +561,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     webhooks.router, prefix="/webhooks", tags=["Webhooks"]
+)
+v1_router.include_router(
+    vault.router, prefix="/vault", tags=["Vault"]
 )
 v1_router.include_router(
     vault_molds.router, prefix="/vault-molds", tags=["Vault Molds"]

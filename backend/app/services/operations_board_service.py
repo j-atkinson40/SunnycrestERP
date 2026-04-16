@@ -158,6 +158,36 @@ def log_production(
     db.add(entry)
     db.commit()
     db.refresh(entry)
+
+    # Dual-write: production log → vault
+    try:
+        from app.services.vault_service import create_vault_item
+
+        create_vault_item(
+            db,
+            company_id=tenant_id,
+            item_type="production_record",
+            title=f"Production: {quantity}x {product_name_raw}",
+            event_start=entry.logged_at if hasattr(entry, "logged_at") else datetime.now(timezone.utc),
+            event_type="production_pour",
+            status="active",
+            source="system_generated",
+            source_entity_id=entry.id,
+            created_by=user_id,
+            metadata_json={
+                "product_id": product_id,
+                "product_name": product_name_raw,
+                "quantity": quantity,
+                "entry_method": entry_method,
+                "contributor_key": contributor_key,
+                "component_type": component_type,
+            },
+        )
+        db.commit()
+    except Exception:
+        logger.warning("Vault dual-write failed for production log %s", entry.id, exc_info=True)
+        db.rollback()
+
     return entry
 
 

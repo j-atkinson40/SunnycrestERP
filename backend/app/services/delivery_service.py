@@ -8,6 +8,8 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+import logging
+
 from app.models.carrier import Carrier
 from app.models.delivery import Delivery
 from app.models.delivery_event import DeliveryEvent
@@ -16,6 +18,8 @@ from app.models.delivery_route import DeliveryRoute
 from app.models.delivery_stop import DeliveryStop
 from app.models.driver import Driver
 from app.models.vehicle import Vehicle
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +236,10 @@ def create_delivery(db: Session, company_id: str, data: dict, actor_id: str | No
     db.add(delivery)
     db.commit()
     db.refresh(delivery)
+
+    # Dual-write: also create vault item
+    _sync_delivery_to_vault(db, delivery, actor_id)
+
     return delivery
 
 
@@ -341,6 +349,10 @@ def create_route(db: Session, company_id: str, data: dict, actor_id: str | None 
     db.add(route)
     db.commit()
     db.refresh(route)
+
+    # Dual-write: also create vault item
+    _sync_route_to_vault(db, route, actor_id)
+
     return route
 
 
@@ -557,4 +569,155 @@ def create_media(
     db.add(media)
     db.commit()
     db.refresh(media)
+
+    # Dual-write: delivery photos → vault documents
+    _sync_media_to_vault(db, media, delivery_id)
+
     return media
+
+
+# ---------------------------------------------------------------------------
+# Vault dual-write helpers
+# ---------------------------------------------------------------------------
+
+
+def _sync_delivery_to_vault(db: Session, delivery: Delivery, actor_id: str | None = None) -> None:
+    """Create a VaultItem mirror of a delivery record (dual-write pattern)."""
+    try:
+        from app.services.vault_service import create_vault_item
+
+        # Build title from available data
+        customer_name = ""
+        if delivery.customer:
+            customer_name = getattr(delivery.customer, "name", "")
+        title = f"Delivery to {customer_name}" if customer_name else f"Delivery #{delivery.id[:8]}"
+
+        # Determine shared companies for cross-tenant visibility
+        shared_ids = None
+        if delivery.customer_id:
+            try:
+                from app.models.customer import Customer
+                cust = db.query(Customer).filter(Customer.id == delivery.customer_id).first()
+                if cust and getattr(cust, "company_id", None) and cust.company_id != delivery.company_id:
+                    shared_ids = [cust.company_id]
+            except Exception:
+                pass
+
+        create_vault_item(
+            db,
+            company_id=delivery.company_id,
+            item_type="event",
+            title=title,
+            description=delivery.special_instructions,
+            event_start=delivery.scheduled_at or (
+                datetime.combine(delivery.requested_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+                if delivery.requested_date else None
+            ),
+            event_end=None,
+            event_location=delivery.delivery_address,
+            event_type="delivery",
+            visibility="shared" if shared_ids else "internal",
+            shared_with_company_ids=shared_ids,
+            related_entity_type="order",
+            related_entity_id=delivery.order_id,
+            status="active",
+            source="system_generated",
+            source_entity_id=delivery.id,
+            created_by=actor_id,
+            metadata_json={
+                "delivery_type": delivery.delivery_type,
+                "priority": delivery.priority,
+                "customer_id": delivery.customer_id,
+                "weight_lbs": str(delivery.weight_lbs) if delivery.weight_lbs else None,
+                "scheduling_type": delivery.scheduling_type,
+            },
+        )
+        db.commit()
+    except Exception:
+        logger.warning("Vault dual-write failed for delivery %s", delivery.id, exc_info=True)
+        db.rollback()
+
+
+def _sync_route_to_vault(db: Session, route: DeliveryRoute, actor_id: str | None = None) -> None:
+    """Create a VaultItem mirror of a route record (dual-write pattern)."""
+    try:
+        from app.services.vault_service import create_vault_item
+
+        driver_name = ""
+        if route.driver:
+            driver_name = getattr(route.driver, "name", "") or f"Driver {route.driver_id[:8]}"
+        title = f"Route: {driver_name} — {route.route_date}" if driver_name else f"Route {route.route_date}"
+
+        create_vault_item(
+            db,
+            company_id=route.company_id,
+            item_type="event",
+            title=title,
+            description=route.notes,
+            event_start=datetime.combine(route.route_date, datetime.min.time()).replace(tzinfo=timezone.utc),
+            event_type="route",
+            related_entity_type="employee",
+            related_entity_id=route.driver_id,
+            status="active",
+            source="system_generated",
+            source_entity_id=route.id,
+            created_by=actor_id,
+            metadata_json={
+                "driver_id": route.driver_id,
+                "vehicle_id": route.vehicle_id,
+                "total_stops": route.total_stops,
+                "route_status": route.status,
+            },
+        )
+        db.commit()
+    except Exception:
+        logger.warning("Vault dual-write failed for route %s", route.id, exc_info=True)
+        db.rollback()
+
+
+def _sync_media_to_vault(db: Session, media: DeliveryMedia, delivery_id: str) -> None:
+    """Create a VaultItem for delivery media (photos, signatures, etc.)."""
+    try:
+        from app.services.vault_service import create_vault_item
+
+        delivery = db.query(Delivery).filter(Delivery.id == delivery_id).first()
+        if not delivery:
+            return
+
+        # Determine cross-tenant sharing
+        shared_ids = None
+        if delivery.customer_id:
+            try:
+                from app.models.customer import Customer
+                cust = db.query(Customer).filter(Customer.id == delivery.customer_id).first()
+                if cust and getattr(cust, "company_id", None) and cust.company_id != delivery.company_id:
+                    shared_ids = [cust.company_id]
+            except Exception:
+                pass
+
+        doc_type = "delivery_confirmation" if media.media_type in ("photo", "signature") else "delivery_media"
+
+        create_vault_item(
+            db,
+            company_id=delivery.company_id,
+            item_type="document",
+            title=f"Delivery {media.media_type}: {delivery_id[:8]}",
+            document_type=doc_type,
+            r2_key=media.file_url if media.file_url and media.file_url.startswith("tenants/") else None,
+            mime_type="image/jpeg" if media.media_type == "photo" else None,
+            visibility="shared" if shared_ids else "internal",
+            shared_with_company_ids=shared_ids,
+            related_entity_type="order",
+            related_entity_id=delivery.order_id,
+            source="system_generated",
+            source_entity_id=media.id,
+            metadata_json={
+                "delivery_id": delivery_id,
+                "media_type": media.media_type,
+                "file_url": media.file_url,
+            },
+        )
+        db.commit()
+    except Exception:
+        logger.warning("Vault dual-write failed for media %s", media.id, exc_info=True)
+        db.rollback()

@@ -196,6 +196,41 @@ def create_training_event(db: Session, company_id: str, data, created_by: str) -
     db.add(event)
     db.commit()
     db.refresh(event)
+
+    # Dual-write: training event → vault
+    try:
+        from app.services.vault_service import create_vault_item
+
+        event_start = (
+            datetime.combine(data.training_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            if data.training_date else None
+        )
+        create_vault_item(
+            db,
+            company_id=company_id,
+            item_type="event",
+            title=f"Training: {data.training_topic}",
+            description=data.content_summary,
+            event_start=event_start,
+            event_type="safety_training",
+            status="active",
+            source="system_generated",
+            source_entity_id=event.id,
+            created_by=created_by,
+            metadata_json={
+                "osha_standard_code": data.osha_standard_code,
+                "training_type": data.training_type,
+                "trainer_name": data.trainer_name,
+                "trainer_type": data.trainer_type,
+                "duration_minutes": data.duration_minutes,
+                "training_materials_url": data.training_materials_url,
+            },
+        )
+        db.commit()
+    except Exception:
+        logger.warning("Vault dual-write failed for training event %s", event.id, exc_info=True)
+        db.rollback()
+
     return event
 
 def record_attendees(db: Session, company_id: str, event_id: str, employee_ids: list[str], completion_status: str = "attended") -> list[EmployeeTrainingRecord]:
@@ -213,6 +248,37 @@ def record_attendees(db: Session, company_id: str, event_id: str, employee_ids: 
     db.commit()
     for r in records:
         db.refresh(r)
+
+    # Dual-write: training completions → vault documents
+    try:
+        from app.services.vault_service import create_vault_item
+
+        event = get_training_event(db, company_id, event_id)
+        topic = event.training_topic if event else "Training"
+        for rec in records:
+            create_vault_item(
+                db,
+                company_id=company_id,
+                item_type="document",
+                title=f"Training Completion: {topic}",
+                document_type="training_completion",
+                related_entity_type="employee",
+                related_entity_id=rec.employee_id,
+                status="active",
+                source="system_generated",
+                source_entity_id=rec.id,
+                metadata_json={
+                    "training_event_id": event_id,
+                    "training_topic": topic,
+                    "completion_status": completion_status,
+                    "expiry_date": rec.expiry_date.isoformat() if rec.expiry_date else None,
+                },
+            )
+        db.commit()
+    except Exception:
+        logger.warning("Vault dual-write failed for training attendees event %s", event_id, exc_info=True)
+        db.rollback()
+
     return records
 
 def get_employee_training_history(db: Session, company_id: str, employee_id: str):

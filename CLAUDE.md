@@ -409,16 +409,16 @@ All jobs use `_run_per_tenant()` or `_run_global()` wrappers with per-session DB
 
 | Metric | Count |
 |--------|-------|
-| Database tables | ~256 |
-| ORM model files | 163+ |
-| ORM model exports (`__init__.py`) | 176+ |
-| API route files | 104+ |
-| API endpoints | 945+ |
-| Route modules registered in v1.py | 94+ |
+| Database tables | ~258 |
+| ORM model files | 165+ |
+| ORM model exports (`__init__.py`) | 178+ |
+| API route files | 105+ |
+| API endpoints | 955+ |
+| Route modules registered in v1.py | 95+ |
 | Frontend routes | 150+ |
-| Backend service files | 115+ |
-| Migration files | 117 |
-| Migration head | `r15_safety_program_generation` |
+| Backend service files | 117+ |
+| Migration files | 119 |
+| Migration head | `vault_02_data_migration` |
 | Agent jobs (scheduled) | 14 |
 | Accounting agents (registered) | 12/12 (complete) |
 | Accounting agent tests | 105 passing |
@@ -566,6 +566,7 @@ Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` in
 
 ## 14. Recent Changes
 
+- **Bridgeable Core Vault Migration (Foundation + Steps 1-4):** Unified data layer via `Vault` and `VaultItem` models. Two new tables: `vaults` (company-level containers) and `vault_items` (30+ column flexible items supporting documents, events, communications, reminders, assets, compliance items, and production records). `VaultItem` uses `item_type` discriminator with `event_type`/`event_type_sub` for domain specificity, `metadata_json` JSONB for domain-specific fields, `shared_with_company_ids` JSONB for cross-tenant visibility, and `source_entity_id` for back-reference to legacy records. **Dual-write pattern** added to 5 services: `delivery_service.py` (deliveries, routes, media → vault events/documents), `work_order_service.py` (pour events → vault), `operations_board_service.py` (production log → vault), `safety_service.py` (training events, attendee records → vault events/documents). **Vault compliance sync** (`vault_compliance_sync.py`): scans overdue inspections, expiring training certs, and regulatory deadlines (OSHA 300A), creates/updates VaultItems with deduplication via `source_entity_id` keys. **Calendar sync**: iCal feed endpoint (`GET /vault/calendar.ics`) with token-based auth, role-filtered events. `calendar_token` column added to users. **10 API endpoints** under `/api/v1/vault/`: items CRUD, summary, upcoming-events, cross-tenant, calendar.ics, compliance sync, calendar token generation. **Data migration** (`vault_02_data_migration`): idempotent SQL migration of existing deliveries, routes, pour events, production logs, training events, and training records into vault_items (source="migrated"). Migration `vault_01_core_tables` creates tables + indexes (composite on company_id/item_type/event_start, GIN on metadata_json). Migration head: `vault_02_data_migration`.
 - **PDF-Native Image Extraction for Urn Catalog:** The Wilbert PDF catalog is now the sole reliable source of truth for product images. `extract_product_images()` in `wilbert_pdf_parser.py` extracts embedded JPEG images from each catalog page via PyMuPDF's `page.get_images()` and `doc.extract_image()`, filters by size (min 80x80px) and aspect ratio (max 4:1), converts to JPEG at 85% quality, and associates with SKUs via catalog page mapping. `_extract_and_upload_images()` in `wilbert_ingestion_service.py` uploads extracted images to R2 at `tenants/{company_id}/urn_catalog/images/{sku}.jpg` and sets `r2_image_key` on the product. Images are resolved to public URLs server-side in the product list/detail endpoints via `_resolve_product_image_url()`. Web enrichment (`enrich_products_from_web`) now skips image fetch for products with existing `r2_image_key` (PDF images take precedence), and wraps individual product enrichment in try/except for resilience. SECTION_MAP updated from Volume 11 (88 pages) to Volume 8 (78 pages). New `GET /urns/catalog/sync-status` endpoint returns product completeness metrics (images, descriptions, prices, dimensions). Frontend `urn-catalog.tsx` updated: data completeness bar with green/amber indicators, larger product image in expanded detail row, `r2_image_key` indicator, sync status after each operation. `CatalogIngestionResponse` and `CatalogPdfFetchResponse` schemas now include `images_uploaded` count.
 - **Monthly Safety Program Generation:** AI-powered monthly safety program creation with OSHA regulatory scraping. Full pipeline: `osha_scraper_service.py` scrapes OSHA standard pages (httpx + BeautifulSoup, 14 standard URL mappings), `safety_program_generation_service.py` generates 7-section programs via Claude Sonnet (Purpose/Scope, Responsibilities, Definitions, Procedures, Training, Recordkeeping, Review), WeasyPrint renders professional PDF with cover page. Table: `safety_program_generations` with full lifecycle tracking (OSHA scrape → generation → PDF → approval). Approval workflow: draft → pending_review → approved/rejected. On approve: creates/updates `SafetyProgram` record. Scheduler job: 1st of month at 6am ET via `job_safety_program_generation`. Morning briefing integration: shows pending reviews count, missing monthly generations, failed generations. Permission: `safety.trainer` (view, generate, approve). 7 API endpoints under `/safety/programs/` (list, detail, generate, ad-hoc topic, approve, reject, regenerate-pdf). Frontend: `safety-programs.tsx` rewritten with AI Generated + Manual tabs. Migration `r15_safety_program_generation`. 12 E2E tests (all passing). Route ordering fix: generation router registered before safety router to prevent `{program_id}` catch-all conflict.
 - **Urn Catalog PDF Auto-Fetch:** One-click "Fetch & Sync Catalog" replaces manual PDF upload. `UrnCatalogScraper.fetch_catalog_pdf()` downloads the Wilbert catalog PDF from a direct URL (`https://www.wilbert.com/assets/1/7/CCV8-Cremation_Choices_Catalog.pdf`), computes MD5 hash for change detection, archives to R2, and triggers `ingest_from_pdf()` if changed. Fallback URL resolver (`_resolve_pdf_url()`) scrapes the catalog landing page if the direct URL changes. Web enrichment runs automatically in background via FastAPI `BackgroundTasks` (creates its own DB session to avoid lifecycle issues). UI button always uses `force=true`; hash-based skip is for automated/scheduled runs. 3 new columns on `urn_tenant_settings` (catalog_pdf_hash, catalog_pdf_last_fetched, catalog_pdf_r2_key). Migration `r14_urn_catalog_pdf_fetch`. Frontend simplified: single "Fetch & Sync Catalog" button with collapsed manual upload fallback. 2 new E2E tests in standalone `urn-catalog-pdf-fetch.spec.ts`. PyMuPDF (`fitz`) dependency added to `requirements.txt` (was documented but missing, causing silent 0-product returns on staging).
@@ -634,6 +635,32 @@ Once received:
 - Migrate FastAPI `@app.on_event` to lifespan context manager
 
 ## 17. Recent Build Sessions
+
+### Session: April 16, 2026 — Bridgeable Core Vault Migration
+
+Unified data layer — every feature reads from and writes to vault_items.
+
+**New models:** `Vault` (container per company), `VaultItem` (30+ columns, JSONB metadata)
+
+**Dual-write integration (5 services):**
+- `delivery_service.py` — deliveries → delivery events, routes → route events, media → delivery_confirmation docs
+- `work_order_service.py` — pour events → production_pour events
+- `operations_board_service.py` — production log → production_record items
+- `safety_service.py` — training events → safety_training events, attendees → training_completion docs
+
+**Vault compliance sync:** `vault_compliance_sync.py` — periodic scan creates/updates VaultItems for overdue inspections, expiring training certs, regulatory deadlines (OSHA 300A)
+
+**Calendar sync:** iCal feed at `GET /vault/calendar.ics` with token-based auth, role-filtered events
+
+**10 API endpoints:** items CRUD, summary, upcoming-events, cross-tenant, calendar.ics, compliance sync, calendar token gen
+
+**Cross-tenant foundation:** `shared_with_company_ids` JSONB enables delivery confirmations visible to funeral homes
+
+**Migrations:** `vault_01_core_tables` (DDL), `vault_02_data_migration` (idempotent data migration of legacy records)
+
+**Migration head:** `vault_02_data_migration`
+
+---
 
 ### Session: April 9, 2026 — Nav Reorganization + Resale Hub Shell
 
