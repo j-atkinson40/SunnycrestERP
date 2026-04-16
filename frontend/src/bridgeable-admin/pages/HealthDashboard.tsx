@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { AlertTriangle, Activity, Users, DollarSign } from "lucide-react"
 import { adminApi } from "../lib/admin-api"
+import { adminPath } from "../lib/admin-routes"
 
 interface KanbanData {
   [status: string]: { [vertical: string]: any[] }
@@ -69,7 +70,7 @@ export function HealthDashboard() {
                 <span className="font-medium">{vertical}:</span>{" "}
                 {deps.length} untested deployment{deps.length !== 1 && "s"}
                 <Link
-                  to={`/bridgeable-admin/audit?scope=vertical&scope_value=${vertical}`}
+                  to={adminPath(`/audit?scope=vertical&scope_value=${vertical}`)}
                   className="ml-3 px-2 py-0.5 bg-amber-700 text-white text-xs rounded hover:bg-amber-800"
                 >
                   Run audit →
@@ -105,7 +106,7 @@ export function HealthDashboard() {
               }).map((t: any) => (
                 <tr key={t.id} className="border-t border-slate-100">
                   <td className="px-4 py-2">
-                    <Link to={`/bridgeable-admin/tenants/${t.id}`} className="text-slate-900 hover:text-amber-600 font-medium">
+                    <Link to={adminPath(`/tenants/${t.id}`)} className="text-slate-900 hover:text-amber-600 font-medium">
                       {t.name}
                     </Link>
                   </td>
@@ -123,21 +124,21 @@ export function HealthDashboard() {
 
       <div className="flex gap-4">
         <Link
-          to="/bridgeable-admin/audit"
+          to={adminPath("/audit")}
           className="flex-1 bg-white border border-slate-200 rounded p-4 hover:border-slate-400"
         >
           <div className="font-semibold text-slate-900">Run audit</div>
           <div className="text-xs text-slate-500 mt-1">Full Playwright E2E on staging</div>
         </Link>
         <Link
-          to="/bridgeable-admin/deployments"
+          to={adminPath("/deployments")}
           className="flex-1 bg-white border border-slate-200 rounded p-4 hover:border-slate-400"
         >
           <div className="font-semibold text-slate-900">Log deployment</div>
           <div className="text-xs text-slate-500 mt-1">Track test coverage of a push</div>
         </Link>
         <Link
-          to="/bridgeable-admin/staging/create"
+          to={adminPath("/staging/create")}
           className="flex-1 bg-white border border-slate-200 rounded p-4 hover:border-slate-400"
         >
           <div className="font-semibold text-slate-900">Create staging tenant</div>

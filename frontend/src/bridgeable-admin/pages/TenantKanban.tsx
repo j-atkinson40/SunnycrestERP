@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { UserCog, Play } from "lucide-react"
 import { adminApi } from "../lib/admin-api"
+import { adminPath } from "../lib/admin-routes"
 
 const STATUS_COLUMNS = ["waitlist", "onboarding", "live", "churned", "staging"]
 const VERTICALS = ["manufacturing", "funeral_home", "cemetery", "crematory"]
@@ -76,7 +77,7 @@ function TenantCard({ card }: { card: any }) {
     <div className="bg-white rounded p-3 border border-slate-200 shadow-sm">
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 rounded-full ${dotColor}`} title={card.health?.reason} />
-        <Link to={`/bridgeable-admin/tenants/${card.id}`} className="font-medium text-slate-900 text-sm flex-1 truncate">
+        <Link to={adminPath(`/tenants/${card.id}`)} className="font-medium text-slate-900 text-sm flex-1 truncate">
           {card.name}
         </Link>
       </div>

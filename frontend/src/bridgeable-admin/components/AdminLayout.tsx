@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { Navigate } from "react-router-dom"
 import { useAdminAuth } from "../lib/admin-auth-context"
+import { adminPath } from "../lib/admin-routes"
 import { AdminHeader } from "./AdminHeader"
 import { EnvironmentBanner } from "./EnvironmentBanner"
 import { AdminCommandBarProvider } from "./AdminCommandBar"
@@ -12,7 +13,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     return <div className="p-8 text-center text-slate-500">Loading…</div>
   }
   if (!user) {
-    return <Navigate to="/bridgeable-admin/login" replace />
+    return <Navigate to={adminPath("/login")} replace />
   }
 
   return (

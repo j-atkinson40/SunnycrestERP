@@ -6,6 +6,7 @@ import {
   setAdminEnvironment,
   type AdminEnvironment,
 } from "../lib/admin-api"
+import { adminPath } from "../lib/admin-routes"
 import { useAdminAuth } from "../lib/admin-auth-context"
 
 export function AdminHeader() {
@@ -25,18 +26,18 @@ export function AdminHeader() {
     <header className="bg-slate-900 text-white border-b border-slate-700">
       <div className="flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-6">
-          <Link to="/bridgeable-admin" className="flex items-center gap-2">
+          <Link to={adminPath("/")} className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-amber-400" />
             <span className="font-semibold text-base">Bridgeable Admin</span>
           </Link>
           <nav className="flex items-center gap-4 text-sm">
-            <Link to="/bridgeable-admin" className="hover:text-amber-300">Health</Link>
-            <Link to="/bridgeable-admin/tenants" className="hover:text-amber-300">Tenants</Link>
-            <Link to="/bridgeable-admin/audit" className="hover:text-amber-300">Audit</Link>
-            <Link to="/bridgeable-admin/migrations" className="hover:text-amber-300">Migrations</Link>
-            <Link to="/bridgeable-admin/feature-flags" className="hover:text-amber-300">Feature Flags</Link>
-            <Link to="/bridgeable-admin/deployments" className="hover:text-amber-300">Deployments</Link>
-            <Link to="/bridgeable-admin/staging" className="hover:text-amber-300">Staging</Link>
+            <Link to={adminPath("/")} className="hover:text-amber-300">Health</Link>
+            <Link to={adminPath("/tenants")} className="hover:text-amber-300">Tenants</Link>
+            <Link to={adminPath("/audit")} className="hover:text-amber-300">Audit</Link>
+            <Link to={adminPath("/migrations")} className="hover:text-amber-300">Migrations</Link>
+            <Link to={adminPath("/feature-flags")} className="hover:text-amber-300">Feature Flags</Link>
+            <Link to={adminPath("/deployments")} className="hover:text-amber-300">Deployments</Link>
+            <Link to={adminPath("/staging")} className="hover:text-amber-300">Staging</Link>
           </nav>
         </div>
 
@@ -90,7 +91,7 @@ export function AdminHeader() {
                 <button
                   onClick={() => {
                     logout()
-                    navigate("/bridgeable-admin/login")
+                    navigate(adminPath("/login"))
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm flex items-center gap-2"
                 >

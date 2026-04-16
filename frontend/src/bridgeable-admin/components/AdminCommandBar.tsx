@@ -14,6 +14,7 @@ import {
   rankActions,
   type CommandAction,
 } from "../lib/admin-command-actions"
+import { adminPath } from "../lib/admin-routes"
 
 interface CommandBarContextValue {
   open: boolean
@@ -123,7 +124,10 @@ function CommandBarDialog() {
 
   const executeAction = (action: CommandAction) => {
     if (action.type === "NAVIGATE") {
-      navigate(action.handler)
+      // Handler is stored as `/bridgeable-admin/*` path — rewrite via adminPath
+      // by stripping the prefix and re-prefixing based on current host.
+      const stripped = action.handler.replace(/^\/bridgeable-admin/, "") || "/"
+      navigate(adminPath(stripped))
       setOpen(false)
       return
     }
@@ -139,17 +143,17 @@ function CommandBarDialog() {
     }
     // COMMAND actions that need confirmation or modal
     if (action.handler === "searchTenants") {
-      navigate(`/bridgeable-admin/tenants?q=${encodeURIComponent(query)}`)
+      navigate(adminPath(`/tenants?q=${encodeURIComponent(query)}`))
       setOpen(false)
       return
     }
     if (action.handler === "createStagingTenant") {
-      navigate("/bridgeable-admin/staging/create")
+      navigate(adminPath("/staging/create"))
       setOpen(false)
       return
     }
     if (action.handler === "showSavedPrompts") {
-      navigate("/bridgeable-admin/saved-prompts")
+      navigate(adminPath("/saved-prompts"))
       setOpen(false)
       return
     }

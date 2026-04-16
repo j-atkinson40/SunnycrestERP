@@ -280,8 +280,20 @@ function AuthDeviceProvider({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  // Bridgeable super admin portal (new redesigned portal) — entirely separate app
-  if (typeof window !== "undefined" && window.location.pathname.startsWith("/bridgeable-admin")) {
+  // Bridgeable super admin portal (new redesigned portal) — entirely separate app.
+  // Accessed three ways:
+  //   1. /bridgeable-admin/* path on any host
+  //   2. admin.* subdomain (replaces legacy PlatformApp as the default admin UI)
+  //   3. localStorage flag `use_legacy_platform_admin=true` falls back to old PlatformApp
+  const onBridgeableAdminPath =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/bridgeable-admin")
+  const onAdminSubdomain = isPlatformAdmin()
+  const useLegacyPlatform =
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem("use_legacy_platform_admin") === "true"
+
+  if (onBridgeableAdminPath || (onAdminSubdomain && !useLegacyPlatform)) {
     return (
       <BrowserRouter>
         <BridgeableAdminApp />
@@ -290,8 +302,8 @@ export default function App() {
     )
   }
 
-  // Legacy platform admin gets an entirely separate app
-  if (isPlatformAdmin()) {
+  // Legacy platform admin — kept as opt-in fallback via localStorage flag
+  if (onAdminSubdomain) {
     return (
       <BrowserRouter>
         <PlatformApp />

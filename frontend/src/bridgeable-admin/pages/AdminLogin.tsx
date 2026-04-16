@@ -4,6 +4,7 @@ import { Shield } from "lucide-react"
 import { useAdminAuth } from "../lib/admin-auth-context"
 import { EnvironmentBanner } from "../components/EnvironmentBanner"
 import { getAdminEnvironment, setAdminEnvironment } from "../lib/admin-api"
+import { adminPath } from "../lib/admin-routes"
 
 export function AdminLogin() {
   const { login } = useAdminAuth()
@@ -20,7 +21,7 @@ export function AdminLogin() {
     setSubmitting(true)
     try {
       await login(email, password)
-      navigate("/bridgeable-admin")
+      navigate(adminPath("/"))
     } catch (err: any) {
       setError(err?.response?.data?.detail || err.message || "Login failed")
     } finally {
