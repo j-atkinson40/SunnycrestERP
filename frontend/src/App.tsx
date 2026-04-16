@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import CommandBar from "@/components/ai/CommandBar";
 import VoiceMemoButton from "@/components/ai/VoiceMemoButton";
+import { CommandBarProvider } from "@/core/CommandBarProvider";
 import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
 import { DeviceProvider } from "@/contexts/device-context";
@@ -272,20 +272,6 @@ function AuthDeviceProvider({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const [cmdBarOpen, setCmdBarOpen] = useState(false);
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-      e.preventDefault();
-      setCmdBarOpen(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyDown]);
-
   // Platform admin gets an entirely separate app
   if (isPlatformAdmin()) {
     return (
@@ -306,6 +292,7 @@ export default function App() {
       <ExtensionProvider>
       <LayoutProvider>
       <AuthDeviceProvider>
+      <CommandBarProvider>
       <CallContextProvider>
         <ImpersonationBanner />
         <CallOverlay />
@@ -997,12 +984,12 @@ export default function App() {
           )}
         </Routes>
         <Toaster />
-        <CommandBar open={cmdBarOpen} onClose={() => setCmdBarOpen(false)} />
         {/* Global floating voice memo button */}
         <div className="fixed bottom-6 right-6 z-40 sm:hidden">
           <VoiceMemoButton compact />
         </div>
       </CallContextProvider>
+      </CommandBarProvider>
       </AuthDeviceProvider>
       </LayoutProvider>
       </ExtensionProvider>

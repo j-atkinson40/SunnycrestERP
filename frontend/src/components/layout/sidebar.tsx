@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   AlertTriangle,
@@ -73,6 +73,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { usePresetTheme } from "@/contexts/preset-theme-context";
+import { useCommandBar } from "@/core/CommandBarProvider";
 import { cn } from "@/lib/utils";
 import { OnboardingSidebarWidget } from "@/components/onboarding/sidebar-widget";
 import type { NavItem, NavSection } from "@/services/navigation-service";
@@ -225,12 +226,7 @@ export function Sidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  // AI command bar state
-  const [commandFocused, setCommandFocused] = useState(false);
-  const [commandValue, setCommandValue] = useState("");
-  const commandRef = useRef<HTMLInputElement>(null);
-
-  const showQuickPrompts = commandFocused && !commandValue;
+  const { open: openCommandBar } = useCommandBar();
 
   return (
     <aside className="hidden md:flex h-full w-64 flex-col border-r bg-sidebar">
@@ -244,50 +240,23 @@ export function Sidebar() {
         </Link>
       </div>
 
-      {/* AI command bar */}
+      {/* Universal command bar trigger */}
       <div className="shrink-0 border-b px-4 py-3">
-        <div className="relative">
-          <Sparkles
-            className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            ref={commandRef}
-            type="text"
-            value={commandValue}
-            onChange={(e) => setCommandValue(e.target.value)}
-            onFocus={() => setCommandFocused(true)}
-            onBlur={() => setTimeout(() => setCommandFocused(false), 150)}
-            placeholder={navigation.commandBarPlaceholder}
-            className={cn(
-              "w-full rounded-md border bg-background py-1.5 pl-9 pr-3 text-sm",
-              "placeholder:text-muted-foreground/60",
-              "focus:outline-none focus:ring-1 focus:ring-ring",
-            )}
-          />
-        </div>
-        {/* Quick prompts */}
-        {showQuickPrompts && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {navigation.quickPrompts.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setCommandValue(prompt);
-                  commandRef.current?.focus();
-                }}
-                className={cn(
-                  "rounded-full border px-2.5 py-0.5 text-xs",
-                  "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                  "transition-colors",
-                )}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={openCommandBar}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-md border bg-background py-1.5 pl-3 pr-2 text-sm",
+            "text-muted-foreground/60 hover:text-muted-foreground hover:border-ring",
+            "transition-colors cursor-pointer",
+          )}
+        >
+          <Sparkles className="size-4 shrink-0" />
+          <span className="flex-1 text-left truncate">Search or ask...</span>
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            ⌘K
+          </kbd>
+        </button>
       </div>
 
       {/* Navigation sections */}

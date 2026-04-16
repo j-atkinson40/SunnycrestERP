@@ -13,6 +13,7 @@ from app.api.routes import (
     ai,
     ai_command,
     ai_settings,
+    core,
     ancillary_orders,
     announcements,
     call_intelligence,
@@ -231,6 +232,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     company_entities.router, prefix="/companies", tags=["Company Entities"]
+)
+v1_router.include_router(
+    core.router, prefix="/core", tags=["Core UI"]
 )
 v1_router.include_router(
     customers.router, prefix="/customers", tags=["Customers"]

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tag } from "lucide-react";
+import { HistoryButton } from "@/components/core/HistoryButton";
 import {
   Table,
   TableBody,
@@ -177,6 +178,13 @@ function SalesOrderDetailView({ id }: { id: string }) {
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          <HistoryButton
+            entityType="order"
+            entityId={id!}
+            entityName={order.number || `Order ${id}`}
+            variant="outline"
+            size="sm"
+          />
           {!isTerminal && canCreateInvoice && (
             <Button onClick={handleCreateInvoice} disabled={actionBusy}>
               {actionBusy ? "Working..." : "Create Invoice"}

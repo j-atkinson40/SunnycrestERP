@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card"
 import { ChevronLeft, Plus, ExternalLink, Phone, Mail, Globe, MapPin, Loader2 } from "lucide-react"
 import ContactList from "@/components/crm/ContactList"
 import CompanyChat from "@/components/ai/CompanyChat"
+import { HistoryButton } from "@/components/core/HistoryButton"
 import VoiceMemoBtn from "@/components/ai/VoiceMemoButton"
 import DeviceAwarePage from "@/components/ui/DeviceAwarePage"
 import CompanyDetailMobile from "./company-detail-mobile"
@@ -259,6 +260,13 @@ function CompanyDetailDesktop() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <HistoryButton
+              entityType="company"
+              entityId={id!}
+              entityName={company.name}
+              variant="outline"
+              size="sm"
+            />
             {company.roles.map((r) => {
               const b = ROLE_BADGES[r]
               return b ? <Badge key={r} className={b.className}>{b.label}</Badge> : null
