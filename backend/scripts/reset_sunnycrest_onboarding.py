@@ -35,8 +35,8 @@ def _find_company(db, slug: str | None):
 
 
 def _summary(db, company_id: str) -> dict:
-    def count(q: str) -> int:
-        return db.execute(sql_text(q), {"cid": company_id}).scalar() or 0
+    def count(q: str, param_name: str = "cid") -> int:
+        return db.execute(sql_text(q), {param_name: company_id}).scalar() or 0
 
     return {
         "orders": count("SELECT COUNT(*) FROM sales_orders WHERE company_id = :cid"),
@@ -51,6 +51,21 @@ def _summary(db, company_id: str) -> dict:
         "tenant_item_configs": count(
             "SELECT COUNT(*) FROM tenant_item_config WHERE company_id = :cid"
         ),
+        # Legacy checklist system (drives the "X of Y complete" progress bar)
+        "checklist_items_completed": count(
+            "SELECT COUNT(*) FROM onboarding_checklist_items "
+            "WHERE tenant_id = :cid AND status = 'completed'"
+        ),
+        "checklist_items_in_progress": count(
+            "SELECT COUNT(*) FROM onboarding_checklist_items "
+            "WHERE tenant_id = :cid AND status = 'in_progress'"
+        ),
+        "checklist_items_total": count(
+            "SELECT COUNT(*) FROM onboarding_checklist_items WHERE tenant_id = :cid"
+        ),
+        "tenant_onboarding_checklist_rows": count(
+            "SELECT COUNT(*) FROM tenant_onboarding_checklists WHERE tenant_id = :cid"
+        ),
     }
 
 
@@ -63,6 +78,19 @@ def main():
         "--clear-program-enrollments",
         action="store_true",
         help="Also DELETE wilbert_program_enrollments for this tenant (recreated in new onboarding)",
+    )
+    parser.add_argument(
+        "--reset-legacy-checklist",
+        action="store_true",
+        default=True,
+        help="Reset onboarding_checklist_items to not_started + tenant_onboarding_checklists "
+             "progress to 0 (the system driving the 'X of Y complete' UI). Default: True.",
+    )
+    parser.add_argument(
+        "--keep-legacy-checklist",
+        action="store_false",
+        dest="reset_legacy_checklist",
+        help="Skip legacy checklist reset (leaves the 'X of Y complete' progress as-is).",
     )
     args = parser.parse_args()
 
@@ -123,6 +151,16 @@ def main():
         else:
             print("  5. wilbert_program_enrollments: KEPT "
                   "(pass --clear-program-enrollments to delete)")
+        if args.reset_legacy_checklist:
+            print(f"  6. Legacy checklist reset: "
+                  f"{summary['checklist_items_completed']} completed + "
+                  f"{summary['checklist_items_in_progress']} in_progress "
+                  f"→ all {summary['checklist_items_total']} items to 'not_started'")
+            print(f"     {summary['tenant_onboarding_checklist_rows']} tenant_onboarding_checklists "
+                  f"row(s) → status='pending', percent=0")
+        else:
+            print("  6. Legacy checklist: KEPT "
+                  "(pass --reset-legacy-checklist to reset, or remove --keep-legacy-checklist)")
 
         if not args.apply:
             print("\nDRY-RUN: pass --apply to actually execute these changes.")
@@ -174,6 +212,34 @@ def main():
                 {"cid": company_id},
             )
             print(f"  ✓ Deleted {result.rowcount} wilbert_program_enrollments rows")
+
+        if args.reset_legacy_checklist:
+            # Reset per-item status (this drives the "X of Y complete" UI)
+            r1 = db.execute(
+                sql_text(
+                    "UPDATE onboarding_checklist_items "
+                    "SET status = 'not_started', "
+                    "    completed_at = NULL, "
+                    "    completed_by = NULL "
+                    "WHERE tenant_id = :cid "
+                    "AND status IN ('completed', 'in_progress', 'skipped')"
+                ),
+                {"cid": company_id},
+            )
+            print(f"  ✓ Reset {r1.rowcount} onboarding_checklist_items to 'not_started'")
+
+            # Reset the aggregate row
+            r2 = db.execute(
+                sql_text(
+                    "UPDATE tenant_onboarding_checklists "
+                    "SET status = 'pending', "
+                    "    overall_percent = 0, "
+                    "    must_complete_percent = 0 "
+                    "WHERE tenant_id = :cid"
+                ),
+                {"cid": company_id},
+            )
+            print(f"  ✓ Reset {r2.rowcount} tenant_onboarding_checklists row(s)")
 
         db.commit()
         print("\n✓ Done. Sunnycrest onboarding reset to 'pending'.")
