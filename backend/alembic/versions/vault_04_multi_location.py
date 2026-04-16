@@ -109,6 +109,8 @@ def upgrade() -> None:
                 continue
             if col not in table_columns[table]:
                 continue
+            if "company_id" not in table_columns[table]:
+                continue  # UPDATE references company_id — skip if column missing
             connection.execute(
                 sa.text(f"UPDATE {table} SET {col} = :loc WHERE company_id = :cid AND {col} IS NULL"),
                 {"loc": location_id, "cid": company.id},
