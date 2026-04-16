@@ -28,10 +28,12 @@ import { useMicrophone } from "@/hooks/useMicrophone";
 import type { CommandAction, RecentAction } from "@/core/actionRegistry";
 import {
   addRecentAction,
+  filterActionsByRole,
   getRecentActions,
   manufacturingActions,
   matchLocalActions,
 } from "@/core/actionRegistry";
+import { useAuth } from "@/contexts/auth-context";
 
 // ── Icon map ────────────────────────────────────────────────────────────────
 
@@ -146,6 +148,12 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const [apiAnswer, setApiAnswer] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const { user } = useAuth();
+  // The auth User model exposes the role as `role_slug` (e.g. "admin", "office").
+  const userRole = (user as unknown as { role_slug?: string })?.role_slug;
+  // Actions the current user is permitted to see (admin/office/driver/production)
+  const permittedActions = filterActionsByRole(manufacturingActions, userRole);
+
   const { showMic, requestPermission } = useMicrophone();
 
   const handleVoiceResult = useCallback(
@@ -225,17 +233,20 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             roles: [],
             vertical: "manufacturing",
           }));
-          setResults(mapped);
+          // Permission filter API results too — any action the current
+          // user's role isn't permitted to see is stripped out before display.
+          const filteredByRole = filterActionsByRole(mapped, userRole);
+          setResults(filteredByRole);
         } else {
-          // Fallback to local match
-          setResults(matchLocalActions(q, manufacturingActions));
+          // Fallback to local match (already role-filtered via permittedActions)
+          setResults(matchLocalActions(q, permittedActions));
           setSearchOnly(true);
         }
         setSelectedIdx(0);
       } catch (err: unknown) {
         if ((err as { name?: string }).name === "CanceledError") return;
         // Fallback to local match on API error
-        setResults(matchLocalActions(q, manufacturingActions));
+        setResults(matchLocalActions(q, permittedActions));
         setSearchOnly(true);
         setSelectedIdx(0);
       } finally {

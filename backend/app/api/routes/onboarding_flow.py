@@ -11,10 +11,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func
+
 from app.api.company_resolver import get_current_company
 from app.api.deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.company import Company
+from app.models.company_entity import CompanyEntity
+from app.models.location import Location
+from app.models.sales_order import SalesOrder
 from app.models.user import User
 
 router = APIRouter()
@@ -140,20 +145,61 @@ def get_onboarding_status(
     company: Company = Depends(get_current_company),
     db: Session = Depends(get_db),
 ):
-    """Return current onboarding step and progress."""
+    """Return current onboarding step, progress, and existing-data flags.
+
+    Existing-data flags let the frontend skip steps whose data already exists.
+    Most importantly, `should_show_import` returns False when orders exist —
+    a tenant migrating from another system won't see the import step at all.
+    """
     settings = company.settings or {}
     onboarding = settings.get("onboarding_flow", {})
 
-    completed_steps = onboarding.get("completed_steps", [])
-    skipped_steps = onboarding.get("skipped_steps", [])
+    # Existing-data detection — counted once, reused in decisions below
+    existing_order_count = (
+        db.query(func.count(SalesOrder.id))
+        .filter(SalesOrder.company_id == company.id)
+        .scalar() or 0
+    )
+    existing_crm_count = (
+        db.query(func.count(CompanyEntity.id))
+        .filter(CompanyEntity.company_id == company.id)
+        .scalar() or 0
+    )
+    existing_user_count = (
+        db.query(func.count(User.id))
+        .filter(User.company_id == company.id, User.is_active == True)  # noqa: E712
+        .scalar() or 0
+    )
+    existing_location_count = (
+        db.query(func.count(Location.id))
+        .filter(Location.company_id == company.id)
+        .scalar() or 0
+    )
+
+    has_existing_orders = existing_order_count > 0
+    has_existing_crm = existing_crm_count > 0
+    has_existing_users = existing_user_count > 1  # >1 because admin always exists
+    has_existing_location = existing_location_count > 0
+
+    # If orders already exist, the import step is not needed.
+    # Add it to skipped_steps so the frontend removes it from the sequence.
+    completed_steps = list(onboarding.get("completed_steps", []))
+    skipped_steps = list(onboarding.get("skipped_steps", []))
+
+    should_show_import = not has_existing_orders
+    if not should_show_import and "import" not in skipped_steps and "import" not in completed_steps:
+        skipped_steps.append("import")
+
     current_step = onboarding.get("current_step", "identity")
 
     all_steps = [
         "identity", "locations", "programs", "compliance",
         "team", "network", "command_bar", "import", "complete",
     ]
-    total = len(all_steps)
-    done = len([s for s in all_steps if s in completed_steps])
+    # Visible steps = all steps minus auto-skipped ones (import when orders exist)
+    visible_steps = [s for s in all_steps if should_show_import or s != "import"]
+    total = len(visible_steps)
+    done = len([s for s in visible_steps if s in completed_steps])
     percent = round((done / total) * 100) if total else 0
 
     return {
@@ -161,7 +207,18 @@ def get_onboarding_status(
         "current_step": current_step,
         "completed_steps": completed_steps,
         "skipped_steps": skipped_steps,
+        "visible_steps": visible_steps,
         "percent_complete": percent,
+        # Existing-data flags for pre-fill / skip logic on the frontend
+        "has_existing_orders": has_existing_orders,
+        "has_existing_crm": has_existing_crm,
+        "has_existing_users": has_existing_users,
+        "has_existing_location": has_existing_location,
+        "should_show_import": should_show_import,
+        "existing_user_count": existing_user_count,
+        "existing_crm_count": existing_crm_count,
+        "existing_order_count": existing_order_count,
+        "existing_location_count": existing_location_count,
     }
 
 

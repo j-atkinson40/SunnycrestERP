@@ -1237,7 +1237,358 @@ function PersonalizationTab({ programCode }: { programCode: string }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Legacy Prints */}
+      <LegacyPrintsSection
+        programCode={programCode}
+        pricingMode={data.pricing_mode}
+      />
     </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// LegacyPrintsSection
+// ══════════════════════════════════════════════════════════════════
+
+interface LegacyPrint {
+  id: string;
+  wilbert_catalog_key: string | null;
+  display_name: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  is_enabled: boolean;
+  is_custom: boolean;
+  price_addition: number | null;
+}
+
+function LegacyPrintsSection({
+  programCode,
+  pricingMode,
+}: {
+  programCode: string;
+  pricingMode: PricingMode;
+}) {
+  const [wilbertPrints, setWilbertPrints] = useState<LegacyPrint[]>([]);
+  const [customPrints, setCustomPrints] = useState<LegacyPrint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newPrice, setNewPrice] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+
+  const loadPrints = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get<{
+        wilbert_catalog: LegacyPrint[];
+        custom: LegacyPrint[];
+      }>(`/programs/${programCode}/legacy-prints`);
+      setWilbertPrints(data.wilbert_catalog);
+      setCustomPrints(data.custom);
+    } catch {
+      setWilbertPrints([]);
+      setCustomPrints([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [programCode]);
+
+  useEffect(() => {
+    loadPrints();
+  }, [loadPrints]);
+
+  const togglePrint = async (printId: string, enabled: boolean) => {
+    try {
+      await apiClient.patch(
+        `/programs/${programCode}/legacy-prints/${printId}`,
+        { is_enabled: enabled }
+      );
+      loadPrints();
+    } catch {
+      toast.error("Failed to update print");
+    }
+  };
+
+  const updatePrintPrice = async (printId: string, price: number) => {
+    try {
+      await apiClient.patch(
+        `/programs/${programCode}/legacy-prints/${printId}`,
+        { price_addition: price }
+      );
+      loadPrints();
+    } catch {
+      toast.error("Failed to update price");
+    }
+  };
+
+  const enableAllStandard = async () => {
+    try {
+      await apiClient.post(`/programs/${programCode}/legacy-prints/enable-all`);
+      loadPrints();
+      toast.success("All standard prints enabled");
+    } catch {
+      toast.error("Failed to enable prints");
+    }
+  };
+
+  const disableAllStandard = async () => {
+    try {
+      await apiClient.post(`/programs/${programCode}/legacy-prints/disable-all`);
+      loadPrints();
+      toast.success("All standard prints disabled");
+    } catch {
+      toast.error("Failed to disable prints");
+    }
+  };
+
+  const addCustomPrint = async () => {
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      await apiClient.post(`/programs/${programCode}/legacy-prints/custom`, {
+        display_name: newName.trim(),
+        description: newDescription.trim() || null,
+        price_addition: newPrice ? Number(newPrice) : null,
+      });
+      setNewName("");
+      setNewDescription("");
+      setNewPrice("");
+      setShowUploadForm(false);
+      loadPrints();
+      toast.success("Custom print added");
+    } catch {
+      toast.error("Failed to add custom print");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteCustomPrint = async (printId: string) => {
+    if (!confirm("Delete this custom print? This cannot be undone.")) return;
+    try {
+      await apiClient.delete(
+        `/programs/${programCode}/legacy-prints/${printId}`
+      );
+      loadPrints();
+      toast.success("Print removed");
+    } catch {
+      toast.error("Failed to delete print");
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Legacy Prints</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const showPriceField = pricingMode === "per_option";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Legacy Prints</CardTitle>
+        <CardDescription>
+          Which Legacy print designs do you offer families?
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Wilbert standard catalog */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold">Wilbert Standard Prints</h4>
+            <div className="flex gap-2">
+              <Button
+                onClick={enableAllStandard}
+                size="sm"
+                variant="outline"
+              >
+                Enable all
+              </Button>
+              <Button
+                onClick={disableAllStandard}
+                size="sm"
+                variant="outline"
+              >
+                Disable all
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {wilbertPrints.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-3 rounded border p-3"
+              >
+                <Switch
+                  checked={p.is_enabled}
+                  onCheckedChange={(v) => togglePrint(p.id, v)}
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-sm">{p.display_name}</div>
+                  {p.description && (
+                    <div className="text-xs text-muted-foreground">
+                      {p.description}
+                    </div>
+                  )}
+                </div>
+                {showPriceField && p.is_enabled && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">$</span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      defaultValue={p.price_addition ?? ""}
+                      onBlur={(e) => {
+                        const val = Number(e.target.value);
+                        if (!Number.isNaN(val)) updatePrintPrice(p.id, val);
+                      }}
+                      className="w-24 text-xs"
+                      placeholder="0.00"
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+            {wilbertPrints.length === 0 && (
+              <div className="text-sm text-muted-foreground py-4">
+                No Wilbert standard prints seeded for this program.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Custom prints */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold">Your Custom Prints</h4>
+            <Button
+              onClick={() => setShowUploadForm(!showUploadForm)}
+              size="sm"
+            >
+              + Add custom print
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {customPrints.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-3 rounded border p-3"
+              >
+                <Switch
+                  checked={p.is_enabled}
+                  onCheckedChange={(v) => togglePrint(p.id, v)}
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-sm">{p.display_name}</div>
+                  {p.description && (
+                    <div className="text-xs text-muted-foreground">
+                      {p.description}
+                    </div>
+                  )}
+                </div>
+                {showPriceField && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">$</span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      defaultValue={p.price_addition ?? ""}
+                      onBlur={(e) => {
+                        const val = Number(e.target.value);
+                        if (!Number.isNaN(val)) updatePrintPrice(p.id, val);
+                      }}
+                      className="w-24 text-xs"
+                      placeholder="0.00"
+                    />
+                  </div>
+                )}
+                <Button
+                  onClick={() => deleteCustomPrint(p.id)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            {customPrints.length === 0 && !showUploadForm && (
+              <div className="text-sm text-muted-foreground py-4">
+                No custom prints yet. Click "Add custom print" to upload your own.
+              </div>
+            )}
+          </div>
+
+          {showUploadForm && (
+            <div className="mt-4 space-y-3 rounded border p-4 bg-muted/30">
+              <div>
+                <Label htmlFor="new-print-name">Name</Label>
+                <Input
+                  id="new-print-name"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Cardinal Logo"
+                />
+              </div>
+              <div>
+                <Label htmlFor="new-print-desc">Description (shown to families)</Label>
+                <Input
+                  id="new-print-desc"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+              {showPriceField && (
+                <div>
+                  <Label htmlFor="new-print-price">Price addition</Label>
+                  <Input
+                    id="new-print-price"
+                    type="number"
+                    step="0.01"
+                    value={newPrice}
+                    onChange={(e) => setNewPrice(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground">
+                File upload is pending storage wiring — you can add a print
+                record now and attach the file once the R2 upload endpoint
+                is live.
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  onClick={() => setShowUploadForm(false)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={addCustomPrint}
+                  size="sm"
+                  disabled={saving || !newName.trim()}
+                >
+                  {saving && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  Save print
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

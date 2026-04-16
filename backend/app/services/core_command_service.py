@@ -44,7 +44,23 @@ Response schema:
   "needs_confirmation": false
 }
 
-Available intents: search, create_order, schedule_delivery, log_production, view_compliance, create_reminder, find_record, navigate, log_pour, log_strip, create_employee, find_employee, view_briefing, call_customer
+Available intents: search, create_order, schedule_delivery, log_production, view_compliance, create_reminder, find_record, navigate, log_pour, log_strip, create_employee, find_employee, view_briefing, call_customer, create_invoice, run_statements, view_ar_aging, view_ap_aging, view_revenue_report, create_disinterment, view_disinterments, log_incident, run_audit_prep, view_safety, view_training, view_ss_certificates, settings_programs, settings_locations, settings_team, settings_product_lines, settings_tax, settings_email, view_invoices, view_bills, view_purchase_orders, view_products, view_knowledge_base, view_team, create_urn_order, view_urns, view_transfers, view_spring_burials, view_calls, view_agents
+
+Known navigable routes (use the canonical path when intent=navigate):
+  /dashboard /orders /orders/new /scheduling /scheduling/new
+  /crm /crm/companies /crm/funeral-homes /crm/pipeline
+  /compliance /compliance/disinterments /compliance/disinterments/new
+  /ar/invoices /ar/invoices/review /ar/aging /ar/payments /ar/quotes /ar/statements
+  /ap/bills /ap/aging /ap/payments /ap/purchase-orders
+  /products /products/urns /urns/catalog /urns/orders /urns/orders/new
+  /safety /safety/programs /safety/incidents /safety/incidents/new
+  /safety/training /safety/osha-300 /safety/toolbox-talks
+  /social-service-certificates /spring-burials /transfers /calls /agents /team
+  /reports /knowledge-base
+  /settings/programs /settings/locations /settings/product-lines
+  /settings/tax /settings/invoice /settings/call-intelligence
+  /settings/compliance
+  /production /production/pour-events/new /production-log
 """
 
 

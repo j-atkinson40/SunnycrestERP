@@ -182,7 +182,564 @@ export const manufacturingActions: CommandAction[] = [
     roles: ["admin", "office"],
     vertical: "manufacturing",
   },
+
+  // ──────────────────────────────────────────────────────────────
+  // DISINTERMENTS
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_disinterments",
+    keywords: [
+      "disinterment",
+      "disinterments",
+      "exhumation",
+      "open disinterment",
+      "disinterment order",
+    ],
+    title: "Disinterments",
+    subtitle: "View and manage disinterment orders",
+    icon: "clipboard-list",
+    type: "NAV",
+    route: "/compliance/disinterments",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "create_disinterment",
+    keywords: [
+      "create disinterment",
+      "new disinterment",
+      "log disinterment",
+      "add disinterment",
+    ],
+    title: "Create disinterment order",
+    subtitle: "New disinterment record",
+    icon: "plus-circle",
+    type: "ACTION",
+    route: "/compliance/disinterments/new",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // FINANCIAL REPORTS (admin only)
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "report_ar_aging",
+    keywords: [
+      "ar aging",
+      "accounts receivable",
+      "aging report",
+      "outstanding invoices",
+      "overdue",
+    ],
+    title: "AR Aging Report",
+    subtitle: "Accounts receivable by age",
+    icon: "bar-chart",
+    type: "NAV",
+    route: "/ar/aging",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "report_ap_aging",
+    keywords: ["ap aging", "accounts payable", "bills aging"],
+    title: "AP Aging Report",
+    subtitle: "Accounts payable by age",
+    icon: "bar-chart",
+    type: "NAV",
+    route: "/ap/aging",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "report_revenue",
+    keywords: [
+      "revenue report",
+      "sales report",
+      "revenue by product",
+      "revenue by customer",
+      "monthly revenue",
+    ],
+    title: "Revenue Report",
+    icon: "trending-up",
+    type: "NAV",
+    route: "/reports",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "run_statements",
+    keywords: [
+      "run statements",
+      "monthly statements",
+      "statements",
+      "ar statements",
+      "customer statements",
+    ],
+    title: "Run Monthly Statements",
+    icon: "file-text",
+    type: "ACTION",
+    route: "/ar/statements",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // COMPLIANCE SUBMODULES
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_safety",
+    keywords: [
+      "safety",
+      "osha",
+      "safety programs",
+      "written programs",
+      "training matrix",
+    ],
+    title: "Safety & OSHA",
+    icon: "shield",
+    type: "NAV",
+    route: "/safety",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_vehicles",
+    keywords: [
+      "vehicles",
+      "dot",
+      "fleet",
+      "vehicle registry",
+      "hut",
+      "dot registration",
+    ],
+    title: "Vehicle & DOT",
+    icon: "truck",
+    type: "NAV",
+    route: "/compliance",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_npca",
+    keywords: [
+      "npca",
+      "plant certification",
+      "npca audit",
+      "concrete certification",
+    ],
+    title: "NPCA Certification",
+    icon: "award",
+    type: "NAV",
+    route: "/compliance",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "audit_prep",
+    keywords: [
+      "audit prep",
+      "run audit prep",
+      "compliance audit",
+      "generate audit package",
+      "audit report",
+    ],
+    title: "Run Audit Prep",
+    subtitle: "Generate compliance audit package",
+    icon: "file-search",
+    type: "ACTION",
+    route: "/compliance",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_incidents",
+    keywords: ["incidents", "safety incident", "incident report", "osha 300"],
+    title: "Safety Incidents",
+    icon: "alert-triangle",
+    type: "NAV",
+    route: "/safety/incidents",
+    roles: ["admin", "office", "production"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "create_incident",
+    keywords: ["log incident", "new incident", "report incident"],
+    title: "Log safety incident",
+    icon: "plus-circle",
+    type: "ACTION",
+    route: "/safety/incidents/new",
+    roles: ["admin", "office", "production"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_training",
+    keywords: ["training", "safety training", "osha training", "toolbox talks"],
+    title: "Safety Training",
+    icon: "book-open",
+    type: "NAV",
+    route: "/safety/training",
+    roles: ["admin", "office", "production"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // SOCIAL SERVICE CERTIFICATES
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_ss_certs",
+    keywords: [
+      "social service",
+      "ss certificate",
+      "social service certificate",
+      "ss cert",
+    ],
+    title: "Social Service Certificates",
+    icon: "file-check",
+    type: "NAV",
+    route: "/social-service-certificates",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // SETTINGS
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "settings_programs",
+    keywords: [
+      "programs",
+      "wilbert programs",
+      "program settings",
+      "vault program",
+      "urn program",
+      "casket program",
+    ],
+    title: "Program Settings",
+    icon: "settings",
+    type: "NAV",
+    route: "/settings/programs",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "settings_locations",
+    keywords: [
+      "locations",
+      "location settings",
+      "manage locations",
+      "add location",
+      "plants",
+    ],
+    title: "Location Settings",
+    icon: "map-pin",
+    type: "NAV",
+    route: "/settings/locations",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "settings_team",
+    keywords: [
+      "team",
+      "users",
+      "invite user",
+      "manage team",
+      "add user",
+      "team settings",
+    ],
+    title: "Team Settings",
+    icon: "users",
+    type: "NAV",
+    route: "/team",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "settings_product_lines",
+    keywords: [
+      "product lines",
+      "extensions",
+      "redi-rock",
+      "wastewater",
+      "activate product line",
+    ],
+    title: "Product Lines",
+    icon: "package",
+    type: "NAV",
+    route: "/settings/product-lines",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "settings_tax",
+    keywords: ["tax settings", "tax rates", "sales tax", "tax jurisdictions"],
+    title: "Tax Settings",
+    icon: "percent",
+    type: "NAV",
+    route: "/settings/tax",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "settings_invoice",
+    keywords: ["invoice settings", "invoice template", "invoice design"],
+    title: "Invoice Settings",
+    icon: "file-text",
+    type: "NAV",
+    route: "/settings/invoice",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "settings_email",
+    keywords: ["email settings", "email config", "smtp", "platform email"],
+    title: "Email Settings",
+    icon: "mail",
+    type: "NAV",
+    route: "/settings/email",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "settings_call_intelligence",
+    keywords: ["call intelligence", "ringcentral", "phone integration"],
+    title: "Call Intelligence Settings",
+    icon: "phone",
+    type: "NAV",
+    route: "/settings/call-intelligence",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // INVOICES
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_invoices",
+    keywords: ["invoices", "ar invoices", "open invoice", "invoice list"],
+    title: "Invoices",
+    icon: "file-text",
+    type: "NAV",
+    route: "/ar/invoices",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "review_invoices",
+    keywords: ["review invoices", "draft invoices", "invoice review queue"],
+    title: "Review Invoices",
+    subtitle: "Pending invoice approvals",
+    icon: "check-square",
+    type: "NAV",
+    route: "/ar/invoices/review",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_payments",
+    keywords: ["payments", "customer payments", "ar payments"],
+    title: "Customer Payments",
+    icon: "dollar-sign",
+    type: "NAV",
+    route: "/ar/payments",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_quotes",
+    keywords: ["quotes", "estimates"],
+    title: "Quotes",
+    icon: "file-text",
+    type: "NAV",
+    route: "/ar/quotes",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // AP (bills + vendor payments)
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_bills",
+    keywords: ["bills", "vendor bills", "ap bills"],
+    title: "Vendor Bills",
+    icon: "file-text",
+    type: "NAV",
+    route: "/ap/bills",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_purchase_orders",
+    keywords: ["purchase orders", "po", "pos"],
+    title: "Purchase Orders",
+    icon: "shopping-cart",
+    type: "NAV",
+    route: "/ap/purchase-orders",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_vendor_payments",
+    keywords: ["vendor payments", "ap payments", "pay vendor"],
+    title: "Vendor Payments",
+    icon: "dollar-sign",
+    type: "NAV",
+    route: "/ap/payments",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // PRODUCTS
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_products",
+    keywords: ["products", "product catalog", "catalog", "skus", "price list"],
+    title: "Product Catalog",
+    icon: "package",
+    type: "NAV",
+    route: "/products",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // KNOWLEDGE BASE
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_knowledge_base",
+    keywords: [
+      "knowledge base",
+      "knowledge",
+      "docs",
+      "documentation",
+      "kb",
+    ],
+    title: "Knowledge Base",
+    icon: "book-open",
+    type: "NAV",
+    route: "/knowledge-base",
+    roles: ["admin", "office", "production", "driver"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // URNS (Resale)
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "create_urn_order",
+    keywords: [
+      "create urn order",
+      "new urn",
+      "urn order",
+      "order urn",
+      "urn sale",
+    ],
+    title: "Create urn order",
+    icon: "plus-circle",
+    type: "ACTION",
+    route: "/urns/orders/new",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+  {
+    id: "nav_urns",
+    keywords: ["urns", "urn catalog", "urn orders", "resale"],
+    title: "Urn Catalog",
+    icon: "package",
+    type: "NAV",
+    route: "/urns/catalog",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // EMPLOYEES / TEAM
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_team",
+    keywords: ["team", "employees", "staff", "team members", "personnel"],
+    title: "Team",
+    icon: "users",
+    type: "NAV",
+    route: "/team",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // SPRING BURIALS
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_spring_burials",
+    keywords: ["spring burials", "spring burial list", "seasonal burials"],
+    title: "Spring Burials",
+    icon: "calendar",
+    type: "NAV",
+    route: "/spring-burials",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // TRANSFERS (Cross-licensee)
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_transfers",
+    keywords: ["transfers", "cross licensee", "licensee transfer"],
+    title: "Transfers",
+    icon: "repeat",
+    type: "NAV",
+    route: "/transfers",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // CALLS
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_call_log",
+    keywords: ["call log", "calls", "recent calls", "phone history"],
+    title: "Call Log",
+    icon: "phone",
+    type: "NAV",
+    route: "/calls",
+    roles: ["admin", "office"],
+    vertical: "manufacturing",
+  },
+
+  // ──────────────────────────────────────────────────────────────
+  // AGENTS
+  // ──────────────────────────────────────────────────────────────
+  {
+    id: "nav_agents",
+    keywords: ["agents", "ai agents", "accounting agents"],
+    title: "Accounting Agents",
+    icon: "bot",
+    type: "NAV",
+    route: "/agents",
+    roles: ["admin"],
+    vertical: "manufacturing",
+  },
 ];
+
+/**
+ * Filter actions by the current user's role.
+ * Actions with no `roles` or empty `roles` array are visible to everyone.
+ */
+export function filterActionsByRole(
+  actions: CommandAction[],
+  userRole: string | undefined | null
+): CommandAction[] {
+  if (!userRole) return actions.filter((a) => !a.roles || a.roles.length === 0);
+  return actions.filter((a) => {
+    if (!a.roles || a.roles.length === 0) return true;
+    return a.roles.includes(userRole);
+  });
+}
 
 /** Fuzzy local match against registered actions */
 export function matchLocalActions(

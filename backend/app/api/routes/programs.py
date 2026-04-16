@@ -524,3 +524,189 @@ def update_program_payout(
     enrollment.updated_at = datetime.now(timezone.utc)
     db.commit()
     return {"payout_config": enrollment.payout_config}
+
+
+# ---------------------------------------------------------------------------
+# Legacy Prints — per-tenant catalog of Wilbert standard + custom prints
+# ---------------------------------------------------------------------------
+
+from decimal import Decimal
+
+from fastapi import File, UploadFile
+from app.services import legacy_print_service
+
+
+class UpdateLegacyPrintRequest(BaseModel):
+    is_enabled: Optional[bool] = None
+    price_addition: Optional[Decimal] = None
+
+
+class CreateCustomPrintRequest(BaseModel):
+    display_name: str
+    description: Optional[str] = None
+    file_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    price_addition: Optional[Decimal] = None
+
+
+def _serialize_print(p) -> dict:
+    return {
+        "id": p.id,
+        "program_code": p.program_code,
+        "wilbert_catalog_key": p.wilbert_catalog_key,
+        "display_name": p.display_name,
+        "description": p.description,
+        "file_url": p.file_url,
+        "thumbnail_url": p.thumbnail_url,
+        "is_enabled": p.is_enabled,
+        "is_custom": p.is_custom,
+        "price_addition": float(p.price_addition) if p.price_addition is not None else None,
+        "sort_order": p.sort_order,
+    }
+
+
+@router.get("/{code}/legacy-prints")
+def list_legacy_prints(
+    code: str,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    prints = legacy_print_service.list_prints(db, company.id, code)
+    return {
+        "wilbert_catalog": [_serialize_print(p) for p in prints if not p.is_custom],
+        "custom": [_serialize_print(p) for p in prints if p.is_custom],
+    }
+
+
+@router.patch("/{code}/legacy-prints/{print_id}")
+def update_legacy_print(
+    code: str,
+    print_id: str,
+    data: UpdateLegacyPrintRequest,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    try:
+        if data.is_enabled is not None:
+            legacy_print_service.set_enabled(db, company.id, print_id, data.is_enabled)
+        if data.price_addition is not None:
+            legacy_print_service.set_price(db, company.id, print_id, data.price_addition)
+        p = legacy_print_service.get_print(db, company.id, print_id)
+        if not p:
+            raise HTTPException(status_code=404, detail="Legacy print not found")
+        return _serialize_print(p)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{code}/legacy-prints/custom")
+def create_custom_legacy_print(
+    code: str,
+    data: CreateCustomPrintRequest,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    """Create a custom Legacy print record.
+
+    For file upload, call POST /{code}/legacy-prints/upload first to get file_url,
+    then call this endpoint with the resulting URL.
+    """
+    p = legacy_print_service.create_custom(
+        db=db,
+        company_id=company.id,
+        program_code=code,
+        display_name=data.display_name,
+        description=data.description,
+        file_url=data.file_url,
+        thumbnail_url=data.thumbnail_url,
+        price_addition=data.price_addition,
+    )
+    return _serialize_print(p)
+
+
+@router.delete("/{code}/legacy-prints/{print_id}")
+def delete_legacy_print(
+    code: str,
+    print_id: str,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    try:
+        ok = legacy_print_service.delete_custom(db, company.id, print_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Legacy print not found")
+        return {"deleted": True}
+    except ValueError as e:
+        # e.g. tried to delete a Wilbert catalog print
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{code}/legacy-prints/enable-all")
+def enable_all_wilbert_prints(
+    code: str,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    count = legacy_print_service.enable_all_wilbert(db, company.id, code)
+    return {"updated": count}
+
+
+@router.post("/{code}/legacy-prints/disable-all")
+def disable_all_wilbert_prints(
+    code: str,
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    count = legacy_print_service.disable_all_wilbert(db, company.id, code)
+    return {"updated": count}
+
+
+@router.post("/{code}/legacy-prints/upload")
+async def upload_legacy_print_file(
+    code: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    company: Company = Depends(get_current_company),
+    db: Session = Depends(get_db),
+):
+    """Upload a custom Legacy print file. Returns {file_url, thumbnail_url}.
+
+    Validates file type (PNG, PDF, TIFF only). Storage destination depends
+    on deployed blob storage (R2 in production); for now the route returns
+    a placeholder until a storage adapter is wired in.
+    """
+    ALLOWED_TYPES = {
+        "image/png",
+        "application/pdf",
+        "image/tiff",
+        "image/x-tiff",
+    }
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {file.content_type}. "
+                   "Accepted: PNG, PDF, TIFF.",
+        )
+    # Read file to check size (max 25MB)
+    contents = await file.read()
+    if len(contents) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds 25MB maximum size.")
+
+    # Storage adapter not yet wired — return placeholder so the UI can be tested end-to-end.
+    # Wiring R2 upload here would duplicate existing URN catalog image handling.
+    # Follow-up task: integrate with R2 via the same service used for urn catalog images.
+    return {
+        "file_url": None,
+        "thumbnail_url": None,
+        "filename": file.filename,
+        "size_bytes": len(contents),
+        "content_type": file.content_type,
+        "note": "Upload endpoint accepted the file, but blob storage wiring is pending. "
+                "Use POST /{code}/legacy-prints/custom with a manually-hosted URL in the meantime.",
+    }

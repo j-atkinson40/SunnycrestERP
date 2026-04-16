@@ -63,7 +63,19 @@ interface FlowStatus {
   status: string;
   current_step: string;
   completed_steps: string[];
+  skipped_steps?: string[];
+  visible_steps?: string[];
   percent_complete: number;
+  // Existing-data flags (backend populates when endpoints are up-to-date)
+  has_existing_orders?: boolean;
+  has_existing_crm?: boolean;
+  has_existing_users?: boolean;
+  has_existing_location?: boolean;
+  should_show_import?: boolean;
+  existing_order_count?: number;
+  existing_crm_count?: number;
+  existing_user_count?: number;
+  existing_location_count?: number;
 }
 
 interface ProgramCard {
@@ -157,15 +169,22 @@ export default function OnboardingFlow() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [flowStatus, setFlowStatus] = useState<FlowStatus | null>(null);
 
   // Fetch flow status on mount
   useEffect(() => {
     async function fetchStatus() {
       try {
         const { data } = await apiClient.get<FlowStatus>("/onboarding-flow/status");
-        const idx = STEPS.findIndex((s) => s.key === data.current_step);
-        if (idx >= 0) setCurrentStepIndex(idx);
+        setFlowStatus(data);
         setCompletedSteps(new Set(data.completed_steps));
+        // Compute step sequence (with import filtered if not needed), then locate current_step
+        const visible = data.visible_steps && data.visible_steps.length > 0
+          ? data.visible_steps
+          : STEPS.map((s) => s.key);
+        const filteredSteps = STEPS.filter((s) => visible.includes(s.key));
+        const idx = filteredSteps.findIndex((s) => s.key === data.current_step);
+        if (idx >= 0) setCurrentStepIndex(idx);
       } catch {
         // Fresh start — stay at step 0
       } finally {
@@ -175,7 +194,13 @@ export default function OnboardingFlow() {
     fetchStatus();
   }, []);
 
-  const currentStep = STEPS[currentStepIndex];
+  // Build the visible step sequence based on status flags.
+  // When orders already exist, the import step is hidden entirely.
+  const visibleStepKeys = flowStatus?.visible_steps && flowStatus.visible_steps.length > 0
+    ? flowStatus.visible_steps
+    : STEPS.map((s) => s.key);
+  const visibleSteps = STEPS.filter((s) => visibleStepKeys.includes(s.key));
+  const currentStep = visibleSteps[currentStepIndex] ?? STEPS[currentStepIndex];
 
   const goNext = useCallback(() => {
     setCompletedSteps((prev) => {
@@ -183,10 +208,10 @@ export default function OnboardingFlow() {
       next.add(currentStep.key);
       return next;
     });
-    if (currentStepIndex < STEPS.length - 1) {
+    if (currentStepIndex < visibleSteps.length - 1) {
       setCurrentStepIndex(currentStepIndex + 1);
     }
-  }, [currentStep.key, currentStepIndex]);
+  }, [currentStep.key, currentStepIndex, visibleSteps.length]);
 
   const goBack = useCallback(() => {
     if (currentStepIndex > 0) {
@@ -195,10 +220,10 @@ export default function OnboardingFlow() {
   }, [currentStepIndex]);
 
   const skipStep = useCallback(() => {
-    if (currentStepIndex < STEPS.length - 1) {
+    if (currentStepIndex < visibleSteps.length - 1) {
       setCurrentStepIndex(currentStepIndex + 1);
     }
-  }, [currentStepIndex]);
+  }, [currentStepIndex, visibleSteps.length]);
 
   if (loading) {
     return (
@@ -211,7 +236,7 @@ export default function OnboardingFlow() {
   // ── Step Progress Indicator ──────────────────────────────────
   const renderProgress = () => (
     <div className="mx-auto flex max-w-3xl items-center justify-center gap-1 px-4 py-6">
-      {STEPS.map((step, idx) => {
+      {visibleSteps.map((step, idx) => {
         const isComplete = completedSteps.has(step.key);
         const isCurrent = idx === currentStepIndex;
         const Icon = step.icon;
@@ -240,7 +265,7 @@ export default function OnboardingFlow() {
                 <Icon className="h-4 w-4" />
               )}
             </button>
-            {idx < STEPS.length - 1 && (
+            {idx < visibleSteps.length - 1 && (
               <div
                 className={cn(
                   "mx-0.5 h-0.5 w-4 rounded-full sm:w-8",

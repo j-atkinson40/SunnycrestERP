@@ -311,6 +311,7 @@ from app.models.admin_saved_prompt import AdminSavedPrompt
 from app.models.admin_deployment import AdminDeployment
 from app.models.admin_smoke_test_result import AdminSmokeTestResult
 from app.models.tenant_product_line import TenantProductLine
+from app.models.program_legacy_print import ProgramLegacyPrint
 
 __all__ = [
     "AccountingConnection",
@@ -578,4 +579,5 @@ __all__ = [
     "AdminDeployment",
     "AdminSmokeTestResult",
     "TenantProductLine",
+    "ProgramLegacyPrint",
 ]
