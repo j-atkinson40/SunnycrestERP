@@ -20,6 +20,16 @@ from app.api.routes import (
     platform_training,
     platform_users_mgmt,
 )
+from app.api.routes.admin import (
+    impersonation as admin_impersonation,
+    feature_flags as admin_feature_flags,
+    staging as admin_staging,
+    deployments as admin_deployments,
+    kanban as admin_kanban,
+    audit as admin_audit,
+    migrations as admin_migrations,
+    chat as admin_chat,
+)
 
 platform_router = APIRouter()
 
@@ -68,4 +78,32 @@ platform_router.include_router(
     platform_health.router,
     prefix="/health",
     tags=["Platform Health"],
+)
+
+# ---------------------------------------------------------------------------
+# New super admin portal routes (admin_01_super_admin_tables)
+# ---------------------------------------------------------------------------
+platform_router.include_router(
+    admin_impersonation.router, prefix="/admin/impersonation", tags=["Admin Impersonation"]
+)
+platform_router.include_router(
+    admin_feature_flags.router, prefix="/admin/feature-flags", tags=["Admin Feature Flags"]
+)
+platform_router.include_router(
+    admin_staging.router, prefix="/admin/staging", tags=["Admin Staging Tenants"]
+)
+platform_router.include_router(
+    admin_deployments.router, prefix="/admin/deployments", tags=["Admin Deployments"]
+)
+platform_router.include_router(
+    admin_kanban.router, prefix="/admin/tenants", tags=["Admin Tenant Kanban"]
+)
+platform_router.include_router(
+    admin_audit.router, prefix="/admin/audit", tags=["Admin Audit Runner"]
+)
+platform_router.include_router(
+    admin_migrations.router, prefix="/admin/migrations", tags=["Admin Migrations"]
+)
+platform_router.include_router(
+    admin_chat.router, prefix="/admin/chat", tags=["Admin Chat"]
 )

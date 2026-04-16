@@ -302,6 +302,15 @@ from app.models.product_alias import ProductAlias
 from app.models.data_import_session import DataImportSession
 from app.models.configurable_item_registry import ConfigurableItemRegistry
 from app.models.tenant_item_config import TenantItemConfig
+# Super admin portal models (admin_01_super_admin_tables)
+from app.models.admin_impersonation_session import AdminImpersonationSession
+from app.models.admin_audit_run import AdminAuditRun
+from app.models.admin_staging_tenant import AdminStagingTenant
+from app.models.admin_feature_flag import AdminFeatureFlag, AdminFeatureFlagOverride
+from app.models.admin_saved_prompt import AdminSavedPrompt
+from app.models.admin_deployment import AdminDeployment
+from app.models.admin_smoke_test_result import AdminSmokeTestResult
+from app.models.tenant_product_line import TenantProductLine
 
 __all__ = [
     "AccountingConnection",
@@ -560,4 +569,13 @@ __all__ = [
     "DataImportSession",
     "ConfigurableItemRegistry",
     "TenantItemConfig",
+    "AdminImpersonationSession",
+    "AdminAuditRun",
+    "AdminStagingTenant",
+    "AdminFeatureFlag",
+    "AdminFeatureFlagOverride",
+    "AdminSavedPrompt",
+    "AdminDeployment",
+    "AdminSmokeTestResult",
+    "TenantProductLine",
 ]

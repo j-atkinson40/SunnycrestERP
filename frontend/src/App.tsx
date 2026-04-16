@@ -231,6 +231,8 @@ import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import CompanyRegisterPage from "@/pages/company-register";
 import PlatformAdminEntry from "@/pages/platform-admin-entry";
+import { BridgeableAdminApp } from "@/bridgeable-admin/BridgeableAdminApp";
+import ProductLinesPage from "@/pages/settings/ProductLines";
 import { LocationProvider } from "@/contexts/location-context";
 import { CallContextProvider } from "@/contexts/call-context";
 import { CallOverlay } from "@/components/call/CallOverlay";
@@ -278,7 +280,17 @@ function AuthDeviceProvider({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  // Platform admin gets an entirely separate app
+  // Bridgeable super admin portal (new redesigned portal) — entirely separate app
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/bridgeable-admin")) {
+    return (
+      <BrowserRouter>
+        <BridgeableAdminApp />
+        <Toaster />
+      </BrowserRouter>
+    )
+  }
+
+  // Legacy platform admin gets an entirely separate app
   if (isPlatformAdmin()) {
     return (
       <BrowserRouter>
@@ -876,6 +888,10 @@ export default function App() {
                     <Route
                       path="/admin/settings"
                       element={<CompanySettings />}
+                    />
+                    <Route
+                      path="/settings/product-lines"
+                      element={<ProductLinesPage />}
                     />
                   </Route>
 

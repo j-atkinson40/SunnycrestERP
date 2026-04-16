@@ -15,6 +15,7 @@ from app.api.routes import (
     ai_settings,
     core,
     configurable_items,
+    product_lines,
     ancillary_orders,
     announcements,
     call_intelligence,
@@ -240,6 +241,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     configurable_items.router, prefix="/configurable", tags=["Configurable Items"]
+)
+v1_router.include_router(
+    product_lines.router, prefix="/product-lines", tags=["Product Lines"]
 )
 v1_router.include_router(
     core.router, prefix="/core", tags=["Core UI"]
