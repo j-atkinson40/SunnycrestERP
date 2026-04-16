@@ -73,6 +73,14 @@ def upgrade() -> None:
         sa.text("SELECT id, name FROM companies WHERE is_active = true")
     ).fetchall()
 
+    # Pre-check which tables/columns exist — avoid failed SQL in PostgreSQL transactional DDL
+    inspector = sa.inspect(connection)
+    existing_tables = set(inspector.get_table_names())
+    table_columns = {}
+    for tbl in ["sales_orders", "vault_items", "deliveries", "work_orders", "equipment", "employee_profiles", "production_log_entries"]:
+        if tbl in existing_tables:
+            table_columns[tbl] = {c["name"] for c in inspector.get_columns(tbl)}
+
     for company in companies:
         location_id = str(uuid.uuid4())
 
@@ -86,6 +94,8 @@ def upgrade() -> None:
         )
 
         # Assign existing records to primary location
+        # Check table+column existence first — PostgreSQL transactional DDL means
+        # a failed UPDATE aborts the entire transaction (try/except won't help)
         for table, col in [
             ("sales_orders", "location_id"),
             ("vault_items", "location_id"),
@@ -95,13 +105,14 @@ def upgrade() -> None:
             ("employee_profiles", "location_id"),
             ("production_log_entries", "location_id"),
         ]:
-            try:
-                connection.execute(
-                    sa.text(f"UPDATE {table} SET {col} = :loc WHERE company_id = :cid AND {col} IS NULL"),
-                    {"loc": location_id, "cid": company.id},
-                )
-            except Exception:
-                pass
+            if table not in table_columns:
+                continue
+            if col not in table_columns[table]:
+                continue
+            connection.execute(
+                sa.text(f"UPDATE {table} SET {col} = :loc WHERE company_id = :cid AND {col} IS NULL"),
+                {"loc": location_id, "cid": company.id},
+            )
 
         # Grant all existing users all-location access
         users = connection.execute(
