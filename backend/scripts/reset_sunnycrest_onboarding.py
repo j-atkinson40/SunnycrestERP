@@ -93,17 +93,24 @@ def main():
             print(f"  {k}: {v}")
 
         print("\n=== Onboarding state (BEFORE) ===")
+        # Cast settings_json to jsonb in case it's stored as TEXT (production)
         state = db.execute(
             sql_text(
                 "SELECT onboarding_status, onboarding_completed_at, "
-                "(settings_json->'onboarding_flow') as flow "
+                "(settings_json::jsonb -> 'onboarding_flow') as flow "
                 "FROM companies WHERE id = :cid"
             ),
             {"cid": company_id},
         ).fetchone()
         print(f"  onboarding_status     = {state[0]!r}")
         print(f"  onboarding_completed_at = {state[1]}")
-        print(f"  settings.onboarding_flow = {state[2]}")
+        flow_val = state[2]
+        if flow_val is None:
+            print(f"  settings.onboarding_flow = (not set)")
+        else:
+            # Truncate for readability
+            flow_str = str(flow_val)
+            print(f"  settings.onboarding_flow = {flow_str[:200]}{'...' if len(flow_str) > 200 else ''}")
 
         print("\n=== Planned changes ===")
         print("  1. companies.onboarding_status -> 'pending'")
@@ -123,17 +130,42 @@ def main():
 
         # Execute
         print("\n=== Applying ===")
-        db.execute(
+        # Detect the actual column type of settings_json so the UPDATE works
+        # whether it's TEXT (some deploys) or JSONB (others).
+        col_type = db.execute(
             sql_text(
-                "UPDATE companies "
-                "SET onboarding_status = 'pending', "
-                "    onboarding_completed_at = NULL, "
-                "    onboarding_metadata = NULL, "
-                "    settings_json = COALESCE(settings_json, '{}'::jsonb) - 'onboarding_flow' "
-                "WHERE id = :cid"
-            ),
-            {"cid": company_id},
-        )
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_name = 'companies' AND column_name = 'settings_json'"
+            )
+        ).scalar()
+        is_jsonb = (col_type or "").lower() in ("jsonb", "json")
+
+        if is_jsonb:
+            db.execute(
+                sql_text(
+                    "UPDATE companies "
+                    "SET onboarding_status = 'pending', "
+                    "    onboarding_completed_at = NULL, "
+                    "    onboarding_metadata = NULL, "
+                    "    settings_json = COALESCE(settings_json, '{}'::jsonb) - 'onboarding_flow' "
+                    "WHERE id = :cid"
+                ),
+                {"cid": company_id},
+            )
+        else:
+            db.execute(
+                sql_text(
+                    "UPDATE companies "
+                    "SET onboarding_status = 'pending', "
+                    "    onboarding_completed_at = NULL, "
+                    "    onboarding_metadata = NULL, "
+                    "    settings_json = ("
+                    "      COALESCE(settings_json::jsonb, '{}'::jsonb) - 'onboarding_flow'"
+                    "    )::text "
+                    "WHERE id = :cid"
+                ),
+                {"cid": company_id},
+            )
         print("  ✓ Reset companies.onboarding_status and cleared settings_json.onboarding_flow")
 
         if args.clear_program_enrollments:
