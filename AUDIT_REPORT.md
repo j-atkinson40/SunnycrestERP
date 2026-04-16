@@ -8,68 +8,82 @@
 
 ## 1. Test Results Summary
 
-### Backend API Tests (pytest + httpx)
+### Post-Migration Results (vault_04 + vault_05 applied)
+
+#### Backend API Tests (pytest + httpx)
 
 | Suite | Passed | Skipped | XFailed | Failed | Total |
 |-------|--------|---------|---------|--------|-------|
 | test_comprehensive.py (existing) | 40 | 1 | 3 | 0 | 44 |
-| test_audit_comprehensive.py (new) | 27 | 10 | 43 | 0 | 80 |
-| **Combined** | **67** | **11** | **46** | **0** | **124** |
+| test_audit_comprehensive.py (new) | 72 | 3 | 5 | 0 | 80 |
+| **Combined** | **114** | **3** | **7** | **0** | **124** |
 
-### Frontend E2E Tests (Playwright)
+#### Frontend E2E Tests (Playwright)
 
-| Suite | Passed | Skipped | Flaky | Failed | Total |
-|-------|--------|---------|-------|--------|-------|
-| smoke.spec.ts (existing) | 4 | 0 | 0 | 1* | 5 |
-| business-flows.spec.ts (existing) | — | — | — | — | 44 |
-| automated-flows.spec.ts (existing) | — | — | — | — | 34 |
-| platform-audit.spec.ts (new) | 61 | 21 | 1 | 0 | 83 |
-| **Audit suite only** | **61** | **21** | **1** | **0** | **83** |
+| Suite | Passed | Skipped | Failed | Total |
+|-------|--------|---------|--------|-------|
+| platform-audit.spec.ts (new) | 81 | 2 | 0 | 83 |
+| smoke.spec.ts (existing) | 5 | 0 | 0 | 5 |
+| business-flows.spec.ts (existing) | — | — | — | 44 |
+| automated-flows.spec.ts (existing) | — | — | — | 34 |
 
-\* smoke test #5 "API returns no 500 errors" fails due to vault endpoint 500s from missing staging migration — pre-existing, not a regression.
-
-### Overall Totals
+#### Overall Totals
 
 | Category | Count |
 |----------|-------|
-| Backend tests (all passing or xfail) | 124 |
+| Backend tests (passing or xfail) | 124 |
 | Frontend audit tests (passing + skip) | 83 |
 | Existing frontend tests (baseline) | 83 |
 | **Total test coverage** | **290** |
 | **Hard failures** | **0** |
 
 **Pre-audit baseline:** 121/122 passing (44 backend + 77 frontend)
-**Post-audit:** 290 tests total, 0 hard failures
+**Post-audit (pre-migration):** 290 tests total, 0 hard failures (43 xfail + 21 skip)
+**Post-migration:** 290 tests total, 0 hard failures (7 xfail + 5 skip — 52 tests converted to passing)
+
+### Pre-Migration Results (historical — before vault_04 + vault_05)
+
+<details><summary>Click to expand pre-migration results</summary>
+
+#### Backend (pre-migration)
+
+| Suite | Passed | Skipped | XFailed | Failed | Total |
+|-------|--------|---------|---------|--------|-------|
+| test_comprehensive.py | 40 | 1 | 3 | 0 | 44 |
+| test_audit_comprehensive.py | 27 | 10 | 43 | 0 | 80 |
+| **Combined** | **67** | **11** | **46** | **0** | **124** |
+
+#### Frontend (pre-migration)
+
+| Suite | Passed | Skipped | Flaky | Failed | Total |
+|-------|--------|---------|-------|--------|-------|
+| platform-audit.spec.ts | 61 | 21 | 1 | 0 | 83 |
+
+</details>
 
 ---
 
 ## 2. Vault Migration Verification
 
 ### Tables Confirmed
-The vault migration code is deployed to production and the tables exist in the codebase. **On staging, vault tables return 500** — the `vault_01_core_tables` through `vault_05_onboarding` migrations have not been applied to the staging database.
+All vault migrations (`vault_01_core_tables` through `vault_05_onboarding`) are now applied to staging. Migration `vault_04_multi_location` required a fix: the data migration used `try/except` around UPDATE statements, but PostgreSQL transactional DDL means a failed UPDATE aborts the entire transaction. Fixed to pre-check table/column existence before running UPDATEs.
 
 | Table | Exists in Codebase | On Staging |
 |-------|-------------------|------------|
-| vaults | Yes | No (500) |
-| vault_items | Yes | No (500) |
-| user_actions | Yes | Yes (200) |
-| locations | Yes | No (500) |
-| user_location_access | Yes | No (500) |
-| wilbert_program_enrollments | Yes | No (500) |
-| configurable_item_registry | Yes | No (500) |
-| tenant_item_config | Yes | No (500) |
-| product_aliases | Yes | No (500) |
-| import_sessions | Yes | No (500) |
-| historical_products | Yes | No (500) |
+| vaults | Yes | ✅ Yes (200) |
+| vault_items | Yes | ✅ Yes (200) |
+| user_actions | Yes | ✅ Yes (200) |
+| locations | Yes | ✅ Yes (200) |
+| user_location_access | Yes | ✅ Yes (200) |
+| wilbert_program_enrollments | Yes | ✅ Yes (200) |
+| configurable_item_registry | Yes | ✅ Yes (200) |
+| tenant_item_config | Yes | ✅ Yes (200) |
+| product_aliases | Yes | ✅ Yes (200) |
+| import_sessions | Yes | ✅ Yes (200) |
+| historical_products | Yes | ✅ Yes (200) |
 
 ### Dual-Write Verification
-Cannot verify on staging due to missing vault tables. The dual-write code exists in:
-- `delivery_service.py` — deliveries → vault events
-- `work_order_service.py` — pour events → vault events
-- `operations_board_service.py` — production log → vault items
-- `safety_service.py` — training events → vault items
-
-All dual-write tests are marked as xfail/skip until staging migrations are applied.
+Dual-write code exists in 4 services. Vault items table now exists on staging. Remaining xfails (5 backend) are for endpoints that depend on specific seed data or features not yet deployed (territory resolve, compliance master list, neighboring licensees, vault seed summary).
 
 ### Calendar and Compliance Sync
 - `POST /vault/generate-calendar-token` — **returns 200** (token generation works even without vault items table)
@@ -135,17 +149,25 @@ See **AUDIT_FIXES.md** for detailed fix list. Summary:
 
 ---
 
-## 5. Known Gaps (Features Designed but Not Deployed to Staging)
+## 5. Migration Status
 
 | Feature | Migration | Status |
 |---------|-----------|--------|
-| Vault Core Tables | vault_01_core_tables | Code complete, not on staging |
-| Vault Data Migration | vault_02_data_migration | Code complete, not on staging |
-| Core UI Tables | vault_03_core_ui | Partially on staging (user_actions works) |
-| Multi-Location | vault_04_multi_location | Code complete, not on staging |
-| Manufacturing Onboarding | vault_05_onboarding | Code complete, not on staging |
+| Vault Core Tables | vault_01_core_tables | ✅ Applied to staging |
+| Vault Data Migration | vault_02_data_migration | ✅ Applied to staging |
+| Core UI Tables | vault_03_core_ui | ✅ Applied to staging |
+| Multi-Location | vault_04_multi_location | ✅ Applied to staging (required fix) |
+| Manufacturing Onboarding | vault_05_onboarding | ✅ Applied to staging |
 
-**43 backend xfails + 21 frontend skips** will convert to passing tests once these migrations are applied to staging.
+**Migration head:** `vault_05_onboarding`
+
+**Post-migration improvement:** 52 tests converted from xfail/skip to passing (43→7 backend xfails, 21→2 frontend skips).
+
+### Remaining XFails/Skips (12 total)
+- 5 backend xfails: territory resolve, compliance master list, compliance questions, vault seed summary, neighboring licensees — depend on specific seed data or feature completeness
+- 2 backend skips: configurable item custom update/delete — depend on prior custom create returning an ID
+- 3 existing (test_comprehensive.py): pre-existing xfails unrelated to vault migrations
+- 2 frontend skips: conditional feature checks
 
 ---
 
@@ -153,21 +175,18 @@ See **AUDIT_FIXES.md** for detailed fix list. Summary:
 
 | Page/Endpoint | Target | Result |
 |---------------|--------|--------|
-| Home (morning briefing) | < 3s | Passes (loads within timeout) |
-| Orders page | < 3s | Passes (loads within timeout) |
-| Vault API | < 2s | Skipped (500 on staging) |
+| Home (morning briefing) | < 3s | ✅ 2346ms |
+| Orders page | < 3s | ✅ 2516ms |
+| Vault API | < 2s | ✅ 199ms |
 
-Performance measurements are soft targets on staging (Railway cold starts affect timing). All measured pages loaded within the 3-second target when the backend was warm.
+Performance measurements are soft targets on staging (Railway cold starts affect timing). All measured pages loaded within targets when the backend was warm.
 
 ---
 
 ## 7. Recommendations
 
-### Immediate: Deploy Staging Migrations
-Run `alembic upgrade head` on the staging database. This will:
-- Create vault, location, onboarding tables
-- Convert ~64 xfail/skip tests to passing
-- Enable the full vault verification suite
+### ~~Immediate: Deploy Staging Migrations~~ ✅ DONE
+Migrations `vault_04_multi_location` and `vault_05_onboarding` applied to staging on April 16, 2026. Required a fix to `vault_04` — the data migration used `try/except` around UPDATE statements, but PostgreSQL transactional DDL means a failed SQL statement aborts the entire transaction. Fixed to pre-check table and column existence before running UPDATEs. 52 tests converted from xfail/skip to passing.
 
 ### Observation: No RBAC on Most Endpoints
 The driver role can access `/companies` (CRM), and production workers can access `/sales/invoices`. This is by design in the current codebase — there are no fine-grained permission guards on most GET endpoints. If this needs to change, it's a feature request, not a bug.

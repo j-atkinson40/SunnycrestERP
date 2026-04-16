@@ -74,20 +74,24 @@
 
 ---
 
-## Staging Environment Gaps (Not Bugs)
+## Staging Environment Gaps — ✅ RESOLVED
 
-These are not code bugs — they are caused by staging not having the latest migrations deployed:
+~~These are not code bugs — they are caused by staging not having the latest migrations deployed.~~
 
-| Missing Table | Migration | Affected Tests (xfail/skip) |
-|---------------|-----------|----------------------------|
-| `vaults` | vault_01_core_tables | 8 vault endpoint tests |
-| `vault_items` | vault_01_core_tables | 8 vault endpoint tests |
-| `locations` | vault_04_multi_location | 6 location tests |
-| `user_location_access` | vault_04_multi_location | 2 user access tests |
-| `wilbert_program_enrollments` | vault_05_onboarding | 8 programs tests |
-| `tenant_item_config` | vault_05_onboarding | 5 configurable item tests |
-| `configurable_item_registry` | vault_05_onboarding | 3 configurable item tests |
-| `product_aliases` | vault_05_onboarding | 4 data import tests |
-| `import_sessions` | vault_05_onboarding | 2 import session tests |
+**Resolved April 16, 2026:** All migrations (`vault_01_core_tables` through `vault_05_onboarding`) applied to staging. 52 tests converted from xfail/skip to passing.
 
-**Action required:** Deploy migrations `vault_01_core_tables` through `vault_05_onboarding` to staging. All xfailed/skipped tests will convert to passing once tables exist.
+### Fix 12: vault_04_multi_location migration failure on staging
+- **What failed:** `alembic upgrade head` — `InFailedSqlTransaction` error
+- **Root cause:** Data migration used `try/except` around UPDATE statements, but PostgreSQL transactional DDL means a failed UPDATE (e.g., `UPDATE employee_profiles SET location_id = ...` when `company_id` column doesn't exist) aborts the entire transaction. Python catches the exception, but all subsequent SQL fails.
+- **What was fixed:** Replaced `try/except` with pre-flight checks: inspect table existence, column existence (`location_id` AND `company_id`), skip UPDATE if either is missing.
+- **Migration now passing:** Yes — both `vault_04_multi_location` and `vault_05_onboarding` applied successfully.
+
+### Fix 13: Programs catalog response shape (frontend)
+- **What failed:** `programs catalog returns programs` — `Array.isArray(data.items || data)` false
+- **Root cause:** `/programs/catalog` returns `{"catalog": {"vault": {...}, "urn": {...}, ...}}` — a dict keyed by program code, not an array
+- **What was fixed:** Assert `typeof catalog === "object"` instead of `Array.isArray`
+
+### Fix 14: Import sessions response key (backend)
+- **What failed:** `test_import_sessions_empty_state` — `isinstance(data, list)` false
+- **Root cause:** `/data-import/sessions` returns `{"sessions": []}` not a bare list
+- **What was fixed:** Extract via `data.get("sessions", data.get("items", data))`
