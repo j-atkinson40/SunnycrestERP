@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { AlertTriangle, X } from "lucide-react"
-import { AdminEnvironment, getAdminEnvironment, setAdminEnvironment } from "../lib/admin-api"
+import { getAdminEnvironment, setAdminEnvironment, type AdminEnvironment } from "../lib/admin-api"
 
 export function EnvironmentBanner() {
   const [env, setEnv] = useState<AdminEnvironment>(getAdminEnvironment())

@@ -2,9 +2,9 @@ import { useState } from "react"
 import { ChevronDown, LogOut, Shield } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import {
-  AdminEnvironment,
   getAdminEnvironment,
   setAdminEnvironment,
+  type AdminEnvironment,
 } from "../lib/admin-api"
 import { useAdminAuth } from "../lib/admin-auth-context"
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { UserCog, Activity, Play } from "lucide-react"
+import { UserCog, Play } from "lucide-react"
 import { adminApi } from "../lib/admin-api"
 
 const STATUS_COLUMNS = ["waitlist", "onboarding", "live", "churned", "staging"]

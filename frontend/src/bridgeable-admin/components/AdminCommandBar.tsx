@@ -1,20 +1,19 @@
 import {
   createContext,
-  ReactNode,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react"
 import { useNavigate } from "react-router-dom"
 import { Search, Sparkles, X, ChevronRight } from "lucide-react"
 import {
-  CommandAction,
   isQuestion,
   rankActions,
+  type CommandAction,
 } from "../lib/admin-command-actions"
-import { adminApi } from "../lib/admin-api"
 
 interface CommandBarContextValue {
   open: boolean
