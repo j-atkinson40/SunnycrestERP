@@ -104,6 +104,11 @@ class Delivery(Base):
         String(36), nullable=True
     )
 
+    # Location
+    origin_location_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("locations.id"), nullable=True
+    )
+
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -115,6 +120,7 @@ class Delivery(Base):
     company = relationship("Company")
     customer = relationship("Customer")
     carrier = relationship("Carrier")
+    origin_location = relationship("Location")
     stops = relationship("DeliveryStop", back_populates="delivery")
     events = relationship("DeliveryEvent", back_populates="delivery", order_by="DeliveryEvent.created_at")
     media = relationship("DeliveryMedia", back_populates="delivery")

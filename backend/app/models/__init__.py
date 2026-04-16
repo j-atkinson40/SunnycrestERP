@@ -291,6 +291,8 @@ from app.models.urn_engraving_job import UrnEngravingJob
 from app.models.urn_catalog_sync_log import UrnCatalogSyncLog
 from app.models.urn_tenant_settings import UrnTenantSettings
 from app.models.user_action import UserAction
+from app.models.location import Location
+from app.models.user_location_access import UserLocationAccess
 from app.models.vault import Vault
 from app.models.vault_item import VaultItem
 
@@ -540,6 +542,8 @@ __all__ = [
     "UrnCatalogSyncLog",
     "UrnTenantSettings",
     "UserAction",
+    "Location",
+    "UserLocationAccess",
     "Vault",
     "VaultItem",
 ]

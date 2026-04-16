@@ -118,8 +118,14 @@ class VaultItem(Base):
         JSONB, nullable=True
     )
 
+    # Location
+    location_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("locations.id"), nullable=True
+    )
+
     # Relationships
     vault = relationship("Vault", back_populates="items")
     company = relationship("Company")
     parent_item = relationship("VaultItem", remote_side="VaultItem.id")
     creator = relationship("User", foreign_keys=[created_by])
+    location = relationship("Location")

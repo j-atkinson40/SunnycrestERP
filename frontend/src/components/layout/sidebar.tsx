@@ -74,8 +74,10 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { usePresetTheme } from "@/contexts/preset-theme-context";
 import { useCommandBar } from "@/core/CommandBarProvider";
+import { useLocations } from "@/contexts/location-context";
 import { cn } from "@/lib/utils";
 import { OnboardingSidebarWidget } from "@/components/onboarding/sidebar-widget";
+import { LocationSelector } from "@/components/core/LocationSelector";
 import type { NavItem, NavSection } from "@/services/navigation-service";
 
 // ---- Icon lookup ----
@@ -173,7 +175,19 @@ function saveCollapsed(collapsed: Set<string>) {
 export function Sidebar() {
   const { company } = useAuth();
   const { navigation, presetAccent, presetLabel } = usePresetTheme();
+  const { isMultiLocation } = useLocations();
   const location = useLocation();
+
+  // Filter out multi-location-only nav items for single-location companies
+  const filteredNavigation = {
+    ...navigation,
+    sections: navigation.sections.map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) => !item.requiresMultiLocation || isMultiLocation
+      ),
+    })),
+  };
 
   // Collapsed sections
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
@@ -240,6 +254,11 @@ export function Sidebar() {
         </Link>
       </div>
 
+      {/* Location selector — only renders for multi-location companies */}
+      <div className="shrink-0 px-3 pt-2">
+        <LocationSelector />
+      </div>
+
       {/* Universal command bar trigger */}
       <div className="shrink-0 border-b px-4 py-3">
         <button
@@ -262,7 +281,7 @@ export function Sidebar() {
       {/* Navigation sections */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
         <div className="space-y-4">
-          {navigation.sections.map((section, idx) => (
+          {filteredNavigation.sections.map((section, idx) => (
             <SidebarSection
               key={section.title || `section-${idx}`}
               section={section}

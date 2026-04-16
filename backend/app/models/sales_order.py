@@ -133,6 +133,11 @@ class SalesOrder(Base):
     )
     spring_burial_scheduled_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
+    # Location
+    location_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("locations.id"), nullable=True
+    )
+
     # Audit
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
@@ -152,6 +157,7 @@ class SalesOrder(Base):
     customer = relationship("Customer")
     quote = relationship("Quote")
     cemetery = relationship("Cemetery")
+    location = relationship("Location")
     lines = relationship(
         "SalesOrderLine",
         back_populates="sales_order",

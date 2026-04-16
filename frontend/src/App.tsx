@@ -206,6 +206,8 @@ import SchedulingSetupPage from "@/pages/onboarding/scheduling-setup";
 import NetworkPreferencesPage from "@/pages/onboarding/network-preferences";
 import NetworkPreferencesSettingsPage from "@/pages/admin/network-preferences";
 import SchedulingSettingsPage from "@/pages/admin/scheduling-settings";
+import LocationsOverview from "@/pages/locations/LocationsOverview";
+import LocationSettings from "@/pages/settings/Locations";
 import UrnCatalogPage from "@/pages/products/urn-catalog";
 import UrnImportWizard from "@/pages/products/urn-import-wizard";
 import UrnSalesCatalog from "@/pages/urns/urn-catalog";
@@ -225,6 +227,7 @@ import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import CompanyRegisterPage from "@/pages/company-register";
 import PlatformAdminEntry from "@/pages/platform-admin-entry";
+import { LocationProvider } from "@/contexts/location-context";
 import { CallContextProvider } from "@/contexts/call-context";
 import { CallOverlay } from "@/components/call/CallOverlay";
 import { Component, type ErrorInfo, type ReactNode } from "react";
@@ -289,6 +292,7 @@ export default function App() {
       <AuthProvider>
       <FeatureFlagProvider>
       <ExtensionProvider>
+      <LocationProvider>
       <LayoutProvider>
       <AuthDeviceProvider>
       <CommandBarProvider>
@@ -822,6 +826,14 @@ export default function App() {
                   <Route path="/settings/call-intelligence" element={<CallIntelligenceSettingsPage />} />
                   <Route path="/settings/integrations/accounting" element={<SyncHealthDashboardPage />} />
 
+                  {/* Locations — admin only */}
+                  <Route
+                    element={<ProtectedRoute adminOnly />}
+                  >
+                    <Route path="/locations" element={<LocationsOverview />} />
+                    <Route path="/settings/locations" element={<LocationSettings />} />
+                  </Route>
+
                   {/* Extension Catalog — any authenticated user */}
                   <Route path="/extensions" element={<ExtensionCatalogPage />} />
                   <Route path="/extensions/installed" element={<ExtensionInstalledPage />} />
@@ -991,6 +1003,7 @@ export default function App() {
       </CommandBarProvider>
       </AuthDeviceProvider>
       </LayoutProvider>
+      </LocationProvider>
       </ExtensionProvider>
       </FeatureFlagProvider>
       </AuthProvider>

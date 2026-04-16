@@ -21,6 +21,7 @@ from app.api.routes import (
     driver_announcements,
     internal,
     knowledge_base,
+    locations,
     price_management,
     ap,
     api_keys,
@@ -390,6 +391,11 @@ v1_router.include_router(
     knowledge_base.router,
     prefix="/knowledge-base",
     tags=["Knowledge Base"],
+)
+v1_router.include_router(
+    locations.router,
+    prefix="/locations",
+    tags=["Locations"],
 )
 v1_router.include_router(
     price_management.router,

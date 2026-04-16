@@ -41,6 +41,7 @@ def create_vault_item(
     item_type: str,
     title: str,
     vault_id: Optional[str] = None,
+    location_id: Optional[str] = None,
     description: Optional[str] = None,
     r2_key: Optional[str] = None,
     file_size_bytes: Optional[int] = None,
@@ -77,6 +78,7 @@ def create_vault_item(
         company_id=company_id,
         item_type=item_type,
         title=title,
+        location_id=location_id,
         description=description,
         r2_key=r2_key,
         file_size_bytes=file_size_bytes,
@@ -134,6 +136,7 @@ def query_vault_items(
     related_entity_id: Optional[str] = None,
     source: Optional[str] = None,
     visibility: Optional[str] = None,
+    location_id: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[VaultItem]:
@@ -142,6 +145,8 @@ def query_vault_items(
         VaultItem.company_id == company_id,
         VaultItem.is_active == True,
     )
+    if location_id:
+        q = q.filter(VaultItem.location_id == location_id)
     if item_type:
         q = q.filter(VaultItem.item_type == item_type)
     if event_type:
@@ -205,7 +210,9 @@ def update_vault_item(
     return item
 
 
-def get_vault_summary(db: Session, company_id: str) -> dict:
+def get_vault_summary(
+    db: Session, company_id: str, *, location_id: Optional[str] = None
+) -> dict:
     """Get vault summary counts for dashboard widgets."""
     from sqlalchemy import func, case
     from datetime import timedelta
@@ -220,6 +227,8 @@ def get_vault_summary(db: Session, company_id: str) -> dict:
         VaultItem.is_active == True,
         VaultItem.status == "active",
     )
+    if location_id:
+        base = base.filter(VaultItem.location_id == location_id)
 
     total = base.count()
     events_today = base.filter(
@@ -254,6 +263,7 @@ def get_upcoming_events(
     *,
     days: int = 7,
     role: Optional[str] = None,
+    location_id: Optional[str] = None,
 ) -> list[VaultItem]:
     """Get upcoming events for morning briefing and dashboards.
 
@@ -277,6 +287,8 @@ def get_upcoming_events(
         VaultItem.event_start >= today_start,
         VaultItem.event_start <= end,
     )
+    if location_id:
+        q = q.filter(VaultItem.location_id == location_id)
 
     # Role-based filtering
     ROLE_EVENT_TYPES = {
@@ -327,4 +339,5 @@ def serialize_vault_item(item: VaultItem) -> dict:
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         "is_active": item.is_active,
         "metadata": item.metadata_json,
+        "location_id": item.location_id,
     }

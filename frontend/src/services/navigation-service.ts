@@ -8,6 +8,7 @@ export interface NavItem {
   requiresExtension?: string;
   functionalArea?: string; // employee must have this area assigned
   adminOnly?: boolean; // only show for admin role
+  requiresMultiLocation?: boolean; // only show when company has >1 location
   children?: NavItem[]; // nested sub-items shown when parent is expanded
   isHub?: boolean; // hub items get a slightly different visual treatment
   isDividerBefore?: boolean; // render a subtle divider line before this item
@@ -345,6 +346,15 @@ function getManufacturingNav(
           permission: "union_rotations.manage",
           requiresExtension: "disinterment_management",
           settingsGroup: "Integrations",
+        },
+        // Network
+        {
+          label: "Locations",
+          href: "/settings/locations",
+          icon: "MapPin",
+          adminOnly: true,
+          requiresMultiLocation: true,
+          settingsGroup: "Network",
         },
         // Platform
         {

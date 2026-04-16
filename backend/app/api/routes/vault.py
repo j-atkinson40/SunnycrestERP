@@ -74,6 +74,7 @@ def list_vault_items(
     related_entity_type: Optional[str] = None,
     related_entity_id: Optional[str] = None,
     source: Optional[str] = None,
+    location_id: Optional[str] = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
@@ -92,6 +93,7 @@ def list_vault_items(
         related_entity_type=related_entity_type,
         related_entity_id=related_entity_id,
         source=source,
+        location_id=location_id,
         limit=limit,
         offset=offset,
     )
@@ -175,23 +177,27 @@ def update_vault_item(
 
 @router.get("/summary")
 def get_vault_summary(
+    location_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get vault summary counts for dashboard widgets."""
-    return vault_service.get_vault_summary(db, current_user.company_id)
+    return vault_service.get_vault_summary(
+        db, current_user.company_id, location_id=location_id
+    )
 
 
 @router.get("/upcoming-events")
 def get_upcoming_events(
     days: int = Query(7, ge=1, le=90),
     role: Optional[str] = None,
+    location_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get upcoming events for morning briefing and dashboards."""
     items = vault_service.get_upcoming_events(
-        db, current_user.company_id, days=days, role=role
+        db, current_user.company_id, days=days, role=role, location_id=location_id
     )
     return [vault_service.serialize_vault_item(i) for i in items]
 
