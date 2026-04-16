@@ -29,7 +29,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
   const [interimTranscript, setInterimTranscript] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number>(0);

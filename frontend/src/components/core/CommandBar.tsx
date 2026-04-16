@@ -25,9 +25,8 @@ import {
 import apiClient from "@/lib/api-client";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useMicrophone } from "@/hooks/useMicrophone";
+import type { CommandAction, RecentAction } from "@/core/actionRegistry";
 import {
-  CommandAction,
-  RecentAction,
   addRecentAction,
   getRecentActions,
   manufacturingActions,

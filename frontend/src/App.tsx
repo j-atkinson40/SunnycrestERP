@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
-import CommandBar from "@/components/ai/CommandBar";
 import VoiceMemoButton from "@/components/ai/VoiceMemoButton";
 import { CommandBarProvider } from "@/core/CommandBarProvider";
 import { ExtensionProvider } from "@/contexts/extension-context";
