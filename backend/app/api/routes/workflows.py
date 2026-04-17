@@ -1,5 +1,9 @@
 """Workflow Engine API — list, command-bar, start, advance, runs, settings, enrollment."""
 
+import json
+import uuid
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,7 +19,7 @@ from app.models.workflow import (
     WorkflowRunStep,
     WorkflowStep,
 )
-from app.services import workflow_engine
+from app.services import workflow_engine, ai_service, workflow_run_logger
 
 
 router = APIRouter()
@@ -303,3 +307,278 @@ def set_enrollment(
         db.add(enrollment)
     db.commit()
     return {"workflow_id": workflow_id, "is_active": data.is_active}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# AI-assisted generation + custom workflow CRUD (Phase W-2)
+# ─────────────────────────────────────────────────────────────────────
+
+class GenerateWorkflowRequest(BaseModel):
+    description: str
+
+
+class SaveWorkflowRequest(BaseModel):
+    id: str | None = None
+    name: str
+    description: str | None = None
+    keywords: list[str] | None = None
+    vertical: str | None = None
+    trigger_type: str = "manual"
+    trigger_config: dict | None = None
+    icon: str | None = None
+    command_bar_priority: int = 50
+    is_active: bool = False  # draft by default
+    steps: list[dict]
+
+
+_WORKFLOW_SYSTEM_PROMPT = """You are a workflow designer for an ERP platform. Convert a natural-language description of a business process into a structured workflow JSON object.
+
+Output schema:
+{
+  "name": "Short imperative name (e.g. 'Schedule Delivery')",
+  "description": "One-sentence description.",
+  "keywords": ["phrase", "another phrase"],
+  "trigger_type": "manual" | "scheduled" | "event",
+  "trigger_config": {} | null,
+  "icon": "lucide-icon-name",
+  "steps": [
+    {
+      "step_order": 1,
+      "step_key": "snake_case_key",
+      "step_type": "input" | "action" | "condition" | "output",
+      "config": { ... }
+    }
+  ]
+}
+
+Input step config: { "prompt": "...", "input_type": "text|number|select|date_picker|datetime_picker|crm_search|record_search|user_search", "required": bool, "options": [...] (for select), "record_type": "..." (for record_search) }
+Action step config: { "action_type": "create_record|send_email|send_notification|log_vault_item|generate_document|open_slide_over|show_confirmation", plus action-specific fields }
+Condition step config: { "expression": "...", "true_next": "step_key", "false_next": "step_key" }
+Output step config: { "action_type": "open_slide_over|show_confirmation", "message": "..." }
+
+Use {input.step_key.field} and {output.step_key.field} to reference prior step outputs.
+
+Respond with the JSON object only."""
+
+
+@router.post("/generate")
+def generate_workflow(
+    data: GenerateWorkflowRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """AI-assisted workflow draft generation from a natural-language description."""
+    if not data.description or len(data.description.strip()) < 10:
+        raise HTTPException(status_code=400, detail="Description too short (min 10 chars)")
+
+    vert = _company_vertical(db, current_user.company_id)
+    try:
+        result = ai_service.call_anthropic(
+            system_prompt=_WORKFLOW_SYSTEM_PROMPT,
+            user_message=data.description,
+            context_data={"company_vertical": vert},
+            max_tokens=2048,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:  # pragma: no cover — defensive
+        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
+
+    # Normalize
+    result.setdefault("trigger_type", "manual")
+    result.setdefault("steps", [])
+    result["vertical"] = vert
+    result["is_active"] = False  # draft
+    return result
+
+
+@router.get("/{workflow_id}")
+def get_workflow(
+    workflow_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get a single workflow with its steps. Read-only if Tier 1 or not owned."""
+    w = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    # Visibility: platform workflows (company_id NULL) or owned
+    if w.company_id and w.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    steps = (
+        db.query(WorkflowStep)
+        .filter(WorkflowStep.workflow_id == w.id)
+        .order_by(WorkflowStep.step_order)
+        .all()
+    )
+    base = _serialize_workflow(w, step_count=len(steps))
+    base["steps"] = [
+        {
+            "id": s.id,
+            "step_order": s.step_order,
+            "step_key": s.step_key,
+            "step_type": s.step_type,
+            "config": s.config,
+            "next_step_id": s.next_step_id,
+            "condition_true_step_id": s.condition_true_step_id,
+            "condition_false_step_id": s.condition_false_step_id,
+        }
+        for s in steps
+    ]
+    base["editable"] = (
+        w.tier != 1
+        and w.company_id == current_user.company_id
+        and not w.is_system
+    )
+    # Recent runs (visibility for Tier 1 and custom)
+    runs = workflow_run_logger.list_recent_runs(
+        db, workflow_id=w.id, company_id=current_user.company_id, limit=10
+    )
+    base["recent_runs"] = [
+        {
+            "id": r.id,
+            "status": r.status,
+            "trigger_source": r.trigger_source,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "error_message": r.error_message,
+        }
+        for r in runs
+    ]
+    return base
+
+
+def _apply_steps(db: Session, workflow_id: str, steps: list[dict]) -> None:
+    """Replace all steps on a workflow."""
+    db.query(WorkflowStep).filter(WorkflowStep.workflow_id == workflow_id).delete()
+    for s in steps:
+        db.add(
+            WorkflowStep(
+                id=str(uuid.uuid4()),
+                workflow_id=workflow_id,
+                step_order=s.get("step_order", 0),
+                step_key=s.get("step_key", ""),
+                step_type=s.get("step_type", "action"),
+                config=s.get("config", {}),
+            )
+        )
+
+
+@router.post("")
+def create_workflow(
+    data: SaveWorkflowRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Create a new custom (Tier 4) workflow."""
+    vert = data.vertical or _company_vertical(db, current_user.company_id)
+    wf = Workflow(
+        id=data.id or str(uuid.uuid4()),
+        company_id=current_user.company_id,
+        name=data.name,
+        description=data.description,
+        keywords=data.keywords or [],
+        tier=4,
+        vertical=vert,
+        trigger_type=data.trigger_type,
+        trigger_config=data.trigger_config,
+        is_active=data.is_active,
+        is_system=False,
+        icon=data.icon,
+        command_bar_priority=data.command_bar_priority,
+        created_by_user_id=current_user.id,
+    )
+    db.add(wf)
+    db.flush()
+    _apply_steps(db, wf.id, data.steps)
+    db.commit()
+    db.refresh(wf)
+    return _serialize_workflow(wf, step_count=len(data.steps))
+
+
+@router.patch("/{workflow_id}")
+def update_workflow(
+    workflow_id: str,
+    data: SaveWorkflowRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update a custom workflow. Tier 1 + system + non-owned are forbidden."""
+    wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if wf.tier == 1 or wf.is_system:
+        raise HTTPException(status_code=400, detail="Platform-locked workflows cannot be edited")
+    if wf.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    wf.name = data.name
+    wf.description = data.description
+    wf.keywords = data.keywords or []
+    wf.vertical = data.vertical or wf.vertical
+    wf.trigger_type = data.trigger_type
+    wf.trigger_config = data.trigger_config
+    wf.icon = data.icon
+    wf.command_bar_priority = data.command_bar_priority
+    wf.is_active = data.is_active
+    _apply_steps(db, wf.id, data.steps)
+    db.commit()
+    db.refresh(wf)
+    return _serialize_workflow(wf, step_count=len(data.steps))
+
+
+@router.delete("/{workflow_id}")
+def delete_workflow(
+    workflow_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if wf.tier == 1 or wf.is_system or wf.company_id != current_user.company_id:
+        raise HTTPException(status_code=400, detail="Workflow cannot be deleted")
+    db.query(WorkflowStep).filter(WorkflowStep.workflow_id == wf.id).delete()
+    db.delete(wf)
+    db.commit()
+    return {"deleted": True}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Library view — 3 tabs: mine / platform / templates
+# ─────────────────────────────────────────────────────────────────────
+
+@router.get("/library/all")
+def library_all(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return all workflows visible to the tenant, split into 3 tabs."""
+    vert = _company_vertical(db, current_user.company_id)
+    all_wfs = db.query(Workflow).all()
+
+    def visible(w: Workflow) -> bool:
+        if w.company_id == current_user.company_id:
+            return True
+        if w.company_id is None and (w.vertical is None or w.vertical == vert or w.vertical == "platform"):
+            return True
+        return False
+
+    wfs = [w for w in all_wfs if visible(w)]
+
+    def enrich(w: Workflow) -> dict:
+        step_count = db.query(WorkflowStep).filter(WorkflowStep.workflow_id == w.id).count()
+        base = _serialize_workflow(w, step_count=step_count)
+        base["editable"] = (
+            w.tier != 1
+            and w.company_id == current_user.company_id
+            and not w.is_system
+        )
+        return base
+
+    mine = [enrich(w) for w in wfs if w.company_id == current_user.company_id]
+    platform = [enrich(w) for w in wfs if w.tier == 1]
+    templates = [enrich(w) for w in wfs if w.tier in (2, 3) and w.company_id is None]
+
+    return {"mine": mine, "platform": platform, "templates": templates}

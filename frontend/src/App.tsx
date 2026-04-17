@@ -234,6 +234,7 @@ import PlatformAdminEntry from "@/pages/platform-admin-entry";
 import { BridgeableAdminApp } from "@/bridgeable-admin/BridgeableAdminApp";
 import ProductLinesPage from "@/pages/settings/ProductLines";
 import WorkflowsSettingsPage from "@/pages/settings/Workflows";
+import WorkflowBuilderPage from "@/pages/settings/WorkflowBuilder";
 // Funeral Home vertical (FH-1a + FH-1b)
 import FhDirectionHub from "@/fh/pages/DirectionHub";
 import FhCaseList from "@/fh/pages/CaseList";
@@ -926,6 +927,18 @@ export default function App() {
                     <Route
                       path="/settings/workflows"
                       element={<WorkflowsSettingsPage />}
+                    />
+                    <Route
+                      path="/settings/workflows/new"
+                      element={<WorkflowBuilderPage />}
+                    />
+                    <Route
+                      path="/settings/workflows/:workflowId/edit"
+                      element={<WorkflowBuilderPage />}
+                    />
+                    <Route
+                      path="/settings/workflows/:workflowId/view"
+                      element={<WorkflowBuilderPage />}
                     />
                     {/* Funeral Home vertical (FH-1a + FH-1b) */}
                     <Route path="/fh" element={<FhDirectionHub />} />

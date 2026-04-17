@@ -322,6 +322,7 @@ from app.models.workflow import (
     WorkflowEnrollment,
     WorkflowSchedule,
 )
+from app.models.vault_document import VaultDocument
 from app.models.funeral_case import (
     FuneralCase,
     CaseDeceased,
@@ -636,4 +637,5 @@ __all__ = [
     "WorkflowRunStep",
     "WorkflowEnrollment",
     "WorkflowSchedule",
+    "VaultDocument",
 ]
