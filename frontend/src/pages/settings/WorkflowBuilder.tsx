@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import apiClient from "@/lib/api-client"
 import { StepCard, TriggerCard as TriggerCardV2 } from "@/components/workflow/StepCard"
+import { SlideOver } from "@/components/ui/SlideOver"
 import {
   RUN_STATUS_DISPLAY,
   TRIGGER_SOURCE_DISPLAY,
@@ -407,20 +408,41 @@ export default function WorkflowBuilderPage() {
           </div>
         </main>
 
-        {/* Block editor (right panel) */}
-        {selectedStep !== null && !readOnly && (
-          <aside className="w-96 flex-shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
-            <BlockEditor
-              step={selectedStep}
-              onChange={(update) => updateStep(selectedStepIdx!, update)}
-              onConfigChange={(configUpdate) => updateStepConfig(selectedStepIdx!, configUpdate)}
-              onClose={() => setSelectedStepIdx(null)}
-            />
-          </aside>
-        )}
       </div>
+
+      {/* Block editor — always a right-edge SlideOver so it shows reliably
+          above the canvas on any viewport width, and works in read-only
+          view mode (e.g. Tier 1 platform workflows) too. */}
+      <SlideOver
+        isOpen={selectedStep !== null}
+        onClose={() => setSelectedStepIdx(null)}
+        title={selectedStep ? editorTitleForStep(selectedStep) : "Edit step"}
+        width="md"
+      >
+        {selectedStep && (
+          <BlockEditor
+            step={selectedStep}
+            readOnly={readOnly}
+            onChange={(update) => updateStep(selectedStepIdx!, update)}
+            onConfigChange={(configUpdate) => updateStepConfig(selectedStepIdx!, configUpdate)}
+            onClose={() => setSelectedStepIdx(null)}
+          />
+        )}
+      </SlideOver>
     </div>
   )
+}
+
+function editorTitleForStep(step: Step): string {
+  const isCore = !!step.is_core
+  const label = {
+    trigger: "Edit trigger",
+    input: "Edit input step",
+    action: "Edit action",
+    condition: "Edit condition",
+    output: "Edit output",
+  }[step.step_type] ?? "Edit step"
+  return isCore ? `${label} · Platform step` : label
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -576,31 +598,33 @@ function BlockEditor({
   step,
   onChange,
   onConfigChange,
-  onClose,
+  readOnly = false,
 }: {
   step: Step
   onChange: (update: Partial<Step>) => void
   onConfigChange: (update: Record<string, unknown>) => void
-  onClose: () => void
+  onClose?: () => void  // kept for parent call-site compatibility; SlideOver owns close
+  readOnly?: boolean
 }) {
   const cfg = step.config as Record<string, unknown>
+  const locked = readOnly || !!step.is_core
 
   return (
-    <div className="p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          Step editor
+    <div className="space-y-4">
+      {locked && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+          {step.is_core
+            ? "🔒 Platform step — core behavior is locked. Only Options (if any) can be configured."
+            : "🔒 View-only — this workflow is read-only in this view."}
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-900 text-xs">
-          Close
-        </button>
-      </div>
+      )}
 
       <Field label="Step key">
         <input
           value={step.step_key}
           onChange={(e) => onChange({ step_key: e.target.value.replace(/[^a-z0-9_]/gi, "_").toLowerCase() })}
-          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-mono"
+          disabled={locked}
+          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-mono disabled:bg-slate-50 disabled:text-slate-500"
         />
       </Field>
 
@@ -608,7 +632,8 @@ function BlockEditor({
         <select
           value={step.step_type}
           onChange={(e) => onChange({ step_type: e.target.value as StepType, config: defaultConfigForType(e.target.value as StepType) })}
-          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+          disabled={locked}
+          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-50 disabled:text-slate-500"
         >
           <option value="input">Input — ask the user</option>
           <option value="action">Action — do something</option>
@@ -617,7 +642,11 @@ function BlockEditor({
         </select>
       </Field>
 
-      <div className="border-t border-slate-100 pt-4 space-y-4">
+      <div
+        className={`border-t border-slate-100 pt-4 space-y-4 ${
+          locked ? "opacity-70 pointer-events-none select-none" : ""
+        }`}
+      >
         {step.step_type === "input" && (
           <>
             <Field label="Prompt (shown to user)">
