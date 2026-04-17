@@ -140,6 +140,11 @@ export function StepCard({
         selected ? "ring-2 ring-offset-1 ring-slate-900" : ""
       }`}
     >
+      {selected && !isReadOnly && (
+        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-white whitespace-nowrap shadow">
+          ✎ Editing in sidebar
+        </div>
+      )}
       {/* Top row: type label + core/tenant badge */}
       <div className="flex items-center justify-between px-5 pt-4">
         <div className="flex items-center gap-2">

@@ -12,17 +12,17 @@ import {
   Save,
   Play,
   Sparkles,
-  Plus,
   Lock,
   Loader2,
-  MessageSquare,
-  Zap,
-  GitBranch,
-  CheckCircle,
+  Trash2,
 } from "lucide-react"
 import apiClient from "@/lib/api-client"
 import { StepCard, TriggerCard as TriggerCardV2 } from "@/components/workflow/StepCard"
-import { SlideOver } from "@/components/ui/SlideOver"
+import {
+  BlockLibrary,
+  stepDraftFromBlock,
+  type BlockDefinition,
+} from "@/components/workflow/BlockLibrary"
 import {
   RUN_STATUS_DISPLAY,
   TRIGGER_SOURCE_DISPLAY,
@@ -175,19 +175,25 @@ export default function WorkflowBuilderPage() {
     }))
   }, [])
 
-  const addStep = useCallback((type: StepType) => {
-    setDraft((prev) => {
-      const order = prev.steps.length + 1
-      const newStep: Step = {
-        step_order: order,
-        step_key: `step_${order}`,
-        step_type: type,
-        config: defaultConfigForType(type),
-      }
-      return { ...prev, steps: [...prev.steps, newStep] }
-    })
-    setSelectedStepIdx(draft.steps.length)
-  }, [draft.steps.length])
+  // Insert a step built from a BlockDefinition at the given index.
+  // If index is null/undefined → append at end.
+  const insertBlock = useCallback(
+    (block: BlockDefinition, atIndex?: number) => {
+      setDraft((prev) => {
+        const insertAt = atIndex ?? prev.steps.length
+        const base = stepDraftFromBlock(block, insertAt)
+        const next = [...prev.steps]
+        next.splice(insertAt, 0, base as Step)
+        // Renumber step_order
+        return {
+          ...prev,
+          steps: next.map((s, i) => ({ ...s, step_order: i + 1 })),
+        }
+      })
+      setSelectedStepIdx(atIndex ?? draft.steps.length)
+    },
+    [draft.steps.length],
+  )
 
   const removeStep = useCallback((idx: number) => {
     setDraft((prev) => ({
@@ -313,18 +319,32 @@ export default function WorkflowBuilderPage() {
       </header>
 
       <div className="flex flex-1 min-h-0">
-        {/* Canvas */}
+        {/* Canvas — takes all remaining width */}
         <main
           className="flex-1 overflow-y-auto p-10"
           style={{
-            // Subtle dot grid background — workspace feel, not distracting
             backgroundImage:
               "radial-gradient(circle, rgb(203 213 225 / 0.6) 1px, transparent 1px)",
             backgroundSize: "20px 20px",
           }}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("application/x-workflow-block")) {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = "copy"
+            }
+          }}
+          onDrop={(e) => {
+            const data = e.dataTransfer.getData("application/x-workflow-block")
+            if (!data) return
+            e.preventDefault()
+            try {
+              const block = JSON.parse(data) as BlockDefinition
+              insertBlock(block)
+            } catch { /* ignore */ }
+          }}
         >
           <div className="mx-auto max-w-[560px] space-y-6">
-            {/* Paused-run banner — prominent, shown above canvas */}
+            {/* Paused-run banner */}
             {loadedMeta?.recent_runs?.some((r) => r.status === "awaiting_input") && (
               <PausedRunBanner runs={loadedMeta.recent_runs} />
             )}
@@ -354,20 +374,10 @@ export default function WorkflowBuilderPage() {
             )}
 
             {draft.steps.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-slate-300 bg-white p-10 text-center">
-                <div className="text-sm text-slate-500 mb-1">Your workflow starts here</div>
-                <div className="text-xs text-slate-400 mb-4">
-                  Add the first step below to tell Bridgeable what should happen.
-                </div>
-                {!readOnly && (
-                  <div className="flex flex-wrap gap-2 justify-center">
-                    <AddStepButton onClick={() => addStep("input")} label="Input" icon={MessageSquare} />
-                    <AddStepButton onClick={() => addStep("action")} label="Action" icon={Zap} />
-                    <AddStepButton onClick={() => addStep("condition")} label="Condition" icon={GitBranch} />
-                    <AddStepButton onClick={() => addStep("output")} label="Output" icon={CheckCircle} />
-                  </div>
-                )}
-              </div>
+              <EmptyCanvasStep
+                readOnly={readOnly}
+                onDrop={(block) => insertBlock(block)}
+              />
             ) : (
               <div className="space-y-4">
                 {draft.steps.map((step, i) => (
@@ -388,17 +398,6 @@ export default function WorkflowBuilderPage() {
                     {i < draft.steps.length - 1 && <ConnectorLine />}
                   </div>
                 ))}
-                {!readOnly && (
-                  <div className="pt-4">
-                    <ConnectorLine />
-                    <div className="flex flex-wrap gap-2 justify-center pt-2">
-                      <AddStepButton onClick={() => addStep("input")} label="Add Input" icon={MessageSquare} />
-                      <AddStepButton onClick={() => addStep("action")} label="Add Action" icon={Zap} />
-                      <AddStepButton onClick={() => addStep("condition")} label="Add Condition" icon={GitBranch} />
-                      <AddStepButton onClick={() => addStep("output")} label="Add Output" icon={CheckCircle} />
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -408,27 +407,177 @@ export default function WorkflowBuilderPage() {
           </div>
         </main>
 
-      </div>
-
-      {/* Block editor — always a right-edge SlideOver so it shows reliably
-          above the canvas on any viewport width, and works in read-only
-          view mode (e.g. Tier 1 platform workflows) too. */}
-      <SlideOver
-        isOpen={selectedStep !== null}
-        onClose={() => setSelectedStepIdx(null)}
-        title={selectedStep ? editorTitleForStep(selectedStep) : "Edit step"}
-        width="md"
-      >
-        {selectedStep && (
-          <BlockEditor
-            step={selectedStep}
-            readOnly={readOnly}
-            onChange={(update) => updateStep(selectedStepIdx!, update)}
-            onConfigChange={(configUpdate) => updateStepConfig(selectedStepIdx!, configUpdate)}
-            onClose={() => setSelectedStepIdx(null)}
-          />
+        {/* Persistent right sidebar — BlockLibrary by default, BlockEditor
+            when a step is selected. Not shown in read-only mode. */}
+        {!readOnly && (
+          <aside className="w-80 flex-shrink-0 border-l border-slate-200 bg-white flex flex-col overflow-hidden">
+            {selectedStep ? (
+              <SidebarEditorHeader
+                step={selectedStep}
+                onBack={() => setSelectedStepIdx(null)}
+                onDelete={() => {
+                  if (selectedStepIdx !== null) removeStep(selectedStepIdx)
+                }}
+              >
+                <BlockEditor
+                  step={selectedStep}
+                  readOnly={readOnly}
+                  onChange={(update) => updateStep(selectedStepIdx!, update)}
+                  onConfigChange={(configUpdate) =>
+                    updateStepConfig(selectedStepIdx!, configUpdate)
+                  }
+                  onClose={() => setSelectedStepIdx(null)}
+                />
+              </SidebarEditorHeader>
+            ) : (
+              <BlockLibrary
+                onDragStart={() => {}}
+                onClick={(block) => insertBlock(block)}
+              />
+            )}
+          </aside>
         )}
-      </SlideOver>
+
+        {/* Read-only mode keeps the SlideOver behavior so Tier 1 platform
+            workflows can still inspect steps without a sidebar. */}
+        {readOnly && selectedStep && (
+          <aside className="w-96 flex-shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <div className="text-sm font-semibold text-slate-900">
+                {editorTitleForStep(selectedStep)}
+              </div>
+              <button
+                onClick={() => setSelectedStepIdx(null)}
+                className="text-slate-400 hover:text-slate-700 text-xs"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-4">
+              <BlockEditor
+                step={selectedStep}
+                readOnly={readOnly}
+                onChange={(update) => updateStep(selectedStepIdx!, update)}
+                onConfigChange={(configUpdate) =>
+                  updateStepConfig(selectedStepIdx!, configUpdate)
+                }
+                onClose={() => setSelectedStepIdx(null)}
+              />
+            </div>
+          </aside>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sidebar editor header (sits above BlockEditor inside the right sidebar)
+// ─────────────────────────────────────────────────────────────────────
+
+function SidebarEditorHeader({
+  step,
+  onBack,
+  onDelete,
+  children,
+}: {
+  step: Step
+  onBack: () => void
+  onDelete: () => void
+  children: React.ReactNode
+}) {
+  const typeLabel = {
+    input: "Edit input step",
+    action: "Edit action",
+    condition: "Edit condition",
+    output: "Edit output",
+    trigger: "Edit trigger",
+  }[step.step_type] ?? "Edit step"
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-slate-900 truncate">
+            {typeLabel}
+          </div>
+          {step.is_core && (
+            <div className="text-[10px] text-amber-700 mt-0.5">
+              🔒 Platform step
+            </div>
+          )}
+        </div>
+        {!step.is_core && (
+          <button
+            onClick={onDelete}
+            className="p-1 text-slate-400 hover:text-red-600 rounded"
+            aria-label="Delete step"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto p-4">{children}</div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Empty canvas card — shown when no steps exist yet
+// ─────────────────────────────────────────────────────────────────────
+
+function EmptyCanvasStep({
+  readOnly,
+  onDrop,
+}: {
+  readOnly: boolean
+  onDrop: (block: BlockDefinition) => void
+}) {
+  const [dragOver, setDragOver] = useState(false)
+
+  return (
+    <div
+      onDragOver={(e) => {
+        if (!readOnly && e.dataTransfer.types.includes("application/x-workflow-block")) {
+          e.preventDefault()
+          setDragOver(true)
+        }
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        if (readOnly) return
+        const data = e.dataTransfer.getData("application/x-workflow-block")
+        if (!data) return
+        e.preventDefault()
+        setDragOver(false)
+        try {
+          onDrop(JSON.parse(data) as BlockDefinition)
+        } catch { /* noop */ }
+      }}
+      className={`rounded-xl border-2 border-dashed p-8 text-center transition ${
+        dragOver
+          ? "border-blue-400 bg-blue-50"
+          : "border-slate-300 bg-slate-50/50"
+      }`}
+    >
+      <div className="mx-auto w-12 h-12 rounded-xl grid place-items-center text-2xl text-slate-400 bg-white border border-slate-200">
+        +
+      </div>
+      <div className="mt-3 text-sm font-medium text-slate-700">
+        Add your first step
+      </div>
+      <div className="mt-1 text-xs text-slate-500">
+        {readOnly
+          ? "This workflow has no steps yet."
+          : "Drag a block from the sidebar or click one to add it."}
+      </div>
     </div>
   )
 }
@@ -567,27 +716,6 @@ function defaultConfigForType(type: StepType): Record<string, unknown> {
     case "output":
       return { action_type: "show_confirmation", message: "" }
   }
-}
-
-function AddStepButton({
-  onClick,
-  label,
-  icon: Icon,
-}: {
-  onClick: () => void
-  label: string
-  icon: typeof MessageSquare
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-900 hover:text-slate-900"
-    >
-      <Plus className="h-3.5 w-3.5" />
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-    </button>
-  )
 }
 
 // ─────────────────────────────────────────────────────────────────────
