@@ -45,11 +45,13 @@ import { SlideOver } from "@/components/ui/SlideOver";
 // Stable within each type so backend/local relevance order is preserved.
 const TYPE_RANK: Record<string, number> = {
   WORKFLOW: 0,
-  ACTION: 1,
-  RECORD: 2,
-  VIEW: 3,
-  NAV: 4,
-  ASK: 5,
+  ANSWER: 1,
+  ACTION: 2,
+  RECORD: 3,
+  DOCUMENT: 4,
+  VIEW: 5,
+  NAV: 6,
+  ASK: 7,
 };
 
 function sortByTypeRank(actions: CommandAction[]): CommandAction[] {
@@ -87,7 +89,10 @@ function ActionIcon({ icon }: { icon: string }) {
 // ── Type badge ───────────────────────────────────────────────────────────────
 
 const TYPE_BADGE_CLASSES: Record<string, string> = {
+  WORKFLOW: "bg-violet-100 text-violet-700",
   ACTION: "bg-blue-100 text-blue-700",
+  ANSWER: "bg-yellow-100 text-yellow-800",
+  DOCUMENT: "bg-slate-100 text-slate-600",
   VIEW: "bg-slate-100 text-slate-600",
   RECORD: "bg-emerald-100 text-emerald-700",
   NAV: "bg-purple-100 text-purple-700",
@@ -156,6 +161,23 @@ interface CoreCommandResponse {
   answer?: string;
 }
 
+interface DocumentOrAnswerResult {
+  result_type: "answer" | "document";
+  id: string;
+  // answer
+  headline?: string;
+  // document
+  title?: string;
+  excerpt?: string;
+  // both
+  source_title?: string;
+  source_section?: string | null;
+  source_id: string;
+  content_source: string;
+  chunk_id?: string | null;
+  confidence?: number;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface CommandBarProps {
@@ -174,6 +196,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const [recentActions, setRecentActions] = useState<RecentAction[]>([]);
   const [searchOnly, setSearchOnly] = useState(false);
   const [apiAnswer, setApiAnswer] = useState<string | null>(null);
+  const [searchingDocs, setSearchingDocs] = useState(false);
   const [activeWorkflow, setActiveWorkflow] = useState<{ id: string; title: string } | null>(null);
   const [openSlideOver, setOpenSlideOver] = useState<{ recordType: string; recordId: string; title: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -247,8 +270,9 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
       abortRef.current = controller;
 
       try {
-        // Fire core command + workflow command-bar in parallel
-        const [coreRes, wfRes] = await Promise.allSettled([
+        // Fire core command + workflow command-bar + document search in parallel
+        setSearchingDocs(q.length >= 3);
+        const [coreRes, wfRes, docsRes] = await Promise.allSettled([
           apiClient.post<CoreCommandResponse>(
             "/core/command",
             { query: q, context: { current_page: window.location.pathname } },
@@ -262,7 +286,14 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             first_step_preview: string;
             priority: number;
           }>>("/workflows/command-bar", { params: { q }, signal: controller.signal }),
+          q.length >= 3
+            ? apiClient.get<{ documents: DocumentOrAnswerResult[] }>(
+                "/core/command-bar/search",
+                { params: { q, include_documents: true }, signal: controller.signal }
+              )
+            : Promise.resolve({ data: { documents: [] } }),
         ]);
+        setSearchingDocs(false);
 
         // Workflow results — always ranked above everything else
         const workflowActions: CommandAction[] =
@@ -304,17 +335,56 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         // the list when the API returns nothing actionable.
         const localMatches = matchLocalActions(q, permittedActions);
 
+        // Document + Answer results from /core/command-bar/search
+        const docs =
+          docsRes.status === "fulfilled" ? docsRes.value.data?.documents || [] : [];
+        const docActions: CommandAction[] = docs.map((d) => {
+          if (d.result_type === "answer") {
+            return {
+              id: d.id,
+              keywords: [],
+              title: d.headline || "Answer",
+              subtitle: d.source_section
+                ? `${d.source_title} · ${d.source_section}`
+                : d.source_title,
+              icon: "zap",
+              type: "ANSWER",
+              roles: [],
+              vertical: "manufacturing",
+              contentSource: d.content_source,
+              sourceId: d.source_id,
+              chunkId: d.chunk_id || undefined,
+              sourceSection: d.source_section || null,
+              confidence: d.confidence,
+            } as CommandAction;
+          }
+          return {
+            id: d.id,
+            keywords: [],
+            title: d.title || d.source_title || "Document",
+            subtitle: d.excerpt || d.source_section || undefined,
+            icon: "shield",
+            type: "DOCUMENT",
+            roles: [],
+            vertical: "manufacturing",
+            contentSource: d.content_source,
+            sourceId: d.source_id,
+            chunkId: d.chunk_id || undefined,
+            sourceSection: d.source_section || null,
+            excerpt: d.excerpt,
+          } as CommandAction;
+        });
+
         // Dedupe by id — prefer API result if both exist
         const byId = new Map<string, CommandAction>();
-        for (const a of [...workflowActions, ...filteredApiResults, ...localMatches]) {
+        for (const a of [...workflowActions, ...filteredApiResults, ...docActions, ...localMatches]) {
           if (!byId.has(a.id)) byId.set(a.id, a);
         }
 
-        // Sort: WORKFLOW > ACTION > RECORD > VIEW > NAV > ASK
-        // Stable within each type preserves relevance order.
+        // Sort: WORKFLOW > ANSWER > ACTION > RECORD > DOCUMENT > VIEW > NAV > ASK
         const merged = sortByTypeRank(Array.from(byId.values()));
-        setResults(merged.slice(0, 5));
-        setSearchOnly(filteredApiResults.length === 0 && workflowActions.length === 0);
+        setResults(merged.slice(0, 7));
+        setSearchOnly(filteredApiResults.length === 0 && workflowActions.length === 0 && docActions.length === 0);
         setSelectedIdx(0);
       } catch (err: unknown) {
         if ((err as { name?: string }).name === "CanceledError") return;
@@ -352,6 +422,40 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
       // WORKFLOW — switch to inline controller, keep bar open
       if (action.type === "WORKFLOW" && action.workflowId) {
         setActiveWorkflow({ id: action.workflowId, title: action.title });
+        return;
+      }
+
+      // ANSWER — copy the extracted answer to clipboard and close
+      if (action.type === "ANSWER") {
+        try {
+          void navigator.clipboard?.writeText(action.title);
+        } catch { /* clipboard may be unavailable */ }
+        onClose();
+        return;
+      }
+
+      // DOCUMENT — navigate to a viewer per content source (when known).
+      // Falls back to copying the excerpt for now.
+      if (action.type === "DOCUMENT") {
+        const source = action.contentSource
+        const sourceId = action.sourceId
+        const chunk = action.chunkId
+        const query = chunk ? `?highlight=${encodeURIComponent(chunk)}` : ""
+        if (source === "kb_article" && sourceId) {
+          navigate(`/knowledge-base/articles/${sourceId}${query}`)
+          onClose()
+          return
+        }
+        if (source === "safety_program" && sourceId) {
+          navigate(`/safety/programs/${sourceId}${query}`)
+          onClose()
+          return
+        }
+        // Fallback — copy excerpt
+        try {
+          void navigator.clipboard?.writeText(action.excerpt || action.title);
+        } catch { /* noop */ }
+        onClose();
         return;
       }
 
@@ -444,7 +548,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
       onClick={onClose}
     >
       {/* Backdrop */}
@@ -575,7 +679,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
                   Local results
                 </p>
               )}
-              {results.slice(0, 5).map((action, i) => (
+              {results.slice(0, 7).map((action, i) => (
                 <button
                   key={action.id}
                   onClick={() => executeAction(action)}
@@ -607,8 +711,16 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             </div>
           )}
 
+          {/* Document search loading indicator — shown while docs resolve */}
+          {searchingDocs && results.length > 0 && (
+            <div className="mx-2 mb-2 flex items-center gap-2 border-t border-dashed border-gray-200 pt-2 text-[11px] text-gray-400">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Searching documents…
+            </div>
+          )}
+
           {/* Empty state (has query, not loading, no results) */}
-          {query.length >= 2 && !loading && results.length === 0 && !apiAnswer && (
+          {query.length >= 2 && !loading && !searchingDocs && results.length === 0 && !apiAnswer && (
             <div className="py-8 text-center text-sm text-gray-400">
               No results for &ldquo;{query}&rdquo;
             </div>

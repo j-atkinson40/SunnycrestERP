@@ -28,6 +28,7 @@ class Workflow(Base):
     command_bar_priority: Mapped[int] = mapped_column(Integer, default=10)
     created_by_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     is_coming_soon: Mapped[bool] = mapped_column(Boolean, default=False)
+    overlay_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

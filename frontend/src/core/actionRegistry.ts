@@ -4,7 +4,7 @@ export interface CommandAction {
   title: string;
   subtitle?: string;
   icon: string;
-  type: "ACTION" | "NAV" | "VIEW" | "RECORD" | "ASK" | "WORKFLOW";
+  type: "ACTION" | "NAV" | "VIEW" | "RECORD" | "ASK" | "WORKFLOW" | "ANSWER" | "DOCUMENT";
   route?: string;
   prefillSchema?: Record<string, unknown>;
   // Either a named handler string (resolved in CommandBar dispatch) or an inline callback.
@@ -15,6 +15,13 @@ export interface CommandAction {
   workflowId?: string;
   // WORKFLOW-only: preview of the first step ("Ask: Which funeral home?")
   firstStepPreview?: string;
+  // ANSWER/DOCUMENT-only: where the content lives, for preview + navigation
+  contentSource?: string; // 'vault_document' | 'kb_article' | 'safety_program' | ...
+  sourceId?: string;
+  chunkId?: string;
+  sourceSection?: string | null;
+  excerpt?: string;
+  confidence?: number;
 }
 
 export interface RecentAction {

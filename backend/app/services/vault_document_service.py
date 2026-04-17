@@ -72,6 +72,17 @@ def store(
     db.add(doc)
     db.commit()
     db.refresh(doc)
+
+    # Index the document for command-bar search. Never fails the save.
+    try:
+        from app.services import document_index_service
+        # Phase-one: no PDF extraction yet. We index against display_name +
+        # document_type + related_entity_type. Rich PDF/DOCX text extraction
+        # can be plugged in later by passing `text=<extracted>`.
+        document_index_service.index_vault_document(db, doc)
+    except Exception:
+        pass
+
     return doc
 
 

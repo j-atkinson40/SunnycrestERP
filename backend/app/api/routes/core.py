@@ -1,6 +1,7 @@
 """Core UI API routes — command bar, recent actions, action logging."""
 
-from typing import Optional
+import uuid
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -8,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.database import get_db
+from app.models.command_bar import CommandBarHistory
 from app.models.user import User
-from app.services import core_command_service
+from app.services import core_command_service, document_search_service
 
 router = APIRouter()
 
@@ -86,3 +88,101 @@ def log_action(
         input_method=request.input_method,
     )
     return {"id": action.id, "status": "logged"}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Command Bar Intelligence (Phase W-4)
+# ─────────────────────────────────────────────────────────────────────
+
+@router.get("/command-bar/search")
+def command_bar_search(
+    q: str,
+    include_documents: bool = True,
+    limit: int = 5,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Unified command-bar search. Returns document + answer results
+    alongside whatever the caller merges in for workflows/records/nav.
+
+    Frontend typically fetches local workflow/nav results instantly and
+    awaits this endpoint in parallel for the slower records + documents
+    portion. This route focuses on the document search half.
+    """
+    q = (q or "").strip()
+    if len(q) < 2 or not include_documents:
+        return {"documents": []}
+    try:
+        docs = document_search_service.search(
+            db, query=q, company_id=current_user.company_id, limit=limit
+        )
+    except Exception:
+        docs = []
+    return {"documents": docs}
+
+
+@router.get("/command-bar/recent")
+def command_bar_recent(
+    limit: int = 8,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Recent command bar entries for this user — used to populate the bar
+    when opened empty. Includes the last-used inputs per workflow for
+    pre-fill suggestions on the overlay engine."""
+    rows = (
+        db.query(CommandBarHistory)
+        .filter(CommandBarHistory.user_id == current_user.id)
+        .order_by(CommandBarHistory.used_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    # Collapse repeats: keep only the most recent entry per (type, id).
+    seen: set[tuple[str, str | None]] = set()
+    out = []
+    for r in rows:
+        key = (r.result_type, r.result_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "id": r.id,
+            "result_type": r.result_type,
+            "result_id": r.result_id,
+            "result_title": r.result_title,
+            "query_text": r.query_text,
+            "context_data": r.context_data,
+            "used_at": r.used_at.isoformat() if r.used_at else None,
+        })
+    return {"recent": out}
+
+
+class CommandBarHistoryRequest(BaseModel):
+    result_type: str
+    result_id: Optional[str] = None
+    result_title: str
+    query_text: Optional[str] = None
+    context_data: Optional[dict[str, Any]] = None
+
+
+@router.post("/command-bar/history")
+def command_bar_history(
+    data: CommandBarHistoryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record a command bar selection. Used for recent-items + pre-fill."""
+    entry = CommandBarHistory(
+        id=str(uuid.uuid4()),
+        user_id=current_user.id,
+        company_id=current_user.company_id,
+        result_type=data.result_type,
+        result_id=data.result_id,
+        result_title=data.result_title,
+        query_text=data.query_text,
+        context_data=data.context_data,
+    )
+    db.add(entry)
+    db.commit()
+    return {"id": entry.id, "saved": True}
