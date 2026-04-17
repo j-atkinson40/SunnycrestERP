@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.models.company_entity import CompanyEntity
 from app.models.product import Product
 from app.models import PriceListItem, PriceListVersion
+from app.services import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -643,14 +644,120 @@ def _try_answer_recent_order(
     }
 
 
+_AI_ANSWER_SYSTEM_PROMPT = """You are a search assistant for a Bridgeable ERP tenant. Given a user's question and a snapshot of their product catalog (with prices), answer the question concisely.
+
+Return JSON only:
+{
+  "answer": "1-2 sentence direct answer, or null if you cannot answer from the catalog",
+  "confidence": 0.0-1.0,
+  "referenced_product_names": ["Exact Product Name From List", ...]
+}
+
+Rules:
+- Only reference products that appear verbatim in the list.
+- Never invent prices or products.
+- If the question is about something not in the catalog (HR, compliance, weather, etc.), return answer: null.
+- If the user typed a vague term like "equipment" or "vaults", you may summarize what's available at a high level.
+- Prefer to name specific products and their prices when relevant."""
+
+
+def _try_claude_catalog_answer(
+    db: Session, query: str, company_id: str
+) -> dict | None:
+    """Last-resort: ask Claude to answer the question using the tenant's
+    product catalog as context. Only runs on reasonably long queries and
+    only when the active catalog has products.
+
+    Keeps the context small (80 products max, name + SKU + standard price)
+    so the round-trip stays under ~500ms. Returns None on any failure.
+    """
+    q = (query or "").strip()
+    if len(q) < 6:
+        return None
+
+    products = (
+        db.query(Product)
+        .filter(
+            Product.company_id == company_id,
+            Product.is_active == True,  # noqa: E712
+        )
+        .order_by(Product.name.asc())
+        .limit(80)
+        .all()
+    )
+    if not products:
+        return None
+
+    # Build compact catalog context — one product per line, tiered price
+    # if available, otherwise Product.price.
+    lines: list[str] = []
+    by_name: dict[str, Product] = {}
+    for p in products:
+        tiers = _tiered_price_for_product(db, p, company_id)
+        std = tiers["standard"]
+        price_str = _format_price(std) or "no price"
+        sku = p.sku or "n/a"
+        lines.append(f"- {p.name} (SKU {sku}, {price_str})")
+        by_name[p.name.lower()] = p
+    context = "Available products:\n" + "\n".join(lines)
+    user_msg = f"Question: {q}\n\n{context}"
+
+    try:
+        result = ai_service.call_anthropic(
+            system_prompt=_AI_ANSWER_SYSTEM_PROMPT,
+            user_message=user_msg,
+            max_tokens=250,
+        )
+    except Exception as e:  # pragma: no cover — network / API issues ok
+        logger.debug("Claude catalog answer failed: %s", e)
+        return None
+
+    if not isinstance(result, dict):
+        return None
+    answer = result.get("answer")
+    if not answer:
+        return None
+    try:
+        confidence = float(result.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    if confidence < 0.55:
+        return None
+
+    # Map referenced product names back to IDs (case-insensitive exact match)
+    ref_names = result.get("referenced_product_names") or []
+    ref_ids: list[str] = []
+    for name in ref_names:
+        if not isinstance(name, str):
+            continue
+        match = by_name.get(name.lower())
+        if match:
+            ref_ids.append(match.id)
+
+    return {
+        "result_type": "answer",
+        "id": f"answer:ai:{hash(q)}",
+        "icon": "💡",
+        "headline": answer,
+        "source_title": "Catalog",
+        "source_section": None,
+        "source_label": "AI answer from your product catalog",
+        "route": "/products",
+        "related_record_ids": ref_ids,
+        "confidence": confidence,
+    }
+
+
 def try_answer(db: Session, query: str, company_id: str) -> dict | None:
     """Attempt to answer a question from platform data. Runs handlers in
-    priority order. Returns None if nothing matches."""
+    priority order — fast pattern matchers first, then a Claude fallback
+    that consults the product catalog. Returns None if nothing matches."""
     handlers = (
         _try_answer_price,
         _try_answer_inventory,
         _try_answer_recent_order,
         _try_answer_contact_info,
+        _try_claude_catalog_answer,  # slowest, fires last
     )
     for fn in handlers:
         try:
