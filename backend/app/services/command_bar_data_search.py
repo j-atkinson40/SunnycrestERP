@@ -94,6 +94,16 @@ _STRIP_PREFIXES = [
 ]
 
 
+_STRIP_SUFFIXES = [
+    # Trailing intent words people tack on a noun — "monticello price",
+    # "continental cost", "forklift inventory". Stripping these lets the
+    # plain record search still find the product.
+    " price", " cost", " pricing",
+    " inventory", " in stock", " on hand",
+    " phone", " phone number", " email", " address",
+]
+
+
 def extract_search_term(query: str) -> str:
     q = (query or "").lower().strip()
     for pre in sorted(_STRIP_PREFIXES, key=len, reverse=True):
@@ -101,6 +111,10 @@ def extract_search_term(query: str) -> str:
             q = q[len(pre):]
             break
     q = q.rstrip("?.,!")
+    for suf in sorted(_STRIP_SUFFIXES, key=len, reverse=True):
+        if q.endswith(suf):
+            q = q[: -len(suf)]
+            break
     q = re.sub(r"^(a |an |the )", "", q)
     return q.strip()
 
@@ -332,10 +346,16 @@ def search_orders(db: Session, query: str, company_id: str, limit: int = 3) -> l
 # ─────────────────────────────────────────────────────────────────────
 
 _PRICE_PATTERNS = [
+    # "price for a monticello" / "price of the monticello"
     r"price (?:for|of) (?:a |an |the )?(.+)",
+    # "how much is a continental" / "how much for the monticello"
     r"how much (?:is|for|does) (?:a |an |the )?(.+?)(?: cost)?$",
+    # "cost of a monticello"
     r"cost (?:for|of) (?:a |an |the )?(.+)",
+    # "what is our price for a monticello"
     r"what(?:'s| is) (?:our |the )?price (?:for|of) (?:a |an |the )?(.+)",
+    # "monticello price" / "continental cost" (trailing form)
+    r"^(.+?)\s+(?:price|cost|pricing)$",
 ]
 
 _INVENTORY_PATTERNS = [
