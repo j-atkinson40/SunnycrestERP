@@ -34,6 +34,7 @@ import {
   matchLocalActions,
 } from "@/core/actionRegistry";
 import { useAuth } from "@/contexts/auth-context";
+import { useCommandBar } from "@/core/CommandBarProvider";
 import { WorkflowController, type WorkflowRunState } from "@/components/workflows/WorkflowController";
 import { SlideOver } from "@/components/ui/SlideOver";
 
@@ -173,6 +174,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const abortRef = useRef<AbortController | null>(null);
 
   const { user, company } = useAuth();
+  const { setShortcutRefs } = useCommandBar();
   // The auth User model exposes the role as `role_slug` (e.g. "admin", "office").
   const userRole = (user as unknown as { role_slug?: string })?.role_slug;
   // Pick registry based on tenant vertical — FH tenants get funeral_home actions,
@@ -279,33 +281,35 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         setSearchOnly(!!coreData?.search_only);
         setApiAnswer(coreData?.answer ?? null);
 
-        if ((coreData?.results && coreData.results.length > 0) || workflowActions.length > 0) {
-          // Map API results to CommandAction shape
-          const mapped: CommandAction[] = (coreData?.results || []).map((r) => ({
-            id: r.id,
-            keywords: [],
-            title: r.title,
-            subtitle: r.subtitle,
-            icon: r.icon ?? "navigation",
-            type: r.type,
-            route: r.route,
-            roles: [],
-            vertical: "manufacturing",
-          }));
-          // Permission filter API results too — any action the current
-          // user's role isn't permitted to see is stripped out before display.
-          const filteredByRole = filterActionsByRole(mapped, userRole);
+        // Map API core-command results (could be empty)
+        const apiResults: CommandAction[] = (coreData?.results || []).map((r) => ({
+          id: r.id,
+          keywords: [],
+          title: r.title,
+          subtitle: r.subtitle,
+          icon: r.icon ?? "navigation",
+          type: r.type,
+          route: r.route,
+          roles: [],
+          vertical: "manufacturing",
+        }));
+        const filteredApiResults = filterActionsByRole(apiResults, userRole);
 
-          // Merge and apply type-priority sort.
-          // WORKFLOW > ACTION > RECORD > VIEW > NAV > ASK
-          // Within the same type, preserve backend order (relevance).
-          const merged = sortByTypeRank([...workflowActions, ...filteredByRole]);
-          setResults(merged.slice(0, 5));
-        } else {
-          // Fallback to local match (already role-filtered via permittedActions)
-          setResults(sortByTypeRank(matchLocalActions(q, permittedActions)));
-          setSearchOnly(true);
+        // Local action matches — ALWAYS compute them so they can fill
+        // the list when the API returns nothing actionable.
+        const localMatches = matchLocalActions(q, permittedActions);
+
+        // Dedupe by id — prefer API result if both exist
+        const byId = new Map<string, CommandAction>();
+        for (const a of [...workflowActions, ...filteredApiResults, ...localMatches]) {
+          if (!byId.has(a.id)) byId.set(a.id, a);
         }
+
+        // Sort: WORKFLOW > ACTION > RECORD > VIEW > NAV > ASK
+        // Stable within each type preserves relevance order.
+        const merged = sortByTypeRank(Array.from(byId.values()));
+        setResults(merged.slice(0, 5));
+        setSearchOnly(filteredApiResults.length === 0 && workflowActions.length === 0);
         setSelectedIdx(0);
       } catch (err: unknown) {
         if ((err as { name?: string }).name === "CanceledError") return;
@@ -387,57 +391,13 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     [results, selectedIdx, executeAction, onClose]
   );
 
-  // Cmd+1..5 quick-pick — capture phase intercepts BEFORE the browser.
-  // The listener is attached ONCE when the bar opens and stays attached
-  // until it closes. Results and executeAction are held in refs so the
-  // handler always sees current values without re-registering.
-  //
-  // Why this matters: if the effect re-runs (e.g. because executeAction
-  // re-creates on every render), there's a tiny gap between cleanup and
-  // re-add where the browser wins. Deps = [isOpen] only. The listener
-  // lives for the entire lifetime the bar is open.
-  const resultsRef = useRef<CommandAction[]>(results);
-  const executeActionRef = useRef(executeAction);
-  useEffect(() => { resultsRef.current = results; }, [results]);
-  useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
-
+  // Cmd+1..5 quick-pick — implemented at the provider level so the
+  // listener is attached once for the app lifetime (not when this
+  // component mounts/unmounts). Here we just publish current results
+  // and the executor to the provider via setShortcutRefs.
   useEffect(() => {
-    if (!isOpen) return;
-
-    const handleShortcut = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      // Safari/Chrome: e.key = "1"; Firefox w/ non-US layouts: fall back to e.code
-      const fromKey = parseInt(e.key, 10);
-      const fromCode = e.code && e.code.startsWith("Digit") ? parseInt(e.code.slice(5), 10) : NaN;
-      const num = !Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5
-        ? fromKey
-        : (!Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5 ? fromCode : null);
-      if (!num) return;
-
-      // CRITICAL: preventDefault unconditionally when bar is open + Cmd+1-5.
-      // We own those shortcuts while the bar is open, regardless of whether
-      // a matching result exists yet.
-      e.preventDefault();
-      e.stopPropagation();
-      if (typeof (e as KeyboardEvent & { stopImmediatePropagation?: () => void }).stopImmediatePropagation === "function") {
-        (e as KeyboardEvent & { stopImmediatePropagation: () => void }).stopImmediatePropagation();
-      }
-
-      const target = resultsRef.current[num - 1];
-      if (target) executeActionRef.current(target);
-    };
-
-    // Capture phase runs before the browser's default tab-switch handling.
-    // Attach to window too so we catch the event as early as possible on every
-    // browser — belt and suspenders for the OS-level Cmd+digit shortcut.
-    const opts: AddEventListenerOptions = { capture: true };
-    window.addEventListener("keydown", handleShortcut, opts);
-    document.addEventListener("keydown", handleShortcut, opts);
-    return () => {
-      window.removeEventListener("keydown", handleShortcut, opts);
-      document.removeEventListener("keydown", handleShortcut, opts);
-    };
-  }, [isOpen]);
+    setShortcutRefs({ results, execute: executeAction });
+  }, [results, executeAction, setShortcutRefs]);
 
   const toggleVoice = useCallback(async () => {
     if (isListening) {
