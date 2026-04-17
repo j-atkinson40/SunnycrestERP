@@ -387,16 +387,19 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     [results, selectedIdx, executeAction, onClose]
   );
 
-  // Cmd+1..5 quick-pick — capture phase intercepts BEFORE the browser
-  // switches tabs. Only attached while the bar is open so normal browser
-  // tab-switching remains intact when the bar is closed.
+  // Cmd+1..5 quick-pick — capture phase intercepts BEFORE the browser.
+  // The listener is attached ONCE when the bar opens and stays attached
+  // until it closes. Results and executeAction are held in refs so the
+  // handler always sees current values without re-registering.
   //
-  // Results array is kept in a ref to avoid stale closures — listener is
-  // attached once per open, but always sees the latest results.
+  // Why this matters: if the effect re-runs (e.g. because executeAction
+  // re-creates on every render), there's a tiny gap between cleanup and
+  // re-add where the browser wins. Deps = [isOpen] only. The listener
+  // lives for the entire lifetime the bar is open.
   const resultsRef = useRef<CommandAction[]>(results);
-  useEffect(() => {
-    resultsRef.current = results;
-  }, [results]);
+  const executeActionRef = useRef(executeAction);
+  useEffect(() => { resultsRef.current = results; }, [results]);
+  useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -411,24 +414,30 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         : (!Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5 ? fromCode : null);
       if (!num) return;
 
-      // CRITICAL: we MUST call preventDefault BEFORE any other check.
-      // If we skip it (e.g. because results haven't loaded yet), the
-      // browser wins the race and switches tabs. The whole point of
-      // capture-phase interception is to beat the browser to the event.
+      // CRITICAL: preventDefault unconditionally when bar is open + Cmd+1-5.
+      // We own those shortcuts while the bar is open, regardless of whether
+      // a matching result exists yet.
       e.preventDefault();
       e.stopPropagation();
+      if (typeof (e as KeyboardEvent & { stopImmediatePropagation?: () => void }).stopImmediatePropagation === "function") {
+        (e as KeyboardEvent & { stopImmediatePropagation: () => void }).stopImmediatePropagation();
+      }
 
       const target = resultsRef.current[num - 1];
-      if (target) executeAction(target);
-      // No target? Eat the shortcut silently — the user sees nothing
-      // happen, but their browser does NOT switch tabs. That's the
-      // correct behavior when the bar is open.
+      if (target) executeActionRef.current(target);
     };
 
     // Capture phase runs before the browser's default tab-switch handling.
-    document.addEventListener("keydown", handleShortcut, { capture: true });
-    return () => document.removeEventListener("keydown", handleShortcut, { capture: true } as EventListenerOptions);
-  }, [isOpen, executeAction]);
+    // Attach to window too so we catch the event as early as possible on every
+    // browser — belt and suspenders for the OS-level Cmd+digit shortcut.
+    const opts: AddEventListenerOptions = { capture: true };
+    window.addEventListener("keydown", handleShortcut, opts);
+    document.addEventListener("keydown", handleShortcut, opts);
+    return () => {
+      window.removeEventListener("keydown", handleShortcut, opts);
+      document.removeEventListener("keydown", handleShortcut, opts);
+    };
+  }, [isOpen]);
 
   const toggleVoice = useCallback(async () => {
     if (isListening) {

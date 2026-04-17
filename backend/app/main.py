@@ -201,6 +201,17 @@ def run_data_seeders():
         print(f"WARNING: Widget definition seeding failed — {exc}")
         db.rollback()
 
+    try:
+        # Workflow Engine Phase W-1 — seed default workflows (idempotent upsert
+        # by workflow id). Without this the /workflows/command-bar endpoint
+        # returns empty on fresh deployments.
+        from app.data.seed_workflows import seed_default_workflows
+        result = seed_default_workflows(db)
+        print(f"Workflow defaults: {result}")
+    except Exception as exc:
+        print(f"WARNING: Default workflow seeding failed — {exc}")
+        db.rollback()
+
     finally:
         db.close()
 
