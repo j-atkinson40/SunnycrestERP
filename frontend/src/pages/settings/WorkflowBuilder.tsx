@@ -407,53 +407,25 @@ export default function WorkflowBuilderPage() {
           </div>
         </main>
 
-        {/* Persistent right sidebar — BlockLibrary by default, BlockEditor
-            when a step is selected. Not shown in read-only mode. */}
-        {!readOnly && (
-          <aside className="w-80 flex-shrink-0 border-l border-slate-200 bg-white flex flex-col overflow-hidden">
-            {selectedStep ? (
-              <SidebarEditorHeader
-                step={selectedStep}
-                onBack={() => setSelectedStepIdx(null)}
-                onDelete={() => {
-                  if (selectedStepIdx !== null) removeStep(selectedStepIdx)
-                }}
-              >
-                <BlockEditor
-                  step={selectedStep}
-                  readOnly={readOnly}
-                  onChange={(update) => updateStep(selectedStepIdx!, update)}
-                  onConfigChange={(configUpdate) =>
-                    updateStepConfig(selectedStepIdx!, configUpdate)
-                  }
-                  onClose={() => setSelectedStepIdx(null)}
-                />
-              </SidebarEditorHeader>
-            ) : (
-              <BlockLibrary
-                onDragStart={() => {}}
-                onClick={(block) => insertBlock(block)}
-              />
-            )}
-          </aside>
-        )}
-
-        {/* Read-only mode keeps the SlideOver behavior so Tier 1 platform
-            workflows can still inspect steps without a sidebar. */}
-        {readOnly && selectedStep && (
-          <aside className="w-96 flex-shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-              <div className="text-sm font-semibold text-slate-900">
-                {editorTitleForStep(selectedStep)}
-              </div>
-              <button
-                onClick={() => setSelectedStepIdx(null)}
-                className="text-slate-400 hover:text-slate-700 text-xs"
-              >
-                Close
-              </button>
-            </div>
-            <div className="p-4">
+        {/* Persistent right sidebar — always visible.
+            Content per mode:
+              - editable + no selection → BlockLibrary (drag-and-drop)
+              - editable + selection    → BlockEditor
+              - read-only + no selection → Workflow info panel
+              - read-only + selection   → BlockEditor (read-only) */}
+        <aside className="w-80 flex-shrink-0 border-l border-slate-200 bg-white flex flex-col overflow-hidden">
+          {selectedStep ? (
+            <SidebarEditorHeader
+              step={selectedStep}
+              onBack={() => setSelectedStepIdx(null)}
+              onDelete={
+                readOnly
+                  ? undefined
+                  : () => {
+                      if (selectedStepIdx !== null) removeStep(selectedStepIdx)
+                    }
+              }
+            >
               <BlockEditor
                 step={selectedStep}
                 readOnly={readOnly}
@@ -463,9 +435,24 @@ export default function WorkflowBuilderPage() {
                 }
                 onClose={() => setSelectedStepIdx(null)}
               />
-            </div>
-          </aside>
-        )}
+            </SidebarEditorHeader>
+          ) : readOnly ? (
+            <WorkflowInfoPanel
+              name={draft.name}
+              description={draft.description}
+              keywords={draft.keywords}
+              tier={loadedMeta?.tier}
+              vertical={draft.vertical}
+              triggerType={draft.trigger_type}
+            />
+          ) : (
+            <BlockLibrary
+              onDragStart={() => {}}
+              onClick={(block) => insertBlock(block)}
+            />
+          )}
+        </aside>
+
       </div>
     </div>
   )
@@ -483,7 +470,7 @@ function SidebarEditorHeader({
 }: {
   step: Step
   onBack: () => void
-  onDelete: () => void
+  onDelete?: () => void
   children: React.ReactNode
 }) {
   const typeLabel = {
@@ -514,7 +501,7 @@ function SidebarEditorHeader({
             </div>
           )}
         </div>
-        {!step.is_core && (
+        {!step.is_core && onDelete && (
           <button
             onClick={onDelete}
             className="p-1 text-slate-400 hover:text-red-600 rounded"
@@ -525,6 +512,102 @@ function SidebarEditorHeader({
         )}
       </div>
       <div className="flex-1 overflow-y-auto p-4">{children}</div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Read-only sidebar panel — workflow metadata when no step is selected
+// ─────────────────────────────────────────────────────────────────────
+
+function WorkflowInfoPanel({
+  name,
+  description,
+  keywords,
+  tier,
+  vertical,
+  triggerType,
+}: {
+  name: string
+  description: string
+  keywords?: string[]
+  tier?: number
+  vertical?: string | null
+  triggerType: string
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-4 py-4 border-b border-slate-100">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          Workflow
+        </div>
+        <div className="mt-1 text-sm font-semibold text-slate-900">
+          {name || "Untitled"}
+        </div>
+        {description && (
+          <div className="mt-1 text-xs text-slate-500">{description}</div>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {tier === 1 && (
+          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+            🔒 Platform-locked workflow — view only. Click a step to see its
+            configuration.
+          </div>
+        )}
+
+        {(tier === 2 || tier === 3) && (
+          <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
+            This is a template. To customize it, use the library to
+            duplicate it into your workflows.
+          </div>
+        )}
+
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+            Trigger
+          </div>
+          <div className="text-xs text-slate-700 capitalize">
+            {triggerType.replace(/_/g, " ")}
+          </div>
+        </div>
+
+        {vertical && (
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+              Vertical
+            </div>
+            <div className="text-xs text-slate-700 capitalize">
+              {vertical.replace(/_/g, " ")}
+            </div>
+          </div>
+        )}
+
+        {keywords && keywords.length > 0 && (
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+              Keywords
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {keywords.map((kw) => (
+                <span
+                  key={kw}
+                  className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700"
+                >
+                  {kw}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 text-center">
+        <p className="text-[11px] text-slate-400">
+          Click any step to view details
+        </p>
+      </div>
     </div>
   )
 }
@@ -580,18 +663,6 @@ function EmptyCanvasStep({
       </div>
     </div>
   )
-}
-
-function editorTitleForStep(step: Step): string {
-  const isCore = !!step.is_core
-  const label = {
-    trigger: "Edit trigger",
-    input: "Edit input step",
-    action: "Edit action",
-    condition: "Edit condition",
-    output: "Edit output",
-  }[step.step_type] ?? "Edit step"
-  return isCore ? `${label} · Platform step` : label
 }
 
 // ─────────────────────────────────────────────────────────────────────
