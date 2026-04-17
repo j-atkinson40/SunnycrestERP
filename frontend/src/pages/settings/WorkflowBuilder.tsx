@@ -525,8 +525,11 @@ function EntryScreen({ onPick }: { onPick: (draft: Partial<WorkflowDraft>) => vo
 
 function ConnectorLine() {
   return (
-    <div className="flex justify-center py-1" aria-hidden="true">
-      <div className="h-6 w-px bg-slate-300" />
+    <div className="flex flex-col items-center py-0.5" aria-hidden="true">
+      <div className="h-7 w-0.5 bg-slate-400" />
+      <div
+        className="h-0 w-0 border-l-[5px] border-r-[5px] border-t-[6px] border-l-transparent border-r-transparent border-t-slate-400"
+      />
     </div>
   )
 }
