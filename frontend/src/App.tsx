@@ -233,6 +233,12 @@ import CompanyRegisterPage from "@/pages/company-register";
 import PlatformAdminEntry from "@/pages/platform-admin-entry";
 import { BridgeableAdminApp } from "@/bridgeable-admin/BridgeableAdminApp";
 import ProductLinesPage from "@/pages/settings/ProductLines";
+// Funeral Home vertical (FH-1a)
+import FhDirectionHub from "@/fh/pages/DirectionHub";
+import FhCaseList from "@/fh/pages/CaseList";
+import FhCaseDashboard from "@/fh/pages/CaseDashboard";
+import FhArrangementConference from "@/fh/pages/ArrangementConference";
+import FhVitalStatistics from "@/fh/pages/VitalStatistics";
 import { LocationProvider } from "@/contexts/location-context";
 import { CallContextProvider } from "@/contexts/call-context";
 import { CallOverlay } from "@/components/call/CallOverlay";
@@ -905,6 +911,12 @@ export default function App() {
                       path="/settings/product-lines"
                       element={<ProductLinesPage />}
                     />
+                    {/* Funeral Home vertical (FH-1a) */}
+                    <Route path="/fh" element={<FhDirectionHub />} />
+                    <Route path="/fh/cases" element={<FhCaseList />} />
+                    <Route path="/fh/cases/:caseId" element={<FhCaseDashboard />} />
+                    <Route path="/fh/cases/:caseId/arrangement" element={<FhArrangementConference />} />
+                    <Route path="/fh/cases/:caseId/vital-statistics" element={<FhVitalStatistics />} />
                   </Route>
 
                   {/* Audit logs — requires audit.view permission */}

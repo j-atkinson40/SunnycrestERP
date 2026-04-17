@@ -29,8 +29,8 @@ import type { CommandAction, RecentAction } from "@/core/actionRegistry";
 import {
   addRecentAction,
   filterActionsByRole,
+  getActionsForVertical,
   getRecentActions,
-  manufacturingActions,
   matchLocalActions,
 } from "@/core/actionRegistry";
 import { useAuth } from "@/contexts/auth-context";
@@ -148,11 +148,17 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const [apiAnswer, setApiAnswer] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const { user } = useAuth();
+  const { user, company } = useAuth();
   // The auth User model exposes the role as `role_slug` (e.g. "admin", "office").
   const userRole = (user as unknown as { role_slug?: string })?.role_slug;
-  // Actions the current user is permitted to see (admin/office/driver/production)
-  const permittedActions = filterActionsByRole(manufacturingActions, userRole);
+  // Pick registry based on tenant vertical — FH tenants get funeral_home actions,
+  // manufacturer tenants get manufacturing actions. Never mix the two.
+  const tenantVertical =
+    ((company as unknown as { vertical?: string; tenant_type?: string }) || {}).vertical ||
+    ((company as unknown as { vertical?: string; tenant_type?: string }) || {}).tenant_type ||
+    "manufacturing";
+  const verticalActions = getActionsForVertical(tenantVertical);
+  const permittedActions = filterActionsByRole(verticalActions, userRole);
 
   const { showMic, requestPermission } = useMicrophone();
 
@@ -277,7 +283,10 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         .catch(() => {});
 
       if (action.handler) {
-        action.handler();
+        if (typeof action.handler === "function") {
+          action.handler();
+        }
+        // Named string handlers are resolved by the caller for now (future work).
         onClose();
         return;
       }

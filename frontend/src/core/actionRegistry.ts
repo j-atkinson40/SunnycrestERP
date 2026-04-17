@@ -7,7 +7,8 @@ export interface CommandAction {
   type: "ACTION" | "NAV" | "VIEW" | "RECORD" | "ASK";
   route?: string;
   prefillSchema?: Record<string, unknown>;
-  handler?: () => void;
+  // Either a named handler string (resolved in CommandBar dispatch) or an inline callback.
+  handler?: string | (() => void);
   roles: string[];
   vertical: string;
 }
@@ -726,6 +727,85 @@ export const manufacturingActions: CommandAction[] = [
   },
 ];
 
+// ──────────────────────────────────────────────────────────────────────
+// Funeral Home vertical actions (FH-1a)
+// ──────────────────────────────────────────────────────────────────────
+export const funeralHomeActions: CommandAction[] = [
+  {
+    id: "fh_new_arrangement",
+    keywords: ["new arrangement", "new case", "first call", "create case", "start arrangement"],
+    title: "New Arrangement",
+    subtitle: "Create a new funeral case",
+    icon: "plus-circle",
+    type: "ACTION",
+    route: "/fh/cases",
+    roles: ["admin", "director"],
+    vertical: "funeral_home",
+  },
+  {
+    id: "fh_nav_cases",
+    keywords: ["cases", "all cases", "case list", "active cases"],
+    title: "Cases",
+    icon: "folder",
+    type: "NAV",
+    route: "/fh/cases",
+    roles: ["admin", "director", "office"],
+    vertical: "funeral_home",
+  },
+  {
+    id: "fh_nav_home",
+    keywords: ["home", "direction hub", "go home", "dashboard"],
+    title: "Funeral Direction Hub",
+    icon: "home",
+    type: "NAV",
+    route: "/fh",
+    roles: ["admin", "director", "office"],
+    vertical: "funeral_home",
+  },
+  {
+    id: "fh_add_case_note",
+    keywords: ["add note", "case note", "log note", "add to case"],
+    title: "Add case note",
+    subtitle: "Jot a note on the current case",
+    icon: "file-text",
+    type: "ACTION",
+    handler: "addNoteToCurrentCase",
+    roles: ["admin", "director"],
+    vertical: "funeral_home",
+  },
+  {
+    id: "fh_start_scribe",
+    keywords: ["scribe", "start scribe", "record arrangement", "start recording"],
+    title: "Start Scribe recording",
+    subtitle: "Capture an arrangement conference",
+    icon: "mic",
+    type: "ACTION",
+    handler: "openScribeForCurrentCase",
+    roles: ["admin", "director"],
+    vertical: "funeral_home",
+  },
+  {
+    id: "fh_nav_services",
+    keywords: ["services", "this week", "upcoming services", "schedule"],
+    title: "Services this week",
+    icon: "calendar",
+    type: "NAV",
+    route: "/fh",
+    roles: ["admin", "director", "office"],
+    vertical: "funeral_home",
+  },
+  {
+    id: "fh_find_case",
+    keywords: ["find case", "search case", "open case", "find family"],
+    title: "Find case",
+    icon: "search",
+    type: "ACTION",
+    route: "/fh/cases",
+    roles: ["admin", "director", "office"],
+    vertical: "funeral_home",
+  },
+]
+
 /**
  * Filter actions by the current user's role.
  * Actions with no `roles` or empty `roles` array are visible to everyone.
@@ -739,6 +819,17 @@ export function filterActionsByRole(
     if (!a.roles || a.roles.length === 0) return true;
     return a.roles.includes(userRole);
   });
+}
+
+/**
+ * Pick the right action registry for the current tenant's vertical.
+ * FH tenants see ONLY funeral_home actions; manufacturer tenants see
+ * manufacturing actions. Never mix the two.
+ */
+export function getActionsForVertical(vertical: string | null | undefined): CommandAction[] {
+  const v = (vertical || "manufacturing").toLowerCase()
+  if (v === "funeral_home" || v === "funeralhome") return funeralHomeActions;
+  return manufacturingActions;
 }
 
 /** Fuzzy local match against registered actions */
