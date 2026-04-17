@@ -36,6 +36,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useCommandBar } from "@/core/CommandBarProvider";
 import { WorkflowController, type WorkflowRunState } from "@/components/workflows/WorkflowController";
+import { NaturalLanguageOverlay } from "@/components/workflows/NaturalLanguageOverlay";
 import { SlideOver } from "@/components/ui/SlideOver";
 
 // ── Icon map ────────────────────────────────────────────────────────────────
@@ -234,6 +235,11 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const [apiAnswer, setApiAnswer] = useState<string | null>(null);
   const [searchingDocs, setSearchingDocs] = useState(false);
   const [activeWorkflow, setActiveWorkflow] = useState<{ id: string; title: string } | null>(null);
+  const [activeNLWorkflow, setActiveNLWorkflow] = useState<{
+    id: string
+    name: string
+    steps: Array<{ step_order: number; step_key: string; step_type: string; config?: Record<string, unknown> }>
+  } | null>(null);
   const [aiMode, setAiMode] = useState<{ query: string; answer: string; loading: boolean } | null>(null);
   const [openSlideOver, setOpenSlideOver] = useState<{ recordType: string; recordId: string; title: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -516,9 +522,49 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         .post("/core/log-action", { action_id: action.id, action_type: action.type })
         .catch(() => {});
 
-      // WORKFLOW — switch to inline controller, keep bar open
+      // WORKFLOW — switch to inline controller or NL overlay depending
+      // on how many input steps the workflow has.
       if (action.type === "WORKFLOW" && action.workflowId) {
-        setActiveWorkflow({ id: action.workflowId, title: action.title });
+        apiClient
+          .get<{
+            id: string
+            name: string
+            overlay_config?: { input_style?: string } | null
+            steps?: Array<{
+              step_order: number
+              step_key: string
+              step_type: string
+              config?: Record<string, unknown>
+            }>
+          }>(`/workflows/${action.workflowId}`)
+          .then((r) => {
+            const wf = r.data
+            const inputSteps = (wf.steps || []).filter(
+              (s) => s.step_type === "input",
+            )
+            const useNL =
+              wf.overlay_config?.input_style === "natural_language" ||
+              inputSteps.length >= 3
+            if (useNL) {
+              setActiveNLWorkflow({
+                id: wf.id,
+                name: wf.name,
+                steps: wf.steps || [],
+              })
+            } else {
+              setActiveWorkflow({
+                id: action.workflowId as string,
+                title: action.title,
+              })
+            }
+          })
+          .catch(() => {
+            // Fallback to the sequential controller if lookup fails
+            setActiveWorkflow({
+              id: action.workflowId as string,
+              title: action.title,
+            })
+          })
         return;
       }
 
@@ -726,8 +772,34 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           </div>
         )}
 
+        {/* Active natural-language workflow — replaces results view */}
+        {activeNLWorkflow && (
+          <NaturalLanguageOverlay
+            workflow={activeNLWorkflow}
+            onComplete={(run) => {
+              const outputs = (run.output_data || {}) as Record<string, unknown>;
+              for (const key of Object.keys(outputs)) {
+                const val = outputs[key] as Record<string, unknown>;
+                if (val?.type === "open_slide_over") {
+                  setOpenSlideOver({
+                    recordType: String(val.record_type),
+                    recordId: String(val.record_id),
+                    title: activeNLWorkflow.name,
+                  });
+                }
+              }
+              setActiveNLWorkflow(null);
+              setTimeout(() => onClose(), 400);
+            }}
+            onCancel={() => {
+              setActiveNLWorkflow(null);
+              onClose();
+            }}
+          />
+        )}
+
         {/* Active workflow — replaces results view while running */}
-        {activeWorkflow && (
+        {!activeNLWorkflow && activeWorkflow && (
           <WorkflowController
             workflowId={activeWorkflow.id}
             workflowTitle={activeWorkflow.title}
@@ -757,7 +829,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         )}
 
         {/* AI panel — opened when the user selects Ask Bridgeable AI */}
-        {!activeWorkflow && aiMode && (
+        {!activeWorkflow && !activeNLWorkflow && aiMode && (
           <div className="flex flex-col">
             <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
               <button
@@ -804,7 +876,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         )}
 
         {/* Results */}
-        {!activeWorkflow && !aiMode && <div className="max-h-[380px] overflow-y-auto">
+        {!activeWorkflow && !activeNLWorkflow && !aiMode && <div className="max-h-[380px] overflow-y-auto">
           {/* Recent actions when empty */}
           {showRecent && (
             <div className="p-2">

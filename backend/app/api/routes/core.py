@@ -19,6 +19,7 @@ from app.services import (
     core_command_service,
     document_search_service,
     command_bar_data_search,
+    command_bar_extract_service,
 )
 
 router = APIRouter()
@@ -173,6 +174,36 @@ def command_bar_search(
         "ask_ai": data.get("ask_ai"),
         "_debug_ms": elapsed_ms,
     }
+
+
+class ExtractRequest(BaseModel):
+    workflow_id: str
+    input_text: str
+    existing_fields: Optional[dict[str, Any]] = None
+    is_final: bool = False
+
+
+@router.post("/command-bar/extract")
+def command_bar_extract(
+    request: ExtractRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Natural-language field extraction for workflow overlays.
+
+    Fires on debounced input (is_final=False, fast Haiku-style call) and
+    again on submit (is_final=True, higher-fidelity). Failures are
+    non-fatal — an empty `fields` object preserves any state the
+    frontend already holds.
+    """
+    return command_bar_extract_service.extract(
+        db,
+        workflow_id=request.workflow_id,
+        input_text=request.input_text or "",
+        company_id=current_user.company_id,
+        existing_fields=request.existing_fields,
+        is_final=request.is_final,
+    )
 
 
 class AskAIRequest(BaseModel):
