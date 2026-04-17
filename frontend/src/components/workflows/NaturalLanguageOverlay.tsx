@@ -336,7 +336,7 @@ export function NaturalLanguageOverlay({
           <FieldRow
             key={step.step_key}
             fieldKey={step.step_key}
-            label={labelFor(step)}
+            label={labelFor(step, direction, !!productTypeLabel)}
             required={step.config?.required !== false}
             field={fields[step.step_key] ?? null}
             isEditing={editingField === step.step_key}
@@ -541,7 +541,18 @@ function FieldRow({
   )
 }
 
-function labelFor(step: WorkflowInputStep): string {
+function labelFor(
+  step: WorkflowInputStep,
+  direction: "sales" | "purchase" = "sales",
+  directionKnown: boolean = false,
+): string {
+  // The customer/vendor field adapts to the detected direction so it
+  // reads correctly for POs. Before any product-type detection fires,
+  // use the neutral "Account" label — it could still be either.
+  if (step.step_key === "ask_customer" || step.step_key === "customer") {
+    if (!directionKnown) return "Account"
+    return direction === "purchase" ? "Vendor" : "Customer"
+  }
   const p = step.config?.prompt
   if (p) {
     return p
