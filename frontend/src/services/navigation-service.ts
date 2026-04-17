@@ -212,16 +212,28 @@ function getManufacturingNav(
     isAdmin,
   );
 
-  const toolItems: NavItem[] = [
+  // ── Resources (Knowledge Base + Training grouped together) ──
+  // Nav cleanup: KB and Training were previously orphaned as their own top-level
+  // sections. Consolidating them under one "Resources" label makes the sidebar
+  // readable and keeps employees' shared reference material in one place.
+  const resourceItems: NavItem[] = [
     {
       label: "Knowledge Base",
       href: "/knowledge-base",
       icon: "BookOpen",
     },
+    {
+      label: "Training",
+      href: "/training",
+      icon: "GraduationCap",
+      permission: "training.view",
+    },
   ];
 
   if (legacyChildren.length > 0) {
-    toolItems.push({
+    // Legacy Studio stays nested here (where it already lived) — audit says
+    // don't touch it, so we preserve placement.
+    resourceItems.push({
       label: "Legacy Studio",
       href: "/legacy/generator",
       icon: "Gem",
@@ -231,27 +243,8 @@ function getManufacturingNav(
   }
 
   sections.push({
-    title: "Tools",
-    items: filterByPermission(toolItems, modules, perms, areas, isAdmin),
-  });
-
-  // ── Training (single hub item) ──
-  sections.push({
-    title: "Training",
-    items: filterByPermission(
-      [
-        {
-          label: "Training",
-          href: "/training",
-          icon: "GraduationCap",
-          permission: "training.view",
-        },
-      ],
-      modules,
-      perms,
-      areas,
-      isAdmin,
-    ),
+    title: "Resources",
+    items: filterByPermission(resourceItems, modules, perms, areas, isAdmin),
   });
 
   // ── Settings (collapsible, grouped sub-sections) ──

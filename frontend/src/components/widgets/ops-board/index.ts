@@ -14,6 +14,11 @@ import AtRiskAccountsWidget from "./AtRiskAccountsWidget"
 import QCStatusWidget from "./QCStatusWidget"
 import TimeClockWidget from "./TimeClockWidget"
 import SafetyWidget from "./SafetyWidget"
+import ComplianceUpcomingWidget from "./ComplianceUpcomingWidget"
+import TeamCertificationsWidget from "./TeamCertificationsWidget"
+import MyCertificationsWidget from "./MyCertificationsWidget"
+import MyTrainingWidget from "./MyTrainingWidget"
+import KbRecentWidget from "./KbRecentWidget"
 
 export const OPS_BOARD_WIDGETS: WidgetComponentMap = {
   todays_services: TodaysServicesWidget,
@@ -28,4 +33,10 @@ export const OPS_BOARD_WIDGETS: WidgetComponentMap = {
   qc_status: QCStatusWidget,
   time_clock: TimeClockWidget,
   safety_status: SafetyWidget,
+  // Platform Polish additions (compliance, training, KB surfaces)
+  compliance_upcoming: ComplianceUpcomingWidget,
+  team_certifications: TeamCertificationsWidget,
+  my_certifications: MyCertificationsWidget,
+  my_training: MyTrainingWidget,
+  kb_recent: KbRecentWidget,
 }

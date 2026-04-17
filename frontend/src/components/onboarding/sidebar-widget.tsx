@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import apiClient from "@/lib/api-client";
 import * as onboardingService from "@/services/onboarding-service";
 
 export function OnboardingSidebarWidget() {
@@ -13,41 +14,65 @@ export function OnboardingSidebarWidget() {
   useEffect(() => {
     let mounted = true;
 
-    onboardingService
-      .getChecklist()
-      .then((checklist) => {
+    // Prefer the new onboarding-flow status (visible_steps already accounts
+    // for step filtering like skip-import). Fall back to the legacy
+    // tenant_onboarding_checklists system if the new endpoint isn't available.
+    apiClient
+      .get<{
+        visible_steps?: string[];
+        completed_steps?: string[];
+        percent_complete?: number;
+      }>("/onboarding-flow/status")
+      .then(({ data }) => {
         if (!mounted) return;
-
-        const mustCompleteItems = checklist.items.filter(
-          (i) => i.tier === "must_complete",
-        );
-        const completed = mustCompleteItems.filter(
-          (i) => i.status === "completed",
-        ).length;
-
-        setMustCompletePercent(checklist.must_complete_percent);
-        setCompletedCount(completed);
-        setTotalCount(mustCompleteItems.length);
-
-        // Hide widget 7 days after 100% completion
-        if (checklist.must_complete_percent === 100) {
-          const lastCompleted = mustCompleteItems
-            .filter((i) => i.completed_at)
-            .map((i) => new Date(i.completed_at!).getTime())
-            .sort((a, b) => b - a)[0];
-
-          if (lastCompleted) {
-            const daysSinceComplete =
-              (Date.now() - lastCompleted) / (1000 * 60 * 60 * 24);
-            if (daysSinceComplete > 7) {
-              setDismissed(true);
-            }
-          }
+        const visible = (data.visible_steps || []).filter((s) => s !== "complete");
+        const completed = (data.completed_steps || []).filter((s) => visible.includes(s));
+        if (visible.length > 0) {
+          setMustCompletePercent(data.percent_complete ?? 0);
+          setCompletedCount(completed.length);
+          setTotalCount(visible.length);
+          return;
         }
+        // Empty visible_steps — fall through to legacy
+        throw new Error("no_visible_steps");
       })
       .catch(() => {
-        // Checklist doesn't exist yet — show "Start Setup" instead of hiding
-        if (mounted) setNoChecklist(true);
+        if (!mounted) return;
+        // Legacy fallback
+        onboardingService
+          .getChecklist()
+          .then((checklist) => {
+            if (!mounted) return;
+            const mustCompleteItems = checklist.items.filter(
+              (i) => i.tier === "must_complete",
+            );
+            const completed = mustCompleteItems.filter(
+              (i) => i.status === "completed",
+            ).length;
+            setMustCompletePercent(checklist.must_complete_percent);
+            setCompletedCount(completed);
+            setTotalCount(mustCompleteItems.length);
+
+            // Hide widget 7 days after 100% completion
+            if (checklist.must_complete_percent === 100) {
+              const lastCompleted = mustCompleteItems
+                .filter((i) => i.completed_at)
+                .map((i) => new Date(i.completed_at!).getTime())
+                .sort((a, b) => b - a)[0];
+
+              if (lastCompleted) {
+                const daysSinceComplete =
+                  (Date.now() - lastCompleted) / (1000 * 60 * 60 * 24);
+                if (daysSinceComplete > 7) {
+                  setDismissed(true);
+                }
+              }
+            }
+          })
+          .catch(() => {
+            // Neither endpoint available — show "Start Setup" prompt
+            if (mounted) setNoChecklist(true);
+          });
       });
 
     return () => {

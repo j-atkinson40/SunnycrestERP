@@ -323,8 +323,43 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     [results, selectedIdx, executeAction, onClose]
   );
 
-  // Cmd+1-5 handled in provider via ref callback — expose results via a data attr
-  // (Provider reads from CommandBar.currentResults)
+  // Cmd+1..5 quick-pick — capture phase intercepts BEFORE the browser
+  // switches tabs. Only attached while the bar is open so normal browser
+  // tab-switching remains intact when the bar is closed.
+  //
+  // Results array is kept in a ref to avoid stale closures — listener is
+  // attached once per open, but always sees the latest results.
+  const resultsRef = useRef<CommandAction[]>(results);
+  useEffect(() => {
+    resultsRef.current = results;
+  }, [results]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleShortcut = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      // Some browsers return e.key as "1", others might fire on e.code like "Digit1"
+      const fromKey = parseInt(e.key, 10);
+      const fromCode = e.code && e.code.startsWith("Digit") ? parseInt(e.code.slice(5), 10) : NaN;
+      const num = !Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5
+        ? fromKey
+        : (!Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5 ? fromCode : null);
+      if (!num) return;
+
+      const target = resultsRef.current[num - 1];
+      if (!target) return;
+
+      // CRITICAL: preventDefault + stopPropagation in capture phase
+      // is what stops the browser from switching tabs.
+      e.preventDefault();
+      e.stopPropagation();
+      executeAction(target);
+    };
+
+    document.addEventListener("keydown", handleShortcut, { capture: true });
+    return () => document.removeEventListener("keydown", handleShortcut, { capture: true } as EventListenerOptions);
+  }, [isOpen, executeAction]);
 
   const toggleVoice = useCallback(async () => {
     if (isListening) {
