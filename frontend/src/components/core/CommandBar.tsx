@@ -39,6 +39,26 @@ import { SlideOver } from "@/components/ui/SlideOver";
 
 // ── Icon map ────────────────────────────────────────────────────────────────
 
+// Result ordering within the command bar — action items rank above navigation.
+// WORKFLOW first, then ACTION, then RECORD/VIEW, then NAV, then ASK.
+// Stable within each type so backend/local relevance order is preserved.
+const TYPE_RANK: Record<string, number> = {
+  WORKFLOW: 0,
+  ACTION: 1,
+  RECORD: 2,
+  VIEW: 3,
+  NAV: 4,
+  ASK: 5,
+};
+
+function sortByTypeRank(actions: CommandAction[]): CommandAction[] {
+  return [...actions].sort((a, b) => {
+    const ra = TYPE_RANK[a.type] ?? 99;
+    const rb = TYPE_RANK[b.type] ?? 99;
+    return ra - rb;
+  });
+}
+
 const ICON_MAP: Record<string, React.ReactNode> = {
   "plus-circle": <PlusCircle className="h-4 w-4" />,
   truck: <Truck className="h-4 w-4" />,
@@ -275,18 +295,22 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           // Permission filter API results too — any action the current
           // user's role isn't permitted to see is stripped out before display.
           const filteredByRole = filterActionsByRole(mapped, userRole);
-          // WORKFLOW first, then the rest in order returned by backend
-          setResults([...workflowActions, ...filteredByRole].slice(0, 5));
+
+          // Merge and apply type-priority sort.
+          // WORKFLOW > ACTION > RECORD > VIEW > NAV > ASK
+          // Within the same type, preserve backend order (relevance).
+          const merged = sortByTypeRank([...workflowActions, ...filteredByRole]);
+          setResults(merged.slice(0, 5));
         } else {
           // Fallback to local match (already role-filtered via permittedActions)
-          setResults(matchLocalActions(q, permittedActions));
+          setResults(sortByTypeRank(matchLocalActions(q, permittedActions)));
           setSearchOnly(true);
         }
         setSelectedIdx(0);
       } catch (err: unknown) {
         if ((err as { name?: string }).name === "CanceledError") return;
         // Fallback to local match on API error
-        setResults(matchLocalActions(q, permittedActions));
+        setResults(sortByTypeRank(matchLocalActions(q, permittedActions)));
         setSearchOnly(true);
         setSelectedIdx(0);
       } finally {
@@ -379,7 +403,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
 
     const handleShortcut = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      // Some browsers return e.key as "1", others might fire on e.code like "Digit1"
+      // Safari/Chrome: e.key = "1"; Firefox w/ non-US layouts: fall back to e.code
       const fromKey = parseInt(e.key, 10);
       const fromCode = e.code && e.code.startsWith("Digit") ? parseInt(e.code.slice(5), 10) : NaN;
       const num = !Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5
@@ -387,16 +411,21 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         : (!Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5 ? fromCode : null);
       if (!num) return;
 
-      const target = resultsRef.current[num - 1];
-      if (!target) return;
-
-      // CRITICAL: preventDefault + stopPropagation in capture phase
-      // is what stops the browser from switching tabs.
+      // CRITICAL: we MUST call preventDefault BEFORE any other check.
+      // If we skip it (e.g. because results haven't loaded yet), the
+      // browser wins the race and switches tabs. The whole point of
+      // capture-phase interception is to beat the browser to the event.
       e.preventDefault();
       e.stopPropagation();
-      executeAction(target);
+
+      const target = resultsRef.current[num - 1];
+      if (target) executeAction(target);
+      // No target? Eat the shortcut silently — the user sees nothing
+      // happen, but their browser does NOT switch tabs. That's the
+      // correct behavior when the bar is open.
     };
 
+    // Capture phase runs before the browser's default tab-switch handling.
     document.addEventListener("keydown", handleShortcut, { capture: true });
     return () => document.removeEventListener("keydown", handleShortcut, { capture: true } as EventListenerOptions);
   }, [isOpen, executeAction]);
