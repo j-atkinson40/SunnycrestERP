@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.models.company_entity import CompanyEntity
 from app.models.product import Product
-from app.models import PriceListItem, PriceListVersion
+from app.models import PriceListItem, PriceListVersion, ProductBundle
 from app.services import ai_service
 
 logger = logging.getLogger(__name__)
@@ -216,6 +216,89 @@ def _format_tiered_price_line(name: str, tiers: dict[str, float | None]) -> str:
     return f"{name}: " + " · ".join(parts)
 
 
+# Common shorthand → canonical search term for equipment bundle lookups.
+# Applied both for bundle search and the bundle-answer engine so
+# "full setup", "lowering and grass", etc. all hit the right bundles.
+_BUNDLE_ALIASES: dict[str, str] = {
+    "full equipment": "full equipment",
+    "full setup": "full equipment",
+    "complete setup": "full equipment",
+    "full package": "full equipment",
+    "complete package": "full equipment",
+    "lowering and grass": "lowering device & grass",
+    "lowering grass": "lowering device & grass",
+    "device and grass": "lowering device & grass",
+    "grass and lowering": "lowering device & grass",
+    "lowering only": "lowering device only",
+    "lowering device": "lowering device",
+    "tent only": "tent only",
+    "just tent": "tent only",
+    "tent setup": "tent only",
+    "equipment only": "equipment only",
+    "setup only": "equipment only",
+}
+
+
+def _resolve_bundle_alias(term: str) -> str:
+    """If the term matches a known equipment alias, swap it for the
+    canonical phrase. Otherwise return it unchanged."""
+    key = (term or "").lower().strip()
+    return _BUNDLE_ALIASES.get(key, term)
+
+
+def _format_bundle_subtitle(bundle: ProductBundle) -> str:
+    """Format a bundle's price field(s) for a record subtitle line."""
+    if getattr(bundle, "has_conditional_pricing", False):
+        wv = _format_price(bundle.with_vault_price)
+        sa = _format_price(bundle.standalone_price)
+        if wv and sa:
+            return f"w/ vault: {wv} · standalone: {sa}"
+        if wv:
+            return f"With vault: {wv}"
+        if sa:
+            return f"Standalone: {sa}"
+    base = _format_price(bundle.price)
+    return base or "Equipment bundle"
+
+
+def search_equipment_bundles(
+    db: Session, query: str, company_id: str, limit: int = 3
+) -> list[dict]:
+    """Search equipment/product bundles by name (with alias resolution)."""
+    if not query:
+        return []
+    resolved = _resolve_bundle_alias(query)
+    pattern = f"%{resolved}%"
+    bundles = (
+        db.query(ProductBundle)
+        .filter(
+            ProductBundle.company_id == company_id,
+            ProductBundle.is_active == True,  # noqa: E712
+            ProductBundle.name.ilike(pattern),
+        )
+        .order_by(ProductBundle.sort_order.asc().nullslast(), ProductBundle.name.asc())
+        .limit(limit)
+        .all()
+    )
+    out = []
+    for b in bundles:
+        subtitle = _format_bundle_subtitle(b)
+        out.append({
+            "result_type": "record",
+            "record_type": "equipment_bundle",
+            "id": f"bundle:{b.id}",
+            "record_id": b.id,
+            "title": b.name,
+            "subtitle": subtitle,
+            "with_vault_price": float(b.with_vault_price) if b.with_vault_price is not None else None,
+            "standalone_price": float(b.standalone_price) if b.standalone_price is not None else None,
+            "price": float(b.price) if b.price is not None else None,
+            "icon": "package",
+            "route": "/products?tab=equipment-bundles",
+        })
+    return out
+
+
 def search_products(
     db: Session, query: str, company_id: str, limit: int = 5
 ) -> list[dict]:
@@ -385,6 +468,76 @@ _RECENT_ORDER_PATTERNS = [
     r"(?:last|latest|most recent) order (?:from|for) (.+)",
     r"(?:last|most recent) order (?:by )?(.+)",
 ]
+
+
+def _try_answer_bundle_price(
+    db: Session, query: str, company_id: str
+) -> dict | None:
+    """Answer price questions targeting an equipment bundle. Runs BEFORE
+    product price lookup so "how much is full equipment" hits the
+    Full Equipment bundle rather than falling through to per-product
+    search. Handles the dual with-vault / standalone pricing model."""
+    q = query.lower().strip().rstrip("?.,!")
+
+    bundle_name: str | None = None
+    for pat in _PRICE_PATTERNS:
+        m = re.search(pat, q)
+        if m:
+            bundle_name = m.group(1).strip()
+            break
+
+    # Also treat bare alias terms ("full equipment", "lowering and grass")
+    # as implicit price questions even without question phrasing.
+    if not bundle_name and q in _BUNDLE_ALIASES:
+        bundle_name = q
+
+    if not bundle_name:
+        return None
+
+    resolved = _resolve_bundle_alias(bundle_name)
+    pattern = f"%{resolved}%"
+    bundles = (
+        db.query(ProductBundle)
+        .filter(
+            ProductBundle.company_id == company_id,
+            ProductBundle.is_active == True,  # noqa: E712
+            ProductBundle.name.ilike(pattern),
+        )
+        .order_by(ProductBundle.sort_order.asc().nullslast(), ProductBundle.name.asc())
+        .limit(3)
+        .all()
+    )
+    if not bundles:
+        return None
+
+    lines: list[str] = []
+    for b in bundles:
+        if getattr(b, "has_conditional_pricing", False):
+            wv = _format_price(b.with_vault_price)
+            sa = _format_price(b.standalone_price)
+            if wv and sa:
+                lines.append(f"{b.name}: {wv} w/ vault, {sa} standalone")
+            elif wv:
+                lines.append(f"{b.name}: {wv} w/ vault")
+            elif sa:
+                lines.append(f"{b.name}: {sa} standalone")
+            else:
+                lines.append(f"{b.name}: price not set")
+        else:
+            p = _format_price(b.price)
+            lines.append(f"{b.name}: {p}" if p else f"{b.name}: price not set")
+
+    return {
+        "result_type": "answer",
+        "id": f"answer:bundle:{resolved}",
+        "icon": "💡",
+        "headline": " · ".join(lines),
+        "source_title": "Equipment bundles",
+        "source_section": None,
+        "source_label": "Equipment bundle pricing",
+        "route": "/products?tab=equipment-bundles",
+        "related_record_ids": [b.id for b in bundles],
+    }
 
 
 def _try_answer_price(
@@ -789,6 +942,7 @@ def try_answer(db: Session, query: str, company_id: str) -> dict | None:
     "Ask Bridgeable AI" action that the user clicks deliberately; see
     _try_claude_catalog_answer for the kept-but-unused implementation."""
     handlers = (
+        _try_answer_bundle_price,  # check equipment bundles first
         _try_answer_price,
         _try_answer_inventory,
         _try_answer_recent_order,
@@ -838,9 +992,12 @@ def answer_or_search(
     if intent in (QueryIntent.QUESTION, QueryIntent.SEARCH):
         answer = try_answer(db, q, company_id)
 
-    # Always search live records when we have a meaningful search term
+    # Always search live records when we have a meaningful search term.
+    # Equipment bundles first since they represent bundled-product pricing
+    # and users often search by shorthand ("full equipment").
     records: list[dict] = []
     if term and len(term) >= 2:
+        records.extend(search_equipment_bundles(db, term, company_id, limit=3))
         records.extend(search_products(db, term, company_id, limit=5))
         records.extend(search_contacts(db, term, company_id, limit=3))
         records.extend(search_orders(db, term, company_id, limit=3))
