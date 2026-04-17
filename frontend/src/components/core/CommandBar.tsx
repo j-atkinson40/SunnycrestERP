@@ -370,6 +370,27 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Cmd+1..5 — handle here too as a final safety net. The module-level
+      // capture-phase listener in main.tsx fires first on most browsers,
+      // but if the focused input is consuming the event at the target
+      // element before it bubbles, this handler catches it.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        const fromKey = parseInt(e.key, 10);
+        const fromCode = e.code && e.code.startsWith("Digit") ? parseInt(e.code.slice(5), 10) : NaN;
+        const num = !Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5
+          ? fromKey
+          : (!Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5 ? fromCode : null);
+        if (num) {
+          e.preventDefault();
+          e.stopPropagation();
+          const native = e.nativeEvent as KeyboardEvent & { stopImmediatePropagation?: () => void };
+          native.stopImmediatePropagation?.();
+          const r = results[num - 1];
+          if (r) executeAction(r);
+          return;
+        }
+      }
+
       if (e.key === "Escape") {
         onClose();
         return;
