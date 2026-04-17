@@ -4,7 +4,7 @@ export interface CommandAction {
   title: string;
   subtitle?: string;
   icon: string;
-  type: "ACTION" | "NAV" | "VIEW" | "RECORD" | "ASK" | "WORKFLOW" | "ANSWER" | "DOCUMENT";
+  type: "ACTION" | "NAV" | "VIEW" | "RECORD" | "ASK" | "WORKFLOW" | "ANSWER" | "DOCUMENT" | "ASK_AI";
   route?: string;
   prefillSchema?: Record<string, unknown>;
   // Either a named handler string (resolved in CommandBar dispatch) or an inline callback.

@@ -1,11 +1,15 @@
 """Core UI API routes — command bar, recent actions, action logging."""
 
+import logging
+import time
 import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.api.deps import get_current_user
 from app.database import get_db
@@ -120,30 +124,45 @@ def command_bar_search(
     Frontend fetches this in parallel with local workflow/nav matches
     and merges them according to intent (questions suppress nav).
     """
+    t0 = time.perf_counter()
     q = (q or "").strip()
-    empty = {"intent": "empty", "answered": False, "answer": None, "records": [], "documents": []}
+    empty = {
+        "intent": "empty", "answered": False, "answer": None,
+        "records": [], "documents": [], "ask_ai": None,
+    }
     if len(q) < 2:
         return empty
 
-    # Intent + live records + pattern-based answer
+    # Intent + live records + pattern-based answer — deterministic, no AI
     try:
         data = command_bar_data_search.answer_or_search(
             db, query=q, company_id=current_user.company_id
         )
     except Exception:
-        data = {"intent": "search", "answered": False, "answer": None, "records": []}
+        data = {
+            "intent": "search", "answered": False, "answer": None,
+            "records": [], "ask_ai": None,
+        }
 
-    # Document search (Claude answer extraction + doc matches) — always
-    # runs unless explicitly disabled. Skipped for ACTION / NAVIGATE to
-    # avoid dragging documents into "create order" style queries.
+    # Document full-text search (Postgres GIN) — disable the Claude answer
+    # extraction path to keep the endpoint fast. Users opt into AI via the
+    # explicit Ask Bridgeable AI action.
     docs: list[dict] = []
     if include_documents and data.get("intent") in ("question", "search"):
         try:
             docs = document_search_service.search(
-                db, query=q, company_id=current_user.company_id, limit=limit
+                db,
+                query=q,
+                company_id=current_user.company_id,
+                limit=limit,
+                enable_answer=False,
             )
         except Exception:
             docs = []
+
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+    if elapsed_ms > 200:
+        logger.warning("Slow command-bar search: %.1fms for q=%r", elapsed_ms, q)
 
     return {
         "intent": data.get("intent", "search"),
@@ -151,7 +170,46 @@ def command_bar_search(
         "answer": data.get("answer"),
         "records": data.get("records", []),
         "documents": docs,
+        "ask_ai": data.get("ask_ai"),
+        "_debug_ms": elapsed_ms,
     }
+
+
+class AskAIRequest(BaseModel):
+    query: str
+    history: Optional[list[dict[str, str]]] = None
+
+
+@router.post("/command-bar/ai")
+def command_bar_ai(
+    request: AskAIRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Explicit "Ask Bridgeable AI" action.
+
+    Only fires when the user deliberately selects the Ask AI result —
+    NOT called from the automatic search pipeline. This is where we
+    pay the Claude round-trip; users expect the delay because they
+    explicitly chose AI.
+    """
+    query = (request.query or "").strip()
+    if not query:
+        return {"answer": "Ask a question to get started.", "confidence": 0.0, "referenced_record_ids": []}
+    try:
+        return command_bar_data_search.ask_ai(
+            db,
+            query=query,
+            company_id=current_user.company_id,
+            history=request.history or [],
+        )
+    except Exception as e:
+        logger.warning("Ask AI error: %s", e)
+        return {
+            "answer": "Sorry — I couldn't reach Bridgeable AI right now.",
+            "confidence": 0.0,
+            "referenced_record_ids": [],
+        }
 
 
 @router.get("/command-bar/recent")

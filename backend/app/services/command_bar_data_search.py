@@ -748,16 +748,51 @@ def _try_claude_catalog_answer(
     }
 
 
+def ask_ai(
+    db: Session,
+    query: str,
+    company_id: str,
+    history: list[dict] | None = None,
+) -> dict:
+    """Public entry point for the explicit "Ask Bridgeable AI" action.
+
+    Called only when the user deliberately selects the Ask AI result —
+    NOT in the automatic search pipeline. Returns
+    {"answer": str, "referenced_record_ids": [...], "confidence": float}
+    even when the model isn't confident (so the UI has something to show).
+
+    `history` accepts prior {role, content} turns so follow-ups work.
+    Ignored today — wire in once the multi-turn UI lands.
+    """
+    _ = history  # placeholder for follow-up support
+    result = _try_claude_catalog_answer(db, query, company_id)
+    if result is None:
+        return {
+            "answer": (
+                "I couldn't find a confident answer in your product catalog. "
+                "Try rephrasing or browsing the relevant section directly."
+            ),
+            "referenced_record_ids": [],
+            "confidence": 0.0,
+        }
+    return {
+        "answer": result.get("headline", ""),
+        "referenced_record_ids": result.get("related_record_ids", []),
+        "confidence": float(result.get("confidence") or 0.0),
+    }
+
+
 def try_answer(db: Session, query: str, company_id: str) -> dict | None:
-    """Attempt to answer a question from platform data. Runs handlers in
-    priority order — fast pattern matchers first, then a Claude fallback
-    that consults the product catalog. Returns None if nothing matches."""
+    """Attempt to answer a question from platform data using ONLY fast,
+    deterministic handlers — no Claude API calls. The command bar search
+    pipeline must return in under 100ms. AI is reserved for the explicit
+    "Ask Bridgeable AI" action that the user clicks deliberately; see
+    _try_claude_catalog_answer for the kept-but-unused implementation."""
     handlers = (
         _try_answer_price,
         _try_answer_inventory,
         _try_answer_recent_order,
         _try_answer_contact_info,
-        _try_claude_catalog_answer,  # slowest, fires last
     )
     for fn in handlers:
         try:
@@ -810,9 +845,23 @@ def answer_or_search(
         records.extend(search_contacts(db, term, company_id, limit=3))
         records.extend(search_orders(db, term, company_id, limit=3))
 
+    # Always append an explicit "Ask Bridgeable AI" entry so the user
+    # has an opt-in path when the deterministic results aren't useful.
+    # Frontend renders this with a visual separator; it never replaces
+    # the pattern-based ANSWER when one exists.
+    ask_ai_result = {
+        "result_type": "ask_ai",
+        "id": f"ask_ai:{q}",
+        "icon": "🤖",
+        "title": "Ask Bridgeable AI",
+        "subtitle": f'"{q}"',
+        "query": q,
+    }
+
     return {
         "intent": intent,
         "answered": bool(answer),
         "answer": answer,
         "records": records[:8],
+        "ask_ai": ask_ai_result,
     }

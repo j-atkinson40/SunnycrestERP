@@ -52,6 +52,7 @@ const TYPE_RANK: Record<string, number> = {
   VIEW: 5,
   NAV: 6,
   ASK: 7,
+  ASK_AI: 99,  // always last
 };
 
 function sortByTypeRank(actions: CommandAction[]): CommandAction[] {
@@ -97,6 +98,7 @@ const TYPE_BADGE_CLASSES: Record<string, string> = {
   RECORD: "bg-emerald-100 text-emerald-700",
   NAV: "bg-purple-100 text-purple-700",
   ASK: "bg-amber-100 text-amber-700",
+  ASK_AI: "bg-indigo-100 text-indigo-700",
 };
 
 function TypeBadge({ type }: { type: string }) {
@@ -202,6 +204,14 @@ interface CommandBarSearchResponse {
     route?: string;
   }>;
   documents?: DocumentOrAnswerResult[];
+  ask_ai?: {
+    result_type: "ask_ai";
+    id: string;
+    icon: string;
+    title: string;
+    subtitle: string;
+    query: string;
+  } | null;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -224,6 +234,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const [apiAnswer, setApiAnswer] = useState<string | null>(null);
   const [searchingDocs, setSearchingDocs] = useState(false);
   const [activeWorkflow, setActiveWorkflow] = useState<{ id: string; title: string } | null>(null);
+  const [aiMode, setAiMode] = useState<{ query: string; answer: string; loading: boolean } | null>(null);
   const [openSlideOver, setOpenSlideOver] = useState<{ recordType: string; recordId: string; title: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -433,11 +444,28 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           } as CommandAction;
         });
 
+        // Always offer an explicit Ask AI action — it's ranked last so it
+        // appears only after all deterministic results.
+        const askAi = searchData.ask_ai;
+        const askAiActions: CommandAction[] = askAi
+          ? [{
+              id: askAi.id,
+              keywords: [],
+              title: askAi.title,
+              subtitle: askAi.subtitle,
+              icon: "zap",
+              type: "ASK_AI",
+              roles: [],
+              vertical: "manufacturing",
+            } as CommandAction]
+          : [];
+
         // When a question was pattern-answered, suppress generic nav/action
         // clutter so the answer and its related records own the results.
+        // Ask AI stays in both branches so users can always escalate to AI.
         const sources: CommandAction[][] = wasAnswered
-          ? [answerActions, recordActions, docActions]
-          : [workflowActions, answerActions, filteredApiResults, recordActions, docActions, localMatches];
+          ? [answerActions, recordActions, docActions, askAiActions]
+          : [workflowActions, answerActions, filteredApiResults, recordActions, docActions, localMatches, askAiActions];
 
         const byId = new Map<string, CommandAction>();
         for (const a of sources.flat()) {
@@ -491,6 +519,29 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
       // WORKFLOW — switch to inline controller, keep bar open
       if (action.type === "WORKFLOW" && action.workflowId) {
         setActiveWorkflow({ id: action.workflowId, title: action.title });
+        return;
+      }
+
+      // ASK_AI — open the AI panel inline. Only fires when user clicks.
+      if (action.type === "ASK_AI") {
+        const aiQuery = query.trim();
+        if (!aiQuery) return;
+        setAiMode({ query: aiQuery, answer: "", loading: true });
+        apiClient
+          .post<{ answer: string; confidence: number; referenced_record_ids: string[] }>(
+            "/core/command-bar/ai",
+            { query: aiQuery, history: [] }
+          )
+          .then((r) => {
+            setAiMode({ query: aiQuery, answer: r.data.answer || "", loading: false });
+          })
+          .catch(() => {
+            setAiMode({
+              query: aiQuery,
+              answer: "Sorry — I couldn't reach Bridgeable AI right now.",
+              loading: false,
+            });
+          });
         return;
       }
 
@@ -705,8 +756,55 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           />
         )}
 
+        {/* AI panel — opened when the user selects Ask Bridgeable AI */}
+        {!activeWorkflow && aiMode && (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
+              <button
+                onClick={() => setAiMode(null)}
+                className="text-sm font-medium text-gray-500 hover:text-gray-800"
+              >
+                ← Back
+              </button>
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <span>🤖</span>
+                Bridgeable AI
+              </div>
+            </div>
+            <div className="border-b border-gray-100 bg-gray-50 px-4 py-3 text-sm italic text-gray-600">
+              "{aiMode.query}"
+            </div>
+            <div className="max-h-[320px] min-h-[120px] overflow-y-auto px-4 py-4">
+              {aiMode.loading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Thinking…
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+                  {aiMode.answer}
+                </div>
+              )}
+            </div>
+            {!aiMode.loading && aiMode.answer && (
+              <div className="flex items-center gap-3 border-t border-gray-100 px-4 py-2">
+                <button
+                  onClick={() => {
+                    try {
+                      void navigator.clipboard?.writeText(aiMode.answer)
+                    } catch { /* noop */ }
+                  }}
+                  className="text-xs text-gray-500 hover:text-gray-800"
+                >
+                  Copy answer
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Results */}
-        {!activeWorkflow && <div className="max-h-[380px] overflow-y-auto">
+        {!activeWorkflow && !aiMode && <div className="max-h-[380px] overflow-y-auto">
           {/* Recent actions when empty */}
           {showRecent && (
             <div className="p-2">
@@ -752,9 +850,17 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
                 // ANSWER rows can be long — wrap instead of truncating so
                 // the full extracted answer is always readable.
                 const isAnswer = action.type === "ANSWER"
+                const isAskAi = action.type === "ASK_AI"
+                // Visual separator above the Ask AI row so it reads as a
+                // distinct escape hatch below the deterministic results.
+                const prevIsAskAi = i > 0 && results[i - 1]?.type === "ASK_AI"
+                const showDividerBefore = isAskAi && !prevIsAskAi && i > 0
                 return (
+                  <div key={action.id}>
+                    {showDividerBefore && (
+                      <div className="mx-2 my-1 border-t border-gray-100" />
+                    )}
                   <button
-                    key={action.id}
                     onClick={() => executeAction(action)}
                     className={`flex w-full gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
                       isAnswer ? "items-start" : "items-center"
@@ -792,6 +898,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
                       <TypeBadge type={action.type} />
                     </div>
                   </button>
+                  </div>
                 )
               })}
             </div>
