@@ -46,8 +46,71 @@ def build_field_schema(workflow: Workflow, steps: list[WorkflowStep]) -> list[di
     return schema
 
 
+# Workflow-specific vocabulary that Claude should understand when
+# extracting. Keep these short and high-signal — long hints cost
+# tokens on every debounce tick.
+WORKFLOW_EXTRACTION_HINTS: dict[str, str] = {
+    "wf_mfg_create_order": """
+VAULT PRODUCTS (fuzzy match to full name):
+  continental → Continental Standard
+  monticello → Monticello Standard
+  presidential → Presidential
+  triune → Triune
+  flat top / flattop → Flat Top
+
+EQUIPMENT BUNDLES:
+  full equipment / full setup / full package / complete setup → Full Equipment
+  lowering and grass / lowering grass / device and grass → Lowering Device & Grass
+  lowering only / just lowering → Lowering Device Only
+  tent only / just tent → Tent Only
+  equipment only → Equipment Only
+
+CUSTOMERS: partial funeral home names should match CRM contacts.
+  Hopkins → Hopkins Funeral Home
+  Murphy → Murphy Funeral Home
+
+DELIVERY: resolve "Friday", "next week", "the 17th", "tomorrow" to YYYY-MM-DD.
+""",
+    "wf_mfg_disinterment": """
+CUSTOMERS are funeral homes initiating the disinterment.
+LOCATION is the cemetery / current interment address.
+Urgency words (ASAP, rush, emergency) belong in the notes field.
+Match partial funeral home names to CRM.
+""",
+    "wf_mfg_schedule_delivery": """
+ORDER can be referenced by number ("order 1234", "#1234") or by
+  customer name ("the Hopkins order").
+DRIVER is a team member — match first names.
+DATE: morning defaults to 08:00, afternoon to 13:00 when unspecified.
+""",
+    "wf_mfg_log_pour": """
+PRODUCT names match the vault product catalog.
+QUANTITY is always a whole number.
+""",
+    "wf_mfg_send_statement": """
+CUSTOMER is a funeral home or other company in CRM.
+Partial names should match (e.g. "Hopkins" → Hopkins Funeral Home).
+""",
+    "wf_fh_first_call": """
+DISPOSITION:
+  burial / ground burial / traditional → burial
+  cremation / direct cremation / crem → cremation
+  cremation with service / memorial → cremation_with_service
+DIRECTOR: match first names of funeral home staff.
+FAMILY NAME: the surname of the deceased.
+""",
+    "wf_fh_schedule_arrangement": """
+CASE: reference by family name or case number.
+DIRECTOR: match first names of funeral home staff.
+TIME: morning = AM, afternoon = PM when ambiguous.
+""",
+}
+
+
 def build_system_prompt(
-    field_schema: list[dict], existing_fields: dict[str, dict]
+    field_schema: list[dict],
+    existing_fields: dict[str, dict],
+    workflow_id: str | None = None,
 ) -> str:
     descs: list[str] = []
     for f in field_schema:
@@ -90,6 +153,9 @@ def build_system_prompt(
     )
     fields_block = "\n".join(descs) if descs else "(no fields)"
 
+    hint = WORKFLOW_EXTRACTION_HINTS.get(workflow_id or "", "").strip()
+    hint_block = f"\n\nWorkflow-specific vocabulary:\n{hint}\n" if hint else ""
+
     return (
         "You extract structured workflow field values from a user's natural-language "
         "description. Output JSON only, matching the requested schema.\n\n"
@@ -103,7 +169,8 @@ def build_system_prompt(
         "5. Company / contact names: return the name as spoken; the system will fuzzy-match.\n"
         "6. Confidence: 0.95 unambiguous · 0.80 reasonable · 0.60 ambiguous · below 0.60 return null.\n"
         "7. When ambiguous, include an 'alternatives' list.\n"
-        f"{already_block}\n\n"
+        f"{already_block}"
+        f"{hint_block}\n"
         'JSON shape: {"field_key": {"value": "...", "confidence": 0.95, "alternatives": []}, ...}.'
         " Omit fields not mentioned OR set them to null."
     )
@@ -285,7 +352,7 @@ def extract(
     if not schema:
         return {"fields": {}, "raw_input": input_text}
 
-    system_prompt = build_system_prompt(schema, existing)
+    system_prompt = build_system_prompt(schema, existing, workflow_id=workflow.id)
     try:
         # is_final toggles to the more accurate model. ai_service.call_anthropic
         # does not expose model override today so we always use its default;

@@ -14,6 +14,9 @@ export interface ExtractedField {
   previous_value?: string
   is_conflict?: boolean
   is_new?: boolean
+  // Director typed this manually via click-to-edit — extractions
+  // must never overwrite it.
+  isManual?: boolean
 }
 
 export type FieldMap = Record<string, ExtractedField>
@@ -37,6 +40,8 @@ export function mergeExtractions(
     if (nf.confidence < 0.6) continue
 
     const cur = merged[key]
+    // Director-edited values are sacred — no extraction overrides them.
+    if (cur?.isManual) continue
     if (!cur) {
       merged[key] = { ...nf, is_new: true }
       continue

@@ -57,6 +57,8 @@ export function NaturalLanguageOverlay({
   const [extracting, setExtracting] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState("")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -84,6 +86,79 @@ export function NaturalLanguageOverlay({
     (k) => !fields[k] || (fields[k]?.confidence ?? 0) < 0.7,
   ).length
   const allRequiredFilled = missingCount === 0 && requiredKeys.length > 0
+  const unresolvedConflicts = Object.values(fields).filter(
+    (f) => f?.is_conflict,
+  ).length
+  const canSubmit = allRequiredFilled && !submitting && unresolvedConflicts === 0
+
+  // Click-to-edit handlers
+  const startEdit = (fieldKey: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setEditingField(fieldKey)
+    setEditValue(fields[fieldKey]?.display_value ?? "")
+  }
+  const confirmEdit = (fieldKey: string) => {
+    const trimmed = editValue.trim()
+    setFields((prev) => {
+      const next = { ...prev }
+      if (!trimmed) {
+        delete next[fieldKey]
+      } else {
+        next[fieldKey] = {
+          value: trimmed,
+          display_value: trimmed,
+          confidence: 1.0,
+          isManual: true,
+        }
+      }
+      return next
+    })
+    setEditingField(null)
+    setEditValue("")
+    textareaRef.current?.focus()
+  }
+  const cancelEdit = () => {
+    setEditingField(null)
+    setEditValue("")
+    textareaRef.current?.focus()
+  }
+
+  // Conflict resolution
+  const acceptConflict = (fieldKey: string) => {
+    setFields((prev) => {
+      const f = prev[fieldKey]
+      if (!f) return prev
+      return {
+        ...prev,
+        [fieldKey]: {
+          ...f,
+          is_conflict: false,
+          previous_value: undefined,
+          // Accepted = director deliberately chose this value, treat as
+          // manual so future extractions don't flip it back.
+          isManual: true,
+        },
+      }
+    })
+  }
+  const revertConflict = (fieldKey: string) => {
+    setFields((prev) => {
+      const f = prev[fieldKey]
+      if (!f?.previous_value) return prev
+      return {
+        ...prev,
+        [fieldKey]: {
+          ...f,
+          value: f.previous_value,
+          display_value: f.previous_value,
+          confidence: 0.95,
+          is_conflict: false,
+          previous_value: undefined,
+          isManual: true,
+        },
+      }
+    })
+  }
 
   const runExtraction = useCallback(
     async (input: string, isFinal: boolean): Promise<FieldMap | null> => {
@@ -159,7 +234,7 @@ export function NaturalLanguageOverlay({
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault()
-        if (allRequiredFilled) handleSubmit()
+        if (canSubmit) handleSubmit()
       } else if (e.key === "Escape") {
         e.preventDefault()
         onCancel()
@@ -221,9 +296,18 @@ export function NaturalLanguageOverlay({
         {inputSteps.map((step) => (
           <FieldRow
             key={step.step_key}
+            fieldKey={step.step_key}
             label={labelFor(step)}
             required={step.config?.required !== false}
             field={fields[step.step_key] ?? null}
+            isEditing={editingField === step.step_key}
+            editValue={editValue}
+            onStartEdit={() => startEdit(step.step_key)}
+            onEditChange={setEditValue}
+            onConfirmEdit={() => confirmEdit(step.step_key)}
+            onCancelEdit={cancelEdit}
+            onAcceptConflict={() => acceptConflict(step.step_key)}
+            onRevertConflict={() => revertConflict(step.step_key)}
           />
         ))}
       </div>
@@ -237,18 +321,20 @@ export function NaturalLanguageOverlay({
       <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
         <button
           onClick={handleSubmit}
-          disabled={!allRequiredFilled || submitting}
+          disabled={!canSubmit}
           className={`w-full rounded-xl py-2.5 text-sm font-semibold transition ${
-            allRequiredFilled && !submitting
+            canSubmit
               ? "bg-gray-900 text-white hover:bg-gray-800 shadow-sm"
               : "cursor-not-allowed bg-gray-100 text-gray-400"
           }`}
         >
           {submitting
             ? "Creating…"
-            : allRequiredFilled
-              ? "Create →"
-              : `Fill in ${missingCount} more field${missingCount === 1 ? "" : "s"}`}
+            : unresolvedConflicts > 0
+              ? `Resolve ${unresolvedConflicts} conflict${unresolvedConflicts === 1 ? "" : "s"} first`
+              : allRequiredFilled
+                ? "Create →"
+                : `Fill in ${missingCount} more field${missingCount === 1 ? "" : "s"}`}
         </button>
       </div>
     </div>
@@ -260,47 +346,129 @@ export function NaturalLanguageOverlay({
 // ─────────────────────────────────────────────────────────────────────
 
 function FieldRow({
+  fieldKey,
   label,
   required,
   field,
+  isEditing,
+  editValue,
+  onStartEdit,
+  onEditChange,
+  onConfirmEdit,
+  onCancelEdit,
+  onAcceptConflict,
+  onRevertConflict,
 }: {
+  fieldKey: string
   label: string
   required: boolean
   field: ExtractedField | null
+  isEditing: boolean
+  editValue: string
+  onStartEdit: () => void
+  onEditChange: (v: string) => void
+  onConfirmEdit: () => void
+  onCancelEdit: () => void
+  onAcceptConflict: () => void
+  onRevertConflict: () => void
 }) {
-  if (!field && !required) return null
+  void fieldKey
+  if (!field && !required && !isEditing) return null
   const conf = field?.confidence ?? 0
   const has = !!field && !!field.display_value
 
+  // Editing state
+  if (isEditing) {
+    return (
+      <div className="-mx-2 flex items-center gap-3 rounded-lg bg-blue-50 px-2 py-2 ring-1 ring-blue-200">
+        <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400">
+          {label}
+        </span>
+        <input
+          type="text"
+          value={editValue}
+          onChange={(e) => onEditChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === "Tab") {
+              e.preventDefault()
+              onConfirmEdit()
+            } else if (e.key === "Escape") {
+              e.preventDefault()
+              onCancelEdit()
+            }
+          }}
+          autoFocus
+          className="flex-1 border-none bg-transparent text-sm font-medium text-gray-900 outline-none"
+        />
+        <button
+          onClick={onConfirmEdit}
+          className="flex-shrink-0 text-xs font-medium text-blue-600 hover:text-blue-700"
+        >
+          Done
+        </button>
+      </div>
+    )
+  }
+
+  // Conflict state — shows old → new with accept/revert
+  if (field?.is_conflict) {
+    return (
+      <div className="-mx-2 flex items-center gap-3 rounded-lg bg-amber-50 px-2 py-2 ring-1 ring-amber-200">
+        <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400">
+          {label}
+        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+          <span className="max-w-[35%] truncate text-gray-400 line-through">
+            {field.previous_value}
+          </span>
+          <span className="flex-shrink-0 text-xs text-amber-500">→</span>
+          <span className="truncate font-medium text-gray-900">
+            {field.display_value}
+          </span>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onAcceptConflict()
+            }}
+            title="Use new value"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs text-emerald-700 hover:bg-emerald-200"
+          >
+            ✓
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onRevertConflict()
+            }}
+            title="Keep previous value"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs text-gray-600 hover:bg-gray-200"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Idle — clickable (whether filled or empty required)
   return (
     <div
-      className={`-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 ${
-        field?.is_conflict ? "bg-amber-50" : ""
-      }`}
+      onClick={onStartEdit}
+      className="group -mx-2 flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-gray-50"
     >
       <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400">
         {label}
       </span>
       <div className="min-w-0 flex-1 text-sm">
         {has ? (
-          field?.is_conflict ? (
-            <span className="flex items-center gap-2">
-              <span className="text-gray-400 line-through">
-                {field.previous_value}
-              </span>
-              <span className="text-amber-600">→</span>
-              <span className="font-medium text-gray-900">
-                {field.display_value}
-              </span>
-            </span>
-          ) : (
-            <span className="truncate font-medium text-gray-900">
-              {field.display_value}
-            </span>
-          )
+          <span className="truncate font-medium text-gray-900">
+            {field!.display_value}
+          </span>
         ) : (
-          <span className="text-gray-300">
-            {required ? "Required" : "Optional"}
+          <span className="text-gray-300 italic">
+            {required ? "Required — click to add" : "Optional"}
           </span>
         )}
       </div>
@@ -308,9 +476,15 @@ function FieldRow({
         {!has ? (
           <span
             className={`inline-block h-2 w-2 rounded-full ${
-              required ? "bg-red-400" : "bg-gray-200"
+              required
+                ? "bg-red-300 group-hover:bg-red-400"
+                : "bg-gray-200"
             }`}
           />
+        ) : field?.isManual ? (
+          <span className="text-sm text-slate-500" title="Manually entered">
+            ✎
+          </span>
         ) : conf >= 0.85 ? (
           <span className="text-sm text-emerald-500">✓</span>
         ) : conf >= 0.65 ? (
@@ -319,6 +493,11 @@ function FieldRow({
           <span className="inline-block h-2 w-2 rounded-full bg-red-400" />
         )}
       </div>
+      {has && (
+        <span className="ml-1 text-xs text-gray-300 opacity-0 transition-opacity group-hover:opacity-100">
+          ✎
+        </span>
+      )}
     </div>
   )
 }
