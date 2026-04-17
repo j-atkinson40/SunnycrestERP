@@ -8,6 +8,7 @@ import {
 } from "react";
 import { CommandBar } from "@/components/core/CommandBar";
 import type { CommandAction } from "@/core/actionRegistry";
+import { setCmdShortcutState } from "@/lib/cmd-digit-shortcuts";
 
 interface CommandBarContextValue {
   open: () => void;
@@ -47,12 +48,17 @@ export function CommandBarProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     isOpenRef.current = isOpen;
+    // Tell the module-scope Cmd+N listener (installed in main.tsx) about
+    // the current bar state.
+    setCmdShortcutState({ isOpen });
   }, [isOpen]);
 
   const setShortcutRefs = useCallback(
     (refs: { results: CommandAction[]; execute: (action: CommandAction) => void }) => {
       resultsRef.current = refs.results;
       executeRef.current = refs.execute;
+      // Mirror into the module-scope state so the pre-React listener can act.
+      setCmdShortcutState({ results: refs.results, execute: refs.execute });
     },
     [],
   );
@@ -101,51 +107,9 @@ export function CommandBarProvider({ children }: { children: React.ReactNode }) 
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, open, openVoice, close]);
 
-  // ─────────────────────────────────────────────────────────────────
-  // Cmd+1..5 quick-pick — MUST be capture phase on window, attached ONCE
-  // for the provider's lifetime. Moving it here (rather than inside
-  // CommandBar which unmounts when closed) eliminates the re-register
-  // race where the browser wins the tab-switch shortcut during the
-  // brief window between effect cleanup and re-attach.
-  //
-  // The listener reads bar state via refs, so it never needs to re-run.
-  // ─────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const handleShortcut = (e: KeyboardEvent) => {
-      // Only intercept when the command bar is open.
-      if (!isOpenRef.current) return;
-      if (!(e.metaKey || e.ctrlKey)) return;
-
-      const fromKey = parseInt(e.key, 10);
-      const fromCode = e.code && e.code.startsWith("Digit") ? parseInt(e.code.slice(5), 10) : NaN;
-      const num = !Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5
-        ? fromKey
-        : (!Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5 ? fromCode : null);
-      if (!num) return;
-
-      // CRITICAL: preventDefault BEFORE any other check. If we skip it
-      // (e.g. because results haven't loaded yet), the browser wins the
-      // race to the Cmd+N tab-switch shortcut.
-      e.preventDefault();
-      e.stopPropagation();
-      const maybeStopImmediate = (e as KeyboardEvent & { stopImmediatePropagation?: () => void }).stopImmediatePropagation;
-      if (typeof maybeStopImmediate === "function") {
-        maybeStopImmediate.call(e);
-      }
-
-      const target = resultsRef.current[num - 1];
-      const exec = executeRef.current;
-      if (target && exec) exec(target);
-    };
-
-    const opts: AddEventListenerOptions = { capture: true };
-    window.addEventListener("keydown", handleShortcut, opts);
-    document.addEventListener("keydown", handleShortcut, opts);
-    return () => {
-      window.removeEventListener("keydown", handleShortcut, opts);
-      document.removeEventListener("keydown", handleShortcut, opts);
-    };
-  }, []); // no deps — attach ONCE for the lifetime of the provider
+  // Cmd+1..5 is handled by the listener installed in main.tsx
+  // (see @/lib/cmd-digit-shortcuts). Provider just keeps its state
+  // in sync via setCmdShortcutState above.
 
   return (
     <CommandBarContext.Provider value={{ open, openVoice, close, isOpen, setShortcutRefs }}>
