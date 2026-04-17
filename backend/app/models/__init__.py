@@ -325,6 +325,7 @@ from app.models.workflow import (
 )
 from app.models.vault_document import VaultDocument
 from app.models.command_bar import DocumentSearchIndex, CommandBarHistory
+from app.models.saved_order import SavedOrder
 from app.models.funeral_case import (
     FuneralCase,
     CaseDeceased,
@@ -516,6 +517,7 @@ __all__ = [
     "SageExportConfig",
     "SalesOrder",
     "SalesOrderLine",
+    "SavedOrder",
     "StockReplenishmentRule",
     "Subscription",
     "SubscriptionPlan",

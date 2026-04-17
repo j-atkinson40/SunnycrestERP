@@ -5,7 +5,7 @@
 // engine's start endpoint.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Loader2, Zap } from "lucide-react"
+import { Bookmark, Loader2, Zap } from "lucide-react"
 import apiClient from "@/lib/api-client"
 import {
   flattenForSubmit,
@@ -15,6 +15,20 @@ import {
   type FieldMap,
 } from "@/utils/extractionMerge"
 import type { WorkflowRunState } from "@/components/workflows/WorkflowController"
+
+// ─── Saved Order types ───────────────────────────────────────────────
+interface SavedOrderMatch {
+  id: string
+  name: string
+  workflow_id: string
+  trigger_keywords: string[]
+  product_type: string | null
+  entry_intent: "order" | "quote"
+  saved_fields: Record<string, unknown>
+  scope: "user" | "company"
+  use_count: number
+  days_since_last_use: number | null
+}
 
 interface WorkflowInputStep {
   step_order: number
@@ -66,6 +80,16 @@ export function NaturalLanguageOverlay({
   const [productTypeLabel, setProductTypeLabel] = useState<string | null>(null)
   const [direction, setDirection] = useState<"sales" | "purchase">("sales")
   const [entryIntent, setEntryIntent] = useState<"order" | "quote">("order")
+
+  // Saved-order template state
+  const [savedOrderMatch, setSavedOrderMatch] = useState<SavedOrderMatch | null>(null)
+  const [savedOrderApplied, setSavedOrderApplied] = useState(false)
+  const [activeSavedOrderId, setActiveSavedOrderId] = useState<string | null>(null)
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+
+  // Post-submit save prompt state
+  const [savePromptRun, setSavePromptRun] = useState<WorkflowRunState | null>(null)
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -197,10 +221,65 @@ export function NaturalLanguageOverlay({
     [workflow.id, fields],
   )
 
+  const applyTemplateSuggestions = useCallback((match: SavedOrderMatch) => {
+    // Turn saved_fields (flat {key: value}) into FieldMap entries
+    // marked as manual so Claude doesn't overwrite them.
+    setFields((prev) => {
+      const next = { ...prev }
+      for (const [k, v] of Object.entries(match.saved_fields || {})) {
+        if (v === null || v === undefined || v === "") continue
+        // Don't stomp user-edited fields.
+        if (next[k]?.isManual) continue
+        const s = typeof v === "string" ? v : JSON.stringify(v)
+        next[k] = {
+          value: v,
+          display_value: s,
+          confidence: 1.0,
+          isManual: true,
+        }
+      }
+      return next
+    })
+    if (match.product_type) setProductTypeLabel(match.product_type)
+    if (match.entry_intent) setEntryIntent(match.entry_intent)
+    setSavedOrderApplied(true)
+    setActiveSavedOrderId(match.id)
+    setSavedOrderMatch(null)
+  }, [])
+
+  const checkSavedOrderMatch = useCallback(
+    async (input: string) => {
+      if (savedOrderApplied) return
+      if (!input || input.trim().length < 2) {
+        setSavedOrderMatch(null)
+        return
+      }
+      try {
+        const { data } = await apiClient.post<{ match: SavedOrderMatch | null }>(
+          "/saved-orders/match",
+          { input_text: input },
+        )
+        const m = data.match
+        if (!m || dismissedIds.has(m.id)) {
+          setSavedOrderMatch(null)
+          return
+        }
+        setSavedOrderMatch(m)
+      } catch {
+        // Non-fatal — overlay continues with extraction
+      }
+    },
+    [savedOrderApplied, dismissedIds],
+  )
+
   const scheduleLiveExtraction = useCallback(
     (input: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(async () => {
+        // 1. Saved-order match runs first — fast, DB-only, no Claude call.
+        await checkSavedOrderMatch(input)
+        // 2. Claude extraction still runs in parallel so typing past a
+        //    template keyword flows naturally into field extraction.
         setExtracting(true)
         const incoming = await runExtraction(input, false)
         setExtracting(false)
@@ -209,7 +288,7 @@ export function NaturalLanguageOverlay({
         }
       }, 600)
     },
-    [runExtraction],
+    [runExtraction, checkSavedOrderMatch],
   )
 
   const onTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -235,7 +314,13 @@ export function NaturalLanguageOverlay({
         `/workflows/${workflow.id}/start`,
         { initial_inputs: flattenForSubmit(merged) },
       )
-      onComplete(data)
+      // If the user did NOT just apply a saved template, offer to save
+      // this pattern. If they did, just finish.
+      if (activeSavedOrderId) {
+        onComplete(data)
+      } else {
+        setSavePromptRun(data)
+      }
     } catch (e) {
       const detail = (
         e as { response?: { data?: { detail?: string } }; message?: string }
@@ -262,6 +347,18 @@ export function NaturalLanguageOverlay({
   }, [allRequiredFilled, text, fields])
 
   const placeholder = useMemo(() => getPlaceholder(workflow.id), [workflow.id])
+
+  // After a successful submit with no template applied, show the save
+  // prompt instead of the compose UI — user either saves or skips.
+  if (savePromptRun) {
+    return (
+      <SaveOrderPrompt
+        run={savePromptRun}
+        rawInput={text}
+        onFinish={() => onComplete(savePromptRun)}
+      />
+    )
+  }
 
   return (
     <div className="flex flex-col min-w-[480px]">
@@ -303,6 +400,49 @@ export function NaturalLanguageOverlay({
           <span className="text-xs text-gray-400">⌘↵ to create</span>
         </div>
       </div>
+
+      {savedOrderMatch && !savedOrderApplied && (
+        <div className="mx-4 mt-1 flex items-center gap-2 rounded-md bg-indigo-50 px-3 py-2 text-xs ring-1 ring-indigo-200">
+          <Bookmark className="h-3.5 w-3.5 flex-shrink-0 text-indigo-600" />
+          <div className="min-w-0 flex-1">
+            <span className="font-semibold text-indigo-900">
+              Saved: {savedOrderMatch.name}
+            </span>
+            <span className="ml-1.5 text-indigo-600/80">
+              · used {savedOrderMatch.use_count}×
+              {savedOrderMatch.days_since_last_use !== null &&
+                ` · ${savedOrderMatch.days_since_last_use}d ago`}
+              {savedOrderMatch.scope === "company" && " · team"}
+            </span>
+          </div>
+          <button
+            onClick={() => applyTemplateSuggestions(savedOrderMatch)}
+            className="flex-shrink-0 rounded bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-indigo-700"
+          >
+            Use
+          </button>
+          <button
+            onClick={() => {
+              setDismissedIds((prev) => {
+                const next = new Set(prev)
+                next.add(savedOrderMatch.id)
+                return next
+              })
+              setSavedOrderMatch(null)
+            }}
+            className="flex-shrink-0 text-[11px] text-indigo-500 hover:text-indigo-800"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {savedOrderApplied && activeSavedOrderId && (
+        <div className="mx-4 mt-1 flex items-center gap-2 rounded-md bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700">
+          <Bookmark className="h-3 w-3" />
+          <span>Template applied — fields pre-filled</span>
+        </div>
+      )}
 
       {(productTypeLabel || entryIntent === "quote") && (
         <div
@@ -597,6 +737,228 @@ function submitActionLabel(
   if (direction === "purchase") return "Place Purchase Order →"
   if (productTypeLabel === "Disinterment") return "Log Disinterment →"
   return "Create Order →"
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Post-submit "Save this as a template?" prompt
+// ─────────────────────────────────────────────────────────────────────
+
+function generateSuggestedName(rawInput: string, fallback: string): string {
+  const words = rawInput.trim().split(/\s+/).slice(0, 6).join(" ")
+  return (words || fallback).slice(0, 80)
+}
+
+function generateKeywords(rawInput: string): string[] {
+  const stop = new Set([
+    "the","a","an","for","to","on","at","and","or","of","with","in","from","by",
+    "is","it","this","that","be","are","was","will","me","our","us","we",
+  ])
+  const tokens = rawInput
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !stop.has(w))
+  // Keep order, dedupe, cap at 4
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const t of tokens) {
+    if (seen.has(t)) continue
+    seen.add(t)
+    out.push(t)
+    if (out.length >= 4) break
+  }
+  return out
+}
+
+function KeywordInput({
+  value,
+  onChange,
+}: {
+  value: string[]
+  onChange: (v: string[]) => void
+}) {
+  const [draft, setDraft] = useState("")
+  const commit = () => {
+    const kw = draft.trim().toLowerCase()
+    if (!kw) return
+    if (value.includes(kw)) {
+      setDraft("")
+      return
+    }
+    onChange([...value, kw])
+    setDraft("")
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+      {value.map((kw) => (
+        <span
+          key={kw}
+          className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700"
+        >
+          {kw}
+          <button
+            onClick={() => onChange(value.filter((k) => k !== kw))}
+            className="text-indigo-400 hover:text-indigo-800"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault()
+            commit()
+          } else if (e.key === "Backspace" && !draft && value.length) {
+            onChange(value.slice(0, -1))
+          }
+        }}
+        onBlur={commit}
+        placeholder={value.length ? "" : "add keyword…"}
+        className="min-w-[80px] flex-1 border-none bg-transparent text-sm outline-none placeholder:text-gray-400"
+      />
+    </div>
+  )
+}
+
+function SaveOrderPrompt({
+  run,
+  rawInput,
+  onFinish,
+}: {
+  run: WorkflowRunState
+  rawInput: string
+  onFinish: () => void
+}) {
+  const [name, setName] = useState(() =>
+    generateSuggestedName(rawInput, "Saved order"),
+  )
+  const [keywords, setKeywords] = useState<string[]>(() =>
+    generateKeywords(rawInput),
+  )
+  const [scope, setScope] = useState<"user" | "company">("user")
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const canSave = name.trim().length > 0 && keywords.length > 0 && !saving
+
+  const save = async () => {
+    if (!canSave) return
+    setSaving(true)
+    setErr(null)
+    try {
+      await apiClient.post("/saved-orders", {
+        workflow_run_id: run.id,
+        name: name.trim(),
+        trigger_keywords: keywords,
+        scope,
+      })
+      onFinish()
+    } catch (e) {
+      const detail = (
+        e as { response?: { data?: { detail?: string } } }
+      )?.response?.data?.detail
+      setErr(detail || "Could not save template")
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col min-w-[480px]">
+      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
+        <Bookmark className="h-4 w-4 text-indigo-600" />
+        <span className="text-sm font-semibold text-gray-900">
+          Save as template?
+        </span>
+        <button
+          onClick={onFinish}
+          className="ml-auto text-xs text-gray-400 hover:text-gray-700"
+        >
+          Skip
+        </button>
+      </div>
+
+      <div className="space-y-3 px-4 py-4">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            Name
+          </label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="Hopkins Continental — standard"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            Trigger keywords
+          </label>
+          <KeywordInput value={keywords} onChange={setKeywords} />
+          <p className="mt-1 text-[11px] text-gray-400">
+            Next time you type any of these, we'll offer this template.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            Who can use it?
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setScope("user")}
+              className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${
+                scope === "user"
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
+            >
+              Just me
+            </button>
+            <button
+              onClick={() => setScope("company")}
+              className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${
+                scope === "company"
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
+            >
+              Whole team
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {err && (
+        <div className="mx-4 mb-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+
+      <div className="flex gap-2 border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+        <button
+          onClick={onFinish}
+          className="flex-1 rounded-xl border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Skip
+        </button>
+        <button
+          onClick={save}
+          disabled={!canSave}
+          className={`flex-1 rounded-xl py-2 text-sm font-semibold ${
+            canSave
+              ? "bg-indigo-600 text-white hover:bg-indigo-700"
+              : "cursor-not-allowed bg-gray-100 text-gray-400"
+          }`}
+        >
+          {saving ? "Saving…" : "Save template"}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function getPlaceholder(workflowId: string): string {
