@@ -68,7 +68,7 @@ function timeAgo(iso: string | null): string {
 // ─── Add/Edit credential form ─────────────────────────────────────────
 
 function CredentialForm({
-  serviceKey,
+  serviceKey: _serviceKey,
   serviceName,
   fields,
   onSave,
