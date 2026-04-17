@@ -822,9 +822,17 @@ export default function App() {
                   {/* Announcements — any authenticated user */}
                   <Route path="/announcements" element={<AnnouncementsPage />} />
 
-                  {/* Onboarding — any authenticated user */}
-                  <Route path="/onboarding" element={<OnboardingHub />} />
+                  {/* Onboarding — any authenticated user.
+                      /onboarding now renders the new step-by-step flow
+                      (identity, locations, programs, compliance, team,
+                      network, command_bar — 7 essential steps, +import
+                      when the tenant has no orders). The legacy hub with
+                      the 12 must_complete items stays available at
+                      /onboarding/hub for tenants whose data hasn't been
+                      migrated to the new checklist yet. */}
+                  <Route path="/onboarding" element={<OnboardingFlow />} />
                   <Route path="/onboarding/flow" element={<OnboardingFlow />} />
+                  <Route path="/onboarding/hub" element={<OnboardingHub />} />
                   <Route path="/onboarding/import-matching" element={<ImportMatchingPage />} />
                   <Route path="/onboarding/integrations/:type" element={<IntegrationSetupPage />} />
                   <Route path="/onboarding/product-library" element={<ProductLibraryPage />} />
