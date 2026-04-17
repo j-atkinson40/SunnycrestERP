@@ -20,6 +20,9 @@ from app.api.routes import (
     announcements,
 )
 from app.api.routes.fh import cases as fh_cases
+from app.api.routes.fh import cemetery as fh_cemetery
+from app.api.routes.fh import network as fh_network
+from app.api.routes.fh import monument as fh_monument
 from app.api.routes import (   # noqa: E402 — continuation of main import
     call_intelligence,
     ringcentral,
@@ -614,7 +617,16 @@ v1_router.include_router(
     work_orders.router, prefix="/work-orders", tags=["Work Orders"]
 )
 
-# Funeral Home vertical (FH-1a)
+# Funeral Home vertical (FH-1a + FH-1b)
 v1_router.include_router(
     fh_cases.router, prefix="/fh/cases", tags=["FH Cases"]
+)
+v1_router.include_router(
+    fh_cemetery.router, prefix="/fh/cemetery", tags=["FH Cemetery"]
+)
+v1_router.include_router(
+    fh_network.router, prefix="/fh/network", tags=["FH Network"]
+)
+v1_router.include_router(
+    fh_monument.router, prefix="/fh/monument", tags=["FH Monument"]
 )

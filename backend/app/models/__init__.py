@@ -313,6 +313,7 @@ from app.models.admin_smoke_test_result import AdminSmokeTestResult
 from app.models.tenant_product_line import TenantProductLine
 from app.models.program_legacy_print import ProgramLegacyPrint
 # Funeral home vertical (fh_01_case_model)
+from app.models.cemetery_plot import CemeteryPlot, CemeteryMapConfig
 from app.models.funeral_case import (
     FuneralCase,
     CaseDeceased,
@@ -619,4 +620,6 @@ __all__ = [
     "VaultTribute",
     "VaultAccessLog",
     "CasketProduct",
+    "CemeteryPlot",
+    "CemeteryMapConfig",
 ]

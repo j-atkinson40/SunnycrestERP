@@ -131,17 +131,97 @@ def _call_claude(context_str: str) -> str:
 
 
 def approve_all_selections(db: Session, case_id: str, director_id: str) -> dict:
-    """Phase 1: flip flags. Phase 1b adds cross-tenant order firing."""
+    """Fire all cross-tenant orders + generate Legacy Vault Print (FH-1b).
+
+    Partial-success tolerant. Each sub-step is wrapped in try/except so one
+    failure doesn't block the others. The response tells the director which
+    succeeded and which need attention.
+    """
+    from app.models.funeral_case import CaseCemetery, FuneralCaseNote
+    from app.services.fh import (
+        cross_tenant_vault_service,
+        legacy_vault_print_service,
+    )
+
     case = db.query(FuneralCase).filter(FuneralCase.id == case_id).first()
     if not case:
         raise ValueError("Case not found")
-    case.all_selections_approved_at = datetime.now(timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    case.all_selections_approved_at = now
     case.story_thread_status = "approved"
     db.commit()
-    return {
+
+    results: dict = {
         "case_id": case_id,
-        "approved_at": case.all_selections_approved_at.isoformat(),
-        "vault_order": {"status": "deferred_to_fh_1b"},
-        "cemetery_reservation": {"status": "deferred_to_fh_1b"},
-        "monument_order": {"status": "deferred_to_fh_1b"},
+        "approved_at": now.isoformat(),
     }
+
+    # Vault order (cross-tenant)
+    try:
+        results["vault_order"] = cross_tenant_vault_service.create_vault_order(
+            db, case_id, case.company_id
+        )
+    except Exception as e:
+        results["vault_order"] = {"status": "error", "error": str(e)[:200]}
+        import uuid as _u
+        db.add(FuneralCaseNote(
+            id=str(_u.uuid4()),
+            case_id=case_id,
+            company_id=case.company_id,
+            note_type="system",
+            content=f"Vault order failed during Approve All: {str(e)[:200]}",
+        ))
+
+    # Cemetery reservation
+    cem = db.query(CaseCemetery).filter(CaseCemetery.case_id == case_id).first()
+    if cem and cem.plot_id:
+        # Plot was selected in the cemetery step → complete payment and mark sold
+        try:
+            from app.services.fh import cemetery_plot_service
+            results["cemetery_reservation"] = cemetery_plot_service.complete_reservation_payment(
+                db, cem.plot_id, case_id, case.company_id
+            )
+        except Exception as e:
+            results["cemetery_reservation"] = {"status": "error", "error": str(e)[:200]}
+    elif cem and cem.cemetery_name:
+        # Manual entry — no cross-tenant reservation
+        results["cemetery_reservation"] = {"status": "manual", "cemetery_name": cem.cemetery_name}
+    else:
+        results["cemetery_reservation"] = {"status": "not_applicable"}
+
+    # Monument order (Phase 1: logged as note — real order flow is FH-1c)
+    try:
+        from app.models.funeral_case import CaseMerchandise
+        import uuid as _u
+        merch = db.query(CaseMerchandise).filter(CaseMerchandise.case_id == case_id).first()
+        if merch and merch.monument_shape:
+            db.add(FuneralCaseNote(
+                id=str(_u.uuid4()),
+                case_id=case_id,
+                company_id=case.company_id,
+                note_type="system",
+                content=f"Monument order logged: {merch.monument_shape} in {merch.monument_stone or 'standard stone'}. "
+                        f"Engraving: {merch.monument_engraving_key or '—'}. "
+                        f"Order workflow deferred to FH-1c (Memorial Monuments integration).",
+            ))
+            db.commit()
+            results["monument_order"] = {
+                "status": "logged",
+                "shape": merch.monument_shape,
+                "stone": merch.monument_stone,
+            }
+        else:
+            results["monument_order"] = {"status": "not_applicable"}
+    except Exception as e:
+        results["monument_order"] = {"status": "error", "error": str(e)[:200]}
+
+    # Legacy Vault Print
+    try:
+        results["legacy_print"] = legacy_vault_print_service.generate(db, case_id)
+        results["legacy_print"]["status"] = "generated"
+    except Exception as e:
+        results["legacy_print"] = {"status": "error", "error": str(e)[:200]}
+
+    db.commit()
+    return results

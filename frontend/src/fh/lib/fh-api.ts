@@ -107,6 +107,27 @@ export const fhApi = {
 
   briefing: (location_id?: string) =>
     apiClient.get<BriefingData>("/fh/cases/-/briefing", { params: { location_id } }).then((r) => r.data),
+
+  // Cemetery + plot map (FH-1b)
+  cemeteryMap: (cemeteryCompanyId: string) =>
+    apiClient.get(`/fh/cemetery/${cemeteryCompanyId}/map`).then((r) => r.data),
+
+  reservePlot: (plotId: string, caseId: string) =>
+    apiClient.post(`/fh/cemetery/plots/${plotId}/reserve`, { case_id: caseId }).then((r) => r.data),
+
+  completePlotPayment: (plotId: string, caseId: string) =>
+    apiClient.post(`/fh/cemetery/plots/${plotId}/complete-payment`, { case_id: caseId }).then((r) => r.data),
+
+  // Network
+  networkConnections: () =>
+    apiClient.get("/fh/network/connections").then((r) => r.data),
+
+  // Monument catalog
+  monumentShapes: () => apiClient.get("/fh/monument/shapes").then((r) => r.data),
+  monumentEngravings: (category?: string) =>
+    apiClient.get("/fh/monument/engravings", { params: category ? { category } : {} }).then((r) => r.data),
+  monumentSuggestForCase: (caseId: string) =>
+    apiClient.get(`/fh/monument/suggest/${caseId}`).then((r) => r.data),
 }
 
 /** Check whether the current tenant is a funeral home based on company data. */

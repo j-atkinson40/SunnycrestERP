@@ -804,6 +804,28 @@ export const funeralHomeActions: CommandAction[] = [
     roles: ["admin", "director", "office"],
     vertical: "funeral_home",
   },
+  {
+    id: "fh_network",
+    keywords: ["network", "connections", "cemetery", "manufacturer", "crematory", "partners"],
+    title: "Network",
+    subtitle: "Connected cemeteries, manufacturers, crematories",
+    icon: "link",
+    type: "NAV",
+    route: "/fh/settings/network",
+    roles: ["admin", "director"],
+    vertical: "funeral_home",
+  },
+  {
+    id: "fh_approve_all",
+    keywords: ["approve all", "story", "finalize", "finish arrangement"],
+    title: "Approve all (Story step)",
+    subtitle: "Finalize and send all orders",
+    icon: "check-square",
+    type: "ACTION",
+    handler: "openStoryForCurrentCase",
+    roles: ["admin", "director"],
+    vertical: "funeral_home",
+  },
 ]
 
 /**
