@@ -36,6 +36,20 @@ interface Step {
   step_key: string
   step_type: StepType
   config: Record<string, unknown>
+  is_core?: boolean
+}
+
+interface StepParam {
+  step_key: string
+  param_key: string
+  label: string
+  description: string | null
+  param_type: string
+  default_value: unknown
+  current_value: unknown
+  effective_value: unknown
+  is_configurable: boolean
+  validation: Record<string, unknown> | null
 }
 
 interface WorkflowDraft {
@@ -56,6 +70,9 @@ interface LoadedWorkflow extends WorkflowDraft {
   tier: number
   is_system: boolean
   editable: boolean
+  configurable?: boolean
+  params?: StepParam[]
+  added_steps?: Step[]
   recent_runs?: Array<{
     id: string
     status: string
@@ -79,7 +96,8 @@ export default function WorkflowBuilderPage() {
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
   const [mode, setMode] = useState<"entry" | "builder">(isNew ? "entry" : "builder")
-  const [loadedMeta, setLoadedMeta] = useState<Pick<LoadedWorkflow, "tier" | "is_system" | "editable" | "recent_runs"> | null>(null)
+  const [loadedMeta, setLoadedMeta] = useState<Pick<LoadedWorkflow, "tier" | "is_system" | "editable" | "recent_runs" | "configurable"> | null>(null)
+  const [params, setParams] = useState<StepParam[]>([])
   const [draft, setDraft] = useState<WorkflowDraft>({
     name: "",
     description: "",
@@ -118,14 +136,17 @@ export default function WorkflowBuilderPage() {
             step_key: s.step_key,
             step_type: s.step_type as StepType,
             config: (s.config as Record<string, unknown>) || {},
+            is_core: s.is_core,
           })),
         })
         setLoadedMeta({
           tier: d.tier,
           is_system: d.is_system,
           editable: d.editable,
+          configurable: d.configurable,
           recent_runs: d.recent_runs,
         })
+        setParams(d.params || [])
       })
       .finally(() => setLoading(false))
   }, [workflowId, isNew])
@@ -297,6 +318,14 @@ export default function WorkflowBuilderPage() {
                 setDraft({ ...draft, trigger_type, trigger_config })
               }
             />
+
+            {loadedMeta?.tier === 1 && params.length > 0 && draft.id && (
+              <ParamsPanel
+                workflowId={draft.id}
+                params={params}
+                onChange={setParams}
+              />
+            )}
 
             {draft.steps.length === 0 ? (
               <div className="rounded border-2 border-dashed border-slate-300 bg-white p-8 text-center">
@@ -533,12 +562,15 @@ function StepBlock({
   canMoveDown: boolean
 }) {
   const { icon: Icon, color } = stepVisual(step.step_type)
+  const isCore = !!step.is_core
   return (
     <div
       onClick={onSelect}
-      className={`group relative cursor-pointer rounded-lg border bg-white p-4 transition ${
-        selected ? "border-slate-900 ring-1 ring-slate-900" : "border-slate-200 hover:border-slate-400"
-      }`}
+      className={`group relative cursor-pointer rounded-lg border p-4 transition ${
+        selected
+          ? "border-slate-900 ring-1 ring-slate-900"
+          : "border-slate-200 hover:border-slate-400"
+      } ${isCore ? "bg-slate-50" : "bg-white"}`}
     >
       <div className="flex items-center gap-3">
         <div className={`h-8 w-8 rounded grid place-items-center ${color}`}>
@@ -549,13 +581,19 @@ function StepBlock({
             <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
               Step {index + 1} · {step.step_type}
             </span>
+            {isCore && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
+                <Lock className="h-3 w-3" />
+                Core
+              </span>
+            )}
           </div>
           <div className="text-sm font-medium text-slate-900 truncate">
             {stepSummary(step)}
           </div>
           <div className="text-[10px] text-slate-400 font-mono truncate">{step.step_key}</div>
         </div>
-        {!readOnly && (
+        {!readOnly && !isCore && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
             <button
               onClick={(e) => { e.stopPropagation(); onMoveUp() }}
@@ -869,5 +907,216 @@ function RecentRuns({
         ))}
       </div>
     </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ParamsPanel — Tier 1 configurable step params
+// ─────────────────────────────────────────────────────────────────────
+
+function ParamsPanel({
+  workflowId,
+  params,
+  onChange,
+}: {
+  workflowId: string
+  params: StepParam[]
+  onChange: (next: StepParam[]) => void
+}) {
+  // Group by step_key for readability
+  const byStep = useMemo(() => {
+    const map = new Map<string, StepParam[]>()
+    for (const p of params) {
+      const arr = map.get(p.step_key) || []
+      arr.push(p)
+      map.set(p.step_key, arr)
+    }
+    return Array.from(map.entries())
+  }, [params])
+
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [localValues, setLocalValues] = useState<Record<string, unknown>>(() => {
+    const init: Record<string, unknown> = {}
+    for (const p of params) {
+      init[`${p.step_key}.${p.param_key}`] =
+        p.current_value !== null && p.current_value !== undefined
+          ? p.current_value
+          : p.default_value
+    }
+    return init
+  })
+
+  const save = async (p: StepParam) => {
+    const key = `${p.step_key}.${p.param_key}`
+    setSavingKey(key)
+    try {
+      await apiClient.put(
+        `/workflows/${workflowId}/params/${p.step_key}/${p.param_key}`,
+        { current_value: localValues[key] },
+      )
+      // Update the outer params array so the displayed current_value refreshes
+      onChange(
+        params.map((pp) =>
+          pp.step_key === p.step_key && pp.param_key === p.param_key
+            ? { ...pp, current_value: localValues[key], effective_value: localValues[key] }
+            : pp,
+        ),
+      )
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <Sparkles className="h-4 w-4 text-violet-600" />
+        <div className="text-sm font-medium text-slate-900">Configure this workflow</div>
+      </div>
+      <div className="text-xs text-slate-500 mb-4">
+        Core steps are locked, but these options let you tailor how the workflow runs.
+      </div>
+
+      <div className="space-y-5">
+        {byStep.map(([stepKey, stepParams]) => (
+          <div key={stepKey}>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+              Step: <span className="font-mono">{stepKey}</span>
+            </div>
+            <div className="space-y-3 pl-2 border-l-2 border-violet-200">
+              {stepParams.map((p) => {
+                const key = `${p.step_key}.${p.param_key}`
+                const val = localValues[key]
+                const hasOverride = p.current_value !== null && p.current_value !== undefined
+                return (
+                  <div key={key} className="pl-3">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-slate-700">{p.label}</label>
+                      {hasOverride && (
+                        <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] text-violet-700">
+                          Customized
+                        </span>
+                      )}
+                    </div>
+                    <ParamInput
+                      param={p}
+                      value={val}
+                      onChange={(v) => setLocalValues((prev) => ({ ...prev, [key]: v }))}
+                    />
+                    {p.description && (
+                      <div className="text-[10px] text-slate-500 mt-0.5">{p.description}</div>
+                    )}
+                    <div className="mt-1 flex items-center gap-2">
+                      <button
+                        onClick={() => save(p)}
+                        disabled={savingKey === key}
+                        className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        {savingKey === key ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                        Save
+                      </button>
+                      {hasOverride && (
+                        <button
+                          onClick={async () => {
+                            setLocalValues((prev) => ({ ...prev, [key]: p.default_value }))
+                            setSavingKey(key)
+                            try {
+                              await apiClient.put(
+                                `/workflows/${workflowId}/params/${p.step_key}/${p.param_key}`,
+                                { current_value: null },
+                              )
+                              onChange(
+                                params.map((pp) =>
+                                  pp.step_key === p.step_key && pp.param_key === p.param_key
+                                    ? { ...pp, current_value: null, effective_value: p.default_value }
+                                    : pp,
+                                ),
+                              )
+                            } finally {
+                              setSavingKey(null)
+                            }
+                          }}
+                          className="text-[10px] text-slate-500 hover:text-slate-900 underline"
+                        >
+                          Reset to default
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ParamInput({
+  param,
+  value,
+  onChange,
+}: {
+  param: StepParam
+  value: unknown
+  onChange: (v: unknown) => void
+}) {
+  const t = param.param_type
+
+  if (t === "toggle") {
+    return (
+      <label className="inline-flex items-center gap-2 text-xs mt-1">
+        <input
+          type="checkbox"
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        Enabled
+      </label>
+    )
+  }
+  if (t === "number") {
+    const v = param.validation as { min?: number; max?: number } | null
+    return (
+      <input
+        type="number"
+        value={(value as number | string | null) ?? ""}
+        min={v?.min}
+        max={v?.max}
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        className="mt-1 w-32 rounded border border-slate-300 px-2 py-1 text-xs"
+      />
+    )
+  }
+  if (t === "email_list" || t === "role_multi_select") {
+    const list = Array.isArray(value) ? (value as string[]) : []
+    const placeholder = t === "email_list" ? "email@example.com, another@example.com" : "admin, manager"
+    return (
+      <input
+        type="text"
+        value={list.join(", ")}
+        placeholder={placeholder}
+        onChange={(e) =>
+          onChange(
+            e.target.value
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          )
+        }
+        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+      />
+    )
+  }
+  // text, email, select fallback: string input
+  return (
+    <input
+      type={t === "email" ? "email" : "text"}
+      value={(value as string | null) ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+    />
   )
 }

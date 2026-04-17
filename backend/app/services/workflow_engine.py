@@ -126,6 +126,7 @@ def get_active_workflows_for_tenant(
     """
     q = db.query(Workflow).filter(
         Workflow.is_active == True,  # noqa: E712
+        Workflow.is_coming_soon == False,  # noqa: E712 — placeholders aren't runnable
         or_(
             Workflow.company_id.is_(None),
             Workflow.company_id == company_id,

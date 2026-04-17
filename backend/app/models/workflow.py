@@ -27,6 +27,7 @@ class Workflow(Base):
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
     command_bar_priority: Mapped[int] = mapped_column(Integer, default=10)
     created_by_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    is_coming_soon: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -40,6 +41,7 @@ class WorkflowStep(Base):
     step_key: Mapped[str] = mapped_column(String(100), nullable=False)
     step_type: Mapped[str] = mapped_column(String(50), nullable=False)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    is_core: Mapped[bool] = mapped_column(Boolean, default=False)
     next_step_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     condition_true_step_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     condition_false_step_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -86,6 +88,28 @@ class WorkflowEnrollment(Base):
     company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     config_overrides: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    added_steps: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class WorkflowStepParam(Base):
+    """Configurable params on workflow steps. Platform defaults have
+    company_id NULL; tenant overrides set company_id."""
+
+    __tablename__ = "workflow_step_params"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workflow_id: Mapped[str] = mapped_column(String(36), ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
+    company_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("companies.id"), nullable=True)
+    step_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    param_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    param_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    default_value: Mapped[dict | list | str | int | bool | None] = mapped_column(JSONB, nullable=True)
+    current_value: Mapped[dict | list | str | int | bool | None] = mapped_column(JSONB, nullable=True)
+    is_configurable: Mapped[bool] = mapped_column(Boolean, default=True)
+    validation: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

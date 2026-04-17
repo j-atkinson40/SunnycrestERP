@@ -18,6 +18,7 @@ from app.models.workflow import (
     WorkflowRun,
     WorkflowRunStep,
     WorkflowStep,
+    WorkflowStepParam,
 )
 from app.services import workflow_engine, ai_service, workflow_run_logger
 
@@ -50,10 +51,60 @@ def _serialize_workflow(w: Workflow, step_count: int = 0) -> dict:
         "trigger_config": w.trigger_config,
         "is_active": w.is_active,
         "is_system": w.is_system,
+        "is_coming_soon": getattr(w, "is_coming_soon", False),
         "icon": w.icon,
         "command_bar_priority": w.command_bar_priority,
         "step_count": step_count,
     }
+
+
+def _tenant_verticals(db: Session, company_id: str) -> list[str]:
+    """Active verticals for the tenant. Currently derived from company.vertical.
+    Future: also check active extensions that unlock additional verticals."""
+    c = db.query(Company).filter(Company.id == company_id).first()
+    if not c or not c.vertical:
+        return []
+    return [c.vertical]
+
+
+def _load_step_params(db: Session, workflow_id: str, company_id: str) -> list[dict]:
+    """Return merged platform defaults + tenant overrides for a workflow's params."""
+    defaults = (
+        db.query(WorkflowStepParam)
+        .filter(
+            WorkflowStepParam.workflow_id == workflow_id,
+            WorkflowStepParam.company_id.is_(None),
+        )
+        .all()
+    )
+    overrides = {
+        (p.step_key, p.param_key): p
+        for p in db.query(WorkflowStepParam)
+        .filter(
+            WorkflowStepParam.workflow_id == workflow_id,
+            WorkflowStepParam.company_id == company_id,
+        )
+        .all()
+    }
+    out = []
+    for p in defaults:
+        override = overrides.get((p.step_key, p.param_key))
+        out.append({
+            "step_key": p.step_key,
+            "param_key": p.param_key,
+            "label": p.label,
+            "description": p.description,
+            "param_type": p.param_type,
+            "default_value": p.default_value,
+            "current_value": override.current_value if override else None,
+            "effective_value": (
+                override.current_value if override and override.current_value is not None
+                else p.default_value
+            ),
+            "is_configurable": p.is_configurable,
+            "validation": p.validation,
+        })
+    return out
 
 
 def _serialize_run(run: WorkflowRun, steps: list[WorkflowRunStep]) -> dict:
@@ -420,17 +471,30 @@ def get_workflow(
             "step_key": s.step_key,
             "step_type": s.step_type,
             "config": s.config,
+            "is_core": getattr(s, "is_core", False),
             "next_step_id": s.next_step_id,
             "condition_true_step_id": s.condition_true_step_id,
             "condition_false_step_id": s.condition_false_step_id,
         }
         for s in steps
     ]
+    base["params"] = _load_step_params(db, w.id, current_user.company_id)
+    # Enrollment-level added_steps (tenant-owned extensions of Tier 1 flows)
+    enrollment = (
+        db.query(WorkflowEnrollment)
+        .filter(
+            WorkflowEnrollment.workflow_id == w.id,
+            WorkflowEnrollment.company_id == current_user.company_id,
+        )
+        .first()
+    )
+    base["added_steps"] = (enrollment.added_steps if enrollment else None) or []
     base["editable"] = (
         w.tier != 1
         and w.company_id == current_user.company_id
         and not w.is_system
     )
+    base["configurable"] = w.tier == 1 and len(base["params"]) > 0
     # Recent runs (visibility for Tier 1 and custom)
     runs = workflow_run_logger.list_recent_runs(
         db, workflow_id=w.id, company_id=current_user.company_id, limit=10
@@ -554,15 +618,30 @@ def library_all(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return all workflows visible to the tenant, split into 3 tabs."""
-    vert = _company_vertical(db, current_user.company_id)
+    """Return all workflows visible to the tenant, split into 3 tabs.
+
+    Vertical filtering: platform workflows (company_id NULL) are included if
+    their vertical is NULL (cross-vertical) or matches one of the tenant's
+    active verticals.
+    """
+    tenant_verts = _tenant_verticals(db, current_user.company_id)
     all_wfs = db.query(Workflow).all()
+
+    # Precompute params count per workflow for "configurable" badge
+    param_counts = {}
+    for row in db.query(WorkflowStepParam.workflow_id).filter(
+        WorkflowStepParam.company_id.is_(None)
+    ).all():
+        param_counts[row[0]] = param_counts.get(row[0], 0) + 1
 
     def visible(w: Workflow) -> bool:
         if w.company_id == current_user.company_id:
             return True
-        if w.company_id is None and (w.vertical is None or w.vertical == vert or w.vertical == "platform"):
-            return True
+        if w.company_id is None:
+            if w.vertical is None:
+                return True
+            if tenant_verts and w.vertical in tenant_verts:
+                return True
         return False
 
     wfs = [w for w in all_wfs if visible(w)]
@@ -575,10 +654,158 @@ def library_all(
             and w.company_id == current_user.company_id
             and not w.is_system
         )
+        base["configurable"] = w.tier == 1 and param_counts.get(w.id, 0) > 0
         return base
 
     mine = [enrich(w) for w in wfs if w.company_id == current_user.company_id]
     platform = [enrich(w) for w in wfs if w.tier == 1]
     templates = [enrich(w) for w in wfs if w.tier in (2, 3) and w.company_id is None]
 
-    return {"mine": mine, "platform": platform, "templates": templates}
+    return {
+        "mine": mine,
+        "platform": platform,
+        "templates": templates,
+        "tenant_verticals": tenant_verts,
+    }
+
+
+class ParamOverrideRequest(BaseModel):
+    current_value: Any
+
+
+@router.put("/{workflow_id}/params/{step_key}/{param_key}")
+def set_param_override(
+    workflow_id: str,
+    step_key: str,
+    param_key: str,
+    data: ParamOverrideRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Save a tenant-specific override for a workflow step param."""
+    # Verify the platform default exists (only configurable ones can be overridden)
+    default = (
+        db.query(WorkflowStepParam)
+        .filter(
+            WorkflowStepParam.workflow_id == workflow_id,
+            WorkflowStepParam.step_key == step_key,
+            WorkflowStepParam.param_key == param_key,
+            WorkflowStepParam.company_id.is_(None),
+        )
+        .first()
+    )
+    if not default:
+        raise HTTPException(status_code=404, detail="Param not found")
+    if not default.is_configurable:
+        raise HTTPException(status_code=400, detail="Param is not configurable")
+
+    override = (
+        db.query(WorkflowStepParam)
+        .filter(
+            WorkflowStepParam.workflow_id == workflow_id,
+            WorkflowStepParam.step_key == step_key,
+            WorkflowStepParam.param_key == param_key,
+            WorkflowStepParam.company_id == current_user.company_id,
+        )
+        .first()
+    )
+    if override:
+        override.current_value = data.current_value
+    else:
+        db.add(
+            WorkflowStepParam(
+                id=str(uuid.uuid4()),
+                workflow_id=workflow_id,
+                company_id=current_user.company_id,
+                step_key=step_key,
+                param_key=param_key,
+                label=default.label,
+                description=default.description,
+                param_type=default.param_type,
+                default_value=default.default_value,
+                current_value=data.current_value,
+                is_configurable=default.is_configurable,
+                validation=default.validation,
+            )
+        )
+    db.commit()
+    return {"saved": True}
+
+
+class AddedStepsRequest(BaseModel):
+    added_steps: list[dict]
+
+
+@router.put("/{workflow_id}/added-steps")
+def set_added_steps(
+    workflow_id: str,
+    data: AddedStepsRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Save tenant-owned additional steps on a Tier 1 workflow enrollment."""
+    wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    enrollment = (
+        db.query(WorkflowEnrollment)
+        .filter(
+            WorkflowEnrollment.workflow_id == workflow_id,
+            WorkflowEnrollment.company_id == current_user.company_id,
+        )
+        .first()
+    )
+    if enrollment:
+        enrollment.added_steps = data.added_steps
+    else:
+        db.add(
+            WorkflowEnrollment(
+                id=str(uuid.uuid4()),
+                workflow_id=workflow_id,
+                company_id=current_user.company_id,
+                is_active=True,
+                added_steps=data.added_steps,
+            )
+        )
+    db.commit()
+    return {"saved": True}
+
+
+class ComingSoonNotifyRequest(BaseModel):
+    workflow_id: str
+
+
+@router.post("/notify-when-available")
+def notify_when_available(
+    data: ComingSoonNotifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Subscribe the tenant to a 'coming soon' workflow launch notification.
+
+    Stored as an inactive enrollment row — when the workflow flips off
+    is_coming_soon, a launch job can iterate these enrollments and email.
+    """
+    wf = db.query(Workflow).filter(Workflow.id == data.workflow_id).first()
+    if not wf or not wf.is_coming_soon:
+        raise HTTPException(status_code=400, detail="Workflow not awaiting launch")
+    existing = (
+        db.query(WorkflowEnrollment)
+        .filter(
+            WorkflowEnrollment.workflow_id == data.workflow_id,
+            WorkflowEnrollment.company_id == current_user.company_id,
+        )
+        .first()
+    )
+    if not existing:
+        db.add(
+            WorkflowEnrollment(
+                id=str(uuid.uuid4()),
+                workflow_id=data.workflow_id,
+                company_id=current_user.company_id,
+                is_active=False,  # will flip on at launch
+            )
+        )
+        db.commit()
+    return {"subscribed": True}
