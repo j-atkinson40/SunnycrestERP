@@ -13,17 +13,22 @@ import {
   Play,
   Sparkles,
   Plus,
-  Trash2,
   Lock,
   Loader2,
   MessageSquare,
   Zap,
   GitBranch,
   CheckCircle,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react"
 import apiClient from "@/lib/api-client"
+import { StepCard, TriggerCard as TriggerCardV2 } from "@/components/workflow/StepCard"
+import {
+  RUN_STATUS_DISPLAY,
+  TRIGGER_SOURCE_DISPLAY,
+  formatRunTimestamp,
+  formatRunDuration,
+  formatRelativeAge,
+} from "@/utils/workflowStepSummary"
 
 // ─────────────────────────────────────────────────────────────────────
 // Types
@@ -308,30 +313,53 @@ export default function WorkflowBuilderPage() {
 
       <div className="flex flex-1 min-h-0">
         {/* Canvas */}
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="mx-auto max-w-2xl space-y-6">
-            <TriggerCard
+        <main
+          className="flex-1 overflow-y-auto p-10"
+          style={{
+            // Subtle dot grid background — workspace feel, not distracting
+            backgroundImage:
+              "radial-gradient(circle, rgb(203 213 225 / 0.6) 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }}
+        >
+          <div className="mx-auto max-w-[560px] space-y-6">
+            {/* Paused-run banner — prominent, shown above canvas */}
+            {loadedMeta?.recent_runs?.some((r) => r.status === "awaiting_input") && (
+              <PausedRunBanner runs={loadedMeta.recent_runs} />
+            )}
+
+            <TriggerCardV2
               triggerType={draft.trigger_type}
               triggerConfig={draft.trigger_config}
-              readOnly={readOnly}
+              workflowName={draft.name}
+              workflowDescription={draft.description}
+              keywords={draft.keywords}
+              isReadOnly={readOnly}
               onChange={(trigger_type, trigger_config) =>
                 setDraft({ ...draft, trigger_type, trigger_config })
               }
             />
+            <ConnectorLine />
 
             {loadedMeta?.tier === 1 && params.length > 0 && draft.id && (
-              <ParamsPanel
-                workflowId={draft.id}
-                params={params}
-                onChange={setParams}
-              />
+              <>
+                <ParamsPanel
+                  workflowId={draft.id}
+                  params={params}
+                  onChange={setParams}
+                />
+                <ConnectorLine />
+              </>
             )}
 
             {draft.steps.length === 0 ? (
-              <div className="rounded border-2 border-dashed border-slate-300 bg-white p-8 text-center">
-                <div className="text-sm text-slate-500">No steps yet.</div>
+              <div className="rounded-lg border-2 border-dashed border-slate-300 bg-white p-10 text-center">
+                <div className="text-sm text-slate-500 mb-1">Your workflow starts here</div>
+                <div className="text-xs text-slate-400 mb-4">
+                  Add the first step below to tell Bridgeable what should happen.
+                </div>
                 {!readOnly && (
-                  <div className="mt-3 flex flex-wrap gap-2 justify-center">
+                  <div className="flex flex-wrap gap-2 justify-center">
                     <AddStepButton onClick={() => addStep("input")} label="Input" icon={MessageSquare} />
                     <AddStepButton onClick={() => addStep("action")} label="Action" icon={Zap} />
                     <AddStepButton onClick={() => addStep("condition")} label="Condition" icon={GitBranch} />
@@ -340,35 +368,41 @@ export default function WorkflowBuilderPage() {
                 )}
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {draft.steps.map((step, i) => (
-                  <StepBlock
-                    key={i}
-                    step={step}
-                    index={i}
-                    selected={selectedStepIdx === i}
-                    readOnly={readOnly}
-                    onSelect={() => setSelectedStepIdx(i)}
-                    onMoveUp={() => moveStep(i, -1)}
-                    onMoveDown={() => moveStep(i, 1)}
-                    onRemove={() => removeStep(i)}
-                    canMoveUp={i > 0}
-                    canMoveDown={i < draft.steps.length - 1}
-                  />
+                  <div key={i}>
+                    <StepCard
+                      step={step}
+                      stepIndex={i}
+                      previousSteps={draft.steps.slice(0, i)}
+                      selected={selectedStepIdx === i}
+                      isReadOnly={readOnly}
+                      onSelect={() => setSelectedStepIdx(i)}
+                      onMoveUp={() => moveStep(i, -1)}
+                      onMoveDown={() => moveStep(i, 1)}
+                      onRemove={() => removeStep(i)}
+                      canMoveUp={i > 0}
+                      canMoveDown={i < draft.steps.length - 1}
+                    />
+                    {i < draft.steps.length - 1 && <ConnectorLine />}
+                  </div>
                 ))}
                 {!readOnly && (
-                  <div className="flex gap-2 pt-2">
-                    <AddStepButton onClick={() => addStep("input")} label="Add Input" icon={MessageSquare} />
-                    <AddStepButton onClick={() => addStep("action")} label="Add Action" icon={Zap} />
-                    <AddStepButton onClick={() => addStep("condition")} label="Add Condition" icon={GitBranch} />
-                    <AddStepButton onClick={() => addStep("output")} label="Add Output" icon={CheckCircle} />
+                  <div className="pt-4">
+                    <ConnectorLine />
+                    <div className="flex flex-wrap gap-2 justify-center pt-2">
+                      <AddStepButton onClick={() => addStep("input")} label="Add Input" icon={MessageSquare} />
+                      <AddStepButton onClick={() => addStep("action")} label="Add Action" icon={Zap} />
+                      <AddStepButton onClick={() => addStep("condition")} label="Add Condition" icon={GitBranch} />
+                      <AddStepButton onClick={() => addStep("output")} label="Add Output" icon={CheckCircle} />
+                    </div>
                   </div>
                 )}
               </div>
             )}
 
-            {readOnly && loadedMeta?.recent_runs && loadedMeta.recent_runs.length > 0 && (
-              <RecentRuns runs={loadedMeta.recent_runs} />
+            {loadedMeta?.recent_runs && loadedMeta.recent_runs.length > 0 && (
+              <RunHistorySection runs={loadedMeta.recent_runs} />
             )}
           </div>
         </main>
@@ -486,165 +520,15 @@ function EntryScreen({ onPick }: { onPick: (draft: Partial<WorkflowDraft>) => vo
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Trigger card
+// Connector line between two cards
 // ─────────────────────────────────────────────────────────────────────
 
-function TriggerCard({
-  triggerType,
-  triggerConfig,
-  readOnly,
-  onChange,
-}: {
-  triggerType: string
-  triggerConfig: Record<string, unknown> | null
-  readOnly: boolean
-  onChange: (type: string, config: Record<string, unknown> | null) => void
-}) {
+function ConnectorLine() {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="h-6 w-6 rounded bg-slate-900 text-white grid place-items-center text-[10px] font-bold">
-          TRIG
-        </div>
-        <div className="text-sm font-medium text-slate-900">Trigger</div>
-      </div>
-      {readOnly ? (
-        <div className="text-xs text-slate-500 capitalize">
-          {triggerType.replace(/_/g, " ")}
-          {triggerConfig && Object.keys(triggerConfig).length > 0 && (
-            <pre className="mt-2 bg-slate-50 rounded p-2 text-[10px] overflow-x-auto">
-              {JSON.stringify(triggerConfig, null, 2)}
-            </pre>
-          )}
-        </div>
-      ) : (
-        <select
-          value={triggerType}
-          onChange={(e) => onChange(e.target.value, null)}
-          className="rounded border border-slate-300 px-2 py-1 text-sm"
-        >
-          <option value="manual">Manual (command bar)</option>
-          <option value="scheduled">Scheduled (cron)</option>
-          <option value="event">Event</option>
-          <option value="time_of_day">Time of day</option>
-          <option value="time_after_event">Time after event</option>
-        </select>
-      )}
+    <div className="flex justify-center py-1" aria-hidden="true">
+      <div className="h-6 w-px bg-slate-300" />
     </div>
   )
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Step block (canvas)
-// ─────────────────────────────────────────────────────────────────────
-
-function StepBlock({
-  step,
-  index,
-  selected,
-  readOnly,
-  onSelect,
-  onMoveUp,
-  onMoveDown,
-  onRemove,
-  canMoveUp,
-  canMoveDown,
-}: {
-  step: Step
-  index: number
-  selected: boolean
-  readOnly: boolean
-  onSelect: () => void
-  onMoveUp: () => void
-  onMoveDown: () => void
-  onRemove: () => void
-  canMoveUp: boolean
-  canMoveDown: boolean
-}) {
-  const { icon: Icon, color } = stepVisual(step.step_type)
-  const isCore = !!step.is_core
-  return (
-    <div
-      onClick={onSelect}
-      className={`group relative cursor-pointer rounded-lg border p-4 transition ${
-        selected
-          ? "border-slate-900 ring-1 ring-slate-900"
-          : "border-slate-200 hover:border-slate-400"
-      } ${isCore ? "bg-slate-50" : "bg-white"}`}
-    >
-      <div className="flex items-center gap-3">
-        <div className={`h-8 w-8 rounded grid place-items-center ${color}`}>
-          <Icon className="h-4 w-4 text-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Step {index + 1} · {step.step_type}
-            </span>
-            {isCore && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
-                <Lock className="h-3 w-3" />
-                Core
-              </span>
-            )}
-          </div>
-          <div className="text-sm font-medium text-slate-900 truncate">
-            {stepSummary(step)}
-          </div>
-          <div className="text-[10px] text-slate-400 font-mono truncate">{step.step_key}</div>
-        </div>
-        {!readOnly && !isCore && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-            <button
-              onClick={(e) => { e.stopPropagation(); onMoveUp() }}
-              disabled={!canMoveUp}
-              className="p-1 text-slate-400 hover:text-slate-900 disabled:opacity-30"
-              aria-label="Move up"
-            >
-              <ChevronUp className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onMoveDown() }}
-              disabled={!canMoveDown}
-              className="p-1 text-slate-400 hover:text-slate-900 disabled:opacity-30"
-              aria-label="Move down"
-            >
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onRemove() }}
-              className="p-1 text-slate-400 hover:text-red-600"
-              aria-label="Delete step"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function stepVisual(type: StepType): { icon: typeof MessageSquare; color: string } {
-  switch (type) {
-    case "input":
-      return { icon: MessageSquare, color: "bg-blue-600" }
-    case "action":
-      return { icon: Zap, color: "bg-violet-600" }
-    case "condition":
-      return { icon: GitBranch, color: "bg-amber-600" }
-    case "output":
-      return { icon: CheckCircle, color: "bg-emerald-600" }
-  }
-}
-
-function stepSummary(step: Step): string {
-  const cfg = step.config as Record<string, unknown>
-  if (step.step_type === "input") return (cfg.prompt as string) || "Input"
-  if (step.step_type === "action") return (cfg.action_type as string) || "Action"
-  if (step.step_type === "condition") return (cfg.expression as string) || "Condition"
-  if (step.step_type === "output") return (cfg.message as string) || (cfg.action_type as string) || "Output"
-  return step.step_key
 }
 
 function defaultConfigForType(type: StepType): Record<string, unknown> {
@@ -873,38 +757,100 @@ function JsonEditor({
 // Recent runs (read-only view for Tier 1)
 // ─────────────────────────────────────────────────────────────────────
 
-function RecentRuns({
-  runs,
-}: {
-  runs: NonNullable<LoadedWorkflow["recent_runs"]>
-}) {
+type RunRow = NonNullable<LoadedWorkflow["recent_runs"]>[number]
+
+function PausedRunBanner({ runs }: { runs: RunRow[] }) {
+  const navigate = useNavigate()
+  const paused = runs.find((r) => r.status === "awaiting_input")
+  if (!paused) return null
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-amber-900">
+            You have a paused run from {formatRelativeAge(paused.started_at)}
+          </div>
+          {paused.error_message && (
+            <div className="text-xs text-amber-800 truncate">
+              Waiting for: {paused.error_message}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={() => navigate(`/workflows/runs/${paused.id}`)}
+          className="inline-flex items-center gap-1 rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+        >
+          Continue now →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function RunHistorySection({ runs }: { runs: RunRow[] }) {
+  const navigate = useNavigate()
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
         Recent runs
       </div>
-      <div className="space-y-1.5">
-        {runs.map((r) => (
-          <div key={r.id} className="flex items-center gap-3 text-xs">
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${
-                r.status === "completed"
-                  ? "bg-emerald-500"
-                  : r.status === "failed"
-                    ? "bg-red-500"
-                    : r.status === "running"
-                      ? "bg-blue-500"
-                      : "bg-slate-400"
-              }`}
-            />
-            <span className="text-slate-500">{r.started_at?.slice(0, 16).replace("T", " ")}</span>
-            <span className="text-slate-700 capitalize">{r.status}</span>
-            <span className="text-slate-400">· {r.trigger_source}</span>
-            {r.error_message && (
-              <span className="text-red-600 truncate">{r.error_message}</span>
-            )}
-          </div>
-        ))}
+      <div className="space-y-2.5">
+        {runs.map((r) => {
+          const display = RUN_STATUS_DISPLAY[r.status] || {
+            icon: "●",
+            colorClass: "text-slate-500",
+            label: r.status,
+          }
+          const dur = formatRunDuration(r.started_at, r.completed_at)
+          const trigLabel = TRIGGER_SOURCE_DISPLAY[r.trigger_source] || r.trigger_source
+          const expanded = expandedId === r.id
+          return (
+            <div key={r.id} className="border-b border-slate-100 last:border-b-0 pb-2.5 last:pb-0">
+              <div className="flex items-start gap-3 text-xs">
+                <span className={`text-lg leading-none ${display.colorClass}`}>
+                  {display.icon}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-900 font-medium">
+                      {formatRunTimestamp(r.started_at)}
+                    </span>
+                    {dur && <span className="text-slate-400">{dur}</span>}
+                  </div>
+                  <div className="text-slate-600 truncate">
+                    <span>{display.label}</span>
+                    <span className="text-slate-400"> · {trigLabel}</span>
+                  </div>
+                  {r.status === "failed" && r.error_message && (
+                    <div className="mt-1">
+                      <button
+                        onClick={() => setExpandedId(expanded ? null : r.id)}
+                        className="text-red-600 hover:underline"
+                      >
+                        {expanded ? "Hide details" : "See details →"}
+                      </button>
+                      {expanded && (
+                        <pre className="mt-1 rounded bg-red-50 border border-red-200 p-2 text-[10px] text-red-800 whitespace-pre-wrap">
+                          {r.error_message}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {r.status === "awaiting_input" && (
+                  <button
+                    onClick={() => navigate(`/workflows/runs/${r.id}`)}
+                    className="inline-flex items-center gap-1 rounded bg-amber-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-amber-700"
+                  >
+                    Continue →
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
