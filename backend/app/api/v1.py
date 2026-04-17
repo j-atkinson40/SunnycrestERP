@@ -26,6 +26,7 @@ from app.api.routes.fh import monument as fh_monument
 from app.api.routes import workflows as workflow_routes
 from app.api.routes import vault_documents as vault_documents_routes
 from app.api.routes import saved_orders as saved_orders_routes
+from app.api.routes import external_accounts as external_accounts_routes
 from app.api.routes import (   # noqa: E402 — continuation of main import
     call_intelligence,
     ringcentral,
@@ -642,6 +643,11 @@ v1_router.include_router(
 # Saved Orders (Compose Templates)
 v1_router.include_router(
     saved_orders_routes.router, prefix="/saved-orders", tags=["Saved Orders"]
+)
+
+# External Accounts (Playwright workflow credentials)
+v1_router.include_router(
+    external_accounts_routes.router, prefix="/external-accounts", tags=["External Accounts"]
 )
 
 # Vault Documents (Phase W-2 — native document layer on R2)

@@ -464,6 +464,129 @@ MANUFACTURING_WORKFLOWS = [
             },
         ],
     },
+    # ── Playwright: automated supply ordering ─────────────────────────
+    {
+        "id": "wf_uline_gloves",
+        "name": "Order Gloves from Uline",
+        "description": "Reorder nitrile gloves from Uline. Looks up your saved quantity, "
+                       "creates a PO, places the order automatically, and confirms the order number.",
+        "keywords": ["gloves", "order gloves", "uline gloves", "reorder gloves", "nitrile gloves"],
+        "tier": 3,
+        "vertical": "manufacturing",
+        "trigger_type": "manual",
+        "icon": "shopping-cart",
+        "command_bar_priority": 45,
+        "is_system": True,
+        "overlay_config": {
+            "input_style": "natural_language",
+            "product_type": "supply_order",
+            "entry_intent": "reorder_supplies",
+            "fields": [
+                {"key": "quantity", "label": "Quantity (boxes)", "type": "number", "required": True},
+                {"key": "item_number", "label": "Uline item #", "type": "text",
+                 "default": "S-15978", "required": True},
+                {"key": "notes", "label": "Notes", "type": "text", "required": False},
+            ],
+        },
+        "steps": [
+            # Step 1 — collect quantity + item number
+            {
+                "step_order": 1,
+                "step_key": "ask_order_details",
+                "step_type": "input",
+                "config": {
+                    "prompt": "How many boxes of gloves do you need? (Uline item S-15978)",
+                    "fields": [
+                        {"key": "quantity", "label": "Quantity (boxes)", "type": "number",
+                         "required": True, "placeholder": "e.g. 2"},
+                        {"key": "item_number", "label": "Uline item #", "type": "text",
+                         "default": "S-15978", "required": True},
+                    ],
+                },
+            },
+            # Step 2 — create internal PO record
+            {
+                "step_order": 2,
+                "step_key": "create_po",
+                "step_type": "action",
+                "config": {
+                    "action_type": "create_record",
+                    "record_type": "purchase_order",
+                    "fields": {
+                        "notes": "Auto-created by Uline Gloves workflow — "
+                                 "item {input.ask_order_details.item_number} "
+                                 "x{input.ask_order_details.quantity}",
+                        "status": "pending",
+                    },
+                },
+            },
+            # Step 3 — place order on Uline via Playwright
+            {
+                "step_order": 3,
+                "step_key": "place_on_uline",
+                "step_type": "action",
+                "config": {
+                    "action_type": "playwright_action",
+                    "script_name": "uline_place_order",
+                    "requires_approval": True,
+                    "approval_prompt": "Place an order on Uline for "
+                                       "{input.ask_order_details.quantity} box(es) of "
+                                       "item {input.ask_order_details.item_number}?",
+                    "input_mapping": {
+                        "item_number": "{input.ask_order_details.item_number}",
+                        "quantity": "{input.ask_order_details.quantity}",
+                    },
+                    "output_mapping": {
+                        "uline_confirmation": "confirmation_number",
+                        "uline_total": "order_total",
+                        "uline_delivery": "estimated_delivery",
+                    },
+                },
+            },
+            # Step 4 — update PO with external order info
+            {
+                "step_order": 4,
+                "step_key": "update_po",
+                "step_type": "action",
+                "config": {
+                    "action_type": "update_record",
+                    "record_type": "purchase_order",
+                    "record_id": "{output.create_po.id}",
+                    "fields": {
+                        "external_order_id": "{output.place_on_uline.uline_confirmation}",
+                        "external_order_total": "{output.place_on_uline.uline_total}",
+                        "external_service_key": "uline",
+                        "status": "ordered",
+                    },
+                },
+            },
+            # Step 5 — vault notification
+            {
+                "step_order": 5,
+                "step_key": "notify",
+                "step_type": "action",
+                "config": {
+                    "action_type": "send_notification",
+                    "title": "Uline order placed",
+                    "body": "Gloves order confirmed — #{output.place_on_uline.uline_confirmation}. "
+                            "Estimated delivery: {output.place_on_uline.uline_delivery}",
+                    "link": "/purchasing",
+                },
+            },
+            # Step 6 — final confirmation card
+            {
+                "step_order": 6,
+                "step_key": "confirm",
+                "step_type": "output",
+                "config": {
+                    "action_type": "show_confirmation",
+                    "message": "Order placed on Uline! Confirmation: "
+                               "{output.place_on_uline.uline_confirmation}. "
+                               "Total: ${output.place_on_uline.uline_total}.",
+                },
+            },
+        ],
+    },
 ]
 
 

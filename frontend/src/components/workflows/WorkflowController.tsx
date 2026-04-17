@@ -3,13 +3,13 @@
 // (input step) as a micro-form. On completion, returns output via callback.
 
 import { useEffect, useState } from "react"
-import { Loader2, Check, AlertTriangle, ChevronRight } from "lucide-react"
+import { Loader2, Check, AlertTriangle, ChevronRight, ShieldAlert, Zap } from "lucide-react"
 import apiClient from "@/lib/api-client"
 
 export interface WorkflowRunState {
   id: string
   workflow_id: string
-  status: "running" | "awaiting_input" | "completed" | "failed" | "cancelled"
+  status: "running" | "awaiting_input" | "awaiting_approval" | "completed" | "failed" | "cancelled"
   input_data: Record<string, unknown> | null
   output_data: Record<string, unknown> | null
   current_step_id: string | null
@@ -96,6 +96,31 @@ export function WorkflowController({
     }
   }
 
+  const approveStep = async (approvalKey: string, approved: boolean) => {
+    if (!run) return
+    setSubmitting(true)
+    try {
+      if (!approved) {
+        // User cancelled — treat as a failure
+        setRun((prev) => (prev ? { ...prev, status: "failed", error_message: "Automation cancelled by user." } : prev))
+        return
+      }
+      const { data } = await apiClient.post<WorkflowRunState>(
+        `/workflows/runs/${run.id}/advance`,
+        { step_input: { [approvalKey]: true } },
+      )
+      setRun(data)
+      if (data.status === "completed" || data.status === "failed") {
+        onComplete(data)
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Approval failed"
+      setRun((prev) => (prev ? { ...prev, status: "failed", error_message: msg } : prev))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (loading || !run) {
     return (
       <div className="flex items-center gap-2 p-4 text-sm text-slate-600">
@@ -126,6 +151,68 @@ export function WorkflowController({
         <div className="flex items-center gap-2 text-emerald-700">
           <Check className="h-4 w-4" />
           <span className="font-medium">{workflowTitle} complete</span>
+        </div>
+      </div>
+    )
+  }
+
+  // awaiting_approval — Playwright action needs user sign-off before running
+  if (run.status === "awaiting_approval") {
+    // Find the approval metadata from output_data
+    const approvalOutput = Object.values(run.output_data || {}).find(
+      (v) => (v as Record<string, unknown>)?.type === "awaiting_approval"
+    ) as Record<string, unknown> | undefined
+
+    const approvalPrompt = (approvalOutput?.approval_prompt as string) || "Proceed with automated action?"
+    const approvalKey = (approvalOutput?.approval_key as string) || "_approval"
+    const scriptName = (approvalOutput?.script_name as string) || "automation"
+
+    return (
+      <div className="p-4 space-y-4">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span>⚡ {workflowTitle}</span>
+        </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <ShieldAlert className="h-4 w-4 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-amber-900">Approval required</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                This step will open a browser and take action on an external website.
+              </p>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-amber-200 px-4 py-3">
+            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+              <Zap className="h-3 w-3" />
+              {scriptName}
+            </div>
+            <p className="text-sm text-slate-800 font-medium">{approvalPrompt}</p>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => approveStep(approvalKey, true)}
+              disabled={submitting}
+              className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition"
+            >
+              {submitting ? (
+                <span className="flex items-center justify-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Running…
+                </span>
+              ) : (
+                "Approve & run"
+              )}
+            </button>
+            <button
+              onClick={() => approveStep(approvalKey, false)}
+              disabled={submitting}
+              className="px-4 py-2 border border-amber-200 text-amber-800 text-sm rounded-lg hover:bg-amber-100 disabled:opacity-50 transition"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     )

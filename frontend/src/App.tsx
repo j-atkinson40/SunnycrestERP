@@ -32,6 +32,7 @@ import CrmSettingsPage from "@/pages/crm/crm-settings";
 import PipelinePage from "@/pages/crm/pipeline";
 import AiSettingsPage from "@/pages/settings/ai-settings";
 import SavedOrdersPage from "@/pages/settings/SavedOrders";
+import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
 import DataQualityPage from "@/pages/admin/data-quality";
 import AuditLogs from "@/pages/admin/audit-logs";
@@ -426,6 +427,7 @@ export default function App() {
                   <Route path="/admin/data-quality" element={<DataQualityPage />} />
                   <Route path="/settings/ai-intelligence" element={<AiSettingsPage />} />
                   <Route path="/settings/saved-orders" element={<SavedOrdersPage />} />
+                  <Route path="/settings/external-accounts" element={<ExternalAccountsPage />} />
 
                   {/* Products — core feature, no module gate */}
                   <Route

@@ -288,31 +288,53 @@ def start_run(
 
 
 def advance_run(db: Session, run_id: str, step_input: dict) -> WorkflowRun:
-    """Provide input for a paused run and continue."""
+    """Provide input for a paused run and continue.
+
+    Handles both ``awaiting_input`` (standard input step) and
+    ``awaiting_approval`` (Playwright approval gate).
+    """
     run = db.query(WorkflowRun).filter(WorkflowRun.id == run_id).first()
     if not run:
         raise ValueError("Run not found")
-    if run.status != "awaiting_input":
-        raise ValueError(f"Run is not awaiting input (status={run.status})")
+    if run.status not in ("awaiting_input", "awaiting_approval"):
+        raise ValueError(f"Run is not awaiting input or approval (status={run.status})")
 
-    # Save the input under its step_key
+    # Save the input / approval decision
     inputs = dict(run.input_data or {})
     for k, v in (step_input or {}).items():
         inputs[k] = v
     run.input_data = inputs
 
-    # Mark the currently-paused input step completed
-    if run.current_step_id:
-        rs = (
-            db.query(WorkflowRunStep)
-            .filter(WorkflowRunStep.run_id == run.id, WorkflowRunStep.step_id == run.current_step_id)
-            .first()
-        )
-        if rs:
-            rs.status = "completed"
-            rs.output_data = step_input
+    if run.status == "awaiting_input":
+        # Mark the currently-paused input step completed
+        if run.current_step_id:
+            rs = (
+                db.query(WorkflowRunStep)
+                .filter(
+                    WorkflowRunStep.run_id == run.id,
+                    WorkflowRunStep.step_id == run.current_step_id,
+                )
+                .first()
+            )
+            if rs:
+                rs.status = "completed"
+                rs.output_data = step_input
+        run.status = "running"
 
-    run.status = "running"
+    elif run.status == "awaiting_approval":
+        # For approval, we need to re-run the current playwright step with
+        # the approval flag now set in input_data. Roll current_step_id back
+        # to the previous step so _drive_run re-enters the playwright step.
+        steps = _get_steps(db, run.workflow_id)
+        current_idx = next(
+            (i for i, s in enumerate(steps) if s.id == run.current_step_id), -1
+        )
+        if current_idx > 0:
+            run.current_step_id = steps[current_idx - 1].id
+        else:
+            run.current_step_id = None  # Re-start from beginning
+        run.status = "running"
+
     db.commit()
     db.refresh(run)
     _drive_run(db, run)
@@ -359,6 +381,16 @@ def _drive_run(db: Session, run: WorkflowRun) -> None:
             # Awaiting input — record paused step, return
             run.current_step_id = current.id
             run.status = "awaiting_input"
+            db.commit()
+            return
+
+        output = result.get("output", {})
+        if isinstance(output, dict) and output.get("type") == "awaiting_approval":
+            # Playwright step requires human approval before running
+            run.current_step_id = current.id
+            run.status = "awaiting_approval"
+            # Store the approval metadata so the UI can render the prompt
+            run.output_data = {**(run.output_data or {}), current.step_key: output}
             db.commit()
             return
 
@@ -487,8 +519,149 @@ def _execute_action(
         return _handle_log_vault_item(db, resolved_config, run)
     if action_type == "generate_document":
         return {"type": "document_generated", "document_type": resolved_config.get("document_type"), "pdf_url": None}
+    if action_type == "playwright_action":
+        return _handle_playwright_action(db, resolved_config, run)
 
     return {"status": "unknown_action_type", "action_type": action_type}
+
+
+def _handle_playwright_action(db: Session, config: dict, run: WorkflowRun) -> dict:
+    """Execute a Playwright automation script as a workflow step.
+
+    Config keys:
+      script_name       : str  — key from PLAYWRIGHT_SCRIPTS registry
+      input_mapping     : dict — {script_input_key: variable_ref_or_literal}
+      output_mapping    : dict — {local_key: script_output_key}  (optional)
+      requires_approval : bool — pause for human approval before running
+      approval_prompt   : str  — message shown in the approval UI
+      approval_threshold: int  — 0=always-approve, 1=always-require (default 1)
+
+    Returns the script outputs merged with execution metadata.
+    """
+    import asyncio
+    import json
+    import logging
+    from datetime import datetime, timezone
+
+    logger = logging.getLogger(__name__)
+
+    script_name = config.get("script_name", "")
+    input_mapping = config.get("input_mapping") or {}
+    output_mapping = config.get("output_mapping") or {}
+    requires_approval = config.get("requires_approval", False)
+    approval_prompt = config.get("approval_prompt", f"Approve automated action: {script_name}")
+
+    # ── Approval gate ─────────────────────────────────────────────────
+    if requires_approval:
+        # Check if this step already has an approval stored on the run
+        approval_key = f"_approval_{run.current_step_id or script_name}"
+        already_approved = (run.input_data or {}).get(approval_key)
+        if not already_approved:
+            return {
+                "type": "awaiting_approval",
+                "script_name": script_name,
+                "approval_prompt": approval_prompt,
+                "approval_key": approval_key,
+            }
+
+    # ── Resolve inputs ─────────────────────────────────────────────────
+    resolved_inputs = dict(input_mapping)  # already resolved by resolve_variables call above
+
+    # ── Get script ─────────────────────────────────────────────────────
+    from app.services.playwright_scripts import get_script
+    script = get_script(script_name)
+    if script is None:
+        return {
+            "type": "playwright_error",
+            "error": f"Unknown Playwright script: '{script_name}'. "
+                     f"Check Settings → External Accounts for available scripts.",
+            "script_name": script_name,
+        }
+
+    # ── Get credentials ─────────────────────────────────────────────────
+    from app.services import credential_service
+    credentials = credential_service.get_credentials(
+        db, company_id=run.company_id, service_key=script.service_key
+    )
+    if credentials is None:
+        return {
+            "type": "playwright_error",
+            "error": f"No credentials configured for '{script.service_key}'. "
+                     f"Go to Settings → External Accounts to connect your account.",
+            "script_name": script_name,
+            "service_key": script.service_key,
+        }
+
+    # ── Create execution log entry ────────────────────────────────────
+    from app.models.playwright_execution_log import PlaywrightExecutionLog
+    log_entry = PlaywrightExecutionLog(
+        id=str(uuid.uuid4()),
+        workflow_run_id=run.id,
+        company_id=run.company_id,
+        script_name=script_name,
+        service_key=script.service_key,
+        status="running",
+        input_data=resolved_inputs,  # safe — no credentials here
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(log_entry)
+    db.commit()
+    db.refresh(log_entry)
+
+    # ── Execute script in isolated event loop ─────────────────────────
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            script_result = loop.run_until_complete(
+                script.execute(resolved_inputs, credentials)
+            )
+        finally:
+            loop.close()
+
+        # ── Map outputs ──────────────────────────────────────────────
+        final_output: dict = {}
+        for local_key, script_key in output_mapping.items():
+            final_output[local_key] = script_result.get(script_key)
+        # Also include all script outputs directly
+        final_output.update(script_result)
+        final_output["type"] = "playwright_success"
+        final_output["script_name"] = script_name
+
+        # Update log
+        log_entry.status = "completed"
+        log_entry.output_data = final_output
+        log_entry.completed_at = datetime.now(timezone.utc)
+        db.commit()
+
+        logger.info(
+            "Playwright script %s completed for run %s (company %s)",
+            script_name, run.id, run.company_id,
+        )
+        return final_output
+
+    except Exception as e:
+        from app.services.playwright_scripts.base import PlaywrightScriptError
+        screenshot_path = getattr(e, "screenshot_path", None)
+        error_msg = str(e)[:500]
+        step_hint = getattr(e, "step", None)
+
+        log_entry.status = "failed"
+        log_entry.error_message = error_msg
+        log_entry.screenshot_path = screenshot_path
+        log_entry.completed_at = datetime.now(timezone.utc)
+        db.commit()
+
+        logger.error(
+            "Playwright script %s failed at step=%s for run %s: %s",
+            script_name, step_hint, run.id, error_msg,
+        )
+        return {
+            "type": "playwright_error",
+            "error": error_msg,
+            "script_name": script_name,
+            "step": step_hint,
+            "screenshot_path": screenshot_path,
+        }
 
 
 def _handle_create_record(db: Session, config: dict, run: WorkflowRun) -> dict:
@@ -600,6 +773,35 @@ def _handle_create_record(db: Session, config: dict, run: WorkflowRun) -> dict:
             db.rollback()
             return {"status": "error", "error": str(e)[:200], "type": "delivery"}
 
+    if record_type == "purchase_order":
+        try:
+            po_number = f"WF-PO-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{new_id[:8].upper()}"
+            result = db.execute(
+                sql_text(
+                    "INSERT INTO purchase_orders "
+                    "(id, company_id, po_number, status, notes, created_at, updated_at) "
+                    "VALUES (:id, :cid, :num, :status, :notes, now(), now()) "
+                    "RETURNING id, po_number"
+                ),
+                {
+                    "id": new_id,
+                    "cid": company_id,
+                    "num": fields.get("po_number", po_number),
+                    "status": fields.get("status", "draft"),
+                    "notes": fields.get("notes"),
+                },
+            )
+            row = result.fetchone()
+            db.commit()
+            return {
+                "id": row[0] if row else new_id,
+                "po_number": row[1] if row else po_number,
+                "type": "purchase_order",
+            }
+        except Exception as e:
+            db.rollback()
+            return {"status": "error", "error": str(e)[:200], "type": "purchase_order"}
+
     if record_type == "compliance_item":
         return _handle_log_vault_item(
             db,
@@ -628,6 +830,7 @@ def _handle_update_record(db: Session, config: dict, run: WorkflowRun) -> dict:
         "funeral_case": "funeral_cases",
         "order": "sales_orders",
         "delivery": "deliveries",
+        "purchase_order": "purchase_orders",
     }.get(record_type)
     if not table:
         return {"status": "unsupported_record_type", "record_type": record_type}

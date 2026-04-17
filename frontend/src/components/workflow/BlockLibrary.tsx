@@ -18,7 +18,7 @@ export interface BlockDefinition {
 interface CategoryDef {
   id: string
   label: string
-  color: "blue" | "purple" | "amber" | "green" | "gray"
+  color: "blue" | "purple" | "amber" | "green" | "gray" | "slate"
   blocks: BlockDefinition[]
 }
 
@@ -152,6 +152,43 @@ const BLOCK_CATEGORIES: CategoryDef[] = [
         icon: "⏱️", label: "Wait",
         description: "Pause before the next step",
         defaultConfig: { action_type: "wait", duration_hours: 24 },
+      },
+    ],
+  },
+  {
+    id: "automated",
+    label: "Automated Actions",
+    color: "slate",
+    blocks: [
+      {
+        type: "action", actionType: "playwright_action",
+        icon: "🤖", label: "Place order on Uline",
+        description: "Automatically log in and place a supply order on Uline",
+        defaultConfig: {
+          action_type: "playwright_action",
+          script_name: "uline_place_order",
+          requires_approval: true,
+          approval_prompt: "Place order on Uline?",
+          input_mapping: { item_number: "", quantity: "" },
+          output_mapping: {
+            uline_confirmation: "confirmation_number",
+            uline_total: "order_total",
+            uline_delivery: "estimated_delivery",
+          },
+        },
+      },
+      {
+        type: "action", actionType: "playwright_action",
+        icon: "🛡️", label: "Submit SS Certificate",
+        description: "Submit a Social Service certificate form via browser automation",
+        defaultConfig: {
+          action_type: "playwright_action",
+          script_name: "ss_certificate_submit",
+          requires_approval: true,
+          approval_prompt: "Submit Social Service certificate?",
+          input_mapping: {},
+          output_mapping: {},
+        },
       },
     ],
   },
@@ -331,6 +368,7 @@ const CATEGORY_COLOR: Record<CategoryDef["color"], string> = {
   amber: "bg-amber-50 text-amber-700",
   green: "bg-emerald-50 text-emerald-700",
   gray: "bg-slate-50 text-slate-600",
+  slate: "bg-slate-100 text-slate-700",
 }
 
 // ─────────────────────────────────────────────────────────────────────
