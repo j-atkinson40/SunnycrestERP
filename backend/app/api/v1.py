@@ -18,6 +18,9 @@ from app.api.routes import (
     product_lines,
     ancillary_orders,
     announcements,
+)
+from app.api.routes.fh import cases as fh_cases
+from app.api.routes import (   # noqa: E402 — continuation of main import
     call_intelligence,
     ringcentral,
     data_import,
@@ -609,4 +612,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     work_orders.router, prefix="/work-orders", tags=["Work Orders"]
+)
+
+# Funeral Home vertical (FH-1a)
+v1_router.include_router(
+    fh_cases.router, prefix="/fh/cases", tags=["FH Cases"]
 )

@@ -1,0 +1,1 @@
+"""Funeral Home vertical services."""

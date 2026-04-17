@@ -312,6 +312,27 @@ from app.models.admin_deployment import AdminDeployment
 from app.models.admin_smoke_test_result import AdminSmokeTestResult
 from app.models.tenant_product_line import TenantProductLine
 from app.models.program_legacy_print import ProgramLegacyPrint
+# Funeral home vertical (fh_01_case_model)
+from app.models.funeral_case import (
+    FuneralCase,
+    CaseDeceased,
+    CaseInformant,
+    CaseService as FHCaseService,
+    CaseDisposition,
+    CaseCemetery,
+    CaseCremation,
+    CaseVeteran,
+    CaseMerchandise,
+    CaseFinancials,
+    CasePreneed,
+    CaseAftercare,
+    FuneralCaseNote,
+    CaseFieldConfig,
+    FHCaseVault,
+    VaultTribute,
+    VaultAccessLog,
+    CasketProduct,
+)
 
 __all__ = [
     "AccountingConnection",
@@ -580,4 +601,22 @@ __all__ = [
     "AdminSmokeTestResult",
     "TenantProductLine",
     "ProgramLegacyPrint",
+    "FuneralCase",
+    "CaseDeceased",
+    "CaseInformant",
+    "FHCaseService",
+    "CaseDisposition",
+    "CaseCemetery",
+    "CaseCremation",
+    "CaseVeteran",
+    "CaseMerchandise",
+    "CaseFinancials",
+    "CasePreneed",
+    "CaseAftercare",
+    "FuneralCaseNote",
+    "CaseFieldConfig",
+    "FHCaseVault",
+    "VaultTribute",
+    "VaultAccessLog",
+    "CasketProduct",
 ]
