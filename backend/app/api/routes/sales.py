@@ -306,6 +306,40 @@ def convert_quote(
     return _order_to_response(order)
 
 
+@router.get("/quotes/{quote_id}/pdf")
+def get_quote_pdf(
+    quote_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.view_quote")),
+):
+    """Return the quote as a PDF download. Streams raw PDF bytes rendered
+    via WeasyPrint. Used by the Compose slide-over review mode + the
+    "Send to customer" flow."""
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+    from app.services import quote_service as _qs
+
+    try:
+        pdf_bytes = _qs.generate_quote_pdf(
+            db, current_user.company_id, quote_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        # WeasyPrint missing — environment issue, not tenant-facing
+        raise HTTPException(status_code=503, detail=str(e))
+
+    filename = f"quote_{quote_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Sales Orders
 # ---------------------------------------------------------------------------

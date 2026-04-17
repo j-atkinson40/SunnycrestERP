@@ -448,3 +448,135 @@ def _quote_to_dict(q: Quote) -> dict:
             for ln in (q.lines or [])
         ],
     }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PDF rendering — used by the Compose slide-over review mode and the
+# "Send to customer" action. Lazy-imports WeasyPrint so environments
+# without the C deps don't break on service import.
+# ─────────────────────────────────────────────────────────────────────
+
+
+_PDF_TEMPLATE = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:40px;}
+.header{display:flex;justify-content:space-between;margin-bottom:40px;border-bottom:2px solid #1a1a1a;padding-bottom:20px;}
+.company-name{font-size:22px;font-weight:700;letter-spacing:-.5px;}
+.quote-label{font-size:28px;font-weight:300;color:#666;text-align:right;}
+.quote-number{font-size:13px;color:#666;text-align:right;margin-top:4px;}
+.details{display:flex;gap:60px;margin-bottom:36px;}
+.detail-block label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:#888;display:block;margin-bottom:4px;}
+.detail-block p{margin:0;font-size:13px;font-weight:500;}
+table{width:100%;border-collapse:collapse;margin-bottom:24px;}
+th{background:#f5f5f5;padding:10px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:#666;}
+td{padding:12px;border-bottom:1px solid #f0f0f0;font-size:13px;}
+td.right{text-align:right;}
+.total-row td{font-weight:700;font-size:14px;border-bottom:none;border-top:2px solid #1a1a1a;}
+.footer{margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:11px;color:#888;}
+.expiry-note{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;margin-bottom:24px;font-size:12px;color:#92400e;}
+</style></head><body>
+<div class="header"><div><div class="company-name">{company_name}</div></div>
+<div><div class="quote-label">QUOTE</div><div class="quote-number">#{quote_number}</div><div class="quote-number">{quote_date}</div></div></div>
+<div class="details">
+{customer_block}
+<div class="detail-block"><label>Prepared by</label><p>{company_name}</p></div>
+{expiry_block}
+</div>
+{expiry_note}
+<table><thead><tr><th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead><tbody>
+{line_rows}
+{total_row}
+</tbody></table>
+{notes_block}
+<div class="footer"><p>Thank you for your business. To accept this quote, please reply or contact us directly.</p>
+<p style="margin-top:8px;">{company_name}</p></div>
+</body></html>"""
+
+
+def _money(v) -> str:
+    try:
+        return f"${float(v):,.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def generate_quote_pdf(db: Session, tenant_id: str, quote_id: str) -> bytes:
+    """Render a quote as a PDF via WeasyPrint. Raises ValueError if the
+    quote doesn't belong to this tenant, RuntimeError if WeasyPrint isn't
+    available in the environment."""
+    try:
+        from weasyprint import HTML  # type: ignore
+    except Exception as e:  # pragma: no cover — missing system dep
+        raise RuntimeError(f"WeasyPrint unavailable: {e}")
+
+    from app.models.company import Company  # local import to avoid cycles
+
+    quote = _get_quote_or_404(db, tenant_id, quote_id)
+    company = db.query(Company).filter(Company.id == tenant_id).first()
+    lines = sorted(quote.lines or [], key=lambda ln: ln.sort_order or 0)
+
+    company_name = (company.name if company else "Bridgeable") or "Bridgeable"
+    quote_number = quote.number or quote.id[:8].upper()
+    quote_date_str = (
+        quote.quote_date.strftime("%B %-d, %Y") if quote.quote_date else ""
+    )
+
+    customer_block = (
+        f'<div class="detail-block"><label>Prepared for</label>'
+        f"<p>{quote.customer_name}</p></div>"
+        if quote.customer_name
+        else ""
+    )
+
+    expiry_block = ""
+    expiry_note = ""
+    if quote.expiry_date:
+        expiry_str = quote.expiry_date.strftime("%B %-d, %Y")
+        expiry_block = (
+            '<div class="detail-block"><label>Valid until</label>'
+            f"<p>{expiry_str}</p></div>"
+        )
+        expiry_note = (
+            '<div class="expiry-note">This quote is valid until '
+            f"{expiry_str}. Prices subject to change after expiry.</div>"
+        )
+
+    line_rows = "".join(
+        (
+            f"<tr><td>{ln.description or ''}</td>"
+            f'<td class="right">{float(ln.quantity or 0):g}</td>'
+            f'<td class="right">{_money(ln.unit_price)}</td>'
+            f'<td class="right">{_money(ln.line_total)}</td></tr>'
+        )
+        for ln in lines
+    ) or (
+        '<tr><td colspan="4" style="color:#999;text-align:center;">'
+        "No line items.</td></tr>"
+    )
+    total_row = (
+        '<tr class="total-row"><td colspan="3">Total</td>'
+        f'<td class="right">{_money(quote.total)}</td></tr>'
+        if quote.total
+        else ""
+    )
+    notes_block = (
+        '<div style="margin-bottom:24px;"><div style="font-size:10px;'
+        "font-weight:600;text-transform:uppercase;color:#888;"
+        'letter-spacing:.6px;margin-bottom:6px;">Notes</div>'
+        f'<div style="font-size:13px;">{quote.notes}</div></div>'
+        if quote.notes
+        else ""
+    )
+
+    html = _PDF_TEMPLATE.format(
+        company_name=company_name,
+        quote_number=quote_number,
+        quote_date=quote_date_str,
+        customer_block=customer_block,
+        expiry_block=expiry_block,
+        expiry_note=expiry_note,
+        line_rows=line_rows,
+        total_row=total_row,
+        notes_block=notes_block,
+    )
+    return HTML(string=html).write_pdf()
