@@ -24,6 +24,8 @@ import {
   stepDraftFromBlock,
   type BlockDefinition,
 } from "@/components/workflow/BlockLibrary"
+import { InterStepDropZone, EndDropZone } from "@/components/workflow/DropZones"
+import { PlaceholderCard } from "@/components/workflow/PlaceholderCard"
 import {
   RUN_STATUS_DISPLAY,
   TRIGGER_SOURCE_DISPLAY,
@@ -118,6 +120,7 @@ export default function WorkflowBuilderPage() {
     steps: [],
   })
   const [selectedStepIdx, setSelectedStepIdx] = useState<number | null>(null)
+  const [placeholderIndex, setPlaceholderIndex] = useState<number | null>(null)
 
   // Load existing workflow
   useEffect(() => {
@@ -375,12 +378,27 @@ export default function WorkflowBuilderPage() {
             )}
 
             {draft.steps.length === 0 ? (
-              <EmptyCanvasStep
-                readOnly={readOnly}
-                onDrop={(block) => insertBlock(block)}
-              />
+              placeholderIndex === 0 && !readOnly ? (
+                <PlaceholderCard
+                  onSelect={(block) => {
+                    setPlaceholderIndex(null)
+                    insertBlock(block, 0)
+                  }}
+                  onCancel={() => setPlaceholderIndex(null)}
+                />
+              ) : readOnly ? (
+                <EmptyCanvasStep
+                  readOnly={readOnly}
+                  onDrop={(block) => insertBlock(block)}
+                />
+              ) : (
+                <EndDropZone
+                  onDrop={(block) => insertBlock(block, 0)}
+                  onClickAdd={() => setPlaceholderIndex(0)}
+                />
+              )
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {draft.steps.map((step, i) => (
                   <div key={i}>
                     <StepCard
@@ -396,9 +414,45 @@ export default function WorkflowBuilderPage() {
                       canMoveUp={i > 0}
                       canMoveDown={i < draft.steps.length - 1}
                     />
-                    {i < draft.steps.length - 1 && <ConnectorLine />}
+                    {i < draft.steps.length - 1 && !readOnly && (
+                      placeholderIndex === i + 1 ? (
+                        <div className="my-2">
+                          <PlaceholderCard
+                            onSelect={(block) => {
+                              setPlaceholderIndex(null)
+                              insertBlock(block, i + 1)
+                            }}
+                            onCancel={() => setPlaceholderIndex(null)}
+                          />
+                        </div>
+                      ) : (
+                        <InterStepDropZone
+                          onDrop={(block) => insertBlock(block, i + 1)}
+                          onClickAdd={() => setPlaceholderIndex(i + 1)}
+                        />
+                      )
+                    )}
+                    {i < draft.steps.length - 1 && readOnly && <ConnectorLine />}
                   </div>
                 ))}
+                {!readOnly && (
+                  placeholderIndex === draft.steps.length ? (
+                    <div className="my-2">
+                      <PlaceholderCard
+                        onSelect={(block) => {
+                          setPlaceholderIndex(null)
+                          insertBlock(block, draft.steps.length)
+                        }}
+                        onCancel={() => setPlaceholderIndex(null)}
+                      />
+                    </div>
+                  ) : (
+                    <EndDropZone
+                      onDrop={(block) => insertBlock(block)}
+                      onClickAdd={() => setPlaceholderIndex(draft.steps.length)}
+                    />
+                  )
+                )}
               </div>
             )}
 
@@ -408,49 +462,62 @@ export default function WorkflowBuilderPage() {
           </div>
         </main>
 
-        {/* Persistent right sidebar — always shows the BlockLibrary unless
-            a step is selected. Workflow metadata lives in a collapsed
-            Details panel at the top, so it's available but doesn't take
-            over the sidebar. */}
-        <aside className="w-80 flex-shrink-0 border-l border-slate-200 bg-white flex flex-col overflow-hidden">
-          {selectedStep ? (
-            <SidebarEditorHeader
-              step={selectedStep}
-              onBack={() => setSelectedStepIdx(null)}
-              onDelete={
-                readOnly
-                  ? undefined
-                  : () => {
-                      if (selectedStepIdx !== null) removeStep(selectedStepIdx)
-                    }
-              }
-            >
-              <BlockEditor
-                step={selectedStep}
-                readOnly={readOnly}
-                onChange={(update) => updateStep(selectedStepIdx!, update)}
-                onConfigChange={(configUpdate) =>
-                  updateStepConfig(selectedStepIdx!, configUpdate)
-                }
-                onClose={() => setSelectedStepIdx(null)}
-              />
-            </SidebarEditorHeader>
-          ) : (
-            <div className="flex flex-col h-full overflow-hidden">
+        {/* Persistent right sidebar — double-wide flex container that
+            slides between the library (left half) and the editor (right
+            half). Both panels are always mounted so the library keeps
+            its scroll position and there's no mount flash. */}
+        <aside className="w-80 flex-shrink-0 border-l border-slate-200 bg-white overflow-hidden">
+          <div
+            className="flex h-full transition-transform duration-200 ease-in-out"
+            style={{
+              width: "200%",
+              transform: selectedStep ? "translateX(-50%)" : "translateX(0%)",
+            }}
+          >
+            {/* Left pane — library */}
+            <div className="flex flex-col h-full overflow-hidden" style={{ width: "50%" }}>
               <WorkflowDetailsPanel
                 triggerType={draft.trigger_type}
                 vertical={draft.vertical}
                 keywords={draft.keywords}
               />
-              {readOnly && (
-                <TemplateBanner tier={loadedMeta?.tier} />
-              )}
+              {readOnly && <TemplateBanner tier={loadedMeta?.tier} />}
               <BlockLibrary
                 onDragStart={() => {}}
                 onClick={(block) => insertBlock(block)}
+                workflowId={draft.id}
               />
             </div>
-          )}
+
+            {/* Right pane — editor (always mounted; empty when nothing selected) */}
+            <div className="flex flex-col h-full overflow-hidden" style={{ width: "50%" }}>
+              {selectedStep ? (
+                <SidebarEditorHeader
+                  step={selectedStep}
+                  onBack={() => setSelectedStepIdx(null)}
+                  onDelete={
+                    readOnly
+                      ? undefined
+                      : () => {
+                          if (selectedStepIdx !== null) removeStep(selectedStepIdx)
+                        }
+                  }
+                >
+                  <BlockEditor
+                    step={selectedStep}
+                    readOnly={readOnly}
+                    onChange={(update) => updateStep(selectedStepIdx!, update)}
+                    onConfigChange={(configUpdate) =>
+                      updateStepConfig(selectedStepIdx!, configUpdate)
+                    }
+                    onClose={() => setSelectedStepIdx(null)}
+                  />
+                </SidebarEditorHeader>
+              ) : (
+                <div className="flex-1" />
+              )}
+            </div>
+          </div>
         </aside>
 
       </div>
@@ -486,10 +553,10 @@ function SidebarEditorHeader({
       <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
+          className="group inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Back
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+          Back to blocks
         </button>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-slate-900 truncate">

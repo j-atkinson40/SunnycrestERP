@@ -182,6 +182,149 @@ const BLOCK_CATEGORIES: CategoryDef[] = [
   },
 ]
 
+// Workflow-specific suggested blocks — shown at the top of the library
+// when a matching workflowId is provided. Each entry is a fully-formed
+// BlockDefinition (icon, label, defaults) that drops in ready-to-use.
+const WORKFLOW_SUGGESTIONS: Record<string, BlockDefinition[]> = {
+  wf_mfg_disinterment: [
+    {
+      type: "action", actionType: "send_email",
+      icon: "📧", label: "Email confirmation to FH",
+      description: "Confirm receipt to the funeral home",
+      defaultConfig: {
+        action_type: "send_email",
+        to: "{input.ask_funeral_home.email}",
+        subject: "Disinterment order received",
+        body: "Your disinterment order has been received and is being processed.",
+      },
+    },
+    {
+      type: "action", actionType: "send_notification",
+      icon: "🔔", label: "Notify your team",
+      description: "Alert admins about the new order",
+      defaultConfig: {
+        action_type: "send_notification", notify_roles: ["admin"],
+        title: "New disinterment order",
+        body: "Disinterment for {input.ask_funeral_home.name}",
+      },
+    },
+    {
+      type: "action", actionType: "log_vault_item",
+      icon: "📌", label: "Log to timeline",
+      description: "Record event in vault timeline",
+      defaultConfig: {
+        action_type: "log_vault_item", item_type: "event",
+        event_type: "disinterment_initiated",
+        title: "Disinterment for {input.ask_funeral_home.name}",
+      },
+    },
+  ],
+  wf_mfg_create_order: [
+    {
+      type: "action", actionType: "send_email",
+      icon: "📧", label: "Email order confirmation",
+      description: "Send confirmation to customer",
+      defaultConfig: {
+        action_type: "send_email",
+        to: "{input.ask_customer.email}",
+        subject: "Order received",
+        body: "Thank you, your order has been received.",
+      },
+    },
+    {
+      type: "action", actionType: "send_notification",
+      icon: "🔔", label: "Notify production",
+      description: "Alert production team of new order",
+      defaultConfig: {
+        action_type: "send_notification", notify_roles: ["production", "admin"],
+        title: "New vault order",
+        body: "Order from {input.ask_customer.name}",
+      },
+    },
+  ],
+  wf_mfg_schedule_delivery: [
+    {
+      type: "action", actionType: "send_sms",
+      icon: "💬", label: "Text the driver",
+      description: "SMS the assigned driver",
+      defaultConfig: {
+        action_type: "send_sms",
+        to: "{input.ask_driver.phone}",
+        body: "Delivery assigned: {input.ask_date}.",
+      },
+    },
+    {
+      type: "action", actionType: "send_email",
+      icon: "📧", label: "Confirm delivery to customer",
+      description: "Email the customer their delivery date",
+      defaultConfig: {
+        action_type: "send_email",
+        to: "{current_record.customer_email}",
+        subject: "Delivery scheduled",
+        body: "Your delivery is confirmed for {input.ask_date}.",
+      },
+    },
+  ],
+  wf_mfg_log_pour: [
+    {
+      type: "action", actionType: "send_notification",
+      icon: "🔔", label: "Notify admin of pour",
+      description: "Alert admin when pour is logged",
+      defaultConfig: {
+        action_type: "send_notification", notify_roles: ["admin"],
+        title: "Production pour logged",
+        body: "{input.ask_quantity} units of {input.ask_product.name} poured.",
+      },
+    },
+  ],
+  wf_fh_first_call: [
+    {
+      type: "action", actionType: "send_sms",
+      icon: "💬", label: '"In our care" message',
+      description: "Send comfort message to family",
+      defaultConfig: {
+        action_type: "send_sms",
+        to: "{input.ask_contact.phone}",
+        body: "Your loved one is now in our care. We will be in touch shortly.",
+      },
+    },
+    {
+      type: "action", actionType: "send_notification",
+      icon: "🔔", label: "Notify on-call director",
+      description: "Alert the assigned director",
+      defaultConfig: {
+        action_type: "send_notification",
+        notify_user_id: "{input.ask_director.id}",
+        title: "New first call assigned",
+        body: "A new case has been assigned to you.",
+      },
+    },
+  ],
+  wf_fh_schedule_arrangement: [
+    {
+      type: "action", actionType: "send_sms",
+      icon: "💬", label: "Text family reminder",
+      description: "Send family a text reminder",
+      defaultConfig: {
+        action_type: "send_sms",
+        to: "{input.ask_case.primary_contact_phone}",
+        body: "Reminder: your arrangement conference is {input.ask_datetime}.",
+      },
+    },
+    {
+      type: "action", actionType: "send_email",
+      icon: "📧", label: "Email arrangement confirmation",
+      description: "Send email confirmation to family",
+      defaultConfig: {
+        action_type: "send_email",
+        to: "{input.ask_case.primary_contact_email}",
+        subject: "Arrangement conference confirmed",
+        body: "Your arrangement conference is confirmed for {input.ask_datetime}.",
+      },
+    },
+  ],
+}
+
 const CATEGORY_COLOR: Record<CategoryDef["color"], string> = {
   blue: "bg-blue-50 text-blue-600",
   purple: "bg-violet-50 text-violet-600",
@@ -195,10 +338,14 @@ const CATEGORY_COLOR: Record<CategoryDef["color"], string> = {
 export function BlockLibrary({
   onDragStart,
   onClick,
+  workflowId,
 }: {
   onDragStart: (block: BlockDefinition) => void
   onClick: (block: BlockDefinition) => void
+  /** When provided, shows workflow-specific suggested blocks at the top. */
+  workflowId?: string
 }) {
+  const suggestions = workflowId ? WORKFLOW_SUGGESTIONS[workflowId] ?? [] : []
   const [query, setQuery] = useState("")
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set(["collect", "actions"]),
@@ -250,6 +397,31 @@ export function BlockLibrary({
       </div>
 
       <div className="flex-1 overflow-y-auto pb-4">
+        {/* Workflow-specific suggestions — shown above categories when
+            no search is active and the workflow has suggestions. */}
+        {suggestions.length > 0 && !isSearching && (
+          <div>
+            <div className="px-4 py-2.5 flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-600">
+                ✨ Suggested
+              </span>
+              <span className="text-[10px] text-slate-400">for this workflow</span>
+            </div>
+            <div className="px-3 pb-3 space-y-1">
+              {suggestions.map((block, i) => (
+                <BlockItem
+                  key={`sug-${i}`}
+                  block={block}
+                  color="blue"
+                  onDragStart={onDragStart}
+                  onClick={onClick}
+                />
+              ))}
+            </div>
+            <div className="mx-4 border-t border-slate-100 mb-1" />
+          </div>
+        )}
+
         {categories.map((category) => {
           const isOpen = isSearching || expanded.has(category.id)
           return (
