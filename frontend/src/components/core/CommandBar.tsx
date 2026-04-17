@@ -178,6 +178,32 @@ interface DocumentOrAnswerResult {
   confidence?: number;
 }
 
+// Unified command-bar search response shape from /core/command-bar/search
+interface CommandBarSearchResponse {
+  intent?: "question" | "search" | "action" | "navigate" | "empty";
+  answered?: boolean;
+  answer?: {
+    id: string;
+    headline: string;
+    source_title?: string;
+    source_label?: string;
+    source_section?: string | null;
+    route?: string;
+    related_record_ids?: string[];
+  } | null;
+  records?: Array<{
+    result_type: "record";
+    record_type: string;
+    id: string;
+    record_id: string;
+    title: string;
+    subtitle?: string;
+    icon?: string;
+    route?: string;
+  }>;
+  documents?: DocumentOrAnswerResult[];
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface CommandBarProps {
@@ -287,11 +313,11 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             priority: number;
           }>>("/workflows/command-bar", { params: { q }, signal: controller.signal }),
           q.length >= 3
-            ? apiClient.get<{ documents: DocumentOrAnswerResult[] }>(
+            ? apiClient.get<CommandBarSearchResponse>(
                 "/core/command-bar/search",
                 { params: { q, include_documents: true }, signal: controller.signal }
               )
-            : Promise.resolve({ data: { documents: [] } }),
+            : Promise.resolve({ data: { documents: [] } as CommandBarSearchResponse }),
         ]);
         setSearchingDocs(false);
 
@@ -335,9 +361,41 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         // the list when the API returns nothing actionable.
         const localMatches = matchLocalActions(q, permittedActions);
 
-        // Document + Answer results from /core/command-bar/search
-        const docs =
-          docsRes.status === "fulfilled" ? docsRes.value.data?.documents || [] : [];
+        // Unified search response: records + inline answer + document hits
+        const searchData: CommandBarSearchResponse =
+          docsRes.status === "fulfilled" ? docsRes.value.data || {} : {};
+        const docs = searchData.documents || [];
+        const liveRecords = searchData.records || [];
+        const inlineAnswer = searchData.answer || null;
+        const wasAnswered = !!searchData.answered;
+
+        const answerActions: CommandAction[] = inlineAnswer
+          ? [{
+              id: inlineAnswer.id,
+              keywords: [],
+              title: inlineAnswer.headline,
+              subtitle: inlineAnswer.source_label || inlineAnswer.source_title || undefined,
+              icon: "zap",
+              type: "ANSWER",
+              roles: [],
+              vertical: "manufacturing",
+              route: inlineAnswer.route,
+              sourceSection: inlineAnswer.source_section || null,
+            } as CommandAction]
+          : [];
+
+        const recordActions: CommandAction[] = liveRecords.map((r) => ({
+          id: r.id,
+          keywords: [],
+          title: r.title,
+          subtitle: r.subtitle,
+          icon: r.icon || "navigation",
+          type: "RECORD",
+          route: r.route,
+          roles: [],
+          vertical: "manufacturing",
+        }));
+
         const docActions: CommandAction[] = docs.map((d) => {
           if (d.result_type === "answer") {
             return {
@@ -375,16 +433,27 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           } as CommandAction;
         });
 
-        // Dedupe by id — prefer API result if both exist
+        // When a question was pattern-answered, suppress generic nav/action
+        // clutter so the answer and its related records own the results.
+        const sources: CommandAction[][] = wasAnswered
+          ? [answerActions, recordActions, docActions]
+          : [workflowActions, answerActions, filteredApiResults, recordActions, docActions, localMatches];
+
         const byId = new Map<string, CommandAction>();
-        for (const a of [...workflowActions, ...filteredApiResults, ...docActions, ...localMatches]) {
+        for (const a of sources.flat()) {
           if (!byId.has(a.id)) byId.set(a.id, a);
         }
 
         // Sort: WORKFLOW > ANSWER > ACTION > RECORD > DOCUMENT > VIEW > NAV > ASK
         const merged = sortByTypeRank(Array.from(byId.values()));
         setResults(merged.slice(0, 7));
-        setSearchOnly(filteredApiResults.length === 0 && workflowActions.length === 0 && docActions.length === 0);
+        setSearchOnly(
+          filteredApiResults.length === 0 &&
+            workflowActions.length === 0 &&
+            docActions.length === 0 &&
+            recordActions.length === 0 &&
+            answerActions.length === 0,
+        );
         setSelectedIdx(0);
       } catch (err: unknown) {
         if ((err as { name?: string }).name === "CanceledError") return;

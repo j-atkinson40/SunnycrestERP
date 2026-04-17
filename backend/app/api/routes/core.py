@@ -11,7 +11,11 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.command_bar import CommandBarHistory
 from app.models.user import User
-from app.services import core_command_service, document_search_service
+from app.services import (
+    core_command_service,
+    document_search_service,
+    command_bar_data_search,
+)
 
 router = APIRouter()
 
@@ -102,23 +106,52 @@ def command_bar_search(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Unified command-bar search. Returns document + answer results
-    alongside whatever the caller merges in for workflows/records/nav.
+    """Unified command-bar search.
 
-    Frontend typically fetches local workflow/nav results instantly and
-    awaits this endpoint in parallel for the slower records + documents
-    portion. This route focuses on the document search half.
+    Returns a merged shape:
+      {
+        intent: "question" | "search" | "action" | "navigate",
+        answered: bool,       # true when a pattern-based answer hit
+        answer: {...} | null, # inline price/inventory/etc answer
+        records: [...],       # live product/contact/order records
+        documents: [...],     # document search answers + document hits
+      }
+
+    Frontend fetches this in parallel with local workflow/nav matches
+    and merges them according to intent (questions suppress nav).
     """
     q = (q or "").strip()
-    if len(q) < 2 or not include_documents:
-        return {"documents": []}
+    empty = {"intent": "empty", "answered": False, "answer": None, "records": [], "documents": []}
+    if len(q) < 2:
+        return empty
+
+    # Intent + live records + pattern-based answer
     try:
-        docs = document_search_service.search(
-            db, query=q, company_id=current_user.company_id, limit=limit
+        data = command_bar_data_search.answer_or_search(
+            db, query=q, company_id=current_user.company_id
         )
     except Exception:
-        docs = []
-    return {"documents": docs}
+        data = {"intent": "search", "answered": False, "answer": None, "records": []}
+
+    # Document search (Claude answer extraction + doc matches) — always
+    # runs unless explicitly disabled. Skipped for ACTION / NAVIGATE to
+    # avoid dragging documents into "create order" style queries.
+    docs: list[dict] = []
+    if include_documents and data.get("intent") in ("question", "search"):
+        try:
+            docs = document_search_service.search(
+                db, query=q, company_id=current_user.company_id, limit=limit
+            )
+        except Exception:
+            docs = []
+
+    return {
+        "intent": data.get("intent", "search"),
+        "answered": bool(data.get("answered")),
+        "answer": data.get("answer"),
+        "records": data.get("records", []),
+        "documents": docs,
+    }
 
 
 @router.get("/command-bar/recent")
