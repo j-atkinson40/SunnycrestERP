@@ -74,7 +74,6 @@ export default function WorkflowBuilderPage() {
   const { workflowId } = useParams<{ workflowId: string }>()
   const navigate = useNavigate()
   const isViewMode = location.pathname.endsWith("/view")
-  const isEditMode = location.pathname.endsWith("/edit")
   const isNew = !workflowId
 
   const [loading, setLoading] = useState(!isNew)
