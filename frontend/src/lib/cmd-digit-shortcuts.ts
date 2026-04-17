@@ -40,22 +40,29 @@ export function setCmdShortcutState(update: Partial<ShortcutState>): void {
 function handleKeyDown(e: KeyboardEvent): void {
   // We only act when the command bar is open.
   if (!state.isOpen) return
-  if (!(e.metaKey || e.ctrlKey)) return
-  if (e.altKey || e.shiftKey) return   // don't interfere with other combos
 
-  // Safari/Chrome report e.key = "1"; Firefox layouts vary — also check e.code
-  const fromKey = parseInt(e.key, 10)
+  // Accept EITHER Option/Alt+digit (primary — 100% interceptable)
+  // OR Cmd/Ctrl+digit (best-effort — browsers reserve Cmd+1-8 for tab
+  // switching on Mac and can sometimes beat us to it).
+  const hasAlt = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey
+  const hasCmd = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey
+  if (!hasAlt && !hasCmd) return
+
+  // On Mac, Option+digit produces e.key as a special character (¡™£¢∞ etc.)
+  // because macOS applies Option-layer mapping. We prefer e.code
+  // ("Digit1", "Digit2", …) which is the raw physical key regardless of layer.
   const fromCode = e.code && e.code.startsWith("Digit")
     ? parseInt(e.code.slice(5), 10) : NaN
-  const num = !Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5
-    ? fromKey
-    : (!Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5 ? fromCode : null)
+  const fromKey = parseInt(e.key, 10)
+  const num = !Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5
+    ? fromCode
+    : (!Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5 ? fromKey : null)
   if (!num) return
 
   if (state.debug) {
     // eslint-disable-next-line no-console
-    console.log("[cmd-shortcuts] intercepting Cmd+" + num, {
-      key: e.key, code: e.code, metaKey: e.metaKey, ctrlKey: e.ctrlKey,
+    console.log(`[cmd-shortcuts] intercepting ${hasAlt ? "Option" : "Cmd"}+${num}`, {
+      key: e.key, code: e.code, metaKey: e.metaKey, altKey: e.altKey,
       target: state.results[num - 1]?.title || "(no target)",
     })
   }

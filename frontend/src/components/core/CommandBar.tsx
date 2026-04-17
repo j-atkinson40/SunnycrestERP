@@ -109,9 +109,14 @@ function TypeBadge({ type }: { type: string }) {
 // ── Shortcut badge ───────────────────────────────────────────────────────────
 
 function ShortcutBadge({ n }: { n: number }) {
+  // ⌥ = Option key on Mac. We've switched the primary quick-pick modifier
+  // to Option because Cmd+1-8 is reserved by Mac browsers for tab switching.
   return (
-    <span className="flex h-5 w-5 items-center justify-center rounded border border-gray-200 bg-white font-mono text-[10px] text-gray-400 shadow-sm flex-shrink-0">
-      {n}
+    <span
+      className="flex items-center justify-center rounded border border-gray-200 bg-white font-mono text-[10px] text-gray-400 shadow-sm flex-shrink-0 px-1.5 h-5"
+      title={`Option+${n} (or Cmd+${n})`}
+    >
+      ⌥{n}
     </span>
   );
 }
@@ -370,16 +375,19 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      // Cmd+1..5 — handle here too as a final safety net. The module-level
-      // capture-phase listener in main.tsx fires first on most browsers,
-      // but if the focused input is consuming the event at the target
-      // element before it bubbles, this handler catches it.
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
-        const fromKey = parseInt(e.key, 10);
+      // Option+1..5 (primary — never browser-reserved) or Cmd+1..5 (best-effort).
+      // Module-level capture listener in main.tsx fires first, but we also handle
+      // here as a safety net for when the browser/OS intercepts Cmd+N before JS.
+      const hasAlt = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey;
+      const hasCmd = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
+      if (hasAlt || hasCmd) {
+        // Prefer e.code (physical key) — Mac Option layer rewrites e.key to
+        // special chars (¡™£¢∞…).
         const fromCode = e.code && e.code.startsWith("Digit") ? parseInt(e.code.slice(5), 10) : NaN;
-        const num = !Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5
-          ? fromKey
-          : (!Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5 ? fromCode : null);
+        const fromKey = parseInt(e.key, 10);
+        const num = !Number.isNaN(fromCode) && fromCode >= 1 && fromCode <= 5
+          ? fromCode
+          : (!Number.isNaN(fromKey) && fromKey >= 1 && fromKey <= 5 ? fromKey : null);
         if (num) {
           e.preventDefault();
           e.stopPropagation();
@@ -609,7 +617,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-4 py-2 text-[10px] text-gray-400">
-          <span>↑↓ navigate · Enter select · Esc close · ⌘1–5 quick-pick</span>
+          <span>↑↓ navigate · Enter select · Esc close · ⌥1–5 quick-pick</span>
           <span className="flex items-center gap-1">
             {searchOnly && (
               <span className="rounded bg-gray-200 px-1 py-0.5 text-[9px] font-medium text-gray-500">
