@@ -12,6 +12,124 @@
 
 **4 tenant presets:** `manufacturing` (primary, most features), `funeral_home`, `cemetery`, `crematory`
 
+## 1a. Core UX Philosophy — "Monitor through hubs. Act through the command bar."
+
+**This is the foundational design principle of Bridgeable. Every feature decision must be evaluated against it.**
+
+### The Two Modes
+
+**MODE 1 — MONITORING (Hub Dashboards)**
+
+Monitoring is passive awareness. The platform surfaces what matters without being asked.
+
+- Information comes to the user — they do not hunt for it
+- Hub dashboards are role-aware: admins see team metrics, directors see their cases, drivers see their deliveries
+- Morning briefing, operations board, compliance hub, case dashboard — all monitoring surfaces
+- Widgets are the unit of monitoring
+- A user scanning their hub should know everything they need to know for their day without clicking anything
+
+**MODE 2 — ACTING (Command Bar)**
+
+Acting is intent-driven execution. The user states what they want in natural language. The platform executes or guides — never requires navigation.
+
+- The command bar (Cmd+K) is the PRIMARY way to do anything
+- Natural language input replaces forms wherever possible
+- Workflows execute inline — the user never leaves their context
+- The platform detects intent, extracts structured data, and populates records automatically
+- The UI (pages, forms, nav) exists as a BACKUP, not the default
+- A user should be able to complete 90% of their work without navigating to any page
+
+### The Decision Framework for Every New Feature
+
+When designing any new feature, ask these two questions:
+
+**Question 1: Does the user need to NOTICE this without asking?**
+- If yes → it belongs in a hub dashboard widget
+- It should surface automatically based on role
+- The user should see it when they open their hub
+- Example: "3 compliance items due this week" → Widget on the manufacturing hub dashboard
+
+**Question 2: Does the user DO this when they have an intent?**
+- If yes → it belongs in the command bar as a workflow
+- A UI page for it may exist but is not the primary path
+- The command bar entry point is designed first
+- The page is the fallback for complex cases
+- Example: "Create a vault order for Hopkins" → Command bar workflow with natural language overlay → UI order form exists but is the backup
+
+**If a feature is both (needs monitoring AND action):**
+- Put a summary widget on the hub
+- The widget has a quick-action button
+- The button triggers the command bar workflow or navigates to the relevant page
+- Example: "3 overdue compliance items [Review →]" → Widget surfaces the problem (monitoring) → [Review →] takes action (acting)
+
+### What This Means in Practice
+
+**A feature is INCOMPLETE if:**
+- It can only be accessed by navigating to a page
+- It has no command bar workflow or hub widget entry point
+- A user needs to know WHERE to go to do it
+- It requires filling out a traditional form when natural language could collect the same data
+
+**A feature is COMPLETE if:**
+- Monitoring aspects surface in the appropriate hub
+- Action aspects are accessible from the command bar
+- Natural language handles multi-field data entry
+- The UI page exists for deep editing / complex cases but is not required for the primary use case
+
+**The Scribe is the model:**
+- Director has a conversation (natural input)
+- Platform extracts structured data (intelligent processing)
+- Director reviews and confirms (not re-enters)
+- The form exists for corrections, not primary entry
+
+**The command bar is the model:**
+- User states intent in natural language
+- Platform identifies workflow, extracts fields in real time
+- Fields populate below as user types
+- User confirms, not re-enters
+- Slide-over opens for any remaining detail
+
+### Specific Rules for Claude When Planning or Building
+
+1. **Never design a feature as form-only.** Every feature that collects user input must have a command bar workflow with natural language extraction as the primary entry point. The form is secondary.
+
+2. **Never design a monitoring feature as page-only.** Every metric, status, or alert that users need to notice must have a hub widget representation. A page for detail is fine. A page as the only surface is not.
+
+3. **When recommending a new feature, always specify:**
+   - Which hub(s) get a widget for this feature
+   - What the command bar workflow looks like
+   - What natural language inputs it accepts
+   - What the UI backup page looks like
+   If you cannot specify all four, the feature is not fully designed.
+
+4. **When writing a build prompt, always include:**
+   - The hub widget if the feature has a monitoring aspect
+   - The command bar workflow registration if it has an action aspect
+   - The overlay config (natural language vs. form)
+   - The UI page as the backup path
+
+5. **Result suppression in the command bar:**
+   - Question queries → answers and records only, no nav
+   - Action queries → workflows only, no duplicate actions
+   - If a workflow covers an intent, suppress the action
+   - Nav results only when no better result exists
+
+6. **Workflow philosophy:**
+   - One workflow per intent, not one per record type
+   - Universal workflows that adapt via natural language are better than multiple specialized workflows
+   - "Create Order" handles all order types through product type detection — not separate vault/disinterment/Redi-Rock workflows
+   - When a new product line is added, it extends existing workflows, not creates new ones
+
+### Why This Matters for September
+
+The Wilbert demo works because of this philosophy:
+- A manufacturer opens the command bar and creates a vault order by typing one sentence
+- A funeral director types a sentence and a case populates
+- A director types "what is our price for a monticello" and gets the answer immediately
+- Nobody navigates to a form
+
+That is the demo. That is the product. Navigation-first software cannot do this. Form-first software cannot do this. This philosophy is what makes Bridgeable different.
+
 ## 2. Technical Stack
 
 ### Backend
