@@ -748,27 +748,52 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
                   Local results
                 </p>
               )}
-              {results.slice(0, 7).map((action, i) => (
-                <button
-                  key={action.id}
-                  onClick={() => executeAction(action)}
-                  className={`flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
-                    i === selectedIdx
-                      ? "bg-blue-50 text-blue-700"
-                      : "hover:bg-gray-50 text-gray-800"
-                  }`}
-                >
-                  <ShortcutBadge n={i + 1} />
-                  <ActionIcon icon={action.icon} />
-                  <div className="flex-1 min-w-0 text-left">
-                    <p className="font-medium truncate">{action.title}</p>
-                    {action.subtitle && (
-                      <p className="text-xs text-gray-400 truncate">{action.subtitle}</p>
-                    )}
-                  </div>
-                  <TypeBadge type={action.type} />
-                </button>
-              ))}
+              {results.slice(0, 7).map((action, i) => {
+                // ANSWER rows can be long — wrap instead of truncating so
+                // the full extracted answer is always readable.
+                const isAnswer = action.type === "ANSWER"
+                return (
+                  <button
+                    key={action.id}
+                    onClick={() => executeAction(action)}
+                    className={`flex w-full gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
+                      isAnswer ? "items-start" : "items-center"
+                    } ${
+                      i === selectedIdx
+                        ? "bg-blue-50 text-blue-700"
+                        : "hover:bg-gray-50 text-gray-800"
+                    }`}
+                  >
+                    <div className={isAnswer ? "mt-0.5" : ""}>
+                      <ShortcutBadge n={i + 1} />
+                    </div>
+                    <div className={isAnswer ? "mt-0.5" : ""}>
+                      <ActionIcon icon={action.icon} />
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <p
+                        className={`font-medium ${
+                          isAnswer ? "whitespace-normal break-words leading-snug" : "truncate"
+                        }`}
+                      >
+                        {action.title}
+                      </p>
+                      {action.subtitle && (
+                        <p
+                          className={`text-xs text-gray-400 ${
+                            isAnswer ? "whitespace-normal break-words mt-0.5" : "truncate"
+                          }`}
+                        >
+                          {action.subtitle}
+                        </p>
+                      )}
+                    </div>
+                    <div className={isAnswer ? "mt-0.5 flex-shrink-0" : "flex-shrink-0"}>
+                      <TypeBadge type={action.type} />
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
 
