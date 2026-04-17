@@ -215,21 +215,43 @@ export function ManufacturingDashboard() {
   const [onboardingCompleted, setOnboardingCompleted] = useState(0);
   const [onboardingTotal, setOnboardingTotal] = useState(0);
 
-  // Fetch onboarding status
+  // Fetch onboarding status — prefer the new /onboarding-flow/status
+  // endpoint (returns visible_steps, which auto-excludes the import step
+  // when orders already exist). Falls back to the legacy checklist system.
   useEffect(() => {
-    onboardingService
-      .getChecklist()
-      .then((checklist) => {
-        const mustItems = checklist.items.filter((i) => i.tier === "must_complete");
-        const done = mustItems.filter((i) => i.status === "completed").length;
-        setOnboardingPercent(checklist.must_complete_percent);
-        setOnboardingCompleted(done);
-        setOnboardingTotal(mustItems.length);
+    apiClient
+      .get<{
+        visible_steps?: string[];
+        completed_steps?: string[];
+        percent_complete?: number;
+      }>("/onboarding-flow/status")
+      .then(({ data }) => {
+        // Exclude the "complete" terminal step from the user-facing count
+        const visible = (data.visible_steps || []).filter((s) => s !== "complete");
+        const completed = (data.completed_steps || []).filter((s) => visible.includes(s));
+        if (visible.length > 0) {
+          setOnboardingPercent(data.percent_complete ?? 0);
+          setOnboardingCompleted(completed.length);
+          setOnboardingTotal(visible.length);
+          return;
+        }
+        throw new Error("no_visible_steps");
       })
       .catch(() => {
-        // No checklist — show banner anyway
-        setOnboardingPercent(0);
-        setOnboardingTotal(5);
+        // Legacy fallback
+        onboardingService
+          .getChecklist()
+          .then((checklist) => {
+            const mustItems = checklist.items.filter((i) => i.tier === "must_complete");
+            const done = mustItems.filter((i) => i.status === "completed").length;
+            setOnboardingPercent(checklist.must_complete_percent);
+            setOnboardingCompleted(done);
+            setOnboardingTotal(mustItems.length);
+          })
+          .catch(() => {
+            setOnboardingPercent(0);
+            setOnboardingTotal(5);
+          });
       });
   }, []);
 

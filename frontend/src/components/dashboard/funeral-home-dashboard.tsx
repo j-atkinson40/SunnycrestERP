@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { funeralHomeService } from "@/services/funeral-home-service";
 import * as onboardingService from "@/services/onboarding-service";
+import apiClient from "@/lib/api-client";
 import type { FHCase, FHDashboardData } from "@/types/funeral-home";
 
 // ── Helpers ──
@@ -198,19 +199,41 @@ export function FuneralHomeDashboard() {
   const [onboardingCompleted, setOnboardingCompleted] = useState(0);
   const [onboardingTotal, setOnboardingTotal] = useState(0);
 
+  // Prefer new /onboarding-flow/status (accounts for visible_steps
+  // including the skip-import-when-orders-exist rule). Fall back to
+  // legacy tenant_onboarding_checklists when the new endpoint is empty.
   useEffect(() => {
-    onboardingService
-      .getChecklist()
-      .then((checklist) => {
-        const mustItems = checklist.items.filter((i) => i.tier === "must_complete");
-        const done = mustItems.filter((i) => i.status === "completed").length;
-        setOnboardingPercent(checklist.must_complete_percent);
-        setOnboardingCompleted(done);
-        setOnboardingTotal(mustItems.length);
+    apiClient
+      .get<{
+        visible_steps?: string[];
+        completed_steps?: string[];
+        percent_complete?: number;
+      }>("/onboarding-flow/status")
+      .then(({ data }) => {
+        const visible = (data.visible_steps || []).filter((s) => s !== "complete");
+        const completed = (data.completed_steps || []).filter((s) => visible.includes(s));
+        if (visible.length > 0) {
+          setOnboardingPercent(data.percent_complete ?? 0);
+          setOnboardingCompleted(completed.length);
+          setOnboardingTotal(visible.length);
+          return;
+        }
+        throw new Error("no_visible_steps");
       })
       .catch(() => {
-        setOnboardingPercent(0);
-        setOnboardingTotal(5);
+        onboardingService
+          .getChecklist()
+          .then((checklist) => {
+            const mustItems = checklist.items.filter((i) => i.tier === "must_complete");
+            const done = mustItems.filter((i) => i.status === "completed").length;
+            setOnboardingPercent(checklist.must_complete_percent);
+            setOnboardingCompleted(done);
+            setOnboardingTotal(mustItems.length);
+          })
+          .catch(() => {
+            setOnboardingPercent(0);
+            setOnboardingTotal(5);
+          });
       });
   }, []);
 
