@@ -16,9 +16,15 @@ def seed_default_workflows(db: Session) -> dict:
     updated = 0
     step_count = 0
 
+    # Whitelist of columns allowed on the Workflow model. Anything else in the
+    # seed dicts (e.g. documentation-only fields like `source_service` on
+    # Tier 1 platform workflows) is silently dropped so we don't crash the
+    # whole seed batch.
+    allowed = {c.name for c in Workflow.__table__.columns}
+
     for raw in ALL_DEFAULT_WORKFLOWS:
         # Copy to avoid mutating the source data
-        data = dict(raw)
+        data = {k: v for k, v in raw.items() if k in allowed or k == "steps"}
         steps_data = data.pop("steps", [])
 
         existing = db.query(Workflow).filter(Workflow.id == data["id"]).first()
