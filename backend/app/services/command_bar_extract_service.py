@@ -49,6 +49,18 @@ def build_field_schema(workflow: Workflow, steps: list[WorkflowStep]) -> list[di
 # Workflow-specific vocabulary that Claude should understand when
 # extracting. Keep these short and high-signal — long hints cost
 # tokens on every debounce tick.
+# Purchase-order signals are checked BEFORE anything else — they
+# explicitly invert direction ("buy" / "from supplier" / "reorder"
+# means we're buying, not selling).
+_PURCHASE_ORDER_SIGNALS: list[str] = [
+    "po for", "purchase order",
+    "buy ", "buying ", "purchase ", "purchasing ",
+    "from supplier", "from vendor",
+    "reorder", "re-order", "order more",
+    "stock up", "replenish", "we need more",
+    "vendor order", "supplier order",
+]
+
 # Product-type fingerprints for the universal Create Order workflow.
 # Scanned in priority order (most specific first) so "disinterment"
 # wins over "vault" even if both appear in input.
@@ -83,15 +95,34 @@ PRODUCT_TYPE_DISPLAY: dict[str, str] = {
     "wastewater": "Wastewater Order",
     "urn": "Urn Order",
     "equipment": "Equipment Order",
+    "purchase_order": "Purchase Order",
+}
+
+# Which types are "we are buying" vs "we are selling". Used by the
+# frontend to color the overlay badge (blue vs green) and to route
+# the create_record action to the right table in the future.
+PRODUCT_TYPE_DIRECTION: dict[str, str] = {
+    "vault": "sales",
+    "disinterment": "sales",
+    "redi_rock": "sales",
+    "wastewater": "sales",
+    "urn": "sales",
+    "equipment": "sales",
+    "purchase_order": "purchase",
 }
 
 
 def detect_product_type(input_text: str) -> str | None:
     """Scan input for product-type keywords. Returns the type key or
-    None. More specific types beat more generic ones."""
+    None. Purchase-order signals win first (explicit direction flip);
+    more specific sales types then beat more generic ones."""
     text = (input_text or "").lower()
     if not text:
         return None
+    # Purchase-order signals checked FIRST — override everything else
+    for signal in _PURCHASE_ORDER_SIGNALS:
+        if signal in text:
+            return "purchase_order"
     for type_key, keywords in _PRODUCT_TYPE_FINGERPRINTS:
         for kw in keywords:
             if kw in text:
@@ -125,6 +156,19 @@ CUSTOMERS: partial names like "Hopkins" → "Hopkins Funeral Home".
 DATES: resolve relative dates ("Friday", "next week") to YYYY-MM-DD.
 DISINTERMENTS: "dis" / "disinterment" → order_type disinterment. Customer is the funeral home requesting it.
 QUANTITIES: always whole numbers.
+
+PURCHASE ORDERS — triggered by: buy, po for, purchase, from supplier, from vendor, reorder, order more, stock up, replenish, we need more:
+  vendor: the company Sunnycrest is buying FROM (not a funeral home customer).
+  item: what is being purchased (cement, rebar, wire, sand, gravel, admixture, forms, hardware, etc.).
+  quantity: include units if stated ("50 bags", "2 tons", "100 linear feet").
+  unit_price: when a price is mentioned with "per" or "@" (e.g. "$12.50 per bag") → extract the number.
+
+DIRECTION DISAMBIGUATION:
+  "for Hopkins" → SALES ORDER (funeral home customer).
+  "from Acme Supply" → PURCHASE ORDER (vendor).
+  "Continental for Hopkins" → SALES ORDER vault.
+  "buy cement from Acme" → PURCHASE ORDER.
+  If both a customer and vendor are mentioned and unclear, prefer PURCHASE ORDER when vendor-style language ("from", "buy", "purchase") is present.
 """,
     "wf_mfg_create_order": """
 VAULT PRODUCTS (fuzzy match to full name):
@@ -453,6 +497,7 @@ def extract(
         "raw_input": input_text,
         "product_type": product_type,
         "product_type_label": PRODUCT_TYPE_DISPLAY.get(product_type, "") if product_type else "",
+        "direction": PRODUCT_TYPE_DIRECTION.get(product_type or "", "sales"),
     }
 
 

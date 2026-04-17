@@ -57,17 +57,10 @@ export function addRecentAction(action: RecentAction): void {
 
 // Manufacturing preset actions
 export const manufacturingActions: CommandAction[] = [
-  {
-    id: "create_order",
-    keywords: ["create order", "new order", "add order", "order for"],
-    title: "Create new order",
-    subtitle: "Open order creation form",
-    icon: "plus-circle",
-    type: "ACTION",
-    route: "/orders/new",
-    roles: ["admin", "office"],
-    vertical: "manufacturing",
-  },
+  // Note: create_order / create_disinterment / create_urn_order
+  // are covered by the universal wf_create_order workflow with
+  // natural-language extraction. Keeping separate ACTION entries
+  // would duplicate the workflow row in the command bar.
   {
     id: "schedule_delivery",
     keywords: ["schedule delivery", "new delivery", "delivery for"],
@@ -215,22 +208,7 @@ export const manufacturingActions: CommandAction[] = [
     roles: ["admin", "office"],
     vertical: "manufacturing",
   },
-  {
-    id: "create_disinterment",
-    keywords: [
-      "create disinterment",
-      "new disinterment",
-      "log disinterment",
-      "add disinterment",
-    ],
-    title: "Create disinterment order",
-    subtitle: "New disinterment record",
-    icon: "plus-circle",
-    type: "ACTION",
-    route: "/compliance/disinterments/new",
-    roles: ["admin", "office"],
-    vertical: "manufacturing",
-  },
+  // create_disinterment removed — covered by wf_create_order.
 
   // ──────────────────────────────────────────────────────────────
   // FINANCIAL REPORTS (admin only)
@@ -640,22 +618,7 @@ export const manufacturingActions: CommandAction[] = [
   // ──────────────────────────────────────────────────────────────
   // URNS (Resale)
   // ──────────────────────────────────────────────────────────────
-  {
-    id: "create_urn_order",
-    keywords: [
-      "create urn order",
-      "new urn",
-      "urn order",
-      "order urn",
-      "urn sale",
-    ],
-    title: "Create urn order",
-    icon: "plus-circle",
-    type: "ACTION",
-    route: "/urns/orders/new",
-    roles: ["admin", "office"],
-    vertical: "manufacturing",
-  },
+  // create_urn_order removed — covered by wf_create_order.
   {
     id: "nav_urns",
     keywords: ["urns", "urn catalog", "urn orders", "resale"],

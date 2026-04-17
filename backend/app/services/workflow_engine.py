@@ -200,19 +200,28 @@ def get_command_bar_workflows(
         else:
             best = 1  # surface all when no query
 
-        # Load first step for preview
-        first_step = (
-            db.query(WorkflowStep)
-            .filter(WorkflowStep.workflow_id == w.id)
-            .order_by(WorkflowStep.step_order)
-            .first()
-        )
+        # Load first step for preview. For workflows that use the
+        # natural-language overlay, show a descriptive hint rather
+        # than "Ask: Which customer?" — the form prompt doesn't
+        # reflect the actual input experience.
         first_preview = ""
-        if first_step and first_step.step_type == "input":
-            cfg = first_step.config or {}
-            first_preview = f"Ask: {cfg.get('prompt', '')}"
-        elif first_step:
-            first_preview = f"{first_step.step_type.title()}: {first_step.step_key}"
+        overlay_cfg = (w.overlay_config or {}) if hasattr(w, "overlay_config") else {}
+        if isinstance(overlay_cfg, dict) and overlay_cfg.get("input_style") == "natural_language":
+            first_preview = (w.description or "").strip()
+            if len(first_preview) > 120:
+                first_preview = first_preview[:120].rsplit(" ", 1)[0] + "…"
+        else:
+            first_step = (
+                db.query(WorkflowStep)
+                .filter(WorkflowStep.workflow_id == w.id)
+                .order_by(WorkflowStep.step_order)
+                .first()
+            )
+            if first_step and first_step.step_type == "input":
+                cfg = first_step.config or {}
+                first_preview = f"Ask: {cfg.get('prompt', '')}"
+            elif first_step:
+                first_preview = f"{first_step.step_type.title()}: {first_step.step_key}"
 
         matches.append({
             "type": "WORKFLOW",

@@ -39,6 +39,7 @@ interface ExtractResponse {
   raw_input: string
   product_type?: string | null
   product_type_label?: string | null
+  direction?: "sales" | "purchase"
 }
 
 interface Props {
@@ -62,6 +63,7 @@ export function NaturalLanguageOverlay({
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
   const [productTypeLabel, setProductTypeLabel] = useState<string | null>(null)
+  const [direction, setDirection] = useState<"sales" | "purchase">("sales")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -179,6 +181,9 @@ export function NaturalLanguageOverlay({
         if (data.product_type_label) {
           setProductTypeLabel(data.product_type_label)
         }
+        if (data.direction) {
+          setDirection(data.direction)
+        }
         return data.fields || {}
       } catch {
         return null
@@ -295,15 +300,29 @@ export function NaturalLanguageOverlay({
       </div>
 
       {productTypeLabel && (
-        <div className="mx-4 mt-1 flex items-center justify-between rounded-md bg-violet-50 px-3 py-1.5 text-xs">
-          <span className="font-medium text-violet-700">
-            {productTypeLabel}
+        <div
+          className={`mx-4 mt-1 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs ${
+            direction === "purchase"
+              ? "bg-blue-50 text-blue-700"
+              : "bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          <span className="font-semibold">{productTypeLabel}</span>
+          <span
+            className={
+              direction === "purchase" ? "text-blue-500/80" : "text-emerald-600/80"
+            }
+          >
+            {direction === "purchase" ? "· We are buying" : "· We are selling"}
           </span>
           <button
-            onClick={() => setProductTypeLabel(null)}
-            className="text-violet-400 hover:text-violet-700"
+            onClick={() => {
+              setProductTypeLabel(null)
+              setDirection("sales")
+            }}
+            className="ml-auto text-[11px] text-slate-400 hover:text-slate-700"
           >
-            change
+            wrong type?
           </button>
         </div>
       )}

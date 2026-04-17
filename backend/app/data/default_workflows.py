@@ -14,10 +14,15 @@ MANUFACTURING_WORKFLOWS = [
     # ─────────────────────────────────────────────────────────────────
     {
         "id": "wf_create_order",
-        "name": "Create Order",
-        "description": "Create any order — vault, disinterment, Redi-Rock, wastewater, urn, equipment.",
+        "name": "New Order",
+        "description": (
+            "Universal order entry — vault orders, purchase orders, "
+            "disinterments, urns, equipment, Redi-Rock, and wastewater. "
+            'Describe what you need in plain language. '
+            'e.g. "Continental for Hopkins, full equipment, deliver Friday"'
+        ),
         "keywords": [
-            "order", "create order", "new order", "place order", "add order",
+            "order", "new order", "create order", "place order", "add order",
             # Vault
             "vault", "continental", "monticello", "presidential", "triune",
             "flat top", "flattop",
@@ -31,6 +36,13 @@ MANUFACTURING_WORKFLOWS = [
             "urn", "cremation urn",
             # Equipment
             "equipment", "full equipment", "lowering", "tent", "grass",
+            # Purchase orders — we are BUYING
+            "purchase order", "po", "po for",
+            "buy", "buying", "purchase", "purchasing",
+            "from supplier", "from vendor",
+            "reorder", "re-order", "order more",
+            "stock up", "replenish", "we need more",
+            "vendor order", "supplier order",
         ],
         "tier": 2,
         "vertical": "manufacturing",

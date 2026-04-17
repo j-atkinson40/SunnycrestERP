@@ -379,24 +379,26 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         const rawLocalMatches = matchLocalActions(q, permittedActions);
 
         // Dedup: when the universal Create Order workflow is present,
-        // suppress the local "create_order" / "create_disinterment"
-        // ACTION entries that cover the same intent.
+        // suppress the local ACTION + NAV entries that cover the same
+        // intent — otherwise "order" floods the list with Order Station,
+        // Disinterments, Purchase Orders alongside the workflow row.
         const hasUniversalOrder = workflowActions.some(
           (w) => w.workflowId === "wf_create_order",
         );
         const SUPPRESSED_BY_UNIVERSAL_ORDER = new Set([
+          // Actions (already removed from registry, kept as safety)
           "create_order",
           "create_disinterment",
           "create_disinterment_order",
+          "create_urn_order",
           "new_order",
           "place_order",
+          // Nav items that show up on "order" / "disinterment" etc.
+          "nav_orders",
+          "nav_disinterments",
+          "nav_purchase_orders",
+          "nav_urns",
         ]);
-        const localMatches = hasUniversalOrder
-          ? rawLocalMatches.filter(
-              (a) => !(a.type === "ACTION" && SUPPRESSED_BY_UNIVERSAL_ORDER.has(a.id)),
-            )
-          : rawLocalMatches;
-
         // Unified search response: records + inline answer + document hits
         const searchData: CommandBarSearchResponse =
           docsRes.status === "fulfilled" ? docsRes.value.data || {} : {};
@@ -404,6 +406,26 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         const liveRecords = searchData.records || [];
         const inlineAnswer = searchData.answer || null;
         const wasAnswered = !!searchData.answered;
+
+        // Nav suppression rule (per CLAUDE.md core UX philosophy):
+        // Nav results add no value when a workflow or record already
+        // answers the query. Keep them only for explicit navigate
+        // intent, very short queries, or when nothing else matched.
+        const hasWorkflow = workflowActions.length > 0
+        const hasRecords = liveRecords.length > 0
+        const hasAnswer = !!inlineAnswer
+        const keepNav =
+          q.length < 3 || (!hasWorkflow && !hasRecords && !hasAnswer)
+
+        const localMatches = rawLocalMatches.filter((a) => {
+          if (hasUniversalOrder && SUPPRESSED_BY_UNIVERSAL_ORDER.has(a.id)) {
+            return false
+          }
+          if (a.type === "NAV" && !keepNav) {
+            return false
+          }
+          return true
+        });
 
         const answerActions: CommandAction[] = inlineAnswer
           ? [{
