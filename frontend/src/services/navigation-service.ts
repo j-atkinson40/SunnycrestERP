@@ -125,11 +125,19 @@ function getManufacturingNav(
 
   const hubItems: NavItem[] = [
     {
+      label: "Quoting",
+      href: "/quoting",
+      icon: "FileText",
+      isHub: true,
+      isDividerBefore: true,
+      permission: "ar.view",
+      requiresModule: "sales",
+    },
+    {
       label: "Financials",
       href: "/financials",
       icon: "BarChart3",
       isHub: true,
-      isDividerBefore: true,
       functionalArea: "invoicing_ar",
       ...(hasSyncError ? { badge: "!" } : {}),
     },

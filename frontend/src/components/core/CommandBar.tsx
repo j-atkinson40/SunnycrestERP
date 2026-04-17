@@ -819,18 +819,25 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             workflow={activeNLWorkflow}
             onComplete={(run) => {
               const outputs = (run.output_data || {}) as Record<string, unknown>;
+              let navigated = false;
               for (const key of Object.keys(outputs)) {
                 const val = outputs[key] as Record<string, unknown>;
                 if (val?.type === "open_slide_over") {
-                  setOpenSlideOver({
-                    recordType: String(val.record_type),
-                    recordId: String(val.record_id),
-                    title: activeNLWorkflow.name,
-                  });
+                  // Quotes route to the Quoting Hub detail page, not a slide-over
+                  if (String(val.record_type) === "quote") {
+                    navigate(`/quoting/${String(val.record_id)}`);
+                    navigated = true;
+                  } else {
+                    setOpenSlideOver({
+                      recordType: String(val.record_type),
+                      recordId: String(val.record_id),
+                      title: activeNLWorkflow.name,
+                    });
+                  }
                 }
               }
               setActiveNLWorkflow(null);
-              setTimeout(() => onClose(), 400);
+              setTimeout(() => onClose(), navigated ? 0 : 400);
             }}
             onCancel={() => {
               setActiveNLWorkflow(null);
@@ -847,20 +854,26 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             onComplete={(run: WorkflowRunState) => {
               // Handle output actions from the final step
               const outputs = (run.output_data || {}) as Record<string, unknown>;
+              let navigated = false;
               for (const key of Object.keys(outputs)) {
                 const val = outputs[key] as Record<string, unknown>;
                 if (val?.type === "open_slide_over") {
-                  setOpenSlideOver({
-                    recordType: String(val.record_type),
-                    recordId: String(val.record_id),
-                    title: activeWorkflow.title,
-                  });
+                  if (String(val.record_type) === "quote") {
+                    navigate(`/quoting/${String(val.record_id)}`);
+                    navigated = true;
+                  } else {
+                    setOpenSlideOver({
+                      recordType: String(val.record_type),
+                      recordId: String(val.record_id),
+                      title: activeWorkflow.title,
+                    });
+                  }
                 }
               }
               setActiveWorkflow(null);
               // Close the command bar after a successful workflow unless
               // a slide-over is opening — SlideOver lives in its own overlay.
-              setTimeout(() => onClose(), 400);
+              setTimeout(() => onClose(), navigated ? 0 : 400);
             }}
             onCancel={() => {
               setActiveWorkflow(null);

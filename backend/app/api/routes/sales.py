@@ -264,6 +264,26 @@ def create_quote(
     return _quote_to_response(quote)
 
 
+@router.get("/quotes/summary")
+def get_quotes_summary(
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.view")),
+):
+    """Pipeline summary widgets for the Quoting Hub."""
+    return sales_service.get_quote_summary(db, current_user.company_id)
+
+
+@router.get("/quotes/badge-count")
+def get_quotes_badge_count(
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.view")),
+):
+    """Badge for the Quoting nav item — quotes awaiting response."""
+    return {"count": sales_service.get_quote_badge_count(db, current_user.company_id)}
+
+
 @router.get("/quotes/{quote_id}", response_model=QuoteResponse)
 def get_quote(
     quote_id: str,
@@ -304,6 +324,43 @@ def convert_quote(
         db, current_user.company_id, current_user.id, quote_id
     )
     return _order_to_response(order)
+
+
+@router.post("/quotes/{quote_id}/duplicate", response_model=QuoteResponse, status_code=201)
+def duplicate_quote_endpoint(
+    quote_id: str,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.create_quote")),
+):
+    """Clone a quote into a new draft. Lines are copied verbatim."""
+    dup = sales_service.duplicate_quote(
+        db, current_user.company_id, current_user.id, quote_id
+    )
+    return _quote_to_response(dup)
+
+
+@router.patch("/quotes/{quote_id}/status", response_model=QuoteResponse)
+def set_quote_status_endpoint(
+    quote_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _module: User = Depends(require_module("sales")),
+    current_user: User = Depends(require_permission("ar.create_quote")),
+):
+    """Quick status change — used by Send / Reject row actions.
+
+    Body: ``{"status": "sent" | "accepted" | "rejected" | "expired" | "draft"}``
+    """
+    from fastapi import HTTPException
+
+    new_status = (payload or {}).get("status")
+    if not new_status:
+        raise HTTPException(status_code=400, detail="status is required")
+    quote = sales_service.set_quote_status(
+        db, current_user.company_id, current_user.id, quote_id, new_status
+    )
+    return _quote_to_response(quote)
 
 
 @router.get("/quotes/{quote_id}/pdf")

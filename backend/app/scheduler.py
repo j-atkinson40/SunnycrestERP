@@ -263,6 +263,12 @@ def job_onboarding_pattern():
     logger.info(f"[ONBOARDING_PATTERN] Complete: {success} ok, {errors} errors")
 
 
+def job_quote_auto_expiry():
+    """Nightly — flip sent/draft quotes past their expiry_date to 'expired'."""
+    from app.services.sales_service import expire_stale_quotes
+    _run_per_tenant("QUOTE_AUTO_EXPIRY", expire_stale_quotes)
+
+
 def job_safety_program_generation():
     """Monthly 1st at 6am — generate written safety programs for the month."""
     from app.services.safety_program_generation_service import run_monthly_generation
@@ -403,6 +409,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "platform_health_recalculate": job_platform_health_recalculate,
     "platform_incident_dispatcher": job_platform_incident_dispatcher,
     "safety_program_generation": job_safety_program_generation,
+    "quote_auto_expiry": job_quote_auto_expiry,
 }
 
 
@@ -434,6 +441,7 @@ def register_all_jobs():
         ("missing_entry_detector", job_missing_entry_detector, "25"),
         ("tax_filing_prep", job_tax_filing_prep, "30"),
         ("uncleared_check_monitor", job_uncleared_check_monitor, "35"),
+        ("quote_auto_expiry", job_quote_auto_expiry, "40"),
     ]
     for name, func, minute_offset in nightly_jobs:
         scheduler.add_job(

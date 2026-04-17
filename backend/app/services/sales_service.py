@@ -309,6 +309,212 @@ def convert_quote_to_order(
     return order
 
 
+def get_quote_summary(db: Session, company_id: str) -> dict:
+    """Pipeline summary for the Quoting Hub — 4 widget cards.
+
+    Returns:
+        pipeline_value: sum of totals for draft + sent quotes (potential revenue)
+        awaiting_response: count of sent quotes not yet accepted / converted
+        expiring_soon: count of sent quotes with expiry_date within the next 7 days
+        won_this_month: count of converted quotes in the current calendar month
+        won_value_this_month: total value of quotes converted this month
+    """
+    now = datetime.now(timezone.utc)
+    seven_days = now + timedelta(days=7)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    base = db.query(Quote).filter(Quote.company_id == company_id)
+
+    pipeline_value = (
+        db.query(func.coalesce(func.sum(Quote.total), 0))
+        .filter(
+            Quote.company_id == company_id,
+            Quote.status.in_(["draft", "sent"]),
+        )
+        .scalar()
+    ) or Decimal("0.00")
+
+    awaiting_response = (
+        base.filter(Quote.status == "sent").count()
+    )
+
+    expiring_soon = (
+        base.filter(
+            Quote.status == "sent",
+            Quote.expiry_date.isnot(None),
+            Quote.expiry_date <= seven_days,
+            Quote.expiry_date >= now,
+        ).count()
+    )
+
+    won_q = base.filter(
+        Quote.status == "converted",
+        Quote.modified_at >= month_start,
+    )
+    won_this_month = won_q.count()
+    won_value_this_month = (
+        db.query(func.coalesce(func.sum(Quote.total), 0))
+        .filter(
+            Quote.company_id == company_id,
+            Quote.status == "converted",
+            Quote.modified_at >= month_start,
+        )
+        .scalar()
+    ) or Decimal("0.00")
+
+    return {
+        "pipeline_value": float(pipeline_value),
+        "awaiting_response": awaiting_response,
+        "expiring_soon": expiring_soon,
+        "won_this_month": won_this_month,
+        "won_value_this_month": float(won_value_this_month),
+    }
+
+
+def get_quote_badge_count(db: Session, company_id: str) -> int:
+    """Nav badge — quotes awaiting response (sent + not yet acted on)."""
+    return (
+        db.query(Quote)
+        .filter(
+            Quote.company_id == company_id,
+            Quote.status == "sent",
+        )
+        .count()
+    )
+
+
+def duplicate_quote(
+    db: Session, company_id: str, user_id: str, quote_id: str
+) -> Quote:
+    """Clone a quote into a new draft. Lines are copied; status resets to draft."""
+    src = get_quote(db, company_id, quote_id)
+
+    number = _next_number(db, company_id, Quote, "QTE")
+    now = datetime.now(timezone.utc)
+    expiry = None
+    if src.expiry_date and src.quote_date:
+        delta = src.expiry_date - src.quote_date
+        expiry = now + delta
+
+    dup = Quote(
+        id=str(uuid.uuid4()),
+        company_id=company_id,
+        number=number,
+        customer_id=src.customer_id,
+        customer_name=src.customer_name,
+        status="draft",
+        quote_date=now,
+        expiry_date=expiry,
+        payment_terms=src.payment_terms,
+        subtotal=src.subtotal,
+        tax_rate=src.tax_rate,
+        tax_amount=src.tax_amount,
+        total=src.total,
+        notes=src.notes,
+        product_line=src.product_line,
+        template_id=src.template_id,
+        cemetery_id=src.cemetery_id,
+        cemetery_name=src.cemetery_name,
+        deceased_name=src.deceased_name,
+        delivery_charge=src.delivery_charge,
+        created_by=user_id,
+    )
+    db.add(dup)
+    db.flush()
+
+    for ql in src.lines:
+        db.add(
+            QuoteLine(
+                id=str(uuid.uuid4()),
+                quote_id=dup.id,
+                product_id=ql.product_id,
+                description=ql.description,
+                quantity=ql.quantity,
+                unit_price=ql.unit_price,
+                line_total=ql.line_total,
+                sort_order=ql.sort_order,
+                is_auto_added=ql.is_auto_added,
+                auto_add_reason=ql.auto_add_reason,
+                personalization_data=ql.personalization_data,
+            )
+        )
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "duplicated",
+        "quote",
+        dup.id,
+        user_id=user_id,
+        changes={"source_quote_id": src.id, "source_number": src.number},
+    )
+    db.commit()
+    db.refresh(dup)
+    return dup
+
+
+def set_quote_status(
+    db: Session, company_id: str, user_id: str, quote_id: str, new_status: str
+) -> Quote:
+    """Simple status transition (used by Send / Reject row actions)."""
+    valid = {"draft", "sent", "accepted", "rejected", "expired"}
+    if new_status not in valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status '{new_status}'. Must be one of: {sorted(valid)}",
+        )
+    quote = get_quote(db, company_id, quote_id)
+    if quote.status == "converted":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot change status of a converted quote",
+        )
+
+    old = quote.status
+    quote.status = new_status
+    quote.modified_by = user_id
+    quote.modified_at = datetime.now(timezone.utc)
+
+    audit_service.log_action(
+        db,
+        company_id,
+        "status_changed",
+        "quote",
+        quote.id,
+        user_id=user_id,
+        changes={"old_status": old, "new_status": new_status},
+    )
+    db.commit()
+    db.refresh(quote)
+    return quote
+
+
+def expire_stale_quotes(db: Session, company_id: str) -> int:
+    """Flip sent/draft quotes past their expiry_date to 'expired'.
+
+    Returns the count transitioned. Called nightly by the scheduler.
+    """
+    now = datetime.now(timezone.utc)
+    stale = (
+        db.query(Quote)
+        .filter(
+            Quote.company_id == company_id,
+            Quote.status.in_(["draft", "sent"]),
+            Quote.expiry_date.isnot(None),
+            Quote.expiry_date < now,
+        )
+        .all()
+    )
+    count = 0
+    for q in stale:
+        q.status = "expired"
+        q.modified_at = now
+        count += 1
+    if count:
+        db.commit()
+    return count
+
+
 # ---------------------------------------------------------------------------
 # Sales Orders
 # ---------------------------------------------------------------------------

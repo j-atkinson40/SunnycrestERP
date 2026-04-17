@@ -425,6 +425,50 @@ def search_orders(db: Session, query: str, company_id: str, limit: int = 3) -> l
     return out
 
 
+def search_quotes(db: Session, query: str, company_id: str, limit: int = 3) -> list[dict]:
+    """Find quotes by number or customer name — routes to the Quoting Hub detail."""
+    try:
+        from app.models.quote import Quote  # type: ignore
+        from app.models.customer import Customer  # type: ignore
+    except Exception:
+        return []
+    if not query:
+        return []
+    pattern = f"%{query}%"
+    try:
+        rows = (
+            db.query(Quote)
+            .outerjoin(Customer, Quote.customer_id == Customer.id)
+            .filter(
+                Quote.company_id == company_id,
+                or_(
+                    Quote.number.ilike(pattern),
+                    Quote.customer_name.ilike(pattern),
+                    Customer.name.ilike(pattern),
+                ),
+            )
+            .order_by(Quote.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+    except Exception:
+        return []
+    out = []
+    for q in rows:
+        customer = q.customer_name or (q.customer.name if q.customer else "")
+        out.append({
+            "result_type": "record",
+            "record_type": "quote",
+            "id": f"quote:{q.id}",
+            "record_id": q.id,
+            "title": f"Quote {q.number}",
+            "subtitle": f"{customer} · {q.status}" if customer else q.status,
+            "icon": "file-text",
+            "route": f"/quoting/{q.id}",
+        })
+    return out
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Pattern-based answer engine
 # ─────────────────────────────────────────────────────────────────────
@@ -1001,6 +1045,7 @@ def answer_or_search(
         records.extend(search_products(db, term, company_id, limit=5))
         records.extend(search_contacts(db, term, company_id, limit=3))
         records.extend(search_orders(db, term, company_id, limit=3))
+        records.extend(search_quotes(db, term, company_id, limit=3))
 
     # Always append an explicit "Ask Bridgeable AI" entry so the user
     # has an opt-in path when the deterministic results aren't useful.

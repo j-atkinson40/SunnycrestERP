@@ -60,6 +60,7 @@ import VendorPaymentDetailPage from "@/pages/vendor-payment-detail";
 import APAgingPage from "@/pages/ap-aging";
 import QuotesPage from "@/pages/quotes";
 import QuoteDetailPage from "@/pages/quote-detail";
+import QuotingHubPage from "@/pages/quoting/quoting-hub";
 import SalesOrdersPage from "@/pages/sales-orders";
 import SalesOrderDetailPage from "@/pages/sales-order-detail";
 import InvoicesPage from "@/pages/invoices";
@@ -501,6 +502,14 @@ export default function App() {
                     />
                     <Route
                       path="/ar/quotes/:id"
+                      element={<QuoteDetailPage />}
+                    />
+                    <Route
+                      path="/quoting"
+                      element={<QuotingHubPage />}
+                    />
+                    <Route
+                      path="/quoting/:id"
                       element={<QuoteDetailPage />}
                     />
                     <Route
