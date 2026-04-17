@@ -49,6 +49,30 @@ def build_field_schema(workflow: Workflow, steps: list[WorkflowStep]) -> list[di
 # Workflow-specific vocabulary that Claude should understand when
 # extracting. Keep these short and high-signal — long hints cost
 # tokens on every debounce tick.
+# Quote signals — detected independently of product type so the
+# overlay can render a quote-flavored badge + submit label for any
+# product. Detection happens in addition to product_type, not
+# instead of it.
+_QUOTE_SIGNALS: list[str] = [
+    "quote for", "quote on", "quoting ", "quoted ", "quote ",
+    "price out", "pricing for",
+    "estimate for", "estimate on",
+    "put together a quote", "get a quote", "draft a quote",
+    "what would it cost", "how much would",
+]
+
+
+def detect_entry_intent(input_text: str) -> str:
+    """Return 'quote' or 'order'. Quotes override the default."""
+    text = (input_text or "").lower()
+    if not text:
+        return "order"
+    for signal in _QUOTE_SIGNALS:
+        if signal in text:
+            return "quote"
+    return "order"
+
+
 # Purchase-order signals are checked BEFORE anything else — they
 # explicitly invert direction ("buy" / "from supplier" / "reorder"
 # means we're buying, not selling).
@@ -131,7 +155,8 @@ def detect_product_type(input_text: str) -> str | None:
 
 
 WORKFLOW_EXTRACTION_HINTS: dict[str, str] = {
-    "wf_create_order": """
+    # Universal Compose workflow (rebranded from wf_create_order).
+    "wf_compose": """
 Sunnycrest Precast — product context:
 
 VAULT PRODUCTS (fuzzy match):
@@ -169,6 +194,11 @@ DIRECTION DISAMBIGUATION:
   "Continental for Hopkins" → SALES ORDER vault.
   "buy cement from Acme" → PURCHASE ORDER.
   If both a customer and vendor are mentioned and unclear, prefer PURCHASE ORDER when vendor-style language ("from", "buy", "purchase") is present.
+
+QUOTES — triggered by: quote for, quote on, estimate for, estimate on, price out, pricing for, put together a quote, get a quote, draft a quote, what would it cost:
+  Same product + customer extraction as orders; only the intent differs.
+  "valid for 30 days" / "good for 30 days" → quote_expiry_days: 30.
+  Default quote_expiry_days: 30 when not specified.
 """,
     "wf_mfg_create_order": """
 VAULT PRODUCTS (fuzzy match to full name):
@@ -492,12 +522,14 @@ def extract(
 
     resolved = resolve_fields(result, schema, db, company_id)
     product_type = detect_product_type(input_text)
+    entry_intent = detect_entry_intent(input_text)
     return {
         "fields": resolved,
         "raw_input": input_text,
         "product_type": product_type,
         "product_type_label": PRODUCT_TYPE_DISPLAY.get(product_type, "") if product_type else "",
         "direction": PRODUCT_TYPE_DIRECTION.get(product_type or "", "sales"),
+        "entry_intent": entry_intent,
     }
 
 

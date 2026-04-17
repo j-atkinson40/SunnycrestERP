@@ -13,16 +13,24 @@ MANUFACTURING_WORKFLOWS = [
     # shared keywords ("create order", "disinterment").
     # ─────────────────────────────────────────────────────────────────
     {
-        "id": "wf_create_order",
-        "name": "New Order",
+        "id": "wf_compose",
+        "name": "Bridgeable Compose",
         "description": (
-            "Universal order entry — vault orders, purchase orders, "
-            "disinterments, urns, equipment, Redi-Rock, and wastewater. "
-            'Describe what you need in plain language. '
-            'e.g. "Continental for Hopkins, full equipment, deliver Friday"'
+            "Create any order, quote, or request in plain language. "
+            "Handles vault orders, purchase orders, quotes, disinterments, "
+            "urns, equipment, Redi-Rock, and wastewater. "
+            "Just describe what you need."
         ),
         "keywords": [
+            # Primary entry points
+            "compose", "new", "create", "start",
+            # Orders
             "order", "new order", "create order", "place order", "add order",
+            # Quotes (new)
+            "quote", "quote for", "quote on", "price out",
+            "estimate", "estimate for", "pricing for",
+            "put together a quote", "what would it cost",
+            "get a quote", "draft a quote",
             # Vault
             "vault", "continental", "monticello", "presidential", "triune",
             "flat top", "flattop",
@@ -47,13 +55,16 @@ MANUFACTURING_WORKFLOWS = [
         "tier": 2,
         "vertical": "manufacturing",
         "trigger_type": "manual",
-        "icon": "plus-circle",
+        "icon": "pen-line",
         "command_bar_priority": 100,
         "is_system": True,
         "overlay_config": {
             "input_style": "natural_language",
             "size": "standard",
-            "submit_label": "Create Order",
+            # Submit label is overridden by the overlay based on detected
+            # entry intent + product type (Create Order / Create Quote /
+            # Place Purchase Order / Log Disinterment).
+            "submit_label": "Compose",
             "is_adaptive": True,
         },
         "steps": [

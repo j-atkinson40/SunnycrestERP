@@ -40,6 +40,7 @@ interface ExtractResponse {
   product_type?: string | null
   product_type_label?: string | null
   direction?: "sales" | "purchase"
+  entry_intent?: "order" | "quote"
 }
 
 interface Props {
@@ -64,6 +65,7 @@ export function NaturalLanguageOverlay({
   const [editValue, setEditValue] = useState("")
   const [productTypeLabel, setProductTypeLabel] = useState<string | null>(null)
   const [direction, setDirection] = useState<"sales" | "purchase">("sales")
+  const [entryIntent, setEntryIntent] = useState<"order" | "quote">("order")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -184,6 +186,9 @@ export function NaturalLanguageOverlay({
         if (data.direction) {
           setDirection(data.direction)
         }
+        if (data.entry_intent) {
+          setEntryIntent(data.entry_intent)
+        }
         return data.fields || {}
       } catch {
         return null
@@ -299,26 +304,43 @@ export function NaturalLanguageOverlay({
         </div>
       </div>
 
-      {productTypeLabel && (
+      {(productTypeLabel || entryIntent === "quote") && (
         <div
           className={`mx-4 mt-1 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs ${
-            direction === "purchase"
-              ? "bg-blue-50 text-blue-700"
-              : "bg-emerald-50 text-emerald-700"
+            entryIntent === "quote"
+              ? "bg-purple-50 text-purple-700"
+              : direction === "purchase"
+                ? "bg-blue-50 text-blue-700"
+                : "bg-emerald-50 text-emerald-700"
           }`}
         >
-          <span className="font-semibold">{productTypeLabel}</span>
+          <span className="font-semibold">
+            {entryIntent === "quote"
+              ? productTypeLabel
+                ? `${productTypeLabel.replace(/ Order$/i, "")} Quote`
+                : "Quote"
+              : productTypeLabel}
+          </span>
           <span
             className={
-              direction === "purchase" ? "text-blue-500/80" : "text-emerald-600/80"
+              entryIntent === "quote"
+                ? "text-purple-500/80"
+                : direction === "purchase"
+                  ? "text-blue-500/80"
+                  : "text-emerald-600/80"
             }
           >
-            {direction === "purchase" ? "· We are buying" : "· We are selling"}
+            {entryIntent === "quote"
+              ? "· Composing a quote"
+              : direction === "purchase"
+                ? "· We are buying"
+                : "· We are selling"}
           </span>
           <button
             onClick={() => {
               setProductTypeLabel(null)
               setDirection("sales")
+              setEntryIntent("order")
             }}
             className="ml-auto text-[11px] text-slate-400 hover:text-slate-700"
           >
@@ -372,7 +394,7 @@ export function NaturalLanguageOverlay({
             : unresolvedConflicts > 0
               ? `Resolve ${unresolvedConflicts} conflict${unresolvedConflicts === 1 ? "" : "s"} first`
               : allRequiredFilled
-                ? "Create →"
+                ? submitActionLabel(entryIntent, direction, productTypeLabel)
                 : `Fill in ${missingCount} more field${missingCount === 1 ? "" : "s"}`}
         </button>
       </div>
@@ -566,8 +588,21 @@ function labelFor(
   return step.step_key.replace(/_/g, " ").replace(/^ask /, "")
 }
 
+function submitActionLabel(
+  entryIntent: "order" | "quote",
+  direction: "sales" | "purchase",
+  productTypeLabel: string | null,
+): string {
+  if (entryIntent === "quote") return "Create Quote →"
+  if (direction === "purchase") return "Place Purchase Order →"
+  if (productTypeLabel === "Disinterment") return "Log Disinterment →"
+  return "Create Order →"
+}
+
 function getPlaceholder(workflowId: string): string {
   const placeholders: Record<string, string> = {
+    wf_compose:
+      'e.g. "Continental for Hopkins, full equipment, deliver Friday" or "quote Murphy on a Monticello" or "PO Acme 50 bags cement"',
     wf_mfg_create_order:
       "e.g. Continental standard for Hopkins, deliver Friday, full equipment",
     wf_mfg_disinterment:

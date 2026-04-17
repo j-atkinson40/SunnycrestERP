@@ -383,7 +383,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         // intent — otherwise "order" floods the list with Order Station,
         // Disinterments, Purchase Orders alongside the workflow row.
         const hasUniversalOrder = workflowActions.some(
-          (w) => w.workflowId === "wf_create_order",
+          (w) => w.workflowId === "wf_compose" || w.workflowId === "wf_create_order",
         );
         const SUPPRESSED_BY_UNIVERSAL_ORDER = new Set([
           // Actions (already removed from registry, kept as safety)
