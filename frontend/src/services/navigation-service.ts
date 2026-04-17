@@ -353,6 +353,12 @@ function getManufacturingNav(
           icon: "ShieldCheck",
           settingsGroup: "Operations",
         },
+        {
+          label: "Workflows",
+          href: "/settings/workflows",
+          icon: "Zap",
+          settingsGroup: "Operations",
+        },
         // Network
         {
           label: "Locations",
