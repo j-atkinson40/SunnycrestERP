@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.models.company_entity import CompanyEntity
 from app.models.product import Product
+from app.models import PriceListItem, PriceListVersion
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,89 @@ def _format_price(value: float | int | None) -> str | None:
         return None
 
 
+def _active_price_version_id(db: Session, company_id: str) -> str | None:
+    """Return the active PriceListVersion id for the tenant, or None.
+    Prefers `status == 'active'`; falls back to most-recently activated."""
+    row = (
+        db.query(PriceListVersion.id)
+        .filter(
+            PriceListVersion.tenant_id == company_id,
+            PriceListVersion.status == "active",
+        )
+        .order_by(PriceListVersion.activated_at.desc())
+        .first()
+    )
+    if row:
+        return row[0]
+    # Fallback: most recent version regardless of status
+    row = (
+        db.query(PriceListVersion.id)
+        .filter(PriceListVersion.tenant_id == company_id)
+        .order_by(PriceListVersion.activated_at.desc().nullslast())
+        .first()
+    )
+    return row[0] if row else None
+
+
+def _tiered_price_for_product(
+    db: Session, product: Product, company_id: str
+) -> dict[str, float | None]:
+    """Look up {standard, contractor, homeowner, source} for a Product
+    using the active PriceListVersion; falls back to Product.price.
+
+    Matches PriceListItem by product_code == product.sku first, then by
+    product_name == product.name. Returns a dict so the caller can format
+    however it wants.
+    """
+    result: dict[str, float | None] = {
+        "standard": None,
+        "contractor": None,
+        "homeowner": None,
+        "source": None,
+    }
+
+    version_id = _active_price_version_id(db, company_id)
+    item = None
+    if version_id:
+        q = db.query(PriceListItem).filter(
+            PriceListItem.tenant_id == company_id,
+            PriceListItem.version_id == version_id,
+            PriceListItem.is_active == True,  # noqa: E712
+        )
+        if product.sku:
+            item = q.filter(PriceListItem.product_code == product.sku).first()
+        if not item and product.name:
+            item = q.filter(PriceListItem.product_name == product.name).first()
+
+    if item is not None:
+        result["standard"] = float(item.standard_price) if item.standard_price is not None else None
+        result["contractor"] = float(item.contractor_price) if item.contractor_price is not None else None
+        result["homeowner"] = float(item.homeowner_price) if item.homeowner_price is not None else None
+        result["source"] = "price_list"
+        return result
+
+    if product.price is not None:
+        result["standard"] = float(product.price)
+        result["source"] = "product"
+    return result
+
+
+def _format_tiered_price_line(name: str, tiers: dict[str, float | None]) -> str:
+    """Build "{name}: $X · Contractor $Y · Homeowner $Z" when tiers exist,
+    or fall back to just the standard price."""
+    std = _format_price(tiers["standard"])
+    c = _format_price(tiers["contractor"])
+    h = _format_price(tiers["homeowner"])
+    if not std and not c and not h:
+        return f"{name}: price not set"
+    parts = [std] if std else []
+    if c:
+        parts.append(f"Contractor {c}")
+    if h:
+        parts.append(f"Homeowner {h}")
+    return f"{name}: " + " · ".join(parts)
+
+
 def search_products(
     db: Session, query: str, company_id: str, limit: int = 5
 ) -> list[dict]:
@@ -136,8 +220,12 @@ def search_products(
     )
     out = []
     for p in products:
-        price_str = _format_price(p.price)
-        parts = [price_str] if price_str else []
+        tiers = _tiered_price_for_product(db, p, company_id)
+        # Subtitle prefers active-price-list standard; falls back to Product.price
+        price_str = _format_price(tiers["standard"])
+        parts: list[str] = []
+        if price_str:
+            parts.append(price_str)
         if p.sku:
             parts.append(p.sku)
         out.append({
@@ -147,7 +235,8 @@ def search_products(
             "record_id": p.id,
             "title": p.name,
             "subtitle": " · ".join(parts) or "Product",
-            "price": float(p.price) if p.price is not None else None,
+            "price": tiers["standard"],
+            "price_source": tiers["source"],
             "icon": "package",
             "route": "/products",
         })
@@ -256,6 +345,26 @@ _INVENTORY_PATTERNS = [
     r"how much (.+?) (?:in stock|on hand)",
 ]
 
+_CONTACT_INFO_PATTERNS = {
+    "phone": [
+        r"(?:phone|phone number|number|call) (?:for|of) (.+)",
+        r"what(?:'s| is) (?:the )?(?:phone|phone number|number) (?:for|of) (.+)",
+    ],
+    "email": [
+        r"(?:email|email address) (?:for|of) (.+)",
+        r"what(?:'s| is) (?:the )?email (?:for|of) (.+)",
+    ],
+    "address": [
+        r"(?:address|where is) (.+)",
+        r"where(?:'s| is) (.+) located",
+    ],
+}
+
+_RECENT_ORDER_PATTERNS = [
+    r"(?:last|latest|most recent) order (?:from|for) (.+)",
+    r"(?:last|most recent) order (?:by )?(.+)",
+]
+
 
 def _try_answer_price(
     db: Session, query: str, company_id: str
@@ -286,9 +395,12 @@ def _try_answer_price(
         return None
 
     lines: list[str] = []
+    used_price_list = False
     for p in products:
-        ps = _format_price(p.price)
-        lines.append(f"{p.name}: {ps}" if ps else f"{p.name}: price not set")
+        tiers = _tiered_price_for_product(db, p, company_id)
+        if tiers["source"] == "price_list":
+            used_price_list = True
+        lines.append(_format_tiered_price_line(p.name, tiers))
 
     return {
         "result_type": "answer",
@@ -297,8 +409,10 @@ def _try_answer_price(
         "headline": " · ".join(lines),
         "source_title": "Price list",
         "source_section": None,
-        "source_label": "From your active price list",
-        "route": "/products",
+        "source_label": (
+            "From your active price list" if used_price_list else "From product catalog"
+        ),
+        "route": "/pricing" if used_price_list else "/products",
         "related_record_ids": [p.id for p in products],
     }
 
@@ -369,10 +483,156 @@ def _try_answer_inventory(
     }
 
 
+def _try_answer_contact_info(
+    db: Session, query: str, company_id: str
+) -> dict | None:
+    """Answer 'phone/email/address for {company}' questions."""
+    q = query.lower().strip().rstrip("?.,!")
+    field: str | None = None
+    contact_name: str | None = None
+    for fname, patterns in _CONTACT_INFO_PATTERNS.items():
+        for pat in patterns:
+            m = re.search(pat, q)
+            if m:
+                field = fname
+                contact_name = m.group(1).strip()
+                break
+        if field:
+            break
+    if not contact_name:
+        return None
+
+    contact = (
+        db.query(CompanyEntity)
+        .filter(
+            CompanyEntity.company_id == company_id,
+            CompanyEntity.name.ilike(f"%{contact_name}%"),
+        )
+        .order_by(CompanyEntity.name.asc())
+        .first()
+    )
+    if not contact:
+        return None
+
+    if field == "phone":
+        value = contact.phone or "No phone on file"
+        headline = f"{contact.name}: {value}"
+        label = "From CRM contact"
+    elif field == "email":
+        value = contact.email or "No email on file"
+        headline = f"{contact.name}: {value}"
+        label = "From CRM contact"
+    else:  # address
+        parts = [contact.address_line1, contact.address_line2, contact.city, contact.state, contact.zip]
+        addr = ", ".join([p for p in parts if p])
+        headline = f"{contact.name}: {addr}" if addr else f"{contact.name}: no address on file"
+        label = "From CRM contact"
+
+    return {
+        "result_type": "answer",
+        "id": f"answer:contact:{field}:{contact.id}",
+        "icon": "💡",
+        "headline": headline,
+        "source_title": "CRM",
+        "source_section": None,
+        "source_label": label,
+        "route": f"/crm/companies/{contact.id}",
+        "related_record_ids": [contact.id],
+    }
+
+
+def _try_answer_recent_order(
+    db: Session, query: str, company_id: str
+) -> dict | None:
+    """Answer 'last order from {company}' questions."""
+    q = query.lower().strip().rstrip("?.,!")
+    customer_name: str | None = None
+    for pat in _RECENT_ORDER_PATTERNS:
+        m = re.search(pat, q)
+        if m:
+            customer_name = m.group(1).strip()
+            break
+    if not customer_name:
+        return None
+
+    try:
+        from app.models.sales_order import SalesOrder  # type: ignore
+    except Exception:
+        return None
+
+    # Find candidate customers by name
+    customer = (
+        db.query(CompanyEntity)
+        .filter(
+            CompanyEntity.company_id == company_id,
+            CompanyEntity.name.ilike(f"%{customer_name}%"),
+        )
+        .order_by(CompanyEntity.name.asc())
+        .first()
+    )
+    if not customer:
+        return None
+
+    try:
+        order = (
+            db.query(SalesOrder)
+            .filter(
+                SalesOrder.company_id == company_id,
+                SalesOrder.customer_id == customer.id,
+            )
+            .order_by(SalesOrder.order_date.desc().nullslast())
+            .first()
+        )
+    except Exception:
+        return None
+
+    if not order:
+        return {
+            "result_type": "answer",
+            "id": f"answer:recent_order:{customer.id}",
+            "icon": "💡",
+            "headline": f"{customer.name}: no orders on file",
+            "source_title": "Orders",
+            "source_section": None,
+            "source_label": "From sales orders",
+            "route": f"/crm/companies/{customer.id}",
+            "related_record_ids": [customer.id],
+        }
+
+    date_str = order.order_date.strftime("%b %-d, %Y") if order.order_date else "unknown date"
+    total_str = _format_price(float(order.total)) if getattr(order, "total", None) is not None else None
+    num = getattr(order, "number", None) or order.id
+    status = getattr(order, "status", None) or ""
+    bits = [f"Order {num}", date_str]
+    if total_str:
+        bits.append(total_str)
+    if status:
+        bits.append(status)
+    headline = f"{customer.name} · " + " · ".join(bits)
+
+    return {
+        "result_type": "answer",
+        "id": f"answer:recent_order:{order.id}",
+        "icon": "💡",
+        "headline": headline,
+        "source_title": "Orders",
+        "source_section": None,
+        "source_label": "Most recent sales order",
+        "route": f"/orders/{order.id}",
+        "related_record_ids": [order.id],
+    }
+
+
 def try_answer(db: Session, query: str, company_id: str) -> dict | None:
-    """Attempt to answer a question from platform data.
-    Runs price then inventory patterns. Returns None if nothing matches."""
-    for fn in (_try_answer_price, _try_answer_inventory):
+    """Attempt to answer a question from platform data. Runs handlers in
+    priority order. Returns None if nothing matches."""
+    handlers = (
+        _try_answer_price,
+        _try_answer_inventory,
+        _try_answer_recent_order,
+        _try_answer_contact_info,
+    )
+    for fn in handlers:
         try:
             ans = fn(db, query, company_id)
         except Exception as e:  # pragma: no cover — defensive
@@ -407,8 +667,13 @@ def answer_or_search(
     intent = classify_query(q)
     term = extract_search_term(q)
 
+    # Run the pattern-based answer engine on QUESTION *and* SEARCH intents.
+    # Many implicit lookups don't start with a question word — e.g.
+    # "phone number for Hopkins" or "last order from Murphy" classify
+    # as SEARCH but still have clean patterns. try_answer returns None
+    # when nothing matches, so it's cheap to always run.
     answer = None
-    if intent == QueryIntent.QUESTION:
+    if intent in (QueryIntent.QUESTION, QueryIntent.SEARCH):
         answer = try_answer(db, q, company_id)
 
     # Always search live records when we have a meaningful search term
