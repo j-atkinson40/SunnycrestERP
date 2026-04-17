@@ -585,6 +585,27 @@ def register_all_jobs():
         misfire_grace_time=3600,
     )
 
+    # EVERY 15 MINUTES — Workflow time-based triggers (Phase W-1)
+    # Handles time_of_day and time_after_event workflow triggers.
+    # Lazy import to avoid boot-time circulars.
+    def _run_workflow_time_check():
+        try:
+            from app.services.workflow_scheduler import check_time_based_workflows
+            result = check_time_based_workflows()
+            logger.info(f"Workflow time check: {result}")
+        except Exception as e:
+            logger.error(f"Workflow time check failed: {e}")
+
+    scheduler.add_job(
+        _run_workflow_time_check,
+        "interval",
+        minutes=15,
+        id="workflow_time_based_check",
+        name="workflow_time_based_check",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     logger.info(f"Registered {len(scheduler.get_jobs())} scheduled jobs")
 
 

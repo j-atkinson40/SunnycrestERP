@@ -23,6 +23,7 @@ from app.api.routes.fh import cases as fh_cases
 from app.api.routes.fh import cemetery as fh_cemetery
 from app.api.routes.fh import network as fh_network
 from app.api.routes.fh import monument as fh_monument
+from app.api.routes import workflows as workflow_routes
 from app.api.routes import (   # noqa: E402 — continuation of main import
     call_intelligence,
     ringcentral,
@@ -629,4 +630,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     fh_monument.router, prefix="/fh/monument", tags=["FH Monument"]
+)
+
+# Workflow Engine (Phase W-1)
+v1_router.include_router(
+    workflow_routes.router, prefix="/workflows", tags=["Workflows"]
 )

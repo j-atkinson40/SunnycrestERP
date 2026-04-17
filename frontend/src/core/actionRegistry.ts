@@ -4,13 +4,17 @@ export interface CommandAction {
   title: string;
   subtitle?: string;
   icon: string;
-  type: "ACTION" | "NAV" | "VIEW" | "RECORD" | "ASK";
+  type: "ACTION" | "NAV" | "VIEW" | "RECORD" | "ASK" | "WORKFLOW";
   route?: string;
   prefillSchema?: Record<string, unknown>;
   // Either a named handler string (resolved in CommandBar dispatch) or an inline callback.
   handler?: string | (() => void);
   roles: string[];
   vertical: string;
+  // WORKFLOW-only: the workflow id the engine should run
+  workflowId?: string;
+  // WORKFLOW-only: preview of the first step ("Ask: Which funeral home?")
+  firstStepPreview?: string;
 }
 
 export interface RecentAction {

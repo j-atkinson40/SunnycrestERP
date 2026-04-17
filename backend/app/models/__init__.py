@@ -314,6 +314,14 @@ from app.models.tenant_product_line import TenantProductLine
 from app.models.program_legacy_print import ProgramLegacyPrint
 # Funeral home vertical (fh_01_case_model)
 from app.models.cemetery_plot import CemeteryPlot, CemeteryMapConfig
+from app.models.workflow import (
+    Workflow,
+    WorkflowStep,
+    WorkflowRun,
+    WorkflowRunStep,
+    WorkflowEnrollment,
+    WorkflowSchedule,
+)
 from app.models.funeral_case import (
     FuneralCase,
     CaseDeceased,
@@ -622,4 +630,10 @@ __all__ = [
     "CasketProduct",
     "CemeteryPlot",
     "CemeteryMapConfig",
+    "Workflow",
+    "WorkflowStep",
+    "WorkflowRun",
+    "WorkflowRunStep",
+    "WorkflowEnrollment",
+    "WorkflowSchedule",
 ]

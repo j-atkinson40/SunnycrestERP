@@ -233,6 +233,7 @@ import CompanyRegisterPage from "@/pages/company-register";
 import PlatformAdminEntry from "@/pages/platform-admin-entry";
 import { BridgeableAdminApp } from "@/bridgeable-admin/BridgeableAdminApp";
 import ProductLinesPage from "@/pages/settings/ProductLines";
+import WorkflowsSettingsPage from "@/pages/settings/Workflows";
 // Funeral Home vertical (FH-1a + FH-1b)
 import FhDirectionHub from "@/fh/pages/DirectionHub";
 import FhCaseList from "@/fh/pages/CaseList";
@@ -913,6 +914,10 @@ export default function App() {
                     <Route
                       path="/settings/product-lines"
                       element={<ProductLinesPage />}
+                    />
+                    <Route
+                      path="/settings/workflows"
+                      element={<WorkflowsSettingsPage />}
                     />
                     {/* Funeral Home vertical (FH-1a + FH-1b) */}
                     <Route path="/fh" element={<FhDirectionHub />} />

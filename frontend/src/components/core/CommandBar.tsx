@@ -34,6 +34,8 @@ import {
   matchLocalActions,
 } from "@/core/actionRegistry";
 import { useAuth } from "@/contexts/auth-context";
+import { WorkflowController, type WorkflowRunState } from "@/components/workflows/WorkflowController";
+import { SlideOver } from "@/components/ui/SlideOver";
 
 // ── Icon map ────────────────────────────────────────────────────────────────
 
@@ -146,6 +148,8 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const [recentActions, setRecentActions] = useState<RecentAction[]>([]);
   const [searchOnly, setSearchOnly] = useState(false);
   const [apiAnswer, setApiAnswer] = useState<string | null>(null);
+  const [activeWorkflow, setActiveWorkflow] = useState<{ id: string; title: string } | null>(null);
+  const [openSlideOver, setOpenSlideOver] = useState<{ recordType: string; recordId: string; title: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const { user, company } = useAuth();
@@ -216,19 +220,48 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
       abortRef.current = controller;
 
       try {
-        const res = await apiClient.post<CoreCommandResponse>(
-          "/core/command",
-          { query: q, context: { current_page: window.location.pathname } },
-          { signal: controller.signal }
-        );
+        // Fire core command + workflow command-bar in parallel
+        const [coreRes, wfRes] = await Promise.allSettled([
+          apiClient.post<CoreCommandResponse>(
+            "/core/command",
+            { query: q, context: { current_page: window.location.pathname } },
+            { signal: controller.signal }
+          ),
+          apiClient.get<Array<{
+            workflow_id: string;
+            title: string;
+            subtitle: string;
+            icon: string;
+            first_step_preview: string;
+            priority: number;
+          }>>("/workflows/command-bar", { params: { q }, signal: controller.signal }),
+        ]);
 
-        const data = res.data;
-        setSearchOnly(!!data.search_only);
-        setApiAnswer(data.answer ?? null);
+        // Workflow results — always ranked above everything else
+        const workflowActions: CommandAction[] =
+          wfRes.status === "fulfilled"
+            ? (wfRes.value.data || []).map((w) => ({
+                id: `wf_${w.workflow_id}`,
+                keywords: [],
+                title: w.title,
+                subtitle: w.first_step_preview || w.subtitle,
+                icon: w.icon || "zap",
+                type: "WORKFLOW",
+                roles: [],
+                vertical: tenantVertical,
+                workflowId: w.workflow_id,
+                firstStepPreview: w.first_step_preview,
+              }))
+            : [];
 
-        if (data.results && data.results.length > 0) {
+        const coreData: CoreCommandResponse | null =
+          coreRes.status === "fulfilled" ? coreRes.value.data : null;
+        setSearchOnly(!!coreData?.search_only);
+        setApiAnswer(coreData?.answer ?? null);
+
+        if ((coreData?.results && coreData.results.length > 0) || workflowActions.length > 0) {
           // Map API results to CommandAction shape
-          const mapped: CommandAction[] = data.results.map((r) => ({
+          const mapped: CommandAction[] = (coreData?.results || []).map((r) => ({
             id: r.id,
             keywords: [],
             title: r.title,
@@ -242,7 +275,8 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           // Permission filter API results too — any action the current
           // user's role isn't permitted to see is stripped out before display.
           const filteredByRole = filterActionsByRole(mapped, userRole);
-          setResults(filteredByRole);
+          // WORKFLOW first, then the rest in order returned by backend
+          setResults([...workflowActions, ...filteredByRole].slice(0, 5));
         } else {
           // Fallback to local match (already role-filtered via permittedActions)
           setResults(matchLocalActions(q, permittedActions));
@@ -281,6 +315,12 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
       apiClient
         .post("/core/log-action", { action_id: action.id, action_type: action.type })
         .catch(() => {});
+
+      // WORKFLOW — switch to inline controller, keep bar open
+      if (action.type === "WORKFLOW" && action.workflowId) {
+        setActiveWorkflow({ id: action.workflowId, title: action.title });
+        return;
+      }
 
       if (action.handler) {
         if (typeof action.handler === "function") {
@@ -435,8 +475,38 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           </div>
         )}
 
+        {/* Active workflow — replaces results view while running */}
+        {activeWorkflow && (
+          <WorkflowController
+            workflowId={activeWorkflow.id}
+            workflowTitle={activeWorkflow.title}
+            onComplete={(run: WorkflowRunState) => {
+              // Handle output actions from the final step
+              const outputs = (run.output_data || {}) as Record<string, unknown>;
+              for (const key of Object.keys(outputs)) {
+                const val = outputs[key] as Record<string, unknown>;
+                if (val?.type === "open_slide_over") {
+                  setOpenSlideOver({
+                    recordType: String(val.record_type),
+                    recordId: String(val.record_id),
+                    title: activeWorkflow.title,
+                  });
+                }
+              }
+              setActiveWorkflow(null);
+              // Close the command bar after a successful workflow unless
+              // a slide-over is opening — SlideOver lives in its own overlay.
+              setTimeout(() => onClose(), 400);
+            }}
+            onCancel={() => {
+              setActiveWorkflow(null);
+              onClose();
+            }}
+          />
+        )}
+
         {/* Results */}
-        <div className="max-h-[380px] overflow-y-auto">
+        {!activeWorkflow && <div className="max-h-[380px] overflow-y-auto">
           {/* Recent actions when empty */}
           {showRecent && (
             <div className="p-2">
@@ -516,7 +586,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
               No results for &ldquo;{query}&rdquo;
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-4 py-2 text-[10px] text-gray-400">
@@ -531,6 +601,25 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           </span>
         </div>
       </div>
+
+      {/* SlideOver triggered by workflow output (stays mounted across command bar close) */}
+      {openSlideOver && (
+        <SlideOver
+          isOpen={true}
+          onClose={() => setOpenSlideOver(null)}
+          title={openSlideOver.title}
+          width="md"
+        >
+          <div className="space-y-3 text-sm">
+            <div className="text-slate-600">
+              Record created: <span className="font-mono text-xs">{openSlideOver.recordType}/{openSlideOver.recordId}</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded p-3 text-xs text-slate-500">
+              Record editor embedding is coming in Phase W-2. For now, open the record from the matching page.
+            </div>
+          </div>
+        </SlideOver>
+      )}
     </div>
   );
 }
