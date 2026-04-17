@@ -376,7 +376,26 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
 
         // Local action matches — ALWAYS compute them so they can fill
         // the list when the API returns nothing actionable.
-        const localMatches = matchLocalActions(q, permittedActions);
+        const rawLocalMatches = matchLocalActions(q, permittedActions);
+
+        // Dedup: when the universal Create Order workflow is present,
+        // suppress the local "create_order" / "create_disinterment"
+        // ACTION entries that cover the same intent.
+        const hasUniversalOrder = workflowActions.some(
+          (w) => w.workflowId === "wf_create_order",
+        );
+        const SUPPRESSED_BY_UNIVERSAL_ORDER = new Set([
+          "create_order",
+          "create_disinterment",
+          "create_disinterment_order",
+          "new_order",
+          "place_order",
+        ]);
+        const localMatches = hasUniversalOrder
+          ? rawLocalMatches.filter(
+              (a) => !(a.type === "ACTION" && SUPPRESSED_BY_UNIVERSAL_ORDER.has(a.id)),
+            )
+          : rawLocalMatches;
 
         // Unified search response: records + inline answer + document hits
         const searchData: CommandBarSearchResponse =

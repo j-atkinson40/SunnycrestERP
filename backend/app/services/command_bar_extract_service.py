@@ -49,7 +49,83 @@ def build_field_schema(workflow: Workflow, steps: list[WorkflowStep]) -> list[di
 # Workflow-specific vocabulary that Claude should understand when
 # extracting. Keep these short and high-signal — long hints cost
 # tokens on every debounce tick.
+# Product-type fingerprints for the universal Create Order workflow.
+# Scanned in priority order (most specific first) so "disinterment"
+# wins over "vault" even if both appear in input.
+_PRODUCT_TYPE_FINGERPRINTS: list[tuple[str, list[str]]] = [
+    ("disinterment", ["disinterment", "disinter", "exhumation", "exhume"]),
+    ("redi_rock", ["redi-rock", "redi rock", "redirock", "retaining wall"]),
+    (
+        "wastewater",
+        ["infiltrator", "eljen", "ezflow", "pipe", "fittings", "septic", "leach field"],
+    ),
+    ("urn", ["urn", "cremation urn", "companion urn"]),
+    (
+        "equipment",
+        [
+            "full equipment", "full setup", "equipment only", "equipment bundle",
+            "lowering device", "lowering", "tent only", "just tent", "grass only",
+        ],
+    ),
+    (
+        "vault",
+        [
+            "continental", "monticello", "presidential", "triune",
+            "flat top", "flattop", "burial vault", "vault",
+        ],
+    ),
+]
+
+PRODUCT_TYPE_DISPLAY: dict[str, str] = {
+    "vault": "Vault Order",
+    "disinterment": "Disinterment",
+    "redi_rock": "Redi-Rock Order",
+    "wastewater": "Wastewater Order",
+    "urn": "Urn Order",
+    "equipment": "Equipment Order",
+}
+
+
+def detect_product_type(input_text: str) -> str | None:
+    """Scan input for product-type keywords. Returns the type key or
+    None. More specific types beat more generic ones."""
+    text = (input_text or "").lower()
+    if not text:
+        return None
+    for type_key, keywords in _PRODUCT_TYPE_FINGERPRINTS:
+        for kw in keywords:
+            if kw in text:
+                return type_key
+    return None
+
+
 WORKFLOW_EXTRACTION_HINTS: dict[str, str] = {
+    "wf_create_order": """
+Sunnycrest Precast — product context:
+
+VAULT PRODUCTS (fuzzy match):
+  continental → Continental Standard
+  monticello → Monticello Standard
+  presidential → Presidential
+  triune → Triune
+  flat top / flattop → Flat Top
+
+EQUIPMENT BUNDLES:
+  full equipment / full setup → Full Equipment
+  lowering and grass → Lowering Device & Grass
+  lowering only → Lowering Device Only
+  tent only / just tent → Tent Only
+  equipment only → Equipment Only
+
+REDI-ROCK: match block sizes ("60 blocks", "2 ton"); site address often mentioned.
+WASTEWATER: Infiltrator, Eljen, EZflow — match product name + quantity.
+URN: cremation urns and companion urns — match model name.
+
+CUSTOMERS: partial names like "Hopkins" → "Hopkins Funeral Home".
+DATES: resolve relative dates ("Friday", "next week") to YYYY-MM-DD.
+DISINTERMENTS: "dis" / "disinterment" → order_type disinterment. Customer is the funeral home requesting it.
+QUANTITIES: always whole numbers.
+""",
     "wf_mfg_create_order": """
 VAULT PRODUCTS (fuzzy match to full name):
   continental → Continental Standard
@@ -371,7 +447,13 @@ def extract(
         return {"fields": {}, "raw_input": input_text}
 
     resolved = resolve_fields(result, schema, db, company_id)
-    return {"fields": resolved, "raw_input": input_text}
+    product_type = detect_product_type(input_text)
+    return {
+        "fields": resolved,
+        "raw_input": input_text,
+        "product_type": product_type,
+        "product_type_label": PRODUCT_TYPE_DISPLAY.get(product_type, "") if product_type else "",
+    }
 
 
 # expose re for any caller that needs the same regex helpers

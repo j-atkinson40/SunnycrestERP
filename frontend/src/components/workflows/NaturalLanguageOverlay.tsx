@@ -37,6 +37,8 @@ interface WorkflowShape {
 interface ExtractResponse {
   fields: FieldMap
   raw_input: string
+  product_type?: string | null
+  product_type_label?: string | null
 }
 
 interface Props {
@@ -59,6 +61,7 @@ export function NaturalLanguageOverlay({
   const [error, setError] = useState<string | null>(null)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
+  const [productTypeLabel, setProductTypeLabel] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -173,6 +176,9 @@ export function NaturalLanguageOverlay({
             is_final: isFinal,
           },
         )
+        if (data.product_type_label) {
+          setProductTypeLabel(data.product_type_label)
+        }
         return data.fields || {}
       } catch {
         return null
@@ -287,6 +293,20 @@ export function NaturalLanguageOverlay({
           <span className="text-xs text-gray-400">⌘↵ to create</span>
         </div>
       </div>
+
+      {productTypeLabel && (
+        <div className="mx-4 mt-1 flex items-center justify-between rounded-md bg-violet-50 px-3 py-1.5 text-xs">
+          <span className="font-medium text-violet-700">
+            {productTypeLabel}
+          </span>
+          <button
+            onClick={() => setProductTypeLabel(null)}
+            className="text-violet-400 hover:text-violet-700"
+          >
+            change
+          </button>
+        </div>
+      )}
 
       {Object.keys(fields).length > 0 && (
         <div className="mx-4 my-1 border-t border-gray-100" />

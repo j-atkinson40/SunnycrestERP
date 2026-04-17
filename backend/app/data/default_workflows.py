@@ -4,16 +4,142 @@ Seeded via seed_default_workflows on migration. Idempotent by workflow id.
 """
 
 MANUFACTURING_WORKFLOWS = [
+    # ─────────────────────────────────────────────────────────────────
+    # Universal Create Order — covers ALL order types (vault, disinterment,
+    # Redi-Rock, wastewater, urn, equipment). Replaces the individual
+    # per-type order actions and workflows from a command-bar UX
+    # perspective. Uses natural-language extraction with adaptive fields.
+    # Ranked higher than the legacy per-type workflows so it wins on
+    # shared keywords ("create order", "disinterment").
+    # ─────────────────────────────────────────────────────────────────
+    {
+        "id": "wf_create_order",
+        "name": "Create Order",
+        "description": "Create any order — vault, disinterment, Redi-Rock, wastewater, urn, equipment.",
+        "keywords": [
+            "order", "create order", "new order", "place order", "add order",
+            # Vault
+            "vault", "continental", "monticello", "presidential", "triune",
+            "flat top", "flattop",
+            # Disinterment
+            "disinterment", "dis", "exhumation",
+            # Redi-Rock
+            "redi-rock", "redi rock", "redirock", "retaining wall",
+            # Wastewater
+            "infiltrator", "eljen", "pipe", "fittings", "septic",
+            # Urn
+            "urn", "cremation urn",
+            # Equipment
+            "equipment", "full equipment", "lowering", "tent", "grass",
+        ],
+        "tier": 2,
+        "vertical": "manufacturing",
+        "trigger_type": "manual",
+        "icon": "plus-circle",
+        "command_bar_priority": 100,
+        "is_system": True,
+        "overlay_config": {
+            "input_style": "natural_language",
+            "size": "standard",
+            "submit_label": "Create Order",
+            "is_adaptive": True,
+        },
+        "steps": [
+            {
+                "step_order": 1,
+                "step_key": "ask_customer",
+                "step_type": "input",
+                "config": {
+                    "prompt": "Which customer?",
+                    "input_type": "crm_search",
+                    "required": True,
+                },
+            },
+            {
+                "step_order": 2,
+                "step_key": "ask_product",
+                "step_type": "input",
+                "config": {
+                    "prompt": "Which product or service?",
+                    "input_type": "record_search",
+                    "record_type": "product",
+                    "required": True,
+                },
+            },
+            {
+                "step_order": 3,
+                "step_key": "ask_quantity",
+                "step_type": "input",
+                "config": {
+                    "prompt": "Quantity?",
+                    "input_type": "number",
+                    "required": False,
+                },
+            },
+            {
+                "step_order": 4,
+                "step_key": "ask_delivery_date",
+                "step_type": "input",
+                "config": {
+                    "prompt": "Delivery date?",
+                    "input_type": "date_picker",
+                    "required": False,
+                },
+            },
+            {
+                "step_order": 5,
+                "step_key": "ask_notes",
+                "step_type": "input",
+                "config": {
+                    "prompt": "Notes",
+                    "input_type": "text",
+                    "required": False,
+                },
+            },
+            {
+                "step_order": 6,
+                "step_key": "create_order",
+                "step_type": "action",
+                "config": {
+                    "action_type": "create_record",
+                    "record_type": "order",
+                    "fields": {
+                        "company_entity_id": "{input.ask_customer.id}",
+                        "customer_name": "{input.ask_customer.name}",
+                        "product_id": "{input.ask_product.id}",
+                        "quantity": "{input.ask_quantity}",
+                        "required_date": "{input.ask_delivery_date}",
+                        "notes": "{input.ask_notes}",
+                        "status": "pending",
+                    },
+                },
+            },
+            {
+                "step_order": 7,
+                "step_key": "open_order",
+                "step_type": "output",
+                "config": {
+                    "action_type": "open_slide_over",
+                    "record_type": "order",
+                    "record_id": "{output.create_order.id}",
+                    "mode": "edit",
+                },
+            },
+        ],
+    },
     {
         "id": "wf_mfg_disinterment",
         "name": "Start Disinterment Workflow",
         "description": "Begin a disinterment order for a funeral home",
-        "keywords": ["disinterment", "dis", "start disinterment", "new disinterment", "exhumation"],
+        # Superseded by wf_create_order in command-bar results; kept
+        # visible in the workflow library with reduced priority so
+        # existing links still work.
+        "keywords": [],
         "tier": 2,
         "vertical": "manufacturing",
         "trigger_type": "manual",
         "icon": "clipboard-list",
-        "command_bar_priority": 90,
+        "command_bar_priority": 40,
         "is_system": True,
         "steps": [
             {
@@ -57,14 +183,16 @@ MANUFACTURING_WORKFLOWS = [
     },
     {
         "id": "wf_mfg_create_order",
-        "name": "Create Order",
-        "description": "Create a new vault order for a customer",
-        "keywords": ["create order", "new order", "order for", "add order", "place order"],
+        "name": "Create Vault Order (legacy)",
+        "description": "Legacy vault-only order flow — superseded by the universal Create Order workflow.",
+        # Cleared so only the universal wf_create_order shows in the
+        # command bar. Workflow stays around for library compatibility.
+        "keywords": [],
         "tier": 2,
         "vertical": "manufacturing",
         "trigger_type": "manual",
         "icon": "plus-circle",
-        "command_bar_priority": 95,
+        "command_bar_priority": 30,
         "is_system": True,
         "steps": [
             {
