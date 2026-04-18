@@ -43,6 +43,7 @@ class WorkflowStep(Base):
     step_type: Mapped[str] = mapped_column(String(50), nullable=False)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False)
     is_core: Mapped[bool] = mapped_column(Boolean, default=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     next_step_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     condition_true_step_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     condition_false_step_id: Mapped[str | None] = mapped_column(String(36), nullable=True)

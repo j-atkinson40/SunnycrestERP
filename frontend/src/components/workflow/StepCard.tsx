@@ -12,7 +12,7 @@ import {
   GitBranch,
   CheckCircle,
   Lock,
-  Edit3,
+  Bot,
   Trash2,
   ChevronUp,
   ChevronDown,
@@ -25,7 +25,7 @@ import {
   type StepLike,
 } from "@/utils/workflowStepSummary"
 
-export type StepType = "trigger" | "input" | "action" | "condition" | "output"
+export type StepType = "trigger" | "input" | "action" | "playwright_action" | "condition" | "output"
 
 type StyleKey = StepType
 
@@ -92,16 +92,30 @@ const STEP_STYLES: Record<
     icon: CheckCircle,
     iconBg: "bg-emerald-600",
   },
+  playwright_action: {
+    border: "border-l-slate-500",
+    bg: "bg-white",
+    label: "AUTOMATION",
+    labelColor: "text-slate-600",
+    pillBg: "bg-slate-100",
+    pillText: "text-slate-700",
+    icon: Bot,
+    iconBg: "bg-slate-600",
+  },
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // StepCard — for regular workflow steps (input/action/condition/output)
 // ─────────────────────────────────────────────────────────────────────
 
+export type StepWithDisplayName = StepLike & {
+  display_name?: string | null
+}
+
 export interface StepCardProps {
-  step: StepLike
+  step: StepWithDisplayName
   stepIndex: number
-  previousSteps: StepLike[]
+  previousSteps: StepWithDisplayName[]
   selected?: boolean
   isReadOnly?: boolean
   onSelect?: () => void
@@ -132,6 +146,8 @@ export function StepCard({
   const style = STEP_STYLES[typ] || STEP_STYLES.action
   const summary = generateStepSummary(step, previousSteps)
   const Icon = style.icon
+  // Prefer user-assigned display_name over AI-generated headline
+  const headline = step.display_name?.trim() || summary.headline
 
   return (
     <div
@@ -156,15 +172,10 @@ export function StepCard({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {isCore ? (
-            <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">
+          {isCore && (
+            <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
               <Lock className="h-3 w-3" />
               CORE
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-              <Edit3 className="h-3 w-3" />
-              YOUR STEP
             </span>
           )}
         </div>
@@ -173,7 +184,7 @@ export function StepCard({
       {/* Headline + subline */}
       <div className="px-5 pt-2">
         <div className="text-base font-semibold text-slate-900 leading-snug">
-          {summary.headline}
+          {headline}
         </div>
         {summary.subline && (
           <div className="text-xs text-slate-500 mt-1">{summary.subline}</div>

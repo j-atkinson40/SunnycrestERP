@@ -5,7 +5,7 @@
 //   /settings/workflows/:workflowId/edit     — edit custom workflow
 //   /settings/workflows/:workflowId/view     — read-only (Tier 1)
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   ArrowLeft,
@@ -16,6 +16,12 @@ import {
   Loader2,
   Trash2,
   ChevronDown,
+  Bot,
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  Plus,
+  X,
 } from "lucide-react"
 import apiClient from "@/lib/api-client"
 import { StepCard, TriggerCard as TriggerCardV2 } from "@/components/workflow/StepCard"
@@ -26,6 +32,8 @@ import {
 } from "@/components/workflow/BlockLibrary"
 import { InterStepDropZone, EndDropZone } from "@/components/workflow/DropZones"
 import { PlaceholderCard } from "@/components/workflow/PlaceholderCard"
+import VariablePicker, { type StepSummary as PickerStepSummary } from "@/components/workflow/VariablePicker"
+import CredentialModal from "@/components/workflow/CredentialModal"
 import {
   RUN_STATUS_DISPLAY,
   TRIGGER_SOURCE_DISPLAY,
@@ -38,7 +46,7 @@ import {
 // Types
 // ─────────────────────────────────────────────────────────────────────
 
-type StepType = "input" | "action" | "condition" | "output"
+type StepType = "input" | "action" | "playwright_action" | "condition" | "output"
 
 interface Step {
   step_order: number
@@ -46,6 +54,7 @@ interface Step {
   step_type: StepType
   config: Record<string, unknown>
   is_core?: boolean
+  display_name?: string | null
 }
 
 interface StepParam {
@@ -147,6 +156,7 @@ export default function WorkflowBuilderPage() {
             step_type: s.step_type as StepType,
             config: (s.config as Record<string, unknown>) || {},
             is_core: s.is_core,
+            display_name: (s as Step).display_name ?? null,
           })),
         })
         setLoadedMeta({
@@ -502,9 +512,15 @@ export default function WorkflowBuilderPage() {
                           if (selectedStepIdx !== null) removeStep(selectedStepIdx)
                         }
                   }
+                  onRename={
+                    readOnly
+                      ? undefined
+                      : (name) => updateStep(selectedStepIdx!, { display_name: name || null })
+                  }
                 >
                   <BlockEditor
                     step={selectedStep}
+                    priorSteps={draft.steps.slice(0, selectedStepIdx!)}
                     readOnly={readOnly}
                     onChange={(update) => updateStep(selectedStepIdx!, update)}
                     onConfigChange={(configUpdate) =>
@@ -533,50 +549,97 @@ function SidebarEditorHeader({
   step,
   onBack,
   onDelete,
+  onRename,
   children,
 }: {
   step: Step
   onBack: () => void
   onDelete?: () => void
+  onRename?: (name: string) => void
   children: React.ReactNode
 }) {
-  const typeLabel = {
-    input: "Edit input step",
-    action: "Edit action",
-    condition: "Edit condition",
-    output: "Edit output",
-    trigger: "Edit trigger",
-  }[step.step_type] ?? "Edit step"
+  const TYPE_LABELS: Record<string, string> = {
+    input: "Collect Input",
+    action: "Action",
+    playwright_action: "Automation",
+    condition: "Condition",
+    output: "Output",
+    trigger: "Trigger",
+  }
+  const typeLabel = TYPE_LABELS[step.step_type] ?? step.step_type
+
+  // Two-click delete: first click arms, second click fires; auto-disarms after 3s
+  const [deleteArmed, setDeleteArmed] = useState(false)
+  const disarmRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function handleDeleteClick() {
+    if (!deleteArmed) {
+      setDeleteArmed(true)
+      disarmRef.current = setTimeout(() => setDeleteArmed(false), 3000)
+    } else {
+      if (disarmRef.current) clearTimeout(disarmRef.current)
+      setDeleteArmed(false)
+      onDelete?.()
+    }
+  }
+
+  const displayValue = step.display_name ?? ""
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
-        <button
-          onClick={onBack}
-          className="group inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
-        >
-          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
-          Back to blocks
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-slate-900 truncate">
-            {typeLabel}
-          </div>
+      <div className="px-4 pt-3 pb-2 border-b border-slate-100 flex-shrink-0">
+        {/* Top row: back + delete */}
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            onClick={onBack}
+            className="group inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+            Back
+          </button>
+          <div className="flex-1" />
+          {!step.is_core && onDelete && (
+            <button
+              onClick={handleDeleteClick}
+              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                deleteArmed
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "text-slate-400 hover:text-red-600"
+              }`}
+              aria-label="Delete step"
+            >
+              <Trash2 className="h-3 w-3" />
+              {deleteArmed ? "Confirm delete" : ""}
+            </button>
+          )}
           {step.is_core && (
-            <div className="text-[10px] text-amber-700 mt-0.5">
-              🔒 Platform step
-            </div>
+            <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+              <Lock className="h-3 w-3" />
+              Core
+            </span>
           )}
         </div>
-        {!step.is_core && onDelete && (
-          <button
-            onClick={onDelete}
-            className="p-1 text-slate-400 hover:text-red-600 rounded"
-            aria-label="Delete step"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        )}
+
+        {/* Step type badge + rename input */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">
+            {typeLabel}
+          </span>
+          <span className="text-slate-300">·</span>
+          {onRename ? (
+            <input
+              type="text"
+              value={displayValue}
+              onChange={(e) => onRename(e.target.value)}
+              placeholder={`Name this step…`}
+              className="flex-1 min-w-0 text-sm font-medium text-slate-900 bg-transparent outline-none placeholder:text-slate-300 border-b border-transparent focus:border-slate-300 transition-colors"
+            />
+          ) : (
+            <span className="text-sm font-medium text-slate-900 truncate">
+              {displayValue || step.step_key}
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4">{children}</div>
     </div>
@@ -870,26 +933,27 @@ function defaultConfigForType(type: StepType): Record<string, unknown> {
 
 function BlockEditor({
   step,
+  priorSteps = [],
   onChange,
   onConfigChange,
   readOnly = false,
 }: {
   step: Step
+  priorSteps?: Step[]
   onChange: (update: Partial<Step>) => void
   onConfigChange: (update: Record<string, unknown>) => void
-  onClose?: () => void  // kept for parent call-site compatibility; SlideOver owns close
+  onClose?: () => void  // kept for parent call-site compatibility
   readOnly?: boolean
 }) {
   const cfg = step.config as Record<string, unknown>
-  const locked = readOnly || !!step.is_core
+  // Core means "can't remove" — params are still editable
+  const locked = readOnly
 
   return (
     <div className="space-y-4">
-      {locked && (
+      {readOnly && (
         <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-          {step.is_core
-            ? "🔒 Platform step — core behavior is locked. Only Options (if any) can be configured."
-            : "🔒 View-only — this workflow is read-only in this view."}
+          🔒 View-only — this workflow is read-only in this view.
         </div>
       )}
 
@@ -902,19 +966,21 @@ function BlockEditor({
         />
       </Field>
 
-      <Field label="Type">
-        <select
-          value={step.step_type}
-          onChange={(e) => onChange({ step_type: e.target.value as StepType, config: defaultConfigForType(e.target.value as StepType) })}
-          disabled={locked}
-          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-50 disabled:text-slate-500"
-        >
-          <option value="input">Input — ask the user</option>
-          <option value="action">Action — do something</option>
-          <option value="condition">Condition — branch</option>
-          <option value="output">Output — final result</option>
-        </select>
-      </Field>
+      {step.step_type !== "playwright_action" && (
+        <Field label="Type">
+          <select
+            value={step.step_type}
+            onChange={(e) => onChange({ step_type: e.target.value as StepType, config: defaultConfigForType(e.target.value as StepType) })}
+            disabled={locked}
+            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-50 disabled:text-slate-500"
+          >
+            <option value="input">Input — ask the user</option>
+            <option value="action">Action — do something</option>
+            <option value="condition">Condition — branch</option>
+            <option value="output">Output — final result</option>
+          </select>
+        </Field>
+      )}
 
       <div
         className={`border-t border-slate-100 pt-4 space-y-4 ${
@@ -986,6 +1052,14 @@ function BlockEditor({
           </>
         )}
 
+        {step.step_type === "playwright_action" && (
+          <PlaywrightActionConfig
+            cfg={cfg}
+            priorSteps={priorSteps}
+            onConfigChange={onConfigChange}
+          />
+        )}
+
         {step.step_type === "condition" && (
           <Field label="Expression">
             <input
@@ -1008,6 +1082,329 @@ function BlockEditor({
           </Field>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PlaywrightActionConfig — type-specific configurator for automation steps
+// ─────────────────────────────────────────────────────────────────────
+
+interface ScriptMeta {
+  name: string
+  description: string
+  service_key: string
+  input_schema: string[]
+  output_schema: string[]
+}
+
+function PlaywrightActionConfig({
+  cfg,
+  priorSteps,
+  onConfigChange,
+}: {
+  cfg: Record<string, unknown>
+  priorSteps: Step[]
+  onConfigChange: (update: Record<string, unknown>) => void
+}) {
+  const scriptName = (cfg.script_name as string) || ""
+  const [scripts, setScripts] = useState<ScriptMeta[]>([])
+  const [accountStatus, setAccountStatus] = useState<{
+    connected: boolean
+    last_verified_at?: string | null
+  } | null>(null)
+  const [credModalOpen, setCredModalOpen] = useState(false)
+
+  // Load available scripts once
+  useEffect(() => {
+    apiClient.get<ScriptMeta[]>("/external-accounts/available-scripts")
+      .then((r) => setScripts(r.data))
+      .catch(() => {})
+  }, [])
+
+  // Load account status whenever script changes
+  useEffect(() => {
+    if (!scriptName) { setAccountStatus(null); return }
+    const s = scripts.find((s) => s.name === scriptName)
+    if (!s?.service_key) { setAccountStatus(null); return }
+    apiClient.get<{ connected: boolean; last_verified_at?: string | null }>(
+      `/external-accounts/${s.service_key}/status`
+    )
+      .then((r) => setAccountStatus(r.data))
+      .catch(() => setAccountStatus(null))
+  }, [scriptName, scripts])
+
+  const selectedScript = scripts.find((s) => s.name === scriptName)
+  const serviceKey = selectedScript?.service_key ?? ""
+  const inputMapping = (cfg.input_mapping as Record<string, string>) || {}
+  const outputMapping = (cfg.output_mapping as Record<string, string>) || {}
+  const requiresApproval = !!(cfg.requires_approval)
+  const approvalPrompt = (cfg.approval_prompt as string) || ""
+
+  // Helpers
+  const pickerSteps: PickerStepSummary[] = priorSteps.map((s) => ({
+    step_key: s.step_key,
+    step_type: s.step_type,
+    display_name: s.display_name,
+    config: s.config as Record<string, unknown>,
+  }))
+
+  function setInputMapping(key: string, value: string) {
+    onConfigChange({ input_mapping: { ...inputMapping, [key]: value } })
+  }
+  function removeInputMapping(key: string) {
+    const next = { ...inputMapping }
+    delete next[key]
+    onConfigChange({ input_mapping: next })
+  }
+  function setOutputMapping(key: string, value: string) {
+    onConfigChange({ output_mapping: { ...outputMapping, [key]: value } })
+  }
+  function removeOutputMapping(key: string) {
+    const next = { ...outputMapping }
+    delete next[key]
+    onConfigChange({ output_mapping: next })
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Script selector */}
+      <div>
+        <div className="flex items-center gap-1.5 mb-1">
+          <Bot className="h-3.5 w-3.5 text-slate-500" />
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            Script
+          </span>
+        </div>
+        <select
+          value={scriptName}
+          onChange={(e) => onConfigChange({ script_name: e.target.value })}
+          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+        >
+          <option value="">— choose script —</option>
+          {scripts.map((s) => (
+            <option key={s.name} value={s.name}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        {selectedScript && (
+          <div className="mt-1 text-[10px] text-slate-400">
+            {selectedScript.description}
+          </div>
+        )}
+      </div>
+
+      {/* Account connection status */}
+      {selectedScript && (
+        <div className="rounded border border-slate-200 px-3 py-2.5 flex items-center gap-3">
+          {accountStatus === null ? (
+            <Loader2 className="h-4 w-4 text-slate-300 animate-spin flex-shrink-0" />
+          ) : accountStatus.connected ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+          ) : (
+            <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-slate-700">
+              {selectedScript.service_key || "External account"}
+            </div>
+            {accountStatus?.connected ? (
+              <div className="text-[10px] text-slate-400">
+                Connected
+                {accountStatus.last_verified_at
+                  ? ` · verified ${new Date(accountStatus.last_verified_at).toLocaleDateString()}`
+                  : ""}
+              </div>
+            ) : (
+              <div className="text-[10px] text-amber-600">Not connected</div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCredModalOpen(true)}
+            className="text-[10px] text-blue-600 hover:underline whitespace-nowrap"
+          >
+            {accountStatus?.connected ? "Update" : "Connect"}
+          </button>
+          <a
+            href="/settings/external-accounts"
+            target="_blank"
+            rel="noopener"
+            className="text-slate-400 hover:text-slate-600"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
+      )}
+
+      {/* Input mapping */}
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+          Input mapping
+          <span className="ml-1 font-normal normal-case text-slate-400">
+            (pass workflow data into the script)
+          </span>
+        </div>
+        <div className="space-y-2">
+          {/* Known inputs from script schema */}
+          {(selectedScript?.input_schema ?? []).map((key) => (
+            <div key={key} className="flex items-center gap-2">
+              <span className="w-28 flex-shrink-0 text-xs font-mono text-slate-600 truncate">
+                {key}
+              </span>
+              <div className="flex-1 flex items-center gap-1">
+                <input
+                  value={inputMapping[key] ?? ""}
+                  onChange={(e) => setInputMapping(key, e.target.value)}
+                  placeholder="{output.step.field}"
+                  className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs font-mono"
+                />
+                <VariablePicker
+                  priorSteps={pickerSteps}
+                  onSelect={(v) => setInputMapping(key, v)}
+                />
+              </div>
+            </div>
+          ))}
+          {/* Free-form additional mappings */}
+          {Object.entries(inputMapping)
+            .filter(([k]) => !(selectedScript?.input_schema ?? []).includes(k))
+            .map(([key, val]) => (
+              <div key={key} className="flex items-center gap-2">
+                <input
+                  value={key}
+                  onChange={(e) => {
+                    removeInputMapping(key)
+                    setInputMapping(e.target.value, val)
+                  }}
+                  className="w-28 flex-shrink-0 rounded border border-slate-300 px-2 py-1 text-xs font-mono"
+                />
+                <div className="flex-1 flex items-center gap-1">
+                  <input
+                    value={val}
+                    onChange={(e) => setInputMapping(key, e.target.value)}
+                    placeholder="{output.step.field}"
+                    className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs font-mono"
+                  />
+                  <VariablePicker
+                    priorSteps={pickerSteps}
+                    onSelect={(v) => setInputMapping(key, v)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeInputMapping(key)}
+                    className="text-slate-400 hover:text-red-500"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          <button
+            type="button"
+            onClick={() => setInputMapping(`input_${Date.now()}`, "")}
+            className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
+          >
+            <Plus className="h-3 w-3" />
+            Add input
+          </button>
+        </div>
+      </div>
+
+      {/* Output mapping */}
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+          Output mapping
+          <span className="ml-1 font-normal normal-case text-slate-400">
+            (capture results from the script)
+          </span>
+        </div>
+        <div className="space-y-2">
+          {(selectedScript?.output_schema ?? []).map((key) => (
+            <div key={key} className="flex items-center gap-2">
+              <span className="w-28 flex-shrink-0 text-xs font-mono text-slate-600 truncate">
+                {key}
+              </span>
+              <input
+                value={outputMapping[key] ?? key}
+                onChange={(e) => setOutputMapping(key, e.target.value)}
+                placeholder={key}
+                className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs font-mono"
+              />
+            </div>
+          ))}
+          {Object.entries(outputMapping)
+            .filter(([k]) => !(selectedScript?.output_schema ?? []).includes(k))
+            .map(([key, val]) => (
+              <div key={key} className="flex items-center gap-2">
+                <input
+                  value={key}
+                  onChange={(e) => {
+                    removeOutputMapping(key)
+                    setOutputMapping(e.target.value, val)
+                  }}
+                  className="w-28 flex-shrink-0 rounded border border-slate-300 px-2 py-1 text-xs font-mono"
+                />
+                <input
+                  value={val}
+                  onChange={(e) => setOutputMapping(key, e.target.value)}
+                  className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeOutputMapping(key)}
+                  className="text-slate-400 hover:text-red-500"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          <button
+            type="button"
+            onClick={() => setOutputMapping(`output_${Date.now()}`, "")}
+            className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
+          >
+            <Plus className="h-3 w-3" />
+            Add output
+          </button>
+        </div>
+      </div>
+
+      {/* Approval gate toggle */}
+      <div className="rounded border border-slate-200 p-3 space-y-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={requiresApproval}
+            onChange={(e) => onConfigChange({ requires_approval: e.target.checked })}
+            className="rounded"
+          />
+          <span className="text-xs font-medium text-slate-700">
+            Require human approval before running
+          </span>
+        </label>
+        {requiresApproval && (
+          <Field label="Approval prompt">
+            <input
+              value={approvalPrompt}
+              onChange={(e) => onConfigChange({ approval_prompt: e.target.value })}
+              placeholder="Review the order before placing it on Uline…"
+              className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </Field>
+        )}
+      </div>
+
+      {credModalOpen && serviceKey && (
+        <CredentialModal
+          serviceKey={serviceKey}
+          onClose={() => setCredModalOpen(false)}
+          onSaved={() => {
+            setAccountStatus({ connected: true })
+          }}
+        />
+      )}
     </div>
   )
 }

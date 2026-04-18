@@ -115,6 +115,38 @@ def verify_account(
     return credential_service.serialize(account)
 
 
+@router.get("/{service_key}/status", response_model=dict[str, Any])
+def get_account_status(
+    service_key: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return connection status for a specific service key.
+
+    Returns ``{connected: false}`` (not 404) when no account is configured
+    so the step editor can show a "not connected" chip without error handling.
+    """
+    from app.models.tenant_external_account import TenantExternalAccount
+
+    account = (
+        db.query(TenantExternalAccount)
+        .filter(
+            TenantExternalAccount.company_id == current_user.company_id,
+            TenantExternalAccount.service_key == service_key,
+            TenantExternalAccount.is_active.is_(True),
+        )
+        .first()
+    )
+    if not account:
+        return {"connected": False, "service_key": service_key}
+    return {
+        "connected": True,
+        "service_key": service_key,
+        "service_name": account.service_name,
+        "last_verified_at": account.last_verified_at.isoformat() if account.last_verified_at else None,
+    }
+
+
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(
     account_id: str,

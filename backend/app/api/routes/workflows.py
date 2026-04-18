@@ -472,6 +472,7 @@ def get_workflow(
             "step_type": s.step_type,
             "config": s.config,
             "is_core": getattr(s, "is_core", False),
+            "display_name": s.display_name,
             "next_step_id": s.next_step_id,
             "condition_true_step_id": s.condition_true_step_id,
             "condition_false_step_id": s.condition_false_step_id,
@@ -525,6 +526,8 @@ def _apply_steps(db: Session, workflow_id: str, steps: list[dict]) -> None:
                 step_key=s.get("step_key", ""),
                 step_type=s.get("step_type", "action"),
                 config=s.get("config", {}),
+                is_core=s.get("is_core", False),
+                display_name=s.get("display_name") or None,
             )
         )
 
@@ -607,6 +610,81 @@ def delete_workflow(
     db.delete(wf)
     db.commit()
     return {"deleted": True}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Individual step PATCH / DELETE
+# ─────────────────────────────────────────────────────────────────────
+
+class StepPatchRequest(BaseModel):
+    display_name: str | None = None
+    config: dict | None = None
+
+
+@router.patch("/{workflow_id}/steps/{step_id}")
+def patch_step(
+    workflow_id: str,
+    step_id: str,
+    data: StepPatchRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Partially update a step's display_name and/or config.
+    Works for both custom and platform workflows — only updates the fields
+    explicitly provided. Core steps can be edited (core means can't delete, not frozen)."""
+    wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if wf.company_id and wf.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    step = db.query(WorkflowStep).filter(
+        WorkflowStep.id == step_id,
+        WorkflowStep.workflow_id == workflow_id,
+    ).first()
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+
+    if data.display_name is not None:
+        step.display_name = data.display_name if data.display_name.strip() else None
+    if data.config is not None:
+        step.config = data.config
+    db.commit()
+    return {
+        "id": step.id,
+        "display_name": step.display_name,
+        "config": step.config,
+    }
+
+
+@router.delete("/{workflow_id}/steps/{step_id}")
+def delete_step(
+    workflow_id: str,
+    step_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove a step from a custom workflow. Core steps cannot be removed."""
+    wf = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if wf.tier == 1 or wf.is_system:
+        raise HTTPException(status_code=400, detail="Platform-locked workflow steps cannot be removed")
+    if wf.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    step = db.query(WorkflowStep).filter(
+        WorkflowStep.id == step_id,
+        WorkflowStep.workflow_id == workflow_id,
+    ).first()
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    if step.is_core:
+        raise HTTPException(status_code=400, detail="Core steps cannot be removed from the workflow")
+
+    db.delete(step)
+    db.commit()
+    return None  # 204
 
 
 # ─────────────────────────────────────────────────────────────────────
