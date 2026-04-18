@@ -920,6 +920,8 @@ function defaultConfigForType(type: StepType): Record<string, unknown> {
       return { prompt: "", input_type: "text", required: true }
     case "action":
       return { action_type: "show_confirmation", message: "" }
+    case "playwright_action":
+      return { script_name: "", input_mapping: {}, output_mapping: {}, requires_approval: false }
     case "condition":
       return { expression: "" }
     case "output":
