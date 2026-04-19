@@ -47,32 +47,6 @@ live executions table. Live table still used for queries scoped to
 
 ---
 
-### Frontend has no unit test framework
-
-**Discovered:** Phase 3a (April 2026)
-
-**Current state:** `frontend/package.json` has no vitest, jest, or
-testing-library. Frontend changes are validated via `tsc` compile and
-manual testing only. Playwright E2E coverage is planned in Phase 3c but
-doesn't replace unit tests — it's slower, flakier, and doesn't cover
-pure-logic components (formatters, URL-state helpers, parsers like
-`VisionContentBlock`'s block detection).
-
-**Eventual fix:** add `vitest` + `@testing-library/react` +
-`@testing-library/jest-dom` to `package.json`. Establish testing patterns
-in a dedicated build. Priority candidates for first tests:
-
-- `components/intelligence/VisionContentBlock` — the JSON-parse fallback
-  logic is exactly the kind of code that breaks silently
-- `components/intelligence/formatting` — pure functions, highest ROI
-- URL-state helpers (to be extracted) from PromptLibrary / ExecutionLog
-
-**Threshold for action:** when a bug escapes to production that component
-tests would have caught, or when Phase 3b's editing features ship without
-adequate manual QA coverage.
-
----
-
 ### Local-dev E2E harness
 
 **Discovered:** Phase 3c (April 2026)
@@ -107,4 +81,29 @@ pending. Sunset date 2027-04-18.
 
 ## Resolved debt
 
-_(empty — populate as debt items are addressed)_
+### ✅ Frontend unit test framework — vitest installed (2026-04-19)
+
+**Originally discovered:** Phase 3a (April 2026). Frontend had no test
+framework — `tsc` + manual testing only.
+
+**Resolved in:** Phase 3d follow-ups (April 19, 2026). Added vitest +
+@testing-library/react + @testing-library/jest-dom + jsdom.
+
+- `frontend/vite.config.ts` — test block (jsdom env, setupFiles)
+- `frontend/src/test/setup.ts` — jest-dom matchers + cleanup hook
+- `frontend/tsconfig.node.json` — vitest types
+- `frontend/package.json` — `npm test`, `npm run test:watch`,
+  `npm run test:coverage` scripts
+- First test suites (59 tests, ~1s runtime):
+  - `components/intelligence/formatting.test.ts` (25 tests — pure functions)
+  - `components/intelligence/VisionContentBlock.test.tsx` (14 tests —
+    the JSON-parse fallback that DEBT.md originally flagged as silent-
+    bug-prone)
+  - `components/intelligence/DiffView.test.tsx` (9 tests — field-level
+    diff for activation/rollback dialogs)
+  - `components/intelligence/VariablesEditor.test.ts` (12 tests —
+    `renderTemplatePreview` client-side template substitution)
+
+Patterns established — future admin UI additions (especially Phase 3b's
+editing flows and Phase 3c's experiments UI) can write component tests
+without bootstrapping.
