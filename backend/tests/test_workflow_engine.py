@@ -215,8 +215,17 @@ class TestRunLifecycle:
 # ─────────────────────────────────────────────────────────────────────
 
 class TestCommandBarMatching:
-    def test_disinterment_matches(self, db, fh_company):
-        # Use a manufacturing tenant scope for this one
+    def test_disinterment_query_routes_to_universal_create_order(
+        self, db, fh_company
+    ):
+        """Disinterment command-bar routing was intentionally superseded by
+        the universal `wf_create_order` compose workflow — see the comment
+        on `wf_mfg_disinterment` in default_workflows.py ("keywords": [],
+        "Superseded by wf_create_order in command-bar results"). The
+        disinterment workflow stays visible in the workflow library but no
+        longer matches command-bar queries directly. A "disinterment"
+        query should now surface `wf_create_order` (or `wf_compose`) — the
+        user types the product into the compose overlay."""
         mfg = Company(
             id=str(uuid.uuid4()),
             name="WF Test MFG",
@@ -231,7 +240,12 @@ class TestCommandBarMatching:
                 db, mfg.id, "manufacturing", "admin", "disinterment"
             )
             ids = [r["workflow_id"] for r in results]
-            assert "wf_mfg_disinterment" in ids
+            # Post-supersession: the universal order compose workflow is
+            # what "disinterment" routes to.
+            assert "wf_create_order" in ids or "wf_compose" in ids
+            # And the legacy disinterment-specific workflow should NOT
+            # match (its keywords are empty by design).
+            assert "wf_mfg_disinterment" not in ids
         finally:
             db.delete(mfg)
             db.commit()

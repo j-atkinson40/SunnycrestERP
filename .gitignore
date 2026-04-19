@@ -32,3 +32,20 @@ pgdata/
 
 # Claude Code internal
 .claude/worktrees/
+
+# Cloudflare Workers dev state
+.wrangler/
+
+# Playwright HTML report + artifacts — regenerated on every run
+frontend/tests/e2e/report/
+frontend/tests/e2e/screenshots/
+
+# Test output dumps
+backend/test_output.txt
+
+# Generated document artifacts (created by services, not source)
+backend/static/legacy-vault-prints/
+
+# Large binary assets that don't belong in source
+templates/standard/*.tif
+templates/standard/*.tiff

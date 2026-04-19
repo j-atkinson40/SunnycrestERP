@@ -155,10 +155,12 @@ class TestCommandBarActionRegistry:
         assert registry.exists()
         content = registry.read_text()
 
-        # Critical new actions from the build prompt
+        # Critical new actions from the build prompt.
+        # `create_disinterment` and `create_urn_order` were intentionally
+        # removed — both are now covered by the universal `wf_create_order`
+        # compose workflow (see comments in frontend/src/core/actionRegistry.ts).
         required_ids = [
             "nav_disinterments",
-            "create_disinterment",
             "report_ar_aging",
             "report_ap_aging",
             "report_revenue",
@@ -176,7 +178,6 @@ class TestCommandBarActionRegistry:
             "nav_purchase_orders",
             "nav_products",
             "nav_knowledge_base",
-            "create_urn_order",
             "nav_team",
             "nav_spring_burials",
             "nav_transfers",

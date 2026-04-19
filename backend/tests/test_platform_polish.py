@@ -19,19 +19,27 @@ class TestCmdNumberShortcuts:
     listener exists and is gated on isOpen."""
 
     def test_capture_phase_listener_present(self):
-        p = REPO / "frontend" / "src" / "components" / "core" / "CommandBar.tsx"
-        content = p.read_text()
+        # The capture-phase listener was moved out of CommandBar.tsx into a
+        # module-scope installer at frontend/src/lib/cmd-digit-shortcuts.ts
+        # so it attaches BEFORE React mounts — no race window with the
+        # browser's Cmd+N tab-switch shortcut. main.tsx calls
+        # installCmdDigitShortcuts() before createRoot.
+        shortcut_file = (
+            REPO / "frontend" / "src" / "lib" / "cmd-digit-shortcuts.ts"
+        )
+        content = shortcut_file.read_text()
         # Capture-phase listener is the critical flag
-        assert "{ capture: true }" in content
-        # Listener gated on isOpen
-        assert "if (!isOpen) return" in content
+        assert "capture: true" in content
+        # Listener gated on isOpen via shared module state
+        assert "state.isOpen" in content and "if (!state.isOpen) return" in content
         # Handles both metaKey (Mac) and ctrlKey (Windows/Linux)
         assert "e.metaKey || e.ctrlKey" in content
         # Uses both e.key and e.code for digit detection
-        assert "parseInt(e.key" in content or "Number(e.key" in content
-        assert 'e.code' in content and 'Digit' in content
-        # resultsRef pattern to avoid stale closure
-        assert "resultsRef" in content
+        assert "parseInt(e.key" in content
+        assert "e.code" in content and "Digit" in content
+        # main.tsx installs it before React mounts
+        main_tsx = (REPO / "frontend" / "src" / "main.tsx").read_text()
+        assert "installCmdDigitShortcuts" in main_tsx
 
     def test_shortcut_badges_rendered(self):
         p = REPO / "frontend" / "src" / "components" / "core" / "CommandBar.tsx"
