@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   documentsV2Service,
@@ -206,7 +206,6 @@ export default function DocumentTemplateDetail() {
   const isCurrent =
     viewingVersion && viewingVersion.id === detail?.current_version?.id;
 
-  const isPdf = detail?.output_format === "pdf";
   const isEmail = detail?.output_format === "html";
 
   const canEdit = editPerm?.can_edit === true;

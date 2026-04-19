@@ -30,7 +30,7 @@ export default function SignerLandingPage() {
     "welcome"
   );
   const [consentChecked, setConsentChecked] = useState(false);
-  const [signMode, setSignMode] = useState<"draw" | "type">("draw");
+  const [signMode, setSignMode] = useState<"draw" | "typed">("draw");
   const [typedName, setTypedName] = useState("");
   const [drawnData, setDrawnData] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -479,8 +479,8 @@ function SignStep({
   onDecline,
   submitting,
 }: {
-  signMode: "draw" | "type";
-  setSignMode: (m: "draw" | "type") => void;
+  signMode: "draw" | "typed";
+  setSignMode: (m: "draw" | "typed") => void;
   typedName: string;
   setTypedName: (v: string) => void;
   drawnData: string | null;
@@ -521,11 +521,11 @@ function SignStep({
         <button
           type="button"
           className={`px-4 py-2 text-sm ${
-            signMode === "type"
+            signMode === "typed"
               ? "border-b-2 border-primary font-semibold"
               : "text-muted-foreground"
           }`}
-          onClick={() => setSignMode("type")}
+          onClick={() => setSignMode("typed")}
         >
           Type
         </button>
