@@ -300,6 +300,14 @@ Each template declares `output_format`: `pdf` | `html` | `text`.
 - `html` → Jinja → string (no Document, no R2)
 - `text` → Jinja → plain string (no Document, no R2)
 
+**Resolution modes (D-9):**
+`render()` accepts either `template_key` (current-active lookup —
+tenant-first / platform-fallback, the production path) OR
+`template_version_id` (specific-version lookup — used by the
+test-render endpoint to render drafts / retired versions). The
+test-render endpoint is a thin adapter that delegates to the renderer
+with `is_test_render=True`; there is no duplicate rendering pipeline.
+
 HTML + text callers use the convenience wrappers:
 
 ```python
@@ -331,6 +339,13 @@ email_subject = result.rendered_subject  # str | None
   program body is embedded via the `ai_generated_html` context variable
   with `|safe` (trust established by the managed
   `safety.draft_monthly_program` Intelligence prompt)
+
+**PDF — migrated from direct WeasyPrint (Phase D-9):**
+- `quote.standard` — customer-facing quote. `quote_service` now creates
+  canonical Documents with `entity_type="quote"`.
+- `urn.wilbert_engraving_form` — Wilbert urn engraving submission form
+  (one page per piece + companions). Bytes-only path; not persisted
+  per call (transient physical-form output).
 
 **Email — migrated from `email_service.py` + `legacy_email_service.py`:**
 - `email.base_wrapper`, `email.statement`, `email.collections`
@@ -657,11 +672,13 @@ Intelligence execution is traceable to the delivery it produced.
   who want a "refresh with current data" should invoke the source
   generator (e.g. `generate_invoice_document`) which always rebuilds
   the context.
-- **3 non-migrated WeasyPrint call sites remain.** `quote_service`,
-  `wilbert_utils`, and `pdf_generation_service.generate_template_preview_pdf`
-  still instantiate WeasyPrint directly. They're on the
-  `TRANSITIONAL_ALLOWLIST` in `tests/test_documents_d2_lint.py` and
-  will be migrated in a follow-up phase.
+- ~~**3 non-migrated WeasyPrint call sites remain.**~~ Resolved in
+  D-9 (April 19, 2026) — `pdf_generation_service.generate_template_preview_pdf`,
+  `quote_service.generate_quote_pdf`, and `wilbert_utils.render_form_pdf`
+  all route through `document_renderer` now. The transitional
+  allowlist in `tests/test_documents_d2_lint.py` is empty; any
+  new in-app WeasyPrint usage is a regression. Two new platform
+  templates landed: `quote.standard` and `urn.wilbert_engraving_form`.
 - **No cross-tenant document sharing.** D-6 adds the unified cross-tenant
   document fabric (today there are four mechanisms — statements,
   delivery confirmations, VaultItem sharing, raw cross-tenant order
@@ -684,6 +701,7 @@ Intelligence execution is traceable to the delivery it produced.
 | D-6 | Cross-tenant document fabric — unifies today's four mechanisms |
 | D-7 | Delivery abstraction — email / portal / print, status tracking |
 | D-8 | September demo polish |
+| D-9 | Arc debt cleanup — last 3 WeasyPrint sites migrated, EmailService fallback removed, renderer paths unified |
 
 ---
 

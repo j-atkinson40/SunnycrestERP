@@ -300,6 +300,8 @@ class SocialServiceCertificateService:
             html_body=html_body,
             from_name=f"{tenant_name} via Bridgeable",
             attachments=attachments,
+            company_id=order.company_id,
+            db=db,
         )
 
         if result.get("success"):

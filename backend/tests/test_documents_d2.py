@@ -826,9 +826,9 @@ class TestTemplateService:
 
 class TestLintRule:
     def test_weasyprint_import_forbidden_outside_documents(self):
-        """Import the lint module and verify it finds the expected
-        permanent+transitional allowlist entries (smoke test — the real
-        test lives in test_documents_d2_lint.py)."""
+        """Import the lint module and verify the permanent allowlist is
+        intact. Transitional allowlist is expected to be empty post-D-9
+        — the strict-rule invariant lives in test_documents_d2_lint.py."""
         from tests.test_documents_d2_lint import (
             PERMANENT_ALLOWLIST,
             TRANSITIONAL_ALLOWLIST,
@@ -840,8 +840,5 @@ class TestLintRule:
         )
         # Main diagnostic should be permanently allowlisted
         assert "app/main.py" in PERMANENT_ALLOWLIST
-        # Future-migration targets should be transitional
-        assert (
-            "app/services/pdf_generation_service.py"
-            in TRANSITIONAL_ALLOWLIST
-        )
+        # D-9: every D-2-transitional entry migrated through DocumentRenderer.
+        assert TRANSITIONAL_ALLOWLIST == set()

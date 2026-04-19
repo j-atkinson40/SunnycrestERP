@@ -190,6 +190,8 @@ def send_collection(
         body=current,
         tenant_name=tenant_name,
         reply_to_email=reply_to,
+        company_id=current_user.company_id,
+        db=db,
     )
 
     from datetime import datetime, timezone

@@ -68,70 +68,62 @@ def generate_form_data(order, jobs) -> list[dict]:
     return pieces
 
 
-def render_form_pdf(form_data: list[dict]) -> bytes:
-    """Render Wilbert engraving form as print-ready PDF using WeasyPrint.
+def _piece_context(piece: dict) -> dict:
+    """Convert a raw piece dict (from `generate_form_data`) into the
+    shape the `urn.wilbert_engraving_form` Jinja template expects.
 
-    Returns PDF bytes.
-    """
-    html_parts = [
-        "<!DOCTYPE html><html><head>",
-        "<style>",
-        "body { font-family: Arial, sans-serif; margin: 20px; }",
-        ".form-page { page-break-after: always; border: 2px solid #333; "
-        "padding: 24px; margin-bottom: 20px; }",
-        ".form-page:last-child { page-break-after: auto; }",
-        "h1 { font-size: 18px; text-align: center; margin: 0 0 16px; "
-        "border-bottom: 2px solid #333; padding-bottom: 8px; }",
-        ".field { display: flex; margin: 6px 0; font-size: 13px; }",
-        ".label { font-weight: bold; width: 160px; flex-shrink: 0; }",
-        ".value { flex: 1; border-bottom: 1px solid #ccc; min-height: 18px; "
-        "padding-left: 4px; }",
-        ".engraving-section { margin: 12px 0; padding: 12px; "
-        "background: #f8f8f8; border: 1px solid #ddd; }",
-        ".engraving-section h2 { font-size: 14px; margin: 0 0 8px; }",
-        "</style></head><body>",
+    Splits the field/value pairs into engraving vs non-engraving so
+    the template can render them in separate sections."""
+    engraving_fields = {"Line 1", "Line 2", "Line 3", "Line 4", "Font"}
+    non_engraving = [
+        (k, v) for k, v in piece.items() if k not in engraving_fields
     ]
+    engraving = [(k, v) for k, v in piece.items() if k in engraving_fields]
+    return {
+        "piece_label": piece.get("Piece", "Main"),
+        "non_engraving": non_engraving,
+        "engraving": engraving,
+    }
 
-    for piece in form_data:
-        html_parts.append('<div class="form-page">')
-        html_parts.append("<h1>Wilbert Engraving Order Form</h1>")
 
-        engraving_fields = {"Line 1", "Line 2", "Line 3", "Line 4", "Font"}
-        non_engraving = [
-            (k, v) for k, v in piece.items() if k not in engraving_fields
-        ]
-        engraving = [(k, v) for k, v in piece.items() if k in engraving_fields]
+def render_form_pdf(form_data: list[dict], *, db=None, company_id: str | None = None) -> bytes:
+    """Render Wilbert engraving form as print-ready PDF.
 
-        for label, value in non_engraving:
-            html_parts.append(
-                f'<div class="field">'
-                f'<span class="label">{label}:</span>'
-                f'<span class="value">{value}</span></div>'
-            )
+    Phase D-9: routes through the managed template registry
+    (`urn.wilbert_engraving_form`) rather than inline HTML + WeasyPrint.
+    The content is fundamentally transient (one-time physical form
+    printout) so no Document row is persisted — `render_pdf_bytes`
+    returns raw bytes. Callers that need an audit trail should call
+    `urn_engraving_service.submit_to_wilbert` which wraps this in a
+    DocumentDelivery.
 
-        if engraving:
-            html_parts.append('<div class="engraving-section">')
-            html_parts.append(f"<h2>Engraving — {piece.get('Piece', 'Main')}</h2>")
-            for label, value in engraving:
-                html_parts.append(
-                    f'<div class="field">'
-                    f'<span class="label">{label}:</span>'
-                    f'<span class="value">{value}</span></div>'
-                )
-            html_parts.append("</div>")
+    `db` and `company_id` are optional — the managed registry lookup
+    falls back to a platform-global template when tenant scope can't
+    be resolved. Most callers DO thread tenant scope (see
+    `urn_engraving_service`).
+    """
+    from app.services.documents import document_renderer
 
-        html_parts.append("</div>")
-
-    html_parts.append("</body></html>")
-    html_str = "\n".join(html_parts)
+    pieces = [_piece_context(p) for p in form_data]
 
     try:
-        from weasyprint import HTML
-        pdf_bytes = HTML(string=html_str).write_pdf()
-        return pdf_bytes
-    except ImportError:
-        logger.warning("WeasyPrint not available — returning HTML as fallback")
-        return html_str.encode("utf-8")
+        return document_renderer.render_pdf_bytes(
+            db,
+            template_key="urn.wilbert_engraving_form",
+            context={"pieces": pieces},
+            company_id=company_id,
+        )
+    except document_renderer.DocumentRenderError as exc:
+        # Legacy contract preserved: on render failure, return the HTML
+        # string encoded as bytes so the caller can still see *something*.
+        logger.warning(
+            "Wilbert form PDF render failed (%s) — returning HTML fallback",
+            exc,
+        )
+        return (
+            "<html><body><p>PDF generation unavailable. "
+            f"Error: {exc}</p></body></html>"
+        ).encode("utf-8")
 
 
 def build_submission_email(

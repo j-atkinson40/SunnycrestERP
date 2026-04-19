@@ -330,6 +330,8 @@ def send_all_digital(db: Session, run_id: str, tenant_id: str) -> dict:
             customer_name=cust.name if cust else "Valued Customer",
             tenant_name=tenant_name,
             statement_month=statement_month,
+            company_id=tenant_id,
+            db=db,
         )
         if result["success"]:
             stmt.status = "sent"

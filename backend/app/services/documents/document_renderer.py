@@ -135,9 +135,15 @@ def _html_to_pdf(html: str, base_url: str | None = None) -> bytes:
 def render(
     db: Session,
     *,
-    template_key: str,
+    template_key: str | None = None,
     context: dict[str, Any],
     company_id: str,
+    # D-9 addition — render a SPECIFIC version rather than the current
+    # active for `template_key`. When provided, `template_key` is
+    # ignored for lookup (the loader resolves by version id) but must
+    # still be None or match the version's parent template_key for
+    # clarity.
+    template_version_id: str | None = None,
     # PDF-path metadata (ignored for html/text)
     document_type: str | None = None,
     title: str | None = None,
@@ -167,6 +173,16 @@ def render(
 ) -> RenderResult | Document:
     """Render a template to PDF/HTML/text.
 
+    Resolution modes:
+      - `template_key` (without `template_version_id`): loads the current
+        active version via `template_loader.load` (tenant-first /
+        platform-fallback). This is the production path.
+      - `template_version_id`: loads THAT specific version directly via
+        `template_loader.load_by_version_id`. Used by the test-render
+        endpoint to render drafts + retired versions. D-9 unification.
+
+    Exactly one of `template_key` / `template_version_id` must be provided.
+
     **Return value depends on output_format:**
 
     - output_format="pdf" (default when template is a PDF):
@@ -181,7 +197,25 @@ def render(
     changes for them. New D-2 callers (email_service) pass html templates
     and get `RenderResult` back.
     """
-    loaded = template_loader.load(template_key, company_id=company_id, db=db)
+    if template_version_id is None and template_key is None:
+        raise DocumentRenderError(
+            "render() requires either `template_key` or `template_version_id`"
+        )
+    if template_version_id is not None:
+        loaded = template_loader.load_by_version_id(
+            template_version_id, db=db
+        )
+    else:
+        # template_key is non-None here (checked above) but mypy needs
+        # the narrow.
+        assert template_key is not None
+        loaded = template_loader.load(
+            template_key, company_id=company_id, db=db
+        )
+    # Use the loaded template's key for the Document row even when the
+    # caller invoked us with a version id — keeps the audit lineage
+    # correct if the version's parent template_key differed.
+    effective_template_key = loaded.template_key
     effective_format = output_format or loaded.output_format
 
     # HTML / text path: render + return, no Document
@@ -244,7 +278,7 @@ def render(
         mime_type="application/pdf",
         file_size_bytes=len(pdf_bytes),
         status="rendered",
-        template_key=template_key,
+        template_key=effective_template_key,
         template_version=loaded.version,
         rendered_at=now,
         rendered_by_user_id=rendered_by_user_id,

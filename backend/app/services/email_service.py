@@ -13,6 +13,11 @@ build a `SendParams` and call `delivery_service.send(...)`.
 Test mode (`RESEND_API_KEY` unset or `"test"`) is handled inside
 `EmailChannel` — it logs the call and returns success without hitting
 Resend. No changes to local-dev workflows.
+
+Phase D-9: the `_fallback_company_id()` safety net was removed. Every
+caller now must thread `company_id` explicitly; a caller that doesn't
+crashes clearly at call time rather than silently attributing the send
+to an arbitrary active tenant.
 """
 
 from __future__ import annotations
@@ -86,21 +91,7 @@ class EmailService:
 
         session, should_close = _with_session(db)
         try:
-            # If no company_id was threaded through, this is an
-            # internal/platform email (e.g. system alerts). Route it
-            # under the platform admin tenant if configured, else fall
-            # back to the first admin-owned company so there's a row
-            # for audit.
-            cid = company_id or _fallback_company_id(session)
-            if cid is None:
-                # No tenant context at all — log and return success-ish
-                # so callers don't crash. This path is rare.
-                logger.warning(
-                    "email_service.send_email invoked with no company_id; "
-                    "delivery-logging skipped (to=%s)",
-                    to,
-                )
-                return {"success": True, "message_id": "no-company-skip"}
+            cid = _require_company_id(company_id)
 
             delivery = delivery_service.send(
                 session,
@@ -149,9 +140,7 @@ class EmailService:
         paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
         session, should_close = _with_session(db)
         try:
-            cid = company_id or _fallback_company_id(session)
-            if cid is None:
-                return {"success": True, "message_id": "no-company-skip"}
+            cid = _require_company_id(company_id)
             delivery = delivery_service.send_email_with_template(
                 session,
                 company_id=cid,
@@ -208,9 +197,7 @@ class EmailService:
 
         session, should_close = _with_session(db)
         try:
-            cid = company_id or _fallback_company_id(session)
-            if cid is None:
-                return {"success": True, "message_id": "no-company-skip"}
+            cid = _require_company_id(company_id)
             delivery = delivery_service.send(
                 session,
                 delivery_service.SendParams(
@@ -254,9 +241,7 @@ class EmailService:
 
         session, should_close = _with_session(db)
         try:
-            cid = company_id or _fallback_company_id(session)
-            if cid is None:
-                return {"success": True, "message_id": "no-company-skip"}
+            cid = _require_company_id(company_id)
             delivery = delivery_service.send_email_with_template(
                 session,
                 company_id=cid,
@@ -292,9 +277,7 @@ class EmailService:
 
         session, should_close = _with_session(db)
         try:
-            cid = company_id or _fallback_company_id(session)
-            if cid is None:
-                return {"success": True, "message_id": "no-company-skip"}
+            cid = _require_company_id(company_id)
             delivery = delivery_service.send_email_with_template(
                 session,
                 company_id=cid,
@@ -369,9 +352,7 @@ class EmailService:
 
         session, should_close = _with_session(db)
         try:
-            cid = company_id or _fallback_company_id(session)
-            if cid is None:
-                return {"success": True, "message_id": "no-company-skip"}
+            cid = _require_company_id(company_id)
 
             # Render the base wrapper (captures branding + subject is
             # managed inline, matches subject variable above).
@@ -455,9 +436,7 @@ class EmailService:
         ]
         session, should_close = _with_session(db)
         try:
-            cid = company_id or _fallback_company_id(session)
-            if cid is None:
-                return {"success": True, "message_id": "no-company-skip"}
+            cid = _require_company_id(company_id)
             delivery = delivery_service.send_email_with_template(
                 session,
                 company_id=cid,
@@ -489,22 +468,22 @@ def _delivery_to_result(delivery) -> dict[str, Any]:
     }
 
 
-def _fallback_company_id(db: Session) -> str | None:
-    """When a legacy caller doesn't thread company_id through, try to
-    find SOME tenant to attribute the delivery to — just so the audit
-    row exists.
+def _require_company_id(company_id: str | None) -> str:
+    """Phase D-9 — every email send must be attributed to a specific
+    tenant. Crash loudly rather than attributing to an arbitrary one.
 
-    In practice every caller should thread company_id; this is a
-    safety net that logs a warning and falls back to the first active
-    company in the DB. Returns None if no companies exist (a fresh
-    install — the call is a no-op).
+    Replaces D-7's `_fallback_company_id()` safety net. Callers that
+    used to slide through with `company_id=None` now fail here at call
+    time with a message pointing at the caller site.
     """
-    from app.models.company import Company
-
-    row = db.query(Company).filter(Company.is_active.is_(True)).first()
-    if row is None:
-        return None
-    return row.id
+    if company_id is None:
+        raise ValueError(
+            "EmailService / DeliveryService requires a company_id. "
+            "Thread the tenant through from the caller (route, service, "
+            "or background job) rather than relying on any implicit "
+            "default."
+        )
+    return company_id
 
 
 # Singleton instance — preserved for backward compatibility with every

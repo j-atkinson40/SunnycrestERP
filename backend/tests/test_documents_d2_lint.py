@@ -32,29 +32,14 @@ PERMANENT_ALLOWLIST = {
     "app/main.py",
 }
 
-# Transitional allowlist — migrated in a future phase.
+# Transitional allowlist — empty after D-9.
 #
-# D-1 migrated 4 generators (invoice, price_list, statement, disinterment).
-# D-2 migrated 3 generators (social_service_cert, legacy_vault_print,
-# safety_program) + all email templates. These 3 remain on direct
-# WeasyPrint and are called out as follow-ups:
-#
-#   pdf_generation_service.py::generate_template_preview_pdf — admin
-#     template-preview tool (not production output). Migrating requires
-#     routing the preview through document_renderer.render_pdf_bytes
-#     with a tenant-scoped placeholder company for the DB lookup.
-#
-#   quote_service.py::generate_quote_pdf — standalone 500-line inline
-#     HTML quote generator. Needs its own template_key ("quote.default")
-#     + seed migration, out of D-2 scope.
-#
-#   wilbert_utils.py — Wilbert engraving form PDF. Needs template_key
-#     "urn.wilbert_engraving_form".
-TRANSITIONAL_ALLOWLIST = {
-    "app/services/pdf_generation_service.py",
-    "app/services/quote_service.py",
-    "app/services/wilbert_utils.py",
-}
+# Previous D-2 entries (pdf_generation_service, quote_service,
+# wilbert_utils) all migrated through DocumentRenderer in D-9.
+# Any future caller that needs a migration window registers here
+# with justification; reviewers flag additions; empty is the healthy
+# state.
+TRANSITIONAL_ALLOWLIST: set[str] = set()
 
 ALLOWLIST = PERMANENT_ALLOWLIST | TRANSITIONAL_ALLOWLIST
 
@@ -115,7 +100,11 @@ def test_allowlist_files_exist():
 
 def test_transitional_allowlist_files_still_use_weasyprint():
     """Each transitional-allowlist entry must still actually use weasyprint.
-    Once migrated, the entry should be REMOVED — keeping it hides regressions."""
+    Once migrated, the entry should be REMOVED — keeping it hides regressions.
+
+    Phase D-9 emptied this set; the assertion here is the empty-state
+    invariant. If anyone re-adds an entry, they must verify it still
+    imports weasyprint (otherwise it's dead debt)."""
     stale: list[str] = []
     for relpath in TRANSITIONAL_ALLOWLIST:
         text = (BACKEND / relpath).read_text(encoding="utf-8")
@@ -123,4 +112,18 @@ def test_transitional_allowlist_files_still_use_weasyprint():
             stale.append(relpath)
     assert not stale, (
         f"{stale} no longer use weasyprint — remove from TRANSITIONAL_ALLOWLIST."
+    )
+
+
+def test_transitional_allowlist_is_empty():
+    """Phase D-9 invariant — the transitional allowlist must stay empty.
+
+    Adding a new entry here is a deliberate choice that requires
+    justification in the comment block above the set. This test fails
+    if anyone slips one in silently.
+    """
+    assert TRANSITIONAL_ALLOWLIST == set(), (
+        "TRANSITIONAL_ALLOWLIST is non-empty. Each entry is a pending "
+        "migration — either migrate the caller through document_renderer "
+        "or document the reason inline. D-9 shipped this empty."
     )

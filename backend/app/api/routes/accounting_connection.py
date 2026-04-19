@@ -310,6 +310,8 @@ def send_to_accountant(
         tenant_name=tenant_name,
         migration_url=migration_url,
         expires_days=7,
+        company_id=current_user.company_id,
+        db=db,
     )
 
     return _to_response(conn)

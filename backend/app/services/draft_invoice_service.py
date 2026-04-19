@@ -79,6 +79,8 @@ def _try_send_invoice_email(db: Session, inv: Invoice) -> None:
             deceased_name=inv.deceased_name,
             pdf_attachment=pdf_bytes,
             reply_to=company.email if company else None,
+            company_id=inv.company_id,
+            db=db,
         )
 
         # Persist PDF to R2 (non-blocking, idempotent)

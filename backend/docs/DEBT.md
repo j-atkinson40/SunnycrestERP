@@ -418,35 +418,80 @@ weeks pass without anyone asking about the file copies.
 
 ---
 
-### Three non-migrated WeasyPrint call sites
+## Resolved debt
 
-**Discovered:** Documents Phase D-2 (April 2026)
+### ✅ Three non-migrated WeasyPrint call sites — all migrated (2026-04-19)
 
-**Current state:** The ruff/pytest lint rule forbids `weasyprint`
-imports outside `app/services/documents/`. Three files are on the
-`TRANSITIONAL_ALLOWLIST` (see `tests/test_documents_d2_lint.py`):
+**Originally discovered:** Documents Phase D-2 (April 2026).
 
-- `app/services/pdf_generation_service.py::generate_template_preview_pdf`
-  — admin template-preview tool used by the Price-List-style template
-  builder. Not a production output path. Needs `render_pdf_bytes` wiring.
-- `app/services/quote_service.py::generate_quote_pdf` — standalone
-  500-line inline HTML quote generator. Needs a new `quote.default`
-  platform template + seed migration.
-- `app/services/wilbert_utils.py` — Wilbert urn engraving form PDF.
-  Needs a `urn.wilbert_engraving_form` template_key.
+**Resolved in:** Phase D-9 (April 19, 2026).
 
-**Eventual fix:** Migrate each to route through `document_renderer`
-using a managed template. The preview tool is the smallest; quotes
-and Wilbert form each require a seed migration adding a new
-platform template row.
+- `pdf_generation_service.generate_template_preview_pdf` now routes
+  through `document_renderer.render_pdf_bytes` using the managed
+  `invoice.{variant}` registry keys. Admin template previews reflect
+  the same registry body the live invoice path renders.
+- `quote_service.generate_quote_pdf` now wraps a new
+  `generate_quote_document` that calls `document_renderer.render()`
+  with `template_key="quote.standard"` and creates a canonical
+  Document linked via `entity_type="quote"`. The legacy bytes API
+  still works (fetches from R2 after the Document lands).
+- `wilbert_utils.render_form_pdf` now routes through
+  `document_renderer.render_pdf_bytes` with
+  `template_key="urn.wilbert_engraving_form"`. Preserves the legacy
+  HTML-fallback contract.
 
-**Threshold for action:** before tenant template-editing UI (D-3)
-ships — so admins discovering they can override these templates isn't
-surprising.
+Both new templates were seeded by `r28_d9_quote_wilbert_templates`.
+The ruff TID251 permanent allowlist collapsed to
+`document_renderer.py` + `app/main.py` (diagnostic import). The
+transitional allowlist is empty; `test_transitional_allowlist_is_empty`
+enforces that invariant.
 
 ---
 
-## Resolved debt
+### ✅ EmailService fallback company_id safety net — removed (2026-04-19)
+
+**Originally discovered:** Documents Phase D-7 (April 2026).
+
+**Resolved in:** Phase D-9 (April 19, 2026).
+
+`EmailService._fallback_company_id(db)` picked the first active
+Company when a caller didn't thread `company_id`, silently attributing
+the delivery to an arbitrary tenant. D-9 replaced it with
+`_require_company_id(company_id)` which raises ValueError if missing.
+
+All 10 callers now thread `company_id` explicitly:
+
+1. `api/routes/sales.py` — invoice email (threads `current_user.company_id`)
+2. `api/routes/agents.py` — collections email
+3. `api/routes/accounting_connection.py` — accountant invitation
+4. `services/agents/approval_gate.py` — approval review email (threads `tenant_id`)
+5. `services/statement_service.py` — statement email (threads `tenant_id`)
+6. `services/draft_invoice_service.py` — invoice send (threads `inv.company_id`)
+7. `services/social_service_certificate_service.py` — SSC delivery email
+8. `services/urn_engraving_service.py` (x2) — Wilbert submission + FH approval emails
+9. `services/platform_email_service.py::send_tenant_email` — threads `tenant_id`
+   (previously a silent bug — the method had `tenant_id` but didn't pass it)
+10. `services/legacy_email_service.py` — already required; no change needed
+
+---
+
+### ✅ DocumentRenderer had two rendering code paths — unified (2026-04-19)
+
+**Originally discovered:** Phase D-3 (April 2026) — the test-render
+endpoint duplicated the Jinja + WeasyPrint + R2 + Document-insert
+pipeline rather than delegating.
+
+**Resolved in:** Phase D-9 (April 19, 2026).
+
+`document_renderer.render()` now accepts either `template_key`
+(current-active lookup) OR `template_version_id` (specific-version
+lookup). The test-render endpoint is a thin adapter that calls
+`render(template_version_id=version.id, is_test_render=True)` and
+shapes the response. Single code path for all Document generation.
+
+New helper: `template_loader.load_by_version_id()`.
+
+---
 
 ### ✅ Frontend unit test framework — vitest installed (2026-04-19)
 

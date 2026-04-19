@@ -811,6 +811,12 @@ def test_render_template_version(
 
     Admin is enough — test renders are safe. Both PDF and HTML/text
     paths work; any version (draft / active / retired) can be test-rendered.
+
+    D-9: delegates to `document_renderer.render` with the new
+    `template_version_id` kwarg. Previously the endpoint duplicated the
+    Jinja render + R2 upload + Document insert pipeline; the renderer
+    now owns all of it and this route is a thin adapter that shapes the
+    response.
     """
     t = _get_visible_template_or_404(
         db, template_id, current_user.company_id
@@ -818,109 +824,62 @@ def test_render_template_version(
     version = _get_version_on_template(db, t.id, version_id)
     context = body.context or {}
 
-    # Render by temporarily "loading" this specific version via an
-    # override on the renderer. We can do this cheaply by short-circuiting
-    # the template_loader to return this version's content.
-    from app.services.documents import template_loader
-    from app.services.documents.document_renderer import (
-        _render_jinja,
-        _html_to_pdf,
-        _hash_context,
-        _storage_key,
-        DocumentRenderError,
-    )
-
-    template_dir = template_loader._guess_template_dir(t.template_key)
+    from app.services.documents import document_renderer
 
     if t.output_format in ("html", "text"):
         try:
-            body_rendered = _render_jinja(version.body_template, context)
-            subject_rendered = (
-                _render_jinja(version.subject_template, context)
-                if version.subject_template
-                else None
+            result = document_renderer.render(
+                db,
+                template_version_id=version.id,
+                context=context,
+                company_id=current_user.company_id,
+                output_format=t.output_format,
+                is_test_render=True,
             )
-        except DocumentRenderError as exc:
+        except document_renderer.DocumentRenderError as exc:
             return TemplateTestRenderResponse(
                 output_format=t.output_format,
                 errors=[str(exc)],
             )
+        # html/text path returns RenderResult
         return TemplateTestRenderResponse(
             output_format=t.output_format,
-            rendered_content=body_rendered,
-            rendered_subject=subject_rendered,
+            rendered_content=(
+                result.rendered_content
+                if isinstance(result.rendered_content, str)
+                else result.rendered_content.decode("utf-8")
+            ),
+            rendered_subject=result.rendered_subject,
         )
 
-    # PDF path — render + persist a flagged Document row so the admin
-    # can click through to the Document Log with the test toggle on.
-    company_id = current_user.company_id
+    # PDF path — the renderer persists a flagged Document row so the
+    # admin can click through to the Document Log with the test toggle
+    # on.
     try:
-        html = _render_jinja(version.body_template, context)
-        pdf_bytes = _html_to_pdf(html, base_url=str(template_dir))
-    except DocumentRenderError as exc:
+        doc = document_renderer.render(
+            db,
+            template_version_id=version.id,
+            context=context,
+            company_id=current_user.company_id,
+            document_type=t.document_type,
+            title=f"[TEST] {t.template_key} v{version.version_number}",
+            description=(
+                f"Test render of template {t.template_key} version "
+                f"{version.version_number} ({version.status})"
+            ),
+            caller_module="documents_v2.test_render",
+            rendered_by_user_id=current_user.id,
+            render_reason="test_render",
+            is_test_render=True,
+        )
+    except document_renderer.DocumentRenderError as exc:
         return TemplateTestRenderResponse(
             output_format="pdf",
             errors=[str(exc)],
         )
-
-    import uuid as _uuid
-    from datetime import datetime as _dt, timezone as _tz
-    from app.services import legacy_r2_client
-
-    document_id = str(_uuid.uuid4())
-    key = _storage_key(company_id, document_id, version_number=1)
-    try:
-        legacy_r2_client.upload_bytes(
-            pdf_bytes, key, content_type="application/pdf"
-        )
-    except Exception as exc:  # noqa: BLE001
-        return TemplateTestRenderResponse(
-            output_format="pdf",
-            errors=[f"R2 upload failed: {exc}"],
-        )
-
-    now = _dt.now(_tz.utc)
-    doc = Document(
-        id=document_id,
-        company_id=company_id,
-        document_type=t.document_type,
-        title=(
-            f"[TEST] {t.template_key} v{version.version_number}"
-        ),
-        description=(
-            f"Test render of template {t.template_key} version "
-            f"{version.version_number} ({version.status})"
-        ),
-        storage_key=key,
-        mime_type="application/pdf",
-        file_size_bytes=len(pdf_bytes),
-        status="rendered",
-        template_key=t.template_key,
-        template_version=version.version_number,
-        rendered_at=now,
-        rendered_by_user_id=current_user.id,
-        rendering_context_hash=_hash_context(context),
-        caller_module="documents_v2.test_render",
-        is_test_render=True,
-    )
-    db.add(doc)
-    db.flush()
-    dv = DocumentVersion(
-        id=str(_uuid.uuid4()),
-        document_id=doc.id,
-        version_number=1,
-        storage_key=key,
-        mime_type="application/pdf",
-        file_size_bytes=len(pdf_bytes),
-        rendered_at=now,
-        rendered_by_user_id=current_user.id,
-        rendering_context_hash=doc.rendering_context_hash,
-        render_reason="test_render",
-        is_current=True,
-    )
-    db.add(dv)
     db.commit()
-    db.refresh(doc)
+    # render() returns the Document for PDF output (D-1 contract).
+    assert isinstance(doc, Document)
     return TemplateTestRenderResponse(
         output_format="pdf",
         document_id=doc.id,

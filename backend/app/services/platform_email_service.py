@@ -221,6 +221,8 @@ def send_tenant_email(
             from_name=from_name,
             reply_to=reply_to,
             attachments=attachments,
+            company_id=tenant_id,
+            db=db,
         )
 
     status = "sent" if result.get("success") else "failed"

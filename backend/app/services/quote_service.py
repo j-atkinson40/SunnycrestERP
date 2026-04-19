@@ -451,46 +451,12 @@ def _quote_to_dict(q: Quote) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# PDF rendering — used by the Compose slide-over review mode and the
-# "Send to customer" action. Lazy-imports WeasyPrint so environments
-# without the C deps don't break on service import.
+# PDF rendering — Phase D-9 migrated to DocumentRenderer + managed
+# template (`quote.standard`). Every quote PDF creates a canonical
+# `Document` row with entity linkage to the Quote. Customers that hit
+# `/quotes/{id}/pdf` continue to get bytes back; the Document path
+# just means the bytes are now audited + shareable.
 # ─────────────────────────────────────────────────────────────────────
-
-
-_PDF_TEMPLATE = """<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:40px;}
-.header{display:flex;justify-content:space-between;margin-bottom:40px;border-bottom:2px solid #1a1a1a;padding-bottom:20px;}
-.company-name{font-size:22px;font-weight:700;letter-spacing:-.5px;}
-.quote-label{font-size:28px;font-weight:300;color:#666;text-align:right;}
-.quote-number{font-size:13px;color:#666;text-align:right;margin-top:4px;}
-.details{display:flex;gap:60px;margin-bottom:36px;}
-.detail-block label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:#888;display:block;margin-bottom:4px;}
-.detail-block p{margin:0;font-size:13px;font-weight:500;}
-table{width:100%;border-collapse:collapse;margin-bottom:24px;}
-th{background:#f5f5f5;padding:10px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:#666;}
-td{padding:12px;border-bottom:1px solid #f0f0f0;font-size:13px;}
-td.right{text-align:right;}
-.total-row td{font-weight:700;font-size:14px;border-bottom:none;border-top:2px solid #1a1a1a;}
-.footer{margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:11px;color:#888;}
-.expiry-note{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;margin-bottom:24px;font-size:12px;color:#92400e;}
-</style></head><body>
-<div class="header"><div><div class="company-name">{company_name}</div></div>
-<div><div class="quote-label">QUOTE</div><div class="quote-number">#{quote_number}</div><div class="quote-number">{quote_date}</div></div></div>
-<div class="details">
-{customer_block}
-<div class="detail-block"><label>Prepared by</label><p>{company_name}</p></div>
-{expiry_block}
-</div>
-{expiry_note}
-<table><thead><tr><th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead><tbody>
-{line_rows}
-{total_row}
-</tbody></table>
-{notes_block}
-<div class="footer"><p>Thank you for your business. To accept this quote, please reply or contact us directly.</p>
-<p style="margin-top:8px;">{company_name}</p></div>
-</body></html>"""
 
 
 def _money(v) -> str:
@@ -500,16 +466,12 @@ def _money(v) -> str:
         return "—"
 
 
-def generate_quote_pdf(db: Session, tenant_id: str, quote_id: str) -> bytes:
-    """Render a quote as a PDF via WeasyPrint. Raises ValueError if the
-    quote doesn't belong to this tenant, RuntimeError if WeasyPrint isn't
-    available in the environment."""
-    try:
-        from weasyprint import HTML  # type: ignore
-    except Exception as e:  # pragma: no cover — missing system dep
-        raise RuntimeError(f"WeasyPrint unavailable: {e}")
-
-    from app.models.company import Company  # local import to avoid cycles
+def _build_quote_render_context(
+    db: Session, tenant_id: str, quote_id: str
+) -> tuple[str, dict]:
+    """Load the quote + related company data and build the render
+    context that `quote.standard` expects. Returns (quote_number, context)."""
+    from app.models.company import Company
 
     quote = _get_quote_or_404(db, tenant_id, quote_id)
     company = db.query(Company).filter(Company.id == tenant_id).first()
@@ -520,63 +482,82 @@ def generate_quote_pdf(db: Session, tenant_id: str, quote_id: str) -> bytes:
     quote_date_str = (
         quote.quote_date.strftime("%B %-d, %Y") if quote.quote_date else ""
     )
-
-    customer_block = (
-        f'<div class="detail-block"><label>Prepared for</label>'
-        f"<p>{quote.customer_name}</p></div>"
-        if quote.customer_name
-        else ""
+    expiry_str = (
+        quote.expiry_date.strftime("%B %-d, %Y") if quote.expiry_date else ""
     )
 
-    expiry_block = ""
-    expiry_note = ""
-    if quote.expiry_date:
-        expiry_str = quote.expiry_date.strftime("%B %-d, %Y")
-        expiry_block = (
-            '<div class="detail-block"><label>Valid until</label>'
-            f"<p>{expiry_str}</p></div>"
-        )
-        expiry_note = (
-            '<div class="expiry-note">This quote is valid until '
-            f"{expiry_str}. Prices subject to change after expiry.</div>"
-        )
-
-    line_rows = "".join(
-        (
-            f"<tr><td>{ln.description or ''}</td>"
-            f'<td class="right">{float(ln.quantity or 0):g}</td>'
-            f'<td class="right">{_money(ln.unit_price)}</td>'
-            f'<td class="right">{_money(ln.line_total)}</td></tr>'
-        )
+    line_contexts = [
+        {
+            "description": ln.description or "",
+            "quantity": float(ln.quantity or 0),
+            "unit_price_formatted": _money(ln.unit_price),
+            "line_total_formatted": _money(ln.line_total),
+        }
         for ln in lines
-    ) or (
-        '<tr><td colspan="4" style="color:#999;text-align:center;">'
-        "No line items.</td></tr>"
-    )
-    total_row = (
-        '<tr class="total-row"><td colspan="3">Total</td>'
-        f'<td class="right">{_money(quote.total)}</td></tr>'
-        if quote.total
-        else ""
-    )
-    notes_block = (
-        '<div style="margin-bottom:24px;"><div style="font-size:10px;'
-        "font-weight:600;text-transform:uppercase;color:#888;"
-        'letter-spacing:.6px;margin-bottom:6px;">Notes</div>'
-        f'<div style="font-size:13px;">{quote.notes}</div></div>'
-        if quote.notes
-        else ""
+    ]
+
+    context = {
+        "company_name": company_name,
+        "quote_number": quote_number,
+        "quote_date": quote_date_str,
+        "customer_name": quote.customer_name or "",
+        "expiry_date": expiry_str,
+        "lines": line_contexts,
+        "total_formatted": _money(quote.total) if quote.total else "",
+        "notes": quote.notes or "",
+    }
+    return quote_number, context
+
+
+def generate_quote_document(
+    db: Session, tenant_id: str, quote_id: str,
+):
+    """Phase D-9 — render a quote through the Documents layer.
+
+    Creates a canonical `Document` row (document_type="quote") linked
+    to the Quote via `entity_type="quote" + entity_id`. Returns the
+    Document. Raises:
+      - HTTPException(404) if the quote doesn't belong to this tenant
+      - DocumentRenderError on template/WeasyPrint/R2 failure
+    """
+    from app.services.documents import document_renderer
+
+    quote_number, context = _build_quote_render_context(db, tenant_id, quote_id)
+
+    return document_renderer.render(
+        db,
+        template_key="quote.standard",
+        context=context,
+        document_type="quote",
+        title=f"Quote {quote_number}",
+        company_id=tenant_id,
+        entity_type="quote",
+        entity_id=quote_id,
+        caller_module="quote_service.generate_quote_document",
     )
 
-    html = _PDF_TEMPLATE.format(
-        company_name=company_name,
-        quote_number=quote_number,
-        quote_date=quote_date_str,
-        customer_block=customer_block,
-        expiry_block=expiry_block,
-        expiry_note=expiry_note,
-        line_rows=line_rows,
-        total_row=total_row,
-        notes_block=notes_block,
-    )
-    return HTML(string=html).write_pdf()
+
+def generate_quote_pdf(db: Session, tenant_id: str, quote_id: str) -> bytes:
+    """Legacy API — return quote PDF bytes.
+
+    D-9: internally routes through `generate_quote_document()` then
+    fetches bytes from R2. Existing caller (`/quotes/{id}/pdf`) keeps
+    working. Raises ValueError if the quote doesn't belong to this
+    tenant (shaped to match the previous `_get_quote_or_404` HTTP 404
+    path — the API route already treats ValueError as 404).
+    """
+    from app.services.documents import document_renderer
+
+    try:
+        doc = generate_quote_document(db, tenant_id, quote_id)
+    except HTTPException as e:
+        # Convert to ValueError for the existing route contract.
+        if e.status_code == status.HTTP_404_NOT_FOUND:
+            raise ValueError("Quote not found") from e
+        raise
+    except document_renderer.DocumentRenderError as e:
+        # Environment issue — bubble as RuntimeError so the route maps
+        # to 503 just like the pre-D-9 "WeasyPrint unavailable" branch.
+        raise RuntimeError(f"Quote PDF render failed: {e}") from e
+
+    return document_renderer.download_bytes(doc)

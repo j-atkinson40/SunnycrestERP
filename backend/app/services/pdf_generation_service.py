@@ -368,19 +368,47 @@ def generate_template_preview_html(
     template_key: str,
     settings_overrides: dict | None = None,
 ) -> str:
-    """Render a sample invoice as HTML for the given template key."""
+    """Render a sample invoice as HTML for the given template variant.
+
+    Phase D-9: routes through the managed template registry
+    (`document_renderer.render_html`) so the preview reflects the same
+    template body the live invoice generator uses.
+
+    `template_key` is the variant name ("professional", "modern",
+    "clean_minimal", "custom") — the registry key is
+    `invoice.{template_key}`. Falls back to `invoice.professional` if
+    the variant isn't registered.
+    """
+    from app.services.documents import document_renderer
+    from app.services.documents.template_loader import TemplateNotFoundError
+
     context = _build_preview_context(db, company_id, settings_overrides)
-    context["template_key"] = template_key
+    registry_key = f"invoice.{template_key}"
+    context["template_key"] = registry_key
     try:
-        env = _get_jinja_env()
-        template = env.get_template(f"{template_key}.html")
-        return template.render(**context)
-    except Exception as exc:
-        logger.error("Preview HTML render failed for template %s: %s", template_key, exc)
+        result = document_renderer.render_html(
+            db,
+            template_key=registry_key,
+            context=context,
+            company_id=company_id,
+        )
+        return str(result.rendered_content)
+    except (document_renderer.DocumentRenderError, TemplateNotFoundError) as exc:
+        logger.error(
+            "Preview HTML render failed for template %s: %s",
+            registry_key, exc,
+        )
+        # Fall back to the canonical professional template so admins
+        # always see *something* rather than a blank preview.
         try:
-            env = _get_jinja_env()
-            return env.get_template("professional.html").render(**context)
-        except Exception:
+            result = document_renderer.render_html(
+                db,
+                template_key="invoice.professional",
+                context=context,
+                company_id=company_id,
+            )
+            return str(result.rendered_content)
+        except (document_renderer.DocumentRenderError, TemplateNotFoundError):
             return "<html><body><p>Preview unavailable.</p></body></html>"
 
 
@@ -391,28 +419,53 @@ def generate_template_preview_pdf(
     settings_overrides: dict | None = None,
     cache_key: str | None = None,
 ) -> bytes | None:
-    """Render a sample invoice as PDF for the given template key."""
+    """Render a sample invoice as PDF for the given template variant.
+
+    Phase D-9: routes through DocumentRenderer.render_pdf_bytes so the
+    preview uses the managed registry (same body + CSS the live
+    invoice path uses). No Document row is persisted — this is a
+    preview, not an audit-worthy generation.
+    """
     if cache_key and cache_key in _PREVIEW_CACHE:
         return _PREVIEW_CACHE[cache_key]
 
-    try:
-        from weasyprint import HTML
-    except ImportError:
-        return None
+    from app.services.documents import document_renderer
+    from app.services.documents.template_loader import TemplateNotFoundError
 
-    html_content = generate_template_preview_html(db, company_id, template_key, settings_overrides)
+    context = _build_preview_context(db, company_id, settings_overrides)
+    registry_key = f"invoice.{template_key}"
+    context["template_key"] = registry_key
+
     try:
-        pdf_bytes: bytes = HTML(string=html_content, base_url=_TEMPLATE_DIR).write_pdf()
-        if cache_key:
-            _PREVIEW_CACHE[cache_key] = pdf_bytes
-            # Evict old entries if cache grows large
-            if len(_PREVIEW_CACHE) > 50:
-                oldest = next(iter(_PREVIEW_CACHE))
-                del _PREVIEW_CACHE[oldest]
-        return pdf_bytes
-    except Exception as exc:
-        logger.error("Preview PDF generation failed for template %s: %s", template_key, exc)
-        return None
+        pdf_bytes = document_renderer.render_pdf_bytes(
+            db,
+            template_key=registry_key,
+            context=context,
+            company_id=company_id,
+        )
+    except (document_renderer.DocumentRenderError, TemplateNotFoundError) as exc:
+        logger.error(
+            "Preview PDF render failed for template %s: %s — falling back to professional",
+            registry_key, exc,
+        )
+        try:
+            pdf_bytes = document_renderer.render_pdf_bytes(
+                db,
+                template_key="invoice.professional",
+                context=context,
+                company_id=company_id,
+            )
+        except (document_renderer.DocumentRenderError, TemplateNotFoundError) as exc2:
+            logger.error("Preview PDF fallback also failed: %s", exc2)
+            return None
+
+    if cache_key:
+        _PREVIEW_CACHE[cache_key] = pdf_bytes
+        # Evict old entries if cache grows large
+        if len(_PREVIEW_CACHE) > 50:
+            oldest = next(iter(_PREVIEW_CACHE))
+            del _PREVIEW_CACHE[oldest]
+    return pdf_bytes
 
 
 def generate_invoice_document(

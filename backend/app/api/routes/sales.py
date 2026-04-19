@@ -896,6 +896,8 @@ def send_invoice(
         deceased_name=inv.deceased_name,
         pdf_attachment=pdf_bytes,
         reply_to=company.email if company else None,
+        company_id=current_user.company_id,
+        db=db,
     )
 
     # Persist PDF to R2 (non-blocking, idempotent)

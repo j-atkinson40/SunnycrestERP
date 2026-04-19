@@ -107,6 +107,8 @@ class ApprovalGateService:
                 subject=subject,
                 html_body=html,
                 from_name=f"Bridgeable ({tenant_name})",
+                company_id=tenant_id,
+                db=db,
             )
 
         logger.info(

@@ -110,7 +110,7 @@ class UrnEngravingService:
                 job.generated_form_snapshot = dict(form_data[i])
         db.commit()
 
-        pdf_bytes = render_form_pdf(form_data)
+        pdf_bytes = render_form_pdf(form_data, db=db, company_id=tenant_id)
 
         return {
             "entries": form_data,
@@ -174,6 +174,8 @@ class UrnEngravingService:
                     subject=email_data["subject"],
                     html_body=email_data["body_html"],
                     attachments=[attachment],
+                    company_id=tenant_id,
+                    db=db,
                 )
             except Exception as e:
                 logger.error("Failed to email Wilbert submission: %s", e)
@@ -285,6 +287,8 @@ class UrnEngravingService:
                 to=order.fh_contact_email,
                 subject=f"Engraving Proof: {decedent} — {product_name}",
                 html_body=html,
+                company_id=order.tenant_id,
+                db=db,
             )
         except Exception as e:
             logger.error("Failed to send FH approval email: %s", e)

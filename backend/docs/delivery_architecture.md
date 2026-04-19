@@ -30,6 +30,18 @@ parameter set, provider response JSONB for debugging, error details if
 failed, and source-linkage back to the caller (workflow run,
 intelligence execution, signature envelope, etc).
 
+**`company_id` is required on every send.** D-7 shipped with a
+`_fallback_company_id()` safety net in `EmailService` that attributed
+missing-tenant sends to the first active company in the DB. D-9
+removed that net — callers that don't thread `company_id` now raise
+`ValueError` at call time. The guard helper is
+`email_service._require_company_id(company_id)`; every `send_*` method
+calls it before building the `SendParams`. If you're adding a new
+email caller, thread the tenant through from route/service/job
+context — routes get it from `current_user.company_id`, service
+methods from the relevant record's `company_id` / `tenant_id`,
+background jobs from the per-tenant iteration wrapper.
+
 ---
 
 ## The DeliveryChannel protocol

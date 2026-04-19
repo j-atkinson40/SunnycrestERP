@@ -164,6 +164,69 @@ def load(
             db.close()
 
 
+def load_by_version_id(
+    version_id: str,
+    *,
+    db: Session | None = None,
+) -> LoadedTemplate:
+    """Resolve a specific `DocumentTemplateVersion` by id.
+
+    D-9 addition — powers the unified render path. The test-render
+    endpoint needs to render a specific draft/retired/active version
+    rather than "the current active for this key". Loading by id
+    skips the current-active lookup and returns exactly the version
+    requested.
+
+    Raises TemplateNotFoundError if the version doesn't exist or its
+    parent template is soft-deleted.
+    """
+    close_db = False
+    if db is None:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        close_db = True
+
+    try:
+        version = (
+            db.query(DocumentTemplateVersion)
+            .filter(DocumentTemplateVersion.id == version_id)
+            .first()
+        )
+        if version is None:
+            raise TemplateNotFoundError(
+                f"No template version with id {version_id!r}"
+            )
+        template = (
+            db.query(DocumentTemplate)
+            .filter(
+                DocumentTemplate.id == version.template_id,
+                DocumentTemplate.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if template is None:
+            raise TemplateNotFoundError(
+                f"Template for version {version_id!r} is deleted or missing"
+            )
+        return LoadedTemplate(
+            template_key=template.template_key,
+            body_template=version.body_template,
+            subject_template=version.subject_template,
+            output_format=template.output_format,
+            version=version.version_number,
+            version_id=version.id,
+            template_id=template.id,
+            company_id=template.company_id,
+            variable_schema=version.variable_schema,
+            css_variables=version.css_variables,
+            template_dir=str(_guess_template_dir(template.template_key)),
+        )
+    finally:
+        if close_db:
+            db.close()
+
+
 def _guess_template_dir(template_key: str) -> Path:
     """Best-effort base_url for WeasyPrint. File-based templates still map
     to their original directories; DB-native templates use the root."""

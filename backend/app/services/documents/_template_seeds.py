@@ -1279,10 +1279,169 @@ def list_platform_template_seeds() -> list[PlatformTemplateSeed]:
 
     D-2: 18 (8 file PDF + 3 inline PDF + 7 email).
     D-4: +5 (1 signing certificate PDF + 4 signing emails) = 23 total.
+    D-9: +2 (quote.standard + urn.wilbert_engraving_form) = 25 total.
     """
     return [
         *_file_based_pdf_seeds(),
         *_inline_pdf_seeds(),
         *_email_seeds(),
         *_signing_seeds(),
+        *_d9_seeds(),
+    ]
+
+
+# ── D-9 additions ────────────────────────────────────────────────────────
+#
+# Two PDF templates migrated from direct WeasyPrint call-sites in D-9:
+#   quote.standard               — customer-facing quote PDF
+#   urn.wilbert_engraving_form   — Wilbert engraving submission form
+#
+# Both had their inline HTML lifted verbatim, f-string slots replaced
+# with Jinja `{{ variable }}` expressions, and helpers ({{ money() }})
+# exposed as Jinja filters via `_inline_pdf_seeds`' existing patterns.
+
+PDF_QUOTE_STANDARD = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:40px;}
+.header{display:flex;justify-content:space-between;margin-bottom:40px;border-bottom:2px solid #1a1a1a;padding-bottom:20px;}
+.company-name{font-size:22px;font-weight:700;letter-spacing:-.5px;}
+.quote-label{font-size:28px;font-weight:300;color:#666;text-align:right;}
+.quote-number{font-size:13px;color:#666;text-align:right;margin-top:4px;}
+.details{display:flex;gap:60px;margin-bottom:36px;}
+.detail-block label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:#888;display:block;margin-bottom:4px;}
+.detail-block p{margin:0;font-size:13px;font-weight:500;}
+table{width:100%;border-collapse:collapse;margin-bottom:24px;}
+th{background:#f5f5f5;padding:10px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:#666;}
+td{padding:12px;border-bottom:1px solid #f0f0f0;font-size:13px;}
+td.right{text-align:right;}
+.total-row td{font-weight:700;font-size:14px;border-bottom:none;border-top:2px solid #1a1a1a;}
+.footer{margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:11px;color:#888;}
+.expiry-note{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;margin-bottom:24px;font-size:12px;color:#92400e;}
+.notes-block{margin-bottom:24px;}
+.notes-block .notes-label{font-size:10px;font-weight:600;text-transform:uppercase;color:#888;letter-spacing:.6px;margin-bottom:6px;}
+.notes-block .notes-body{font-size:13px;}
+</style></head><body>
+<div class="header">
+  <div><div class="company-name">{{ company_name }}</div></div>
+  <div>
+    <div class="quote-label">QUOTE</div>
+    <div class="quote-number">#{{ quote_number }}</div>
+    <div class="quote-number">{{ quote_date }}</div>
+  </div>
+</div>
+<div class="details">
+  {% if customer_name %}
+  <div class="detail-block"><label>Prepared for</label><p>{{ customer_name }}</p></div>
+  {% endif %}
+  <div class="detail-block"><label>Prepared by</label><p>{{ company_name }}</p></div>
+  {% if expiry_date %}
+  <div class="detail-block"><label>Valid until</label><p>{{ expiry_date }}</p></div>
+  {% endif %}
+</div>
+{% if expiry_date %}
+<div class="expiry-note">This quote is valid until {{ expiry_date }}. Prices subject to change after expiry.</div>
+{% endif %}
+<table>
+  <thead><tr>
+    <th>Description</th>
+    <th style="text-align:right">Qty</th>
+    <th style="text-align:right">Unit Price</th>
+    <th style="text-align:right">Total</th>
+  </tr></thead>
+  <tbody>
+    {% if lines %}
+      {% for ln in lines %}
+      <tr>
+        <td>{{ ln.description }}</td>
+        <td class="right">{{ "%g" | format(ln.quantity) }}</td>
+        <td class="right">{{ ln.unit_price_formatted }}</td>
+        <td class="right">{{ ln.line_total_formatted }}</td>
+      </tr>
+      {% endfor %}
+    {% else %}
+      <tr><td colspan="4" style="color:#999;text-align:center;">No line items.</td></tr>
+    {% endif %}
+    {% if total_formatted %}
+    <tr class="total-row">
+      <td colspan="3">Total</td>
+      <td class="right">{{ total_formatted }}</td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+{% if notes %}
+<div class="notes-block">
+  <div class="notes-label">Notes</div>
+  <div class="notes-body">{{ notes }}</div>
+</div>
+{% endif %}
+<div class="footer">
+  <p>Thank you for your business. To accept this quote, please reply or contact us directly.</p>
+  <p style="margin-top:8px;">{{ company_name }}</p>
+</div>
+</body></html>"""
+
+
+PDF_WILBERT_ENGRAVING_FORM = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body { font-family: Arial, sans-serif; margin: 20px; }
+.form-page { page-break-after: always; border: 2px solid #333; padding: 24px; margin-bottom: 20px; }
+.form-page:last-child { page-break-after: auto; }
+h1 { font-size: 18px; text-align: center; margin: 0 0 16px; border-bottom: 2px solid #333; padding-bottom: 8px; }
+.field { display: flex; margin: 6px 0; font-size: 13px; }
+.label { font-weight: bold; width: 160px; flex-shrink: 0; }
+.value { flex: 1; border-bottom: 1px solid #ccc; min-height: 18px; padding-left: 4px; }
+.engraving-section { margin: 12px 0; padding: 12px; background: #f8f8f8; border: 1px solid #ddd; }
+.engraving-section h2 { font-size: 14px; margin: 0 0 8px; }
+</style></head><body>
+{% for piece in pieces %}
+<div class="form-page">
+  <h1>Wilbert Engraving Order Form</h1>
+  {% for label, value in piece.non_engraving %}
+  <div class="field">
+    <span class="label">{{ label }}:</span>
+    <span class="value">{{ value }}</span>
+  </div>
+  {% endfor %}
+  {% if piece.engraving %}
+  <div class="engraving-section">
+    <h2>Engraving — {{ piece.piece_label }}</h2>
+    {% for label, value in piece.engraving %}
+    <div class="field">
+      <span class="label">{{ label }}:</span>
+      <span class="value">{{ value }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+</body></html>"""
+
+
+def _d9_seeds() -> list[PlatformTemplateSeed]:
+    return [
+        {
+            "template_key": "quote.standard",
+            "document_type": "quote",
+            "output_format": "pdf",
+            "description": (
+                "Customer-facing quote PDF. Header with company + quote "
+                "number, line items, optional expiry, footer."
+            ),
+            "supports_variants": False,
+            "body_template": PDF_QUOTE_STANDARD,
+        },
+        {
+            "template_key": "urn.wilbert_engraving_form",
+            "document_type": "urn_engraving_form",
+            "output_format": "pdf",
+            "description": (
+                "Wilbert engraving submission form — one page per piece "
+                "(main + companions). Printed, signed, and emailed to "
+                "Wilbert engraving."
+            ),
+            "supports_variants": False,
+            "body_template": PDF_WILBERT_ENGRAVING_FORM,
+        },
     ]

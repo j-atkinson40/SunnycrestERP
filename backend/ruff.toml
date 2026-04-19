@@ -41,24 +41,22 @@ banned-module-level-imports = ["anthropic", "weasyprint"]
 #
 # Permanent allowlist for weasyprint:
 #   services/documents/**        — the managed renderer backbone
+#   app/main.py                  — diagnostic import-only startup check
 #   tests/**                     — tests can mock/reference
 #   scripts/**                   — seed scripts
 #
 # NOTE: ai_service.py was deleted in Phase 2c-5. If it reappears, that's a
-# regression — remove it again. Likewise, Phase D-2 migrated the last
-# in-app weasyprint call sites. Any new weasyprint.HTML(...) outside
-# services/documents/ is a regression.
+# regression — remove it again. Phase D-9 finished migrating every in-app
+# weasyprint call site through DocumentRenderer; the transitional allowlist
+# is now empty. Any new weasyprint.HTML(...) outside services/documents/
+# is a regression.
 [lint.per-file-ignores]
 "app/services/intelligence/**" = ["TID251", "TID252"]
 "app/services/documents/**" = ["TID251", "TID252"]
 "app/api/routes/admin/chat.py" = ["TID251", "TID252"]
 "tests/**" = ["TID251", "TID252"]
 "scripts/**" = ["TID251", "TID252"]
-
-# Transitional weasyprint allowlist — queued for migration after D-2.
-# See tests/test_documents_d2_lint.py::TRANSITIONAL_ALLOWLIST for
-# justification. Each entry should be REMOVED when its source migrates.
+# Diagnostic import-only startup check — logs WeasyPrint availability at
+# process start so missing system deps surface in logs. Never calls
+# HTML(...) / write_pdf().
 "app/main.py" = ["TID251"]
-"app/services/pdf_generation_service.py" = ["TID251"]
-"app/services/quote_service.py" = ["TID251"]
-"app/services/wilbert_utils.py" = ["TID251"]
