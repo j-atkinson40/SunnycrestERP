@@ -120,20 +120,26 @@ class UrnProductService:
     def search_products(
         db: Session, tenant_id: str, query: str,
     ) -> list[dict]:
-        """Natural language search using Claude. Falls back to ILIKE."""
-        # Try AI search first
+        """Natural language search using Claude via the Intelligence layer.
+
+        Falls back to ILIKE on the raw query if the AI call fails for any
+        reason (no API key, parse error, etc.) so search stays functional.
+        """
+        terms: list[str] = [query]
         try:
-            from app.services.ai_service import call_anthropic
-            prompt = (
-                f"Given this search query for burial urns: \"{query}\"\n"
-                f"Return a JSON array of search terms to match against "
-                f"product name, style, material, and colors. "
-                f"Include synonyms and related terms.\n"
-                f"Return ONLY a JSON array of strings, nothing else."
+            from app.services.intelligence import intelligence_service
+
+            result = intelligence_service.execute(
+                db,
+                prompt_key="urn.semantic_search",
+                variables={"query": query},
+                company_id=tenant_id,
+                caller_module="urn_product_service.search_products",
+                caller_entity_type="urn_product",
             )
-            result = call_anthropic(prompt, max_tokens=200)
-            import json
-            terms = json.loads(result) if result else [query]
+            if result.status == "success" and isinstance(result.response_parsed, list):
+                # The urn.semantic_search prompt returns a bare JSON array, not an object
+                terms = [str(t) for t in result.response_parsed if t] or [query]
         except Exception:
             terms = [query]
 

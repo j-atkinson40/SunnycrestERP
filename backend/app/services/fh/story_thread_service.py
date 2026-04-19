@@ -19,22 +19,6 @@ from app.models.funeral_case import (
 )
 
 
-STORY_SYSTEM_PROMPT = """You write a brief, warm narrative describing how a person will be honored at their funeral.
-
-Draw on their life details (occupation, religion, military service, family) and the merchandise and service selections made to paint a unified picture — not a list, a short narrative of meaning.
-
-Rules:
-- 2-3 sentences maximum.
-- Tone: warm, personal, dignified.
-- Specific to this person — reference the real details provided.
-- Never mention prices.
-- Never be generic ("every life matters" etc.).
-- Focus on meaning, not merchandise.
-
-Return the narrative text only. No preamble, no markdown, no quotes around it.
-"""
-
-
 def _assemble_context(
     case: FuneralCase,
     dec: CaseDeceased | None,
@@ -94,7 +78,7 @@ def compile_narrative(db: Session, case_id: str) -> str:
 
     context_str = _assemble_context(case, dec, service, merch, vet)
 
-    narrative = _call_claude(context_str) if context_str else ""
+    narrative = _call_claude(db, case, context_str) if context_str else ""
     if not narrative:
         # Fallback narrative constructed from fields directly
         name = " ".join([p for p in [dec.first_name if dec else None, dec.last_name if dec else None] if p]) or "Your loved one"
@@ -107,25 +91,29 @@ def compile_narrative(db: Session, case_id: str) -> str:
     return narrative
 
 
-def _call_claude(context_str: str) -> str:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return ""
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        return ""
+def _call_claude(db: Session, case: FuneralCase, context_str: str) -> str:
+    """Compile a 2–3 sentence narrative via the Intelligence layer.
 
-    client = Anthropic(api_key=api_key)
+    Preserves the prior behavior: returns "" on missing API key or any error, so
+    the caller can drop in a fallback sentence without crashing the Story step.
+    """
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        return ""
     try:
-        resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=400,
-            system=STORY_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": context_str}],
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="scribe.compose_story_thread",
+            variables={"context_str": context_str},
+            company_id=case.company_id,
+            caller_module="fh.story_thread_service",
+            caller_entity_type="funeral_case",
+            caller_entity_id=case.id,
         )
-        text = resp.content[0].text if resp.content else ""
-        return text.strip().strip('"').strip("'")
+        if result.status != "success" or not result.response_text:
+            return ""
+        return result.response_text.strip().strip('"').strip("'")
     except Exception:
         return ""
 

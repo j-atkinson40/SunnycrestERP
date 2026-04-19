@@ -2268,58 +2268,53 @@ def suggest_payment_application(
 
 
 async def scan_check_image(db: Session, file, company_id: str) -> dict:
-    """Use Claude Vision to extract payment info from a check image."""
+    """Use Claude Vision to extract payment info from a check image.
+
+    Phase 2c-1 migration — routes through the managed `accounting.extract_check_image`
+    vision prompt. The raw image is redacted from the stored execution row
+    (only a sha256 + byte length are preserved for audit).
+    """
     import base64
-    import json as _json
 
     # Read image
     content = await file.read()
     b64_image = base64.b64encode(content).decode()
     content_type = file.content_type or "image/jpeg"
 
-    prompt = """Extract payment information from this check image. Return JSON only:
-{
-  "payer_name": "string or null",
-  "amount": "decimal number or null",
-  "check_number": "string or null",
-  "check_date": "YYYY-MM-DD or null",
-  "memo": "string or null",
-  "bank_name": "string or null",
-  "confidence": {
-    "payer_name": 0.0,
-    "amount": 0.0,
-    "check_number": 0.0,
-    "check_date": 0.0
-  }
-}
-Return only valid JSON. If a field is not clearly visible, return null."""
-
     extracted = {}
     try:
-        import anthropic
-        from app.config import settings
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=500,
-            messages=[
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="accounting.extract_check_image",
+            variables={},
+            company_id=company_id,
+            caller_module="sales_service.scan_check_image",
+            # No persisted customer_payment_id yet — the scan is what drafts it.
+            # company_id + caller_module is sufficient linkage; when the draft
+            # is confirmed into a real payment, follow-up AI calls will carry
+            # the real caller_entity_id.
+            caller_entity_type="customer_payment_draft",
+            content_blocks=[
                 {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": content_type,
-                                "data": b64_image,
-                            },
-                        },
-                        {"type": "text", "text": prompt},
-                    ],
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": content_type,
+                        "data": b64_image,
+                    },
                 }
             ],
         )
-        extracted = _json.loads(response.content[0].text)
+
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            extracted = result.response_parsed
+        else:
+            raise RuntimeError(
+                f"Intelligence execute status={result.status}: "
+                f"{result.error_message or 'no parsed response'}"
+            )
     except Exception as e:
         logger.error("Check scan failed: %s", e)
         return {

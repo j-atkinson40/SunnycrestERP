@@ -250,6 +250,7 @@ def get_case_board(
 def extract_first_call_endpoint(
     data: FirstCallExtractionRequest,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Extract structured first call data from natural language text."""
     import logging
@@ -258,7 +259,9 @@ def extract_first_call_endpoint(
 
     try:
         from app.services.first_call_extraction_service import extract_first_call
-        result = extract_first_call(data.text, data.existing_values)
+        result = extract_first_call(
+            db, data.text, data.existing_values, company_id=current_user.company_id
+        )
         return result
     except Exception as e:
         # Capture full error chain

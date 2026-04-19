@@ -17,7 +17,6 @@ import logging
 import re
 from datetime import date, datetime
 
-from app.services.ai_service import call_anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -755,30 +754,48 @@ RULES:
 def parse_funeral_home_command(
     user_input: str,
     case_catalog: list[dict] | None = None,
+    *,
+    db=None,
+    company_id: str | None = None,
 ) -> dict:
-    """
-    Parse a natural-language funeral home command into a structured intent
-    using the Anthropic AI service.
+    """Parse a natural-language funeral home command via the Intelligence layer.
 
-    Args:
-        user_input: The user's free-text command.
-        case_catalog: List of dicts with keys: id, deceased_name, status.
-
-    Returns:
-        Parsed intent dict.
+    Phase 2c-4 migration: routes through `commandbar.classify_fh_intent`.
     """
-    today = date.today().isoformat()
-    system_prompt = _FUNERAL_HOME_COMMAND_PROMPT.format(today=today)
+    import json as _json
+
+    from app.services.intelligence import intelligence_service
+
+    if db is None:
+        from app.database import SessionLocal
+        local_db = SessionLocal()
+        try:
+            return parse_funeral_home_command(
+                user_input, case_catalog, db=local_db, company_id=company_id
+            )
+        finally:
+            local_db.close()
 
     context: dict = {}
     if case_catalog:
         context["case_catalog"] = case_catalog
 
-    return call_anthropic(
-        system_prompt=system_prompt,
-        user_message=user_input,
-        context_data=context if context else None,
+    today = date.today().isoformat()
+    result = intelligence_service.execute(
+        db,
+        prompt_key="commandbar.classify_fh_intent",
+        variables={
+            "today": today,
+            "user_input": user_input,
+            "context_data_json": _json.dumps(context) if context else "",
+        },
+        company_id=company_id,
+        caller_module="ai_funeral_home_intents.parse_funeral_home_command",
+        caller_entity_type=None,
     )
+    if result.status == "success" and isinstance(result.response_parsed, dict):
+        return result.response_parsed
+    return {"intent": "unknown", "message": result.error_message or "Classification failed."}
 
 
 # ---------------------------------------------------------------------------

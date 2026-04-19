@@ -36,6 +36,14 @@ import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
 import DataQualityPage from "@/pages/admin/data-quality";
 import AuditLogs from "@/pages/admin/audit-logs";
+import IntelligencePromptLibrary from "@/pages/admin/intelligence/PromptLibrary";
+import IntelligencePromptDetail from "@/pages/admin/intelligence/PromptDetail";
+import IntelligenceExecutionLog from "@/pages/admin/intelligence/ExecutionLog";
+import IntelligenceExecutionDetail from "@/pages/admin/intelligence/ExecutionDetail";
+import IntelligenceModelRoutes from "@/pages/admin/intelligence/ModelRoutes";
+import IntelligenceExperimentLibrary from "@/pages/admin/intelligence/ExperimentLibrary";
+import IntelligenceExperimentDetail from "@/pages/admin/intelligence/ExperimentDetail";
+import IntelligenceCreateExperiment from "@/pages/admin/intelligence/CreateExperiment";
 import CompanySettings from "@/pages/admin/company-settings";
 import AccountingPage from "@/pages/admin/accounting";
 import ApiKeysPage from "@/pages/admin/api-keys";
@@ -973,6 +981,46 @@ export default function App() {
                     <Route
                       path="/admin/audit-logs"
                       element={<AuditLogs />}
+                    />
+                  </Route>
+
+                  {/* Intelligence admin UI (Phase 3a read surface) — admin only */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/admin/intelligence"
+                      element={<IntelligencePromptLibrary />}
+                    />
+                    <Route
+                      path="/admin/intelligence/prompts"
+                      element={<IntelligencePromptLibrary />}
+                    />
+                    <Route
+                      path="/admin/intelligence/prompts/:promptId"
+                      element={<IntelligencePromptDetail />}
+                    />
+                    <Route
+                      path="/admin/intelligence/executions"
+                      element={<IntelligenceExecutionLog />}
+                    />
+                    <Route
+                      path="/admin/intelligence/executions/:executionId"
+                      element={<IntelligenceExecutionDetail />}
+                    />
+                    <Route
+                      path="/admin/intelligence/model-routes"
+                      element={<IntelligenceModelRoutes />}
+                    />
+                    <Route
+                      path="/admin/intelligence/experiments"
+                      element={<IntelligenceExperimentLibrary />}
+                    />
+                    <Route
+                      path="/admin/intelligence/experiments/new"
+                      element={<IntelligenceCreateExperiment />}
+                    />
+                    <Route
+                      path="/admin/intelligence/experiments/:experimentId"
+                      element={<IntelligenceExperimentDetail />}
                     />
                   </Route>
 

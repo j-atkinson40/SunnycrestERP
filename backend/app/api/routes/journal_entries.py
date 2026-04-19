@@ -275,26 +275,25 @@ def parse_entry(
     accounts_text = "\n".join(f"- {a.account_number}: {a.account_name} ({a.platform_category})" for a in gl_accounts)
 
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=JE_MODEL,
-            max_tokens=500,
-            system=(
-                "Parse a natural language journal entry into structured debit/credit lines. "
-                "Chart of accounts:\n" + accounts_text + "\n\n"
-                "Rules: Assets increase with debits. Liabilities increase with credits. "
-                "Revenue increases with credits. Expenses increase with debits. "
-                "Every entry must balance. Return JSON only: "
-                '{"description": str, "entry_date": str or null, "entry_type": str, '
-                '"lines": [{"gl_account_id": str, "gl_account_number": str, "gl_account_name": str, '
-                '"side": "debit"|"credit", "amount": number, "description": str or null}], '
-                '"confidence": number, "clarification_needed": str or null}'
-            ),
-            messages=[{"role": "user", "content": body.input}],
+        # Phase 2c-2 migration — accounting.parse_journal_entry
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="accounting.parse_journal_entry",
+            variables={"accounts_text": accounts_text, "input": body.input},
+            company_id=current_user.company_id,
+            caller_module="journal_entries.parse_entry",
+            caller_entity_type="journal_entry",
+            caller_entity_id=None,  # draft not yet persisted
         )
-        result = json.loads(response.content[0].text)
-        return result
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            return result.response_parsed
+        return {
+            "error": result.error_message or f"status={result.status}",
+            "confidence": 0,
+            "lines": [],
+        }
     except Exception as e:
         logger.error(f"JE parse failed: {e}")
         return {"error": str(e), "confidence": 0, "lines": []}

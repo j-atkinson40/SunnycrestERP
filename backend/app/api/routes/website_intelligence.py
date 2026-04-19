@@ -159,7 +159,7 @@ def get_extension_suggestions(
 
 
 @router.get("/website-intelligence/debug-network")
-def debug_network():
+def debug_network(db: Session = Depends(get_db)):
     """Temporary endpoint: run the FULL intelligence pipeline synchronously."""
     import traceback
     results = {}
@@ -194,7 +194,8 @@ def debug_network():
     # Test 2: Analyze
     try:
         from app.services.website_analysis_service import analyze_website_content
-        analysis = analyze_website_content(scrape_result["raw_content"])
+        # Diagnostic endpoint — no tenant scoping; execution row logs with company_id=None
+        analysis = analyze_website_content(db, scrape_result["raw_content"])
         results["analyze"] = f"OK: {analysis['input_tokens']} in / {analysis['output_tokens']} out tokens"
         results["analysis_keys"] = list(analysis["analysis"].keys()) if isinstance(analysis["analysis"], dict) else str(type(analysis["analysis"]))
         # Show vault lines

@@ -167,20 +167,28 @@ async def run_ai_analysis(
 
     user_message = json.dumps(user_data, default=str)
 
-    # Call Claude API
+    # Call via the Intelligence layer (Phase 2c-1 migration — the managed
+    # `accounting.coa_classify` prompt carries the system prompt verbatim).
     try:
-        import anthropic
+        from app.services.intelligence import intelligence_service
 
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=ANALYSIS_MODEL,
-            max_tokens=ANALYSIS_MAX_TOKENS,
-            system=ANALYSIS_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+        result = intelligence_service.execute(
+            db,
+            prompt_key="accounting.coa_classify",
+            variables={"user_data": user_message},
+            company_id=tenant_id,
+            caller_module="accounting_analysis_service.run_ai_analysis",
+            caller_entity_type="company",
+            caller_entity_id=tenant_id,
+            caller_accounting_analysis_run_id=run_id,
         )
 
-        result_text = response.content[0].text
-        analysis_result = json.loads(result_text)
+        if result.status != "success" or not isinstance(result.response_parsed, dict):
+            raise RuntimeError(
+                f"Intelligence execute status={result.status}: "
+                f"{result.error_message or 'no parsed response'}"
+            )
+        analysis_result = result.response_parsed
 
     except Exception as e:
         logger.error(f"AI analysis failed for tenant {tenant_id}: {e}")

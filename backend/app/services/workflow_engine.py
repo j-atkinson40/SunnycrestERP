@@ -468,6 +468,9 @@ def _execute_step(
             output = _execute_action(db, resolved_config, run, current_company)
         elif step.step_type == "condition":
             output = _evaluate_condition(resolved_config)
+        elif step.step_type == "ai_prompt":
+            # Phase 3d — invoke a managed intelligence prompt as a step
+            output = _execute_ai_prompt(db, resolved_config, run, rs.id, step.step_key)
         else:
             output = {"status": "unknown_step_type", "step_type": step.step_type}
 
@@ -946,3 +949,234 @@ def list_runs(
     if status:
         q = q.filter(WorkflowRun.status == status)
     return q.order_by(WorkflowRun.started_at.desc()).limit(limit).all()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 3d — ai_prompt step type
+# ─────────────────────────────────────────────────────────────────────
+#
+# Routes a workflow step through the managed-prompt Intelligence layer.
+# Config shape (post-variable-resolution):
+#   {
+#     "prompt_key": "scribe.extract_intake",     # required
+#     "variables":  {"name": "…", "context": "{input.step_1.body}"},
+#     "store_output_as": "result"                # optional — reserved for
+#                                                #  future nesting support
+#   }
+# Output shape (stored on WorkflowRunStep.output_data):
+#   - If the prompt returns response_parsed (force_json=true, valid JSON):
+#       { <parsed fields>, "_execution_id": "...", "_status": "success" }
+#   - Otherwise:
+#       { "text": "…", "_execution_id": "...", "_status": "success" }
+#
+# Downstream steps reference the fields with {output.step_key.field_name}.
+# The `_execution_id` is preserved for audit / debug drill-through.
+
+# Maps workflow trigger-context entity types to the Phase 2c-0a
+# Intelligence linkage columns. Extend as new linkage columns are added.
+_ENTITY_TYPE_TO_LINKAGE_KWARG: dict[str, str] = {
+    "funeral_case": "caller_fh_case_id",
+    "fh_case": "caller_fh_case_id",
+    "agent_job": "caller_agent_job_id",
+    "ringcentral_call_log": "caller_ringcentral_call_log_id",
+    "call_log": "caller_ringcentral_call_log_id",
+    "kb_document": "caller_kb_document_id",
+    "price_list_import": "caller_price_list_import_id",
+    "accounting_analysis_run": "caller_accounting_analysis_run_id",
+}
+
+
+def _execute_ai_prompt(
+    db: Session,
+    resolved_config: dict,
+    run: WorkflowRun,
+    run_step_id: str,
+    step_key: str,
+) -> dict:
+    """Invoke a managed intelligence prompt as a workflow step.
+
+    Raises on missing prompt_key (caught by _execute_step and surfaced as a
+    step failure). Execution errors (Anthropic failures, render errors) are
+    surfaced by raising so the run is marked failed — this matches the
+    behavior of other action steps.
+    """
+    from app.services.intelligence import intelligence_service
+
+    prompt_key = (resolved_config or {}).get("prompt_key")
+    if not prompt_key:
+        raise ValueError(
+            "ai_prompt step requires a non-empty prompt_key in config",
+        )
+    variables = (resolved_config or {}).get("variables") or {}
+    if not isinstance(variables, dict):
+        raise ValueError(
+            "ai_prompt step config.variables must be a dict",
+        )
+
+    # Workflow trigger context — drive caller linkage. trigger_context is
+    # JSONB; callers typically put {entity_type, entity_id, record}.
+    trig = run.trigger_context or {}
+    entity_type = trig.get("entity_type")
+    entity_id = trig.get("entity_id")
+
+    linkage_kwargs: dict[str, str] = {}
+    if entity_type and entity_id:
+        specialty = _ENTITY_TYPE_TO_LINKAGE_KWARG.get(entity_type)
+        if specialty:
+            linkage_kwargs[specialty] = entity_id
+
+    # Always thread the workflow_run + run_step ids — these are first-class
+    # linkage columns on IntelligenceExecution (from Phase 1). Useful for
+    # "show all AI calls made by this workflow run" queries.
+    result = intelligence_service.execute(
+        db,
+        prompt_key=prompt_key,
+        variables=variables,
+        company_id=run.company_id,
+        caller_module=f"workflow_engine.{run.workflow_id}.{step_key}",
+        caller_entity_type=entity_type,
+        caller_entity_id=entity_id,
+        caller_workflow_run_id=run.id,
+        caller_workflow_run_step_id=run_step_id,
+        **linkage_kwargs,
+    )
+
+    if result.status != "success":
+        # Surface as a step failure — upstream handler flips run to failed.
+        raise RuntimeError(
+            f"ai_prompt '{prompt_key}' returned status={result.status}: "
+            f"{result.error_message or '(no error message)'}"
+        )
+
+    # Shape output so downstream steps can reference fields naturally.
+    # - Parsed dict: spread fields at the top level so
+    #   {output.step_key.field} resolves.
+    # - Plain text: expose under `text`.
+    output: dict
+    if isinstance(result.response_parsed, dict):
+        output = dict(result.response_parsed)
+    else:
+        output = {"text": result.response_text or ""}
+
+    output["_execution_id"] = result.execution_id
+    output["_status"] = result.status
+    return output
+
+
+def validate_ai_prompt_steps(
+    db: Session, company_id: str | None, steps: list[dict]
+) -> list[str]:
+    """Return a list of human-readable error strings for ai_prompt steps.
+
+    Returns empty list if everything checks out. Called from the workflow
+    save endpoints so configuration bugs are caught at save time rather
+    than at run time.
+
+    Checks:
+      1. prompt_key is non-empty and resolves to an active prompt visible
+         to this tenant (company_id override or platform-global).
+      2. Every `required` variable in the prompt's active version's
+         variable_schema is mapped in step config.variables (either a
+         literal or a reference string).
+      3. Optional variables may be unmapped.
+    """
+    from app.models.intelligence import (
+        IntelligencePrompt,
+        IntelligencePromptVersion,
+    )
+
+    errors: list[str] = []
+    step_keys_by_order = {
+        s.get("step_order", i): s.get("step_key", "") for i, s in enumerate(steps)
+    }
+
+    for idx, step in enumerate(steps):
+        if step.get("step_type") != "ai_prompt":
+            continue
+        step_key = step.get("step_key") or f"step_{idx}"
+        cfg = step.get("config") or {}
+        prompt_key = (cfg.get("prompt_key") or "").strip()
+        if not prompt_key:
+            errors.append(f"Step '{step_key}': prompt_key is required")
+            continue
+
+        # Resolve the prompt — tenant override beats platform
+        q = db.query(IntelligencePrompt).filter(
+            IntelligencePrompt.prompt_key == prompt_key,
+            IntelligencePrompt.is_active.is_(True),
+        )
+        prompt: IntelligencePrompt | None = None
+        if company_id:
+            prompt = q.filter(IntelligencePrompt.company_id == company_id).first()
+        if prompt is None:
+            prompt = q.filter(
+                IntelligencePrompt.company_id.is_(None)
+            ).first()
+        if prompt is None:
+            errors.append(
+                f"Step '{step_key}': prompt_key '{prompt_key}' not found or inactive"
+            )
+            continue
+
+        active_version = (
+            db.query(IntelligencePromptVersion)
+            .filter(
+                IntelligencePromptVersion.prompt_id == prompt.id,
+                IntelligencePromptVersion.status == "active",
+            )
+            .first()
+        )
+        if active_version is None:
+            errors.append(
+                f"Step '{step_key}': prompt '{prompt_key}' has no active version"
+            )
+            continue
+
+        schema = active_version.variable_schema or {}
+        provided = (cfg.get("variables") or {})
+        if not isinstance(provided, dict):
+            errors.append(
+                f"Step '{step_key}': config.variables must be a dict"
+            )
+            continue
+
+        for var_name, var_spec in schema.items():
+            is_required = bool(
+                isinstance(var_spec, dict) and var_spec.get("required")
+            )
+            is_optional = bool(
+                isinstance(var_spec, dict) and var_spec.get("optional")
+            )
+            if is_optional:
+                continue
+            if is_required and var_name not in provided:
+                errors.append(
+                    f"Step '{step_key}': missing required variable "
+                    f"'{var_name}' for prompt '{prompt_key}'"
+                )
+        # Round-trip check — variables pointing at {output.X.Y} must
+        # point at a step_key that appears earlier in the workflow.
+        earlier_keys = {
+            step_keys_by_order[k]
+            for k in step_keys_by_order
+            if isinstance(k, int) and k < step.get("step_order", idx)
+        }
+        for var_name, raw in provided.items():
+            if not isinstance(raw, str):
+                continue
+            # Extract any {output.step.field} references — validate the step
+            for m in VARIABLE_PATTERN.finditer(raw):
+                ref = m.group(1).strip()
+                if ref.startswith("output."):
+                    referenced_step = ref[len("output."):].split(".", 1)[0]
+                    if (
+                        referenced_step
+                        and referenced_step not in earlier_keys
+                    ):
+                        errors.append(
+                            f"Step '{step_key}': variable '{var_name}' "
+                            f"references {{output.{referenced_step}.…}} but "
+                            f"that step does not appear before this one"
+                        )
+
+    return errors

@@ -20,7 +20,7 @@ from app.models.workflow import (
     WorkflowStep,
     WorkflowStepParam,
 )
-from app.services import workflow_engine, ai_service, workflow_run_logger
+from app.services import workflow_engine, workflow_run_logger
 
 
 router = APIRouter()
@@ -155,6 +155,52 @@ def _company_vertical(db: Session, company_id: str) -> str | None:
 # ─────────────────────────────────────────────────────────────────────
 # List + command bar
 # ─────────────────────────────────────────────────────────────────────
+
+@router.get("/step-types")
+def list_step_types(
+    current_user: User = Depends(get_current_user),
+):
+    """Phase 3d — discovery endpoint for the workflow designer.
+
+    Returns the catalog of step types the engine supports + a short
+    description for each. Keep in sync with the cascade in
+    workflow_engine._execute_step.
+    """
+    return {
+        "step_types": [
+            {
+                "key": "input",
+                "label": "Input",
+                "description": "Ask the user for a value and pause the run.",
+            },
+            {
+                "key": "action",
+                "label": "Action",
+                "description": "Perform a side-effecting operation (create record, send email, etc).",
+            },
+            {
+                "key": "condition",
+                "label": "Condition",
+                "description": "Branch based on an expression.",
+            },
+            {
+                "key": "output",
+                "label": "Output",
+                "description": "Show a final result to the user.",
+            },
+            {
+                "key": "ai_prompt",
+                "label": "AI Prompt",
+                "description": "Invoke a managed Intelligence prompt and expose its response to downstream steps.",
+            },
+            {
+                "key": "playwright_action",
+                "label": "Playwright Automation",
+                "description": "Execute a registered Playwright script with optional human approval.",
+            },
+        ],
+    }
+
 
 @router.get("")
 def list_workflows(
@@ -424,12 +470,24 @@ def generate_workflow(
 
     vert = _company_vertical(db, current_user.company_id)
     try:
-        result = ai_service.call_anthropic(
-            system_prompt=_WORKFLOW_SYSTEM_PROMPT,
-            user_message=data.description,
-            context_data={"company_vertical": vert},
-            max_tokens=2048,
+        # Phase 2c-4 migration — workflow.generate_from_description
+        from app.services.intelligence import intelligence_service
+
+        intel = intelligence_service.execute(
+            db,
+            prompt_key="workflow.generate_from_description",
+            variables={"description": data.description, "company_vertical": vert or ""},
+            company_id=current_user.company_id,
+            caller_module="workflows.generate_workflow",
+            caller_entity_type="workflow_draft",
         )
+        if intel.status == "success" and isinstance(intel.response_parsed, dict):
+            result = intel.response_parsed
+        else:
+            raise HTTPException(
+                status_code=502,
+                detail=f"AI generation failed: {intel.error_message or intel.status}",
+            )
     except HTTPException:
         raise
     except Exception as e:  # pragma: no cover — defensive
@@ -532,6 +590,27 @@ def _apply_steps(db: Session, workflow_id: str, steps: list[dict]) -> None:
         )
 
 
+def _validate_ai_prompt_steps_or_400(
+    db: Session, company_id: str | None, steps: list[dict]
+) -> None:
+    """Phase 3d — fail-fast on misconfigured ai_prompt steps.
+
+    Raises HTTPException(400) with a `detail.errors` list so the frontend
+    can point at specific step keys. Other step types are unchanged.
+    """
+    from app.services.workflow_engine import validate_ai_prompt_steps
+
+    errs = validate_ai_prompt_steps(db, company_id, steps)
+    if errs:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Workflow contains invalid ai_prompt steps",
+                "errors": errs,
+            },
+        )
+
+
 @router.post("")
 def create_workflow(
     data: SaveWorkflowRequest,
@@ -539,6 +618,7 @@ def create_workflow(
     db: Session = Depends(get_db),
 ):
     """Create a new custom (Tier 4) workflow."""
+    _validate_ai_prompt_steps_or_400(db, current_user.company_id, data.steps)
     vert = data.vertical or _company_vertical(db, current_user.company_id)
     wf = Workflow(
         id=data.id or str(uuid.uuid4()),
@@ -579,6 +659,8 @@ def update_workflow(
         raise HTTPException(status_code=400, detail="Platform-locked workflows cannot be edited")
     if wf.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="Access denied")
+
+    _validate_ai_prompt_steps_or_400(db, current_user.company_id, data.steps)
 
     wf.name = data.name
     wf.description = data.description

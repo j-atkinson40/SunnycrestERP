@@ -8,7 +8,6 @@ import logging
 import uuid
 from datetime import date, datetime, timezone
 
-import anthropic
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -117,41 +116,6 @@ def generate_program_content(
     gen.generation_status = "generating"
     db.commit()
 
-    # Build user prompt
-    user_parts = [
-        f"Generate a written safety program for: {topic.title}",
-        f"Company: {company_name}",
-        f"OSHA Standard: {topic.osha_standard or 'General industry standards apply'}",
-        f"Standard Label: {topic.osha_standard_label or topic.title}",
-        "",
-    ]
-
-    if topic.description:
-        user_parts.append(f"Topic description: {topic.description}")
-        user_parts.append("")
-
-    if topic.key_points:
-        user_parts.append("Key points to cover:")
-        for kp in topic.key_points:
-            user_parts.append(f"- {kp}")
-        user_parts.append("")
-
-    if gen.osha_scraped_text:
-        user_parts.append("OSHA REGULATION TEXT (for reference — incorporate requirements into the program):")
-        user_parts.append("---")
-        # Limit to avoid token overflow
-        osha_text = gen.osha_scraped_text[:12000]
-        user_parts.append(osha_text)
-        user_parts.append("---")
-        user_parts.append("")
-
-    user_parts.append(
-        "Generate the complete written safety program now. "
-        "Output ONLY the HTML content (no markdown, no code fences)."
-    )
-
-    user_prompt = "\n".join(user_parts)
-
     if not settings.ANTHROPIC_API_KEY:
         gen.generation_status = "failed"
         gen.error_message = "ANTHROPIC_API_KEY not configured"
@@ -159,25 +123,45 @@ def generate_program_content(
         return gen
 
     try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model=GENERATION_MODEL,
-            max_tokens=GENERATION_MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="safety.draft_monthly_program",
+            variables={
+                "topic_title": topic.title,
+                "company_name": company_name,
+                "osha_standard": topic.osha_standard or "General industry standards apply",
+                "osha_standard_label": topic.osha_standard_label or topic.title,
+                "topic_description": topic.description or "",
+                "key_points": topic.key_points or [],
+                "osha_scraped_text": (gen.osha_scraped_text or "")[:12000],
+            },
+            company_id=gen.tenant_id,
+            caller_module="safety_program_generation_service",
+            caller_entity_type="safety_program_generation",
+            caller_entity_id=gen.id,
         )
 
-        content_text = message.content[0].text
-        gen.generated_content = content_text
-        gen.generated_html = _wrap_program_html(content_text, topic.title, company_name, topic.osha_standard)
-        gen.generation_status = "complete"
-        gen.generation_model = GENERATION_MODEL
-        gen.generation_token_usage = {
-            "input_tokens": message.usage.input_tokens,
-            "output_tokens": message.usage.output_tokens,
-        }
-        gen.generated_at = datetime.now(timezone.utc)
-        gen.status = "pending_review"
+        if result.status == "success" and result.response_text:
+            gen.generated_content = result.response_text
+            gen.generated_html = _wrap_program_html(
+                result.response_text, topic.title, company_name, topic.osha_standard
+            )
+            gen.generation_status = "complete"
+            gen.generation_model = result.model_used or GENERATION_MODEL
+            gen.generation_token_usage = {
+                "input_tokens": result.input_tokens or 0,
+                "output_tokens": result.output_tokens or 0,
+            }
+            gen.generated_at = datetime.now(timezone.utc)
+            gen.status = "pending_review"
+        else:
+            gen.generation_status = "failed"
+            gen.error_message = (
+                f"Intelligence execute status={result.status}: "
+                f"{result.error_message or 'no response text'}"
+            )[:500]
 
     except Exception as e:
         gen.generation_status = "failed"

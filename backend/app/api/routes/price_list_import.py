@@ -94,7 +94,10 @@ def upload_price_list(
 
     # Extract text synchronously (fast)
     try:
-        raw_text = extract_text_from_file(content, file_type)
+        # Phase 2c-1: pass company_id so the PDF vision fallback can tag the
+        # Intelligence execution row. import_id is None here because the
+        # PriceListImport record is created AFTER extraction succeeds.
+        raw_text = extract_text_from_file(content, file_type, company_id=company.id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to extract text: {e}")
 

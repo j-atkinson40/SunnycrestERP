@@ -284,7 +284,10 @@ def classify_company(db: Session, company_entity_id: str, use_google_places: boo
     # ── Try Claude AI for uncertain cases ────────────────────────────────
     if result["confidence"] < 0.80:
         try:
-            ai_result = _ai_classify(entity, name_matches, order_data)
+            ai_result = _ai_classify(
+                entity, name_matches, order_data,
+                db=db, tenant_id=entity.company_id,
+            )
             if ai_result and ai_result.get("confidence", 0) > result["confidence"]:
                 result = ai_result
         except Exception:
@@ -452,31 +455,46 @@ def _rule_based_classify(name_matches: dict, order_data: dict, domain_signals: d
     }
 
 
-def _ai_classify(entity: CompanyEntity, name_matches: dict, order_data: dict) -> dict | None:
-    """Use Claude to classify uncertain companies."""
+def _ai_classify(
+    entity: CompanyEntity,
+    name_matches: dict,
+    order_data: dict,
+    *,
+    db=None,
+    tenant_id: str | None = None,
+) -> dict | None:
+    """Phase 2c-4 — managed crm.classify_entity_single prompt."""
     try:
-        from app.services.ai_service import call_anthropic
-    except ImportError:
-        return None
+        from app.services.intelligence import intelligence_service
 
-    prompt = f"""Classify this business customer for a precast concrete manufacturer in upstate New York.
+        if db is None:
+            from app.database import SessionLocal
+            local_db = SessionLocal()
+            try:
+                return _ai_classify(entity, name_matches, order_data,
+                                    db=local_db, tenant_id=tenant_id)
+            finally:
+                local_db.close()
 
-Company: {entity.name}
-City: {entity.city or 'unknown'}, State: {entity.state or 'unknown'}
-Email: {entity.email or 'none'}
-Total orders: {order_data.get('total_orders', 0)}
-Active (12mo): {order_data.get('is_active', False)}
-Name keyword matches: {json.dumps(name_matches)}
-
-Classify as ONE of: funeral_home, cemetery, contractor, crematory, licensee, church, government, individual, other
-For contractors also set contractor_type: full_service, wastewater_only, redi_rock_only, general, occasional
-
-Return JSON: {{"customer_type": str, "contractor_type": str|null, "confidence": float, "reasons": [str]}}"""
-
-    try:
-        response = call_anthropic(prompt, max_tokens=200)
-        if response:
-            data = json.loads(response)
+        intel = intelligence_service.execute(
+            db,
+            prompt_key="crm.classify_entity_single",
+            variables={
+                "name": entity.name,
+                "city": entity.city or "unknown",
+                "state": entity.state or "unknown",
+                "email": entity.email or "none",
+                "total_orders": order_data.get("total_orders", 0),
+                "is_active": order_data.get("is_active", False),
+                "name_matches": json.dumps(name_matches),
+            },
+            company_id=tenant_id,
+            caller_module="crm.classification_service._ai_classify",
+            caller_entity_type="company_entity",
+            caller_entity_id=entity.id,
+        )
+        if intel.status == "success" and isinstance(intel.response_parsed, dict):
+            data = intel.response_parsed
             return {
                 "customer_type": data.get("customer_type"),
                 "contractor_type": data.get("contractor_type"),

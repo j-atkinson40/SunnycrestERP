@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.models.import_staging_company import ImportStagingCompany
 from app.models.unified_import_session import UnifiedImportSession
-from app.services.ai_service import call_anthropic
 from app.services.onboarding.cluster_service import cluster_duplicates
 
 logger = logging.getLogger(__name__)
@@ -433,6 +432,11 @@ def _classify_with_signals(
     session_id: str,
 ) -> None:
     """Classify staging rows using all available signals."""
+    # Resolve tenant_id from the session so _classify_batch_ai can populate
+    # company_id on the intelligence_executions row.
+    session = db.query(UnifiedImportSession).filter_by(id=session_id).first()
+    tenant_id = session.tenant_id if session else None
+
     rows = (
         db.query(ImportStagingCompany)
         .filter(
@@ -512,51 +516,63 @@ def _classify_with_signals(
 
     # ── Phase 2: AI batch classification ───────────────────────────
     if needs_ai:
-        _classify_batch_ai(needs_ai)
+        _classify_batch_ai(needs_ai, db=db, tenant_id=tenant_id)
 
     db.flush()
 
 
-def _classify_batch_ai(rows: list[ImportStagingCompany]) -> None:
-    """Send unclassified rows to Claude in batches."""
+def _classify_batch_ai(
+    rows: list[ImportStagingCompany],
+    *,
+    db=None,
+    tenant_id: str | None = None,
+) -> None:
+    """Phase 2c-4 — managed onboarding.classify_import_companies prompt."""
+    from app.services.intelligence import intelligence_service
+
+    if db is None:
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _owns_db = True
+    else:
+        _owns_db = False
+
     BATCH_SIZE = 40
 
-    for batch_start in range(0, len(rows), BATCH_SIZE):
-        batch = rows[batch_start: batch_start + BATCH_SIZE]
-        companies_data = []
-        for row in batch:
-            companies_data.append({
-                "id": row.id,
-                "name": row.name,
-                "city": row.city,
-                "state": row.state,
-                "order_count": row.order_count or 0,
-                "appears_as_cemetery": row.appears_as_cemetery_count or 0,
-                "matched_sources": row.matched_sources or [],
-            })
+    try:
+        for batch_start in range(0, len(rows), BATCH_SIZE):
+            batch = rows[batch_start: batch_start + BATCH_SIZE]
+            companies_data = []
+            for row in batch:
+                companies_data.append({
+                    "id": row.id,
+                    "name": row.name,
+                    "city": row.city,
+                    "state": row.state,
+                    "order_count": row.order_count or 0,
+                    "appears_as_cemetery": row.appears_as_cemetery_count or 0,
+                    "matched_sources": row.matched_sources or [],
+                })
 
-        try:
-            result = call_anthropic(
-                system_prompt=(
-                    "You classify companies for a Wilbert burial vault manufacturer. "
-                    "Valid types: funeral_home, cemetery, contractor, individual, unknown. "
-                    "For contractors, also provide contractor_type: wastewater, concrete, general, landscaping, or null. "
-                    "Signal weights: "
-                    "appears_as_cemetery > 0 = VERY HIGH confidence cemetery. "
-                    "Multiple orders = HIGH confidence funeral_home. "
-                    "Name contains 'excavating'/'septic' = contractor. "
-                    "Return a JSON array with {id, customer_type, contractor_type, confidence, reasoning} for each."
-                ),
-                user_message=f"Classify these companies:\n{companies_data}",
-                max_tokens=2048,
-            )
+            try:
+                import json as _json
 
-            if isinstance(result, list):
-                result_map = {r.get("id"): r for r in result if isinstance(r, dict)}
-            elif isinstance(result, dict) and "classifications" in result:
-                result_map = {r.get("id"): r for r in result["classifications"] if isinstance(r, dict)}
-            else:
-                logger.warning("Unexpected AI classification response format")
+                intel = intelligence_service.execute(
+                    db,
+                    prompt_key="onboarding.classify_import_companies",
+                    variables={"companies_data": _json.dumps(companies_data)},
+                    company_id=tenant_id,
+                    caller_module="onboarding.unified_import_service._classify_batch_ai",
+                    caller_entity_type=None,
+                )
+                result = intel.response_parsed if intel.status == "success" else None
+
+                if isinstance(result, list):
+                    result_map = {r.get("id"): r for r in result if isinstance(r, dict)}
+                elif isinstance(result, dict) and "classifications" in result:
+                    result_map = {r.get("id"): r for r in result["classifications"] if isinstance(r, dict)}
+                else:
+                    logger.warning("Unexpected AI classification response format")
                 result_map = {}
 
             for row in batch:

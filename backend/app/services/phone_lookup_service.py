@@ -56,7 +56,7 @@ def lookup_customer_by_phone(
     entity = (
         db.query(CompanyEntity)
         .filter(
-            CompanyEntity.tenant_id == tenant_id,
+            CompanyEntity.company_id == tenant_id,
             func.regexp_replace(CompanyEntity.phone, r"\D", "", "g").like(f"%{normalized}%"),
         )
         .first()
@@ -83,7 +83,7 @@ def lookup_customer_by_phone(
     contact = (
         db.query(Contact)
         .filter(
-            Contact.tenant_id == tenant_id,
+            Contact.company_id == tenant_id,
             func.regexp_replace(Contact.phone, r"\D", "", "g").like(f"%{normalized}%"),
         )
         .first()

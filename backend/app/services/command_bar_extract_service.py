@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 
 from app.models.company_entity import CompanyEntity
 from app.models.workflow import Workflow, WorkflowStep
-from app.services import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -257,11 +256,17 @@ TIME: morning = AM, afternoon = PM when ambiguous.
 }
 
 
-def build_system_prompt(
+def _build_prompt_blocks(
     field_schema: list[dict],
     existing_fields: dict[str, dict],
     workflow_id: str | None = None,
-) -> str:
+) -> tuple[str, str, str]:
+    """Assemble the three variable blocks the managed prompt template expects.
+
+    Returns (fields_block, already_block, hint_block). The managed
+    `overlay.extract_fields_final` prompt (see scripts/seed_intelligence_phase2a.py)
+    glues these blocks together inside its Jinja template.
+    """
     descs: list[str] = []
     for f in field_schema:
         line = f'- {f["field_key"]}: {f["prompt"]}'
@@ -294,7 +299,6 @@ def build_system_prompt(
                 f'- {key}: "{shown}" (keep unless user clearly stated a different value)'
             )
 
-    today_str = date.today().isoformat()
     already_block = (
         "\nAlready extracted (preserve unless clearly overridden):\n"
         + "\n".join(already_lines)
@@ -306,6 +310,21 @@ def build_system_prompt(
     hint = WORKFLOW_EXTRACTION_HINTS.get(workflow_id or "", "").strip()
     hint_block = f"\n\nWorkflow-specific vocabulary:\n{hint}\n" if hint else ""
 
+    return fields_block, already_block, hint_block
+
+
+# Backwards-compat alias so existing tests / callers that import
+# build_system_prompt continue to work. Returns the concatenated skeleton
+# identical to the pre-migration output.
+def build_system_prompt(
+    field_schema: list[dict],
+    existing_fields: dict[str, dict],
+    workflow_id: str | None = None,
+) -> str:
+    fields_block, already_block, hint_block = _build_prompt_blocks(
+        field_schema, existing_fields, workflow_id
+    )
+    today_str = date.today().isoformat()
     return (
         "You extract structured workflow field values from a user's natural-language "
         "description. Output JSON only, matching the requested schema.\n\n"
@@ -502,16 +521,25 @@ def extract(
     if not schema:
         return {"fields": {}, "raw_input": input_text}
 
-    system_prompt = build_system_prompt(schema, existing, workflow_id=workflow.id)
+    # Build the fields_block / already_block / hint_block the managed prompt expects.
+    fields_block, already_block, hint_block = _build_prompt_blocks(
+        schema, existing, workflow_id=workflow.id
+    )
     try:
-        # is_final toggles to the more accurate model. ai_service.call_anthropic
-        # does not expose model override today so we always use its default;
-        # this is a seam for future upgrade.
+        from app.services.intelligence import extraction_service
+
+        # is_final is a legacy seam; both paths go through final_extract in
+        # Phase 2a since the command bar only calls with is_final at submit time.
         _ = is_final
-        result = ai_service.call_anthropic(
-            system_prompt=system_prompt,
-            user_message=input_text,
-            max_tokens=400,
+        result = extraction_service.final_extract(
+            db,
+            workflow_id=workflow.id,
+            input_text=input_text,
+            company_id=company_id,
+            session_id=None,  # TODO Phase 2b: plumb session_id through from the UI
+            fields_block=fields_block,
+            already_block=already_block,
+            hint_block=hint_block,
         )
     except Exception as e:
         logger.debug("Extraction failed: %s", e)

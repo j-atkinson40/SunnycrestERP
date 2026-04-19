@@ -154,27 +154,33 @@ def get_briefing(
     if overdue_by_customer:
         largest_overdue = f"{overdue_by_customer[0]} owes ${float(overdue_by_customer[1]):,.2f} overdue"
 
-    context = f"""Overdue AR: {summary['ar_overdue_count']} invoices totaling ${summary['ar_overdue_total']:,.2f}.
-AP due this week: ${summary.get('ap_due_this_week', 0):,.2f}.
-Payments received today: ${summary['payments_today_total']:,.2f} ({summary['payments_today_count']} payments).
-Action required alerts: {alerts_text}.
-Largest overdue: {largest_overdue or 'none'}."""
-
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=BRIEFING_MODEL,
-            max_tokens=300,
-            system=(
-                "You are a financial assistant for a manufacturing business. "
-                "Write a concise morning briefing (3-5 sentences) based on the data provided. "
-                "Lead with the most urgent item. Be direct and specific with dollar amounts. "
-                "Do not use bullet points. Write in second person (you have, you owe)."
-            ),
-            messages=[{"role": "user", "content": context}],
+        # Phase 2c-2 migration — briefing.financial_board (plain-text response,
+        # force_json=false). The managed prompt carries the system prompt
+        # verbatim; we supply each summary metric as a named variable so the
+        # prompt's Jinja template can render the context section consistently.
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="briefing.financial_board",
+            variables={
+                "ar_overdue_count": summary["ar_overdue_count"],
+                "ar_overdue_total": f"{summary['ar_overdue_total']:,.2f}",
+                "ap_due_this_week": f"{summary.get('ap_due_this_week', 0):,.2f}",
+                "payments_today_total": f"{summary['payments_today_total']:,.2f}",
+                "payments_today_count": summary["payments_today_count"],
+                "alerts_text": alerts_text,
+                "largest_overdue": largest_overdue or "none",
+            },
+            company_id=tid,
+            caller_module="financials_board.get_briefing",
+            caller_entity_type="user",
+            caller_entity_id=current_user.id,
         )
-        briefing_text = response.content[0].text
+        briefing_text = result.response_text if result.status == "success" else None
+        if briefing_text is None and result.error_message:
+            logger.error("Financial briefing failed: %s", result.error_message)
     except Exception as e:
         logger.error(f"Financial briefing generation failed: {e}")
         briefing_text = None

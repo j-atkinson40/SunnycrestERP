@@ -27,6 +27,7 @@ from app.api.routes import workflows as workflow_routes
 from app.api.routes import vault_documents as vault_documents_routes
 from app.api.routes import saved_orders as saved_orders_routes
 from app.api.routes import external_accounts as external_accounts_routes
+from app.api.routes import intelligence as intelligence_routes
 from app.api.routes import (   # noqa: E402 — continuation of main import
     call_intelligence,
     ringcentral,
@@ -653,4 +654,9 @@ v1_router.include_router(
 # Vault Documents (Phase W-2 — native document layer on R2)
 v1_router.include_router(
     vault_documents_routes.router, prefix="/vault-documents", tags=["Vault Documents"]
+)
+
+# Bridgeable Intelligence — unified AI layer (Phase 1 backbone)
+v1_router.include_router(
+    intelligence_routes.router, prefix="/intelligence", tags=["Intelligence"]
 )

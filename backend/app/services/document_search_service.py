@@ -17,7 +17,6 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from app.models.command_bar import DocumentSearchIndex
-from app.services import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,13 @@ def _best_chunk(doc: DocumentSearchIndex, query: str) -> dict | None:
     return best or chunks[0]
 
 
-def _extract_answer(query: str, top_chunks: list[dict]) -> dict | None:
+def _extract_answer(
+    query: str,
+    top_chunks: list[dict],
+    *,
+    db=None,
+    company_id: str | None = None,
+) -> dict | None:
     if not top_chunks:
         return None
     sections = []
@@ -91,14 +96,31 @@ def _extract_answer(query: str, top_chunks: list[dict]) -> dict | None:
         title = c.get("section_title") or f"Section {i + 1}"
         content = c.get("content") or ""
         sections.append(f"[Section {i}] {title}:\n{content}")
-    user_msg = f"Query: {query}\n\nDocument sections:\n\n" + "\n\n".join(sections)
+    sections_block = "\n\n".join(sections)
     try:
-        result = ai_service.call_anthropic(
-            system_prompt=_ANSWER_SYSTEM_PROMPT,
-            user_message=user_msg,
-            max_tokens=300,
+        # Phase 2c-4 migration — commandbar.extract_document_answer
+        from app.services.intelligence import intelligence_service
+
+        if db is None:
+            from app.database import SessionLocal
+            local_db = SessionLocal()
+            try:
+                return _extract_answer(query, top_chunks, db=local_db, company_id=company_id)
+            finally:
+                local_db.close()
+
+        intel = intelligence_service.execute(
+            db,
+            prompt_key="commandbar.extract_document_answer",
+            variables={"query": query, "sections": sections_block},
+            company_id=company_id,
+            caller_module="document_search_service._extract_answer",
+            caller_entity_type=None,
         )
-        if not isinstance(result, dict) or not result.get("found"):
+        if intel.status != "success" or not isinstance(intel.response_parsed, dict):
+            return None
+        result = intel.response_parsed
+        if not result.get("found"):
             return None
         return result
     except Exception as e:  # pragma: no cover — network/API failures ok
@@ -130,7 +152,7 @@ def search(
             if c:
                 top_chunks.append(c)
                 top_chunk_doc_ix.append(i)
-        answer = _extract_answer(query, top_chunks)
+        answer = _extract_answer(query, top_chunks, db=db, company_id=company_id)
 
     if answer and answer.get("answer"):
         src_ix = int(answer.get("source_chunk_index") or 0)

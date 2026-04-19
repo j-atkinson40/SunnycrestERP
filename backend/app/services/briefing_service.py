@@ -11,7 +11,6 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-import anthropic
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -1129,11 +1128,20 @@ def get_secondary_critical_items(
 
 
 def _call_briefing_api(
-    system_prompt: str, user_prompt: str
+    db: Session,
+    area: str,
+    user_prompt: str,
+    company_id: str | None,
+    user_id: str | None,
 ) -> tuple[str, dict, int]:
-    """Call Claude for briefing generation. Returns (text, usage_dict, duration_ms).
+    """Generate the briefing via the managed `briefing.daily_summary` prompt.
 
-    Falls back to a simple message if the API key is not configured.
+    The prompt's system template selects the area-specific tone via a Jinja
+    conditional, so the 5 legacy SYSTEM_PROMPTS variants now live as prompt
+    content (admin-editable) rather than Python constants.
+
+    Returns (text, usage_dict, duration_ms). Errors are converted into friendly
+    fallback strings to preserve prior UX — the user sees a briefing, not a 500.
     """
     if not settings.ANTHROPIC_API_KEY:
         logger.warning("ANTHROPIC_API_KEY not set; returning fallback briefing")
@@ -1145,35 +1153,40 @@ def _call_briefing_api(
 
     start = time.monotonic()
     try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model=BRIEFING_MODEL,
-            max_tokens=BRIEFING_MAX_TOKENS,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        duration_ms = int((time.monotonic() - start) * 1000)
-        text = message.content[0].text
-        usage = {
-            "input_tokens": message.usage.input_tokens,
-            "output_tokens": message.usage.output_tokens,
-        }
-        return text, usage, duration_ms
+        from app.services.intelligence import intelligence_service
 
-    except anthropic.RateLimitError:
-        logger.warning("Anthropic rate limit hit during briefing generation")
-        return (
-            "1. Briefing temporarily unavailable due to rate limiting. Try again shortly.",
-            {"input_tokens": 0, "output_tokens": 0},
-            int((time.monotonic() - start) * 1000),
+        result = intelligence_service.execute(
+            db,
+            prompt_key="briefing.daily_summary",
+            variables={"area": area, "user_prompt": user_prompt},
+            company_id=company_id,
+            caller_module="briefing_service",
+            caller_entity_type="user" if user_id else None,
+            caller_entity_id=user_id,
         )
-    except anthropic.AuthenticationError:
-        logger.error("Anthropic auth failed during briefing generation")
+        duration_ms = result.latency_ms or int((time.monotonic() - start) * 1000)
+        if result.status == "success" and result.response_text:
+            return (
+                result.response_text,
+                {
+                    "input_tokens": result.input_tokens or 0,
+                    "output_tokens": result.output_tokens or 0,
+                },
+                duration_ms,
+            )
+        # Map intelligence statuses to the legacy fallback messages
+        if result.status == "rate_limited":
+            return (
+                "1. Briefing temporarily unavailable due to rate limiting. Try again shortly.",
+                {"input_tokens": 0, "output_tokens": 0},
+                duration_ms,
+            )
         return (
-            "1. Briefing unavailable — authentication error. Contact admin.",
+            "1. Briefing generation failed. The system will retry on next request.",
             {"input_tokens": 0, "output_tokens": 0},
-            int((time.monotonic() - start) * 1000),
+            duration_ms,
         )
+
     except Exception as e:
         logger.error("Unexpected error during briefing generation: %s", e)
         return (
@@ -1692,11 +1705,10 @@ def generate_functional_area_briefing(
 
     user_prompt += "\n\nGenerate today's briefing."
 
-    # Get system prompt
-    system_prompt = SYSTEM_PROMPTS.get(primary_area, SYSTEM_PROMPTS["full_admin"])
-
-    # Call Claude
-    content, token_usage, duration_ms = _call_briefing_api(system_prompt, user_prompt)
+    # Call Intelligence layer (managed prompt selects the area-specific tone)
+    content, token_usage, duration_ms = _call_briefing_api(
+        db, primary_area, user_prompt, user.company_id, user.id
+    )
 
     return content, context, token_usage, duration_ms
 

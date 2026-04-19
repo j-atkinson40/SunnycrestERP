@@ -4,7 +4,6 @@ import logging
 import re
 from decimal import Decimal
 
-import anthropic
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -845,29 +844,44 @@ Examples of billing term text to look for:
 - Any section titled "Terms", "Payment Terms", "Billing Policy" """
 
     try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model=ANALYSIS_MODEL,
-            max_tokens=16384,  # Large enough for 50+ product price lists
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
+        # Phase 2c-1 migration — managed prompt `pricing.analyze_price_list`
+        # carries the system prompt + user template verbatim. Post-processing
+        # (bundle grouping, exact-match promotion, charge reclassification)
+        # stays in this caller.
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="pricing.analyze_price_list",
+            variables={
+                "catalog_ref": catalog_ref,
+                "wilbert_variations": WILBERT_VARIATIONS,
+                "text": text,
+            },
+            company_id=imp.tenant_id,
+            caller_module="price_list_analysis_service.analyze_price_list",
+            caller_entity_type="price_list_import",
+            caller_entity_id=imp.id,
+            caller_price_list_import_id=imp.id,
         )
 
-        response_text = message.content[0].text
-        stop_reason = message.stop_reason
+        response_text = result.response_text or ""
+        # intelligence_service doesn't expose stop_reason; detect truncation
+        # heuristically — a complete JSON payload ends in '}' or ']'. If not,
+        # treat as truncated so _try_parse_json runs its repair path.
+        is_truncated = bool(response_text and response_text.rstrip()[-1:] not in ("}", "]"))
+        if is_truncated:
+            logger.warning("Claude response appears truncated — attempting JSON repair")
 
-        # If truncated (max_tokens hit), try to repair the JSON
-        if stop_reason == "max_tokens":
-            logger.warning("Claude response was truncated — attempting JSON repair")
-
-        # Strip code fences if present
-        cleaned = re.sub(r"^```(?:json)?\s*\n?", "", response_text.strip())
-        cleaned = re.sub(r"\n?\s*```$", "", cleaned)
-
-        # Fix common JSON issues: trailing commas
-        cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
-
-        parsed = _try_parse_json(cleaned, response_text, stop_reason == "max_tokens")
+        # Prefer the already-parsed JSON when the layer successfully parsed it,
+        # otherwise fall through to the regex-based repair on response_text.
+        if isinstance(result.response_parsed, dict):
+            parsed = result.response_parsed
+        else:
+            cleaned = re.sub(r"^```(?:json)?\s*\n?", "", response_text.strip())
+            cleaned = re.sub(r"\n?\s*```$", "", cleaned)
+            cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
+            parsed = _try_parse_json(cleaned, response_text, is_truncated)
         if parsed is None:
             imp.status = "failed"
             imp.error_message = "Could not parse Claude response as JSON"
@@ -894,8 +908,8 @@ Examples of billing term text to look for:
 
         imp.extraction_token_usage = json.dumps(
             {
-                "input_tokens": message.usage.input_tokens,
-                "output_tokens": message.usage.output_tokens,
+                "input_tokens": result.input_tokens or 0,
+                "output_tokens": result.output_tokens or 0,
             }
         )
 

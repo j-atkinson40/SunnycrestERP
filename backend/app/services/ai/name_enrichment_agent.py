@@ -139,20 +139,28 @@ def enrich_company_name(db: Session, entity: CompanyEntity, use_google_places: b
         except Exception:
             logger.exception("Google Places lookup failed for %s", entity.name)
 
-    # Claude fallback
+    # Phase 2c-4 migration — managed crm.suggest_complete_name
     if not suggested_name or confidence < Decimal("0.70"):
         try:
-            from app.services.ai_service import call_anthropic
+            from app.services.intelligence import intelligence_service
+
             suffix_type = "cemetery" if effective_type == "cemetery" else "funeral home"
-            prompt = f"""A precast concrete manufacturer has a {suffix_type} in their CRM with the shorthand name "{entity.name}".
-Location: {entity.city or 'unknown'}, {entity.state or 'unknown'}
-
-What is the most likely complete professional name? Add "Cemetery", "Memorial Gardens", "Funeral Home" etc as appropriate.
-Return JSON only: {{"suggested_name": "...", "confidence": 0.0-1.0, "reasoning": "..."}}"""
-
-            response = call_anthropic(prompt, max_tokens=100)
-            if response:
-                claude_data = json.loads(response)
+            intel = intelligence_service.execute(
+                db,
+                prompt_key="crm.suggest_complete_name",
+                variables={
+                    "suffix_type": suffix_type,
+                    "name": entity.name,
+                    "city": entity.city or "unknown",
+                    "state": entity.state or "unknown",
+                },
+                company_id=entity.company_id,
+                caller_module="ai.name_enrichment_agent.enrich_company_name",
+                caller_entity_type="company_entity",
+                caller_entity_id=entity.id,
+            )
+            if intel.status == "success" and isinstance(intel.response_parsed, dict):
+                claude_data = intel.response_parsed
                 claude_name = claude_data.get("suggested_name", "")
                 claude_conf = float(claude_data.get("confidence", 0.5))
 

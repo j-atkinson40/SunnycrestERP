@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 from app.models.company_entity import CompanyEntity
 from app.models.product import Product
 from app.models import PriceListItem, PriceListVersion, ProductBundle
-from app.services import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -896,21 +895,27 @@ def _try_claude_catalog_answer(
         sku = p.sku or "n/a"
         lines.append(f"- {p.name} (SKU {sku}, {price_str})")
         by_name[p.name.lower()] = p
-    context = "Available products:\n" + "\n".join(lines)
-    user_msg = f"Question: {q}\n\n{context}"
+    catalog_lines = "Available products:\n" + "\n".join(lines)
 
     try:
-        result = ai_service.call_anthropic(
-            system_prompt=_AI_ANSWER_SYSTEM_PROMPT,
-            user_message=user_msg,
-            max_tokens=250,
+        # Phase 2c-4 migration — commandbar.answer_catalog_question
+        from app.services.intelligence import intelligence_service
+
+        intel = intelligence_service.execute(
+            db,
+            prompt_key="commandbar.answer_catalog_question",
+            variables={"query": q, "catalog_lines": catalog_lines},
+            company_id=company_id,
+            caller_module="command_bar_data_search._try_claude_catalog_answer",
+            caller_entity_type=None,
         )
     except Exception as e:  # pragma: no cover — network / API issues ok
         logger.debug("Claude catalog answer failed: %s", e)
         return None
 
-    if not isinstance(result, dict):
+    if intel.status != "success" or not isinstance(intel.response_parsed, dict):
         return None
+    result = intel.response_parsed
     answer = result.get("answer")
     if not answer:
         return None

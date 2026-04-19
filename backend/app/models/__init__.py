@@ -325,6 +325,16 @@ from app.models.workflow import (
 )
 from app.models.vault_document import VaultDocument
 from app.models.command_bar import DocumentSearchIndex, CommandBarHistory
+from app.models.intelligence import (
+    IntelligenceConversation,
+    IntelligenceExecution,
+    IntelligenceExperiment,
+    IntelligenceMessage,
+    IntelligenceModelRoute,
+    IntelligencePrompt,
+    IntelligencePromptAuditLog,
+    IntelligencePromptVersion,
+)
 from app.models.saved_order import SavedOrder
 from app.models.tenant_external_account import TenantExternalAccount
 from app.models.playwright_execution_log import PlaywrightExecutionLog
@@ -649,4 +659,12 @@ __all__ = [
     "DocumentSearchIndex",
     "CommandBarHistory",
     "VaultDocument",
+    "IntelligenceConversation",
+    "IntelligenceExecution",
+    "IntelligenceExperiment",
+    "IntelligenceMessage",
+    "IntelligenceModelRoute",
+    "IntelligencePrompt",
+    "IntelligencePromptAuditLog",
+    "IntelligencePromptVersion",
 ]

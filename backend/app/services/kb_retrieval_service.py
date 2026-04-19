@@ -18,7 +18,6 @@ from app.models.kb_category import KBCategory
 from app.models.kb_chunk import KBChunk
 from app.models.kb_document import KBDocument
 from app.models.kb_pricing_entry import KBPricingEntry
-from app.services.ai_service import call_anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +211,14 @@ Respond with JSON:
 }"""
 
 
-def _synthesize_answer(query: str, chunks: list[dict], pricing: list[PricingResult]) -> tuple[str, str]:
+def _synthesize_answer(
+    query: str,
+    chunks: list[dict],
+    pricing: list[PricingResult],
+    *,
+    db=None,
+    tenant_id: str | None = None,
+) -> tuple[str, str]:
     """Use Claude to synthesize an answer from retrieved context."""
     context_parts = []
 
@@ -236,18 +242,33 @@ def _synthesize_answer(query: str, chunks: list[dict], pricing: list[PricingResu
     if not context_parts:
         return "No relevant information found in the knowledge base.", "low"
 
-    user_message = (
-        f"Question: {query}\n\n"
-        f"Context:\n\n" + "\n\n---\n\n".join(context_parts)
-    )
+    context_block = "\n\n---\n\n".join(context_parts)
 
     try:
-        result = call_anthropic(
-            system_prompt=SYNTHESIS_SYSTEM_PROMPT,
-            user_message=user_message,
-            max_tokens=512,
+        # Phase 2c-4 migration — kb.synthesize_call_answer
+        from app.services.intelligence import intelligence_service
+
+        if db is None:
+            from app.database import SessionLocal
+            local_db = SessionLocal()
+            try:
+                return _synthesize_answer(
+                    query, chunks, pricing, db=local_db, tenant_id=tenant_id
+                )
+            finally:
+                local_db.close()
+
+        intel = intelligence_service.execute(
+            db,
+            prompt_key="kb.synthesize_call_answer",
+            variables={"query": query, "context_block": context_block},
+            company_id=tenant_id,
+            caller_module="kb_retrieval_service._synthesize_answer",
+            caller_entity_type=None,
         )
-        return result.get("answer", ""), result.get("confidence", "medium")
+        if intel.status == "success" and isinstance(intel.response_parsed, dict):
+            return intel.response_parsed.get("answer", ""), intel.response_parsed.get("confidence", "medium")
+        raise RuntimeError(intel.error_message or intel.status)
     except Exception:
         logger.exception("KB synthesis failed for query: %s", query)
         # Fall back to raw results
@@ -311,7 +332,9 @@ def retrieve_for_call(
 
     # Synthesize answer
     if kr.pricing_results or kr.results:
-        kr.synthesis, kr.confidence = _synthesize_answer(query, kr.results, kr.pricing_results)
+        kr.synthesis, kr.confidence = _synthesize_answer(
+            query, kr.results, kr.pricing_results, db=db, tenant_id=tenant_id,
+        )
     else:
         kr.synthesis = "No relevant information found in the knowledge base for this query."
         kr.confidence = "low"

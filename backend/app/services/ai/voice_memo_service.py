@@ -39,41 +39,51 @@ def transcribe_audio(audio_bytes: bytes, content_type: str = "audio/webm") -> st
         return None
 
 
-def extract_memo_data(transcript: str, company_context: str | None = None) -> dict:
-    """Use Claude to extract structured data from a voice memo transcript."""
+def extract_memo_data(
+    transcript: str,
+    company_context: str | None = None,
+    *,
+    db=None,
+    tenant_id: str | None = None,
+    master_company_id: str | None = None,
+) -> dict:
+    """Phase 2c-4 — managed crm.extract_voice_memo prompt."""
+    fallback = {"title": transcript[:100], "body": transcript, "activity_type": "note", "confidence": 0.5}
     try:
-        from app.services.ai_service import call_anthropic
-    except ImportError:
-        return {"title": transcript[:100], "body": transcript, "activity_type": "note", "confidence": 0.5}
+        from app.services.intelligence import intelligence_service
 
-    prompt = f"""Extract structured data from this voice memo by a business owner/employee at a precast concrete manufacturer.
+        if db is None:
+            from app.database import SessionLocal
+            local_db = SessionLocal()
+            try:
+                return extract_memo_data(
+                    transcript, company_context,
+                    db=local_db, tenant_id=tenant_id, master_company_id=master_company_id,
+                )
+            finally:
+                local_db.close()
 
-Return JSON only:
-{{
-  "activity_type": "call"|"visit"|"note"|"complaint"|"follow_up",
-  "contact_name": string or null,
-  "title": "brief 1-line summary",
-  "body": "full cleaned-up notes",
-  "outcome": string or null,
-  "follow_up_needed": boolean,
-  "follow_up_description": string or null,
-  "follow_up_days": integer or null,
-  "action_items": ["list of action items"]
-}}
-
-Voice memo transcript:
-{transcript}
-
-{f"Company context: {company_context}" if company_context else ""}"""
-
-    response = call_anthropic(prompt, max_tokens=300)
-    if not response:
-        return {"title": transcript[:100], "body": transcript, "activity_type": "note", "confidence": 0.5}
-
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        return {"title": transcript[:100], "body": transcript, "activity_type": "note", "confidence": 0.5}
+        company_context_block = (
+            f"Company context: {company_context}" if company_context else ""
+        )
+        intel = intelligence_service.execute(
+            db,
+            prompt_key="crm.extract_voice_memo",
+            variables={
+                "transcript": transcript,
+                "company_context_block": company_context_block,
+            },
+            company_id=tenant_id,
+            caller_module="ai.voice_memo_service.extract_memo_data",
+            caller_entity_type="company_entity" if master_company_id else None,
+            caller_entity_id=master_company_id,
+        )
+        if intel.status == "success" and isinstance(intel.response_parsed, dict):
+            return intel.response_parsed
+        return fallback
+    except Exception:
+        logger.exception("Voice memo extraction failed")
+        return fallback
 
 
 def process_voice_memo(
@@ -105,7 +115,10 @@ def process_voice_memo(
             company_context = f"{entity.name} ({entity.city}, {entity.state})"
 
     # Extract structured data
-    memo_data = extract_memo_data(transcript, company_context)
+    memo_data = extract_memo_data(
+        transcript, company_context,
+        db=db, tenant_id=tenant_id, master_company_id=master_company_id,
+    )
 
     # Create activity
     follow_up_date = None

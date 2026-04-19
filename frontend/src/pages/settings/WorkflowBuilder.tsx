@@ -34,6 +34,7 @@ import { InterStepDropZone, EndDropZone } from "@/components/workflow/DropZones"
 import { PlaceholderCard } from "@/components/workflow/PlaceholderCard"
 import VariablePicker, { type StepSummary as PickerStepSummary } from "@/components/workflow/VariablePicker"
 import CredentialModal from "@/components/workflow/CredentialModal"
+import { AiPromptStepConfig } from "@/components/workflows/AiPromptStepConfig"
 import {
   RUN_STATUS_DISPLAY,
   TRIGGER_SOURCE_DISPLAY,
@@ -46,7 +47,13 @@ import {
 // Types
 // ─────────────────────────────────────────────────────────────────────
 
-type StepType = "input" | "action" | "playwright_action" | "condition" | "output"
+type StepType =
+  | "input"
+  | "action"
+  | "ai_prompt"
+  | "playwright_action"
+  | "condition"
+  | "output"
 
 interface Step {
   step_order: number
@@ -561,6 +568,7 @@ function SidebarEditorHeader({
   const TYPE_LABELS: Record<string, string> = {
     input: "Collect Input",
     action: "Action",
+    ai_prompt: "AI Prompt",
     playwright_action: "Automation",
     condition: "Condition",
     output: "Output",
@@ -920,6 +928,8 @@ function defaultConfigForType(type: StepType): Record<string, unknown> {
       return { prompt: "", input_type: "text", required: true }
     case "action":
       return { action_type: "show_confirmation", message: "" }
+    case "ai_prompt":
+      return { prompt_key: "", variables: {}, store_output_as: "result" }
     case "playwright_action":
       return { script_name: "", input_mapping: {}, output_mapping: {}, requires_approval: false }
     case "condition":
@@ -978,6 +988,7 @@ function BlockEditor({
           >
             <option value="input">Input — ask the user</option>
             <option value="action">Action — do something</option>
+            <option value="ai_prompt">AI Prompt — run a managed prompt</option>
             <option value="condition">Condition — branch</option>
             <option value="output">Output — final result</option>
           </select>
@@ -1052,6 +1063,14 @@ function BlockEditor({
               />
             </Field>
           </>
+        )}
+
+        {step.step_type === "ai_prompt" && (
+          <AiPromptStepConfig
+            cfg={cfg}
+            priorSteps={priorSteps}
+            onConfigChange={onConfigChange}
+          />
         )}
 
         {step.step_type === "playwright_action" && (

@@ -32,6 +32,11 @@ class User(Base):
         String(36), ForeignKey("roles.id"), nullable=False, index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Phase 3b — gates editing of platform-global prompts. Set manually
+    # (no UI yet). See backend/app/api/deps.py::require_super_admin.
+    is_super_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     company_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("companies.id"), nullable=False, index=True
     )

@@ -1,8 +1,12 @@
-"""Briefing intelligence — narrative generation, prep notes, weekly summary."""
+"""Briefing intelligence — narrative generation, prep notes, weekly summary.
 
-import json
+Phase 2c-4 migration: each function calls the Intelligence layer directly
+with a dedicated managed prompt_key. The shared _call_claude helper was
+deleted as part of this migration.
+"""
+
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -10,15 +14,6 @@ from sqlalchemy.orm import Session
 from app.services import ai_settings_service
 
 logger = logging.getLogger(__name__)
-
-
-def _call_claude(prompt: str, max_tokens: int = 300) -> str | None:
-    try:
-        from app.services.ai_service import call_anthropic
-        return call_anthropic(prompt, max_tokens=max_tokens)
-    except Exception:
-        logger.exception("Claude API call failed")
-        return None
 
 
 def generate_narrative(
@@ -34,44 +29,49 @@ def generate_narrative(
     settings = ai_settings_service.get_effective_settings(db, tenant_id, user_id)
     tone = settings.get("briefing_narrative_tone", "concise")
 
-    # Get user name
     from app.models.user import User
     user = db.query(User).filter(User.id == user_id).first()
     user_name = user.first_name if user else "there"
 
-    # Get tenant name
     from app.models.company import Company
     company = db.query(Company).filter(Company.id == tenant_id).first()
     company_name = company.name if company else "your company"
 
     today_str = date.today().strftime("%A, %B %d")
-
-    # Extract counts from briefing data
     orders_count = briefing_data.get("today_count", 0)
     legacy_count = briefing_data.get("legacy_proofs_pending_review", 0)
     followup_count = briefing_data.get("crm_today_followups", 0)
     overdue_count = briefing_data.get("crm_overdue_followups", 0)
     at_risk_count = len(briefing_data.get("crm_at_risk_accounts", []))
-
     tone_instruction = "2-3 sentences max." if tone == "concise" else "4-6 sentences, more detail."
 
-    prompt = f"""You are writing a morning briefing narrative for {user_name}, who manages {company_name}, a precast concrete manufacturer.
+    try:
+        from app.services.intelligence import intelligence_service
 
-Write in second person. Be direct and specific. Prioritize urgent items. Sound like a knowledgeable assistant, not a robot.
-Tone: {tone_instruction}
-
-Today is {today_str}.
-
-Data:
-- Services/deliveries today: {orders_count}
-- Legacy proofs pending review: {legacy_count}
-- Follow-ups due today: {followup_count}
-- Overdue follow-ups: {overdue_count}
-- At-risk accounts: {at_risk_count}
-
-Write the narrative. Include what looks good AND what needs attention. Do not list everything — focus on what matters most."""
-
-    return _call_claude(prompt, max_tokens=200)
+        result = intelligence_service.execute(
+            db,
+            prompt_key="briefing.generate_narrative",
+            variables={
+                "user_name": user_name,
+                "company_name": company_name,
+                "tone_instruction": tone_instruction,
+                "today_str": today_str,
+                "orders_count": orders_count,
+                "legacy_count": legacy_count,
+                "followup_count": followup_count,
+                "overdue_count": overdue_count,
+                "at_risk_count": at_risk_count,
+            },
+            company_id=tenant_id,
+            caller_module="briefing_intelligence.generate_narrative",
+            caller_entity_type="user",
+            caller_entity_id=user_id,
+        )
+        if result.status == "success":
+            return result.response_text
+    except Exception:
+        logger.exception("Narrative generation failed")
+    return None
 
 
 def generate_prep_note(
@@ -100,7 +100,6 @@ def generate_prep_note(
         context_parts.append(f"Balance: ${float(customer.current_balance or 0):,.2f}")
         context_parts.append(f"Payment terms: {customer.payment_terms}")
 
-    # Recent orders
     try:
         if customer:
             orders = db.execute(text("""
@@ -108,12 +107,14 @@ def generate_prep_note(
                 WHERE customer_id = :cid ORDER BY created_at DESC LIMIT 3
             """), {"cid": customer.id}).fetchall()
             if orders:
-                order_lines = [f"#{o.number}: ${float(o.total):,.2f} ({o.created_at.strftime('%b %d')})" for o in orders]
+                order_lines = [
+                    f"#{o.number}: ${float(o.total):,.2f} ({o.created_at.strftime('%b %d')})"
+                    for o in orders
+                ]
                 context_parts.append(f"Recent orders: {', '.join(order_lines)}")
     except Exception:
         pass
 
-    # Health
     try:
         from app.models.manufacturer_company_profile import ManufacturerCompanyProfile
         profile = db.query(ManufacturerCompanyProfile).filter(
@@ -127,31 +128,39 @@ def generate_prep_note(
         pass
 
     context = "\n".join(context_parts)
+    activity_context_block = (
+        f"Last interaction context: {activity_context}" if activity_context else ""
+    )
 
-    prompt = f"""Generate a brief pre-call prep note for a call with {entity.name}.
+    try:
+        from app.services.intelligence import intelligence_service
 
-{f"Last interaction context: {activity_context}" if activity_context else ""}
+        result = intelligence_service.execute(
+            db,
+            prompt_key="briefing.generate_prep_note",
+            variables={
+                "entity_name": entity.name,
+                "activity_context_block": activity_context_block,
+                "context": context,
+            },
+            company_id=tenant_id,
+            caller_module="briefing_intelligence.generate_prep_note",
+            caller_entity_type="company_entity",
+            caller_entity_id=master_company_id,
+        )
+        if result.status == "success":
+            return result.response_text
+    except Exception:
+        logger.exception("Prep note generation failed")
+    return None
 
-Current data:
-{context}
 
-Provide:
-1. Quick situation summary (1 sentence)
-2. Key things to address (2-3 bullets)
-3. Any issues to watch (1-2 bullets if relevant)
-
-Be specific. Use actual data."""
-
-    return _call_claude(prompt, max_tokens=200)
-
-
-def generate_weekly_summary(db: Session, tenant_id: str) -> dict | None:
+def generate_weekly_summary(db: Session, tenant_id: str, user_id: str | None = None) -> dict | None:
     """Generate weekly business summary."""
     if not ai_settings_service.is_enabled(db, tenant_id, "weekly_summary"):
         return None
 
     try:
-        # This week vs last week
         this_week = db.execute(text("""
             SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue
             FROM sales_orders
@@ -169,14 +178,23 @@ def generate_weekly_summary(db: Session, tenant_id: str) -> dict | None:
         if not this_week:
             return None
 
-        prompt = f"""Write a weekly business summary for a precast concrete manufacturer. Be specific with numbers. Note trends (up/down). Under 100 words.
+        from app.services.intelligence import intelligence_service
 
-This week: {this_week.orders} orders, ${float(this_week.revenue):,.0f} revenue
-Last week: {last_week.orders if last_week else 0} orders, ${float(last_week.revenue if last_week else 0):,.0f} revenue
-
-Summarize performance and note any trends."""
-
-        summary_text = _call_claude(prompt, max_tokens=150)
+        result = intelligence_service.execute(
+            db,
+            prompt_key="briefing.generate_weekly_summary",
+            variables={
+                "this_week_orders": this_week.orders,
+                "this_week_revenue": f"{float(this_week.revenue):,.0f}",
+                "last_week_orders": last_week.orders if last_week else 0,
+                "last_week_revenue": f"{float(last_week.revenue if last_week else 0):,.0f}",
+            },
+            company_id=tenant_id,
+            caller_module="briefing_intelligence.generate_weekly_summary",
+            caller_entity_type="user" if user_id else None,
+            caller_entity_id=user_id,
+        )
+        summary_text = result.response_text if result.status == "success" else None
         if not summary_text:
             return None
 

@@ -1,0 +1,46 @@
+# Ruff config for the Bridgeable backend.
+#
+# Intelligence migration (Phase 1 through 2c-5) is complete. Every AI call
+# now routes through `app.services.intelligence.intelligence_service.execute`
+# with a managed prompt. The legacy `ai_service.py` wrapper was deleted in
+# Phase 2c-5.
+#
+# Today's enforcement runs through pytest (tests/test_intelligence_*_lint.py),
+# so the policy is live without requiring a ruff install. This file stands
+# ready if/when ruff is adopted.
+
+line-length = 120
+target-version = "py313"
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "TID",  # banned imports
+]
+
+# ── Forbid direct anthropic SDK usage outside the Intelligence package ──
+[lint.flake8-tidy-imports]
+banned-module-level-imports = ["anthropic"]
+
+[lint.flake8-tidy-imports.banned-api]
+"anthropic.Anthropic" = { msg = "Do not instantiate the Anthropic SDK directly. Route calls through app.services.intelligence.intelligence_service.execute() with a managed prompt." }
+"anthropic.AsyncAnthropic" = { msg = "Do not instantiate the AsyncAnthropic SDK directly. Streaming callers use app.services.intelligence.chat_service.send_message_streaming()." }
+
+# ── Permanent allowlist ─────────────────────────────────────────────────
+#
+# These are the only files authorized to import the anthropic SDK:
+#   intelligence/**              — the managed backbone
+#   api/routes/admin/chat.py     — streaming admin chat (uses AsyncAnthropic with managed prompt)
+#   tests/**                     — tests can mock/reference
+#   scripts/**                   — seed scripts reference model IDs
+#
+# NOTE: ai_service.py was deleted in Phase 2c-5. If it reappears, that's a
+# regression — remove it again.
+[lint.per-file-ignores]
+"app/services/intelligence/**" = ["TID251", "TID252"]
+"app/api/routes/admin/chat.py" = ["TID251", "TID252"]
+"tests/**" = ["TID251", "TID252"]
+"scripts/**" = ["TID251", "TID252"]

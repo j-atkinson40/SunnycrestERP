@@ -31,9 +31,9 @@ def orders_today(
         .filter(
             SalesOrder.company_id == current_user.company_id,
             SalesOrder.is_active == True,
-            func.date(SalesOrder.service_date) == today,
+            SalesOrder.scheduled_date == today,
         )
-        .order_by(SalesOrder.service_date)
+        .order_by(SalesOrder.scheduled_date)
         .all()
     )
 
@@ -46,7 +46,7 @@ def orders_today(
                 "order_number": getattr(o, "order_number", None),
                 "customer_name": getattr(o, "customer_name", None) or getattr(o, "bill_to_name", "Unknown"),
                 "cemetery_name": getattr(o, "cemetery_name", None) or getattr(o, "ship_to_name", None),
-                "service_time": o.service_date.isoformat() if o.service_date else None,
+                "service_time": o.scheduled_date.isoformat() if o.scheduled_date else None,
                 "status": getattr(o, "status", "pending"),
             }
             for o in orders
@@ -371,7 +371,7 @@ def at_risk_summary(
     at_risk = (
         db.query(CompanyEntity)
         .filter(
-            CompanyEntity.tenant_id == current_user.company_id,
+            CompanyEntity.company_id == current_user.company_id,
             CompanyEntity.is_active == True,
             CompanyEntity.customer_type.in_(["funeral_home", "cemetery"]),
         )

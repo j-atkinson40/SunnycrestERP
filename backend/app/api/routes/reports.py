@@ -137,22 +137,23 @@ class ParsePackageRequest(BaseModel):
 def parse_package_request(
     body: ParsePackageRequest,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=REPORT_MODEL, max_tokens=400,
-            system=(
-                "Parse an audit package request. Available reports: income_statement, balance_sheet, "
-                "trial_balance, gl_detail, ar_aging, ap_aging, sales_by_customer, sales_by_product, "
-                "invoice_register, payment_history, vendor_payment_history, cash_flow, tax_summary. "
-                "Full audit package: income_statement, balance_sheet, trial_balance, ar_aging, ap_aging, gl_detail, tax_summary. "
-                'Return JSON: {"package_name": str, "period_start": str, "period_end": str, "reports": [str], "confidence": float}'
-            ),
-            messages=[{"role": "user", "content": body.input}],
+        # Phase 2c-2 migration — reports.parse_audit_package_request
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="reports.parse_audit_package_request",
+            variables={"input": body.input},
+            company_id=current_user.company_id,
+            caller_module="reports.parse_package_request",
+            # Package request is ephemeral; no persisted entity to link.
         )
-        return json.loads(response.content[0].text)
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            return result.response_parsed
+        return {"error": result.error_message or f"status={result.status}", "confidence": 0}
     except Exception as e:
         return {"error": str(e), "confidence": 0}
 

@@ -4,17 +4,26 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def extract_text_from_file(file_content: bytes, file_type: str) -> str:
+def extract_text_from_file(
+    file_content: bytes,
+    file_type: str,
+    *,
+    company_id: str | None = None,
+    import_id: str | None = None,
+) -> str:
     """Extract text from a price list file.
     Supports: excel, csv, pdf, word.
     Returns plain text representation.
+
+    company_id / import_id are optional — they're threaded to the Intelligence
+    layer when PDF vision fallback runs (Phase 2c-1). Non-PDF types ignore them.
     """
     if file_type in ("excel", "xlsx", "xls"):
         return _extract_excel(file_content)
     elif file_type == "csv":
         return _extract_csv(file_content)
     elif file_type == "pdf":
-        return _extract_pdf(file_content)
+        return _extract_pdf(file_content, company_id=company_id, import_id=import_id)
     elif file_type in ("word", "docx", "doc"):
         return _extract_word(file_content)
     else:
@@ -53,7 +62,12 @@ def _extract_csv(content: bytes) -> str:
     return "\n".join(lines)
 
 
-def _extract_pdf(content: bytes) -> str:
+def _extract_pdf(
+    content: bytes,
+    *,
+    company_id: str | None = None,
+    import_id: str | None = None,
+) -> str:
     """Extract text from PDF.
 
     Strategy 1: pdfplumber (fast, handles text-layer PDFs).
@@ -81,60 +95,80 @@ def _extract_pdf(content: bytes) -> str:
         logger.warning("pdfplumber failed (%s) — trying Claude vision fallback", e)
 
     # Strategy 2 — Claude vision (handles scanned/image-based PDFs)
-    return _extract_pdf_via_claude(content)
+    return _extract_pdf_via_claude(content, company_id=company_id, import_id=import_id)
 
 
-def _extract_pdf_via_claude(content: bytes) -> str:
-    """Send the PDF to Claude and ask it to extract all text content."""
+def _extract_pdf_via_claude(
+    content: bytes,
+    *,
+    db=None,
+    company_id: str | None = None,
+    import_id: str | None = None,
+) -> str:
+    """Send the PDF to Claude via the managed `pricing.extract_pdf_text` prompt.
+
+    Phase 2c-1 migration — the raw PDF is redacted from the audit row (only
+    sha256 + bytes length are preserved). company_id is required to scope the
+    execution row; if the caller can't provide it yet we fall back to an
+    unscoped audit row (caller_module alone).
+
+    import_id is populated when the PriceListImport row already exists at call
+    time (future refactor). Today, extraction runs BEFORE the import record
+    is created, so import_id is typically None — the subsequent analyze step
+    carries that linkage.
+    """
     import base64
 
+    from app.config import settings
+
+    if not settings.ANTHROPIC_API_KEY:
+        logger.warning("No ANTHROPIC_API_KEY — cannot use Claude PDF fallback")
+        return ""
+
+    if db is None:
+        # The managed layer requires a Session. Open a short-lived one so the
+        # caller can keep the simple synchronous API (extract_text_from_file
+        # currently doesn't take a db). Close before returning.
+        from app.database import SessionLocal
+
+        local_db = SessionLocal()
+        try:
+            return _extract_pdf_via_claude(
+                content, db=local_db, company_id=company_id, import_id=import_id
+            )
+        finally:
+            local_db.close()
+
     try:
-        import anthropic
+        from app.services.intelligence import intelligence_service
 
-        from app.config import settings
-
-        if not settings.ANTHROPIC_API_KEY:
-            logger.warning("No ANTHROPIC_API_KEY — cannot use Claude PDF fallback")
-            return ""
-
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         b64 = base64.standard_b64encode(content).decode("utf-8")
-
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=8192,
-            messages=[
+        result = intelligence_service.execute(
+            db,
+            prompt_key="pricing.extract_pdf_text",
+            variables={},
+            company_id=company_id,
+            caller_module="price_list_extraction_service._extract_pdf_via_claude",
+            caller_entity_type="price_list_import" if import_id else None,
+            caller_entity_id=import_id,
+            caller_price_list_import_id=import_id,
+            content_blocks=[
                 {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "document",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "application/pdf",
-                                "data": b64,
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": (
-                                "Extract all text content from this price list PDF. "
-                                "Preserve the layout as accurately as possible — "
-                                "keep section headers, product names, prices, and "
-                                "any notes exactly as they appear. "
-                                "Return only the extracted text, no commentary."
-                            ),
-                        },
-                    ],
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": b64,
+                    },
                 }
             ],
         )
-        extracted = message.content[0].text if message.content else ""
+        extracted = result.response_text or ""
         logger.info(
-            "Claude PDF extraction returned %d chars (tokens: in=%d out=%d)",
+            "Claude PDF extraction returned %d chars (tokens: in=%s out=%s)",
             len(extracted),
-            message.usage.input_tokens,
-            message.usage.output_tokens,
+            result.input_tokens,
+            result.output_tokens,
         )
         return extracted
     except Exception as e:

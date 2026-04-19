@@ -54,7 +54,7 @@ def generate_with_ai(
     military_service, hobbies, faith, accomplishments, special_memories,
     tone_preference.
     """
-    from app.services.ai_service import call_anthropic
+    from app.services.intelligence import intelligence_service
 
     # Load case data
     case = (
@@ -84,29 +84,50 @@ def generate_with_ai(
         "place_of_death_state": case.deceased_place_of_death_state,
     }
 
-    prompt = (
-        f"Write an obituary for {case.deceased_first_name} "
-        f"{case.deceased_middle_name + ' ' if case.deceased_middle_name else ''}"
-        f"{case.deceased_last_name}."
+    middle_name_part = (
+        f"{case.deceased_middle_name} " if case.deceased_middle_name else ""
     )
-    if biographical_data.get("tone_preference"):
-        prompt += f" Tone preference: {biographical_data['tone_preference']}."
-
+    tone_suffix = (
+        f" Tone preference: {biographical_data['tone_preference']}."
+        if biographical_data.get("tone_preference")
+        else ""
+    )
     context = {
         "case_details": case_data,
         "biographical_information": biographical_data,
     }
+    context_data_json = json.dumps(context, default=str)
 
-    # Store prompt for audit
-    full_prompt = f"{prompt}\n\nContext: {json.dumps(context, default=str)}"
-
-    # Call AI service
-    result = call_anthropic(
-        system_prompt=_OBITUARY_SYSTEM_PROMPT,
-        user_message=prompt,
-        context_data=context,
+    # Store prompt for audit (legacy field)
+    full_prompt = (
+        f"Write an obituary for {case.deceased_first_name} "
+        f"{middle_name_part}{case.deceased_last_name}.{tone_suffix}"
+        f"\n\nContext: {context_data_json}"
     )
 
+    # Phase 2c-4 migration — fh.obituary.generate
+    intel = intelligence_service.execute(
+        db,
+        prompt_key="fh.obituary.generate",
+        variables={
+            "first_name": case.deceased_first_name or "",
+            "middle_name_part": middle_name_part,
+            "last_name": case.deceased_last_name or "",
+            "tone_suffix": tone_suffix,
+            "context_data_json": context_data_json,
+        },
+        company_id=tenant_id,
+        caller_module="obituary_service.generate_with_ai",
+        caller_entity_type="fh_case",
+        caller_entity_id=case_id,
+        caller_fh_case_id=case_id,
+    )
+    if intel.status != "success" or not isinstance(intel.response_parsed, dict):
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI service failed: {intel.error_message or intel.status}",
+        )
+    result = intel.response_parsed
     obituary_text = result.get("obituary_text", "")
     if not obituary_text:
         raise HTTPException(

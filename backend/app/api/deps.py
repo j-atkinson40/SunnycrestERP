@@ -112,6 +112,26 @@ def require_admin(
     return current_user
 
 
+def require_super_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Phase 3b — gate for editing platform-global resources.
+
+    Platform-global prompts (company_id IS NULL) can only be edited by
+    super admins. The attribute is set manually today (no UI yet) via
+    a direct DB update:  UPDATE users SET is_super_admin=true WHERE ...
+    """
+    if not getattr(current_user, "is_super_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Super admin access required. Editing platform-global "
+                "prompts is restricted to users with is_super_admin=True."
+            ),
+        )
+    return current_user
+
+
 def require_permission(permission_key: str):
     """
     Dependency factory for permission-based authorization.

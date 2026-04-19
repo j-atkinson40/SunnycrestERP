@@ -90,6 +90,7 @@ def classify_customer_name(
     data: dict,
     _module: User = Depends(require_module("sales")),
     current_user: User = Depends(require_permission("customers.view")),
+    db: Session = Depends(get_db),
 ):
     """Classify a customer name using the rule + AI engine.
 
@@ -105,10 +106,17 @@ def classify_customer_name(
             "method": "name_rules",
             "reasoning": "Name is required",
         }
+    # Tenant name lookup for the managed prompt — fall back to default.
+    from app.models.company import Company
+    tenant = db.query(Company).filter_by(id=current_user.company_id).first()
+    tenant_name = tenant.name if tenant else "the Wilbert licensee"
     return classification_svc.classify_single(
         name=name,
         city=data.get("city"),
         state=data.get("state"),
+        db=db,
+        company_id=current_user.company_id,
+        tenant_name=tenant_name,
     )
 
 

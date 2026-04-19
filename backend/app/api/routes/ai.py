@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_module, require_permission
 from app.database import get_db
+
+logger = logging.getLogger(__name__)
 from app.models.customer import Customer
 from app.models.product import Product
 from app.models.user import User
@@ -22,7 +26,6 @@ from app.schemas.ai import (
     AIPromptRequest,
     AIPromptResponse,
 )
-from app.services.ai_service import call_anthropic, parse_ap_command, parse_inventory_command
 from app.services.ai_manufacturing_intents import parse_manufacturing_command
 from app.services.ai_funeral_home_intents import (
     classify_funeral_home_intent,
@@ -35,18 +38,64 @@ router = APIRouter()
 @router.post("/prompt", response_model=AIPromptResponse)
 def ai_prompt(
     request: AIPromptRequest,
+    response: Response,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
-    Send a prompt to the AI service and return structured JSON response.
-    Requires authentication (any logged-in user).
+    DEPRECATED — sunset planned 2027-04-18.
+
+    Phase 2c-5 status:
+      - Endpoint still functional for the 1 frontend allowlisted caller
+        (AICommandBar on pages/products.tsx).
+      - Internally routed through the managed `legacy.arbitrary_prompt` prompt
+        via `intelligence_service.execute()` — every call now produces a real
+        audit row with `prompt_id` set (no more `caller_module="legacy"` rows).
+      - Deprecation + Sunset headers remain for consumer visibility.
+      - This endpoint is the reason `legacy.arbitrary_prompt` exists; that
+        prompt will be sunset alongside the endpoint.
+
+    Callers that need new AI functionality MUST create a dedicated managed
+    prompt instead of using this endpoint.
     """
-    result = call_anthropic(
-        system_prompt=request.system_prompt,
-        user_message=request.user_message,
-        context_data=request.context_data,
+    import json as _json
+
+    from app.services.intelligence import intelligence_service
+
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "Sun, 18 Apr 2027 00:00:00 GMT"
+    response.headers["Link"] = (
+        '</docs/intelligence>; rel="deprecation"; '
+        'type="text/html"'
     )
-    return AIPromptResponse(success=True, data=result)
+    logger.warning(
+        "Deprecated endpoint /ai/prompt called by user=%s company=%s — "
+        "planned for removal 2027-04-18; migrate to intelligence_service.execute "
+        "with a managed prompt_key.",
+        current_user.id,
+        current_user.company_id,
+    )
+
+    intel = intelligence_service.execute(
+        db,
+        prompt_key="legacy.arbitrary_prompt",
+        variables={
+            "system_prompt": request.system_prompt,
+            "user_message": request.user_message,
+            "context_data_json": _json.dumps(request.context_data, default=str)
+            if request.context_data
+            else "",
+        },
+        company_id=current_user.company_id,
+        caller_module="ai.ai_prompt",
+        caller_entity_type=None,
+    )
+    if intel.status != "success" or not isinstance(intel.response_parsed, dict):
+        return AIPromptResponse(
+            success=False,
+            error=intel.error_message or f"status={intel.status}",
+        )
+    return AIPromptResponse(success=True, data=intel.response_parsed)
 
 
 @router.post("/parse-inventory", response_model=AIInventoryParseResponse)
@@ -74,7 +123,27 @@ def parse_inventory(
         for p in products
     ]
 
-    result = parse_inventory_command(request.user_input, catalog)
+    # Phase 2c-5 migration — managed extraction.inventory_command prompt
+    import json as _json
+
+    from app.services.intelligence import intelligence_service
+
+    intel = intelligence_service.execute(
+        db,
+        prompt_key="extraction.inventory_command",
+        variables={
+            "user_input": request.user_input,
+            "context_data_json": _json.dumps({"product_catalog": catalog}),
+        },
+        company_id=current_user.company_id,
+        caller_module="ai.parse_inventory",
+        caller_entity_type=None,
+    )
+    if intel.status != "success" or not isinstance(intel.response_parsed, dict):
+        return AIInventoryParseResponse(
+            success=False, error=intel.error_message or f"status={intel.status}"
+        )
+    result = intel.response_parsed
 
     # Handle multi-product commands
     if "commands" in result and isinstance(result["commands"], list):
@@ -108,8 +177,27 @@ def parse_ap(
     )
     catalog = [{"id": v.id, "name": v.name} for v in vendors]
 
-    result = parse_ap_command(request.user_input, catalog)
-    parsed = AIAPParsedResult(**result)
+    # Phase 2c-5 migration — managed extraction.ap_command prompt
+    import json as _json
+
+    from app.services.intelligence import intelligence_service
+
+    intel = intelligence_service.execute(
+        db,
+        prompt_key="extraction.ap_command",
+        variables={
+            "user_input": request.user_input,
+            "context_data_json": _json.dumps({"vendor_catalog": catalog}),
+        },
+        company_id=current_user.company_id,
+        caller_module="ai.parse_ap",
+        caller_entity_type=None,
+    )
+    if intel.status != "success" or not isinstance(intel.response_parsed, dict):
+        return AIAPParseResponse(
+            success=False, error=intel.error_message or f"status={intel.status}"
+        )
+    parsed = AIAPParsedResult(**intel.response_parsed)
     return AIAPParseResponse(success=True, result=parsed)
 
 
@@ -172,6 +260,8 @@ def ai_manufacturing_command(
         product_catalog=product_catalog,
         customer_catalog=customer_catalog,
         employee_names=employee_names,
+        db=db,
+        company_id=current_user.company_id,
     )
 
     intent = result.get("intent", "unknown")

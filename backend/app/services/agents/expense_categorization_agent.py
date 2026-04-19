@@ -288,25 +288,36 @@ class ExpenseCategorizationAgent(BaseAgent):
         return StepResult(message=msg, data=data, anomalies=anomalies)
 
     def _classify_single_line(self, line_info: dict) -> dict:
-        """Classify a single expense line using Claude Haiku."""
-        import anthropic
+        """Classify a single expense line via the Intelligence layer.
 
-        client = anthropic.Anthropic()
-        user_message = (
-            f"Vendor: {line_info['vendor_name']}\n"
-            f"Description: {line_info['description']}\n"
-            f"Amount: ${line_info['amount']:,.2f}"
+        Raises on failure — the caller already wraps this in try/except and
+        records the line as unclassified when it raises.
+        """
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            self.db,
+            prompt_key="agent.expense_categorization.classify",
+            variables={
+                "vendor_name": line_info["vendor_name"],
+                "description": line_info["description"],
+                "amount": f"{float(line_info['amount']):,.2f}",
+            },
+            company_id=self.tenant_id,
+            caller_module="agents.expense_categorization_agent",
+            caller_entity_type="agent_job",
+            caller_entity_id=self.job_id,
+            caller_agent_job_id=self.job_id,
         )
-
-        response = client.messages.create(
-            model=CLASSIFICATION_MODEL,
-            max_tokens=CLASSIFICATION_MAX_TOKENS,
-            system=CLASSIFICATION_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            return result.response_parsed
+        # Fall back to raw text parse for one-off JSON malformation — matches
+        # prior behavior of json.loads(response_text).
+        if result.response_text:
+            return json.loads(result.response_text)
+        raise RuntimeError(
+            f"Classification failed (status={result.status}, error={result.error_message})"
         )
-
-        result_text = response.content[0].text
-        return json.loads(result_text)
 
     # ------------------------------------------------------------------
     # STEP 3 — map_to_gl_accounts

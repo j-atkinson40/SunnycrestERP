@@ -16,7 +16,6 @@ from app.models.kb_category import KBCategory
 from app.models.kb_chunk import KBChunk
 from app.models.kb_document import KBDocument
 from app.models.kb_pricing_entry import KBPricingEntry
-from app.services.ai_service import call_anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -109,22 +108,43 @@ Always include a "summary" field with a 2-3 sentence plain-English description.
 Respond ONLY with valid JSON."""
 
 
-def _run_claude_parsing(raw_text: str, category_slug: str, tenant_vertical: str, extensions: list[str]) -> dict:
-    """Send raw text to Claude for structured extraction."""
-    user_message = (
-        f"Document category: {category_slug}\n"
-        f"Tenant vertical: {tenant_vertical}\n"
-        f"Enabled extensions: {', '.join(extensions) if extensions else 'none'}\n\n"
-        f"Document content:\n\n{raw_text[:30000]}"  # Cap input to avoid token limits
-    )
+def _run_claude_parsing(
+    db: Session,
+    raw_text: str,
+    category_slug: str,
+    tenant_vertical: str,
+    extensions: list[str],
+    *,
+    tenant_id: str | None = None,
+    document_id: str | None = None,
+) -> dict:
+    """Parse raw KB document text via the Intelligence layer.
 
+    Phase 2c-4 migration — routes through the managed `kb.parse_document`
+    prompt which branches internally on category_slug (pricing / product_specs
+    / personalization_options / company_policies / cemetery_policies / default).
+    """
     try:
-        result = call_anthropic(
-            system_prompt=PARSING_SYSTEM_PROMPT,
-            user_message=user_message,
-            max_tokens=4096,
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="kb.parse_document",
+            variables={
+                "category_slug": category_slug,
+                "tenant_vertical": tenant_vertical,
+                "extensions": ", ".join(extensions) if extensions else "none",
+                "raw_text": raw_text[:30000],  # Cap input to avoid token limits
+            },
+            company_id=tenant_id,
+            caller_module="kb_parsing_service._run_claude_parsing",
+            caller_entity_type="kb_document",
+            caller_entity_id=document_id,
+            caller_kb_document_id=document_id,
         )
-        return result
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            return result.response_parsed
+        return {"chunks": [raw_text], "summary": f"Parsing failed: {result.error_message}"}
     except Exception:
         logger.exception("Claude parsing failed")
         return {"chunks": [raw_text], "summary": "Parsing failed — raw text preserved."}
@@ -226,7 +246,10 @@ def parse_document(
 
         # Step 2 — Claude parsing
         extensions = enabled_extensions or []
-        parsed = _run_claude_parsing(raw_text, category_slug, tenant_vertical, extensions)
+        parsed = _run_claude_parsing(
+            db, raw_text, category_slug, tenant_vertical, extensions,
+            tenant_id=tenant_id, document_id=document_id,
+        )
         doc.parsed_content = json.dumps(parsed, default=str)
 
         # Step 3 — Delete old chunks

@@ -16,7 +16,6 @@ import logging
 import re
 from typing import TypedDict
 
-import anthropic
 
 from app.config import settings
 
@@ -304,42 +303,25 @@ def classify_by_name(name: str) -> ClassificationResult:
 # Part 2: AI batch classification
 # ---------------------------------------------------------------------------
 
-_AI_SYSTEM_PROMPT = """\
-You are a customer classification assistant for Sunnycrest Precast, a Wilbert burial vault \
-manufacturer in Auburn, NY. Their customers fall into these categories:
-
-- funeral_home: Funeral homes, mortuaries, chapels, cremation services
-- cemetery: Cemeteries, memorial parks, mausoleums, burial grounds
-- contractor: Excavation, construction, landscaping, septic/wastewater, \
-  well drilling, site work, drain fields, concrete, masonry, and other tradespeople
-- individual: A private person (not a business)
-- unknown: Cannot be determined from available information
-
-You will receive a JSON array of customers, each with:
-  { "index": number, "name": string, "city": string | null, "state": string | null }
-
-Return a JSON array (same length, same order) where each element is:
-  {
-    "index": <same as input>,
-    "customer_type": "funeral_home" | "cemetery" | "contractor" | "individual" | "unknown",
-    "confidence": <float 0.0–1.0>,
-    "reasoning": "<one sentence>"
-  }
-
-Rules:
-- Confidence >= 0.85: Very confident
-- Confidence 0.70–0.84: Reasonably confident
-- Confidence < 0.70: Ambiguous — use "unknown"
-- Do not guess — if truly unclear, return unknown with confidence 0.0
-- The Wilbert network context: most business customers are funeral homes; \
-  contractors often supply precast concrete, septic, or wastewater systems
-"""
+# System prompt + user template now live in the managed
+# `onboarding.classify_customer_batch` prompt (Phase 2c-2 migration). The
+# former _AI_SYSTEM_PROMPT constant is deleted — see seed_intelligence_phase2c.py
+# for the verbatim content and variable schema.
 
 
 def _classify_batch_with_ai(
     unclassified: list[dict],  # [{index, name, city, state}]
+    *,
+    db=None,
+    company_id: str | None = None,
+    tenant_name: str = "the Wilbert licensee",
 ) -> list[ClassificationResult]:
-    """Send a batch of up to 50 customers to Claude for classification."""
+    """Send a batch of up to 50 customers to the Intelligence layer for classification.
+
+    Phase 2c-2 migration — routes through `onboarding.classify_customer_batch`.
+    tenant_name is passed into the managed prompt (Phase 2c-2 parameterized
+    what used to be a hardcoded 'Sunnycrest Precast' reference).
+    """
     if not settings.ANTHROPIC_API_KEY:
         logger.warning("ANTHROPIC_API_KEY not set — skipping AI classification")
         return [
@@ -353,28 +335,48 @@ def _classify_batch_with_ai(
             for _ in unclassified
         ]
 
-    try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        payload = json.dumps(unclassified)
+    if db is None:
+        # Short-lived session for callers that don't thread one through.
+        from app.database import SessionLocal
 
-        message = client.messages.create(
-            model="claude-haiku-4-5-20250514",  # cost-effective for bulk classification
-            max_tokens=4096,
-            system=_AI_SYSTEM_PROMPT + "\n\nIMPORTANT: Respond with a valid JSON array only. No markdown, no code fences.",
-            messages=[{"role": "user", "content": f"Classify these customers:\n{payload}"}],
+        local_db = SessionLocal()
+        try:
+            return _classify_batch_with_ai(
+                unclassified, db=local_db, company_id=company_id, tenant_name=tenant_name
+            )
+        finally:
+            local_db.close()
+
+    try:
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="onboarding.classify_customer_batch",
+            variables={
+                "tenant_name": tenant_name,
+                "unclassified": json.dumps(unclassified),
+            },
+            company_id=company_id,
+            caller_module="customer_classification_service._classify_batch_with_ai",
+            caller_entity_type=None,  # pre-persistence staging
+            caller_entity_id=None,
         )
 
-        raw = message.content[0].text.strip()
-        # Strip any code fences
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
+        if result.status != "success":
+            raise RuntimeError(f"Intelligence status={result.status}: {result.error_message}")
 
-        ai_results: list[dict] = json.loads(raw)
+        # Response is a JSON array — parsed or raw text
+        if isinstance(result.response_parsed, list):
+            ai_results: list[dict] = result.response_parsed
+        else:
+            raw = (result.response_text or "").strip()
+            if raw.startswith("```"):
+                raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                raw = re.sub(r"\s*```$", "", raw)
+            ai_results = json.loads(raw)
 
-        # Build a lookup by index
         by_index: dict[int, dict] = {r["index"]: r for r in ai_results}
-
         results: list[ClassificationResult] = []
         for item in unclassified:
             ai = by_index.get(item["index"])
@@ -400,7 +402,7 @@ def _classify_batch_with_ai(
                 )
         return results
 
-    except (json.JSONDecodeError, KeyError, anthropic.APIError) as e:
+    except (json.JSONDecodeError, KeyError, RuntimeError) as e:
         logger.error(f"AI classification batch failed: {e}")
         return [
             ClassificationResult(
@@ -426,6 +428,10 @@ _NEEDS_REVIEW_THRESHOLD = 0.75      # anything below this goes to needs_review
 
 def classify_customers(
     parsed_customers: list[dict],
+    *,
+    db=None,
+    company_id: str | None = None,
+    tenant_name: str = "the Wilbert licensee",
 ) -> dict:
     """Classify all parsed customers using rules + AI.
 
@@ -473,7 +479,9 @@ def classify_customers(
     BATCH_SIZE = 50
     for batch_start in range(0, len(needs_ai), BATCH_SIZE):
         batch = needs_ai[batch_start : batch_start + BATCH_SIZE]
-        ai_results = _classify_batch_with_ai(batch)
+        ai_results = _classify_batch_with_ai(
+            batch, db=db, company_id=company_id, tenant_name=tenant_name
+        )
 
         for item, ai_result in zip(batch, ai_results):
             idx = item["index"]
@@ -555,14 +563,27 @@ def classify_customers(
 # Convenience: classify a single customer name (for the /classify endpoint)
 # ---------------------------------------------------------------------------
 
-def classify_single(name: str, city: str | None = None, state: str | None = None) -> ClassificationResult:
+def classify_single(
+    name: str,
+    city: str | None = None,
+    state: str | None = None,
+    *,
+    db=None,
+    company_id: str | None = None,
+    tenant_name: str = "the Wilbert licensee",
+) -> ClassificationResult:
     """Classify one customer — rules first, AI fallback if confidence too low."""
     result = classify_by_name(name)
     if result["confidence"] >= _RULE_CONFIDENCE_THRESHOLD:
         return result
 
     # Try AI for single customer
-    ai_results = _classify_batch_with_ai([{"index": 0, "name": name, "city": city, "state": state}])
+    ai_results = _classify_batch_with_ai(
+        [{"index": 0, "name": name, "city": city, "state": state}],
+        db=db,
+        company_id=company_id,
+        tenant_name=tenant_name,
+    )
     ai = ai_results[0]
 
     if ai["confidence"] >= _AI_CONFIDENCE_THRESHOLD:

@@ -6,18 +6,17 @@ Phase 2 would add live streaming via Deepgram.
 
 Extraction flow:
   1. POST /fh/cases/:id/scribe/process  (transcript text)
-  2. Claude parses into structured JSON with per-field confidence
+  2. Intelligence layer parses into structured JSON with per-field confidence
+     using the managed prompt `scribe.extract_case_fields`.
   3. High-confidence (>= 0.9) fields auto-populate
   4. Medium-confidence (0.7–0.9) fields flagged amber for director review
   5. Low-confidence (< 0.7) fields skipped, noted for review
   6. funeral_case_notes row created with note_type='scribe_extraction'
 """
 
-import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -33,78 +32,29 @@ from app.models.funeral_case import (
 from app.services.fh import crypto
 
 
-SCRIBE_SYSTEM_PROMPT = """You extract funeral arrangement conference details from a transcript or notes.
+def _call_claude_extract(db: Session, transcript: str, case: FuneralCase) -> dict:
+    """Call the Intelligence layer to extract fields. Returns empty dict on error.
 
-Return strict JSON matching this schema exactly:
-{
-  "deceased": {
-    "first_name": {"value": string|null, "confidence": 0.0-1.0},
-    "middle_name": {"value": string|null, "confidence": 0.0-1.0},
-    "last_name": {"value": string|null, "confidence": 0.0-1.0},
-    "date_of_birth": {"value": "YYYY-MM-DD"|null, "confidence": 0.0-1.0},
-    "date_of_death": {"value": "YYYY-MM-DD"|null, "confidence": 0.0-1.0},
-    "sex": {"value": "male"|"female"|"other"|null, "confidence": 0.0-1.0},
-    "religion": {"value": string|null, "confidence": 0.0-1.0},
-    "occupation": {"value": string|null, "confidence": 0.0-1.0},
-    "marital_status": {"value": string|null, "confidence": 0.0-1.0},
-    "place_of_death_name": {"value": string|null, "confidence": 0.0-1.0},
-    "residence_city": {"value": string|null, "confidence": 0.0-1.0},
-    "residence_state": {"value": string|null, "confidence": 0.0-1.0}
-  },
-  "service": {
-    "service_type": {"value": string|null, "confidence": 0.0-1.0},
-    "service_date": {"value": "YYYY-MM-DD"|null, "confidence": 0.0-1.0},
-    "service_location_name": {"value": string|null, "confidence": 0.0-1.0},
-    "officiant_name": {"value": string|null, "confidence": 0.0-1.0}
-  },
-  "disposition": {
-    "disposition_type": {"value": "burial"|"cremation"|"entombment"|"donation"|"other"|null, "confidence": 0.0-1.0}
-  },
-  "veteran": {
-    "ever_in_armed_forces": {"value": true|false|null, "confidence": 0.0-1.0},
-    "branch": {"value": string|null, "confidence": 0.0-1.0}
-  },
-  "informants": [
-    {"name": string, "relationship": string, "phone": string|null, "email": string|null, "is_primary": bool, "confidence": 0.0-1.0}
-  ]
-}
-
-Rules:
-- Only extract what was EXPLICITLY mentioned. Never infer.
-- High confidence (>=0.9): stated clearly and unambiguously.
-- Medium (0.7-0.9): reasonable interpretation of what was said.
-- Low (<0.7): unclear — likely needs director review.
-- Return null for fields not mentioned.
-- Return valid JSON only. No prose, no markdown, no backticks.
-"""
-
-
-def _call_claude_extract(transcript: str) -> dict:
-    """Call Claude API to extract fields. Returns empty dict on error."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
+    Empty dict preserves the prior behavior: the caller records a "no extraction"
+    note and continues, rather than hard-failing the endpoint.
+    """
+    if not os.getenv("ANTHROPIC_API_KEY"):
         return {}
     try:
-        from anthropic import Anthropic
-    except ImportError:
-        return {}
+        from app.services.intelligence import intelligence_service
 
-    client = Anthropic(api_key=api_key)
-    try:
-        resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            system=SCRIBE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": transcript}],
+        result = intelligence_service.execute(
+            db,
+            prompt_key="scribe.extract_case_fields",
+            variables={"transcript": transcript},
+            company_id=case.company_id,
+            caller_module="fh.scribe_service",
+            caller_entity_type="funeral_case",
+            caller_entity_id=case.id,
         )
-        text = resp.content[0].text if resp.content else ""
-        # Strip any accidental markdown fencing
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text
-            if text.endswith("```"):
-                text = text.rsplit("```", 1)[0]
-        return json.loads(text)
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            return result.response_parsed
+        return {}
     except Exception:
         return {}
 
@@ -259,7 +209,7 @@ def process_transcript(
     if not case:
         raise ValueError("Case not found")
 
-    extraction = _call_claude_extract(transcript)
+    extraction = _call_claude_extract(db, transcript, case)
     if not extraction:
         # No API key or Claude failed — still record the note
         db.add(FuneralCaseNote(

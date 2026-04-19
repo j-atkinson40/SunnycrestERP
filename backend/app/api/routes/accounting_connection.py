@@ -776,63 +776,43 @@ def sage_analyze_csv(
             "ANTHROPIC_API_KEY not configured — cannot analyze CSV columns",
         )
 
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-
     # Build sample data display
     sample_display = "Headers: " + " | ".join(body.csv_headers) + "\n"
     for i, row in enumerate(body.sample_rows[:3]):
         sample_display += f"Row {i + 1}: " + " | ".join(str(v) for v in row) + "\n"
 
-    prompt = f"""Analyze this CSV export and map the columns to the expected fields.
+    # Phase 2c-2 migration — accounting.map_sage_csv
+    from app.services.intelligence import intelligence_service
 
-CSV Data:
-{sample_display}
-
-Expected fields to map to: {json.dumps(expected)}
-
-For each expected field, determine which CSV column (by header name) best matches it.
-Return a JSON object with this exact structure:
-{{
-  "mappings": {{
-    "<expected_field>": {{
-      "csv_column": "<header_name or null if no match>",
-      "confidence": <0.0 to 1.0>
-    }}
-  }},
-  "unmapped_csv_columns": ["<headers that don't map to any expected field>"]
-}}
-
-Return ONLY the JSON object, no other text."""
-
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
+    # Try to pick up connection_id from the tenant's AccountingConnection for linkage.
+    connection = (
+        db.query(AccountingConnection)
+        .filter(AccountingConnection.company_id == current_user.company_id)
+        .first()
+    )
+    ai_result = intelligence_service.execute(
+        db,
+        prompt_key="accounting.map_sage_csv",
+        variables={
+            "sample_display": sample_display,
+            "expected": json.dumps(expected),
+        },
+        company_id=current_user.company_id,
+        caller_module="accounting_connection.sage_analyze_csv",
+        caller_entity_type="accounting_connection",
+        caller_entity_id=connection.id if connection else None,
     )
 
-    # Parse the response
-    response_text = message.content[0].text.strip()
-    # Handle potential markdown code blocks
-    if response_text.startswith("```"):
-        lines = response_text.split("\n")
-        # Remove first and last lines (``` markers)
-        response_text = "\n".join(lines[1:-1])
-
-    try:
-        result = json.loads(response_text)
-    except json.JSONDecodeError:
+    if ai_result.status != "success" or not isinstance(ai_result.response_parsed, dict):
         raise HTTPException(
-            500,
-            "Failed to parse AI response for column mapping",
+            500, f"AI column mapping failed: {ai_result.error_message or ai_result.status}"
         )
 
     return {
         "export_type": body.export_type,
         "expected_fields": expected,
-        "mappings": result.get("mappings", {}),
-        "unmapped_csv_columns": result.get("unmapped_csv_columns", []),
+        "mappings": ai_result.response_parsed.get("mappings", {}),
+        "unmapped_csv_columns": ai_result.response_parsed.get("unmapped_csv_columns", []),
     }
 
 

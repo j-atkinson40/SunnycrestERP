@@ -311,6 +311,8 @@ class ImportAliasService:
                 ai_results = ImportAliasService._ai_match_products(
                     [item[1] for item in unmatched_for_ai],
                     [{"id": p.id, "name": p.name, "sku": p.sku} for p in products],
+                    db=db,
+                    company_id=company_id,
                 )
                 for (idx, raw_name, normalized, _), ai_match in zip(
                     unmatched_for_ai, ai_results
@@ -333,44 +335,47 @@ class ImportAliasService:
 
     @staticmethod
     def _ai_match_products(
-        unmatched_names: list[str], product_catalog: list[dict]
+        unmatched_names: list[str],
+        product_catalog: list[dict],
+        *,
+        db=None,
+        company_id: str | None = None,
     ) -> list[dict | None]:
-        """Use Claude to disambiguate product names against the catalog."""
-        from app.services.ai_service import call_anthropic
+        """Phase 2c-4 — managed import.match_product_aliases prompt."""
+        from app.services.intelligence import intelligence_service
 
-        system_prompt = (
-            "You are a product matching assistant for a burial vault manufacturer. "
-            "Given a list of historical product names and a current product catalog, "
-            "match each historical name to the most likely current product. "
-            "Product names may use abbreviations, old model numbers, or informal names."
-        )
+        if db is None:
+            from app.database import SessionLocal
+            db = SessionLocal()
+            _owns_db = True
+        else:
+            _owns_db = False
 
-        user_message = (
-            "Match each of these historical product names to the closest product "
-            "in the catalog. Return a JSON object with a 'matches' array where each "
-            "element has: original_name, product_id (from catalog, or null if no match), "
-            "confidence (0.0-1.0), reasoning (brief)."
-        )
-
-        context_data = {
-            "historical_names": unmatched_names[:20],  # Limit to avoid token overrun
-            "product_catalog": product_catalog[:100],
-        }
+        import json as _json
 
         try:
-            result = call_anthropic(
-                system_prompt=system_prompt,
-                user_message=user_message,
-                context_data=context_data,
-                max_tokens=2048,
+            intel = intelligence_service.execute(
+                db,
+                prompt_key="import.match_product_aliases",
+                variables={
+                    "historical_names": _json.dumps(unmatched_names[:20]),
+                    "product_catalog": _json.dumps(product_catalog[:100]),
+                },
+                company_id=company_id,
+                caller_module="import_alias_service._ai_match_products",
+                caller_entity_type=None,
             )
-            matches = result.get("matches", [])
-            # Build lookup by original name
-            match_map = {m["original_name"]: m for m in matches}
+            if intel.status != "success" or not isinstance(intel.response_parsed, dict):
+                return [None] * len(unmatched_names)
+            matches = intel.response_parsed.get("matches", [])
+            match_map = {m["original_name"]: m for m in matches if isinstance(m, dict)}
             return [match_map.get(name) for name in unmatched_names[:20]]
         except Exception:
-            logger.exception("AI product matching API call failed")
+            logger.exception("AI product matching failed")
             return [None] * len(unmatched_names)
+        finally:
+            if _owns_db:
+                db.close()
 
     @staticmethod
     def match_customers(

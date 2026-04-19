@@ -423,21 +423,25 @@ def account_rescue_agent(db: Session, tenant_id: str) -> dict:
         reasons = profile.health_reasons or []
         reason = reasons[0] if reasons else "No recent orders"
 
-        # Generate draft with Claude
+        # Phase 2c-4 migration — managed crm.draft_rescue_email
         try:
-            from app.services.ai_service import call_anthropic
-            prompt = f"""Draft a short, friendly check-in email from a small precast concrete manufacturer to a customer who hasn't ordered recently. Warm tone, not salesy. 3-4 sentences max.
+            from app.services.intelligence import intelligence_service
 
-Customer: {entity.name}
-Type: {getattr(entity, 'customer_type', 'customer')}
-Reason flagged: {reason}
-
-Return JSON: {{"subject": "...", "body": "..."}}"""
-
-            response = call_anthropic(prompt, max_tokens=150)
-            if response:
-                import json
-                data = json.loads(response)
+            intel = intelligence_service.execute(
+                db,
+                prompt_key="crm.draft_rescue_email",
+                variables={
+                    "name": entity.name,
+                    "customer_type": getattr(entity, "customer_type", "customer") or "customer",
+                    "reason": reason,
+                },
+                company_id=tenant_id,
+                caller_module="ai.agent_orchestrator.account_rescue_agent",
+                caller_entity_type="company_entity",
+                caller_entity_id=entity.id,
+            )
+            if intel.status == "success" and isinstance(intel.response_parsed, dict):
+                data = intel.response_parsed
                 db.execute(text(
                     "INSERT INTO ai_rescue_drafts (id, tenant_id, master_company_id, subject, body) "
                     "VALUES (:id, :tid, :cid, :subj, :body)"

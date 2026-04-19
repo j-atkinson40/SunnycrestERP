@@ -14,7 +14,6 @@ to handle natural-language manufacturing commands such as:
 import logging
 from datetime import date
 
-from app.services.ai_service import call_anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -116,21 +115,35 @@ def parse_manufacturing_command(
     product_catalog: list[dict] | None = None,
     customer_catalog: list[dict] | None = None,
     employee_names: list[str] | None = None,
+    *,
+    db=None,
+    company_id: str | None = None,
 ) -> dict:
     """
     Parse a natural-language manufacturing command into a structured intent.
 
-    Args:
-        user_input: The user's free-text command.
-        product_catalog: List of dicts with keys: id, name, sku.
-        customer_catalog: List of dicts with keys: id, name.
-        employee_names: List of employee first names.
-
-    Returns:
-        Parsed intent dict.
+    Phase 2c-4 migration: routes through the managed
+    `commandbar.classify_manufacturing_intent` prompt. Catalogs are bundled
+    into a single context_data_json variable the seed's user_template expects.
     """
-    today = date.today().isoformat()
-    system_prompt = _MANUFACTURING_COMMAND_PROMPT.format(today=today)
+    import json as _json
+
+    from app.services.intelligence import intelligence_service
+
+    if db is None:
+        from app.database import SessionLocal
+        local_db = SessionLocal()
+        try:
+            return parse_manufacturing_command(
+                user_input,
+                product_catalog,
+                customer_catalog,
+                employee_names,
+                db=local_db,
+                company_id=company_id,
+            )
+        finally:
+            local_db.close()
 
     context: dict = {}
     if product_catalog:
@@ -140,8 +153,20 @@ def parse_manufacturing_command(
     if employee_names:
         context["employee_names"] = employee_names
 
-    return call_anthropic(
-        system_prompt=system_prompt,
-        user_message=user_input,
-        context_data=context if context else None,
+    today = date.today().isoformat()
+    result = intelligence_service.execute(
+        db,
+        prompt_key="commandbar.classify_manufacturing_intent",
+        variables={
+            "today": today,
+            "user_input": user_input,
+            "context_data_json": _json.dumps(context) if context else "",
+        },
+        company_id=company_id,
+        caller_module="ai_manufacturing_intents.parse_manufacturing_command",
+        caller_entity_type=None,
     )
+    if result.status == "success" and isinstance(result.response_parsed, dict):
+        return result.response_parsed
+    # Fallback mirrors the legacy "unknown intent" shape
+    return {"intent": "unknown", "message": result.error_message or "Classification failed."}

@@ -16,7 +16,6 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import ClassVar
 
-import anthropic
 
 from sqlalchemy.orm import Session
 
@@ -386,49 +385,41 @@ class ARCollectionsAgent(BaseAgent):
         tier: str,
         invoice_lines: str,
     ) -> str | None:
-        """Call Claude to draft a collection email. Returns None on failure."""
+        """Call the Intelligence layer to draft a collection email. Returns None on failure."""
         if not settings.ANTHROPIC_API_KEY:
             logger.warning("No ANTHROPIC_API_KEY — using fallback template")
             return None
 
-        system_prompt = (
-            "You are a professional accounts receivable specialist for a "
-            "burial vault manufacturer. Draft a collection email that is firm "
-            "but respectful. The funeral home industry is relationship-driven "
-            "— tone must preserve the business relationship while clearly "
-            "communicating urgency. Never be aggressive or threatening. "
-            "Sign as 'Accounts Receivable Team, Sunnycrest Vault'."
-        )
-
-        user_prompt = f"""Draft a collection email for:
-
-Customer: {customer_name}
-Total Outstanding: ${total_outstanding:,.2f}
-Number of Open Invoices: {invoice_count}
-Oldest Invoice: {oldest_days} days past due
-Collection Tier: {tier}
-
-Outstanding invoices:
-{invoice_lines}
-
-Tone guidance by tier:
-FOLLOW_UP (31-60 days): Friendly reminder, assume oversight, offer to answer questions.
-ESCALATE (61-90 days): Firm but professional, reference previous communications, request immediate attention, provide payment options.
-CRITICAL (90+ days): Urgent, clear consequences if unresolved, request immediate contact, but remain professional.
-
-Return ONLY the email body (no subject line). Start with 'Dear [Contact Name],' as a placeholder — do not fill in a real name."""
-
         try:
-            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-            message = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=400,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
+            from app.services.intelligence import intelligence_service
+
+            result = intelligence_service.execute(
+                self.db,
+                prompt_key="agent.ar_collections.draft_email",
+                variables={
+                    "customer_name": customer_name,
+                    "total_outstanding": f"{total_outstanding:,.2f}",
+                    "invoice_count": invoice_count,
+                    "oldest_days": oldest_days,
+                    "tier": tier,
+                    "invoice_lines": invoice_lines,
+                },
+                company_id=self.tenant_id,
+                caller_module="agents.ar_collections_agent",
+                caller_entity_type="agent_job",
+                caller_entity_id=self.job_id,
+                caller_agent_job_id=self.job_id,
             )
-            return message.content[0].text
+            if result.status == "success":
+                return result.response_text
+            logger.warning(
+                "AR draft generation returned status=%s: %s",
+                result.status,
+                result.error_message,
+            )
+            return None
         except Exception as e:
-            logger.warning("Claude API call failed for %s: %s", customer_name, e)
+            logger.warning("AR collections draft generation failed for %s: %s", customer_name, e)
             return None
 
     # ------------------------------------------------------------------

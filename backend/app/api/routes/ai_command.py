@@ -44,16 +44,9 @@ class CompanyChatRequest(BaseModel):
     conversation_history: list[dict] | None = None
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-def _call_claude(prompt: str, max_tokens: int = 300) -> str | None:
-    """Call Claude API and return the text response."""
-    try:
-        from app.services.ai_service import call_anthropic
-        return call_anthropic(prompt, max_tokens=max_tokens)
-    except Exception:
-        logger.exception("Claude API call failed")
-        return None
+# The legacy _call_claude helper was deleted in Phase 2c-3. Each handler now
+# invokes `intelligence_service.execute` directly with a dedicated managed
+# prompt_key — see process_command, parse_filters, company_chat below.
 
 
 # ── Command Bar ──────────────────────────────────────────────────────────────
@@ -128,37 +121,41 @@ def process_command(
         except Exception:
             pass
 
-    # For complex queries, use Claude
-    prompt = f"""You are a command interpreter for a vault manufacturer's business platform called Bridgeable.
+    # For complex queries, use the managed prompt (Phase 2c-3 migration).
+    from app.services.intelligence import intelligence_service
 
-Classify this query and return JSON only:
-{{
-  "intent": "navigate"|"search"|"action"|"question",
-  "display_text": "plain English description of what will happen",
-  "navigation_url": "/path" or null,
-  "action_type": "log_activity"|"complete_followup"|"create_order"|"navigate" or null,
-  "parameters": {{}},
-  "entity_name": "company name mentioned" or null
-}}
-
-Available pages: /ar/orders, /crm/companies, /crm/funeral-homes, /legacy/library, /scheduling, /announcements, /settings, /admin/users, /inventory, /production-log, /safety
-
-User query: {data.query}
-Current page: {(data.context or {}).get('current_page', 'unknown')}"""
-
-    response = _call_claude(prompt, max_tokens=200)
-    if not response:
+    try:
+        result = intelligence_service.execute(
+            db,
+            prompt_key="commandbar.legacy_process_command",
+            variables={
+                "query": data.query,
+                "current_page": (data.context or {}).get("current_page", "unknown"),
+            },
+            company_id=current_user.company_id,
+            caller_module="ai_command.process_command",
+            caller_entity_type=None,
+        )
+    except Exception:
+        logger.exception("Command bar classification failed")
         return {
             "intent": "search",
             "display_text": "Searching...",
             "results": [], "navigation_url": None, "answer": None, "action": None,
         }
 
-    try:
-        parsed = json.loads(response)
-    except json.JSONDecodeError:
+    if result.status != "success":
         return {
-            "intent": "search", "display_text": response,
+            "intent": "search",
+            "display_text": "Searching...",
+            "results": [], "navigation_url": None, "answer": None, "action": None,
+        }
+
+    parsed = result.response_parsed if isinstance(result.response_parsed, dict) else None
+    if parsed is None:
+        # force_json=True + parse_error status — fall back to plain text
+        return {
+            "intent": "search", "display_text": result.response_text or "",
             "results": [], "navigation_url": None, "answer": None, "action": None,
         }
 
@@ -247,39 +244,30 @@ def parse_filters(
         raise HTTPException(status_code=403, detail="Natural language filters are disabled")
 
     today = date.today().isoformat()
-    prompt = f"""Parse this filter query for a {data.entity_type} list in a business platform.
-Today is {today}.
-
-Return JSON only with these fields (all optional, null if not specified):
-{{
-  "date_from": "YYYY-MM-DD" or null,
-  "date_to": "YYYY-MM-DD" or null,
-  "status": "string" or null,
-  "customer_type": "funeral_home"|"contractor"|"cemetery"|etc or null,
-  "amount_min": number or null,
-  "amount_max": number or null,
-  "search_text": "string" or null,
-  "chips": ["human-readable label for each filter"]
-}}
-
-Examples:
-"last month" → date_from: first of last month, date_to: last of last month
-"over $2000" → amount_min: 2000
-"funeral homes" → customer_type: "funeral_home"
-"unpaid" → status: "unpaid"
-"overdue" → status: "overdue"
-
-Query: {data.query}"""
-
-    response = _call_claude(prompt, max_tokens=200)
-    if not response:
-        return {"filters": {}, "chips": [], "error": "Could not parse filters"}
+    from app.services.intelligence import intelligence_service
 
     try:
-        parsed = json.loads(response)
-        return {"filters": parsed, "chips": parsed.get("chips", [])}
-    except json.JSONDecodeError:
-        return {"filters": {}, "chips": [], "error": "Could not parse response"}
+        result = intelligence_service.execute(
+            db,
+            prompt_key="commandbar.parse_filters",
+            variables={
+                "entity_type": data.entity_type,
+                "today": today,
+                "query": data.query,
+            },
+            company_id=current_user.company_id,
+            caller_module="ai_command.parse_filters",
+            caller_entity_type=None,
+        )
+    except Exception:
+        logger.exception("Filter parsing failed")
+        return {"filters": {}, "chips": [], "error": "Could not parse filters"}
+
+    if result.status != "success" or not isinstance(result.response_parsed, dict):
+        return {"filters": {}, "chips": [], "error": result.error_message or "Could not parse response"}
+
+    parsed = result.response_parsed
+    return {"filters": parsed, "chips": parsed.get("chips", [])}
 
 
 # ── Conversational Company Lookup ────────────────────────────────────────────
@@ -360,29 +348,38 @@ def company_chat(
 
     context = "\n".join(context_parts)
 
-    # Build conversation
+    # Build conversation history block
     history = data.conversation_history or []
-    history_text = ""
+    history_lines: list[str] = []
     for msg in history[-4:]:
         role = msg.get("role", "user")
-        history_text += f"\n{role}: {msg.get('content', '')}"
+        history_lines.append(f"{role}: {msg.get('content', '')}")
+    history_block = ("Conversation so far:\n" + "\n".join(history_lines)) if history_lines else ""
 
-    prompt = f"""You are answering questions about a specific company in a business CRM for a vault manufacturer.
+    from app.services.intelligence import intelligence_service
 
-Company data:
-{context}
-
-{f"Conversation so far:{history_text}" if history_text else ""}
-
-Answer the user's question using only the data provided. Be concise — 1-3 sentences. If the data doesn't contain the answer, say so clearly.
-
-User: {data.message}"""
-
-    answer = _call_claude(prompt, max_tokens=200)
-    if not answer:
+    try:
+        result = intelligence_service.execute(
+            db,
+            prompt_key="commandbar.company_chat",
+            variables={
+                "context": context,
+                "history_block": history_block,
+                "message": data.message,
+            },
+            company_id=current_user.company_id,
+            caller_module="ai_command.company_chat",
+            caller_entity_type="company_entity",
+            caller_entity_id=data.master_company_id,
+        )
+    except Exception:
+        logger.exception("Company chat failed")
         return {"answer": "Sorry, I couldn't process that question right now.", "sources": []}
 
-    return {"answer": answer, "sources": []}
+    if result.status != "success" or not result.response_text:
+        return {"answer": "Sorry, I couldn't process that question right now.", "sources": []}
+
+    return {"answer": result.response_text, "sources": []}
 
 
 # ── Briefing Intelligence ────────────────────────────────────────────────────

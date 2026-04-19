@@ -15,53 +15,10 @@ from app.models.user_action import UserAction
 logger = logging.getLogger(__name__)
 
 
-# --- Claude system prompt ---
-COMMAND_SYSTEM_PROMPT = """You are the intent classification engine for Bridgeable — a physical economy operating platform for the death care industry. Parse natural language input from users (precast manufacturers, funeral home directors, cemetery managers) and return structured JSON.
-
-Current user context will be provided. Resolve entity references against the provided data. Return confidence scores.
-
-ALWAYS return valid JSON matching the schema below. NEVER return markdown, explanation, or preamble — only the JSON object.
-
-Response schema:
-{
-  "results": [
-    {
-      "id": "string",
-      "type": "ACTION" | "VIEW" | "RECORD" | "NAV" | "ASK",
-      "icon": "string (lucide icon name)",
-      "title": "string",
-      "subtitle": "string",
-      "shortcut": 1-5,
-      "action": {
-        "type": "navigate" | "navigate_with_prefill" | "open_timeline" | "execute_action" | "vault_query" | "open_modal",
-        "route": "string",
-        "prefill": {}
-      },
-      "confidence": 0.0-1.0
-    }
-  ],
-  "intent": "string",
-  "needs_confirmation": false
-}
-
-Available intents: search, create_order, schedule_delivery, log_production, view_compliance, create_reminder, find_record, navigate, log_pour, log_strip, create_employee, find_employee, view_briefing, call_customer, create_invoice, run_statements, view_ar_aging, view_ap_aging, view_revenue_report, create_disinterment, view_disinterments, log_incident, run_audit_prep, view_safety, view_training, view_ss_certificates, settings_programs, settings_locations, settings_team, settings_product_lines, settings_tax, settings_email, view_invoices, view_bills, view_purchase_orders, view_products, view_knowledge_base, view_team, create_urn_order, view_urns, view_transfers, view_spring_burials, view_calls, view_agents
-
-Known navigable routes (use the canonical path when intent=navigate):
-  /dashboard /orders /orders/new /scheduling /scheduling/new
-  /crm /crm/companies /crm/funeral-homes /crm/pipeline
-  /compliance /compliance/disinterments /compliance/disinterments/new
-  /ar/invoices /ar/invoices/review /ar/aging /ar/payments /ar/quotes /ar/statements
-  /ap/bills /ap/aging /ap/payments /ap/purchase-orders
-  /products /products/urns /urns/catalog /urns/orders /urns/orders/new
-  /safety /safety/programs /safety/incidents /safety/incidents/new
-  /safety/training /safety/osha-300 /safety/toolbox-talks
-  /social-service-certificates /spring-burials /transfers /calls /agents /team
-  /reports /knowledge-base
-  /settings/programs /settings/locations /settings/product-lines
-  /settings/tax /settings/invoice /settings/call-intelligence
-  /settings/compliance
-  /production /production/pour-events/new /production-log
-"""
+# The system prompt formerly defined here lives in the managed
+# `commandbar.classify_intent` prompt (Phase 2c-3 migration). See
+# backend/scripts/update_commandbar_classify_intent.py for the verbatim content
+# and variable schema.
 
 
 def process_command(
@@ -76,7 +33,7 @@ def process_command(
 
     # Try Claude API
     try:
-        result = _call_claude(raw_input, resolved, context, user)
+        result = _call_claude(db, raw_input, resolved, context, user)
         if result and result.get("results"):
             # Assign shortcut numbers
             for i, r in enumerate(result["results"][:5]):
@@ -159,30 +116,42 @@ def _resolve_entities(db: Session, raw_input: str, company_id: str) -> dict:
     return resolved
 
 
-def _call_claude(raw_input: str, resolved: dict, context: dict, user: User) -> Optional[dict]:
-    """Call Claude API for intent classification with 800ms timeout."""
-    try:
-        from app.services.ai_service import call_anthropic
-    except ImportError:
-        return None
+def _call_claude(
+    db: Session, raw_input: str, resolved: dict, context: dict, user: User
+) -> Optional[dict]:
+    """Classify the command via the managed `commandbar.classify_intent` prompt.
 
+    Phase 2c-3 migration — prompt content now lives in the Intelligence layer.
+    On failure (API down, parse error, etc.), returns None so the caller falls
+    through to the local_search Postgres path.
+    """
     prompt_data = {
         "input": raw_input,
         "resolved_entities": resolved,
         "user_context": context,
-        "instruction": "Return JSON only. No preamble."
+        "instruction": "Return JSON only. No preamble.",
     }
 
     try:
-        response = call_anthropic(
-            system_prompt=COMMAND_SYSTEM_PROMPT,
-            user_message=json.dumps(prompt_data),
-            max_tokens=1000,
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="commandbar.classify_intent",
+            variables={"payload": json.dumps(prompt_data)},
+            company_id=user.company_id,
+            caller_module="core_command_service.process_command",
+            caller_entity_type=None,  # universal classifier — no single entity
+            caller_entity_id=None,
         )
-        if response:
-            # Parse JSON from response
-            parsed = json.loads(response) if isinstance(response, str) else response
-            return parsed
+        if result.status == "success":
+            # force_json=true → response_parsed is the dict we want
+            if isinstance(result.response_parsed, dict):
+                return result.response_parsed
+            # Defensive fallback: some models occasionally return valid JSON text
+            # without us parsing; try one more json.loads.
+            if isinstance(result.response_text, str) and result.response_text.strip():
+                return json.loads(result.response_text)
     except (json.JSONDecodeError, Exception) as e:
         logger.warning(f"Claude command parse error: {e}")
 

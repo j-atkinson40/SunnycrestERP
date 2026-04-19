@@ -1,25 +1,22 @@
 """Training content generation service.
 
-Generates procedure documents and curriculum tracks via Claude API.
-Content is saved with tenant_id = NULL (shared across all manufacturing tenants).
+Phase 2c-2 migration: routes through two managed Intelligence prompts —
+`training.generate_procedure` (per-procedure) and `training.generate_curriculum_track`
+(per-role). Content is saved with tenant_id = NULL (shared across all
+manufacturing tenants), so Intelligence calls also use company_id=None.
 """
 
-import json
 import logging
-import re
 import uuid
 from datetime import datetime, timezone
 from typing import Generator
 
-import anthropic
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.training import TrainingCurriculumTrack, TrainingProcedure
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-
-AI_MODEL = "claude-sonnet-4-20250514"
 
 # ---------------------------------------------------------------------------
 # Procedure definitions — 24 procedures for manufacturing vertical
@@ -83,103 +80,73 @@ PROCEDURE_DEFINITIONS = [
 
 CURRICULUM_ROLES = ["accounting", "inside_sales", "operations"]
 
-# ---------------------------------------------------------------------------
-# System prompt for procedure generation
-# ---------------------------------------------------------------------------
+# System prompts + user templates for procedure and curriculum generation now
+# live in the managed `training.generate_procedure` and
+# `training.generate_curriculum_track` prompts (Phase 2c-2 migration).
+# See backend/scripts/seed_intelligence_phase2c.py for the verbatim content.
 
-PROCEDURE_SYSTEM_PROMPT = """You are generating training content for employees at a Wilbert burial vault manufacturing company using the Bridgeable business management platform.
-
-The company manufactures concrete burial vaults and sells them to funeral homes on charge accounts. Funeral homes order throughout the month and receive a consolidated monthly statement. The company also handles cross-licensee transfers (shipping vaults to other Wilbert licensees in other territories).
-
-End-of-day invoice workflow: At 6 PM each day, the system automatically generates draft invoices for all funeral service orders scheduled for that day. These drafts appear in the Invoice Review Queue (AR Command Center → Invoice Review tab). Accounting staff review and approve the drafts each morning before they are posted to AR. If the company has "require driver status updates" enabled, only orders explicitly confirmed by drivers appear as drafts — unconfirmed orders are flagged separately. Invoices with driver exceptions (shortages, refusals, damage) require individual review before approval. Clean invoices can be batch-approved with one click. This replaces manual invoice entry for recurring funeral service charges.
-
-Bridgeable platform navigation conventions:
-- Financials Board → [zone name] (e.g., Financials Board → AR Zone)
-- AR Command Center → [tab name] (e.g., AR Command Center → Aging tab)
-- AP Command Center → [tab name]
-- Operations Board → [zone name]
-- Settings → [section name]
-
-Generate a detailed procedure document. Write for new employees who are unfamiliar with the business. Explain WHY each step matters, not just what to do. Be specific about platform navigation paths.
-
-Return JSON only — no markdown, no preamble:
-{
-  "overview": "string (2-3 paragraphs: business context, why this procedure exists, what goes wrong without it)",
-  "steps": [
-    {
-      "step_number": 1,
-      "title": "string (action-oriented title)",
-      "instruction": "string (clear, specific instruction)",
-      "platform_path": "string (exact navigation path, e.g. 'AR Command Center → Aging tab → Customer row → Apply Payment')",
-      "why_this_matters": "string (consequence of skipping or doing wrong)",
-      "common_mistakes": ["string", "string"]
-    }
-  ],
-  "related_procedure_keys": ["string"]
-}"""
-
-CURRICULUM_SYSTEM_PROMPT = """You are generating a 4-week onboarding curriculum for a new employee at a Wilbert burial vault manufacturing company using the Bridgeable platform.
-
-The platform has these core modules: AR management, AP and purchasing, monthly statement billing, finance charges, bank reconciliation, journal entries, financial reports, funeral order management, cross-licensee transfers, and driver/delivery management.
-
-The company sells burial vaults to funeral homes on charge accounts with monthly statement billing. Net 30 payment terms. Finance charges apply to overdue accounts. Cross-licensee transfers happen when a funeral home in another territory needs a vault.
-
-Bridgeable has an AI assistant that proactively flags issues (overdue accounts, payment mismatches, PO discrepancies). Employees review AI suggestions before anything is sent or posted.
-
-Create 12-16 modules across 4 weeks. Each module teaches one specific business process. Write for someone with basic computer skills but no prior industry experience. The first module must be ai_orientation about working with the AI assistant.
-
-Return JSON only:
-{
-  "track_name": "string",
-  "description": "string (2-3 sentences)",
-  "estimated_weeks": 4,
-  "modules": [
-    {
-      "week": 1,
-      "module_key": "string (snake_case, unique within track)",
-      "title": "string",
-      "description": "string (one sentence)",
-      "concept_explanation": "string (2-3 paragraphs explaining the business concept and why it matters)",
-      "guided_task": {
-        "instruction": "string",
-        "platform_action": "string (specific navigation path and action)",
-        "success_criteria": "string (how employee knows they did it right)"
-      },
-      "comprehension_check": {
-        "question": "string",
-        "options": ["string", "string", "string", "string"],
-        "correct_index": 0,
-        "explanation": "string (why that answer is correct)"
-      },
-      "estimated_minutes": 20
-    }
-  ]
-}"""
 
 # ---------------------------------------------------------------------------
-# Claude caller — direct, no HTTPException, returns (result, error)
+# Intelligence-layer callers — return (parsed_dict, error_message)
 # ---------------------------------------------------------------------------
 
 
-def _call_claude(system_prompt: str, user_message: str, max_tokens: int = 3000) -> tuple[dict | None, str | None]:
-    """Call Claude API directly. Returns (parsed_dict, None) or (None, error_message)."""
+def _generate_procedure_via_intel(
+    db: Session,
+    *,
+    title: str,
+    roles: list[str],
+    category: str,
+    custom_instructions: str | None,
+) -> tuple[dict | None, str | None]:
+    """Route a procedure generation through the managed prompt.
+
+    Returns (parsed_dict, None) on success or (None, error_message) on failure.
+    Platform-level content — company_id=None, no caller_entity linkage.
+    """
     if not settings.ANTHROPIC_API_KEY:
         return None, "ANTHROPIC_API_KEY not configured"
     try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model=AI_MODEL,
-            max_tokens=max_tokens,
-            system=system_prompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences.",
-            messages=[{"role": "user", "content": user_message}],
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="training.generate_procedure",
+            variables={
+                "title": title,
+                "roles": ", ".join(roles),
+                "category": category,
+                "custom_instructions": custom_instructions or "",
+            },
+            company_id=None,
+            caller_module="training_content_generation_service.generate_procedures",
         )
-        text = message.content[0].text.strip()
-        # Strip code fences if Claude adds them anyway
-        text = re.sub(r"^```(?:json)?\s*\n?", "", text)
-        text = re.sub(r"\n?```\s*$", "", text)
-        return json.loads(text), None
-    except json.JSONDecodeError as e:
-        return None, f"JSON parse error: {e}"
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            return result.response_parsed, None
+        return None, f"status={result.status}: {result.error_message or 'no parsed response'}"
+    except Exception as e:
+        return None, str(e)
+
+
+def _generate_curriculum_via_intel(
+    db: Session, *, role_label: str,
+) -> tuple[dict | None, str | None]:
+    """Route a curriculum track generation through the managed prompt."""
+    if not settings.ANTHROPIC_API_KEY:
+        return None, "ANTHROPIC_API_KEY not configured"
+    try:
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="training.generate_curriculum_track",
+            variables={"role_label": role_label},
+            company_id=None,
+            caller_module="training_content_generation_service.generate_curriculum_tracks",
+        )
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            return result.response_parsed, None
+        return None, f"status={result.status}: {result.error_message or 'no parsed response'}"
     except Exception as e:
         return None, str(e)
 
@@ -214,9 +181,13 @@ def generate_procedures(db: Session, force: bool = False) -> Generator[dict, Non
 
         yield {"type": "progress", "section": "procedures", "index": i, "total": total, "item": key, "status": "generating"}
 
-        # Use custom user_msg if defined, otherwise build from title/roles/category
-        user_msg = defn.get("user_msg") or f"Generate a complete procedure document for: {title}\nRoles: {', '.join(defn['roles'])}\nCategory: {defn['category']}"
-        result, error = _call_claude(PROCEDURE_SYSTEM_PROMPT, user_msg, max_tokens=3000)
+        result, error = _generate_procedure_via_intel(
+            db,
+            title=title,
+            roles=defn["roles"],
+            category=defn["category"],
+            custom_instructions=defn.get("user_msg"),
+        )
 
         if error or not result:
             errors.append(f"{key}: {error}")
@@ -293,9 +264,7 @@ def generate_curriculum_tracks(db: Session, force: bool = False) -> Generator[di
         yield {"type": "progress", "section": "curriculum_tracks", "index": i, "total": total, "item": role, "status": "generating"}
 
         role_labels = {"accounting": "Accounting", "inside_sales": "Inside Sales / Customer Service", "operations": "Operations / Production"}
-        user_msg = f"Generate a complete 4-week onboarding curriculum for a new {role_labels.get(role, role)} employee. The first module must be ai_orientation covering: what the AI assistant does, the difference between agent alerts and human decisions, confidence scores, and why human judgment always overrides agent suggestions."
-
-        result, error = _call_claude(CURRICULUM_SYSTEM_PROMPT, user_msg, max_tokens=5000)
+        result, error = _generate_curriculum_via_intel(db, role_label=role_labels.get(role, role))
 
         if error or not result:
             errors.append(f"{role}: {error}")
@@ -371,8 +340,13 @@ def regenerate_specific_procedures(db: Session, keys: list[str]) -> Generator[di
         title = defn["title"]
         yield {"type": "progress", "section": "procedures", "index": i, "total": total, "item": key, "status": "generating"}
 
-        user_msg = f"Generate a complete procedure document for: {title}\nRoles: {', '.join(defn['roles'])}\nCategory: {defn['category']}"
-        result, error = _call_claude(PROCEDURE_SYSTEM_PROMPT, user_msg, max_tokens=3000)
+        result, error = _generate_procedure_via_intel(
+            db,
+            title=title,
+            roles=defn["roles"],
+            category=defn["category"],
+            custom_instructions=defn.get("user_msg"),
+        )
 
         if error or not result:
             errors.append(f"{key}: {error}")

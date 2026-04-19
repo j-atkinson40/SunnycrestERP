@@ -197,21 +197,37 @@ def run_collections_sequence(db: Session, tenant_id: str) -> dict:
             days_overdue = (date.today() - invoice.due_date).days if invoice.due_date else 0
             balance = float(invoice.total - (invoice.amount_paid or 0))
 
-            tone = {1: "friendly_reminder", 2: "firm_professional", 3: "final_notice"}.get(seq.sequence_step, "friendly_reminder")
-
-            # Generate draft via Claude
-            draft = _generate_collections_draft(
+            # Phase 2c-1 collapse: reuse the managed `agent.ar_collections.draft_email`
+            # prompt (already used by ARCollectionsAgent) instead of a duplicate
+            # direct-SDK helper. Map the per-step tone to the existing tier
+            # enum understood by the managed prompt.
+            tier = {1: "FOLLOW_UP", 2: "ESCALATE", 3: "CRITICAL"}.get(
+                seq.sequence_step, "FOLLOW_UP"
+            )
+            invoice_number = invoice.invoice_number or str(invoice.id)[:8]
+            invoice_line = (
+                f"- Invoice #{invoice_number}: ${balance:,.2f} "
+                f"(due {invoice.due_date}, {days_overdue} days past due)"
+            )
+            draft_body = _draft_collections_email(
+                db,
+                tenant_id=tenant_id,
+                caller_agent_job_id=job.id,
+                customer_id=customer.id,
                 customer_name=customer.name,
-                invoice_number=invoice.invoice_number or str(invoice.id)[:8],
-                amount=balance,
-                due_date=str(invoice.due_date),
-                days_overdue=days_overdue,
-                tone=tone,
-                step=seq.sequence_step,
+                total_outstanding=balance,
+                invoice_count=1,
+                oldest_days=days_overdue,
+                tier=tier,
+                invoice_lines=invoice_line,
             )
 
-            seq.draft_subject = draft.get("subject", f"Payment Reminder — Invoice #{invoice.invoice_number}")
-            seq.draft_body = draft.get("body", "")
+            # Subject line is template-based — no AI needed for it. Keep the
+            # legacy shape so the reviewer UI stays compatible.
+            seq.draft_subject = f"Payment Reminder — Invoice #{invoice_number}"
+            seq.draft_body = draft_body or _collections_fallback_body(
+                customer.name, invoice_number, balance, invoice.due_date, days_overdue
+            )
             seq.original_draft_body = seq.draft_body  # Store original for edit detection
             seq.next_scheduled_at = now + timedelta(days=14)
             drafts_created += 1
@@ -236,37 +252,75 @@ def run_collections_sequence(db: Session, tenant_id: str) -> dict:
         return {"error": str(e)}
 
 
-def _generate_collections_draft(
-    customer_name: str, invoice_number: str, amount: float,
-    due_date: str, days_overdue: int, tone: str, step: int,
-) -> dict:
-    """Generate a collections email draft via Claude Haiku."""
+def _draft_collections_email(
+    db: Session,
+    *,
+    tenant_id: str,
+    caller_agent_job_id: str | None,
+    customer_id: str,
+    customer_name: str,
+    total_outstanding: float,
+    invoice_count: int,
+    oldest_days: int,
+    tier: str,
+    invoice_lines: str,
+) -> str | None:
+    """Draft a collections email body via the managed Intelligence prompt.
+
+    Returns the plain-text body on success, None on failure. The sequence
+    caller falls back to a deterministic template when this returns None.
+
+    Uses the same `agent.ar_collections.draft_email` prompt as the Phase 2a
+    ARCollectionsAgent — Phase 2c-1 collapse eliminates the duplicate SDK
+    path that used to live in `_generate_collections_draft`.
+    """
+    from app.services.intelligence import intelligence_service
+
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-
-        tone_instructions = {
-            "friendly_reminder": "Polite and professional. Assume good faith — this may be an oversight.",
-            "firm_professional": "Professional but firm. This is the second notice. Express concern about the overdue balance.",
-            "final_notice": "Direct and serious. This is the final notice before account review. Mention that the account may be placed on hold if payment is not received within 10 days.",
-        }
-
-        response = client.messages.create(
-            model=COLLECTIONS_MODEL,
-            max_tokens=500,
-            system=f"You are a professional AR collections assistant. Write a {tone} collections email. {tone_instructions.get(tone, '')} Keep it brief. Return JSON only: {{\"subject\": string, \"body\": string}}",
-            messages=[{
-                "role": "user",
-                "content": f"Customer: {customer_name}\nInvoice: #{invoice_number}\nAmount: ${amount:,.2f}\nOriginal due date: {due_date}\nDays overdue: {days_overdue}\nNotice: step {step} of 3",
-            }],
+        result = intelligence_service.execute(
+            db,
+            prompt_key="agent.ar_collections.draft_email",
+            variables={
+                "customer_name": customer_name,
+                "total_outstanding": f"{total_outstanding:,.2f}",
+                "invoice_count": invoice_count,
+                "oldest_days": oldest_days,
+                "tier": tier,
+                "invoice_lines": invoice_lines,
+            },
+            company_id=tenant_id,
+            caller_module="agent_service.run_collections_sequence",
+            caller_entity_type="customer",
+            caller_entity_id=customer_id,
+            caller_agent_job_id=caller_agent_job_id,
         )
-        return json.loads(response.content[0].text)
+        if result.status == "success":
+            return result.response_text
+        logger.warning(
+            "Collections draft failed for %s: status=%s error=%s",
+            customer_name, result.status, result.error_message,
+        )
+        return None
     except Exception as e:
-        logger.error(f"Collections draft generation failed: {e}")
-        return {
-            "subject": f"Payment Reminder — Invoice #{invoice_number}",
-            "body": f"Dear {customer_name},\n\nThis is a reminder that Invoice #{invoice_number} for ${amount:,.2f} (due {due_date}) is now {days_overdue} days past due.\n\nPlease arrange payment at your earliest convenience.\n\nThank you.",
-        }
+        logger.error("Collections draft generation failed: %s", e)
+        return None
+
+
+def _collections_fallback_body(
+    customer_name: str,
+    invoice_number: str,
+    amount: float,
+    due_date,
+    days_overdue: int,
+) -> str:
+    """Deterministic fallback body when the Intelligence call fails."""
+    return (
+        f"Dear {customer_name},\n\n"
+        f"This is a reminder that Invoice #{invoice_number} for ${amount:,.2f} "
+        f"(due {due_date}) is now {days_overdue} days past due.\n\n"
+        f"Please arrange payment at your earliest convenience.\n\n"
+        f"Thank you."
+    )
 
 
 # ---------------------------------------------------------------------------

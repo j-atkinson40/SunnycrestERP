@@ -602,14 +602,13 @@ def update_quote_status(
 def parse_order(
     data: dict,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Parse a natural language funeral order entry via Claude API.
+    """Parse a natural language funeral order entry via the Intelligence layer.
 
     Returns structured fields: vault_product, equipment, cemetery_name,
     service_date, confidence (0-1).
     """
-    import anthropic
-
     from app.config import settings
 
     input_text = (data.get("input") or "").strip()
@@ -620,22 +619,26 @@ def parse_order(
         return {"error": "AI not configured", "confidence": 0.0}
 
     today_str = date.today().isoformat()
-    system_prompt = _PARSE_ORDER_SYSTEM_PROMPT.replace("{today}", today_str)
 
     try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=500,
-            system=system_prompt,
-            messages=[{"role": "user", "content": input_text}],
+        # Phase 2c-2 migration — orderstation.parse_voice_order
+        from app.services.intelligence import intelligence_service
+
+        result = intelligence_service.execute(
+            db,
+            prompt_key="orderstation.parse_voice_order",
+            variables={"today": today_str, "input_text": input_text},
+            company_id=current_user.company_id,
+            caller_module="order_station.parse_order",
+            caller_entity_type="sales_order_draft",
+            caller_entity_id=None,
         )
-        text = message.content[0].text.strip()
-        text = re.sub(r"^```(?:json)?\s*\n?", "", text)
-        text = re.sub(r"\n?```\s*$", "", text)
-        return json.loads(text)
-    except json.JSONDecodeError as exc:
-        return {"error": f"Parse error: {exc}", "confidence": 0.0}
+        if result.status == "success" and isinstance(result.response_parsed, dict):
+            return result.response_parsed
+        return {
+            "error": result.error_message or f"status={result.status}",
+            "confidence": 0.0,
+        }
     except Exception as exc:
         return {"error": str(exc), "confidence": 0.0}
 

@@ -1933,7 +1933,7 @@ def get_company_relationships(
         db.query(
             Cemetery,
             func.count(SalesOrder.id).label("order_count"),
-            func.max(SalesOrder.service_date).label("last_service"),
+            func.max(SalesOrder.scheduled_date).label("last_service"),
         )
         .join(SalesOrder, SalesOrder.cemetery_id == Cemetery.id)
         .filter(SalesOrder.customer_id == customer.id)

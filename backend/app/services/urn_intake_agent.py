@@ -25,36 +25,24 @@ class UrnIntakeAgent:
         email_data keys: from_email, subject, body_text, body_html, attachments
         Returns dict with order_id, flagged_fields, extraction.
         """
-        from app.services.ai_service import call_anthropic
-
         body = email_data.get("body_text") or email_data.get("body_html", "")
         subject = email_data.get("subject", "")
 
-        prompt = (
-            "Extract urn order details from this funeral home email.\n"
-            "Return ONLY a JSON object with these fields:\n"
-            "- funeral_home_name: string or null\n"
-            "- fh_contact_email: string or null\n"
-            "- urn_description: string or null (product name, SKU, or description)\n"
-            "- quantity: integer (default 1)\n"
-            "- engraving_line_1: string or null (decedent name)\n"
-            "- engraving_line_2: string or null (dates, e.g. birth-death)\n"
-            "- engraving_line_3: string or null\n"
-            "- engraving_line_4: string or null\n"
-            "- font_selection: string or null\n"
-            "- color_selection: string or null\n"
-            "- need_by_date: string or null (ISO format)\n"
-            "- delivery_method: string or null\n"
-            "- notes: string or null\n"
-            "- confidence_scores: object mapping field names to 0.0-1.0\n\n"
-            f"Subject: {subject}\n\n"
-            f"Body:\n{body[:3000]}"
-        )
-
         try:
-            import json
-            result = call_anthropic(prompt, max_tokens=800)
-            extraction = json.loads(result) if result else {}
+            # Phase 2c-4 migration — urn.extract_intake_email
+            from app.services.intelligence import intelligence_service
+
+            intel = intelligence_service.execute(
+                db,
+                prompt_key="urn.extract_intake_email",
+                variables={"subject": subject, "body": body[:3000]},
+                company_id=tenant_id,
+                caller_module="urn_intake_agent.process_intake_email",
+                caller_entity_type="urn_order_draft",
+            )
+            extraction = intel.response_parsed if (
+                intel.status == "success" and isinstance(intel.response_parsed, dict)
+            ) else {}
         except Exception as e:
             logger.error("AI extraction failed for intake email: %s", e)
             extraction = {}
@@ -126,17 +114,21 @@ class UrnIntakeAgent:
                         "match_method": "order_reference",
                     }
 
-        # Fuzzy match: extract decedent name from subject/body
-        from app.services.ai_service import call_anthropic
+        # Phase 2c-4 migration — urn.match_proof_email
         try:
-            import json
-            prompt = (
-                "Extract the decedent name from this proof email from Wilbert.\n"
-                "Return ONLY a JSON object: {\"decedent_name\": \"...\"}\n\n"
-                f"Subject: {subject}\nBody:\n{body[:1500]}"
+            from app.services.intelligence import intelligence_service
+
+            intel = intelligence_service.execute(
+                db,
+                prompt_key="urn.match_proof_email",
+                variables={"subject": subject, "body": body[:1500]},
+                company_id=tenant_id,
+                caller_module="urn_intake_agent.match_proof_email",
+                caller_entity_type="urn_engraving_proof",
             )
-            result = call_anthropic(prompt, max_tokens=100)
-            parsed = json.loads(result) if result else {}
+            parsed = intel.response_parsed if (
+                intel.status == "success" and isinstance(intel.response_parsed, dict)
+            ) else {}
             decedent = parsed.get("decedent_name")
         except Exception:
             decedent = None
@@ -177,7 +169,7 @@ class UrnIntakeAgent:
             entity = (
                 db.query(CompanyEntity)
                 .filter(
-                    CompanyEntity.tenant_id == tenant_id,
+                    CompanyEntity.company_id == tenant_id,
                     CompanyEntity.is_funeral_home == True,
                     CompanyEntity.email == email,
                 )
@@ -192,7 +184,7 @@ class UrnIntakeAgent:
             entity = (
                 db.query(CompanyEntity)
                 .filter(
-                    CompanyEntity.tenant_id == tenant_id,
+                    CompanyEntity.company_id == tenant_id,
                     CompanyEntity.is_funeral_home == True,
                     CompanyEntity.name.ilike(pattern),
                 )

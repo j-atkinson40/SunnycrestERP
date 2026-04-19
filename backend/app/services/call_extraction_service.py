@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.models.company_entity import CompanyEntity
 from app.models.ringcentral_call_extraction import RingCentralCallExtraction
 from app.models.ringcentral_call_log import RingCentralCallLog
-from app.services.ai_service import call_anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +112,7 @@ def _fuzzy_match_company(db: Session, tenant_id: str, name: str) -> str | None:
     exact = (
         db.query(CompanyEntity)
         .filter(
-            CompanyEntity.tenant_id == tenant_id,
+            CompanyEntity.company_id == tenant_id,
             func.lower(CompanyEntity.name) == name.lower(),
         )
         .first()
@@ -126,7 +125,7 @@ def _fuzzy_match_company(db: Session, tenant_id: str, name: str) -> str | None:
     contains = (
         db.query(CompanyEntity)
         .filter(
-            CompanyEntity.tenant_id == tenant_id,
+            CompanyEntity.company_id == tenant_id,
             func.lower(CompanyEntity.name).like(like_pattern),
         )
         .first()
@@ -156,14 +155,28 @@ def extract_order_from_transcript(
     Returns:
         RingCentralCallExtraction record
     """
-    user_message = f"Call transcript:\n\n{transcript}"
-
+    # Phase 2c-3 migration — managed `calls.extract_order_from_transcript`.
+    # The 2c-0a seed carries EXTRACTION_SYSTEM_PROMPT + user template verbatim;
+    # we only pass the transcript variable here.
     try:
-        result = call_anthropic(
-            system_prompt=EXTRACTION_SYSTEM_PROMPT,
-            user_message=user_message,
-            max_tokens=1024,
+        from app.services.intelligence import intelligence_service
+
+        intel = intelligence_service.execute(
+            db,
+            prompt_key="calls.extract_order_from_transcript",
+            variables={"transcript": transcript},
+            company_id=tenant_id,
+            caller_module="call_extraction_service.extract_order_from_transcript",
+            caller_entity_type="ringcentral_call_log",
+            caller_entity_id=call_id,
+            caller_ringcentral_call_log_id=call_id,
         )
+        if intel.status == "success" and isinstance(intel.response_parsed, dict):
+            result = intel.response_parsed
+        else:
+            raise RuntimeError(
+                f"Intelligence status={intel.status}: {intel.error_message}"
+            )
     except Exception:
         logger.exception("Claude extraction failed for call %s", call_id)
         result = {

@@ -72,7 +72,14 @@ async def parse_migration_files(
 
         # ── AI-assisted classification ────────────────────────────────────────
         try:
-            classification_result = classification_svc.classify_customers(_parsed_customers)
+            from app.models.company import Company
+            tenant = db.query(Company).filter_by(id=current_user.company_id).first()
+            classification_result = classification_svc.classify_customers(
+                _parsed_customers,
+                db=db,
+                company_id=current_user.company_id,
+                tenant_name=tenant.name if tenant else "the Wilbert licensee",
+            )
             result["classification_summary"] = classification_result["summary"]
             result["needs_review_customers"] = classification_result["needs_review"][:100]  # cap at 100 for payload size
             # Attach customer_type predictions to each parsed customer (used by /run)

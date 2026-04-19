@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.services.ai_service import call_anthropic
 from app.services.operations_board_service import (
     get_announcement_replies,
     get_merged_settings,
@@ -399,7 +398,7 @@ def get_daily_context(
         db.query(SalesOrder)
         .filter(
             SalesOrder.company_id == current_user.company_id,
-            SalesOrder.delivery_date == today,
+            SalesOrder.scheduled_date == today,
             SalesOrder.status.notin_(["cancelled", "void"]),
         )
         .count()
@@ -579,22 +578,30 @@ def get_daily_context(
         )
 
     try:
-        result = call_anthropic(
-            system_prompt=(
-                "You are an operations assistant for a burial vault manufacturing plant. "
-                "Generate brief, practical daily context for the plant manager. "
-                "Be concise — plant managers are busy. No fluff."
-            ),
-            user_message=(
-                f"Generate a daily context briefing for {day_name} at {hour}:00. "
-                "Return JSON only: {\"greeting\": string, \"priority_message\": string, "
-                "\"items\": [{\"type\": string, \"message\": string, "
-                "\"action_label\": string, \"action_url\": string}]}"
-                + vault_prompt_addendum
-            ),
-            context_data=context_data,
-            max_tokens=400,
+        # Phase 2c-3 migration — briefing.plant_manager_daily_context
+        import json as _json
+
+        from app.services.intelligence import intelligence_service
+
+        intel = intelligence_service.execute(
+            db,
+            prompt_key="briefing.plant_manager_daily_context",
+            variables={
+                "day_name": day_name,
+                "hour": hour,
+                "vault_prompt_addendum": vault_prompt_addendum,
+                "context_data_json": _json.dumps(context_data, default=str),
+            },
+            company_id=current_user.company_id,
+            caller_module="operations_board.get_daily_context",
+            caller_entity_type="user",
+            caller_entity_id=current_user.id,
         )
+        if intel.status != "success" or not isinstance(intel.response_parsed, dict):
+            raise RuntimeError(
+                f"Intelligence status={intel.status}: {intel.error_message}"
+            )
+        result = intel.response_parsed
         result["generated_at"] = now.isoformat()
         result["cached"] = False
         result["vault_urgency"] = vault_urgency
@@ -652,14 +659,29 @@ def interpret_transcript(
             detail=f"Unknown context '{request.context}'. Must be one of: {', '.join(INTERPRET_PROMPTS)}",
         )
 
-    system_prompt = INTERPRET_PROMPTS[request.context]
-    user_message = (
-        f"The manager said: '{request.transcript}'\n\n"
-        f"Available products: {request.available_products}\n"
-        f"Available employees: {request.available_employees}"
+    # Phase 2c-3 migration — voice.interpret_transcript with context_key
+    # selector. The managed prompt's Jinja conditional picks the right
+    # sub-context system prompt; the local INTERPRET_PROMPTS dict is retained
+    # only as the context-key allowlist (see guard above).
+    from app.services.intelligence import intelligence_service
+
+    result = intelligence_service.execute(
+        db,
+        prompt_key="voice.interpret_transcript",
+        variables={
+            "context_key": request.context,
+            "transcript": request.transcript,
+            "available_products": str(request.available_products),
+            "available_employees": str(request.available_employees),
+        },
+        company_id=current_user.company_id,
+        caller_module="operations_board.interpret_transcript",
+        caller_entity_type="user_actions",
+        caller_entity_id=None,
     )
 
-    return call_anthropic(
-        system_prompt=system_prompt,
-        user_message=user_message,
-    )
+    if result.status == "success" and isinstance(result.response_parsed, dict):
+        return result.response_parsed
+    # On parse failure or API error: surface the raw text so the UI can show it.
+    return {"error": result.error_message or f"status={result.status}",
+            "raw_response": result.response_text}

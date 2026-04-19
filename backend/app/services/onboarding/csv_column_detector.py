@@ -6,7 +6,6 @@ Uses rule-based alias matching first, falls back to Claude for ambiguous columns
 import logging
 from difflib import SequenceMatcher
 
-from app.services.ai_service import call_anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +103,9 @@ def detect_columns(
     headers: list[str],
     sample_rows: list[dict],
     import_type: str,  # "cemetery" | "funeral_home"
+    *,
+    db=None,
+    company_id: str | None = None,
 ) -> dict:
     """Detect column mapping for a CSV file.
 
@@ -159,20 +161,37 @@ def detect_columns(
 
     if critical_unmapped and ai_remaining_headers:
         try:
-            sample_preview = sample_rows[:3] if sample_rows else []
-            result = call_anthropic(
-                system_prompt=(
-                    f"Map CSV columns to standard {import_type} fields. "
-                    "Return ONLY a JSON object mapping standard field names to actual column names. "
-                    "Only include fields you are confident about."
-                ),
-                user_message=(
-                    f"Headers: {ai_remaining_headers}\n\n"
-                    f"Sample data:\n{sample_preview}\n\n"
-                    f"Standard fields: {list(alias_map.keys())}"
-                ),
-                max_tokens=256,
-            )
+            # Phase 2c-4 migration — managed onboarding.detect_csv_columns
+            from app.services.intelligence import intelligence_service
+
+            if db is None:
+                from app.database import SessionLocal
+                local_db = SessionLocal()
+                _owns_db = True
+            else:
+                local_db = db
+                _owns_db = False
+
+            try:
+                sample_preview = str(sample_rows[:3] if sample_rows else [])
+                intel = intelligence_service.execute(
+                    local_db,
+                    prompt_key="onboarding.detect_csv_columns",
+                    variables={
+                        "import_type": import_type,
+                        "ai_remaining_headers": str(ai_remaining_headers),
+                        "sample_preview": sample_preview,
+                        "standard_fields": str(list(alias_map.keys())),
+                    },
+                    company_id=company_id,
+                    caller_module="onboarding.csv_column_detector.detect_columns",
+                    caller_entity_type=None,
+                )
+                result = intel.response_parsed if intel.status == "success" else None
+            finally:
+                if _owns_db:
+                    local_db.close()
+
             if isinstance(result, dict):
                 for field_name, col_name in result.items():
                     if (

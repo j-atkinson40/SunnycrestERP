@@ -86,7 +86,9 @@ def run_website_intelligence(db_session, tenant_id: str, url: str) -> None:
 
         # 3. Analyze
         logger.info(f"Analyzing website content for tenant {tenant_id}")
-        analysis = analyze_website_content(scrape_result["raw_content"])
+        analysis = analyze_website_content(
+            db, scrape_result["raw_content"], company_id=tenant_id
+        )
         intel.analysis_result = json.dumps(analysis["analysis"])
         intel.input_tokens = analysis["input_tokens"]
         intel.output_tokens = analysis["output_tokens"]

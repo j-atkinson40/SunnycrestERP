@@ -35,6 +35,8 @@ export function generateStepSummary(
       return generateInputSummary(step)
     case "action":
       return generateActionSummary(step, previousSteps)
+    case "ai_prompt":
+      return generateAiPromptSummary(step)
     case "condition":
       return generateConditionSummary(step)
     case "output":
@@ -275,6 +277,19 @@ function generateConditionSummary(step: StepLike): StepSummary {
     subline: null,
     fields: [],
     resultVariable: null,
+  }
+}
+
+function generateAiPromptSummary(step: StepLike): StepSummary {
+  const cfg = (step.config || {}) as Record<string, unknown>
+  const key = (cfg.prompt_key as string) || ""
+  const variables = (cfg.variables as Record<string, unknown>) || {}
+  const mapped = Object.keys(variables).length
+  return {
+    headline: key ? `Runs AI prompt ${key}` : "Runs an AI prompt",
+    subline: mapped === 0 ? "No variables mapped" : `${mapped} variable${mapped !== 1 ? "s" : ""} mapped`,
+    fields: [],
+    resultVariable: `{output.${step.step_key}.<field>}`,
   }
 }
 

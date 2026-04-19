@@ -273,6 +273,8 @@ def detect_format(
     headers: list[str],
     sample_rows: list[dict],
     company_id: str | None = None,
+    *,
+    db=None,
 ) -> dict:
     """Detect the source system and return column mapping with confidence scores.
 
@@ -295,9 +297,9 @@ def detect_format(
             "mapping_confidence": confidence,
         }
 
-    # ── Generic CSV — use Claude for mapping ────────────────────────────────
+    # ── Generic CSV — use managed import.detect_order_csv_columns prompt ───
     try:
-        from app.services.ai_service import call_anthropic
+        from app.services.intelligence import intelligence_service
 
         sample_text = "\n".join(
             [str(list(headers))]
@@ -306,18 +308,30 @@ def detect_format(
                 for r in sample_rows[:3]
             ]
         )
-        prompt = (
-            "Map these CSV columns to standard funeral order fields.\n\n"
-            "Standard fields: funeral_home_name, cemetery_name, product_name, "
-            "equipment_description, scheduled_date, service_time, quantity, notes, "
-            "order_number, csr_name, fulfillment_type, is_spring_surcharge.\n"
-            "For columns with no match use 'ignore'.\n"
-            "For Family Name / decedent name columns use 'skip_privacy'.\n\n"
-            f"Headers and sample rows:\n{sample_text}\n\n"
-            'Return JSON only: {"<column>": {"field": "<field>", "confidence": 0-1}}'
-        )
 
-        result = call_anthropic(prompt, json_mode=True)
+        if db is None:
+            from app.database import SessionLocal
+            local_db = SessionLocal()
+            _owns_db = True
+        else:
+            local_db = db
+            _owns_db = False
+        try:
+            intel = intelligence_service.execute(
+                local_db,
+                prompt_key="import.detect_order_csv_columns",
+                variables={"sample_text": sample_text},
+                company_id=company_id,
+                caller_module="historical_order_import_service.detect_format",
+                caller_entity_type=None,
+            )
+        finally:
+            if _owns_db:
+                local_db.close()
+
+        result = intel.response_parsed if (
+            intel.status == "success" and isinstance(intel.response_parsed, dict)
+        ) else None
         if isinstance(result, dict):
             mapping = {}
             confidence = {}
