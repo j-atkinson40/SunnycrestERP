@@ -22,12 +22,14 @@ select = [
 ]
 
 # ── Forbid direct anthropic SDK usage outside the Intelligence package ──
+# ── Forbid direct WeasyPrint usage outside the Documents package (D-2) ──
 [lint.flake8-tidy-imports]
-banned-module-level-imports = ["anthropic"]
+banned-module-level-imports = ["anthropic", "weasyprint"]
 
 [lint.flake8-tidy-imports.banned-api]
 "anthropic.Anthropic" = { msg = "Do not instantiate the Anthropic SDK directly. Route calls through app.services.intelligence.intelligence_service.execute() with a managed prompt." }
 "anthropic.AsyncAnthropic" = { msg = "Do not instantiate the AsyncAnthropic SDK directly. Streaming callers use app.services.intelligence.chat_service.send_message_streaming()." }
+"weasyprint.HTML" = { msg = "Do not call weasyprint.HTML directly. Route PDFs through app.services.documents.document_renderer (render / render_pdf_bytes) so everything uses the managed template registry and lands in canonical Document rows when appropriate." }
 
 # ── Permanent allowlist ─────────────────────────────────────────────────
 #
@@ -37,10 +39,26 @@ banned-module-level-imports = ["anthropic"]
 #   tests/**                     — tests can mock/reference
 #   scripts/**                   — seed scripts reference model IDs
 #
+# Permanent allowlist for weasyprint:
+#   services/documents/**        — the managed renderer backbone
+#   tests/**                     — tests can mock/reference
+#   scripts/**                   — seed scripts
+#
 # NOTE: ai_service.py was deleted in Phase 2c-5. If it reappears, that's a
-# regression — remove it again.
+# regression — remove it again. Likewise, Phase D-2 migrated the last
+# in-app weasyprint call sites. Any new weasyprint.HTML(...) outside
+# services/documents/ is a regression.
 [lint.per-file-ignores]
 "app/services/intelligence/**" = ["TID251", "TID252"]
+"app/services/documents/**" = ["TID251", "TID252"]
 "app/api/routes/admin/chat.py" = ["TID251", "TID252"]
 "tests/**" = ["TID251", "TID252"]
 "scripts/**" = ["TID251", "TID252"]
+
+# Transitional weasyprint allowlist — queued for migration after D-2.
+# See tests/test_documents_d2_lint.py::TRANSITIONAL_ALLOWLIST for
+# justification. Each entry should be REMOVED when its source migrates.
+"app/main.py" = ["TID251"]
+"app/services/pdf_generation_service.py" = ["TID251"]
+"app/services/quote_service.py" = ["TID251"]
+"app/services/wilbert_utils.py" = ["TID251"]

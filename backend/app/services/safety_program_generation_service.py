@@ -1,7 +1,9 @@
 """Safety Program Generation Service.
 
 Generates monthly written safety programs using Claude Sonnet and OSHA regulation text.
-Produces PDF via WeasyPrint. Ties into the existing safety training schedule.
+Produces canonical Document rows via the Phase D-2 managed template
+registry (`pdf.safety_program_base`). Ties into the existing safety
+training schedule.
 """
 
 import logging
@@ -11,8 +13,6 @@ from datetime import date, datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.company import Company
-from app.models.document import Document
 from app.models.safety_program import SafetyProgram
 from app.models.safety_program_generation import SafetyProgramGeneration
 from app.models.safety_training_topic import SafetyTrainingTopic
@@ -146,7 +146,12 @@ def generate_program_content(
         if result.status == "success" and result.response_text:
             gen.generated_content = result.response_text
             gen.generated_html = _wrap_program_html(
-                result.response_text, topic.title, company_name, topic.osha_standard
+                result.response_text,
+                topic.title,
+                company_name,
+                topic.osha_standard,
+                db=db,
+                company_id=gen.tenant_id,
             )
             gen.generation_status = "complete"
             gen.generation_model = result.model_used or GENERATION_MODEL
@@ -174,152 +179,44 @@ def generate_program_content(
 
 
 def _wrap_program_html(
-    content: str, title: str, company_name: str, osha_standard: str | None
+    content: str,
+    title: str,
+    company_name: str,
+    osha_standard: str | None,
+    *,
+    db: Session | None = None,
+    company_id: str | None = None,
 ) -> str:
-    """Wrap generated content in a full HTML document for PDF rendering."""
-    from app.utils.pdf_generators.social_service_certificate_pdf import _esc
+    """Render the Claude-generated content inside the managed
+    `pdf.safety_program_base` wrapper. D-2: structural HTML moved to the
+    template registry; tenants override this wrapper to re-brand without
+    touching the AI-generated content.
+
+    `content` is Claude's HTML. We pass it through the wrapper via the
+    `ai_generated_html` context variable — the template uses `|safe` to
+    render it un-escaped (trust is established at Claude-call time by the
+    managed `safety.draft_monthly_program` prompt).
+
+    When `db` + `company_id` are provided, the renderer resolves a
+    tenant override first; omit them to force the platform template.
+    """
+    from app.services.documents import document_renderer
 
     today_str = date.today().strftime("%B %Y")
-    osha_line = f"OSHA Standard: {_esc(osha_standard)}" if osha_standard else ""
-
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  @page {{
-    size: letter portrait;
-    margin: 0.75in 0.75in 1in 0.75in;
-    @bottom-center {{
-      content: "Page " counter(page) " of " counter(pages);
-      font-size: 8pt;
-      color: #888;
-    }}
-  }}
-  body {{
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 10.5pt;
-    color: #1a1a1a;
-    line-height: 1.6;
-    margin: 0;
-    padding: 0;
-  }}
-  .cover-header {{
-    text-align: center;
-    padding: 20px 0 16px;
-    border-bottom: 3px solid #1a365d;
-    margin-bottom: 24px;
-  }}
-  .cover-header .company-name {{
-    font-size: 14pt;
-    font-weight: 700;
-    color: #1a365d;
-    letter-spacing: 0.5px;
-    margin-bottom: 6px;
-  }}
-  .cover-header .program-title {{
-    font-size: 18pt;
-    font-weight: 700;
-    margin: 12px 0 8px;
-  }}
-  .cover-header .osha-ref {{
-    font-size: 10pt;
-    color: #555;
-  }}
-  .cover-header .date-line {{
-    font-size: 10pt;
-    color: #555;
-    margin-top: 4px;
-  }}
-  h2 {{
-    font-size: 13pt;
-    font-weight: 700;
-    color: #1a365d;
-    border-bottom: 1.5px solid #1a365d;
-    padding-bottom: 4px;
-    margin-top: 24px;
-    margin-bottom: 12px;
-    page-break-after: avoid;
-  }}
-  h3 {{
-    font-size: 11pt;
-    font-weight: 700;
-    color: #2d3748;
-    margin-top: 16px;
-    margin-bottom: 8px;
-    page-break-after: avoid;
-  }}
-  p {{
-    margin: 0 0 8px;
-  }}
-  ul, ol {{
-    margin: 0 0 12px;
-    padding-left: 24px;
-  }}
-  li {{
-    margin-bottom: 4px;
-  }}
-  table {{
-    width: 100%;
-    border-collapse: collapse;
-    margin: 12px 0;
-    font-size: 10pt;
-  }}
-  table th, table td {{
-    border: 1px solid #ccc;
-    padding: 6px 8px;
-    text-align: left;
-    vertical-align: top;
-  }}
-  table th {{
-    background: #edf2f7;
-    font-weight: 600;
-  }}
-  .disclaimer {{
-    margin-top: 30px;
-    padding: 12px;
-    border: 1px solid #ccc;
-    background: #f7fafc;
-    font-size: 9pt;
-    color: #555;
-    line-height: 1.5;
-  }}
-  .footer-line {{
-    margin-top: 24px;
-    border-top: 1px solid #ddd;
-    padding-top: 8px;
-    font-size: 8.5pt;
-    color: #888;
-    text-align: center;
-  }}
-</style>
-</head>
-<body>
-
-<div class="cover-header">
-  <div class="company-name">{_esc(company_name)}</div>
-  <div class="program-title">{_esc(title)}</div>
-  <div class="program-title" style="font-size: 12pt; font-weight: 400;">Written Safety Program</div>
-  <div class="osha-ref">{osha_line}</div>
-  <div class="date-line">{today_str}</div>
-</div>
-
-{content}
-
-<div class="disclaimer">
-  This written safety program is generated as a starting point and should be reviewed
-  and customized by the designated safety trainer or safety manager before implementation.
-  It does not constitute legal advice. Consult with qualified safety professionals and
-  legal counsel to ensure full compliance with all applicable OSHA regulations and
-  state-specific requirements.
-</div>
-
-<div class="footer-line">
-  {_esc(company_name)} &mdash; Written Safety Program &mdash; {today_str}
-</div>
-
-</body>
-</html>"""
+    context = {
+        "company_name": company_name,
+        "program_title": title,
+        "osha_standard": osha_standard,
+        "date_line": today_str,
+        "ai_generated_html": content,
+    }
+    result = document_renderer.render_html(
+        db,
+        template_key="pdf.safety_program_base",
+        context=context,
+        company_id=company_id,
+    )
+    return result.rendered_content  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
@@ -330,53 +227,60 @@ def _wrap_program_html(
 def generate_pdf(
     db: Session, generation_id: str
 ) -> SafetyProgramGeneration:
-    """Generate a PDF from the HTML content and store as a Document."""
+    """Generate a PDF from the generated HTML content — produces a
+    canonical Document row via the managed template registry.
+
+    D-2 rewrite: routes through document_renderer.render() with
+    `pdf.safety_program_base`. The Claude-generated content from
+    `gen.generated_content` is embedded via the `ai_generated_html`
+    context variable. Any tenant-scoped override of the base template
+    wins over the platform default.
+    """
     gen = db.query(SafetyProgramGeneration).filter(
         SafetyProgramGeneration.id == generation_id
     ).first()
-    if not gen or not gen.generated_html:
-        raise ValueError("No HTML content to render")
+    if not gen:
+        raise ValueError("Generation not found")
+    content = gen.generated_content or gen.generated_html
+    if not content:
+        raise ValueError("No content to render")
+
+    topic = db.query(SafetyTrainingTopic).filter(
+        SafetyTrainingTopic.id == gen.topic_id
+    ).first()
+    topic_title = topic.title if topic else "Safety Program"
+
+    from app.models.company import Company
+    company = db.query(Company).filter(Company.id == gen.tenant_id).first()
+    company_name = company.name if company else "Company"
+
+    today_str = date.today().strftime("%B %Y")
+    context = {
+        "company_name": company_name,
+        "program_title": topic_title,
+        "osha_standard": topic.osha_standard if topic else None,
+        "date_line": today_str,
+        "ai_generated_html": content,
+    }
+
+    from app.services.documents import document_renderer
 
     try:
-        from weasyprint import HTML
-
-        pdf_bytes = HTML(string=gen.generated_html).write_pdf()
-
-        topic = db.query(SafetyTrainingTopic).filter(
-            SafetyTrainingTopic.id == gen.topic_id
-        ).first()
-        topic_title = topic.title if topic else "Safety Program"
-
-        # Create a Document record and upload to R2
-        filename = f"safety-program-{gen.year}-{gen.month_number:02d}-{topic_title.lower().replace(' ', '-')[:40]}.pdf"
-        r2_key = f"tenants/{gen.tenant_id}/safety_programs/{gen.id}/{filename}"
-
-        # Try R2 upload
-        try:
-            from app.services.legacy_r2_client import upload_bytes as r2_upload
-            r2_upload(pdf_bytes, r2_key, content_type="application/pdf")
-        except Exception as e:
-            logger.warning(f"R2 upload failed, storing locally: {e}")
-            import os
-            upload_dir = os.path.join("static", "safety-programs", gen.tenant_id)
-            os.makedirs(upload_dir, exist_ok=True)
-            filepath = os.path.join(upload_dir, filename)
-            with open(filepath, "wb") as f:
-                f.write(pdf_bytes)
-            r2_key = filepath
-
-        doc = Document(
-            id=str(uuid.uuid4()),
+        doc = document_renderer.render(
+            db,
+            template_key="pdf.safety_program_base",
+            context=context,
+            document_type="safety_program",
+            title=(
+                f"Safety Program \u2014 {topic_title} \u2014 "
+                f"{gen.year}-{gen.month_number:02d}"
+            ),
             company_id=gen.tenant_id,
             entity_type="safety_program_generation",
             entity_id=gen.id,
-            file_name=filename,
-            file_path=r2_key,
-            r2_key=r2_key if r2_key.startswith("tenants/") else None,
-            file_size=len(pdf_bytes),
-            mime_type="application/pdf",
+            safety_program_generation_id=gen.id,
+            caller_module="safety_program_generation_service.generate_pdf",
         )
-        db.add(doc)
 
         gen.pdf_document_id = doc.id
         gen.pdf_generated_at = datetime.now(timezone.utc)

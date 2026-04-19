@@ -415,22 +415,72 @@ def generate_template_preview_pdf(
         return None
 
 
-def generate_invoice_pdf(db: Session, invoice_id: str, company_id: str) -> bytes | None:
-    """Render invoice to PDF bytes. Returns None if WeasyPrint unavailable."""
-    try:
-        from weasyprint import HTML, CSS
-    except ImportError:
-        logger.warning("WeasyPrint not available — cannot generate PDF for invoice %s", invoice_id)
+def generate_invoice_document(
+    db: Session, invoice_id: str, company_id: str,
+) -> "CanonicalDocument | None":
+    """Phase D-1 — render an invoice through the Documents layer.
+
+    Returns the canonical Document row (with storage_key, linkage,
+    version metadata). The PDF is persisted to R2.
+
+    Returns None if the invoice can't be loaded. Raises
+    DocumentRenderError on template / WeasyPrint / R2 failure —
+    callers that want graceful degradation should catch it.
+    """
+    from app.models.canonical_document import Document as CanonicalDocument
+    from app.services.documents import document_renderer
+
+    context = _build_context(db, invoice_id, company_id)
+    if not context:
         return None
 
-    html_content = generate_invoice_html(db, invoice_id, company_id)
+    template_key_suffix = context.get("template_key") or "professional"
+    template_key = f"invoice.{template_key_suffix}"
+    # Guard — fall back to professional if an unknown variant slipped in
+    from app.services.documents.template_loader import _TEMPLATE_REGISTRY
+
+    if template_key not in _TEMPLATE_REGISTRY:
+        template_key = "invoice.professional"
+
+    invoice_number = context.get("invoice_number") or invoice_id[:8]
+
+    return document_renderer.render(
+        db,
+        template_key=template_key,
+        context=context,
+        document_type="invoice",
+        title=f"Invoice {invoice_number}",
+        company_id=company_id,
+        entity_type="invoice",
+        entity_id=invoice_id,
+        invoice_id=invoice_id,
+        caller_module="pdf_generation_service.generate_invoice_document",
+    )
+
+
+def generate_invoice_pdf(db: Session, invoice_id: str, company_id: str) -> bytes | None:
+    """Legacy API — render invoice to PDF bytes.
+
+    Phase D-1: routes through `generate_invoice_document()`, then fetches
+    bytes from R2. Existing callers at routes/sales.py keep working
+    verbatim. Returns None on failure to preserve the legacy contract.
+    """
+    from app.services.documents import document_renderer
 
     try:
-        pdf_bytes: bytes = HTML(
-            string=html_content,
-            base_url=_TEMPLATE_DIR,
-        ).write_pdf()
-        return pdf_bytes
-    except Exception as exc:
-        logger.error("PDF generation failed for invoice %s: %s", invoice_id, exc)
+        doc = generate_invoice_document(db, invoice_id, company_id)
+    except document_renderer.DocumentRenderError as exc:
+        logger.error("Invoice Document render failed for %s: %s", invoice_id, exc)
+        return None
+    if doc is None:
+        return None
+
+    try:
+        return document_renderer.download_bytes(doc)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "Fetched rendered invoice %s but R2 download failed: %s",
+            invoice_id,
+            exc,
+        )
         return None

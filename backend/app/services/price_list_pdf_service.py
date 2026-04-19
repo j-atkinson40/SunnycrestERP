@@ -191,13 +191,22 @@ def _build_context(
     }
 
 
-def generate_price_list_pdf(
+def generate_price_list_document(
     db: Session,
     tenant_id: str,
     version_id: str,
     template_id: str | None = None,
-) -> bytes | None:
-    """Generate a PDF for a price list version. Returns bytes or None on failure."""
+):
+    """Phase D-1 — render the price list through the Documents layer.
+
+    Returns the canonical Document row, or None if the inputs don't
+    resolve. Raises DocumentRenderError on template/PDF/R2 failure —
+    callers that want the old "return None on any error" behavior
+    should catch it.
+    """
+    from app.services.documents import document_renderer
+    from app.services.documents.template_loader import _TEMPLATE_REGISTRY
+
     version = db.query(PriceListVersion).filter(
         PriceListVersion.id == version_id,
         PriceListVersion.tenant_id == tenant_id,
@@ -214,24 +223,54 @@ def generate_price_list_pdf(
 
     ctx = _build_context(db, version, template, tenant_id)
     layout = template.layout_type or "grouped"
-    template_file = f"{layout}.html"
+    template_key = f"price_list.{layout}"
+    if template_key not in _TEMPLATE_REGISTRY:
+        template_key = "price_list.grouped"
+
+    title = f"Price List — {ctx.get('title') or 'v?'}"
+
+    return document_renderer.render(
+        db,
+        template_key=template_key,
+        context=ctx,
+        document_type="price_list",
+        title=title,
+        company_id=tenant_id,
+        entity_type="price_list_version",
+        entity_id=version_id,
+        price_list_version_id=version_id,
+        caller_module="price_list_pdf_service.generate_price_list_document",
+    )
+
+
+def generate_price_list_pdf(
+    db: Session,
+    tenant_id: str,
+    version_id: str,
+    template_id: str | None = None,
+) -> bytes | None:
+    """Legacy API — render to PDF bytes.
+
+    Phase D-1 routes through `generate_price_list_document()`. Returns
+    None on any failure to preserve the legacy contract.
+    """
+    from app.services.documents import document_renderer
 
     try:
-        env = _get_jinja_env()
-        html = env.get_template(template_file).render(**ctx)
-    except Exception:
-        logger.exception("Failed to render price list template")
+        doc = generate_price_list_document(db, tenant_id, version_id, template_id)
+    except document_renderer.DocumentRenderError:
+        logger.exception("Price list Document render failed")
+        return None
+    if doc is None:
         return None
 
     try:
-        from weasyprint import HTML
-        pdf_bytes = HTML(string=html).write_pdf()
-        return pdf_bytes
-    except ImportError:
-        logger.warning("WeasyPrint not installed — cannot generate PDF")
-        return None
-    except Exception:
-        logger.exception("WeasyPrint PDF generation failed")
+        return document_renderer.download_bytes(doc)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Fetched price list Document %s but R2 download failed",
+            doc.id,
+        )
         return None
 
 

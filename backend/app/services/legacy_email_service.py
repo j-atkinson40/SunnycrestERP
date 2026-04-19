@@ -57,28 +57,62 @@ def get_sender_config(db: Session, company_id: str) -> dict:
 
 
 def send_email(db: Session, company_id: str, to_addresses: list[str], subject: str, html_body: str, attachments: list | None = None) -> str:
-    """Send email via Resend API."""
-    try:
-        import resend
-        sender = get_sender_config(db, company_id)
-        from_str = f"{sender['from_name']} <{sender['from_email']}>"
+    """Send email through DeliveryService (D-7) — routes to the
+    registered email channel (Resend today, native email tomorrow).
 
-        params: dict = {
-            "from": from_str,
-            "to": to_addresses,
-            "subject": subject,
-            "html": html_body,
-        }
-        if sender["reply_to"]:
-            params["reply_to"] = sender["reply_to"]
-        if attachments:
-            params["attachments"] = attachments
+    Every call lands in `document_deliveries` for audit.
+    `to_addresses` is a list of recipients; we create one delivery row
+    per recipient and return the first successful message id for
+    backward compat with the legacy return shape.
+    """
+    from app.services.delivery import delivery_service
 
-        result = resend.Emails.send(params)
-        return result.get("id", "")
-    except Exception as e:
-        logger.exception("Failed to send legacy email: %s", e)
-        raise
+    sender = get_sender_config(db, company_id)
+    from_name = sender["from_name"]
+    reply_to = sender["reply_to"]
+
+    # Convert legacy attachments (list of {filename, content}) to typed
+    atts: list[delivery_service.AttachmentInput] = []
+    import base64 as _b64
+    for a in attachments or []:
+        content = a.get("content")
+        if isinstance(content, str):
+            try:
+                content = _b64.b64decode(content)
+            except Exception:
+                content = content.encode("utf-8")
+        atts.append(
+            delivery_service.AttachmentInput(
+                filename=a.get("filename", "attachment"),
+                content_type=a.get(
+                    "content_type", "application/octet-stream"
+                ),
+                content=content or b"",
+            )
+        )
+
+    last_message_id = ""
+    for addr in to_addresses:
+        delivery = delivery_service.send(
+            db,
+            delivery_service.SendParams(
+                company_id=company_id,
+                channel="email",
+                recipient=delivery_service.RecipientInput(
+                    type="email_address", value=addr
+                ),
+                subject=subject,
+                body=html_body,
+                body_html=html_body,
+                attachments=atts,
+                reply_to=reply_to,
+                from_name=from_name,
+                caller_module="legacy_email_service.send_email",
+            ),
+        )
+        if delivery.provider_message_id:
+            last_message_id = delivery.provider_message_id
+    return last_message_id
 
 
 # ── Proof email ──────────────────────────────────────────────────────────────
@@ -103,50 +137,52 @@ def build_proof_email_html(
     logo_url: str | None = None,
     custom_notes: str | None = None,
     watermark_enabled: bool = False,
+    *,
+    company_id: str | None = None,
 ) -> str:
-    """Build the proof email HTML."""
-    details = []
-    if proof.inscription_name:
-        details.append(f"<tr><td style='color:#64748B;padding:4px 12px 4px 0'>Name</td><td style='font-weight:600'>{proof.inscription_name}</td></tr>")
-    if proof.inscription_dates:
-        details.append(f"<tr><td style='color:#64748B;padding:4px 12px 4px 0'>Dates</td><td>{proof.inscription_dates}</td></tr>")
-    if proof.inscription_additional:
-        details.append(f"<tr><td style='color:#64748B;padding:4px 12px 4px 0'>Additional</td><td>{proof.inscription_additional}</td></tr>")
-    if proof.print_name:
-        details.append(f"<tr><td style='color:#64748B;padding:4px 12px 4px 0'>Print</td><td>{proof.print_name}</td></tr>")
-    if proof.service_date:
-        details.append(f"<tr><td style='color:#64748B;padding:4px 12px 4px 0'>Service</td><td>{proof.service_date.strftime('%B %-d, %Y')}</td></tr>")
+    """Build the proof email HTML via the managed `email.legacy_proof`
+    template (Phase D-2)."""
+    from app.services.documents import document_renderer
 
-    logo_html = f'<img src="{logo_url}" alt="{company_name}" style="max-width:200px;max-height:60px">' if logo_url else f'<h1 style="margin:0;font-size:24px;font-weight:700;color:#fff">{company_name}</h1>'
+    # The logo_html chunk is structural HTML — keep building it here;
+    # the template accepts it as a |safe variable. Tenants can override
+    # the whole template if they want a different logo layout.
+    logo_html = (
+        f'<img src="{logo_url}" alt="{company_name}" '
+        f'style="max-width:200px;max-height:60px">'
+        if logo_url
+        else (
+            f'<h1 style="margin:0;font-size:24px;font-weight:700;color:#fff">'
+            f"{company_name}</h1>"
+        )
+    )
 
-    notes_html = ""
-    if custom_notes:
-        notes_html = f'<div style="background:#F1F5F9;border-radius:8px;padding:16px;margin-top:20px"><p style="font-size:13px;color:#64748B;margin:0 0 4px">Note from {company_name}:</p><p style="font-size:14px;color:#1a1a1a;margin:0">{custom_notes}</p></div>'
+    service_date_str = (
+        proof.service_date.strftime("%B %-d, %Y")
+        if proof.service_date
+        else ""
+    )
 
-    watermark_note = ""
-    if watermark_enabled:
-        watermark_note = '<p style="font-size:12px;color:#94A3B8;margin-top:16px"><em>The watermark will not appear on the final printed vault.</em></p>'
-
-    proof_img = f'<img src="{proof.proof_url}" alt="Legacy Proof" style="width:100%;max-width:600px;border-radius:8px;border:1px solid #E2E8F0">' if proof.proof_url else ""
-
-    return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#F8FAFC;font-family:Arial,Helvetica,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC"><tr><td align="center" style="padding:24px 16px">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
-<tr><td style="background:{header_color};padding:24px 32px;border-radius:12px 12px 0 0">{logo_html}<p style="margin:8px 0 0;font-size:14px;color:rgba(255,255,255,0.7)">Legacy Proof</p></td></tr>
-<tr><td style="background:#fff;padding:32px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 12px 12px">
-<p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 24px">Please find the legacy proof below for your review.</p>
-{proof_img}
-<table style="width:100%;margin-top:24px;font-size:14px;color:#1a1a1a">{''.join(details)}</table>
-{notes_html}
-<p style="font-size:14px;color:#475569;line-height:1.6;margin-top:24px">Please review the proof and reply to this email with any corrections or your approval.</p>
-{watermark_note}
-</td></tr>
-<tr><td style="padding:24px;text-align:center"><p style="font-size:12px;color:#94A3B8;margin:0">{company_name}<br>Sent via Bridgeable</p></td></tr>
-</table>
-</td></tr></table>
-</body></html>"""
+    result = document_renderer.render_html(
+        None,
+        template_key="email.legacy_proof",
+        context={
+            "company_name": company_name,
+            "header_color": header_color,
+            "logo_html": logo_html,
+            "proof_url": proof.proof_url or "",
+            "inscription_name": proof.inscription_name or "",
+            "inscription_dates": proof.inscription_dates or "",
+            "inscription_additional": proof.inscription_additional or "",
+            "print_name": proof.print_name or "",
+            "service_date": service_date_str,
+            "custom_notes": custom_notes or "",
+            "watermark_enabled": bool(watermark_enabled),
+        },
+        company_id=company_id,
+    )
+    content = result.rendered_content
+    return content if isinstance(content, str) else content.decode("utf-8")
 
 
 def send_proof_email(
@@ -187,6 +223,7 @@ def send_proof_email(
     html = build_proof_email_html(
         proof, company_name, header_color, logo, custom_notes,
         watermark_enabled=delivery_settings.watermark_enabled if delivery_settings else False,
+        company_id=company_id,
     )
 
     if preview_only:

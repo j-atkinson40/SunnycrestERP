@@ -1,4 +1,22 @@
-"""DocuSign e-signature service — stub in dev/test, real credentials via tenant settings.
+"""DocuSign e-signature service — **DEPRECATED as of Phase D-5 (April 2026)**.
+
+Native signing (`app.services.signing`) replaces DocuSign for all new
+envelopes. This module stays alive ONLY to:
+  1. Let `docusign_webhook` process status updates for envelopes that
+     were created under DocuSign before the D-5 cutover.
+  2. Allow `void_envelope` to cancel in-flight DocuSign envelopes if
+     admins need to cancel a disinterment mid-signing.
+
+Do NOT call `create_envelope` from new code. `disinterment_service.send_for_signatures`
+was rewritten in D-5 to invoke `signature_service.create_envelope` instead.
+
+This module should be deleted after all `disinterment_cases.docusign_envelope_id`
+values resolve (i.e. signed, declined, or voided — no active DocuSign
+envelopes remain). Track via:
+
+    SELECT COUNT(*) FROM disinterment_cases
+    WHERE docusign_envelope_id IS NOT NULL
+      AND status IN ('signatures_pending', 'signatures_sent');
 
 In production, reads DocuSign credentials from tenant settings_json:
   - docusign_integration_key
@@ -12,6 +30,7 @@ and simulates webhook events.
 
 import logging
 import uuid
+import warnings
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -65,8 +84,23 @@ def create_envelope(
 ) -> str:
     """Create a DocuSign envelope with 4 signers for a disinterment release form.
 
+    **DEPRECATED in Phase D-5.** Native signing is the canonical path —
+    see `app.services.signing.signature_service.create_envelope`. This
+    function still works for backward compat / emergency re-use, but
+    new code must not call it.
+
     Returns the envelope_id (UUID string in stub mode, real envelope ID in production).
     """
+    warnings.warn(
+        "docusign_service.create_envelope is deprecated — use "
+        "app.services.signing.signature_service.create_envelope instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    logger.warning(
+        "docusign_service.create_envelope called — this path is "
+        "deprecated since Phase D-5; use native signing instead."
+    )
     if _is_stub_mode():
         envelope_id = f"stub-{uuid.uuid4().hex[:16]}"
         logger.info(

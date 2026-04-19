@@ -676,7 +676,13 @@ def _sync_route_to_vault(db: Session, route: DeliveryRoute, actor_id: str | None
 
 
 def _sync_media_to_vault(db: Session, media: DeliveryMedia, delivery_id: str) -> None:
-    """Create a VaultItem for delivery media (photos, signatures, etc.)."""
+    """Create a VaultItem for delivery media (photos, signatures, etc.).
+
+    D-6 also writes a canonical `delivery_confirmation` Document (one
+    per delivery, not per media) + DocumentShare to the customer tenant
+    when the customer is itself a tenant. This feeds the unified
+    cross-tenant inbox alongside statements + legacy vault prints.
+    """
     try:
         from app.services.vault_service import create_vault_item
 
@@ -686,12 +692,14 @@ def _sync_media_to_vault(db: Session, media: DeliveryMedia, delivery_id: str) ->
 
         # Determine cross-tenant sharing
         shared_ids = None
+        customer_tenant_id: str | None = None
         if delivery.customer_id:
             try:
                 from app.models.customer import Customer
                 cust = db.query(Customer).filter(Customer.id == delivery.customer_id).first()
                 if cust and getattr(cust, "company_id", None) and cust.company_id != delivery.company_id:
                     shared_ids = [cust.company_id]
+                    customer_tenant_id = cust.company_id
             except Exception:
                 pass
 
@@ -717,7 +725,89 @@ def _sync_media_to_vault(db: Session, media: DeliveryMedia, delivery_id: str) ->
                 "file_url": media.file_url,
             },
         )
+
+        # Phase D-6: unified cross-tenant Document + Share. Best-effort
+        # — failure is logged but doesn't block the VaultItem write.
+        if media.media_type in ("photo", "signature") and customer_tenant_id:
+            try:
+                _ensure_delivery_confirmation_document(
+                    db, delivery=delivery, media=media,
+                    target_tenant_id=customer_tenant_id,
+                )
+            except Exception:
+                logger.warning(
+                    "Delivery confirmation Document+Share failed for media %s",
+                    media.id,
+                    exc_info=True,
+                )
+
         db.commit()
     except Exception:
         logger.warning("Vault dual-write failed for media %s", media.id, exc_info=True)
         db.rollback()
+
+
+def _ensure_delivery_confirmation_document(
+    db: Session,
+    *,
+    delivery: Delivery,
+    media: DeliveryMedia,
+    target_tenant_id: str,
+) -> None:
+    """Idempotent per-delivery canonical Document + share. First media
+    sync for a delivery creates the Document; subsequent media syncs
+    reuse it (additional photos don't spawn additional Documents)."""
+    from app.models.canonical_document import Document
+    from app.services.documents import document_sharing_service
+    import uuid as _uuid
+
+    # Look for an existing delivery_confirmation Document for this delivery
+    existing = (
+        db.query(Document)
+        .filter(
+            Document.company_id == delivery.company_id,
+            Document.document_type == "delivery_confirmation",
+            Document.entity_type == "delivery",
+            Document.entity_id == delivery.id,
+            Document.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if existing is None:
+        # Create a lightweight Document anchoring this delivery in the
+        # canonical layer. storage_key points at the first media file
+        # (the "primary" artifact for the delivery); subsequent media
+        # remain VaultItems per the existing pattern.
+        storage_key = (
+            media.file_url
+            if media.file_url and media.file_url.startswith("tenants/")
+            else f"tenants/{delivery.company_id}/deliveries/{delivery.id}/primary"
+        )
+        existing = Document(
+            id=str(_uuid.uuid4()),
+            company_id=delivery.company_id,
+            document_type="delivery_confirmation",
+            title=f"Delivery confirmation — {delivery.id[:8]}",
+            description=(
+                f"Proof of delivery for order {delivery.order_id or ''}".strip()
+            ),
+            storage_key=storage_key,
+            mime_type="image/jpeg" if media.media_type == "photo" else "application/octet-stream",
+            file_size_bytes=None,
+            status="rendered",
+            entity_type="delivery",
+            entity_id=delivery.id,
+            sales_order_id=delivery.order_id,
+            caller_module="delivery_service._sync_media_to_vault",
+        )
+        db.add(existing)
+        db.flush()
+
+    document_sharing_service.ensure_share(
+        db,
+        document=existing,
+        target_company_id=target_tenant_id,
+        reason=f"Delivery confirmation for order {delivery.order_id or 'unknown'}",
+        source_module="delivery_service",
+        enforce_relationship=False,
+    )

@@ -146,6 +146,7 @@ def _case_to_response(case: DisintermentCase) -> dict:
         "accepted_quote_amount": case.accepted_quote_amount,
         "has_hazard_pay": case.has_hazard_pay,
         "docusign_envelope_id": case.docusign_envelope_id,
+        "signature_envelope_id": case.signature_envelope_id,
         "signatures": _signatures_list(case),
         "scheduled_date": case.scheduled_date,
         "assigned_driver_id": case.assigned_driver_id,
@@ -443,64 +444,189 @@ def accept_quote(
 
 
 def send_for_signatures(
-    db: Session, case_id: str, company_id: str, webhook_base_url: str = ""
+    db: Session,
+    case_id: str,
+    company_id: str,
+    webhook_base_url: str = "",
+    *,
+    current_user_id: str | None = None,
 ) -> dict:
-    """Trigger DocuSign envelope creation with 4 signers."""
+    """Phase D-5 — trigger native signing envelope creation with 4 signers.
+
+    Replaces the prior DocuSign path. DocuSign code stays alive for any
+    in-flight envelopes but is no longer used to originate new ones.
+
+    `webhook_base_url` kept in the signature for backward compat; not
+    used by native signing (envelope state transitions happen via the
+    public /api/v1/sign/* endpoints, not webhooks).
+    """
+    from app.services.disinterment_pdf_service import (
+        generate_release_form_document,
+    )
+    from app.services.signing import signature_service
+
     case = _load_case(db, case_id, company_id)
     _assert_status(case, "quote_accepted")
 
-    # Gather signer emails
+    # Gather signer contact details — name + email for each role
+    fh_name: str | None = None
     fh_email = None
+    fh_phone = None
     if case.funeral_director_contact_id:
-        contact = db.query(Contact).filter(Contact.id == case.funeral_director_contact_id).first()
+        contact = (
+            db.query(Contact)
+            .filter(Contact.id == case.funeral_director_contact_id)
+            .first()
+        )
         if contact:
             fh_email = contact.email
-    if not fh_email and case.funeral_home:
-        fh_email = case.funeral_home.email
+            fh_name = (
+                f"{contact.first_name or ''} {contact.last_name or ''}".strip()
+                or None
+            )
+            fh_phone = getattr(contact, "phone", None)
+    if case.funeral_home:
+        if not fh_email:
+            fh_email = case.funeral_home.email
+        if not fh_name:
+            fh_name = case.funeral_home.name
 
-    cemetery_email = case.cemetery.email if case.cemetery else None
+    cemetery_name: str | None = None
+    cemetery_email = None
+    if case.cemetery:
+        cemetery_email = case.cemetery.email
+        cemetery_name = case.cemetery.name
 
+    nok_name: str | None = None
     nok_email = None
+    nok_phone = None
     if case.next_of_kin:
         for nok in case.next_of_kin:
             if nok.get("email"):
                 nok_email = nok["email"]
+                nok_name = nok.get("name") or nok.get("full_name")
+                nok_phone = nok.get("phone")
                 break
 
-    # Manufacturer signer — tenant's designated signing user
+    # Manufacturer signer — tenant's designated signing user (kept same
+    # settings key so existing tenants don't need to reconfigure)
     company = db.query(Company).filter(Company.id == company_id).first()
+    manufacturer_name: str | None = None
     manufacturer_email = None
     if company:
         s = company.settings or {}
         manufacturer_email = s.get("docusign_manufacturer_signer_email")
+        manufacturer_name = s.get("docusign_manufacturer_signer_name")
         if not manufacturer_email:
             manufacturer_email = company.email
+        if not manufacturer_name:
+            manufacturer_name = company.name
 
-    webhook_url = f"{webhook_base_url}/api/v1/docusign/webhook" if webhook_base_url else ""
+    # Every party needs email + display name. Missing either is fatal —
+    # DocuSign used to silently skip missing parties; native signing is
+    # stricter so admins can see + fix.
+    missing_fields: list[str] = []
+    if not fh_email or not fh_name:
+        missing_fields.append("funeral_home (name + email)")
+    if not cemetery_email or not cemetery_name:
+        missing_fields.append("cemetery (name + email)")
+    if not nok_email or not nok_name:
+        missing_fields.append("next_of_kin (name + email)")
+    if not manufacturer_email or not manufacturer_name:
+        missing_fields.append("manufacturer (name + email)")
+    if missing_fields:
+        raise ValueError(
+            "Cannot send for signatures — missing signer data: "
+            + ", ".join(missing_fields)
+        )
 
-    envelope_id = docusign_service.create_envelope(
+    # Produce the release-form document if it doesn't already exist
+    release_doc = generate_release_form_document(db, case_id, company_id)
+    if release_doc is None:
+        raise ValueError("Could not render release form document")
+
+    # Create native envelope
+    envelope = signature_service.create_envelope(
         db,
-        company_id,
-        case_id=case.id,
-        case_number=case.case_number,
-        decedent_name=case.decedent_name,
-        funeral_home_email=fh_email,
-        cemetery_email=cemetery_email,
-        next_of_kin_email=nok_email,
-        manufacturer_email=manufacturer_email,
-        webhook_url=webhook_url,
+        document_id=release_doc.id,
+        company_id=company_id,
+        created_by_user_id=current_user_id or company_id,  # fallback
+        subject=f"Please sign: Disinterment release for {case.decedent_name}",
+        description=f"Disinterment case #{case.case_number}",
+        parties=[
+            signature_service.PartyInput(
+                signing_order=1,
+                role="funeral_home_director",
+                display_name=fh_name,
+                email=fh_email,
+                phone=fh_phone,
+            ),
+            signature_service.PartyInput(
+                signing_order=2,
+                role="cemetery_rep",
+                display_name=cemetery_name,
+                email=cemetery_email,
+            ),
+            signature_service.PartyInput(
+                signing_order=3,
+                role="next_of_kin",
+                display_name=nok_name,
+                email=nok_email,
+                phone=nok_phone,
+            ),
+            signature_service.PartyInput(
+                signing_order=4,
+                role="manufacturer",
+                display_name=manufacturer_name,
+                email=manufacturer_email,
+            ),
+        ],
+        fields=[
+            signature_service.FieldInput(
+                party_role="funeral_home_director",
+                field_type="signature",
+                anchor_string="/sig_funeral_home/",
+            ),
+            signature_service.FieldInput(
+                party_role="cemetery_rep",
+                field_type="signature",
+                anchor_string="/sig_cemetery/",
+            ),
+            signature_service.FieldInput(
+                party_role="next_of_kin",
+                field_type="signature",
+                anchor_string="/sig_next_of_kin/",
+            ),
+            signature_service.FieldInput(
+                party_role="manufacturer",
+                field_type="signature",
+                anchor_string="/sig_manufacturer/",
+            ),
+        ],
+        routing_type="sequential",
+        expires_in_days=30,
     )
 
-    case.docusign_envelope_id = envelope_id
-    case.sig_funeral_home = "sent" if fh_email else "not_sent"
-    case.sig_cemetery = "sent" if cemetery_email else "not_sent"
-    case.sig_next_of_kin = "sent" if nok_email else "not_sent"
-    case.sig_manufacturer = "sent" if manufacturer_email else "not_sent"
+    # Wire envelope ↔ case + set legacy sig_* flags to "sent"
+    case.signature_envelope_id = envelope.id
+    case.sig_funeral_home = "sent"
+    case.sig_cemetery = "sent"
+    case.sig_next_of_kin = "sent"
+    case.sig_manufacturer = "sent"
     case.status = "signatures_pending"
     case.updated_at = datetime.now(timezone.utc)
 
+    # Send (notifies first party for sequential routing)
+    signature_service.send_envelope(
+        db, envelope.id, actor_user_id=current_user_id
+    )
+
     db.commit()
-    logger.info("Signatures sent for case %s — envelope %s", case.case_number, envelope_id)
+    logger.info(
+        "Signatures sent for case %s via native envelope %s",
+        case.case_number,
+        envelope.id,
+    )
     return _case_to_response(_load_case(db, case_id, company_id))
 
 

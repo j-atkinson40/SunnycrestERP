@@ -78,6 +78,15 @@ def deliver_statement_cross_tenant(
         stmt.sent_at = datetime.now(timezone.utc)
         stmt.cross_tenant_delivered_at = datetime.now(timezone.utc)
         stmt.cross_tenant_received_statement_id = received.id
+
+        # Phase D-6 — unified cross-tenant document fabric. Create a
+        # DocumentShare grant so the statement PDF is accessible via
+        # /documents-v2/inbox on the receiving tenant. Existing
+        # `ReceivedStatement` row stays for statement-specific dashboards.
+        _grant_document_share_for_statement(
+            db, stmt=stmt, target_tenant_id=fh_tenant_id
+        )
+
         db.commit()
         return True
 
@@ -304,3 +313,55 @@ def get_unread_count(db: Session, tenant_id: str) -> int:
         )
         .count()
     )
+
+
+# ── Phase D-6: unified cross-tenant document fabric ─────────────────
+
+
+def _grant_document_share_for_statement(
+    db: Session, *, stmt: CustomerStatement, target_tenant_id: str
+) -> None:
+    """Register a DocumentShare on the statement's canonical Document
+    so the receiving FH tenant can access it via the inbox.
+
+    No-op if there's no canonical Document yet (some statements
+    pre-D-1 may not have one). Failures are non-fatal — statement
+    delivery should not be blocked by sharing-service hiccups.
+    """
+    try:
+        from app.models.canonical_document import Document
+        from app.services.documents import document_sharing_service
+
+        # Find the canonical Document produced for this statement
+        doc = (
+            db.query(Document)
+            .filter(
+                Document.customer_statement_id == stmt.id,
+                Document.company_id == stmt.tenant_id,
+                Document.deleted_at.is_(None),
+            )
+            .order_by(Document.created_at.desc())
+            .first()
+        )
+        if doc is None:
+            return
+
+        document_sharing_service.ensure_share(
+            db,
+            document=doc,
+            target_company_id=target_tenant_id,
+            reason=(
+                f"Monthly statement "
+                f"{stmt.statement_period_year}-{stmt.statement_period_month:02d}"
+            ),
+            source_module="cross_tenant_statement_service",
+            enforce_relationship=False,
+        )
+    except Exception as e:  # noqa: BLE001
+        # Log but don't crash statement delivery
+        logger.warning(
+            "DocumentShare grant failed for statement %s → tenant %s: %s",
+            stmt.id,
+            target_tenant_id,
+            e,
+        )

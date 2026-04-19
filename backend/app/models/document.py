@@ -1,3 +1,15 @@
+"""Legacy generic Document model.
+
+Phase D-1 renamed this table to `documents_legacy` to free up the
+`documents` name for the canonical model at
+`backend/app/models/canonical_document.py`. The legacy class is kept
+(with a tablename change) so existing callers keep working while they're
+migrated one at a time in post-D-1 phases.
+
+New code should use `app.models.canonical_document.Document` instead of
+this class.
+"""
+
 import uuid
 from datetime import datetime, timezone
 
@@ -8,7 +20,7 @@ from app.database import Base
 
 
 class Document(Base):
-    __tablename__ = "documents"
+    __tablename__ = "documents_legacy"
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())

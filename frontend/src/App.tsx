@@ -37,6 +37,17 @@ import DuplicateReviewPage from "@/pages/crm/duplicates";
 import DataQualityPage from "@/pages/admin/data-quality";
 import AuditLogs from "@/pages/admin/audit-logs";
 import IntelligencePromptLibrary from "@/pages/admin/intelligence/PromptLibrary";
+import DocumentTemplateLibrary from "@/pages/admin/documents/DocumentTemplateLibrary";
+import DocumentTemplateDetail from "@/pages/admin/documents/DocumentTemplateDetail";
+import DocumentLog from "@/pages/admin/documents/DocumentLog";
+import DocumentDetail from "@/pages/admin/documents/DocumentDetail";
+import DocumentInbox from "@/pages/admin/documents/DocumentInbox";
+import DeliveryLog from "@/pages/admin/documents/DeliveryLog";
+import DeliveryDetail from "@/pages/admin/documents/DeliveryDetail";
+import SigningEnvelopeLibrary from "@/pages/admin/signing/SigningEnvelopeLibrary";
+import SigningEnvelopeDetail from "@/pages/admin/signing/SigningEnvelopeDetail";
+import CreateEnvelopeWizard from "@/pages/admin/signing/CreateEnvelopeWizard";
+import SignerLandingPage from "@/pages/sign/SignerLandingPage";
 import IntelligencePromptDetail from "@/pages/admin/intelligence/PromptDetail";
 import IntelligenceExecutionLog from "@/pages/admin/intelligence/ExecutionLog";
 import IntelligenceExecutionDetail from "@/pages/admin/intelligence/ExecutionDetail";
@@ -1024,6 +1035,58 @@ export default function App() {
                     />
                   </Route>
 
+                  {/* Documents admin UI (Phase D-2 read surface) — admin only */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/admin/documents"
+                      element={<DocumentTemplateLibrary />}
+                    />
+                    <Route
+                      path="/admin/documents/templates"
+                      element={<DocumentTemplateLibrary />}
+                    />
+                    <Route
+                      path="/admin/documents/templates/:templateId"
+                      element={<DocumentTemplateDetail />}
+                    />
+                    <Route
+                      path="/admin/documents/documents"
+                      element={<DocumentLog />}
+                    />
+                    <Route
+                      path="/admin/documents/documents/:documentId"
+                      element={<DocumentDetail />}
+                    />
+                    <Route
+                      path="/admin/documents/inbox"
+                      element={<DocumentInbox />}
+                    />
+                    <Route
+                      path="/admin/documents/deliveries"
+                      element={<DeliveryLog />}
+                    />
+                    <Route
+                      path="/admin/documents/deliveries/:deliveryId"
+                      element={<DeliveryDetail />}
+                    />
+                  </Route>
+
+                  {/* Signing admin UI (Phase D-4) — admin only */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/admin/documents/signing/envelopes"
+                      element={<SigningEnvelopeLibrary />}
+                    />
+                    <Route
+                      path="/admin/documents/signing/envelopes/new"
+                      element={<CreateEnvelopeWizard />}
+                    />
+                    <Route
+                      path="/admin/documents/signing/envelopes/:envelopeId"
+                      element={<SigningEnvelopeDetail />}
+                    />
+                  </Route>
+
                   {/* API keys — admin only */}
                   <Route
                     element={<ProtectedRoute adminOnly />}
@@ -1111,6 +1174,9 @@ export default function App() {
 
               {/* FH proof approval — public, token-validated */}
               <Route path="/proof-approval/:token" element={<FHApprovalPage />} />
+
+              {/* Native signing signer-facing page — public, token-validated (Phase D-4) */}
+              <Route path="/sign/:token" element={<SignerLandingPage />} />
 
               {/* Family portal — no auth required, standalone page */}
               <Route path="/portal/:token" element={<FHPortalPage />} />

@@ -100,10 +100,22 @@ class DisintermentCase(Base):
         Boolean, nullable=False, server_default="false"
     )
 
-    # DocuSign
+    # Signing — Phase D-5 migrated from DocuSign to native.
+    # `signature_envelope_id` is the new path (FK to signature_envelopes);
+    # `docusign_envelope_id` stays for any in-flight DocuSign envelopes
+    # and will be NULL on all new cases.
+    signature_envelope_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("signature_envelopes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # DocuSign (deprecated — kept for backward compat)
     docusign_envelope_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )
+    # sig_* columns kept for backward compat — populated from either
+    # DocuSign webhook (legacy) OR native envelope state (new cases, via
+    # signature_service.sync_disinterment_case_status).
     sig_funeral_home: Mapped[str] = mapped_column(
         String(20), server_default="not_sent"
     )

@@ -76,6 +76,7 @@ interface CaseDetail {
   accepted_quote_amount: number | null;
   has_hazard_pay: boolean;
   docusign_envelope_id: string | null;
+  signature_envelope_id: string | null;
   signatures: SignatureStatus[];
   scheduled_date: string | null;
   assigned_driver_id: string | null;
@@ -642,7 +643,7 @@ function SignaturesStage({
     setSending(true);
     try {
       await apiClient.post(`/disinterments/${caseData.id}/send-signatures`);
-      toast.success("Sent for signatures via DocuSign");
+      toast.success("Sent for signatures");
       onUpdate();
     } catch {
       toast.error("Failed to send for signatures");
@@ -674,22 +675,24 @@ function SignaturesStage({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {caseData.status === "quote_accepted" && !caseData.docusign_envelope_id && (
-          <>
-            <p className="text-sm text-muted-foreground">
-              Send the disinterment authorization form to all 4 required
-              signers via DocuSign.
-            </p>
-            <Button onClick={handleSend} disabled={sending}>
-              {sending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="mr-2 h-4 w-4" />
-              )}
-              Send for Signatures
-            </Button>
-          </>
-        )}
+        {caseData.status === "quote_accepted" &&
+          !caseData.signature_envelope_id &&
+          !caseData.docusign_envelope_id && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Send the disinterment authorization form to all 4 required
+                signers for electronic signature.
+              </p>
+              <Button onClick={handleSend} disabled={sending}>
+                {sending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Send for Signatures
+              </Button>
+            </>
+          )}
 
         {caseData.signatures.length > 0 && (
           <div className="space-y-3">
@@ -732,11 +735,22 @@ function SignaturesStage({
           </div>
         )}
 
-        {caseData.docusign_envelope_id && (
+        {caseData.signature_envelope_id && (
           <p className="text-xs text-muted-foreground">
-            Envelope ID: {caseData.docusign_envelope_id}
+            <a
+              href={`/admin/documents/signing/envelopes/${caseData.signature_envelope_id}`}
+              className="underline"
+            >
+              View signature envelope
+            </a>
           </p>
         )}
+        {caseData.docusign_envelope_id &&
+          !caseData.signature_envelope_id && (
+            <p className="text-xs text-muted-foreground">
+              Legacy DocuSign envelope: {caseData.docusign_envelope_id}
+            </p>
+          )}
       </CardContent>
     </Card>
   );

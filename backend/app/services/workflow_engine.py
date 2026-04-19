@@ -471,6 +471,9 @@ def _execute_step(
         elif step.step_type == "ai_prompt":
             # Phase 3d — invoke a managed intelligence prompt as a step
             output = _execute_ai_prompt(db, resolved_config, run, rs.id, step.step_key)
+        elif step.step_type == "send_document":
+            # Phase D-7 — dispatch through the delivery abstraction
+            output = _execute_send_document(db, resolved_config, run, rs.id)
         else:
             output = {"status": "unknown_step_type", "step_type": step.step_type}
 
@@ -521,7 +524,7 @@ def _execute_action(
     if action_type == "log_vault_item":
         return _handle_log_vault_item(db, resolved_config, run)
     if action_type == "generate_document":
-        return {"type": "document_generated", "document_type": resolved_config.get("document_type"), "pdf_url": None}
+        return _handle_generate_document(db, resolved_config, run)
     if action_type == "playwright_action":
         return _handle_playwright_action(db, resolved_config, run)
 
@@ -952,6 +955,115 @@ def list_runs(
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Phase D-1 — generate_document action handler
+# ─────────────────────────────────────────────────────────────────────
+#
+# Routes a workflow step through the Documents layer. Step config shape
+# (post-variable-resolution — the caller's `{input.x.y}` references have
+# already been substituted with concrete values by resolve_variables):
+#
+#   {
+#     "action_type":   "generate_document",
+#     "template_key":  "invoice.professional",   # required
+#     "document_type": "invoice",                # required
+#     "title":         "Invoice INV-42",         # required
+#     "description":   "optional",
+#     "context":       {"invoice_number": "INV-42", ...}
+#   }
+#
+# Returns:
+#   {
+#     "type":           "document_generated",
+#     "document_id":    "<uuid>",
+#     "storage_key":    "<r2_key>",
+#     "pdf_url":        "<presigned_url, 1h TTL>",
+#     "version_number": 1
+#   }
+#
+# Downstream steps can reference {output.<step>.document_id},
+# {output.<step>.pdf_url}, etc.
+
+
+# Maps workflow trigger-context entity types to Document specialty FK kwargs.
+# Matches the pattern in _execute_ai_prompt for Intelligence linkage.
+_ENTITY_TYPE_TO_DOCUMENT_KWARG: dict[str, str] = {
+    "funeral_case": "fh_case_id",
+    "fh_case": "fh_case_id",
+    "disinterment_case": "disinterment_case_id",
+    "sales_order": "sales_order_id",
+    "invoice": "invoice_id",
+    "customer_statement": "customer_statement_id",
+    "price_list_version": "price_list_version_id",
+    "safety_program_generation": "safety_program_generation_id",
+}
+
+
+def _handle_generate_document(
+    db: Session, config: dict, run: WorkflowRun,
+) -> dict:
+    """Render a document via DocumentRenderer and emit an output dict
+    downstream steps can reference.
+
+    Validation errors (missing template_key etc.) raise ValueError,
+    which `_execute_step` catches and surfaces as a step failure.
+    Render errors (DocumentRenderError) propagate the same way.
+    """
+    # Import inside the handler so callers that don't use this step type
+    # don't pay the import cost at module load.
+    from app.services.documents import document_renderer
+
+    template_key = (config or {}).get("template_key")
+    document_type = (config or {}).get("document_type")
+    title = (config or {}).get("title")
+    if not template_key or not document_type or not title:
+        raise ValueError(
+            "generate_document step requires template_key, document_type, "
+            "and title in config"
+        )
+    context = (config or {}).get("context") or {}
+    if not isinstance(context, dict):
+        raise ValueError("generate_document config.context must be a dict")
+    description = (config or {}).get("description")
+
+    # Workflow trigger context → caller linkage
+    trig = run.trigger_context or {}
+    entity_type = trig.get("entity_type")
+    entity_id = trig.get("entity_id")
+
+    specialty_kwargs: dict[str, str] = {}
+    if entity_type and entity_id:
+        specialty = _ENTITY_TYPE_TO_DOCUMENT_KWARG.get(entity_type)
+        if specialty:
+            specialty_kwargs[specialty] = entity_id
+
+    doc = document_renderer.render(
+        db,
+        template_key=template_key,
+        context=context,
+        document_type=document_type,
+        title=title,
+        description=description,
+        company_id=run.company_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        caller_module=f"workflow_engine.{run.workflow_id}",
+        caller_workflow_run_id=run.id,
+        **specialty_kwargs,
+    )
+
+    presigned = document_renderer.presigned_url(doc, expires_in=3600)
+
+    return {
+        "type": "document_generated",
+        "document_id": doc.id,
+        "storage_key": doc.storage_key,
+        "pdf_url": presigned,
+        "version_number": 1,
+        "document_type": document_type,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Phase 3d — ai_prompt step type
 # ─────────────────────────────────────────────────────────────────────
 #
@@ -1180,3 +1292,104 @@ def validate_ai_prompt_steps(
                         )
 
     return errors
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase D-7 — send_document step type
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _execute_send_document(
+    db: Session,
+    resolved_config: dict,
+    run: WorkflowRun,
+    run_step_id: str,
+) -> dict:
+    """Invoke DeliveryService as a workflow step.
+
+    Config schema:
+        {
+            "document_id": "{output.prev.document_id}" | UUID,
+            "channel": "email" | "sms",
+            "recipient": {
+                "type": "email_address" | "phone_number" | ...,
+                "value": "...",
+                "name": "..."   (optional)
+            },
+            "subject": "..."             (optional static)
+            "template_key": "..."        (optional — renders template)
+            "template_context": { ... }  (optional)
+            "body": "..."                (alternative to template_key)
+            "reply_to": "..."            (optional)
+        }
+
+    Output dict:
+        {
+            "delivery_id": "<uuid>",
+            "status": "sent" | "failed" | "rejected",
+            "provider_message_id": "..." | null,
+            "error_message": "..." | null
+        }
+    """
+    from app.services.delivery import delivery_service
+
+    cfg = resolved_config or {}
+
+    channel = cfg.get("channel")
+    if channel not in ("email", "sms"):
+        raise ValueError(
+            f"send_document requires channel='email' or 'sms' (got {channel!r})"
+        )
+
+    recipient = cfg.get("recipient") or {}
+    if not recipient.get("type") or not recipient.get("value"):
+        raise ValueError(
+            "send_document requires recipient.type and recipient.value"
+        )
+
+    template_key = cfg.get("template_key")
+    body = cfg.get("body")
+    if not template_key and not body:
+        raise ValueError(
+            "send_document requires either template_key or body"
+        )
+
+    # Resolve specialty linkage from trigger context (reuses the
+    # ai_prompt pattern for consistency)
+    trig = run.trigger_context or {}
+
+    params = delivery_service.SendParams(
+        company_id=run.company_id,
+        channel=channel,
+        recipient=delivery_service.RecipientInput(
+            type=recipient["type"],
+            value=recipient["value"],
+            name=recipient.get("name"),
+        ),
+        document_id=cfg.get("document_id"),
+        subject=cfg.get("subject"),
+        template_key=template_key,
+        template_context=cfg.get("template_context") or {},
+        body=body,
+        body_html=cfg.get("body_html"),
+        reply_to=cfg.get("reply_to"),
+        from_name=cfg.get("from_name"),
+        caller_module=f"workflow_engine.{run.workflow_id}",
+        caller_workflow_run_id=run.id,
+        caller_workflow_step_id=run_step_id,
+    )
+
+    try:
+        delivery = delivery_service.send(db, params)
+    except delivery_service.DeliveryError as exc:
+        # Programmer-error level — surface as step failure
+        raise ValueError(f"send_document rejected: {exc}")
+
+    return {
+        "delivery_id": delivery.id,
+        "status": delivery.status,
+        "provider_message_id": delivery.provider_message_id,
+        "error_message": delivery.error_message,
+        "channel": delivery.channel,
+        "recipient": delivery.recipient_value,
+    }

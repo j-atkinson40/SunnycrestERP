@@ -60,6 +60,27 @@ from app.models.delivery_type_definition import DeliveryTypeDefinition
 from app.models.department import Department
 from app.models.driver import Driver
 from app.models.document import Document
+from app.models.canonical_document import (
+    Document as CanonicalDocument,
+    DocumentVersion,
+)
+from app.models.document_template import (
+    DocumentTemplate,
+    DocumentTemplateAuditLog,
+    DocumentTemplateVersion,
+)
+from app.models.document_share import (
+    DocumentShare,
+    DocumentShareEvent,
+)
+from app.models.document_share_read import DocumentShareRead
+from app.models.document_delivery import DocumentDelivery
+from app.models.signature import (
+    SignatureEnvelope,
+    SignatureEvent,
+    SignatureField,
+    SignatureParty,
+)
 from app.models.employee_briefing import EmployeeBriefing
 from app.models.employee_profile import EmployeeProfile
 from app.models.equipment import Equipment
@@ -413,7 +434,20 @@ __all__ = [
     "DeliveryTypeDefinition",
     "Department",
     "Driver",
+    "CanonicalDocument",
     "Document",
+    "DocumentDelivery",
+    "DocumentShare",
+    "DocumentShareEvent",
+    "DocumentShareRead",
+    "DocumentTemplate",
+    "DocumentTemplateAuditLog",
+    "DocumentTemplateVersion",
+    "DocumentVersion",
+    "SignatureEnvelope",
+    "SignatureEvent",
+    "SignatureField",
+    "SignatureParty",
     "EmployeeBriefing",
     "EmployeeProfile",
     "Equipment",

@@ -71,6 +71,9 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     departments,
     training as training_routes,
     documents,
+    documents_v2,
+    signing_admin,
+    signing_public,
     driver_mobile,
     employee_profiles,
     equipment,
@@ -294,6 +297,18 @@ v1_router.include_router(
 )
 v1_router.include_router(
     documents.router, prefix="/documents", tags=["Documents"]
+)
+# Phase D-1 — canonical Documents layer (admin-gated, tenant-scoped).
+# Legacy /documents/* remains above for the old Document model callers.
+v1_router.include_router(
+    documents_v2.router, prefix="/documents-v2", tags=["Documents (canonical)"]
+)
+# Phase D-4 native signing
+v1_router.include_router(
+    signing_public.router, prefix="/sign", tags=["Signing (public)"]
+)
+v1_router.include_router(
+    signing_admin.router, prefix="/admin/signing", tags=["Signing (admin)"]
 )
 v1_router.include_router(
     driver_mobile.router, prefix="/driver", tags=["Driver Mobile"]

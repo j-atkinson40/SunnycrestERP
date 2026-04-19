@@ -1,13 +1,14 @@
 """Legacy Vault Print — family-facing PDF keepsake generated at Approve All.
 
-Uses WeasyPrint to render a branded PDF. In production this uploads to R2;
-Phase 1 stores the PDF in the static directory and returns a local URL.
-Integrating R2 is a follow-up that mirrors the urn catalog image flow.
+Phase D-2: routes through the managed template registry
+(`pdf.legacy_vault_print`) and emits a canonical `Document` row. The
+local-disk static/ write is kept as a secondary copy for any readers
+still using the old `/static/legacy-vault-prints/...` URL until that
+path is retired.
 """
 
-import os
+import logging
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -21,69 +22,18 @@ from app.models.funeral_case import (
     FuneralCaseNote,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _static_dir() -> Path:
-    """Backend static dir for generated PDFs."""
-    p = Path(__file__).resolve().parent.parent.parent.parent / "static" / "legacy-vault-prints"
+    """Backend static dir for generated PDFs — kept as secondary copy."""
+    p = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "static"
+        / "legacy-vault-prints"
+    )
     p.mkdir(parents=True, exist_ok=True)
     return p
-
-
-LEGACY_PRINT_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <style>
-    @page {{ size: Letter; margin: 0.6in 0.8in; }}
-    body {{
-      font-family: Georgia, 'Times New Roman', serif;
-      background: #faf9f7;
-      color: #2d2a26;
-      line-height: 1.5;
-    }}
-    .wrap {{ max-width: 6.5in; margin: 0 auto; }}
-    .fh {{ text-align: center; font-size: 11pt; color: #8a7c6c; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.3in; }}
-    .name {{ font-size: 32pt; text-align: center; font-weight: normal; color: #1a1816; margin: 0; letter-spacing: 0.05em; }}
-    .lifedates {{ text-align: center; font-size: 13pt; color: #6b6158; margin-top: 0.1in; margin-bottom: 0.4in; font-style: italic; }}
-    .divider {{ border: 0; border-top: 1px solid #d4c8b8; margin: 0.3in 0; }}
-    .vault-section {{ text-align: center; padding: 0.3in 0; }}
-    .vault-label {{ font-size: 10pt; color: #8a7c6c; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 0.15in; }}
-    .vault-name {{ font-size: 20pt; color: #1a1816; margin: 0.1in 0; }}
-    .personalization {{ font-size: 12pt; color: #6b6158; margin-top: 0.1in; }}
-    .service {{ margin: 0.4in 0; text-align: center; font-size: 12pt; color: #2d2a26; }}
-    .service-label {{ font-size: 10pt; color: #8a7c6c; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 0.1in; }}
-    .footer {{ text-align: center; font-size: 9pt; color: #a39688; margin-top: 0.5in; font-style: italic; }}
-    .order-info {{ text-align: center; font-size: 9pt; color: #b5a898; margin-top: 0.15in; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="fh">{fh_name}</div>
-    <h1 class="name">{deceased_name}</h1>
-    <div class="lifedates">{life_span}</div>
-    <hr class="divider"/>
-
-    <div class="vault-section">
-      <div class="vault-label">Commemorated With</div>
-      <div class="vault-name">{vault_product_name}</div>
-      <div class="personalization">{personalization_line}</div>
-    </div>
-
-    <hr class="divider"/>
-
-    <div class="service">
-      <div class="service-label">Service</div>
-      <div>{service_date_line}</div>
-      <div>{service_location}</div>
-    </div>
-
-    <div class="footer">A Bridgeable Memorial</div>
-    <div class="order-info">Case {case_number} &middot; Order {order_ref}</div>
-  </div>
-</body>
-</html>
-"""
 
 
 def _format_life_span(dob, dod) -> str:
@@ -91,6 +41,7 @@ def _format_life_span(dob, dod) -> str:
         if not d:
             return ""
         return d.strftime("%B %-d, %Y") if hasattr(d, "strftime") else str(d)
+
     left = fmt(dob)
     right = fmt(dod)
     if left and right:
@@ -112,67 +63,212 @@ def _personalization_line(merch: CaseMerchandise | None) -> str:
     return " &middot; ".join(parts)
 
 
+def _build_context(
+    case: FuneralCase,
+    dec: CaseDeceased | None,
+    svc: FHCaseService | None,
+    merch: CaseMerchandise | None,
+    fh: Company | None,
+) -> dict:
+    deceased_name = (
+        " ".join(
+            [
+                p
+                for p in [
+                    dec.first_name if dec else None,
+                    dec.middle_name if dec else None,
+                    dec.last_name if dec else None,
+                ]
+                if p
+            ]
+        )
+        or case.case_number
+    )
+
+    service_date_line: str
+    if svc and svc.service_date:
+        service_date_line = svc.service_date.strftime("%A, %B %-d, %Y")
+        if svc.service_time:
+            service_date_line += f" at {svc.service_time.strftime('%-I:%M %p')}"
+    else:
+        service_date_line = "Date pending"
+
+    return {
+        "fh_name": (fh.name if fh else "").upper(),
+        "deceased_name": deceased_name.upper(),
+        "life_span": _format_life_span(
+            dec.date_of_birth if dec else None,
+            dec.date_of_death if dec else None,
+        ),
+        "vault_product_name": (merch.vault_product_name if merch else "")
+        or "Vault",
+        "personalization_line": _personalization_line(merch),
+        "service_date_line": service_date_line,
+        "service_location": (svc.service_location_name if svc else "") or "",
+        "case_number": case.case_number,
+        "order_ref": (
+            merch.vault_order_id[:8]
+            if merch and merch.vault_order_id
+            else "\u2014"
+        ),
+    }
+
+
 def generate(db: Session, case_id: str) -> dict:
     """Generate the Legacy Vault Print PDF for a case.
 
-    Returns {url, path, filename}.
-    If WeasyPrint is not installed, falls back to HTML file so demo still flows.
+    Returns {url, path, filename, document_id}.
+    Produces a canonical Document via the managed template registry AND
+    writes a static-disk copy for legacy URL consumers.
     """
     case = db.query(FuneralCase).filter(FuneralCase.id == case_id).first()
     if not case:
         raise ValueError("Case not found")
 
-    dec = db.query(CaseDeceased).filter(CaseDeceased.case_id == case_id).first()
-    svc = db.query(FHCaseService).filter(FHCaseService.case_id == case_id).first()
-    merch = db.query(CaseMerchandise).filter(CaseMerchandise.case_id == case_id).first()
+    dec = (
+        db.query(CaseDeceased).filter(CaseDeceased.case_id == case_id).first()
+    )
+    svc = (
+        db.query(FHCaseService)
+        .filter(FHCaseService.case_id == case_id)
+        .first()
+    )
+    merch = (
+        db.query(CaseMerchandise)
+        .filter(CaseMerchandise.case_id == case_id)
+        .first()
+    )
     fh = db.query(Company).filter(Company.id == case.company_id).first()
 
-    deceased_name = " ".join([
-        p for p in [dec.first_name if dec else None, dec.middle_name if dec else None, dec.last_name if dec else None] if p
-    ]) or case.case_number
+    context = _build_context(case, dec, svc, merch, fh)
 
-    html = LEGACY_PRINT_TEMPLATE.format(
-        fh_name=(fh.name if fh else "").upper(),
-        deceased_name=deceased_name.upper(),
-        life_span=_format_life_span(dec.date_of_birth if dec else None, dec.date_of_death if dec else None),
-        vault_product_name=(merch.vault_product_name if merch else "") or "Vault",
-        personalization_line=_personalization_line(merch),
-        service_date_line=(
-            svc.service_date.strftime("%A, %B %-d, %Y") + (
-                f" at {svc.service_time.strftime('%-I:%M %p')}" if svc.service_time else ""
+    # Canonical Document via registry
+    from app.services.documents import document_renderer
+
+    try:
+        doc = document_renderer.render(
+            db,
+            template_key="pdf.legacy_vault_print",
+            context=context,
+            document_type="legacy_vault_print",
+            title=(
+                f"Legacy Vault Print \u2014 "
+                f"{context['deceased_name'].title()} \u2014 "
+                f"Case {case.case_number}"
+            ),
+            company_id=case.company_id,
+            entity_type="fh_case",
+            entity_id=case_id,
+            fh_case_id=case_id,
+            caller_module="legacy_vault_print_service.generate",
+        )
+        pdf_bytes = document_renderer.download_bytes(doc)
+        document_id = doc.id
+        storage_key = doc.storage_key
+    except Exception as exc:
+        logger.warning(
+            "Legacy vault print canonical render failed for case %s: %s",
+            case_id,
+            exc,
+        )
+        # Fallback: render bytes only so the static/ copy still exists
+        try:
+            pdf_bytes = document_renderer.render_pdf_bytes(
+                db,
+                template_key="pdf.legacy_vault_print",
+                context=context,
+                company_id=case.company_id,
             )
-        ) if svc and svc.service_date else "Date pending",
-        service_location=(svc.service_location_name if svc else "") or "",
-        case_number=case.case_number,
-        order_ref=(merch.vault_order_id[:8] if merch and merch.vault_order_id else "—"),
-    )
+        except Exception as fallback_exc:
+            logger.error(
+                "Legacy vault print fallback also failed for case %s: %s",
+                case_id,
+                fallback_exc,
+            )
+            pdf_bytes = None
+        document_id = None
+        storage_key = None
 
+    # Secondary static-disk write for any readers still hitting the old URL
     out_dir = _static_dir()
     stem = f"{case.case_number}_vault_print"
-
-    # Try WeasyPrint first
-    pdf_path = None
-    try:
-        from weasyprint import HTML
+    if pdf_bytes is not None:
         pdf_path = out_dir / f"{stem}.pdf"
-        HTML(string=html).write_pdf(str(pdf_path))
-    except Exception:
-        # Fallback: write HTML
+        pdf_path.write_bytes(pdf_bytes)
+    else:
+        # Render HTML-only fallback for environments without WeasyPrint
+        from app.services.documents import template_loader
+        loaded = template_loader.load(
+            "pdf.legacy_vault_print",
+            company_id=case.company_id,
+            db=db,
+        )
+        from jinja2 import Environment, select_autoescape
+
+        env = Environment(autoescape=select_autoescape(["html", "xml"]))
+        html = env.from_string(loaded.body_template).render(**context)
         pdf_path = out_dir / f"{stem}.html"
         pdf_path.write_text(html, encoding="utf-8")
 
-    # Note + return
-    db.add(FuneralCaseNote(
-        id=str(uuid.uuid4()),
-        case_id=case_id,
-        company_id=case.company_id,
-        note_type="system",
-        content=f"Legacy Vault Print generated: {pdf_path.name}",
-    ))
+    # Audit note
+    db.add(
+        FuneralCaseNote(
+            id=str(uuid.uuid4()),
+            case_id=case_id,
+            company_id=case.company_id,
+            note_type="system",
+            content=f"Legacy Vault Print generated: {pdf_path.name}",
+        )
+    )
+
+    # Phase D-6: share the generated Document with the vault
+    # manufacturer so they can see the Legacy Print the FH created
+    # commemorating their product. Non-fatal on failure.
+    if document_id and merch and merch.vault_manufacturer_company_id:
+        try:
+            _share_legacy_print_with_manufacturer(
+                db,
+                document_id=document_id,
+                manufacturer_company_id=merch.vault_manufacturer_company_id,
+                case_number=case.case_number,
+            )
+        except Exception:
+            logger.warning(
+                "Legacy vault print DocumentShare failed for case %s",
+                case_id,
+                exc_info=True,
+            )
+
     db.commit()
 
     return {
         "filename": pdf_path.name,
         "path": str(pdf_path),
         "url": f"/static/legacy-vault-prints/{pdf_path.name}",
+        "document_id": document_id,
+        "storage_key": storage_key,
     }
+
+
+def _share_legacy_print_with_manufacturer(
+    db: Session,
+    *,
+    document_id: str,
+    manufacturer_company_id: str,
+    case_number: str,
+) -> None:
+    """D-6 — auto-share legacy vault print with the vault manufacturer."""
+    from app.models.canonical_document import Document
+    from app.services.documents import document_sharing_service
+
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if doc is None or doc.company_id == manufacturer_company_id:
+        return
+    document_sharing_service.ensure_share(
+        db,
+        document=doc,
+        target_company_id=manufacturer_company_id,
+        reason=f"Legacy Vault Print — case {case_number}",
+        source_module="legacy_vault_print_service",
+        enforce_relationship=False,
+    )

@@ -35,6 +35,8 @@ import { PlaceholderCard } from "@/components/workflow/PlaceholderCard"
 import VariablePicker, { type StepSummary as PickerStepSummary } from "@/components/workflow/VariablePicker"
 import CredentialModal from "@/components/workflow/CredentialModal"
 import { AiPromptStepConfig } from "@/components/workflows/AiPromptStepConfig"
+import { GenerateDocumentConfig } from "@/components/workflows/GenerateDocumentConfig"
+import { SendDocumentConfig } from "@/components/workflows/SendDocumentConfig"
 import {
   RUN_STATUS_DISPLAY,
   TRIGGER_SOURCE_DISPLAY,
@@ -51,6 +53,7 @@ type StepType =
   | "input"
   | "action"
   | "ai_prompt"
+  | "send_document"
   | "playwright_action"
   | "condition"
   | "output"
@@ -569,6 +572,7 @@ function SidebarEditorHeader({
     input: "Collect Input",
     action: "Action",
     ai_prompt: "AI Prompt",
+    send_document: "Send Document",
     playwright_action: "Automation",
     condition: "Condition",
     output: "Output",
@@ -930,6 +934,17 @@ function defaultConfigForType(type: StepType): Record<string, unknown> {
       return { action_type: "show_confirmation", message: "" }
     case "ai_prompt":
       return { prompt_key: "", variables: {}, store_output_as: "result" }
+    case "send_document":
+      return {
+        channel: "email",
+        recipient: { type: "email_address", value: "", name: "" },
+        template_key: "",
+        template_context: {},
+        subject: "",
+        body: "",
+        reply_to: "",
+        document_id: "",
+      }
     case "playwright_action":
       return { script_name: "", input_mapping: {}, output_mapping: {}, requires_approval: false }
     case "condition":
@@ -989,6 +1004,7 @@ function BlockEditor({
             <option value="input">Input — ask the user</option>
             <option value="action">Action — do something</option>
             <option value="ai_prompt">AI Prompt — run a managed prompt</option>
+            <option value="send_document">Send Document — email/SMS via DeliveryService</option>
             <option value="condition">Condition — branch</option>
             <option value="output">Output — final result</option>
           </select>
@@ -1056,12 +1072,18 @@ function BlockEditor({
                 <option value="show_confirmation">Show confirmation</option>
               </select>
             </Field>
-            <Field label="Config (JSON)">
-              <JsonEditor
-                value={cfg}
-                onChange={(v) => onChange({ config: v })}
-              />
-            </Field>
+            {/* Phase D-1 — dedicated config form for generate_document. Other
+                action_types still use the generic JSON editor. */}
+            {cfg.action_type === "generate_document" ? (
+              <GenerateDocumentConfig cfg={cfg} onConfigChange={onConfigChange} />
+            ) : (
+              <Field label="Config (JSON)">
+                <JsonEditor
+                  value={cfg}
+                  onChange={(v) => onChange({ config: v })}
+                />
+              </Field>
+            )}
           </>
         )}
 
@@ -1071,6 +1093,11 @@ function BlockEditor({
             priorSteps={priorSteps}
             onConfigChange={onConfigChange}
           />
+        )}
+
+        {/* Phase D-7 top-level step type; UI shipped in D-8 polish */}
+        {step.step_type === "send_document" && (
+          <SendDocumentConfig cfg={cfg} onConfigChange={onConfigChange} />
         )}
 
         {step.step_type === "playwright_action" && (

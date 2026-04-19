@@ -1,5 +1,14 @@
 """DocuSign Connect webhook receiver with HMAC signature validation.
 
+**DEPRECATED as of Phase D-5 (April 2026).** New disinterment envelopes
+no longer use DocuSign — they use native signing via
+`/api/v1/sign/*`. This webhook stays mounted to process status events
+for any DocuSign envelopes created before the D-5 cutover.
+
+Once all legacy DocuSign envelopes resolve (signed/declined/voided) and
+`disinterment_cases.docusign_envelope_id IS NOT NULL` returns zero
+non-terminal rows, this module can be deleted.
+
 Receives events: envelope-sent, recipient-completed, recipient-declined,
 envelope-completed. Validates X-DocuSign-Signature-1 HMAC header.
 

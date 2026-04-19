@@ -96,4 +96,10 @@ class SafetyProgramGeneration(Base):
     topic = relationship("SafetyTrainingTopic")
     schedule = relationship("TenantTrainingSchedule", foreign_keys=[schedule_id])
     reviewer = relationship("User", foreign_keys=[reviewed_by])
-    pdf_document = relationship("Document", foreign_keys=[pdf_document_id])
+    # FK targets the canonical `documents` table (Phase D-1); the legacy
+    # Document model moved to `documents_legacy`. Use a fully-qualified
+    # string so SQLAlchemy's registry doesn't ambiguate "Document".
+    pdf_document = relationship(
+        "app.models.canonical_document.Document",
+        foreign_keys=[pdf_document_id],
+    )

@@ -272,6 +272,19 @@ class IntelligenceExecution(Base):
     )
     caller_import_session_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
+    # Phase D-1 — link AI-generated content back to the Document it produced
+    caller_document_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Phase D-6 — link AI calls that operated on a cross-tenant shared doc
+    caller_document_share_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("document_shares.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     experiment_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("intelligence_experiments.id", ondelete="SET NULL"),

@@ -128,6 +128,8 @@ class SocialServiceCertificateService:
             product_price=product_price,
             delivered_at=effective_delivered_at,
             company_config=company_config,
+            db=db,
+            company_id=order.company_id,
         )
 
         # Upload to R2
