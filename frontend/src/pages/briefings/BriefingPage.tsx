@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   Settings as SettingsIcon,
   AlertTriangle,
-  Clock,
   ListChecks,
   PhoneCall,
   Calendar,
@@ -185,11 +184,13 @@ export default function BriefingPage() {
               Mark read
             </Button>
           ) : null}
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/settings/briefings">
-              <SettingsIcon className="mr-2 h-4 w-4" />
-              Preferences
-            </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            render={<Link to="/settings/briefings" />}
+          >
+            <SettingsIcon className="mr-2 h-4 w-4" />
+            Preferences
           </Button>
         </div>
       </header>
@@ -507,6 +508,3 @@ function CollapsibleCard({
   );
 }
 
-// unused icon import guard — kept for a future "duration" display
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _unused = Clock;

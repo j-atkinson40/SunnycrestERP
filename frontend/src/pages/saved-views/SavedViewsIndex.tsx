@@ -211,11 +211,9 @@ export default function SavedViewsIndex({
           title="No saved views yet"
           description="Save a filtered list or dashboard from any page, or create one from scratch."
           action={
-            <Button asChild size="sm">
-              <Link to="/saved-views/new">
-                <Plus className="mr-2 h-4 w-4" />
-                Create your first view
-              </Link>
+            <Button size="sm" render={<Link to="/saved-views/new" />}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create your first view
             </Button>
           }
           data-testid="saved-views-index-empty"

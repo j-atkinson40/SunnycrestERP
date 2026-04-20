@@ -63,8 +63,8 @@ export function BriefingCard({
         ) : !briefing ? (
           <div className="text-muted-foreground">
             <p className="mb-2">No briefing yet today.</p>
-            <Button asChild size="sm" variant="outline">
-              <Link to="/briefing">Open briefing</Link>
+            <Button size="sm" variant="outline" render={<Link to="/briefing" />}>
+              Open briefing
             </Button>
           </div>
         ) : (
@@ -84,10 +84,12 @@ export function BriefingCard({
                 </Badge>
               ) : null}
             </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link to={`/briefing/${briefing.id}`}>
-                Read full briefing <ChevronRight className="ml-1 h-3 w-3" />
-              </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              render={<Link to={`/briefing/${briefing.id}`} />}
+            >
+              Read full briefing <ChevronRight className="ml-1 h-3 w-3" />
             </Button>
           </>
         )}

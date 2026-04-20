@@ -134,10 +134,12 @@ export default function TriageIndex() {
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p className="text-muted-foreground">{q.description}</p>
-                <Button asChild>
-                  <Link to={`/triage/${encodeURIComponent(q.queue_id)}`}>
-                    Open
-                  </Link>
+                <Button
+                  render={
+                    <Link to={`/triage/${encodeURIComponent(q.queue_id)}`} />
+                  }
+                >
+                  Open
                 </Button>
               </CardContent>
             </Card>

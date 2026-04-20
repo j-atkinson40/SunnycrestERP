@@ -127,8 +127,8 @@ export default function TaskCreate() {
         <Button type="submit" disabled={submitting}>
           {submitting ? "Creating…" : "Create task"}
         </Button>
-        <Button type="button" variant="outline" asChild>
-          <Link to="/tasks">Cancel</Link>
+        <Button variant="outline" render={<Link to="/tasks" />}>
+          Cancel
         </Button>
       </div>
     </form>

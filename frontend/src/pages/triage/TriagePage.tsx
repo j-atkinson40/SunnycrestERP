@@ -109,9 +109,7 @@ function TriageInner() {
           }
           tone="positive"
           action={
-            <Button asChild>
-              <Link to="/triage">Back to queues</Link>
-            </Button>
+            <Button render={<Link to="/triage" />}>Back to queues</Button>
           }
           data-testid="triage-caught-up"
         />

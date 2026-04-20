@@ -102,17 +102,13 @@ export default function TasksList() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link to="/triage/task_triage">
-              <ListChecks className="mr-2 h-4 w-4" />
-              Triage
-            </Link>
+          <Button variant="outline" render={<Link to="/triage/task_triage" />}>
+            <ListChecks className="mr-2 h-4 w-4" />
+            Triage
           </Button>
-          <Button asChild>
-            <Link to="/tasks/new">
-              <Plus className="mr-2 h-4 w-4" />
-              New task
-            </Link>
+          <Button render={<Link to="/tasks/new" />}>
+            <Plus className="mr-2 h-4 w-4" />
+            New task
           </Button>
         </div>
       </header>
@@ -155,11 +151,9 @@ export default function TasksList() {
               </>
             }
             action={
-              <Button asChild size="sm">
-                <Link to="/tasks/new">
-                  <Plus className="mr-2 h-4 w-4" />
-                  New task
-                </Link>
+              <Button size="sm" render={<Link to="/tasks/new" />}>
+                <Plus className="mr-2 h-4 w-4" />
+                New task
               </Button>
             }
             tone="positive"
