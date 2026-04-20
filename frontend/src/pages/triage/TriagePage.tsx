@@ -199,7 +199,13 @@ function TriageInner() {
         />
       </section>
 
-      <TriageContextPanel panels={config.context_panels} item={item} />
+      {session ? (
+        <TriageContextPanel
+          panels={config.context_panels}
+          item={item}
+          sessionId={session.session_id}
+        />
+      ) : null}
     </div>
   );
 }

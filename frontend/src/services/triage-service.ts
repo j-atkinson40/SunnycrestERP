@@ -12,6 +12,8 @@ import type {
   TriageActionResult,
   TriageItem,
   TriageQueueConfig,
+  TriageQuestionAnswer,
+  TriageRateLimitedBody,
   TriageSessionSummary,
 } from "@/types/triage";
 
@@ -132,4 +134,54 @@ export async function endSession(
     `/triage/sessions/${encodeURIComponent(sessionId)}/end`,
   );
   return data;
+}
+
+// ── Follow-up 2 — AI Question panel ────────────────────────────────
+
+export class TriageRateLimitedError extends Error {
+  readonly retryAfterSeconds: number;
+  readonly friendlyMessage: string;
+  constructor(body: TriageRateLimitedBody) {
+    super(body.message);
+    this.retryAfterSeconds = body.retry_after_seconds;
+    this.friendlyMessage = body.message;
+    this.name = "TriageRateLimitedError";
+  }
+}
+
+/**
+ * Ask a natural-language question about the current triage item.
+ *
+ * On 429 rate-limit responses the backend returns a structured body
+ * `{code: "rate_limited", retry_after_seconds, message}`. This
+ * function translates that into a typed `TriageRateLimitedError` so
+ * the panel can render a friendly toast — callers should catch
+ * specifically and display `err.friendlyMessage`.
+ */
+export async function askQuestion(
+  sessionId: string,
+  itemId: string,
+  question: string,
+): Promise<TriageQuestionAnswer> {
+  try {
+    const { data } = await apiClient.post<TriageQuestionAnswer>(
+      `/triage/sessions/${encodeURIComponent(sessionId)}/items/${encodeURIComponent(itemId)}/ask`,
+      { question },
+    );
+    return data;
+  } catch (err) {
+    const axiosErr = err as {
+      response?: { status?: number; data?: { detail?: TriageRateLimitedBody } };
+    };
+    const detail = axiosErr?.response?.data?.detail;
+    if (
+      axiosErr?.response?.status === 429 &&
+      detail &&
+      typeof detail === "object" &&
+      detail.code === "rate_limited"
+    ) {
+      throw new TriageRateLimitedError(detail);
+    }
+    throw err;
+  }
 }

@@ -26,7 +26,11 @@ export type ContextPanelType =
   | "document_preview"
   | "communication_thread"
   | "related_entities"
-  | "ai_summary";
+  | "ai_summary"
+  // Follow-up 2 of the UI/UX arc — interactive Q&A panel.
+  // Backend: backend/app/services/triage/ai_question.py.
+  // Uses `ai_prompt_key` + `suggested_questions` + `max_question_length`.
+  | "ai_question";
 
 export interface TriageItemDisplay {
   title_field: string;
@@ -58,7 +62,42 @@ export interface TriageContextPanelConfig {
   saved_view_id?: string | null;
   document_field?: string | null;
   related_entity_type?: string | null;
+  // Shared by ai_summary + ai_question — cites the Intelligence
+  // prompt to execute when the panel activates.
   ai_prompt_key?: string | null;
+  // ai_question panel — starter chips rendered above the input.
+  suggested_questions?: string[];
+  // ai_question panel — server-enforced upper bound; UI mirrors.
+  max_question_length?: number;
+}
+
+// Follow-up 2 — AI question panel runtime shapes (response/request
+// from /api/v1/triage/sessions/{id}/items/{id}/ask).
+
+export type ConfidenceTier = "high" | "medium" | "low";
+
+export interface TriageQuestionSource {
+  entity_type: string;
+  entity_id: string;
+  display_label: string;
+  snippet?: string | null;
+}
+
+export interface TriageQuestionAnswer {
+  question: string;
+  answer: string;
+  confidence: ConfidenceTier;
+  confidence_score?: number | null;
+  source_references: TriageQuestionSource[];
+  latency_ms: number;
+  asked_at: string;
+  execution_id: string;
+}
+
+export interface TriageRateLimitedBody {
+  code: "rate_limited";
+  retry_after_seconds: number;
+  message: string;
 }
 
 export interface TriageEmbeddedActionConfig {

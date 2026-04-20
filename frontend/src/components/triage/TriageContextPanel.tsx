@@ -2,23 +2,26 @@
  * Context panel rail — renders every panel from the queue's
  * `context_panels` list in display_order.
  *
- * Phase 5 stub: each panel type gets a placeholder. Real
- * implementations land as the individual surfaces (saved-view
- * embed, document preview, communication thread, related entities,
- * AI summary) are connected to triage. The structure is in place
- * so adding a panel becomes a single-case addition here.
+ * Phase 5 shipped the pluggable architecture; only `document_preview`
+ * was wired. Follow-up 2 wires `ai_question` — the first interactive
+ * context panel in the platform. The remaining types (saved_view,
+ * communication_thread, related_entities) stay stubs until they get
+ * wired post-arc — the structure here means each future wire-up is a
+ * single-case addition.
  */
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { AIQuestionPanel } from "@/components/triage/AIQuestionPanel";
 import type { TriageContextPanelConfig, TriageItem } from "@/types/triage";
 
 interface Props {
   panels: TriageContextPanelConfig[];
   item: TriageItem;
+  sessionId: string;
 }
 
-export function TriageContextPanel({ panels, item }: Props) {
+export function TriageContextPanel({ panels, item, sessionId }: Props) {
   const ordered = useMemo(
     () => [...panels].sort((a, b) => a.display_order - b.display_order),
     [panels],
@@ -28,7 +31,12 @@ export function TriageContextPanel({ panels, item }: Props) {
   return (
     <aside className="space-y-4 lg:w-80">
       {ordered.map((p) => (
-        <PanelCard key={`${p.panel_type}-${p.title}`} panel={p} item={item} />
+        <PanelCard
+          key={`${p.panel_type}-${p.title}`}
+          panel={p}
+          item={item}
+          sessionId={sessionId}
+        />
       ))}
     </aside>
   );
@@ -37,9 +45,11 @@ export function TriageContextPanel({ panels, item }: Props) {
 function PanelCard({
   panel,
   item,
+  sessionId,
 }: {
   panel: TriageContextPanelConfig;
   item: TriageItem;
+  sessionId: string;
 }) {
   const [open, setOpen] = useState(!panel.default_collapsed);
   return (
@@ -54,7 +64,7 @@ function PanelCard({
       </button>
       {open ? (
         <div className="border-t px-3 py-2 text-sm">
-          <PanelBody panel={panel} item={item} />
+          <PanelBody panel={panel} item={item} sessionId={sessionId} />
         </div>
       ) : null}
     </div>
@@ -64,9 +74,11 @@ function PanelCard({
 function PanelBody({
   panel,
   item,
+  sessionId,
 }: {
   panel: TriageContextPanelConfig;
   item: TriageItem;
+  sessionId: string;
 }) {
   switch (panel.panel_type) {
     case "document_preview": {
@@ -91,23 +103,33 @@ function PanelBody({
         <EmptyState
           hint={
             panel.related_entity_type
-              ? `Related ${panel.related_entity_type} — wiring lands in Phase 6.`
-              : "Related entities — wiring lands in Phase 6."
+              ? `Related ${panel.related_entity_type} — wiring lands post-arc.`
+              : "Related entities — wiring lands post-arc."
           }
         />
       );
     case "saved_view":
-      return <EmptyState hint="Saved view embed — wiring lands in Phase 6." />;
+      return <EmptyState hint="Saved view embed — wiring lands post-arc." />;
     case "communication_thread":
-      return <EmptyState hint="Communication thread — wiring lands in Phase 6." />;
+      return (
+        <EmptyState hint="Communication thread — wiring lands post-arc." />
+      );
     case "ai_summary":
       return (
         <EmptyState
           hint={
             panel.ai_prompt_key
-              ? `AI summary (${panel.ai_prompt_key}) — wiring lands in Phase 6.`
-              : "AI summary — wiring lands in Phase 6."
+              ? `AI summary (${panel.ai_prompt_key}) — wiring lands post-arc.`
+              : "AI summary — wiring lands post-arc."
           }
+        />
+      );
+    case "ai_question":
+      return (
+        <AIQuestionPanel
+          panel={panel}
+          sessionId={sessionId}
+          itemId={String(item.entity_id)}
         />
       );
     default:

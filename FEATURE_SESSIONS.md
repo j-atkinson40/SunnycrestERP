@@ -6,6 +6,72 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## AI Questions in Triage Context Panels (UI/UX Arc Follow-up 2)
+
+**Date:** 2026-04-20
+**Migration head:** `r35_briefings_table` (unchanged — no new tables, no migration)
+**Tests passing:** 138 across Spaces + Triage + AI-Question regression (33 new follow-up tests; 110 adjacent-phase tests also green — no regressions)
+
+### What shipped
+
+**The first wired interactive context panel in the triage workspace.** Phase 5 shipped the pluggable context panel architecture with six types; only `document_preview` was actually wired to real functionality. The remaining five (`saved_view`, `communication_thread`, `related_entities`, `ai_summary`, `ai_question`) rendered "wiring lands in Phase 6" placeholders. Follow-up 2 wires `ai_question`, establishing the interaction pattern (input-focus suppression, ephemeral session state, vertical-aware prompts, rate-limited 429 with structured body) for the remaining stubs when they land post-arc.
+
+Users open a triage queue, click into the "Ask about this task" (or "Ask about this certificate") panel, and type a question. Claude answers grounded in the item record + related entities + vertical-aware terminology. Confidence dot (green/amber/gray). Source references rendered as clickable chips.
+
+### Approved deviations from the spec
+
+1. **Reused existing Phase 5 prompts via v1→v2 Option A bump.** `triage.task_context_question` + `triage.ss_cert_context_question` were authored Phase-5-end with Q&A-shaped variables (`user_question`) — naming revealed intent. No new `triage.ask_question` prompt seeded.
+2. **No `AIQuestionPanelConfig` subclass.** Flat `ContextPanelConfig` extended with optional `suggested_questions: list[str]` + `max_question_length: int = 500`.
+3. **Dropped `include_saved_view_context`.** Added `_RELATED_ENTITY_BUILDERS` dict parallel to `engine._DIRECT_QUERIES` instead. Per-queue builders fetch denormalized related data without needing Phase 2 executor extensions for per-row scoping.
+4. **Centralized confidence mapping** in `app/services/intelligence/confidence.py::to_tier` (≥0.80 high, ≥0.50 medium, else low). None + bad input collapse to low defensively. Reusable by future AI-response consumers.
+5. **Rate limit returns structured 429** with `{code: "rate_limited", retry_after_seconds, message}` + `Retry-After` header; frontend translates to a friendly toast ("Pausing AI questions for a moment — try again in Ns").
+
+### Backend additions
+
+- `backend/app/services/intelligence/confidence.py` — centralized `to_tier(score)` utility.
+- `backend/app/services/triage/ai_question.py` — ~350 lines. Public: `ask_question`, `AskQuestionResponse`, `SourceReference`, `RateLimited`, typed error subclasses. Private: `_RELATED_ENTITY_BUILDERS` dict, sliding-window rate limiter (`deque` of monotonic timestamps per user_id, threading.Lock for safety), `_reset_rate_limiter` test seam.
+- `backend/app/services/triage/types.py` — `ContextPanelType.AI_QUESTION = "ai_question"`; `ContextPanelConfig` gains `suggested_questions: list[str] = []` + `max_question_length: int = 500`.
+- `backend/app/services/triage/platform_defaults.py` — both seeded queues now declare an `ai_question` panel. task_triage cites `triage.task_context_question` + suggestions ["Why is this task urgent?", "What's the history with this assignee?", "Are there related tasks I should know about?"]. ss_cert_triage cites `triage.ss_cert_context_question` + suggestions ["What's the history with this funeral home?", "Are there previous certificates for this product?", "Why was this approval flagged?"].
+- `backend/app/api/routes/triage.py` — new `POST /sessions/{session_id}/items/{item_id}/ask` endpoint. Translates `RateLimited` → structured 429 body + `Retry-After` header; other `TriageError` subclasses go through the shared `_translate` helper.
+- `backend/scripts/seed_intelligence_followup2.py` — Option A idempotent v1→v2 bump. Adds `vertical`, `user_role`, `queue_name`, `queue_description`, `item_type` variables + the VERTICAL-APPROPRIATE TERMINOLOGY Jinja block mirroring Phase 6's pattern. First run: `bumped_to_v2=2`. Re-run: `skipped_customized=2` (Phase 6 multi-version guard correctly protects admin customizations).
+
+### Frontend additions
+
+- `frontend/src/types/triage.ts` — `ContextPanelType` extended with `"ai_question"`; `TriageContextPanelConfig` gains `suggested_questions` + `max_question_length`; new runtime shapes `ConfidenceTier`, `TriageQuestionSource`, `TriageQuestionAnswer`, `TriageRateLimitedBody`.
+- `frontend/src/services/triage-service.ts` — `askQuestion(sessionId, itemId, question)` + typed `TriageRateLimitedError` class that wraps the structured 429 body.
+- `frontend/src/components/triage/AIQuestionPanel.tsx` — ~260 lines. Suggested-question chips, textarea with character counter, ⌘↵ / Ctrl+↵ submit, inline error surface with retry, confidence dot (emerald / amber / muted), source-reference chips with routing (`task → /tasks/:id`, `sales_order → /order-station/orders/:id`, `customer → /vault/crm/companies/:id`, etc.). Per-item session history resets via `useEffect` on `itemId` change.
+- `frontend/src/components/triage/TriageContextPanel.tsx` — dispatcher extended with `"ai_question"` case; new `sessionId` prop threaded from `TriagePage.tsx`.
+
+### Input-focus discipline (requirement 6)
+
+Phase 5's `useTriageKeyboard` hook already suppresses triage shortcuts when focus is on INPUT/TEXTAREA/SELECT/contenteditable/role=textbox (`hooks/useTriageKeyboard.ts:36-41`). Verified by the `keyboard_shortcut_doesnt_fire_action` Playwright scenario: typing "n" in the textarea does NOT fire task_triage's Skip action. No Phase 5 modification needed.
+
+### Tests
+
+- `backend/tests/test_ai_question_service.py` — 17 tests. Confidence tier boundaries (4), service orchestration happy path + medium-confidence tier (2), related-entity builder invocation (1), malformed/error responses (2), question validation (2), item-not-found (1), rate limiting (per-user + overhead sub-gate, 3), preconditions (no-panel, cross-user, 2).
+- `backend/tests/test_triage_ai_question_api.py` — 8 tests. Happy-path roundtrip, session/item 404s, question too long (400), empty question (Pydantic 422), auth required, cross-user isolation, structured 429 body + Retry-After header.
+- `backend/tests/test_ai_question_prompt_terminology.py` — 6 tests. Parametrized over 4 verticals (manufacturing / funeral_home / cemetery / crematory) asserting correct USE + DO-NOT-USE lines in rendered prompt. Unknown-vertical fallback. SS cert prompt also renders the block (both v2 bumps verified).
+- `backend/tests/test_ai_question_latency.py` — 2 BLOCKING CI gates. `/ask` endpoint: **p50 = 8.2 ms / p99 = 33.3 ms** vs target 1500/3000ms (180× p50 headroom — orchestration-only; real Haiku in prod adds ~350ms). Confidence mapping: effectively 0ms per call (sub-1ms budget met).
+- `frontend/tests/e2e/ai-question-panel.spec.ts` — 7 Playwright scenarios. Panel renders, suggested-chip populates input, character counter updates, keyboard shortcut suppression, submit-API-contract roundtrip (mocked), rate-limit friendly toast (mocked 429), backend API shape smoke (live or 502 both accepted).
+
+### Verification
+
+- `pytest tests/test_ai_question_service.py tests/test_triage_ai_question_api.py tests/test_ai_question_prompt_terminology.py tests/test_ai_question_latency.py` → **33 passed**.
+- Full triage + spaces regression (9 test files, 138 tests) → **138 passed**. No pre-existing tests broken.
+- Adjacent phases (briefings, briefing terminology, command-bar retrieval, NL creation, saved views) → **110 passed**. Vertical-aware pattern transplanted cleanly.
+- Frontend `tsc -b` clean. `npm run build` clean.
+- Seed script first run: `bumped_to_v2=2` (both triage prompts advanced v1→v2). Idempotent re-run: `skipped_customized=2` (Phase 6 multi-version guard correctly protects re-seeded state).
+
+### Establishes precedent for future interactive panels
+
+Phase 5 shipped six context panel types; only `document_preview` was wired. Follow-up 2 wires `ai_question` — **the first interactive context panel in the triage system**. The patterns established here (input-focus suppression via the existing hook, ephemeral session state on the frontend, per-queue builder dict for related entities, structured 429 with friendly toast) are the blueprint for wiring the remaining four (`ai_summary`, `saved_view`, `communication_thread`, fully-interactive `related_entities`) when they come up post-arc. That's why the dispatcher's "wiring lands post-arc" placeholders explicitly point at this precedent rather than a specific phase number.
+
+### Ready for follow-up 3
+
+Saved view live preview in builder. Post-follow-up-2 platform state: the arc has shipped + two follow-ups proven-pattern (follow-up 1 extended a Phase 3 registry; follow-up 2 extended a Phase 5 primitive with an interactive panel + vertical-aware prompt bump). Remaining two follow-ups stay architecturally cheap.
+
+---
+
 ## Space-Scoped Triage Queue Pinning (UI/UX Arc Follow-up 1)
 
 **Date:** 2026-04-20

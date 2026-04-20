@@ -266,14 +266,21 @@ Deferred items from Phases 1-7, organized by category. None of these block the S
 
 ### Triage (Phase 5)
 - Per-tenant triage queue customization admin UI (backend `upsert_tenant_override` exists)
-- AI question feature in context panels
+- ✅ **Follow-up 2 (April 2026) — AI question panel.** `ai_question` is the sixth context panel type and the first interactive one. Users ask natural-language questions about the current item; Claude answers via existing `triage.*_context_question` prompts (v2 adds vertical-aware terminology). In-memory rate limit (10 req/min per user) returns structured 429 with `retry_after_seconds` so UI renders a friendly toast. Per-queue `_RELATED_ENTITY_BUILDERS` dict fetches linked entities (task: sibling tasks; ss_cert: order + customer + past certs). Latency: p50=8.2ms / p99=33.3ms orchestration-only against 1500/3000ms budget. Session question history frontend-local, cleared on item change. See `FEATURE_SESSIONS.md` § "AI Questions in Triage Context Panels".
 - Bulk actions + approval chains + rules engine (scaffolded in FlowControls)
 - Audit replay (CollaborationConfig scaffolded)
 - Learning + anomaly detection + prioritization (IntelligenceConfig scaffolded)
 - Full live-preview of triage queue configs in admin editor
 - Mobile triage redesign
 - Voice triage
+- Voice question input (reuse `useVoiceInput` — deferred from follow-up 2)
+- Multi-turn conversational threading in ai_question panel (each question independent today)
+- Question suggestions based on item type / past questions (post-arc learning)
+- Answer export / save to record notes
 - bridgeable-admin portal action registry unification
+- Wire the remaining context panel stubs: `ai_summary`, `saved_view`, `communication_thread`, fully-interactive `related_entities`
+- Dynamic saved-view scoping for `include_saved_view_context` (requires Phase 2 executor extension for per-row filter injection)
+- Swap ai_question rate limiter to Redis-backed for cross-process enforcement (in-memory acceptable at current scale)
 
 ### Briefings (Phase 6)
 1. Rename `/briefings/v2/*` → cleaner REST

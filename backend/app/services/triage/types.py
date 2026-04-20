@@ -105,6 +105,11 @@ class ContextPanelType(str, Enum):
     COMMUNICATION_THREAD = "communication_thread"
     RELATED_ENTITIES = "related_entities"
     AI_SUMMARY = "ai_summary"
+    # Interactive Q&A panel — user types a question, Claude answers
+    # grounded in the item + related-entity context. Follow-up 2 of
+    # the UI/UX arc wires this. See
+    # `backend/app/services/triage/ai_question.py`.
+    AI_QUESTION = "ai_question"
 
 
 class ContextPanelConfig(BaseModel):
@@ -116,12 +121,22 @@ class ContextPanelConfig(BaseModel):
     title: str
     display_order: int = 0
     default_collapsed: bool = False
-    # Panel-type-specific fields — extra keys allowed so each panel
-    # type can carry its own shape without bloating this base model.
+    # Panel-type-specific fields — each optional, keyed by which
+    # panel_type uses it. Flat model (no discriminated union) keeps
+    # the Pydantic parse simple; unused fields stay None per panel.
     saved_view_id: str | None = None
     document_field: str | None = None  # e.g. "pdf_url" for ss_certificates
     related_entity_type: str | None = None  # for RELATED_ENTITIES
-    ai_prompt_key: str | None = None  # for AI_SUMMARY
+    # Intelligence prompt key — shared by AI_SUMMARY (passive render)
+    # + AI_QUESTION (interactive Q&A). Per-queue specialization lives
+    # at the prompt level; each panel cites its own key.
+    ai_prompt_key: str | None = None
+    # AI_QUESTION panel — starter prompts rendered as clickable chips
+    # to populate the question input. Optional; empty list = no chips.
+    suggested_questions: list[str] = Field(default_factory=list)
+    # AI_QUESTION panel — server-enforced upper bound on question
+    # length. UI mirrors as a character counter.
+    max_question_length: int = 500
 
 
 class EmbeddedActionConfig(BaseModel):

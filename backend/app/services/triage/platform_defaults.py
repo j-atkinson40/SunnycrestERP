@@ -102,6 +102,24 @@ _task_triage = TriageQueueConfig(
             default_collapsed=True,
             ai_prompt_key="triage.task_context_question",
         ),
+        # Follow-up 2 — interactive Q&A about the current task.
+        # Uses the same per-queue prompt as ai_summary since the
+        # prompt was Q&A-shaped from the start (user_question
+        # variable). Suggested questions are starter chips the UI
+        # renders above the input.
+        ContextPanelConfig(
+            panel_type=ContextPanelType.AI_QUESTION,
+            title="Ask about this task",
+            display_order=10,
+            default_collapsed=False,
+            ai_prompt_key="triage.task_context_question",
+            suggested_questions=[
+                "Why is this task urgent?",
+                "What's the history with this assignee?",
+                "Are there related tasks I should know about?",
+            ],
+            max_question_length=500,
+        ),
     ],
     flow_controls=FlowControlsConfig(
         snooze_enabled=True,
@@ -193,6 +211,23 @@ _ss_cert_triage = TriageQueueConfig(
             display_order=2,
             default_collapsed=False,
             related_entity_type="sales_order",
+        ),
+        # Follow-up 2 — interactive Q&A about the certificate + its
+        # source order + past certificates for the same funeral home.
+        # Wires the `triage.ss_cert_context_question` prompt (seeded
+        # in Phase 5 but previously unused).
+        ContextPanelConfig(
+            panel_type=ContextPanelType.AI_QUESTION,
+            title="Ask about this certificate",
+            display_order=10,
+            default_collapsed=False,
+            ai_prompt_key="triage.ss_cert_context_question",
+            suggested_questions=[
+                "What's the history with this funeral home?",
+                "Are there previous certificates for this product?",
+                "Why was this approval flagged?",
+            ],
+            max_question_length=500,
         ),
     ],
     flow_controls=FlowControlsConfig(

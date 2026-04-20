@@ -34,6 +34,10 @@ from app.services.triage import (
     snooze_item,
     start_session,
 )
+from app.services.triage.ai_question import (
+    RateLimited,
+    ask_question,
+)
 
 router = APIRouter()
 
@@ -103,6 +107,40 @@ class _SnoozeRequest(BaseModel):
     wake_at: datetime | None = None
     offset_hours: int | None = Field(default=None, ge=1, le=24 * 30)
     reason: str | None = None
+
+
+# Follow-up 2 — AI question panel shapes. Single request/response,
+# no streaming. The response echoes the question back (cheap) so
+# the frontend can render it alongside the answer without holding
+# onto a request-local variable.
+
+
+class _AskRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+
+
+class _SourceReferenceResponse(BaseModel):
+    entity_type: str
+    entity_id: str
+    display_label: str
+    snippet: str | None = None
+
+
+class _AskResponse(BaseModel):
+    question: str
+    answer: str
+    confidence: Literal["high", "medium", "low"]
+    confidence_score: float | None = None
+    source_references: list[_SourceReferenceResponse]
+    latency_ms: int
+    asked_at: datetime
+    execution_id: str
+
+
+class _RateLimitedBody(BaseModel):
+    code: Literal["rate_limited"]
+    retry_after_seconds: int
+    message: str
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -329,6 +367,68 @@ def snooze_endpoint(
         status=result.status,
         message=result.message,
         next_item_id=result.next_item_id,
+    )
+
+
+# ── Follow-up 2 — AI Question panel ──────────────────────────────────
+
+
+@router.post(
+    "/sessions/{session_id}/items/{item_id}/ask",
+    response_model=_AskResponse,
+)
+def ask_question_endpoint(
+    session_id: str,
+    item_id: str,
+    body: _AskRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _AskResponse:
+    """Ask a natural-language question about the current triage item.
+
+    Returns 429 with `{code: "rate_limited", retry_after_seconds}`
+    when the user exceeds the 10-req/min per-user budget — the
+    frontend translates to a friendly toast ("Pausing AI questions
+    for a moment"). Other error cases (session/item not found,
+    question too long, AI failure) use the shared `_translate`
+    helper for consistent detail shapes.
+    """
+    try:
+        resp = ask_question(
+            db,
+            user=current_user,
+            session_id=session_id,
+            item_id=item_id,
+            question=body.question,
+        )
+    except RateLimited as exc:
+        # Structured body so the frontend can surface the retry
+        # affordance without string-parsing the detail.
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "rate_limited",
+                "retry_after_seconds": exc.retry_after_seconds,
+                "message": (
+                    "Pausing AI questions for a moment — try again in "
+                    f"{exc.retry_after_seconds} seconds."
+                ),
+            },
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+    except TriageError as exc:
+        raise _translate(exc) from exc
+    return _AskResponse(
+        question=resp.question,
+        answer=resp.answer,
+        confidence=resp.confidence,
+        confidence_score=resp.confidence_score,
+        source_references=[
+            _SourceReferenceResponse(**s.to_dict()) for s in resp.source_references
+        ],
+        latency_ms=resp.latency_ms,
+        asked_at=resp.asked_at,
+        execution_id=resp.execution_id,
     )
 
 
