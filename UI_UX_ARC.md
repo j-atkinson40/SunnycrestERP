@@ -244,9 +244,10 @@ Deferred items from Phases 1-7, organized by category. None of these block the S
 - Route collision fix between `ai.py` and `ai_command.py` at `/ai/command`
 
 ### Saved Views (Phase 2)
-- Live preview in builder (users save then land on detail; instant preview deferred)
+- ✅ **Follow-up 3 (April 2026) — Live preview in builder.** `SavedViewCreatePage` gains a right-column sticky preview pane powered by new `POST /api/v1/saved-views/preview` (100-row cap enforced server-side, arc-telemetry keyed `saved_view_preview`). 300ms-debounced via new `useDebouncedValue` hook composed with Phase 7's `useRetryableFetch`; AbortController cancels stale in-flight calls. Mode-switch cache reuses the last executor result when only presentation mode changes among non-aggregation modes. Pre-render mode-hint guard lives in the preview component (renderer stays lean for detail page + widget callers). `<lg` collapsible with localStorage persistence. p50=8.5ms / p99=12.0ms vs 150/500ms budget. Zero new tables. See `FEATURE_SESSIONS.md` § "Saved View Live Preview in Builder".
 - Seed backfill when adding new saved-view templates (template additions after a role seeded don't backfill)
 - `production-board.tsx` deletion (awaiting Playwright staging parity verification)
+- Migrate ad-hoc debouncers (cemetery-picker, funeral-home-picker, useDashboard, useNLExtraction, cemetery-name-autocomplete) onto `useDebouncedValue` when next touched
 
 ### Spaces (Phase 3)
 - Mobile space switching (bottom sheet redesign)

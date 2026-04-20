@@ -50,6 +50,11 @@ _PROCESS_START_TS: float = time.time()
 TRACKED_ENDPOINTS = (
     "command_bar_query",
     "saved_view_execute",
+    # Follow-up 3 — live preview in the saved view builder. Separate
+    # from execute because the hot-path characteristics differ: preview
+    # caps rows at 100 server-side and fires on every 300ms-debounced
+    # config change.
+    "saved_view_preview",
     "nl_extract",
     "triage_next_item",
     "triage_apply_action",

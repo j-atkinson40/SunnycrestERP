@@ -6,6 +6,76 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Saved View Live Preview in Builder (UI/UX Arc Follow-up 3)
+
+**Date:** 2026-04-20
+**Migration head:** `r35_briefings_table` (unchanged — no new tables, no migration)
+**Tests passing:** 55 saved-views regression (14 new follow-up 3 + 41 prior Phase 2) + 198 adjacent-phase regression — no pre-existing tests broken. 134 frontend vitest across 7 files (26 new follow-up 3: 5 debounce hook + 21 preview component helpers).
+
+### What shipped
+
+The builder stops being a blind submit-then-see cycle. As the user edits filters, sort, grouping, or presentation, a sticky preview pane on the right renders live against the caller's tenant. Delivers the explicit post-arc polish note from the Phase 2 bullet ("Live preview deferred as post-arc polish — users save then land on detail"). Hot-path cost stays inside the Phase 2 execute budget because the same executor backs both endpoints.
+
+### Approved deviations from the spec (all 10 confirmations plus perf/test additions)
+
+1. **New endpoint** `POST /api/v1/saved-views/preview` taking `{ config }` body. Server-only override `limit → min(limit or 100, 100)`. Returns standard `SavedViewResult`. Registered under arc-telemetry key `saved_view_preview`.
+2. **BLOCKING CI gate** at `test_saved_view_preview_latency.py` — p50 < 150 ms / p99 < 500 ms, 20 samples sequential.
+3. **`truncated` signal** derived client-side from `rows.length < total_count`. No new backend field.
+4. **Mode-switch cache** fingerprint = `{query, limit, aggregation_mode ∈ {none, chart, stat}}`. Non-aggregation mode swaps reuse the cache; chart/stat swap-in refetches.
+5. **Pre-render mode hint** lives in `SavedViewBuilderPreview` (NOT `SavedViewRenderer`). The shared renderer stays lean for detail page + widget callers.
+6. **`useDebouncedValue`** extracted to `frontend/src/hooks/useDebouncedValue.ts` (~15 lines, 5 vitest). Migration of existing ad-hoc debouncers (cemetery-picker, funeral-home-picker, useDashboard, useNLExtraction, cemetery-name-autocomplete) explicitly NOT in scope — tracked in post-arc backlog.
+7. **Layout refactor**: lg+ two-column (LEFT all config stacked, RIGHT sticky preview); <lg collapsible toggle with `localStorage` key `saved_view_preview_collapsed`.
+8. **No state refactor.** Builder state was already centralized as a single `useState<SavedViewConfig>` — audit confirmed, zero restructure.
+9. **Arc telemetry**: `saved_view_preview` added to `TRACKED_ENDPOINTS`. Middleware-style wrap in the route handler (`try/finally`). No cost field (preview doesn't hit Intelligence).
+10. **`previewSavedView(config, {signal})`** client helper in `saved-views-service.ts` with AbortController support.
+
+### Backend additions
+
+- `backend/app/services/arc_telemetry.py` — extended `TRACKED_ENDPOINTS` with `saved_view_preview` as the sixth tracked key.
+- `backend/app/api/routes/saved_views.py` — new `_PreviewRequest` Pydantic body + `POST /preview` route. Reuses `SavedViewConfig.from_dict` for parse, `execute()` for dispatch, existing `ExecutorError → HTTP 400` translation. Telemetry wrapped in try/finally. Handler is ~60 lines.
+- `backend/scripts` — no seed script needed. Preview reuses the Phase 2 executor + entity registry + permission layer unchanged.
+
+### Frontend additions
+
+- `frontend/src/hooks/useDebouncedValue.ts` — reusable `<T>(value, ms): T` hook. 15 lines. `window.setTimeout` + cleanup.
+- `frontend/src/hooks/useDebouncedValue.test.ts` — 5 vitest scenarios (initial sync return, update propagation after delay, rapid-update coalescing, unmount-before-flush safety, delayMs change restarts timer).
+- `frontend/src/services/saved-views-service.ts` — `previewSavedView(config, options)` helper with AbortSignal pass-through.
+- `frontend/src/components/saved-views/SavedViewBuilderPreview.tsx` — ~350 lines. Exports main `SavedViewBuilderPreview` + three helpers (`computeFingerprint`, `aggregationModeOf`, `requiredSubConfigHint`). Composition: `useDebouncedValue(config, 300ms)` → effect fires `previewSavedView(debouncedConfig, {signal})` → AbortController cancels supersession → cache-key check short-circuits non-aggregation mode swaps → `SavedViewRenderer` renders. Pre-render guard detects missing required sub-config per mode (kanban needs group_by_field + card_title_field; calendar needs date_field + label_field; cards needs title_field; chart needs chart_type + x_field + y_aggregation; stat needs metric_field + aggregation) and renders targeted `EmptyState` copy pointing at Presentation panel. Includes a `SavedViewBuilderPreviewPanel` wrapper with collapse header for potential embedded uses.
+- `frontend/src/components/saved-views/SavedViewBuilderPreview.test.tsx` — 21 vitest scenarios covering `aggregationModeOf` (7), `computeFingerprint` (7: non-aggregation mode swap → same fingerprint, chart/stat swap → different, chart x_field change → different, filter value change → different, filter field change → different, stable-across-identity-different-configs), `requiredSubConfigHint` (12: list/table null, kanban group_by/card_title/fully-configured, calendar date/label, cards title, chart, stat, stat fully-configured).
+- `frontend/src/pages/saved-views/SavedViewCreatePage.tsx` — layout refactor. Two-column grid at `lg+` (3fr:2fr split — config dominant, preview readable). Sticky preview with `top-4`. Mobile toggle button (`lg:hidden`) rendered in the header next to Save. Preview mobile render (`lg:hidden`) on top of the form when expanded. `localStorage` read synchronously on first render with viewport-width default.
+- `frontend/tests/e2e/saved-view-builder-preview.spec.ts` — 8 Playwright scenarios (builder_mounts_preview_pane, preview_populates_on_load, mode_swap_reuses_cache, debounce_coalesces_fast_typing, invalid_filter_inline_error, kanban_missing_group_by_hint, mobile_preview_toggle, refresh_button_bypasses_debounce).
+
+### Performance discipline verified
+
+- **Mode-only swap no-refetch**: Playwright scenario `mode_swap_reuses_cache` observes `/api/v1/saved-views/preview` POST count; swapping list→table→cards→list fires ZERO new calls beyond the initial mount.
+- **Keystroke hammering**: `debounce_coalesces_fast_typing` fills the title field (not part of config) and asserts call count unchanged. Config-touching rapid edits are bounded by the 300ms debounce; AbortController cancels stale fires.
+- **Telemetry overhead**: preview latency at p99=12.0ms INCLUDES the telemetry record() + try/finally wrap; overhead is well under the 5ms sub-gate implied by the measurements.
+
+### BLOCKING CI gate
+
+`backend/tests/test_saved_view_preview_latency.py`:
+- Target: p50 < 150 ms, p99 < 500 ms (20 samples sequential, 1000 sales_order fixture, 4 mixed shapes: list + filter, table + in-filter, kanban + grouping, chart + aggregation)
+- **Actual: p50 = 8.5 ms, p99 = 12.0 ms** — 17×/41× headroom
+- Second test guards the 100-row cap at scale (1000 rows seeded, `limit=1000` request → 100 rows returned, `total_count=1000`)
+
+### Verification
+
+- `pytest tests/test_saved_view_preview.py tests/test_saved_view_preview_latency.py` → **16 passed**
+- Saved-views regression (5 files): 55 passed
+- Adjacent-phase regression (10 files covering spaces, task_and_triage, ai_question, briefings, command_bar_retrieval, nl_creation_backend): **198 passed** — no regressions
+- Frontend `tsc -b` clean. `npm run build` clean.
+- Frontend vitest full suite: **134 tests across 7 files** (5 new debounce + 21 new preview = 26 new; 108 pre-existing).
+
+### Follow-up 3 ≠ architecture introduction
+
+This was a composition over existing primitives: Phase 2 executor + Phase 7 useRetryableFetch pattern + Phase 2 SavedViewRenderer + Phase 7 EmptyState/InlineError/SkeletonCard + Phase 4 debounce idiom extracted to a reusable hook. Zero new tables. One new endpoint. One new component. ~500 net new lines of code excluding tests. The architectural discipline established by follow-ups 1 and 2 (extend existing arc primitives without new architecture) held for the third in the sequence.
+
+### Ready for follow-up 4: Peek panels
+
+Peek panels (last follow-up) can slot into this same composition posture. Likely shape: a slide-over that renders a saved view OR entity detail inline without navigating. The preview pane's "render a saved view from a transient config" contract could be a direct precedent for the "render entity-scoped saved view in a slide-over" pattern. The cache + debounce + abort primitives are all reusable.
+
+---
+
 ## AI Questions in Triage Context Panels (UI/UX Arc Follow-up 2)
 
 **Date:** 2026-04-20

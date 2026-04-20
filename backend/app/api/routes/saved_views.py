@@ -85,6 +85,14 @@ class _DuplicateRequest(BaseModel):
     new_title: str
 
 
+# Follow-up 3 — live preview. Body carries a full transient config
+# (no saved-view row yet); server executes against the caller's
+# tenant with a 100-row cap so the builder's preview pane doesn't
+# pay for unbounded result sets on every debounced keystroke.
+class _PreviewRequest(BaseModel):
+    config: _SavedViewConfigBody
+
+
 class _ExecuteResponse(BaseModel):
     total_count: int
     rows: list[dict]
@@ -301,6 +309,94 @@ def duplicate(
         return _sv_to_response(sv)
     except SavedViewError as exc:
         raise _translate_saved_view_error(exc) from exc
+
+
+# ── Live preview (follow-up 3) ─────────────────────────────────────
+
+
+# Preview caps rows at 100 regardless of caller-supplied limit.
+# Kept here (not on the executor) so the cap is a route-level policy
+# and the shared executor stays the single hot path for full queries
+# (execute_view, dashboards, widgets, triage direct-query fallback).
+_PREVIEW_ROW_CAP: int = 100
+
+
+@router.post("/preview", response_model=_ExecuteResponse)
+def preview_view(
+    body: _PreviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _ExecuteResponse:
+    """Execute a transient config and return results.
+
+    Unlike /execute (which looks up a saved row), this endpoint
+    accepts the full config in the body so the builder can preview
+    changes before save. Owner == caller: users only preview configs
+    they'd own on save. No cross-tenant masking applies because
+    owner/caller are the same tenant.
+
+    Row cap: max 100 regardless of config.query.limit. Client derives
+    `truncated = rows.length < total_count` — no new field needed.
+
+    Performance:
+      p50 < 150ms, p99 < 500ms — enforced by
+      tests/test_saved_view_preview_latency.py.
+    """
+    import time as _t_time
+    from app.services import arc_telemetry as _arc_t
+
+    _t0 = _t_time.perf_counter()
+    _errored = False
+    try:
+        # 1. Parse the raw dict into a typed config. Malformed configs
+        #    (unknown keys, missing required fields) raise ValueError /
+        #    KeyError — surfaced as HTTP 400 with the message.
+        try:
+            config_dict = body.config.model_dump()
+            typed_config = SavedViewConfig.from_dict(config_dict)
+        except Exception as exc:
+            _errored = True
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid saved view config: {exc}",
+            ) from exc
+
+        # 2. Apply the 100-row cap. Override any caller-supplied limit
+        #    that's larger than the cap; respect smaller limits.
+        existing_limit = typed_config.query.limit
+        effective_limit = (
+            _PREVIEW_ROW_CAP
+            if existing_limit is None
+            else min(existing_limit, _PREVIEW_ROW_CAP)
+        )
+        typed_config.query.limit = effective_limit
+
+        # 3. Execute. Owner == caller — no masking.
+        try:
+            result: SavedViewResult = execute(
+                db,
+                config=typed_config,
+                caller_company_id=current_user.company_id,
+                owner_company_id=current_user.company_id,
+            )
+        except ExecutorError as exc:
+            _errored = True
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return _ExecuteResponse(
+            total_count=result.total_count,
+            rows=result.rows,
+            groups=result.groups,
+            aggregations=result.aggregations,
+            permission_mode=result.permission_mode,
+            masked_fields=result.masked_fields,
+        )
+    finally:
+        _arc_t.record(
+            "saved_view_preview",
+            (_t_time.perf_counter() - _t0) * 1000.0,
+            errored=_errored,
+        )
 
 
 @router.post("/{view_id}/execute", response_model=_ExecuteResponse)

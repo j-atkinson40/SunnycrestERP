@@ -92,6 +92,29 @@ export async function executeSavedView(
   return resp.data;
 }
 
+// ── Preview (follow-up 3) ────────────────────────────────────────
+
+/**
+ * Execute a transient config without saving — backs the builder's
+ * live preview pane. Server caps rows at 100 regardless of caller
+ * limit; caller derives `truncated` from `rows.length < total_count`.
+ *
+ * Accepts an optional AbortSignal so the preview pane can cancel
+ * in-flight requests when the debounced config changes before the
+ * previous response lands.
+ */
+export async function previewSavedView(
+  config: SavedViewConfig,
+  options?: { signal?: AbortSignal },
+): Promise<SavedViewResult> {
+  const resp = await apiClient.post<SavedViewResult>(
+    "/saved-views/preview",
+    { config },
+    { signal: options?.signal },
+  );
+  return resp.data;
+}
+
 // ── Entity types ─────────────────────────────────────────────────
 
 export async function listEntityTypes(): Promise<EntityTypeMetadata[]> {
