@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import VoiceMemoButton from "@/components/ai/VoiceMemoButton";
 import { CommandBarProvider } from "@/core/CommandBarProvider";
@@ -55,6 +55,19 @@ import IntelligenceModelRoutes from "@/pages/admin/intelligence/ModelRoutes";
 import IntelligenceExperimentLibrary from "@/pages/admin/intelligence/ExperimentLibrary";
 import IntelligenceExperimentDetail from "@/pages/admin/intelligence/ExperimentDetail";
 import IntelligenceCreateExperiment from "@/pages/admin/intelligence/CreateExperiment";
+// ── V-1a — Bridgeable Vault Hub ──
+// VaultHubLayout wraps every /vault/* route; the existing admin pages
+// (Documents, Intelligence) render unchanged inside it under new URLs.
+import VaultHubLayout from "@/pages/vault/VaultHubLayout";
+import VaultOverview from "@/pages/vault/VaultOverview";
+// V-1e: Accounting admin consolidation.
+import AccountingAdminLayout from "@/pages/vault/accounting/AccountingAdminLayout";
+import AccountingPeriodsTab from "@/pages/vault/accounting/AccountingPeriodsTab";
+import AccountingAgentsTab from "@/pages/vault/accounting/AccountingAgentsTab";
+import AccountingClassificationTab from "@/pages/vault/accounting/AccountingClassificationTab";
+import AccountingTaxTab from "@/pages/vault/accounting/AccountingTaxTab";
+import AccountingStatementsTab from "@/pages/vault/accounting/AccountingStatementsTab";
+import AccountingCoaTab from "@/pages/vault/accounting/AccountingCoaTab";
 import CompanySettings from "@/pages/admin/company-settings";
 import AccountingPage from "@/pages/admin/accounting";
 import ApiKeysPage from "@/pages/admin/api-keys";
@@ -312,6 +325,19 @@ function AuthDeviceProvider({ children }: { children: React.ReactNode }) {
   return <DeviceProvider userId={user?.id ?? null}>{children}</DeviceProvider>
 }
 
+/**
+ * V-1a redirect helper — preserves the last URL segment when
+ * forwarding from old /admin/... paths to /vault/... paths.
+ * Used for routes with URL params like /:documentId or /:promptId.
+ * Example: `/admin/documents/documents/abc-123` →
+ * `/vault/documents/abc-123`.
+ */
+function RedirectPreserveParam({ toPrefix }: { toPrefix: string }) {
+  const { pathname } = useLocation();
+  const lastSegment = pathname.split("/").filter(Boolean).pop() ?? "";
+  return <Navigate to={`${toPrefix}/${lastSegment}`} replace />;
+}
+
 export default function App() {
   // Bridgeable super admin portal (new redesigned portal) — entirely separate app.
   // Accessed three ways:
@@ -424,7 +450,72 @@ export default function App() {
                   <Route element={<ProtectedRoute requiredPermission="financials.view" />}>
                     <Route path="/financials" element={<FinancialsHub />} />
                   </Route>
-                  <Route path="/crm" element={<CRMHub />} />
+                  {/* V-1c: /crm/* → /vault/crm/* redirects.
+                      See the /vault/crm route tree below for the live
+                      pages. Redirects stay for one release per the
+                      same discipline used for /admin/documents/* in
+                      V-1a; see DEBT.md "Vault redirect scaffolding". */}
+                  <Route
+                    path="/crm"
+                    element={<Navigate to="/vault/crm" replace />}
+                  />
+                  <Route
+                    path="/crm/companies"
+                    element={
+                      <Navigate to="/vault/crm/companies" replace />
+                    }
+                  />
+                  <Route
+                    path="/crm/companies/duplicates"
+                    element={
+                      <Navigate
+                        to="/vault/crm/companies/duplicates"
+                        replace
+                      />
+                    }
+                  />
+                  <Route
+                    path="/crm/companies/:id"
+                    element={
+                      <RedirectPreserveParam toPrefix="/vault/crm/companies" />
+                    }
+                  />
+                  <Route
+                    path="/crm/funeral-homes"
+                    element={
+                      <Navigate to="/vault/crm/funeral-homes" replace />
+                    }
+                  />
+                  <Route
+                    path="/crm/contractors"
+                    element={
+                      <Navigate to="/vault/crm/contractors" replace />
+                    }
+                  />
+                  <Route
+                    path="/crm/billing-groups"
+                    element={
+                      <Navigate to="/vault/crm/billing-groups" replace />
+                    }
+                  />
+                  <Route
+                    path="/crm/billing-groups/:id"
+                    element={
+                      <RedirectPreserveParam toPrefix="/vault/crm/billing-groups" />
+                    }
+                  />
+                  <Route
+                    path="/crm/settings"
+                    element={
+                      <Navigate to="/vault/crm/settings" replace />
+                    }
+                  />
+                  <Route
+                    path="/crm/pipeline"
+                    element={
+                      <Navigate to="/vault/crm/pipeline" replace />
+                    }
+                  />
                   <Route element={<ProtectedRoute requiredPermission="production_hub.view" />}>
                     <Route path="/production-hub" element={<ProductionHub />} />
                   </Route>
@@ -432,17 +523,10 @@ export default function App() {
                     <Route path="/compliance" element={<ComplianceHub />} />
                   </Route>
 
-                  {/* CRM */}
-                  <Route path="/crm/companies" element={<CompaniesListPage />} />
+                  {/* Admin entry points that happen to live adjacent
+                      to CRM but aren't part of the lift-and-shift. */}
                   <Route path="/admin/company-classification" element={<CompanyClassificationPage />} />
-                  <Route path="/crm/companies/:id" element={<CompanyDetailPage />} />
-                  <Route path="/crm/funeral-homes" element={<FuneralHomesPage />} />
-                  <Route path="/crm/contractors" element={<ContractorsPage />} />
-                  <Route path="/crm/billing-groups" element={<BillingGroupsPage />} />
-                  <Route path="/crm/billing-groups/:id" element={<BillingGroupDetailPage />} />
-                  <Route path="/crm/settings" element={<CrmSettingsPage />} />
-                  <Route path="/crm/pipeline" element={<PipelinePage />} />
-                  <Route path="/crm/companies/duplicates" element={<DuplicateReviewPage />} />
+                  <Route path="/admin/data-quality" element={<DataQualityPage />} />
                   <Route path="/admin/data-quality" element={<DataQualityPage />} />
                   <Route path="/settings/ai-intelligence" element={<AiSettingsPage />} />
                   <Route path="/settings/saved-orders" element={<SavedOrdersPage />} />
@@ -921,9 +1005,18 @@ export default function App() {
                   <Route path="/extensions" element={<ExtensionCatalogPage />} />
                   <Route path="/extensions/installed" element={<ExtensionInstalledPage />} />
 
-                  {/* Notifications — any authenticated user */}
+                  {/* Notifications — V-1d promoted to full Vault
+                      service; the canonical path is now
+                      /vault/notifications. /notifications redirects
+                      for backward compat (existing email links,
+                      bookmarks, widget click-throughs from before
+                      V-1d). */}
                   <Route
                     path="/notifications"
+                    element={<Navigate to="/vault/notifications" replace />}
+                  />
+                  <Route
+                    path="/vault/notifications"
                     element={<NotificationsPage />}
                   />
 
@@ -995,97 +1088,307 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Intelligence admin UI (Phase 3a read surface) — admin only */}
-                  <Route element={<ProtectedRoute adminOnly />}>
+                  {/* ── Phase V-1a/b/c: Bridgeable Vault Hub ──
+                      VaultHubLayout wraps every /vault/* child route.
+                      Per-subtree gating: Documents + Intelligence are
+                      admin-only (platform infrastructure), CRM uses
+                      the existing `customers.view` permission. The
+                      Overview (index) is open to any authenticated
+                      tenant user — it renders only the widgets whose
+                      service they have access to (backend enforces). */}
+                  <Route path="/vault" element={<VaultHubLayout />}>
+                    <Route index element={<VaultOverview />} />
+
+                    {/* Documents — admin-only */}
+                    <Route element={<ProtectedRoute adminOnly />}>
+                      <Route path="documents">
+                        <Route index element={<DocumentLog />} />
+                        <Route
+                          path="templates"
+                          element={<DocumentTemplateLibrary />}
+                        />
+                        <Route
+                          path="templates/:templateId"
+                          element={<DocumentTemplateDetail />}
+                        />
+                        <Route path="inbox" element={<DocumentInbox />} />
+                        <Route
+                          path="deliveries"
+                          element={<DeliveryLog />}
+                        />
+                        <Route
+                          path="deliveries/:deliveryId"
+                          element={<DeliveryDetail />}
+                        />
+                        <Route path="signing">
+                          <Route
+                            index
+                            element={<SigningEnvelopeLibrary />}
+                          />
+                          <Route
+                            path="new"
+                            element={<CreateEnvelopeWizard />}
+                          />
+                          <Route
+                            path=":envelopeId"
+                            element={<SigningEnvelopeDetail />}
+                          />
+                        </Route>
+                        {/* :documentId MUST be last under /documents so
+                            it doesn't shadow /documents/templates,
+                            /documents/inbox, etc. */}
+                        <Route
+                          path=":documentId"
+                          element={<DocumentDetail />}
+                        />
+                      </Route>
+
+                      {/* Intelligence — admin-only */}
+                      <Route path="intelligence">
+                        <Route
+                          index
+                          element={<IntelligencePromptLibrary />}
+                        />
+                        <Route
+                          path="prompts"
+                          element={<IntelligencePromptLibrary />}
+                        />
+                        <Route
+                          path="prompts/:promptId"
+                          element={<IntelligencePromptDetail />}
+                        />
+                        <Route
+                          path="executions"
+                          element={<IntelligenceExecutionLog />}
+                        />
+                        <Route
+                          path="executions/:executionId"
+                          element={<IntelligenceExecutionDetail />}
+                        />
+                        <Route
+                          path="model-routes"
+                          element={<IntelligenceModelRoutes />}
+                        />
+                        <Route
+                          path="experiments"
+                          element={<IntelligenceExperimentLibrary />}
+                        />
+                        <Route
+                          path="experiments/new"
+                          element={<IntelligenceCreateExperiment />}
+                        />
+                        <Route
+                          path="experiments/:experimentId"
+                          element={<IntelligenceExperimentDetail />}
+                        />
+                      </Route>
+                    </Route>
+
+                    {/* CRM — V-1c lift-and-shift. Permission-gated
+                        on customers.view (same gate the pre-V-1c
+                        /crm top-level nav entry used). */}
                     <Route
-                      path="/admin/intelligence"
-                      element={<IntelligencePromptLibrary />}
-                    />
-                    <Route
-                      path="/admin/intelligence/prompts"
-                      element={<IntelligencePromptLibrary />}
-                    />
-                    <Route
-                      path="/admin/intelligence/prompts/:promptId"
-                      element={<IntelligencePromptDetail />}
-                    />
-                    <Route
-                      path="/admin/intelligence/executions"
-                      element={<IntelligenceExecutionLog />}
-                    />
-                    <Route
-                      path="/admin/intelligence/executions/:executionId"
-                      element={<IntelligenceExecutionDetail />}
-                    />
-                    <Route
-                      path="/admin/intelligence/model-routes"
-                      element={<IntelligenceModelRoutes />}
-                    />
-                    <Route
-                      path="/admin/intelligence/experiments"
-                      element={<IntelligenceExperimentLibrary />}
-                    />
-                    <Route
-                      path="/admin/intelligence/experiments/new"
-                      element={<IntelligenceCreateExperiment />}
-                    />
-                    <Route
-                      path="/admin/intelligence/experiments/:experimentId"
-                      element={<IntelligenceExperimentDetail />}
-                    />
+                      element={
+                        <ProtectedRoute requiredPermission="customers.view" />
+                      }
+                    >
+                      <Route path="crm">
+                        <Route index element={<CRMHub />} />
+                        <Route
+                          path="companies"
+                          element={<CompaniesListPage />}
+                        />
+                        <Route
+                          path="companies/duplicates"
+                          element={<DuplicateReviewPage />}
+                        />
+                        <Route
+                          path="companies/:id"
+                          element={<CompanyDetailPage />}
+                        />
+                        <Route
+                          path="pipeline"
+                          element={<PipelinePage />}
+                        />
+                        <Route
+                          path="funeral-homes"
+                          element={<FuneralHomesPage />}
+                        />
+                        <Route
+                          path="contractors"
+                          element={<ContractorsPage />}
+                        />
+                        <Route
+                          path="duplicates"
+                          element={<DuplicateReviewPage />}
+                        />
+                        <Route
+                          path="billing-groups"
+                          element={<BillingGroupsPage />}
+                        />
+                        <Route
+                          path="billing-groups/:id"
+                          element={<BillingGroupDetailPage />}
+                        />
+                        <Route
+                          path="settings"
+                          element={<CrmSettingsPage />}
+                        />
+                      </Route>
+                    </Route>
+
+                    {/* V-1e: Accounting admin consolidation. Admin-only
+                        at the sub-tree root — same gate the backend
+                        uses on every endpoint under
+                        /api/v1/vault/accounting/*. Tenant-facing
+                        Financials Hub (invoices/AR/AP/JEs) stays in
+                        the vertical nav, NOT here. */}
+                    <Route element={<ProtectedRoute adminOnly />}>
+                      <Route
+                        path="accounting"
+                        element={<AccountingAdminLayout />}
+                      >
+                        <Route
+                          index
+                          element={<Navigate to="periods" replace />}
+                        />
+                        <Route
+                          path="periods"
+                          element={<AccountingPeriodsTab />}
+                        />
+                        <Route
+                          path="agents"
+                          element={<AccountingAgentsTab />}
+                        />
+                        <Route
+                          path="classification"
+                          element={<AccountingClassificationTab />}
+                        />
+                        <Route path="tax" element={<AccountingTaxTab />} />
+                        <Route
+                          path="statements"
+                          element={<AccountingStatementsTab />}
+                        />
+                        <Route path="coa" element={<AccountingCoaTab />} />
+                      </Route>
+                    </Route>
                   </Route>
 
-                  {/* Documents admin UI (Phase D-2 read surface) — admin only */}
-                  <Route element={<ProtectedRoute adminOnly />}>
-                    <Route
-                      path="/admin/documents"
-                      element={<DocumentTemplateLibrary />}
-                    />
-                    <Route
-                      path="/admin/documents/templates"
-                      element={<DocumentTemplateLibrary />}
-                    />
-                    <Route
-                      path="/admin/documents/templates/:templateId"
-                      element={<DocumentTemplateDetail />}
-                    />
-                    <Route
-                      path="/admin/documents/documents"
-                      element={<DocumentLog />}
-                    />
-                    <Route
-                      path="/admin/documents/documents/:documentId"
-                      element={<DocumentDetail />}
-                    />
-                    <Route
-                      path="/admin/documents/inbox"
-                      element={<DocumentInbox />}
-                    />
-                    <Route
-                      path="/admin/documents/deliveries"
-                      element={<DeliveryLog />}
-                    />
-                    <Route
-                      path="/admin/documents/deliveries/:deliveryId"
-                      element={<DeliveryDetail />}
-                    />
-                  </Route>
+                  {/* ── Pre-V-1a compatibility redirects ──
+                      Old /admin/documents/* and /admin/intelligence/*
+                      paths redirect to /vault/*. One-release grace
+                      period; remove after that. */}
+                  <Route
+                    path="/admin/documents"
+                    element={<Navigate to="/vault/documents" replace />}
+                  />
+                  <Route
+                    path="/admin/documents/templates"
+                    element={
+                      <Navigate to="/vault/documents/templates" replace />
+                    }
+                  />
+                  <Route
+                    path="/admin/documents/templates/:templateId"
+                    element={<RedirectPreserveParam toPrefix="/vault/documents/templates" />}
+                  />
+                  <Route
+                    path="/admin/documents/documents"
+                    element={<Navigate to="/vault/documents" replace />}
+                  />
+                  <Route
+                    path="/admin/documents/documents/:documentId"
+                    element={<RedirectPreserveParam toPrefix="/vault/documents" />}
+                  />
+                  <Route
+                    path="/admin/documents/inbox"
+                    element={<Navigate to="/vault/documents/inbox" replace />}
+                  />
+                  <Route
+                    path="/admin/documents/deliveries"
+                    element={
+                      <Navigate to="/vault/documents/deliveries" replace />
+                    }
+                  />
+                  <Route
+                    path="/admin/documents/deliveries/:deliveryId"
+                    element={<RedirectPreserveParam toPrefix="/vault/documents/deliveries" />}
+                  />
+                  <Route
+                    path="/admin/documents/signing/envelopes"
+                    element={
+                      <Navigate to="/vault/documents/signing" replace />
+                    }
+                  />
+                  <Route
+                    path="/admin/documents/signing/envelopes/new"
+                    element={
+                      <Navigate to="/vault/documents/signing/new" replace />
+                    }
+                  />
+                  <Route
+                    path="/admin/documents/signing/envelopes/:envelopeId"
+                    element={<RedirectPreserveParam toPrefix="/vault/documents/signing" />}
+                  />
 
-                  {/* Signing admin UI (Phase D-4) — admin only */}
-                  <Route element={<ProtectedRoute adminOnly />}>
-                    <Route
-                      path="/admin/documents/signing/envelopes"
-                      element={<SigningEnvelopeLibrary />}
-                    />
-                    <Route
-                      path="/admin/documents/signing/envelopes/new"
-                      element={<CreateEnvelopeWizard />}
-                    />
-                    <Route
-                      path="/admin/documents/signing/envelopes/:envelopeId"
-                      element={<SigningEnvelopeDetail />}
-                    />
-                  </Route>
+                  <Route
+                    path="/admin/intelligence"
+                    element={<Navigate to="/vault/intelligence" replace />}
+                  />
+                  <Route
+                    path="/admin/intelligence/prompts"
+                    element={
+                      <Navigate to="/vault/intelligence/prompts" replace />
+                    }
+                  />
+                  <Route
+                    path="/admin/intelligence/prompts/:promptId"
+                    element={<RedirectPreserveParam toPrefix="/vault/intelligence/prompts" />}
+                  />
+                  <Route
+                    path="/admin/intelligence/executions"
+                    element={
+                      <Navigate
+                        to="/vault/intelligence/executions"
+                        replace
+                      />
+                    }
+                  />
+                  <Route
+                    path="/admin/intelligence/executions/:executionId"
+                    element={<RedirectPreserveParam toPrefix="/vault/intelligence/executions" />}
+                  />
+                  <Route
+                    path="/admin/intelligence/model-routes"
+                    element={
+                      <Navigate
+                        to="/vault/intelligence/model-routes"
+                        replace
+                      />
+                    }
+                  />
+                  <Route
+                    path="/admin/intelligence/experiments"
+                    element={
+                      <Navigate
+                        to="/vault/intelligence/experiments"
+                        replace
+                      />
+                    }
+                  />
+                  <Route
+                    path="/admin/intelligence/experiments/new"
+                    element={
+                      <Navigate
+                        to="/vault/intelligence/experiments/new"
+                        replace
+                      />
+                    }
+                  />
+                  <Route
+                    path="/admin/intelligence/experiments/:experimentId"
+                    element={<RedirectPreserveParam toPrefix="/vault/intelligence/experiments" />}
+                  />
 
                   {/* API keys — admin only */}
                   <Route

@@ -1,5 +1,5 @@
 // crm-settings.tsx — CRM feature toggles and health score thresholds
-// Route: /crm/settings
+// Route: /vault/crm/settings
 
 import { useState, useEffect } from "react"
 import apiClient from "@/lib/api-client"

@@ -199,7 +199,7 @@ export default function DeliveryLog() {
                   </TableCell>
                   <TableCell className="text-xs">
                     <Link
-                      to={`/admin/documents/deliveries/${d.id}`}
+                      to={`/vault/documents/deliveries/${d.id}`}
                       className="underline"
                     >
                       {d.recipient_value}

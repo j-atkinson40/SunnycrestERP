@@ -150,7 +150,7 @@ export default function ExecutionLog() {
     <div className="space-y-6 p-6">
       <div>
         <Link
-          to="/admin/intelligence/prompts"
+          to="/vault/intelligence/prompts"
           className="text-sm text-muted-foreground hover:underline"
         >
           ← Prompt Library
@@ -314,7 +314,7 @@ export default function ExecutionLog() {
                   <TableCell className="font-mono text-xs">
                     {e.prompt_key ? (
                       <Link
-                        to={`/admin/intelligence/prompts/${e.prompt_id}`}
+                        to={`/vault/intelligence/prompts/${e.prompt_id}`}
                         className="underline"
                       >
                         {e.prompt_key}
@@ -347,7 +347,7 @@ export default function ExecutionLog() {
                   </TableCell>
                   <TableCell>
                     <Link
-                      to={`/admin/intelligence/executions/${e.id}`}
+                      to={`/vault/intelligence/executions/${e.id}`}
                       className="text-xs underline"
                     >
                       View

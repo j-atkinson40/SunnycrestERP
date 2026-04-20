@@ -157,7 +157,7 @@ export default function CompaniesListMobile() {
       <div className="bg-white border-b px-4 pt-3 pb-2 space-y-2">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-bold text-gray-900">Companies</h1>
-          <Button size="sm" onClick={() => navigate("/crm/companies/new")} className="h-8 px-3">
+          <Button size="sm" onClick={() => navigate("/vault/crm/companies/new")} className="h-8 px-3">
             <Plus className="h-3.5 w-3.5 mr-1" /> New
           </Button>
         </div>
@@ -292,7 +292,7 @@ export default function CompaniesListMobile() {
                       <StickyNote className="h-3 w-3" /> Log note
                     </button>
                     <button
-                      onClick={() => navigate(`/crm/companies/${item.id}`)}
+                      onClick={() => navigate(`/vault/crm/companies/${item.id}`)}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-900 text-white ml-auto active:bg-gray-700"
                     >
                       View <ChevronRight className="h-3 w-3" />

@@ -49,7 +49,7 @@ export default function AtRiskAccountsWidget(props: WidgetProps) {
                 {data.accounts.slice(0, 3).map((a) => (
                   <button
                     key={a.id}
-                    onClick={() => navigate(`/crm/companies/${a.id}`)}
+                    onClick={() => navigate(`/vault/crm/companies/${a.id}`)}
                     className="flex items-center gap-2 w-full rounded-md px-2 py-1 text-left hover:bg-gray-50"
                   >
                     <div className="flex-1 min-w-0">

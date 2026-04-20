@@ -121,7 +121,7 @@ export default function CreateExperiment() {
       toast.success(
         startImmediately ? "Experiment started" : "Draft experiment created",
       );
-      navigate(`/admin/intelligence/experiments/${exp.id}`);
+      navigate(`/vault/intelligence/experiments/${exp.id}`);
     } catch (e) {
       const anyErr = e as { response?: { data?: { detail?: unknown } } };
       const d = anyErr.response?.data?.detail;
@@ -152,7 +152,7 @@ export default function CreateExperiment() {
     <div className="space-y-6 p-6" data-testid="create-experiment">
       <div>
         <Link
-          to="/admin/intelligence/experiments"
+          to="/vault/intelligence/experiments"
           className="text-sm text-muted-foreground hover:underline"
         >
           ← Experiments

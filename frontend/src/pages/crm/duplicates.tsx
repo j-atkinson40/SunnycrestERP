@@ -1,5 +1,5 @@
 // duplicates.tsx — Review potential duplicate company records
-// Route: /crm/companies/duplicates
+// Route: /vault/vault/crm/companies/duplicates
 
 import { useState, useEffect, useCallback } from "react"
 import { Link } from "react-router-dom"
@@ -85,7 +85,7 @@ export default function DuplicateReviewPage() {
     <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link to="/crm/companies" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-2">
+          <Link to="/vault/crm/companies" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-2">
             <ChevronLeft className="h-4 w-4" /> Back to companies
           </Link>
           <h1 className="text-2xl font-bold">Duplicate Review</h1>
@@ -106,7 +106,7 @@ export default function DuplicateReviewPage() {
             <Check className="h-4 w-4" /> No duplicates to review
           </div>
           <p className="text-sm text-gray-400">The AI agent will check for new duplicates nightly.</p>
-          <Link to="/crm/companies" className="text-sm text-blue-600 hover:underline">← Back to companies</Link>
+          <Link to="/vault/crm/companies" className="text-sm text-blue-600 hover:underline">← Back to companies</Link>
         </div>
       ) : (
         <div className="space-y-4">
@@ -128,7 +128,7 @@ export default function DuplicateReviewPage() {
                         <span key={role} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white border text-gray-500">{role}</span>
                       ))}
                     </div>
-                    <a href={`/crm/companies/${side.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline mt-1.5">
+                    <a href={`/vault/crm/companies/${side.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline mt-1.5">
                       View <ExternalLink className="h-2.5 w-2.5" />
                     </a>
                   </div>

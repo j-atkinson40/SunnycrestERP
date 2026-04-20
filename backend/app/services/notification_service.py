@@ -13,11 +13,24 @@ Usage from any service:
         link="/profile",
         actor_id=current_user.id,
     )
+
+V-1d extended create_notification with the alert-flavor fields
+(severity, due_date, source_reference_type/_id) so safety alerts +
+new sources (compliance_expiry, delivery_failed, etc.) can route
+through the same call. See notify_tenant_admins for the admin
+fan-out used by tenant-wide events that don't target a single user.
 """
+
+import logging
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from app.models.notification import Notification
+from app.models.role import Role
+from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 def create_notification(
@@ -30,10 +43,19 @@ def create_notification(
     category: str | None = None,
     link: str | None = None,
     actor_id: str | None = None,
+    *,
+    severity: str | None = None,
+    due_date: datetime | None = None,
+    source_reference_type: str | None = None,
+    source_reference_id: str | None = None,
 ) -> Notification:
     """
     Create an in-app notification for a user. Uses db.flush() (not commit)
     so the notification is committed atomically with the caller's operation.
+
+    Alert-flavor kwargs (severity, due_date, source_reference_*) are
+    optional and used by the V-1d notification sources (safety_alert,
+    compliance_expiry, delivery_failed, etc.).
     """
     notification = Notification(
         company_id=company_id,
@@ -44,10 +66,76 @@ def create_notification(
         category=category,
         link=link,
         actor_id=actor_id,
+        severity=severity,
+        due_date=due_date,
+        source_reference_type=source_reference_type,
+        source_reference_id=source_reference_id,
     )
     db.add(notification)
     db.flush()
     return notification
+
+
+def notify_tenant_admins(
+    db: Session,
+    company_id: str,
+    title: str,
+    message: str,
+    *,
+    type: str = "info",
+    category: str | None = None,
+    link: str | None = None,
+    actor_id: str | None = None,
+    severity: str | None = None,
+    due_date: datetime | None = None,
+    source_reference_type: str | None = None,
+    source_reference_id: str | None = None,
+) -> list[Notification]:
+    """Fan-out: create one Notification per active admin user in a tenant.
+
+    Mirrors the r29 migration's SQL fan-out (INNER JOIN users→roles,
+    role.slug='admin', user.is_active). If a tenant has no admins the
+    return list is empty and no rows are created — the caller should
+    log or ignore. Wrap this in try/except if the event is not
+    mission-critical (every V-1d wire-up does).
+    """
+    admins = (
+        db.query(User)
+        .join(Role, Role.id == User.role_id)
+        .filter(
+            User.company_id == company_id,
+            User.is_active.is_(True),
+            Role.slug == "admin",
+        )
+        .all()
+    )
+    out: list[Notification] = []
+    for admin in admins:
+        out.append(
+            create_notification(
+                db,
+                company_id=company_id,
+                user_id=admin.id,
+                title=title,
+                message=message,
+                type=type,
+                category=category,
+                link=link,
+                actor_id=actor_id,
+                severity=severity,
+                due_date=due_date,
+                source_reference_type=source_reference_type,
+                source_reference_id=source_reference_id,
+            )
+        )
+    if not out:
+        logger.info(
+            "notify_tenant_admins: no active admins for company_id=%s "
+            "category=%s — notification not created",
+            company_id,
+            category,
+        )
+    return out
 
 
 def get_notifications(

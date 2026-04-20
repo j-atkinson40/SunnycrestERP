@@ -11,6 +11,74 @@ from app.services.vault_service import create_vault_item, get_or_create_company_
 logger = logging.getLogger(__name__)
 
 
+def _severity_for_days(days_until_expiry: int | None) -> str:
+    """V-1d severity rule: <=7 days or already expired → high, else medium.
+
+    None (unknown due date) defaults to medium. This matches the spec's
+    "threshold: within 14 days, severity escalates at 7 days"
+    semantics — the 14-day gate is at the caller (we only fire when a
+    VaultItem is newly created, and upstream queries already bound the
+    scan horizon to the expiring/overdue set).
+    """
+    if days_until_expiry is None:
+        return "medium"
+    if days_until_expiry <= 7:
+        return "high"
+    return "medium"
+
+
+def _notify_admins_compliance_expiry(
+    db: Session,
+    *,
+    company_id: str,
+    title: str,
+    message: str,
+    source_key: str,
+    sub_type: str,
+    due_dt: datetime | None,
+    days_until_expiry: int | None,
+) -> None:
+    """Fan-out one notification per tenant admin for a compliance
+    expiry. De-dupes by (company_id, category, source_reference_id)
+    so re-runs of the sync job don't spam the feed — only the first
+    VaultItem creation pass produces notifications. Best-effort."""
+    try:
+        from app.models.notification import Notification
+        from app.services import notification_service
+
+        already = (
+            db.query(Notification.id)
+            .filter(
+                Notification.company_id == company_id,
+                Notification.category == "compliance_expiry",
+                Notification.source_reference_id == source_key,
+            )
+            .first()
+        )
+        if already is not None:
+            return
+        notification_service.notify_tenant_admins(
+            db,
+            company_id=company_id,
+            title=title,
+            message=message,
+            type="warning",
+            category="compliance_expiry",
+            severity=_severity_for_days(days_until_expiry),
+            due_date=due_dt,
+            link="/safety",
+            source_reference_type=sub_type,
+            source_reference_id=source_key,
+        )
+    except Exception:
+        logger.exception(
+            "compliance_expiry notification fan-out failed "
+            "(company_id=%s source_key=%s)",
+            company_id,
+            source_key,
+        )
+
+
 def sync_compliance_expiries(db: Session, company_id: str) -> dict:
     """Scan all compliance-related data and upsert VaultItems for tracking.
 
@@ -87,6 +155,22 @@ def _sync_inspection_expiries(db: Session, company_id: str, stats: dict) -> None
                     },
                 )
                 stats["created"] += 1
+                # V-1d: inspection is already overdue → days_until = negative
+                _notify_admins_compliance_expiry(
+                    db,
+                    company_id=company_id,
+                    title=(
+                        f"Compliance overdue: {item['template_name']}"
+                    ),
+                    message=(
+                        f"The {item['template_name']} inspection is "
+                        f"{item['days_overdue']} days overdue."
+                    ),
+                    source_key=source_key,
+                    sub_type="equipment_inspection",
+                    due_dt=None,
+                    days_until_expiry=-int(item["days_overdue"]),
+                )
         db.commit()
     except Exception:
         logger.warning("Failed to sync inspection expiries for %s", company_id, exc_info=True)
@@ -160,6 +244,25 @@ def _sync_training_expiries(db: Session, company_id: str, stats: dict) -> None:
                     },
                 )
                 stats["created"] += 1
+                # V-1d: compute days-to-expiry from expiry_date; for
+                # already-expired rows, days_until_expiry is negative.
+                if gap.get("expiry_date"):
+                    delta = (gap["expiry_date"] - date.today()).days
+                else:
+                    delta = None
+                _notify_admins_compliance_expiry(
+                    db,
+                    company_id=company_id,
+                    title=title,
+                    message=(
+                        f"{gap['required_training']} certification for "
+                        f"{gap['employee_name']} is {gap['status']}."
+                    ),
+                    source_key=source_key,
+                    sub_type="training_renewal",
+                    due_dt=expiry_dt,
+                    days_until_expiry=delta,
+                )
         db.commit()
     except Exception:
         logger.warning("Failed to sync training expiries for %s", company_id, exc_info=True)
@@ -221,6 +324,22 @@ def _sync_regulatory_deadlines(db: Session, company_id: str, stats: dict) -> Non
                 source_entity_id=source_key,
             )
             stats["created"] += 1
+            # V-1d: regulatory deadlines fire notifications once per
+            # year when we first surface them. Severity based on
+            # days-until the posting period starts.
+            delta = (dl["start"] - today).days
+            _notify_admins_compliance_expiry(
+                db,
+                company_id=company_id,
+                title=dl["title"],
+                message=dl["description"],
+                source_key=source_key,
+                sub_type=dl["sub_type"],
+                due_dt=datetime.combine(
+                    dl["start"], datetime.min.time()
+                ).replace(tzinfo=timezone.utc),
+                days_until_expiry=delta,
+            )
 
         db.commit()
     except Exception:

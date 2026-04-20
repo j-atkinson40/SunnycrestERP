@@ -281,7 +281,7 @@ export default function PromptLibrary() {
                 <TableRow key={p.id}>
                   <TableCell>
                     <Link
-                      to={`/admin/intelligence/prompts/${p.id}`}
+                      to={`/vault/intelligence/prompts/${p.id}`}
                       className="font-mono text-xs underline"
                     >
                       {p.prompt_key}

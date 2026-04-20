@@ -50,7 +50,7 @@ function buildExecutionLogLink(promptKey: string, days = 30): string {
     start_date: start.toISOString(),
     end_date: now.toISOString(),
   });
-  return `/admin/intelligence/executions?${qs.toString()}`;
+  return `/vault/intelligence/executions?${qs.toString()}`;
 }
 
 export default function PromptDetail() {
@@ -158,7 +158,7 @@ export default function PromptDetail() {
           {err}
         </div>
         <div className="mt-4">
-          <Link to="/admin/intelligence/prompts" className="text-sm underline">
+          <Link to="/vault/intelligence/prompts" className="text-sm underline">
             ← Back to Prompt Library
           </Link>
         </div>
@@ -178,7 +178,7 @@ export default function PromptDetail() {
     <div className="space-y-6 p-6">
       <div>
         <Link
-          to="/admin/intelligence/prompts"
+          to="/vault/intelligence/prompts"
           className="text-sm text-muted-foreground hover:underline"
         >
           ← Prompt Library
@@ -508,7 +508,7 @@ export default function PromptDetail() {
                   <TableRow key={e.id}>
                     <TableCell>
                       <Link
-                        to={`/admin/intelligence/executions/${e.id}`}
+                        to={`/vault/intelligence/executions/${e.id}`}
                         className="text-xs underline"
                         title={e.created_at}
                       >

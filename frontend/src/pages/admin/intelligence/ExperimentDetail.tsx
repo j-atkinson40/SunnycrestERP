@@ -124,7 +124,7 @@ export default function ExperimentDetail() {
     <div className="space-y-6 p-6" data-testid="experiment-detail">
       <div>
         <Link
-          to="/admin/intelligence/experiments"
+          to="/vault/intelligence/experiments"
           className="text-sm text-muted-foreground hover:underline"
         >
           ← Experiments
@@ -179,7 +179,7 @@ export default function ExperimentDetail() {
           label="Prompt"
           value={
             <Link
-              to={`/admin/intelligence/prompts/${exp.prompt_id}`}
+              to={`/vault/intelligence/prompts/${exp.prompt_id}`}
               className="font-mono text-sm underline"
             >
               {prompt.prompt_key}
@@ -347,7 +347,7 @@ export default function ExperimentDetail() {
             setPromoteTarget(null);
             // Navigate back to prompt detail so the new active version is in
             // view immediately
-            navigate(`/admin/intelligence/prompts/${exp.prompt_id}`);
+            navigate(`/vault/intelligence/prompts/${exp.prompt_id}`);
           }}
           experimentId={experimentId}
         />

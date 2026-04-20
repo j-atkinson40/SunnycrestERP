@@ -1,5 +1,5 @@
 /**
- * Billing Group Detail — /crm/billing-groups/:id
+ * Billing Group Detail — /vault/crm/billing-groups/:id
  *
  * View and manage a multi-location funeral home billing group.
  */
@@ -136,7 +136,7 @@ export default function BillingGroupDetailPage() {
     try {
       await apiClient.delete(`/billing-groups/${id}`)
       toast.success("Billing group deleted")
-      navigate("/crm/billing-groups")
+      navigate("/vault/crm/billing-groups")
     } catch (err) { toast.error(getApiErrorMessage(err, "Failed to delete group")) }
   }
 
@@ -148,7 +148,7 @@ export default function BillingGroupDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <Link to="/crm/billing-groups" className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <Link to="/vault/crm/billing-groups" className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" /> Billing Groups
           </Link>
           <div className="flex items-center gap-3">
@@ -251,7 +251,7 @@ export default function BillingGroupDetailPage() {
               </div>
               <div className="flex items-center gap-2">
                 {loc.company_entity_id && (
-                  <Link to={`/crm/companies/${loc.company_entity_id}`} className="text-muted-foreground hover:text-foreground">
+                  <Link to={`/vault/crm/companies/${loc.company_entity_id}`} className="text-muted-foreground hover:text-foreground">
                     <ExternalLink className="h-4 w-4" />
                   </Link>
                 )}

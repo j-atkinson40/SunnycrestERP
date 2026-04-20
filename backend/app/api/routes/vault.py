@@ -1,6 +1,6 @@
 """Vault API routes — CRUD for vault items, calendar feed, cross-tenant."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -316,3 +316,287 @@ def generate_calendar_token(
 def _ical_escape(text: str) -> str:
     """Escape text for iCal format."""
     return text.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
+
+
+# ── Vault Hub service registry (V-1a) ────────────────────────────────
+#
+# The endpoints below back the Vault Hub sidebar on the frontend — which
+# cross-cutting services appear (Documents, Intelligence, later CRM /
+# Notifications / Accounting admin). Separate concern from the VaultItem
+# CRUD above: this is UI structure, not data.
+#
+# Filtering mirrors the frontend nav-service rules: admins see
+# everything; non-admins are gated on `required_permission` /
+# `required_module` / `required_extension` on each descriptor.
+
+
+class _VaultServiceResponse(BaseModel):
+    service_key: str
+    display_name: str
+    icon: str
+    route_prefix: str
+    sort_order: int
+
+
+class _VaultServicesResponse(BaseModel):
+    services: list[_VaultServiceResponse]
+
+
+class _VaultOverviewWidgetEntry(BaseModel):
+    widget_id: str
+    service_key: str
+    display_name: str
+    default_size: str
+    default_position: int
+    is_available: bool
+    unavailable_reason: str | None = None
+
+
+class _VaultOverviewLayoutEntry(BaseModel):
+    widget_id: str
+    position: int
+    size: str
+
+
+class _VaultOverviewWidgetsResponse(BaseModel):
+    widgets: list[_VaultOverviewWidgetEntry]
+    default_layout: list[_VaultOverviewLayoutEntry]
+
+
+@router.get("/services", response_model=_VaultServicesResponse)
+def list_vault_services(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Vault Hub services visible to the current user.
+
+    Phase V-1a — documents + intelligence. The frontend sidebar at
+    `/vault/*` renders one nav item per returned service.
+
+    Filtering (mirrors navigation-service.ts rules):
+      - admins see everything
+      - non-admins: `required_permission` must be in the user's
+        permission set; `required_module` / `required_extension` must
+        be active on the tenant.
+    """
+    from app.services.vault import list_services
+    from app.services.permission_service import user_has_permission
+    from app.services.module_service import is_module_enabled
+    from app.models.tenant_extension import TenantExtension
+
+    # Resolve the user's active extensions for the extension gate.
+    # NB: TenantExtension uses `tenant_id`, not `company_id`. Also no
+    # is_active field — rows exist when an extension is active.
+    active_extensions = {
+        e.extension_key
+        for e in db.query(TenantExtension)
+        .filter(TenantExtension.tenant_id == current_user.company_id)
+        .all()
+    }
+
+    visible: list[_VaultServiceResponse] = []
+    for desc in list_services():
+        if not current_user.is_super_admin:
+            if desc.required_permission and not user_has_permission(
+                current_user, db, desc.required_permission
+            ):
+                continue
+            if desc.required_module and not is_module_enabled(
+                db, current_user.company_id, desc.required_module
+            ):
+                continue
+            if (
+                desc.required_extension
+                and desc.required_extension not in active_extensions
+            ):
+                continue
+        visible.append(
+            _VaultServiceResponse(
+                service_key=desc.service_key,
+                display_name=desc.display_name,
+                icon=desc.icon,
+                route_prefix=desc.route_prefix,
+                sort_order=desc.sort_order,
+            )
+        )
+    return _VaultServicesResponse(services=visible)
+
+
+@router.get(
+    "/overview/widgets",
+    response_model=_VaultOverviewWidgetsResponse,
+)
+def list_vault_overview_widgets(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Vault Hub overview widgets visible to the current user.
+
+    Phase V-1b. This endpoint is a **metadata view** on top of the
+    existing widget framework — it joins:
+
+      - `vault.hub_registry` (which service owns which widget)
+      - the widget framework's availability filtering
+        (`widget_service.get_available_widgets("vault_overview", ...)`)
+
+    …and returns a flat list of widgets the user can see, plus the
+    recommended default layout. The frontend `useDashboard` hook still
+    owns actual layout persistence (`/widgets/layout?page_context=
+    vault_overview`); this endpoint lets V-1c+ consumers group widgets
+    by their owning service without having to re-implement the
+    service-key → widget-ids mapping.
+
+    A widget appears only if:
+      1. its owning service is visible to the user (same filter as
+         /services above), AND
+      2. the widget framework marks it `is_available=True` (which
+         handles extension/permission/preset gates at the widget level).
+    """
+    from app.services.vault import VaultServiceDescriptor, list_services
+    from app.services.widgets import widget_service
+    from app.services.permission_service import user_has_permission
+    from app.services.module_service import is_module_enabled
+    from app.models.tenant_extension import TenantExtension
+
+    # Resolve tenant extensions (same as /services).
+    active_extensions = {
+        e.extension_key
+        for e in db.query(TenantExtension)
+        .filter(TenantExtension.tenant_id == current_user.company_id)
+        .all()
+    }
+
+    # 1. Build widget_id → owning service_key map, filtered by
+    # service visibility.
+    widget_to_service: dict[str, VaultServiceDescriptor] = {}
+    for svc in list_services():
+        if not current_user.is_super_admin:
+            if svc.required_permission and not user_has_permission(
+                current_user, db, svc.required_permission
+            ):
+                continue
+            if svc.required_module and not is_module_enabled(
+                db, current_user.company_id, svc.required_module
+            ):
+                continue
+            if (
+                svc.required_extension
+                and svc.required_extension not in active_extensions
+            ):
+                continue
+        for widget_id in svc.overview_widget_ids:
+            widget_to_service[widget_id] = svc
+
+    # 2. Ask the widget framework what's available on the
+    # vault_overview page context.
+    available_defs = widget_service.get_available_widgets(
+        db, current_user.company_id, current_user, "vault_overview"
+    )
+
+    # 3. Intersect + build the response list.
+    widgets: list[_VaultOverviewWidgetEntry] = []
+    for defn in available_defs:
+        wid = defn["widget_id"]
+        svc = widget_to_service.get(wid)
+        if svc is None:
+            # Widget was seeded under vault_overview but no Vault
+            # service claims it — skip defensively. Seed-list and
+            # hub-registry should stay in lock-step, but if they
+            # diverge, the hub registry is the source of truth for
+            # what Vault considers "overview" widgets.
+            continue
+        widgets.append(
+            _VaultOverviewWidgetEntry(
+                widget_id=wid,
+                service_key=svc.service_key,
+                display_name=defn["title"],
+                default_size=defn["default_size"],
+                default_position=defn["default_position"],
+                is_available=defn["is_available"],
+                unavailable_reason=defn.get("unavailable_reason"),
+            )
+        )
+
+    # 4. Recommended default layout — widgets that are available +
+    # default_enabled, sorted by default_position. Frontend uses this
+    # if it wants to bypass useDashboard (e.g. pre-render SSR), but
+    # the canonical layout still lives in `/widgets/layout`.
+    widgets_sorted = sorted(widgets, key=lambda w: w.default_position)
+    default_layout = [
+        _VaultOverviewLayoutEntry(
+            widget_id=w.widget_id,
+            position=w.default_position,
+            size=w.default_size,
+        )
+        for w in widgets_sorted
+        if w.is_available
+    ]
+
+    return _VaultOverviewWidgetsResponse(
+        widgets=widgets_sorted,
+        default_layout=default_layout,
+    )
+
+
+# ── V-1c: CRM tenant-wide activity tail ─────────────────────────────
+#
+# Lifts the per-company ActivityLog feed to tenant scope. Backs the
+# CrmRecentActivityWidget on the Vault Overview and any future
+# "all recent activity" page. Tenant isolation: every ActivityLog row
+# has a `tenant_id`; the service filter is the canonical gate.
+
+
+class _VaultActivityItem(BaseModel):
+    id: str
+    activity_type: str
+    title: str | None
+    body: str | None
+    is_system_generated: bool
+    company_id: str
+    company_name: str
+    created_at: datetime
+    logged_by: str | None
+
+
+class _VaultRecentActivityResponse(BaseModel):
+    activities: list[_VaultActivityItem]
+
+
+@router.get(
+    "/activity/recent",
+    response_model=_VaultRecentActivityResponse,
+)
+def list_recent_activity(
+    limit: int = Query(50, ge=1, le=200),
+    since_days: int | None = Query(None, ge=1, le=365),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tenant-wide recent CRM activity. Joins `ActivityLog` with its
+    owning `CompanyEntity` for display.
+
+    Query parameters:
+      - `limit` — up to 200 rows (default 50).
+      - `since_days` — optional window; if set, only activities in
+        the last N days are returned.
+
+    Permission: requires authenticated tenant user. The underlying
+    service filters on `tenant_id = current_user.company_id`; there is
+    no cross-tenant leakage path.
+    """
+    from datetime import timedelta
+    from app.services.crm import activity_log_service
+
+    since = None
+    if since_days is not None:
+        since = datetime.now(timezone.utc) - timedelta(days=since_days)
+
+    rows = activity_log_service.get_tenant_feed(
+        db,
+        tenant_id=current_user.company_id,
+        limit=limit,
+        since=since,
+    )
+    return _VaultRecentActivityResponse(
+        activities=[_VaultActivityItem(**r) for r in rows]
+    )

@@ -212,7 +212,19 @@ export default function QuotingHubPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Quoting</h1>
-          <p className="text-muted-foreground">Track your active pipeline</p>
+          <p className="text-muted-foreground">
+            Track your active pipeline.{" "}
+            {/* V-1f: deep-link to the Quote template in the Vault
+                document templates library. `search` filter already
+                filters by template_key ilike, so `?search=quote.standard`
+                resolves to the right single row. */}
+            <Link
+              to="/vault/documents/templates?search=quote.standard"
+              className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Customize quote template →
+            </Link>
+          </p>
         </div>
         {canCreate && (
           <Button onClick={() => navigate("/ar/quotes/new")}>New Quote</Button>

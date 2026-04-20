@@ -244,7 +244,7 @@ export function NotificationDropdown() {
                 <button
                   onClick={() => {
                     setOpen(false);
-                    navigate("/notifications");
+                    navigate("/vault/notifications");
                   }}
                   className="w-full px-3 py-2 text-center text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                 >

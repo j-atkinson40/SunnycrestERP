@@ -153,6 +153,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     webhooks,
     website_intelligence,
     vault,
+    vault_accounting,
     vault_molds,
     vault_supplier,
     widgets,
@@ -620,6 +621,12 @@ v1_router.include_router(
 )
 v1_router.include_router(
     vault.router, prefix="/vault", tags=["Vault"]
+)
+# V-1e: Accounting admin sub-tree under /vault/accounting/*
+v1_router.include_router(
+    vault_accounting.router,
+    prefix="/vault/accounting",
+    tags=["Vault / Accounting Admin"],
 )
 v1_router.include_router(
     vault_molds.router, prefix="/vault-molds", tags=["Vault Molds"]

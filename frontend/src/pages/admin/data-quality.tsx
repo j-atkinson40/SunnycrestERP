@@ -408,7 +408,7 @@ export default function DataQualityPage() {
       {/* ─── Duplicates tab ────────────────────────────────────── */}
       {tab === "duplicates" && (
         <div className="text-center py-8">
-          <Link to="/crm/companies/duplicates" className="text-blue-600 hover:underline">Open duplicate review &rarr;</Link>
+          <Link to="/vault/vault/crm/companies/duplicates" className="text-blue-600 hover:underline">Open duplicate review &rarr;</Link>
         </div>
       )}
 
@@ -484,7 +484,7 @@ export default function DataQualityPage() {
                           <div key={item.id} className="px-4 py-2.5 flex items-center justify-between hover:bg-gray-100">
                             <div>
                               <Link
-                                to={`/crm/companies/${item.id}`}
+                                to={`/vault/crm/companies/${item.id}`}
                                 className="text-sm font-medium text-gray-900 hover:text-blue-600"
                               >
                                 {item.name}

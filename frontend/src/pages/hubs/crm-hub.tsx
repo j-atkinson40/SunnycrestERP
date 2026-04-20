@@ -82,25 +82,25 @@ export default function CRMHub() {
         <HubTile
           label="All Companies"
           description="Browse and search all companies"
-          href="/crm/companies"
+          href="/vault/crm/companies"
           icon={Building2}
         />
         <HubTile
           label="Funeral Homes"
           description="Funeral home directory"
-          href="/crm/funeral-homes"
+          href="/vault/crm/funeral-homes"
           icon={Home}
         />
         <HubTile
           label="Billing Groups"
           description="Manage billing group relationships"
-          href="/crm/billing-groups"
+          href="/vault/crm/billing-groups"
           icon={Users}
         />
         <HubTile
           label="Pipeline"
           description="Sales pipeline and opportunities"
-          href="/crm/pipeline"
+          href="/vault/crm/pipeline"
           icon={GitBranch}
         />
         {isAdmin && (
@@ -120,7 +120,7 @@ export default function CRMHub() {
             <HubTile
               label="CRM Settings"
               description="CRM configuration & preferences"
-              href="/crm/settings"
+              href="/vault/crm/settings"
               icon={Settings2}
             />
           </>

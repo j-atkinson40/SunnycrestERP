@@ -147,13 +147,11 @@ function getManufacturingNav(
       icon: "Bot",
       functionalArea: "invoicing_ar",
     },
-    {
-      label: "CRM",
-      href: "/crm",
-      icon: "Building2",
-      isHub: true,
-      permission: "customers.view",
-    },
+    // V-1c: CRM top-level hub removed. CRM is now a registered
+    // Vault service — accessed via /vault/crm with its own sidebar
+    // entry. Users with `customers.view` still reach it via the
+    // Bridgeable Vault entry; legacy /crm paths redirect to
+    // /vault/crm.
     {
       label: "Production",
       href: "/production-hub",
@@ -173,9 +171,20 @@ function getManufacturingNav(
       href: "/compliance",
       icon: "ShieldCheck",
       isHub: true,
-      isDividerAfter: true,
       permission: "safety.view",
       requiresModule: "safety_management",
+    },
+    // ── V-1a: Bridgeable Vault — cross-cutting platform-infrastructure hub ──
+    // Peer to vertical hubs. Documents, Intelligence today; CRM,
+    // Notifications, Accounting admin in later V-1 phases. Admin-only
+    // gating matches the underlying routes' admin-gating.
+    {
+      label: "Bridgeable Vault",
+      href: "/vault",
+      icon: "Vault",
+      isHub: true,
+      isDividerAfter: true,
+      adminOnly: true,
     },
   ];
   const filteredHubs = filterByPermission(hubItems, modules, perms, areas, isAdmin, _extensions);
@@ -397,55 +406,10 @@ function getManufacturingNav(
           adminOnly: true,
           settingsGroup: "Platform",
         },
-        {
-          label: "Intelligence",
-          href: "/admin/intelligence/prompts",
-          icon: "Sparkles",
-          adminOnly: true,
-          settingsGroup: "Platform",
-        },
-        {
-          label: "Experiments",
-          href: "/admin/intelligence/experiments",
-          icon: "FlaskConical",
-          adminOnly: true,
-          settingsGroup: "Platform",
-        },
-        {
-          label: "Documents",
-          href: "/admin/documents/templates",
-          icon: "FileText",
-          adminOnly: true,
-          settingsGroup: "Platform",
-        },
-        {
-          label: "Document Log",
-          href: "/admin/documents/documents",
-          icon: "Files",
-          adminOnly: true,
-          settingsGroup: "Platform",
-        },
-        {
-          label: "Inbox",
-          href: "/admin/documents/inbox",
-          icon: "Megaphone",
-          adminOnly: true,
-          settingsGroup: "Platform",
-        },
-        {
-          label: "Delivery Log",
-          href: "/admin/documents/deliveries",
-          icon: "Truck",
-          adminOnly: true,
-          settingsGroup: "Platform",
-        },
-        {
-          label: "Signing",
-          href: "/admin/documents/signing/envelopes",
-          icon: "FileCheck",
-          adminOnly: true,
-          settingsGroup: "Platform",
-        },
+        // ── V-1a: Documents + Intelligence admin surfaces moved to
+        // Bridgeable Vault (/vault/*). The Settings → Platform subgroup
+        // now contains only tenant-management entries (Billing,
+        // Extensions, Onboarding).
       ],
       modules,
       perms,
@@ -462,7 +426,8 @@ function getManufacturingNav(
       { label: "Orders", href: "/order-station", icon: "Zap" },
       { label: "Schedule", href: "/scheduling", icon: "Kanban" },
       { label: "Financials", href: "/financials", icon: "BarChart3" },
-      { label: "CRM", href: "/crm", icon: "Building2" },
+      // V-1c: CRM tab → Vault (CRM now lives under /vault/crm).
+      { label: "Vault", href: "/vault", icon: "Vault" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder: "Order, schedule, log production...",
@@ -508,9 +473,13 @@ function getFuneralHomeNav(
   });
 
   // Hubs
+  // V-1c: CRM top-level hub removed. CRM accessed via /vault/crm
+  // (Vault Hub sidebar). Permission gate preserved on the Vault
+  // service descriptor.
   const hubItems: NavItem[] = [
     { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true, isDividerBefore: true },
-    { label: "CRM", href: "/crm", icon: "Building2", isHub: true, permission: "customers.view", isDividerAfter: true },
+    // V-1a: Bridgeable Vault — cross-cutting platform-infrastructure hub.
+    { label: "Bridgeable Vault", href: "/vault", icon: "Vault", isHub: true, adminOnly: true, isDividerAfter: true },
   ];
   const filteredHubs = filterByPermission(hubItems, modules, perms, undefined, isAdmin);
   if (filteredHubs.length > 0) {
@@ -569,7 +538,10 @@ function getFuneralHomeNav(
         },
         { label: "Integrations", href: "/admin/accounting", icon: "Plug" },
         { label: "Extensions", href: "/extensions", icon: "Puzzle" },
-        { label: "Notifications", href: "/notifications", icon: "Bell" },
+        // V-1d: Notifications moved to /vault/notifications (full
+        // Vault service). Reachable through the Vault hub sidebar,
+        // the bell icon dropdown, and the vault_notifications widget
+        // on the Vault Overview — no longer a top-level nav entry.
       ],
       modules,
       perms,
@@ -582,7 +554,8 @@ function getFuneralHomeNav(
       { label: "Home", href: "/dashboard", icon: "Home" },
       { label: "Cases", href: "/cases", icon: "FolderOpen" },
       { label: "Financials", href: "/financials", icon: "BarChart3" },
-      { label: "CRM", href: "/crm", icon: "Building2" },
+      // V-1c: CRM tab → Vault (CRM now lives under /vault/crm).
+      { label: "Vault", href: "/vault", icon: "Vault" },
       { label: "More", href: "#more", icon: "MoreHorizontal" },
     ],
     commandBarPlaceholder: "First call, order vault, record payment...",
@@ -617,11 +590,17 @@ function getCemeteryNav(
     ),
   });
 
-  // Hubs
+  // Hubs — Cemetery + V-1a Bridgeable Vault
   const hubItems: NavItem[] = [
-    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true, isDividerBefore: true, isDividerAfter: true },
+    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true, isDividerBefore: true },
+    { label: "Bridgeable Vault", href: "/vault", icon: "Vault", isHub: true, adminOnly: true, isDividerAfter: true },
   ];
-  sections.push({ title: "", items: hubItems });
+  const filteredCemHubs = filterByPermission(hubItems, modules, perms, undefined, _isAdmin);
+  if (filteredCemHubs.length > 0) {
+    filteredCemHubs[0].isDividerBefore = true;
+    filteredCemHubs[filteredCemHubs.length - 1].isDividerAfter = true;
+    sections.push({ title: "", items: filteredCemHubs });
+  }
 
   sections.push({
     title: "Settings",
@@ -685,11 +664,17 @@ function getCrematoryNav(
     sections.push({ title: "Compliance", items: complianceItems });
   }
 
-  // Hubs
+  // Hubs — Crematory + V-1a Bridgeable Vault
   const hubItems: NavItem[] = [
-    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true, isDividerBefore: true, isDividerAfter: true },
+    { label: "Financials", href: "/financials", icon: "BarChart3", isHub: true, isDividerBefore: true },
+    { label: "Bridgeable Vault", href: "/vault", icon: "Vault", isHub: true, adminOnly: true, isDividerAfter: true },
   ];
-  sections.push({ title: "", items: hubItems });
+  const filteredCremHubs = filterByPermission(hubItems, modules, perms, undefined, _isAdmin);
+  if (filteredCremHubs.length > 0) {
+    filteredCremHubs[0].isDividerBefore = true;
+    filteredCremHubs[filteredCremHubs.length - 1].isDividerAfter = true;
+    sections.push({ title: "", items: filteredCremHubs });
+  }
 
   sections.push({
     title: "Settings",

@@ -67,6 +67,7 @@ def engine():
         SignatureParty,
     )
     from app.models.document_delivery import DocumentDelivery  # noqa: F401
+    from app.models.notification import Notification  # noqa: F401
     from app.models.statement import CustomerStatement  # noqa: F401
     from app.models.user import User  # noqa: F401
     from app.models.workflow import WorkflowRun, WorkflowRunStep  # noqa: F401
@@ -120,6 +121,10 @@ def engine():
         "document_share_reads",
         "platform_tenant_relationships",
         "document_deliveries",
+        # V-1d: share_granted notifications fan-out to target-tenant
+        # admins; grant_share swallows errors but SQLAlchemy's session
+        # gets poisoned if the INSERT fails, so the table must exist.
+        "notifications",
     ]
     tables = [
         Base.metadata.tables[t]

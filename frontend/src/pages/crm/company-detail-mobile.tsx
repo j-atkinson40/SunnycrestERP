@@ -279,7 +279,7 @@ export default function CompanyDetailMobile() {
       {/* ── Header card ──────────────────────────────────────────────── */}
       <div className="bg-white border-b px-4 pt-3 pb-3">
         <button
-          onClick={() => navigate("/crm/companies")}
+          onClick={() => navigate("/vault/crm/companies")}
           className="flex items-center gap-1 text-sm text-gray-500 mb-2"
         >
           <ChevronLeft className="h-4 w-4" /> Companies

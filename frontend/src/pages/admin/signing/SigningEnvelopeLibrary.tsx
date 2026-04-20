@@ -69,7 +69,7 @@ export default function SigningEnvelopeLibrary() {
           </p>
         </div>
         <Button
-          onClick={() => navigate("/admin/documents/signing/envelopes/new")}
+          onClick={() => navigate("/vault/documents/signing/new")}
         >
           New envelope
         </Button>
@@ -130,7 +130,7 @@ export default function SigningEnvelopeLibrary() {
                 <TableRow key={e.id}>
                   <TableCell>
                     <Link
-                      to={`/admin/documents/signing/envelopes/${e.id}`}
+                      to={`/vault/documents/signing/${e.id}`}
                       className="font-medium underline"
                     >
                       {e.subject}

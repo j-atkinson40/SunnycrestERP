@@ -183,7 +183,7 @@ export const manufacturingActions: CommandAction[] = [
     title: "CRM",
     icon: "users",
     type: "NAV",
-    route: "/crm",
+    route: "/vault/crm",
     roles: ["admin", "office"],
     vertical: "manufacturing",
   },

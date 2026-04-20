@@ -570,3 +570,61 @@ def toggle_schedule(
     schedule.updated_at = datetime.now(timezone.utc)
     db.commit()
     return {"job_type": job_type, "is_enabled": schedule.is_enabled}
+
+
+# ---------------------------------------------------------------------------
+# V-1e: read endpoints for Accounting admin UI (Vault)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/schedules", response_model=list[AgentScheduleResponse])
+def list_schedules(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """List ALL agent schedules for the current tenant.
+
+    Added in V-1e — the existing POST /schedules upserts a single row,
+    but the Accounting admin UI needs to render the full table. Returns
+    stable ordering by job_type so the UI can keep rows in place
+    through edits.
+    """
+    rows = (
+        db.query(AgentSchedule)
+        .filter(AgentSchedule.tenant_id == current_user.company_id)
+        .order_by(AgentSchedule.job_type.asc())
+        .all()
+    )
+    return [AgentScheduleResponse.model_validate(r) for r in rows]
+
+
+@router.get("/jobs", response_model=list[AgentJobListItem])
+def list_recent_jobs(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    job_type: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Tenant-wide agent-job tail used by V-1e widgets + admin UI.
+
+    Unlike `/accounting` (V-1e's predecessor) which filters on
+    `period_start.isnot(None)` to skip legacy nightly jobs, this
+    endpoint is explicitly a cross-agent activity feed — no such
+    filter. Newest-first.
+    """
+    q = db.query(AgentJob).filter(
+        AgentJob.tenant_id == current_user.company_id,
+    )
+    if job_type:
+        q = q.filter(AgentJob.job_type == job_type)
+    if status_filter:
+        q = q.filter(AgentJob.status == status_filter)
+    rows = (
+        q.order_by(desc(AgentJob.created_at))
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [AgentJobListItem.model_validate(r) for r in rows]

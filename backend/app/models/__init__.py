@@ -194,7 +194,6 @@ from app.models.qc import (
     QCReworkRecord,
     QCStepResult,
 )
-from app.models.safety_alert import SafetyAlert
 from app.models.safety_chemical import SafetyChemical
 from app.models.safety_incident import SafetyIncident
 from app.models.safety_inspection import (
@@ -523,7 +522,6 @@ __all__ = [
     "QCMedia",
     "QCReworkRecord",
     "QCStepResult",
-    "SafetyAlert",
     "SafetyChemical",
     "SafetyIncident",
     "SafetyInspection",

@@ -1,5 +1,5 @@
 // company-detail.tsx — CRM company detail page with tabs
-// Route: /crm/companies/:id
+// Route: /vault/crm/companies/:id
 // Uses DeviceAwarePage: desktop shows two-column tabs, mobile shows card layout.
 
 import { useState, useEffect, useCallback } from "react"
@@ -249,7 +249,7 @@ function CompanyDetailDesktop() {
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
       {/* Header */}
       <div>
-        <Link to="/crm/companies" className="flex items-center gap-1 text-sm text-gray-500 mb-2">
+        <Link to="/vault/crm/companies" className="flex items-center gap-1 text-sm text-gray-500 mb-2">
           <ChevronLeft className="h-4 w-4" /> Back to companies
         </Link>
         <div className="flex items-start justify-between">
@@ -518,11 +518,11 @@ function CompanyDetailDesktop() {
                 {groupLocations.length} location{groupLocations.length !== 1 ? "s" : ""}
               </div>
               {groupLocations.map(l => (
-                <Link key={l.company_entity_id} to={`/crm/companies/${l.company_entity_id}`} className="block text-sm text-blue-600 hover:underline">
+                <Link key={l.company_entity_id} to={`/vault/crm/companies/${l.company_entity_id}`} className="block text-sm text-blue-600 hover:underline">
                   {l.name}
                 </Link>
               ))}
-              <Link to={`/crm/billing-groups/${company.id}`} className="mt-2 block text-xs text-blue-600 hover:underline">
+              <Link to={`/vault/crm/billing-groups/${company.id}`} className="mt-2 block text-xs text-blue-600 hover:underline">
                 Manage group
               </Link>
             </Card>
@@ -530,7 +530,7 @@ function CompanyDetailDesktop() {
           {parentGroup && (
             <Card className="p-4 space-y-2">
               <div className="text-xs text-muted-foreground">Part of</div>
-              <Link to={`/crm/billing-groups/${parentGroup.id}`} className="text-sm font-medium text-blue-600 hover:underline">
+              <Link to={`/vault/crm/billing-groups/${parentGroup.id}`} className="text-sm font-medium text-blue-600 hover:underline">
                 {parentGroup.name}
               </Link>
               <div className="text-xs text-muted-foreground">

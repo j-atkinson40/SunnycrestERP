@@ -182,7 +182,7 @@ export function TestRunModal({
             )}
 
             <Link
-              to={`/admin/intelligence/executions/${result.id}?include_test_executions=true`}
+              to={`/vault/intelligence/executions/${result.id}?include_test_executions=true`}
               className="text-xs underline"
             >
               View in execution log →

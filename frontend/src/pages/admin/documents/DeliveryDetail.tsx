@@ -36,7 +36,7 @@ export default function DeliveryDetail() {
     try {
       const newDelivery = await documentsV2Service.resendDelivery(deliveryId);
       // Navigate to the new delivery
-      window.location.href = `/admin/documents/deliveries/${newDelivery.id}`;
+      window.location.href = `/vault/documents/deliveries/${newDelivery.id}`;
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -57,7 +57,7 @@ export default function DeliveryDetail() {
     <div className="space-y-6 p-6">
       <div>
         <Link
-          to="/admin/documents/deliveries"
+          to="/vault/documents/deliveries"
           className="text-xs text-muted-foreground underline"
         >
           ← Delivery Log
@@ -175,7 +175,7 @@ export default function DeliveryDetail() {
             value={
               d.document_id ? (
                 <Link
-                  to={`/admin/documents/documents/${d.document_id}`}
+                  to={`/vault/documents/${d.document_id}`}
                   className="underline"
                 >
                   {d.document_id.slice(0, 12)}…
@@ -200,7 +200,7 @@ export default function DeliveryDetail() {
             value={
               d.caller_intelligence_execution_id ? (
                 <Link
-                  to={`/admin/intelligence/executions/${d.caller_intelligence_execution_id}`}
+                  to={`/vault/intelligence/executions/${d.caller_intelligence_execution_id}`}
                   className="underline"
                 >
                   {d.caller_intelligence_execution_id.slice(0, 12)}…
@@ -215,7 +215,7 @@ export default function DeliveryDetail() {
             value={
               d.caller_signature_envelope_id ? (
                 <Link
-                  to={`/admin/documents/signing/envelopes/${d.caller_signature_envelope_id}`}
+                  to={`/vault/documents/signing/${d.caller_signature_envelope_id}`}
                   className="underline"
                 >
                   {d.caller_signature_envelope_id.slice(0, 12)}…

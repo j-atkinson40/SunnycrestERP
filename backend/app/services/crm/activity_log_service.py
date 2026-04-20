@@ -117,6 +117,72 @@ def get_feed(
     }
 
 
+def get_tenant_feed(
+    db: Session,
+    tenant_id: str,
+    *,
+    limit: int = 50,
+    since: datetime | None = None,
+) -> list[dict]:
+    """Tenant-wide ActivityLog tail — aggregates across ALL companies
+    the tenant tracks in CRM.
+
+    Distinct from `get_feed` which is scoped to one CompanyEntity.
+    Used by V-1c's Vault Overview CrmRecentActivityWidget.
+
+    Joins on `CompanyEntity` so each activity carries the owning
+    company's name/id for display. Tenant isolation: every
+    ActivityLog row has a `tenant_id`; we filter by it AND ensure the
+    join to CompanyEntity keeps us within the same tenant (defense in
+    depth — ActivityLog.tenant_id is the canonical gate).
+
+    Returns a list of dicts with: id, activity_type, title, body,
+    is_system_generated, company_id, company_name, created_at,
+    logged_by. Body is truncated to 200 chars to keep the payload
+    tight for widget use; full bodies remain available via the
+    per-company feed.
+    """
+    from app.models.company_entity import CompanyEntity  # avoid cycle
+
+    query = (
+        db.query(ActivityLog, CompanyEntity)
+        .join(
+            CompanyEntity,
+            ActivityLog.master_company_id == CompanyEntity.id,
+        )
+        .filter(ActivityLog.tenant_id == tenant_id)
+    )
+
+    if since is not None:
+        query = query.filter(ActivityLog.created_at >= since)
+
+    rows = (
+        query.order_by(desc(ActivityLog.created_at))
+        .limit(max(1, min(limit, 200)))
+        .all()
+    )
+
+    result: list[dict] = []
+    for activity, company in rows:
+        body = activity.body
+        if body and len(body) > 200:
+            body = body[:200] + "…"
+        result.append(
+            {
+                "id": activity.id,
+                "activity_type": activity.activity_type,
+                "title": activity.title,
+                "body": body,
+                "is_system_generated": activity.is_system_generated,
+                "company_id": company.id,
+                "company_name": company.name,
+                "created_at": activity.created_at,
+                "logged_by": activity.logged_by,
+            }
+        )
+    return result
+
+
 def complete_followup(db: Session, activity_id: str, user_id: str) -> ActivityLog:
     """Mark a follow-up as completed."""
     entry = db.query(ActivityLog).filter(ActivityLog.id == activity_id).first()

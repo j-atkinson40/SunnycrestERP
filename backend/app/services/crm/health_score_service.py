@@ -26,7 +26,12 @@ def _get_or_create_settings(db: Session, tenant_id: str) -> CrmSettings:
 
 
 def calculate_health_score(db: Session, master_company_id: str, tenant_id: str) -> str:
-    """Calculate and update health score for one company. Returns the score."""
+    """Calculate and update health score for one company. Returns the score.
+
+    V-1d: notifies tenant admins when a profile TRANSITIONS into
+    `at_risk` (i.e. prior score was not at_risk). Same-score re-runs
+    do not re-notify, so nightly recalcs don't spam the feed.
+    """
     profile = (
         db.query(ManufacturerCompanyProfile)
         .filter(ManufacturerCompanyProfile.master_company_id == master_company_id)
@@ -34,6 +39,10 @@ def calculate_health_score(db: Session, master_company_id: str, tenant_id: str) 
     )
     if not profile:
         return "unknown"
+
+    # Capture prior score BEFORE any mutation so we can detect the
+    # "just became at_risk" transition below.
+    prior_score = profile.health_score
 
     # Find linked customer
     entity = db.query(CompanyEntity).filter(CompanyEntity.id == master_company_id).first()
@@ -160,6 +169,36 @@ def calculate_health_score(db: Session, master_company_id: str, tenant_id: str) 
     profile.health_score = score
     profile.health_reasons = reasons
     profile.health_last_calculated = datetime.now(timezone.utc)
+
+    # V-1d: notify tenant admins on transition INTO at_risk. Skip on
+    # same-score recalcs so nightly runs don't re-fire. Best-effort.
+    if score == "at_risk" and prior_score != "at_risk":
+        try:
+            from app.services import notification_service
+
+            company_name = entity.name if entity else master_company_id
+            reasons_text = "; ".join(reasons[:3]) if reasons else "multiple signals"
+            notification_service.notify_tenant_admins(
+                db,
+                company_id=tenant_id,
+                title=f"Account at risk: {company_name}",
+                message=(
+                    f"{company_name} has moved into at-risk status. "
+                    f"Reason: {reasons_text}."
+                ),
+                type="warning",
+                category="account_at_risk",
+                severity="high",
+                link=f"/vault/crm/companies/{master_company_id}",
+                source_reference_type="company_entity",
+                source_reference_id=master_company_id,
+            )
+        except Exception:
+            logger.exception(
+                "account_at_risk notification failed (master_company_id=%s tenant_id=%s)",
+                master_company_id,
+                tenant_id,
+            )
 
     return score
 

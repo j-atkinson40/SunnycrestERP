@@ -92,7 +92,7 @@ export default function DocumentDetail() {
     <div className="space-y-6 p-6">
       <div>
         <Link
-          to="/admin/documents/documents"
+          to="/vault/documents"
           className="text-xs text-muted-foreground underline"
         >
           ← Document Log
@@ -226,7 +226,7 @@ export default function DocumentDetail() {
             value={
               doc.intelligence_execution_id ? (
                 <Link
-                  to={`/admin/intelligence/executions/${doc.intelligence_execution_id}`}
+                  to={`/vault/intelligence/executions/${doc.intelligence_execution_id}`}
                   className="underline"
                 >
                   {doc.intelligence_execution_id.slice(0, 12)}…

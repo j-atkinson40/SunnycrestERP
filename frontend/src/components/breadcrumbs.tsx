@@ -25,12 +25,12 @@ const ROUTE_BREADCRUMBS: Record<string, BreadcrumbItem[]> = {
   "/reports": [{ label: "Financials", href: "/financials" }, { label: "Reports" }],
 
   // CRM hub sub-pages
-  "/crm/companies": [{ label: "CRM", href: "/crm" }, { label: "Companies" }],
-  "/crm/funeral-homes": [{ label: "CRM", href: "/crm" }, { label: "Funeral Homes" }],
-  "/crm/contractors": [{ label: "CRM", href: "/crm" }, { label: "Contractors" }],
-  "/crm/billing-groups": [{ label: "CRM", href: "/crm" }, { label: "Billing Groups" }],
-  "/crm/pipeline": [{ label: "CRM", href: "/crm" }, { label: "Pipeline" }],
-  "/crm/settings": [{ label: "CRM", href: "/crm" }, { label: "Settings" }],
+  "/vault/crm/companies": [{ label: "CRM", href: "/vault/crm" }, { label: "Companies" }],
+  "/vault/crm/funeral-homes": [{ label: "CRM", href: "/vault/crm" }, { label: "Funeral Homes" }],
+  "/vault/crm/contractors": [{ label: "CRM", href: "/vault/crm" }, { label: "Contractors" }],
+  "/vault/crm/billing-groups": [{ label: "CRM", href: "/vault/crm" }, { label: "Billing Groups" }],
+  "/vault/crm/pipeline": [{ label: "CRM", href: "/vault/crm" }, { label: "Pipeline" }],
+  "/vault/crm/settings": [{ label: "CRM", href: "/vault/crm" }, { label: "Settings" }],
 
   // Production hub sub-pages
   "/production-log": [{ label: "Production", href: "/production-hub" }, { label: "Production Log" }],
@@ -56,7 +56,7 @@ function findBreadcrumbs(pathname: string): BreadcrumbItem[] | null {
   // Exact match first
   if (ROUTE_BREADCRUMBS[pathname]) return ROUTE_BREADCRUMBS[pathname];
 
-  // Try prefix match for detail pages (e.g., /crm/companies/123)
+  // Try prefix match for detail pages (e.g., /vault/crm/companies/123)
   for (const [route, crumbs] of Object.entries(ROUTE_BREADCRUMBS)) {
     if (pathname.startsWith(route + "/")) {
       return [...crumbs.slice(0, -1), { ...crumbs[crumbs.length - 1], href: route }, { label: "Details" }];

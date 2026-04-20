@@ -200,7 +200,7 @@ export default function DocumentTemplateLibrary() {
                 <TableRow key={t.id}>
                   <TableCell>
                     <Link
-                      to={`/admin/documents/templates/${t.id}`}
+                      to={`/vault/documents/templates/${t.id}`}
                       className="font-mono text-xs underline"
                     >
                       {t.template_key}

@@ -72,7 +72,7 @@ export default function ExecutionDetail() {
           {err}
         </div>
         <div className="mt-4">
-          <Link to="/admin/intelligence/executions" className="text-sm underline">
+          <Link to="/vault/intelligence/executions" className="text-sm underline">
             ← Back to Executions
           </Link>
         </div>
@@ -85,7 +85,7 @@ export default function ExecutionDetail() {
     <div className="space-y-6 p-6">
       <div>
         <Link
-          to="/admin/intelligence/executions"
+          to="/vault/intelligence/executions"
           className="text-sm text-muted-foreground hover:underline"
         >
           ← Execution Log
@@ -108,7 +108,7 @@ export default function ExecutionDetail() {
           value={
             exec.prompt_key && exec.prompt_id ? (
               <Link
-                to={`/admin/intelligence/prompts/${exec.prompt_id}`}
+                to={`/vault/intelligence/prompts/${exec.prompt_id}`}
                 className="font-mono text-sm underline"
               >
                 {exec.prompt_key}

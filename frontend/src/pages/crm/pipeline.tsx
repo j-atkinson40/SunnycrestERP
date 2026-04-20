@@ -1,5 +1,5 @@
 // pipeline.tsx — CRM sales pipeline (kanban-style)
-// Route: /crm/pipeline (only when pipeline_enabled=true)
+// Route: /vault/crm/pipeline (only when pipeline_enabled=true)
 
 import { useState, useEffect, useCallback } from "react"
 import apiClient from "@/lib/api-client"

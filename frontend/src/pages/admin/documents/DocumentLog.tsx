@@ -235,7 +235,7 @@ export default function DocumentLog() {
                     title={doc.title}
                   >
                     <Link
-                      to={`/admin/documents/documents/${doc.id}`}
+                      to={`/vault/documents/${doc.id}`}
                       className="underline"
                     >
                       {doc.title}
@@ -275,7 +275,7 @@ export default function DocumentLog() {
                   <TableCell className="text-xs text-muted-foreground">
                     {doc.intelligence_execution_id ? (
                       <Link
-                        to={`/admin/intelligence/executions/${doc.intelligence_execution_id}`}
+                        to={`/vault/intelligence/executions/${doc.intelligence_execution_id}`}
                         className="underline"
                         title="AI-generated — view Intelligence execution"
                       >

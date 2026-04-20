@@ -134,6 +134,16 @@ class DocumentDelivery(Base):
         ForeignKey("signature_envelopes.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # V-1f: polymorphic attribution beyond the document_id FK. Lets a
+    # send be attributed to any VaultItem (quote, compliance-expiry,
+    # delivery, etc.) without needing a Document row. Most deliveries
+    # continue to use `document_id` — this is additive, nullable.
+    caller_vault_item_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("vault_items.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
@@ -152,6 +162,13 @@ class DocumentDelivery(Base):
     document = relationship(
         _CanonDocument,
         foreign_keys=[document_id],
+    )
+    # V-1f: optional companion relationship. Loaded on demand (lazy
+    # select) since most callers access the row by id alone.
+    caller_vault_item = relationship(
+        "VaultItem",
+        foreign_keys=[caller_vault_item_id],
+        lazy="select",
     )
 
     def __repr__(self) -> str:

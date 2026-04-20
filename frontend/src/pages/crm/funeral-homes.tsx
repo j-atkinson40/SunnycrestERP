@@ -1,5 +1,5 @@
 // funeral-homes.tsx — My Funeral Homes dashboard with health scoring
-// Route: /crm/funeral-homes
+// Route: /vault/crm/funeral-homes
 
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
@@ -160,7 +160,7 @@ export default function FuneralHomesPage() {
                     {item.primary_contact && <div className="text-xs text-gray-400">Primary: {item.primary_contact.name}{item.primary_contact.phone ? ` · ${item.primary_contact.phone}` : ""}</div>}
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <Button variant="outline" size="sm" onClick={() => navigate(`/crm/companies/${item.id}`)}>View account</Button>
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/vault/crm/companies/${item.id}`)}>View account</Button>
                     <Button variant="ghost" size="sm" onClick={() => setInlineActivityId(inlineActivityId === item.id ? null : item.id)}>
                       <Plus className="h-3.5 w-3.5 mr-0.5" /> Log
                     </Button>

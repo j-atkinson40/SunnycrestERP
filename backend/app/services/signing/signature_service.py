@@ -21,6 +21,7 @@ log is append-only.
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -28,6 +29,8 @@ from typing import Any
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.canonical_document import Document
 from app.models.signature import (
@@ -537,6 +540,50 @@ def _advance_after_party_signed(
             event_type="notification_failed",
             party_id=next_party.id,
             meta={"error": str(exc)[:500], "notification_type": "invite"},
+        )
+
+    # V-1d: If the next signer is an internal user (email matches a
+    # User in the envelope's company), drop an in-app notification
+    # too. External signers (funeral home reps, cemetery reps, next
+    # of kin) get the email invite and nothing else — they don't
+    # have Vault logins. Best-effort; wrapped so failures never
+    # block routing advancement.
+    try:
+        from app.models.user import User
+        from app.services import notification_service as n_service
+
+        internal_user = (
+            db.query(User)
+            .filter(
+                User.company_id == envelope.company_id,
+                User.email == next_party.email,
+                User.is_active.is_(True),
+            )
+            .first()
+        )
+        if internal_user is not None:
+            n_service.create_notification(
+                db,
+                company_id=envelope.company_id,
+                user_id=internal_user.id,
+                title=f"Your signature is requested: {envelope.subject[:120]}",
+                message=(
+                    f"It's your turn to sign — role: {next_party.role}. "
+                    "Check your email for the signing link, or open the "
+                    "envelope from the signing admin area."
+                ),
+                type="info",
+                category="signature_requested",
+                link=f"/admin/documents/signing/envelopes/{envelope.id}",
+                source_reference_type="signature_envelope",
+                source_reference_id=envelope.id,
+            )
+    except Exception:  # pragma: no cover — best-effort notify
+        logger.exception(
+            "signature_requested notification failed "
+            "(envelope_id=%s next_party_id=%s)",
+            envelope.id,
+            next_party.id,
         )
 
 

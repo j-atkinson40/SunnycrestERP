@@ -1,5 +1,5 @@
 // contractors.tsx — CRM contractors list page
-// Route: /crm/contractors
+// Route: /vault/crm/contractors
 // Only shown in nav when a contractor extension is enabled (wastewater, redi_rock, general_precast)
 
 import { useState, useEffect, useCallback } from "react"
@@ -174,7 +174,7 @@ export default function ContractorsPage() {
                 <tr
                   key={item.id}
                   className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => navigate(`/crm/companies/${item.id}`)}
+                  onClick={() => navigate(`/vault/crm/companies/${item.id}`)}
                 >
                   <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
                   <td className="px-4 py-3">
@@ -191,7 +191,7 @@ export default function ContractorsPage() {
                     {timeAgo(item.last_activity_date || item.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/crm/companies/${item.id}`) }}>
+                    <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/vault/crm/companies/${item.id}`) }}>
                       View
                     </Button>
                   </td>

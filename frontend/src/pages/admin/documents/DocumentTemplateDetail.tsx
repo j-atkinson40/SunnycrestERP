@@ -227,7 +227,7 @@ export default function DocumentTemplateDetail() {
     <div className="space-y-6 p-6">
       <div>
         <Link
-          to="/admin/documents/templates"
+          to="/vault/documents/templates"
           className="text-xs text-muted-foreground underline"
         >
           ← All templates
@@ -540,7 +540,7 @@ export default function DocumentTemplateDetail() {
           onOpenChange={setForkOpen}
           templateId={detail.id}
           templateKey={detail.template_key}
-          onForked={(id) => navigate(`/admin/documents/templates/${id}`)}
+          onForked={(id) => navigate(`/vault/documents/templates/${id}`)}
         />
       )}
     </div>

@@ -116,7 +116,7 @@ export default function CreateEnvelopeWizard() {
           label: f.label || undefined,
         })),
       });
-      navigate(`/admin/documents/signing/envelopes/${envelope.id}`);
+      navigate(`/vault/documents/signing/${envelope.id}`);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } };
       setErr(

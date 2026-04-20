@@ -167,6 +167,39 @@ because each one is a one-off with distinct context.
 
 ## Resolved
 
+### ✅ `audit_service.log()` does not exist — three sites in `quote_service.py`
+
+**Fixed in:** audit_service typo fix build (2026-04-20)
+**Regression test:** `backend/tests/test_vault_v1fg_vault_item_hygiene.py::TestQuoteAuditLogging` (3 tests — one per call site: create/convert/status-change; each asserts the correct action string + changes payload).
+
+**What was wrong:** `quote_service.create_quote`,
+`convert_quote_to_order`, and `update_quote_status` called
+`audit_service.log(...)`, which doesn't exist — the real function is
+`log_action(...)`. Every Quote write has crashed with
+`AttributeError: module 'app.services.audit_service' has no attribute
+'log'` at the audit-log line (post-commit, so DB state persisted but
+the API response raised) since the code was added on 2026-03-19.
+Surfaced during V-1f+g pre-build while adding Quote → VaultItem
+dual-write tests.
+
+**Sites fixed (1 file, 3 sites):**
+
+| File | Function | Line (original) | Fix |
+|---|---|---|---|
+| `app/services/quote_service.py` | `create_quote` | 343 | `log_action(..., "created", "quote", ...)` |
+| `app/services/quote_service.py` | `convert_quote_to_order` | 422 | `log_action(..., "converted", "quote", ...)` |
+| `app/services/quote_service.py` | `update_quote_status` | 499 | `log_action(..., "status_changed", "quote", ...)` |
+
+Action strings + call shape aligned with the platform-wide convention
+used by `sales_service.py` (past-participle verbs + short
+entity_type + positional args + `changes=` kwarg, not `details=`).
+The V-1f+g test monkeypatch that stubbed `audit_service.log` to a
+no-op was removed in the same build — all 16 tests in
+`test_vault_v1fg_vault_item_hygiene.py` pass against the real
+function.
+
+---
+
 ### ✅ `CompanyEntity.tenant_id` AttributeError (cluster)
 
 **Fixed in:** BUGS-1 build (2026-04-18)

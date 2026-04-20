@@ -1,6 +1,8 @@
 # BRIDGEABLE — Master Reference Document
 
-**Last updated:** April 13, 2026
+**Last updated:** April 19, 2026
+
+*April 19, 2026 session: Major platform architecture consolidation. Four foundational design principles established (Input-Modality-as-Platform-Layer, UX Quality Bar, Configuration as First-Class Primitive). Four user paradigms defined (Power Operators, Focused Executors, Occasional Participants, Monitors) with matched interface patterns. Three platform primitives established (Spaces, Saved Views, Pins). Command Bar defined as universal interface for Power Operators with 18 unified capabilities including Fantastical-style natural language creation with live overlay. Bridgeable Assist formalized as unified real-time knowledge surfacing across call, command bar, Scribe, in-person, and Vision contexts with phased active listening. Triage mode defined as first-class pattern with morning/evening briefings as workday container. Bridgeable Vision formalized as universal camera-to-platform layer unifying check scanning, Drawing Analyzer (Q-3), Redi-Rock Wall Designer (Q-2), maintenance recognition, OSHA walkthrough, and all camera-based capabilities. Knowledge Ingestion elevated to platform capability with four tiers and RAG architecture. Cross-tenant architecture extended to N-way coordination with full feature landscape mapped across three time horizons. UX patterns from Linear, Superhuman, Notion, Obsidian, Arc, Raycast, Figma, Stripe, Claude, and others documented with meta-principles for design decisions. Hardware evolution roadmap established: phones today → Smart Plant fixed cameras → smart glasses 2029-2030. Bridgeable reframed as coordination infrastructure for fragmented industries.*
 
 *April 13, 2026 session: Major architectural and strategic evolution — vault architecture, unified intelligence layer, QuotingEngine, Product Line Activation, Bridgeable Documents, hardware vision (1.14-1.17), employee banking/insurance/legal/workforce/business services (1.18-1.23), Policy Mission (1.24), Boutique Hospitality (1.25), SMB mission expanded (1.2), Personalization Studio (6.10), Wilbert Strategic Partnership with full product portfolio + CE accreditation + licensee territory rights + territory addendum (6.11). Dinner with new Wilbert CEO April 13 — Buffalo native, relationship established, private demo target in 8 weeks. Personalization Studio identified as primary Wilbert casket and monument breakthrough. CDL driver retention, shared maintenance, and HR burden identified as primary manufacturing adoption weapons. All 30 changes captured.*
 
@@ -11,6 +13,7 @@
 ## Table of Contents
 
 ### Part 1 — Vision & Strategy
+- **Design Standards:** Input Modality as Platform Layer, UX Quality Bar, Configuration as First-Class Primitive
 - 1.1 Mission Statement
 - 1.2 The Core Insight
 - 1.3 The Flywheel
@@ -56,6 +59,17 @@
 - 3.11 QuotingEngine — Universal Quoting Service
 - 3.12 Bridgeable Documents — Native Document Layer
 - 3.13 Three-Channel Commerce Architecture
+- 3.14 Platform UX Vision — The Four User Paradigms
+- 3.15 Bridgeable Vault — V-1 Roll-Up (April 2026, complete)
+- 3.15 The Three Primitives — Spaces, Saved Views, Pins
+- 3.16 UX Patterns and Design Principles
+- 3.17 The Command Bar as Universal Interface
+- 3.18 Bridgeable Assist — Unified Real-Time Knowledge Surfacing
+- 3.19 Triage Mode and Morning/Evening Briefings
+- 3.20 Bridgeable Vision — Universal Camera-to-Platform Layer
+- 3.21 Knowledge Ingestion as Platform Capability
+- 3.22 Cross-Tenant Saved Views and Multi-Party Coordination
+- 3.23 The Full Cross-Tenant Feature Landscape
 
 ### Part 4 — Technical Stack
 - 4.1 Backend Stack
@@ -2248,6 +2262,49 @@ Bridgeable offer: $2,500-3,500/month all-in
 
 ---
 
+## Platform-Wide Design Standards
+
+Three foundational principles established April 2026 that govern all platform design decisions going forward.
+
+### Principle 1: Input Modality as Platform Layer
+
+**Every input modality — text, voice, camera, call audio, ambient audio, sensor data — is a capture layer into a unified platform pipeline. Features are output mappings, not input silos.**
+
+When considering any new capability involving a new input type, the question is never "should we build feature X for input Y?" It is always "how does input Y feed existing platform pipelines, and what output mappings does the new capability require?"
+
+Consequences across the platform:
+
+- Text input → Command Bar (Section 3.17) as platform layer — not individual search/creation features per domain
+- Voice input → Captured into the same Command Bar pipeline — not separate voice features
+- Call audio → Bridgeable Assist (3.18) for unified knowledge surfacing — not a standalone call overlay
+- Camera input → Bridgeable Vision (3.20) as platform layer — not individual camera features per use case
+- Ambient audio → Active Listening feeds into Assist — not separate ambient features per room type
+- Sensor data (future Smart Plant) → Same pipeline — not per-device integrations
+
+Each modality is captured once, processed through shared pipelines (entity resolution, Intelligence, vault operations, workflow triggers), and rendered into surfaces appropriate for the tenant's user paradigms.
+
+This principle is what makes Bridgeable's architecture OS-like rather than SaaS-like. Operating systems do not have "a keyboard feature" and "a mouse feature" — they have input subsystems that any application can consume. Bridgeable extends the same principle to business operations.
+
+### Principle 2: UX Quality Bar
+
+**The quality bar is established by the best tools the user has ever used, not by the worst tools in our category.**
+
+Bridgeable's target users use Bridgeable AND they use Apple Mail, Stripe Dashboard, Slack, Google Maps, iOS, modern consumer and prosumer software. Their quality expectations are set by those tools, not by legacy industry software.
+
+Competing against DOS-era funeral home software or Windows-forms manufacturing software is not the target. The target is software that feels native to 2026-and-later quality expectations, in a vertical where that quality has never been attempted.
+
+This bar is explicitly high. It requires craft, not just feature parity. Every interaction's polish — speed, animation, typography, information density, error handling — is measured against best-in-class consumer and prosumer software, not against industry alternatives.
+
+### Principle 3: Configuration as First-Class Primitive
+
+**Users should not have to ask an engineer to build them a dashboard, a workflow, a report, or a view. They compose exactly the workspace they need from the platform's built-in primitives.**
+
+This separates "good SaaS platform" from "operating system people feel at home in." It is also strategically defensible — competitors can copy features, but they cannot copy the accumulated configurations tenants' users have built on top of the platform. Configuration itself becomes the switching cost.
+
+Every new feature should be evaluated against whether it extends the platform's composable primitives (Spaces, Saved Views, Pins, Workflows, Views, Pipelines) or whether it adds a new silo that only serves one use case. Prefer the former; justify the latter explicitly.
+
+---
+
 # Part 2 — Market Position
 
 ## 2.1 Target Market
@@ -2580,6 +2637,69 @@ Every new product built for the arrangement conference must simultaneously be av
 **The licensee territory rights across all three channels:**
 
 The territory addendum covers all three channels explicitly. Any Bridgeable product sold to a funeral home or cemetery in a licensee's territory generates territory revenue — regardless of which channel the purchase came through. Conference, portal, or website — same territory, same revenue.
+
+## 3.24 Bridgeable Vault — V-1 Roll-Up (April 2026, complete)
+
+Bridgeable Vault is the shared foundational infrastructure layer every tenant sees regardless of vertical. Not a feature, not a module that can be disabled — the platform chassis that the verticals configure views over. Five services currently register with the hub; more can plug in by calling `register_service(...)`.
+
+**V-1 arc shipped in 8 phases across 3 weeks (April 2026):**
+
+| Phase | Focus | Key delivery |
+|---|---|---|
+| V-1a | Hub frame + nav restructure | `/vault/*` route hierarchy, `VaultHubLayout`, `VaultServiceDescriptor` registry, Documents + Intelligence moved out of Settings → Platform subgroup |
+| V-1b | Overview dashboard | 5 widgets (RecentDocuments, PendingSignatures, UnreadInbox, RecentDeliveries, Notifications), widget grid + drag-reorder + resize + per-user layout persistence |
+| V-1c | CRM absorption (lift-and-shift) | 9 CRM pages re-homed under `/vault/crm/*`, top-level CRM nav entry removed, tenant-wide activity endpoint for the Recent Activity widget, `at_risk_accounts` widget extended to `vault_overview` context |
+| V-1d | Notifications promoted + SafetyAlert merge + 5 new sources | Notifications becomes full Vault service, `SafetyAlert` table dropped (data migrated), 6 alert-flavor columns added, 5 new notification sources wired (share_granted, delivery_failed, signature_requested, compliance_expiry, account_at_risk) |
+| V-1e | Accounting admin consolidation | 6-tab platform-admin surface (Periods+Locks with type-to-confirm, Agent Schedules for 12 accounting agents, GL Classification queue with bulk-confirm, Tax Config, Statement Templates, COA Templates), period-lock audit trail via AuditLog |
+| V-1f+g | VaultItem dual-write hygiene | Quote writes VaultItem on create + updates on convert/status change, `caller_vault_item_id` column added to `document_deliveries` (polymorphic delivery attribution), JE Case A investigation + lint guard, Quoting Hub "Customize quote template" deep-link |
+| Bug fix | `audit_service.log` typo resolution | 3 call sites in `quote_service.py` fixed (was `.log()`, should be `.log_action()`); Quote operations had been silently crashing since March 2026 |
+| V-1h | Documentation consolidation | `vault_architecture.md`, `vault_README.md`, 5 per-service user guides at `backend/docs/vault/*.md`, CLAUDE.md Vault section, this §3.14 roll-up |
+
+**Services delivered (5):**
+
+1. **Documents** — canonical Document model, template registry with versioning + tenant overrides, native signing (PyMuPDF anchor overlay, ESIGN certificate), cross-tenant sharing (`document_shares` + admin inbox), channel-agnostic delivery (`DeliveryChannel` Protocol). D-1 → D-9 arc predates V-1 but moved under `/vault/documents/*`.
+2. **Intelligence** — unified AI layer, 73 active platform-global managed prompts, execution audit with typed caller linkage, model routing, experiment framework. All AI calls route through `intelligence_service.execute()`; direct `anthropic` SDK imports lint-forbidden outside the Intelligence package.
+3. **CRM** — companies, contacts, pipeline, activities, health scoring, AI classification, duplicate review, billing groups. Lift-and-shift from `/crm/*` to `/vault/crm/*`. Parallel contact models (Contact / CustomerContact / VendorContact / FHCaseContact) remain unreconciled — Option B from the audit deferred to V-2.
+4. **Notifications** — entity-agnostic, category-based in-app inbox. SafetyAlert merged. 5 V-1d sources wired via `notify_tenant_admins()` fan-out pattern (one Notification per active admin per tenant via `Role.slug='admin'` join). No per-user preferences yet.
+5. **Accounting** — platform-admin surface distinct from tenant-facing Financials Hub. Tenant workflow (invoices, bills, JEs, statements, reports) stays where it is; admin configuration consolidates under `/vault/accounting`. Type-to-confirm UX for period locks, simple confirm for unlocks — asymmetry matches stakes.
+
+**Cumulative stats (as of V-1h, 2026-04-20):**
+
+- 109+ Vault backend tests passing (10 V-1a + 13 V-1b + 16 V-1c + 21 V-1d + 33 V-1e + 16 V-1f+g)
+- 95+ Documents regression tests across D-4/D-6/D-7 kept green throughout V-1
+- 4 V-1 migrations applied (r29 notification safety merge, r30 delivery caller vault item; V-1a/b/c/e/g/h were code-only)
+- Migration head: `r30_delivery_caller_vault_item`
+- 10 default overview widgets on `/vault`
+- 0 TypeScript errors, frontend build clean
+
+**Architectural wins:**
+
+- **Per-subtree permission gating** (V-1c established). The `/vault` parent route is gate-free; each child sub-tree gets its own `<ProtectedRoute>` gate. Lets permission-gated CRM coexist with admin-only Documents/Intelligence/Accounting under the same hub layout. A root-level gate would have required the union of every sub-tree's permission to enter the hub at all — wrong.
+- **Widget UPSERT pattern** (V-1c established). Widget definition seed upgraded from `ON CONFLICT DO NOTHING` to `ON CONFLICT DO UPDATE` on system-owned columns. Extending a widget's `page_contexts` is a code-ship, not a migration. Per-user layouts in `user_widget_layouts` stay untouched.
+- **Service-owned widgets.** Each widget belongs to a service (via `overview_widget_ids` on the service descriptor). Admin-gating the service cascades to its widgets automatically — non-admins don't see accounting widgets because the service filter strips them server-side.
+- **Notification fabric.** SafetyAlert + 5 new V-1d sources all use the same `notify_tenant_admins()` fan-out helper. Every source wraps in try/except + `logger.exception` — notification failures never block the primary operation. Defensive pattern consistent across subsystems.
+- **VaultItem dual-write hygiene.** Primary writer (e.g. `Quote.create`) commits the business row, then calls the VaultItem helper in a defensive try/except + logger. Best-effort mirroring — VaultItem is downstream of the specialty model, not a replacement for it. 6 item_types actively dual-written post-V-1f.
+
+**Deferred to V-2+ (all tracked in `backend/docs/DEBT.md`):**
+
+- **Calendar** — unified view over VaultItems with `event_type`. Blocked on JE item_type decision (Case A: should JEs appear on the Calendar? If yes, correct `item_type` is `document`, not `event`).
+- **Reminders** — proactive surface for upcoming VaultItem events (compliance expiry, delivery follow-up, etc.).
+- **CRM true absorption (Option B)** — make `CompanyEntity` a first-class `VaultItem`, unify the 4 parallel contact models (Contact / CustomerContact / VendorContact / FHCaseContact), migrate 47 endpoints + 9 pages. Audit estimate: 6-8 weeks.
+- **Vault Sharing generalization** — D-6 sharing is hard-coupled to `Document.id`. Generalizing to any VaultItem lets quotes, events, reminders etc. be cross-tenant-shared without re-inventing the mechanism.
+- **Notification preferences** — per-user per-category opt-out, daily digest mode, rate limiting for noisy categories (compliance_expiry, delivery_failed).
+- **Notification category vocabulary** — no central typed registry today; each source site hardcodes its own string. Adding `app/services/notifications/categories.py` with typed enum + display metadata → unlocks visual grouping + per-category mute.
+- **Statement-template editor** — V-1e shipped read-only; CRUD lives in backend utilities today.
+- **Cron editor for agent schedules** — V-1e toggle works; full cron/day/hour/timezone editor is future work.
+- **Accountant invitation flow** — deprecated with QBO/Sage integration death; rebuild if customer demand materializes.
+
+**Entry points:**
+
+- [`backend/docs/vault_README.md`](../backend/docs/vault_README.md) — developer entry point, key files, quick links
+- [`backend/docs/vault_architecture.md`](../backend/docs/vault_architecture.md) — internal architecture reference (~950 lines)
+- [`backend/docs/vault_audit.md`](../backend/docs/vault_audit.md) — pre-V-1 retrospective (ground-truth survey)
+- Per-service user guides under [`backend/docs/vault/`](../backend/docs/vault/) (documents, intelligence, crm, notifications, accounting)
+
+**What's next (demand-driven).** V-1 closed. The next build decision is what moves Bridgeable forward — September runway polish for the Wilbert demo, HR/Payroll module scoping with IRS Form 8655 registration, Smart Plant @ Sunnycrest Q4 2026 / Q1 2027 pilot, or V-2 Vault work. All weighed against actual customer signal post-September. V-2 is not imminent; evaluate after the first cohort of Wilbert licensees is live.
 
 ---
 

@@ -1,5 +1,5 @@
 // companies.tsx — CRM companies list page
-// Route: /crm/companies
+// Route: /vault/crm/companies
 // Uses DeviceAwarePage: desktop shows data table, mobile shows card list.
 
 import { useState, useEffect, useCallback } from "react"
@@ -215,13 +215,13 @@ function CompaniesListDesktop() {
         <div className="flex gap-2">
           {!reclassifyMode ? (
             <>
-              <Button variant="outline" onClick={() => navigate("/crm/companies/duplicates")}>
+              <Button variant="outline" onClick={() => navigate("/vault/vault/crm/companies/duplicates")}>
                 Duplicates
               </Button>
               <Button variant="outline" onClick={() => { setReclassifyMode(true); setSelected(new Set()) }}>
                 Reclassify
               </Button>
-              <Button onClick={() => navigate("/crm/companies/new")}>
+              <Button onClick={() => navigate("/vault/crm/companies/new")}>
                 <Plus className="h-4 w-4 mr-1" /> New company
               </Button>
             </>
@@ -383,7 +383,7 @@ function CompaniesListDesktop() {
               {items.map((item) => {
                 const roles = getRoles(item)
                 return (
-                  <tr key={item.id} className={`hover:bg-gray-50 cursor-pointer ${selected.has(item.id) ? "bg-blue-50" : ""}`} onClick={() => reclassifyMode ? toggleSelect(item.id) : navigate(`/crm/companies/${item.id}`)}>
+                  <tr key={item.id} className={`hover:bg-gray-50 cursor-pointer ${selected.has(item.id) ? "bg-blue-50" : ""}`} onClick={() => reclassifyMode ? toggleSelect(item.id) : navigate(`/vault/crm/companies/${item.id}`)}>
                     {reclassifyMode && (
                       <td className="px-4 py-3">
                         <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggleSelect(item.id)} className="rounded accent-blue-600" onClick={(e) => e.stopPropagation()} />
@@ -421,7 +421,7 @@ function CompaniesListDesktop() {
                       {item.last_activity_date ? timeAgo(item.last_activity_date) : timeAgo(item.created_at)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/crm/companies/${item.id}`) }}>
+                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/vault/crm/companies/${item.id}`) }}>
                         View
                       </Button>
                     </td>

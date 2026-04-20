@@ -738,7 +738,7 @@ function SignaturesStage({
         {caseData.signature_envelope_id && (
           <p className="text-xs text-muted-foreground">
             <a
-              href={`/admin/documents/signing/envelopes/${caseData.signature_envelope_id}`}
+              href={`/vault/documents/signing/${caseData.signature_envelope_id}`}
               className="underline"
             >
               View signature envelope

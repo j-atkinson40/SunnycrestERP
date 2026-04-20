@@ -9,6 +9,7 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func
@@ -16,9 +17,110 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.quote import Quote, QuoteLine
 from app.models.sales_order import SalesOrder, SalesOrderLine
+from app.models.vault_item import VaultItem
 from app.services import audit_service
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# V-1f: Quote → VaultItem dual-write
+# ---------------------------------------------------------------------------
+#
+# Every Quote write (create, convert, status change) mirrors into a
+# VaultItem of item_type="quote". Quotes thus participate in Vault
+# activity + the Vault Overview widget set. If the VaultItem write
+# fails for any reason, we log + continue — Quote operations don't
+# block on VaultItem hygiene (same defensive pattern used by V-1d
+# notification fan-outs).
+
+
+def _quote_vault_metadata(quote: Quote) -> dict:
+    """Build the metadata_json payload stored alongside a quote's
+    VaultItem. Values are stringified where needed so the JSONB blob
+    doesn't carry Decimal / datetime objects that can't serialize."""
+    return {
+        "quote_number": quote.number,
+        "customer_name": quote.customer_name,
+        "total": str(quote.total) if quote.total is not None else "0.00",
+        "status": quote.status,
+        "product_line": quote.product_line,
+        "converted_to_order_id": quote.converted_to_order_id,
+    }
+
+
+def _write_quote_vault_item(db: Session, quote: Quote) -> None:
+    """Create a VaultItem for a freshly persisted Quote. Best-effort:
+    a failure is logged but never propagates — Quote creation MUST
+    succeed regardless of Vault hygiene."""
+    try:
+        from app.services.vault_service import create_vault_item
+
+        create_vault_item(
+            db,
+            company_id=quote.company_id,
+            item_type="quote",
+            title=(
+                f"Quote {quote.number}"
+                + (f" — {quote.customer_name}" if quote.customer_name else "")
+            ),
+            source="system_generated",
+            source_entity_id=quote.id,
+            related_entity_type="quote",
+            related_entity_id=quote.id,
+            created_by=quote.created_by,
+            metadata_json=_quote_vault_metadata(quote),
+        )
+    except Exception:  # pragma: no cover — best-effort dual-write
+        logger.exception(
+            "Quote VaultItem dual-write failed (quote_id=%s)", quote.id
+        )
+
+
+def _get_quote_vault_item(
+    db: Session, quote: Quote
+) -> Optional["VaultItem"]:
+    """Find the VaultItem (if any) associated with a Quote. Pre-V-1f
+    quotes don't have one — returns None in that case (callers must
+    handle the null path)."""
+    return (
+        db.query(VaultItem)
+        .filter(
+            VaultItem.company_id == quote.company_id,
+            VaultItem.item_type == "quote",
+            VaultItem.source_entity_id == quote.id,
+            VaultItem.is_active.is_(True),
+        )
+        .first()
+    )
+
+
+def _update_quote_vault_item(db: Session, quote: Quote) -> None:
+    """Refresh the VaultItem's metadata_json to reflect the current
+    Quote state. No-op + log if the VaultItem doesn't exist (pre-V-1f
+    quote). Best-effort."""
+    try:
+        item = _get_quote_vault_item(db, quote)
+        if item is None:
+            logger.info(
+                "Quote VaultItem update skipped — no VaultItem for "
+                "quote %s (pre-V-1f quote)",
+                quote.id,
+            )
+            return
+        item.metadata_json = {
+            **(item.metadata_json or {}),
+            **_quote_vault_metadata(quote),
+        }
+        if quote.status == "converted":
+            item.status = "completed"
+            item.completed_at = quote.modified_at or datetime.now(
+                timezone.utc
+            )
+    except Exception:  # pragma: no cover — best-effort dual-write
+        logger.exception(
+            "Quote VaultItem metadata update failed (quote_id=%s)", quote.id
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -233,14 +335,24 @@ def create_quote(
     db.commit()
     db.refresh(quote)
 
-    audit_service.log(
+    # V-1f: dual-write VaultItem so the quote surfaces in Vault
+    # activity (overview widgets, cross-subsystem timeline).
+    _write_quote_vault_item(db, quote)
+    db.commit()
+
+    # BUGS.md #7 fix (2026-04-20): was `audit_service.log(...)` which
+    # doesn't exist — the real function is `log_action`. Aligning with
+    # the platform-wide convention used by sales_service.py:
+    # past-participle action strings + short entity_type + `changes`
+    # kwarg (not `details`).
+    audit_service.log_action(
         db,
-        company_id=tenant_id,
+        tenant_id,
+        "created",
+        "quote",
+        quote.id,
         user_id=user_id,
-        action="create",
-        entity_type="quote",
-        entity_id=quote.id,
-        details={"number": quote_number, "product_line": product_line},
+        changes={"number": quote_number, "product_line": product_line},
     )
 
     return _quote_to_dict(quote)
@@ -307,14 +419,20 @@ def convert_quote_to_order(
     db.commit()
     db.refresh(order)
 
-    audit_service.log(
+    # V-1f: mirror the conversion into the Quote's VaultItem so the
+    # timeline + overview widgets reflect "quote converted → order".
+    _update_quote_vault_item(db, quote)
+    db.commit()
+
+    # BUGS.md #7 fix (2026-04-20): see create_quote comment.
+    audit_service.log_action(
         db,
-        company_id=tenant_id,
+        tenant_id,
+        "converted",
+        "quote",
+        quote.id,
         user_id=user_id,
-        action="convert",
-        entity_type="quote",
-        entity_id=quote.id,
-        details={"order_id": order.id, "order_number": order_number},
+        changes={"order_id": order.id, "order_number": order_number},
     )
 
     return {
@@ -380,14 +498,19 @@ def update_quote_status(
     db.commit()
     db.refresh(quote)
 
-    audit_service.log(
+    # V-1f: reflect the status change in the Quote's VaultItem.
+    _update_quote_vault_item(db, quote)
+    db.commit()
+
+    # BUGS.md #7 fix (2026-04-20): see create_quote comment.
+    audit_service.log_action(
         db,
-        company_id=tenant_id,
+        tenant_id,
+        "status_changed",
+        "quote",
+        quote.id,
         user_id=user_id,
-        action="update_status",
-        entity_type="quote",
-        entity_id=quote.id,
-        details={"old_status": old_status, "new_status": new_status},
+        changes={"old_status": old_status, "new_status": new_status},
     )
 
     return _quote_to_dict(quote)

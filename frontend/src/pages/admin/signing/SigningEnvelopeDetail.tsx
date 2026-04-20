@@ -104,7 +104,7 @@ export default function SigningEnvelopeDetail() {
     <div className="space-y-6 p-6">
       <div>
         <Link
-          to="/admin/documents/signing/envelopes"
+          to="/vault/documents/signing"
           className="text-xs text-muted-foreground underline"
         >
           ← All envelopes

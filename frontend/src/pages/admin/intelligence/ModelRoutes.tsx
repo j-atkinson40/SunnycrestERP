@@ -30,7 +30,7 @@ export default function ModelRoutes() {
     <div className="space-y-6 p-6">
       <div>
         <Link
-          to="/admin/intelligence/prompts"
+          to="/vault/intelligence/prompts"
           className="text-sm text-muted-foreground hover:underline"
         >
           ← Prompt Library

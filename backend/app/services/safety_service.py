@@ -23,7 +23,7 @@ from app.models.safety_inspection import (
 from app.models.safety_chemical import SafetyChemical
 from app.models.safety_incident import SafetyIncident
 from app.models.safety_loto import SafetyLotoProcedure
-from app.models.safety_alert import SafetyAlert
+from app.models.notification import Notification
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -975,30 +975,101 @@ def review_loto(db: Session, company_id: str, loto_id: str) -> SafetyLotoProcedu
 
 
 # ============================================================
-# Alerts
+# Alerts — now backed by Notification (Phase V-1d merge)
 # ============================================================
+#
+# Safety alerts live in the notifications table with
+# category='safety_alert'. The SafetyAlert-shaped response used by
+# /safety/alerts is reconstructed from Notification columns:
+#
+#   alert_type       ← extracted from title (prefix before ": ")
+#   severity         ← severity column
+#   reference_type   ← source_reference_type
+#   reference_id     ← source_reference_id
+#   message          ← message
+#   due_date         ← due_date (DateTime → Date via .date())
+#   acknowledged_by  ← acknowledged_by_user_id
+#   acknowledged_at  ← acknowledged_at
+#   resolved_at      ← acknowledged_at (merged — ack implies resolve)
+#   created_at       ← created_at
+
+
+def _notification_to_alert_dict(n: Notification) -> dict:
+    """Shape a Notification row as an AlertResponse-compatible dict."""
+    # Title format produced by both the r29 migration and the
+    # future create_safety_alert() helper is
+    # "{alert_type}: {excerpt}". Fall back to the category name if
+    # the colon is missing.
+    alert_type = (n.title.split(": ", 1)[0] if ": " in n.title else "alert")
+    # due_date was originally a DB Date on SafetyAlert; Notification
+    # stores it as DateTime(timezone). Normalize to UTC before calling
+    # .date() so the calendar-date doesn't drift in TZs where the
+    # Python process runs with a local offset.
+    due_date_py = None
+    if n.due_date is not None:
+        dt = n.due_date
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc)
+        due_date_py = dt.date()
+    return {
+        "id": n.id,
+        "company_id": n.company_id,
+        "alert_type": alert_type,
+        "severity": n.severity or "medium",
+        "reference_id": n.source_reference_id,
+        "reference_type": n.source_reference_type,
+        "message": n.message,
+        "due_date": due_date_py,
+        "acknowledged_by": n.acknowledged_by_user_id,
+        "acknowledged_at": n.acknowledged_at,
+        "resolved_at": n.acknowledged_at,
+        "created_at": n.created_at,
+    }
+
+
+# Severity sort — Postgres text sort on 'critical'/'high'/'medium'/'low'
+# happens to put 'medium' before 'low' in .desc(), but that's not the
+# business ordering we want. Use a CASE for explicit ordering.
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
 
 def list_alerts(db: Session, company_id: str, active_only: bool = True):
-    q = db.query(SafetyAlert).filter(SafetyAlert.company_id == company_id)
+    q = db.query(Notification).filter(
+        Notification.company_id == company_id,
+        Notification.category == "safety_alert",
+    )
     if active_only:
-        q = q.filter(SafetyAlert.resolved_at.is_(None))
-    return q.order_by(
-        SafetyAlert.severity.desc(),
-        SafetyAlert.due_date,
-    ).all()
+        q = q.filter(Notification.acknowledged_at.is_(None))
+    rows = q.order_by(Notification.due_date, Notification.created_at).all()
+    rows.sort(
+        key=lambda n: (
+            _SEVERITY_ORDER.get((n.severity or "medium").lower(), 9),
+            n.due_date or datetime.max.replace(tzinfo=timezone.utc),
+        )
+    )
+    return [_notification_to_alert_dict(n) for n in rows]
 
-def acknowledge_alert(db: Session, company_id: str, alert_id: str, user_id: str) -> SafetyAlert | None:
-    alert = db.query(SafetyAlert).filter(
-        SafetyAlert.id == alert_id,
-        SafetyAlert.company_id == company_id,
-    ).first()
+
+def acknowledge_alert(
+    db: Session, company_id: str, alert_id: str, user_id: str
+) -> dict | None:
+    alert = (
+        db.query(Notification)
+        .filter(
+            Notification.id == alert_id,
+            Notification.company_id == company_id,
+            Notification.category == "safety_alert",
+        )
+        .first()
+    )
     if not alert:
         return None
-    alert.acknowledged_by = user_id
+    alert.acknowledged_by_user_id = user_id
     alert.acknowledged_at = datetime.now(timezone.utc)
+    alert.is_read = True
     db.commit()
     db.refresh(alert)
-    return alert
+    return _notification_to_alert_dict(alert)
 
 
 # ============================================================

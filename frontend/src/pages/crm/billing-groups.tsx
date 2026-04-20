@@ -1,5 +1,5 @@
 /**
- * Billing Groups — /crm/billing-groups
+ * Billing Groups — /vault/crm/billing-groups
  *
  * Manage multi-location funeral home accounts with configurable billing preferences.
  */
@@ -328,7 +328,7 @@ export default function BillingGroupsPage() {
       ) : (
         <div className="grid gap-4">
           {groups.map(g => (
-            <Link key={g.id} to={`/crm/billing-groups/${g.id}`}>
+            <Link key={g.id} to={`/vault/crm/billing-groups/${g.id}`}>
               <Card className="p-5 hover:bg-muted/30 transition-colors">
                 <div className="flex items-start justify-between">
                   <div>

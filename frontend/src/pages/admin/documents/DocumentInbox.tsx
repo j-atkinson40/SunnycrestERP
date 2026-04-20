@@ -84,7 +84,7 @@ export default function DocumentInbox() {
           /* non-fatal — next reload will reconcile */
         });
     }
-    navigate(`/admin/documents/documents/${item.document_id}`);
+    navigate(`/vault/documents/${item.document_id}`);
   }
 
   async function handleMarkAllRead() {
@@ -252,7 +252,7 @@ export default function DocumentInbox() {
                       title={i.document_title}
                     >
                       <Link
-                        to={`/admin/documents/documents/${i.document_id}`}
+                        to={`/vault/documents/${i.document_id}`}
                         onClick={(e) => {
                           e.preventDefault();
                           handleOpen(i);

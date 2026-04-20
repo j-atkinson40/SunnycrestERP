@@ -72,6 +72,11 @@ class SendParams:
     caller_workflow_step_id: str | None = None
     caller_intelligence_execution_id: str | None = None
     caller_signature_envelope_id: str | None = None
+    # V-1f: polymorphic attribution to any VaultItem. Leave None for
+    # document-attached sends (the common case). Set when the send
+    # originates from a non-Document surface (quote, compliance
+    # reminder, etc.) so admin UI can link back to the source.
+    caller_vault_item_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     max_retries: int = 3
 
@@ -241,6 +246,7 @@ def send(
         caller_workflow_step_id=params.caller_workflow_step_id,
         caller_intelligence_execution_id=params.caller_intelligence_execution_id,
         caller_signature_envelope_id=params.caller_signature_envelope_id,
+        caller_vault_item_id=params.caller_vault_item_id,
         metadata_json=params.metadata or None,
     )
     db.add(delivery)
@@ -288,6 +294,7 @@ def send(
                 provider_response=None,
             )
             db.flush()
+            _notify_delivery_failed(db, delivery)
             return delivery
 
         if result.success:
@@ -321,6 +328,11 @@ def send(
         delivery.provider_response = result.provider_response
         delivery.retry_count = attempt - 1 if attempt > 1 else 0
         db.flush()
+        # V-1d: only notify on real failures; "rejected" means the
+        # channel isn't implemented yet (e.g. SMS stub) — those would
+        # flood the notification feed with non-actionable noise.
+        if terminal_status == "failed":
+            _notify_delivery_failed(db, delivery)
         return delivery
 
 
@@ -337,6 +349,52 @@ def _mark_failed(
     delivery.error_code = error_code
     if provider_response is not None:
         delivery.provider_response = provider_response
+
+
+def _notify_delivery_failed(
+    db: Session, delivery: DocumentDelivery
+) -> None:
+    """V-1d: Fan-out a delivery_failed notification to owning tenant
+    admins after terminal failure. Best-effort — swallowed so a
+    notification failure never propagates to the send() caller. Not
+    fired for `rejected` status (e.g. SMS stub) — those aren't real
+    delivery failures, just "channel not implemented yet" signals
+    that clutter the feed without being actionable."""
+    try:
+        from app.services import notification_service
+
+        recipient = delivery.recipient_value or delivery.recipient_name or "recipient"
+        subject = (delivery.subject or "").strip()[:80]
+        channel = delivery.channel or "email"
+        msg = (
+            f"A {channel} delivery to {recipient} failed after "
+            f"{delivery.retry_count or 0} retries."
+        )
+        if delivery.error_message:
+            msg += f" Error: {delivery.error_message[:200]}"
+        notification_service.notify_tenant_admins(
+            db,
+            company_id=delivery.company_id,
+            title=(
+                f"Delivery failed: {subject}"
+                if subject
+                else f"Delivery to {recipient} failed"
+            ),
+            message=msg,
+            type="error",
+            category="delivery_failed",
+            severity="high",
+            link=f"/admin/documents/deliveries/{delivery.id}",
+            source_reference_type="document_delivery",
+            source_reference_id=delivery.id,
+        )
+    except Exception:  # pragma: no cover — best-effort notify
+        logger.exception(
+            "delivery_failed notification fan-out failed "
+            "(delivery_id=%s company_id=%s)",
+            delivery.id,
+            delivery.company_id,
+        )
 
 
 # ── Convenience builders for migrated callers ────────────────────────

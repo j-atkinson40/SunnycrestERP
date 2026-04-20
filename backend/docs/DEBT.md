@@ -11,6 +11,304 @@ When a debt item is resolved, move the entry from **Active debt** to
 
 ## Active debt
 
+### Journal Entry VaultItem coverage — deferred after V-1f+g
+
+**Discovered:** V-1f+g investigation (April 20, 2026).
+
+**Current state:** JournalEntry writes to the GL but does NOT write
+a VaultItem anywhere in the codebase (verified: `create_vault_item`
+callers under `app/services/` never touch `JournalEntry`). The V-1f+g
+audit identified this as **Case A** — nothing to fix, but also
+nothing surfacing JE activity in the Vault timeline / overview
+widgets. A lint-style regression test
+(`test_je_posts_do_not_write_vault_item_today` in
+`tests/test_vault_v1fg_vault_item_hygiene.py`) asserts this assumption
+so a future slip is loud.
+
+**Eventual fix:** Decide whether JEs should surface in Vault activity.
+If yes, the correct `item_type` is probably `"document"` with
+`document_type="journal_entry"` (JEs are historical artifacts, not
+timeline events — using `item_type="event"` would pollute the V-2
+Calendar). Wire the dual-write in whatever service posts JEs (likely
+`journal_entry_service.post_entry` when it lands) and delete the lint
+guard in favor of a real behavioral test.
+
+**Impact:** zero right now — JEs are a power-user / accountant
+surface and the Vault Overview widgets don't promise JE visibility.
+Grows to low-medium when V-2 Calendar ships — at that point the
+product decision "should accounting appear on the calendar?" forces
+the question.
+
+---
+
+### Existing Quotes backfill — not done in V-1f+g
+
+**Discovered:** V-1f+g (April 20, 2026).
+
+**Current state:** V-1f+g ships forward-only VaultItem dual-write for
+Quote. New Quotes get a VaultItem; existing Quotes in the DB do not.
+The `_update_quote_vault_item` helper logs + noops when it can't find
+a VaultItem for a Quote being updated, so pre-V-1f quotes don't
+crash when their status changes — they just don't appear in Vault
+activity.
+
+**Eventual fix:** one-off backfill script that walks `quotes` and
+creates a VaultItem for each row that doesn't already have one
+(dedupe by `source_entity_id = quote.id`). Probably a management
+command rather than a migration (migrations should be structural;
+bulk data population is better as an idempotent script).
+
+**Impact:** small — Sunnycrest dev DB has a handful of test quotes;
+no production tenants have quotes yet. Skip unless customer asks
+"where are my old quotes in Vault activity?"
+
+---
+
+### Statement-template editor deferred from V-1e
+
+**Discovered:** V-1e (April 20, 2026).
+
+**Current state:** The Statement Templates sub-tab at
+`/vault/accounting/statements` is a read-only split view —
+platform defaults on one side, tenant customizations on the other.
+There's no editor: no fork-to-tenant action, no inline edit, no
+template designer. Admins who need to customize a statement template
+have to do it by direct SQL or through whatever private surface the
+statement-generation service currently exposes.
+
+**Eventual fix:** Ship a full template editor component — similar
+to the DocumentTemplate editor built in D-3 (draft/activate/rollback
++ audit trail). Probably adds two endpoints to
+`vault_accounting.py`: `POST /statement-templates/{id}/fork`
+(create tenant-scoped override) and `PATCH /statement-templates/{id}`
+(edit tenant-owned template). The existing `StatementTemplate` model
+already supports the platform-vs-tenant scope via nullable
+`tenant_id`, so no schema changes needed.
+
+**Impact:** low right now — tenant customizations are rare and can
+be handled via direct DB access by engineering. Grows to medium if
+customer demand for statement branding picks up.
+
+---
+
+### Cron-editor for agent schedules deferred from V-1e
+
+**Discovered:** V-1e (April 20, 2026).
+
+**Current state:** The Agent Schedules sub-tab at
+`/vault/accounting/agents` lets admins toggle schedules on/off but
+does NOT let them edit the cron expression, `run_day_of_month`, or
+`run_hour` inline. Editing those fields requires the existing
+`POST /agents/schedules` upsert endpoint, which has no UI surface
+yet.
+
+**Eventual fix:** Add an edit modal per schedule row — cron
+expression input with human-readable preview ("Every day at 3am ET"),
+day-of-month + hour pickers, timezone dropdown, notify-emails list,
+auto-approve toggle. Call the existing upsert endpoint on save.
+
+**Impact:** low — most accounting agents have reasonable defaults
+from the scheduler seed, and power users can still edit via API.
+Medium when tenants want to shift a monthly close run off the default
+3rd-of-month.
+
+---
+
+### V-1e widget seed coordination across fresh deploys
+
+**Discovered:** V-1e (April 20, 2026).
+
+**Current state:** Three new widget definitions
+(`vault_pending_period_close`, `vault_gl_classification_review`,
+`vault_agent_recent_activity`) were added to
+`widget_registry.WIDGET_DEFINITIONS`. The seed runs on app startup
+via `seed_widget_definitions(db)` in `app/main.py`. But test
+environments that don't trigger full startup (e.g. direct
+`TestClient(app)` usage) start with an un-seeded DB — the V-1e
+tests worked around this by running a one-off seed before the test
+session. On a fresh production deploy the startup path handles it.
+
+**Eventual fix:** Consider moving widget seeding to a migration
+step, or an explicit `ensure_seeded()` call on the first
+`/vault/overview/widgets` request. Either makes the seed a first-
+class part of the data model rather than a startup side-effect.
+
+**Impact:** low in practice (prod auto-seeds; tests can seed
+explicitly), but it's a smell that tests and production take
+different bootstrap paths.
+
+---
+
+### Vault V-1a/c/d redirect scaffolding — remove after one release
+
+**Discovered:** V-1a (April 20, 2026), extended by V-1c + V-1d
+(April 20, 2026).
+
+**Current state:** Old paths redirect to `/vault/*` via `<Navigate>`
+and `RedirectPreserveParam`:
+- V-1a: 16 entries under `/admin/documents/*` + `/admin/intelligence/*`.
+- V-1c: 9 entries under `/crm/*`.
+- V-1d: 1 entry at `/notifications` → `/vault/notifications`.
+
+One-release grace period for bookmarks, documentation links, external
+references. Notifications in particular has a long tail of external
+links — any email template that hard-coded `/notifications?` as a deep
+link, plus every browser bookmark users have built up. Keep the
+redirect until at least one release has shipped after V-1d.
+
+**Eventual fix:** Delete the ~26 redirect route entries in `App.tsx`
+and the `RedirectPreserveParam` helper (only if no other V-1 phase
+reuses it). Verify no internal link reintroduced an old path via
+periodic grep on `/admin/documents`, `/admin/intelligence`, `/crm/`,
+`/notifications` outside `App.tsx`.
+
+**Threshold for action:** after V-1h documentation lands (which
+exposes the new paths externally) + one release of user-facing grace.
+
+---
+
+### Notification category vocabulary — no central registry
+
+**Discovered:** V-1d (April 20, 2026).
+
+**Current state:** The `Notification.category` string is set at
+each source site with a different literal string: `"safety_alert"`
+(r29 migration + existing usage), `"share_granted"` (V-1d),
+`"delivery_failed"` (V-1d), `"signature_requested"` (V-1d),
+`"compliance_expiry"` (V-1d), `"account_at_risk"` (V-1d), plus the
+pre-V-1d categories `"employee"`, `"order"`, `"invoice"`, and
+others scattered through the code.
+
+Frontend filtering, grouping, and per-category display rules (icon,
+color, group header) are ad-hoc — NotificationsWidget colors by
+`type` not `category`; the full page has no category filter.
+
+**Eventual fix:** Add `app/services/notifications/categories.py`
+with a typed enum or frozen dict mapping `category_key → {display_name,
+icon, color, default_severity, group}`, migrate every call site to
+reference the registry, and surface category-based filtering + visual
+grouping on the Notifications page. Likely pairs with the
+notification-preferences work below — both need the same registry.
+
+**Impact:** low right now (categories work for filtering at the API
+level), but as V-1d's 5 new sources start producing real volume the
+lack of a single vocabulary will make UX polish (grouping,
+per-category mute, digest emails) harder.
+
+---
+
+### Notification preferences — no per-category opt-out / digest
+
+**Discovered:** V-1d (April 20, 2026).
+
+**Current state:** Every notification fires in real time for every
+eligible recipient. An admin in a manufacturing tenant receives
+every compliance_expiry, delivery_failed, and share_granted the
+moment the source event happens. No quiet-hours gate, no daily
+digest, no per-category mute, no per-channel routing (email vs
+in-app vs SMS). Noisy categories like compliance_expiry (weekly)
+and delivery_failed (whenever Resend hiccups) can be felt as
+spammy.
+
+Rate-limiting is implicit only where it's easy — compliance_expiry
+dedupes by `source_reference_id` so the same overdue item doesn't
+re-fire on re-runs of `sync_compliance_expiries`. Everything else
+has no rate limit.
+
+**Eventual fix:** Ship a `user_notification_preferences` table keyed
+on (user_id, category) with `enabled` + `delivery_mode` (realtime /
+daily_digest / never) + `channel` (in_app / email / both). Gate
+fan-out helpers on the preference check; collect daily_digest rows
+for a scheduler job. Fan-out helpers should also expose a rate-limit
+hint (e.g. "don't re-fire delivery_failed for same recipient within
+5 minutes") for noisy categories.
+
+**Impact:** low while V-1d sources are fresh, but will grow as
+workflows + AI executions start driving secondary notification
+cascades.
+
+---
+
+### CRM parallel contact models unification (post V-1c lift-and-shift)
+
+**Discovered:** Vault audit § 3.2 + 3.6 (April 19, 2026); deferred
+from V-1c (April 20, 2026).
+
+**Current state:** The CRM `Contact` model (linked to
+`CompanyEntity`) is NOT unified with three parallel contact tables:
+- `CustomerContact` (`customer_contact.py`) — keyed on `customer_id`
+- `VendorContact` (`vendor_contact.py`) — keyed on `vendor_id`
+- `FHCaseContact` (`fh_case_contact.py`) — keyed on `fh_case_id`,
+  carries portal-invitation fields (`portal_invite_sent_at`,
+  `portal_last_login_at`) that no other contact model has
+
+Same physical person can be four separate rows across these tables.
+V-1c's audit explicitly scoped this out — lift-and-shift moves CRM
+under Vault but does NOT reconcile contacts.
+
+**Eventual fix:** This is Option B from the Vault audit (§7.4 CRM
+absorption posture): make `CompanyEntity` a first-class VaultItem
+(`item_type="account"`), make `Contact` the canonical contact table,
+migrate `CustomerContact` / `VendorContact` / `FHCaseContact` rows to
+`Contact` + a tag/role column, update all call sites. Audit
+estimated 6-8 weeks. Portal-invitation fields need preservation
+(probably via a `portal_settings` JSONB on the unified Contact or a
+separate `ContactPortalAccess` table).
+
+**Threshold for action:** after V-1h Vault documentation ships and
+the Vault Hub has stabilized for at least one release. Low urgency —
+duplicate contact rows are a UX annoyance, not a data-integrity
+issue. Tenants can work around via the unified company detail page.
+
+---
+
+### Deprecated AccountingConnection model + OAuth code removal
+
+**Discovered:** Per V-1a build context — QBO/Sage accounting
+integration was deprecated when the native accounting engine took
+over. `AccountingConnection` model + OAuth token encryption + sync
+config + `accountant_email` invitation flow + related routes
+(`accounting_connection.py`) still exist but are dormant.
+
+**Current state:** Code compiles + database columns remain. No new
+production integrations use this path. V-1e (April 20, 2026) added
+the replacement admin surface under `/vault/accounting/*`, so the
+path to removal is now unblocked.
+
+**Eventual fix:** separate focused build — migration dropping the
+unused columns, route file deletion, frontend `/settings/integrations/
+accounting` cleanup, removal from `admin/accounting.tsx`. V-1e's
+classification queue + COA templates + period admin cover every
+surface the old integration UI provided (minus the QBO OAuth / Sage
+CSV connection setup itself, which is the thing going away).
+
+**Threshold for action:** next housekeeping pass — no product
+feature blocks this.
+
+---
+
+### Accountant invitations surface not rebuilt in V-1e
+
+**Discovered:** V-1e (April 20, 2026).
+
+**Current state:** The old `accounting_connection.py` flow had an
+"invite your accountant" feature — send a magic-link email granting
+limited read access to QBO-synced data. With QBO/Sage integration
+deprecated and the native accounting engine now owning the data, the
+invitation flow no longer has a coherent target. V-1e's scope
+explicitly excluded rebuilding it.
+
+**Eventual fix:** If accountant collaboration becomes a real customer
+ask, rebuild as a first-class feature — probably a tenant-scoped
+read-only role + a token-based login landing page pointing at the
+Vault hub's financials view. Would slot in alongside V-1e as a 7th
+sub-tab or under Platform admin user settings.
+
+**Impact:** zero customer reports of missing the feature to date.
+Revisit only if demand materializes.
+
+---
+
 ### Intelligence stats endpoints perform live aggregation
 
 **Discovered:** Phase 3a (April 2026)
@@ -419,6 +717,59 @@ weeks pass without anyone asking about the file copies.
 ---
 
 ## Resolved debt
+
+### ✅ Audit observation 4: Quote doesn't write VaultItem (2026-04-20)
+
+**Originally discovered:** Bridgeable Vault audit (`backend/docs/vault_audit.md`, observation 4).
+
+**Resolved in:** Phase V-1f+g (April 20, 2026).
+
+`quote_service.create_quote` now dual-writes a VaultItem
+(`item_type="quote"`, `source_entity_id=quote.id`); metadata carries
+quote_number + customer_name + total + status + product_line so the
+overview-widget and future timeline views have everything they need.
+`convert_quote_to_order` + `update_quote_status` update the same row
+— on conversion, VaultItem.status flips to "completed" with a
+completed_at stamp, and metadata gets `converted_to_order_id` for
+back-reference. Backfill of existing Quotes is forward-only +
+tracked in DEBT.md.
+
+---
+
+### ✅ Delivery polymorphic attribution beyond document-only (2026-04-20)
+
+**Originally discovered:** Delivery abstraction audit at D-7 shipdown
+(April 2026).
+
+**Resolved in:** Phase V-1f+g (April 20, 2026).
+
+`document_deliveries.caller_vault_item_id` column added via migration
+`r30_delivery_caller_vault_item`. `DeliveryService.SendParams` gains
+the matching optional kwarg — sends triggered from a non-Document
+surface (quote, compliance reminder, account-at-risk notification)
+can now attribute to the source VaultItem instead of abusing the
+existing `document_id` slot. Partial index keeps index size small
+for the common document-attached path. Additive + nullable — zero
+existing callers affected.
+
+---
+
+### ✅ Nav clutter: Documents + Intelligence admin entries buried in Settings → Platform (2026-04-20)
+
+**Originally discovered:** Bridgeable Vault audit (`backend/docs/vault_audit.md`, §1).
+
+**Resolved in:** Phase V-1a (April 20, 2026).
+
+Documents (5 entries: Templates, Document Log, Inbox, Delivery Log,
+Signing) + Intelligence (2 entries: Prompts, Experiments) moved out of
+the `Settings → Platform` subgroup into a new top-level `Bridgeable
+Vault` hub (`/vault/*`). Settings → Platform shrank to its original
+intent — tenant-management (Billing, Extensions, Onboarding).
+
+Foundation for V-1b-V-1h to add CRM, Notifications, Accounting admin
+under the same hub.
+
+---
 
 ### ✅ Three non-migrated WeasyPrint call sites — all migrated (2026-04-19)
 

@@ -145,7 +145,7 @@ export default function TemplateTestRenderModal({
                     </a>
                   )}
                   <a
-                    href={`/admin/documents/documents?include_test_renders=true`}
+                    href={`/vault/documents?include_test_renders=true`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >

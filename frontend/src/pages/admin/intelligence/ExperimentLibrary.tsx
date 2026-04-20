@@ -83,7 +83,7 @@ export default function ExperimentLibrary() {
     <div className="space-y-6 p-6" data-testid="experiment-library">
       <div>
         <Link
-          to="/admin/intelligence/prompts"
+          to="/vault/intelligence/prompts"
           className="text-sm text-muted-foreground hover:underline"
         >
           ← Prompt Library
@@ -161,7 +161,7 @@ export default function ExperimentLibrary() {
                 <TableRow key={e.id} data-testid="experiment-row">
                   <TableCell>
                     <Link
-                      to={`/admin/intelligence/experiments/${e.id}`}
+                      to={`/vault/intelligence/experiments/${e.id}`}
                       className="font-medium underline"
                     >
                       {e.name}
@@ -178,7 +178,7 @@ export default function ExperimentLibrary() {
                   <TableCell className="font-mono text-xs">
                     {e.prompt_key ? (
                       <Link
-                        to={`/admin/intelligence/prompts/${e.prompt_id}`}
+                        to={`/vault/intelligence/prompts/${e.prompt_id}`}
                         className="underline"
                       >
                         {e.prompt_key}
@@ -273,7 +273,7 @@ export function CreateExperimentLink({
   if (versionId) qs.set("variant_b_version_id", versionId);
   return (
     <Link
-      to={`/admin/intelligence/experiments/new?${qs.toString()}`}
+      to={`/vault/intelligence/experiments/new?${qs.toString()}`}
       className={
         className ||
         "inline-flex h-7 items-center rounded-md border border-input bg-background px-2 text-xs hover:bg-accent"

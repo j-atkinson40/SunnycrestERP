@@ -25,6 +25,7 @@ append-only by contract.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -38,6 +39,8 @@ from app.models.document_share_read import DocumentShareRead
 from app.models.platform_tenant_relationship import (
     PlatformTenantRelationship,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SharingError(Exception):
@@ -198,6 +201,39 @@ def grant_share(
             "enforce_relationship": enforce_relationship,
         },
     )
+
+    # V-1d: Notify target tenant admins that a new document is in
+    # their inbox. Fan-out so any admin of the target tenant sees the
+    # unread badge; each admin's row links to the canonical document
+    # detail page. Best-effort — wrapped so notification failures
+    # never block a grant.
+    try:
+        from app.services import notification_service
+
+        doc_title = (document.title or "Untitled document").strip()
+        notification_service.notify_tenant_admins(
+            db,
+            company_id=target_company_id,
+            title=f"New shared document: {doc_title[:120]}",
+            message=(
+                f"A document has been shared with your organization"
+                + (f" — {reason}" if reason else ".")
+            ),
+            type="info",
+            category="share_granted",
+            link=f"/vault/documents/{document.id}",
+            actor_id=granted_by_user_id,
+            source_reference_type="document",
+            source_reference_id=document.id,
+        )
+    except Exception:  # pragma: no cover — best-effort notify
+        logger.exception(
+            "share_granted notification fan-out failed "
+            "(document_id=%s target_company_id=%s)",
+            document.id,
+            target_company_id,
+        )
+
     return share
 
 
