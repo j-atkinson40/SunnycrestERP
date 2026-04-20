@@ -50,6 +50,7 @@ import { detectNLIntent } from "@/components/nl-creation/detectNLIntent";
 import type { NLEntityType } from "@/types/nl-creation";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { OnboardingTouch } from "@/components/onboarding/OnboardingTouch";
+import { getVerticalExample } from "@/hooks/useVerticalExample";
 
 // ── Icon map ────────────────────────────────────────────────────────────────
 
@@ -897,11 +898,14 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         className="relative w-full max-w-[640px] mx-4 bg-white rounded-xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Phase 7 — first-time command bar tooltip */}
+        {/* Phase 7 — first-time command bar tooltip.
+            Body uses vertical-aware example so manufacturing tenants
+            see "new order", FH tenants see "new case", etc. No
+            hardcoded entity names — see useVerticalExample.ts. */}
         <OnboardingTouch
           touchKey="command_bar_intro"
           title="Press \u2318K anytime."
-          body="Search, create, or take any action. Try typing 'new case' or a record number."
+          body={`Search, create, or take any action. Try typing '${getVerticalExample(tenantVertical, "new_primary")}' or a record number.`}
           position="bottom"
           className="!top-[calc(100%+8px)] !mt-0 right-4 w-72"
         />
@@ -1220,7 +1224,11 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             </div>
           )}
 
-          {/* Empty state (has query, not loading, no results) */}
+          {/* Empty state (has query, not loading, no results).
+              Hints are vertical-aware: manufacturing sees "new order",
+              FH sees "new case", cemetery sees "new burial", etc.
+              The 3 hints cover: primary create intent, a queue-focused
+              glance, and a universal space-switch suggestion. */}
           {query.length >= 2 && !loading && !searchingDocs && results.length === 0 && !apiAnswer && (
             <div
               className="space-y-2 py-8 text-center text-sm"
@@ -1232,15 +1240,15 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
               <div className="text-xs text-gray-400">
                 Try{" "}
                 <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
-                  new case
+                  {getVerticalExample(tenantVertical, "new_primary")}
                 </span>{" "}
                 ·{" "}
                 <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
-                  my invoices
+                  my {getVerticalExample(tenantVertical, "queue_primary")}s
                 </span>{" "}
                 ·{" "}
                 <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
-                  switch to production
+                  switch spaces
                 </span>
               </div>
             </div>

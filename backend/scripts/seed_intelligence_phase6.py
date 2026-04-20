@@ -6,6 +6,22 @@ two email templates (`email.briefing.morning`, `email.briefing.evening`).
 Both seeded idempotently alongside existing `briefing.daily_summary`
 (legacy path, NOT modified or retired — coexist strategy).
 
+Prompt seed logic (diff-check + version-bump, Option A):
+  - No existing prompt row       → create prompt + v1 active
+  - Exactly 1 version + content matches current seed → no-op
+  - Exactly 1 version + content DIFFERS → deactivate v1, create v2 active
+    (platform-level update; admins see the new version in the
+    Intelligence admin UI with a "platform update" changelog entry)
+  - Multiple versions exist       → skip with warning log. Multiple
+    versions means an admin has ALREADY customized this prompt, so
+    the platform update is NOT force-applied over their edits. The
+    warning surfaces in logs so platform operators know a manual
+    reconciliation is pending.
+
+This preserves admin customizations without needing separate
+source-tracking infrastructure. Future maintainers: the "multiple
+versions" branch is deliberate — do not change it to overwrite.
+
 Run:
     cd backend && source .venv/bin/activate
     DATABASE_URL=<url> python scripts/seed_intelligence_phase6.py
@@ -105,10 +121,25 @@ SPACE-AWARE SECTION EMPHASIS (if active_space_name is set):
 {% if active_space_name == "Production" %}- Lead with today's pour schedule, material availability, crew assignments. Financial items come SECOND and briefly.{% endif %}
 {% if active_space_name == "Ownership" %}- Lead with business-level KPIs (revenue trend, pipeline, cash position). Operational detail compressed.{% endif %}
 
+VERTICAL-APPROPRIATE TERMINOLOGY (CRITICAL — do NOT mix terminology across verticals):
+The user's business vertical is: {{ vertical }}
+Use ONLY terminology appropriate to this vertical:
+{% if vertical == "manufacturing" %}- orders, work orders, production, deliveries, invoices, quotes, customers
+- Do NOT use: cases, arrangements, deceased, families, interments, burials, cremations, certificates
+{% elif vertical == "funeral_home" %}- cases, arrangements, services, families, decedents, funeral homes
+- Do NOT use: orders, work orders, production, pours, deliveries
+{% elif vertical == "cemetery" %}- burials, plots, interments, services, families
+- Do NOT use: orders, work orders, production, cases, arrangements
+{% elif vertical == "crematory" %}- cremations, services, certificates, families, decedents
+- Do NOT use: orders, work orders, production, pours, cases, arrangements, burials, plots
+{% else %}- This tenant's vertical is unset; use generic business language (orders, records, items).
+{% endif %}
+
 CONTEXT AVAILABLE:
 Today: {{ today_iso }} ({{ day_of_week }})
 Role: {{ role_slug }}
 Active space: {{ active_space_name or "(none)" }}
+Vertical: {{ vertical }}
 Tone preference: {{ narrative_tone }}
 
 Legacy context (reuse months of tuning):
@@ -159,10 +190,25 @@ SPACE-AWARE SECTION EMPHASIS (if active_space_name is set):
 {% if active_space_name == "Administrative" %}- Recap invoices approved, payments logged; flag AR items still outstanding.{% endif %}
 {% if active_space_name == "Production" %}- Recap pours / strips completed; flag production items that slipped.{% endif %}
 
+VERTICAL-APPROPRIATE TERMINOLOGY (CRITICAL — do NOT mix terminology across verticals):
+The user's business vertical is: {{ vertical }}
+Use ONLY terminology appropriate to this vertical:
+{% if vertical == "manufacturing" %}- orders, work orders, production, deliveries, invoices, quotes, customers
+- Do NOT use: cases, arrangements, deceased, families, interments, burials, cremations, certificates
+{% elif vertical == "funeral_home" %}- cases, arrangements, services, families, decedents, funeral homes
+- Do NOT use: orders, work orders, production, pours, deliveries
+{% elif vertical == "cemetery" %}- burials, plots, interments, services, families
+- Do NOT use: orders, work orders, production, cases, arrangements
+{% elif vertical == "crematory" %}- cremations, services, certificates, families, decedents
+- Do NOT use: orders, work orders, production, pours, cases, arrangements, burials, plots
+{% else %}- This tenant's vertical is unset; use generic business language (orders, records, items).
+{% endif %}
+
 CONTEXT AVAILABLE:
 Today: {{ today_iso }} ({{ day_of_week }})
 Role: {{ role_slug }}
 Active space: {{ active_space_name or "(none)" }}
+Vertical: {{ vertical }}
 Tone preference: {{ narrative_tone }}
 
 Legacy context (reuse months of tuning):
@@ -207,9 +253,16 @@ _PROMPTS = [
 
 
 def _seed_prompts(db: Session) -> int:
-    created = 0
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    created_prompts = 0
+    created_versions = 0
+    skipped_customized = 0
+    noop_matched = 0
+
     for spec in _PROMPTS:
-        existing = (
+        existing_prompt = (
             db.query(IntelligencePrompt)
             .filter(
                 IntelligencePrompt.company_id.is_(None),
@@ -217,7 +270,8 @@ def _seed_prompts(db: Session) -> int:
             )
             .first()
         )
-        if existing is None:
+        if existing_prompt is None:
+            # Fresh install — create prompt + v1 active.
             prompt = IntelligencePrompt(
                 company_id=None,
                 prompt_key=spec["prompt_key"],
@@ -227,21 +281,92 @@ def _seed_prompts(db: Session) -> int:
             )
             db.add(prompt)
             db.flush()
-            created += 1
-        else:
-            prompt = existing
-        active = (
+            created_prompts += 1
+            version = IntelligencePromptVersion(
+                prompt_id=prompt.id,
+                version_number=1,
+                system_prompt=spec["system_prompt"],
+                user_template=spec["user_template"],
+                variable_schema=_VAR_SCHEMA,
+                response_schema=_RESPONSE_SCHEMA,
+                model_preference="simple",
+                temperature=0.4,
+                max_tokens=2048,
+                force_json=True,
+                supports_streaming=False,
+                supports_tool_use=False,
+                status="active",
+                changelog="Phase 6 seed — morning/evening narrative briefing.",
+                activated_at=datetime.now(timezone.utc),
+            )
+            db.add(version)
+            created_versions += 1
+            continue
+
+        # Prompt exists — check version count to decide update path.
+        all_versions = (
             db.query(IntelligencePromptVersion)
             .filter(
-                IntelligencePromptVersion.prompt_id == prompt.id,
-                IntelligencePromptVersion.status == "active",
+                IntelligencePromptVersion.prompt_id == existing_prompt.id,
             )
-            .first()
+            .order_by(IntelligencePromptVersion.version_number.asc())
+            .all()
         )
-        if active is not None:
+        if len(all_versions) > 1:
+            # Admin customization detected — don't overwrite. Surface
+            # in logs so platform operators know a reconciliation is
+            # pending (e.g. they reviewed and re-activated an older
+            # version, or branched v2 off v1 manually).
+            _log.warning(
+                "Tenant has custom version of %s (%d versions exist); "
+                "skipping platform update. Reconcile manually via the "
+                "Intelligence admin UI.",
+                spec["prompt_key"],
+                len(all_versions),
+            )
+            skipped_customized += 1
             continue
-        version = IntelligencePromptVersion(
-            prompt_id=prompt.id,
+
+        if len(all_versions) == 1:
+            v1 = all_versions[0]
+            # Content match check — if the seed content already matches
+            # the single active version, nothing to do.
+            if (
+                v1.system_prompt == spec["system_prompt"]
+                and v1.user_template == spec["user_template"]
+            ):
+                noop_matched += 1
+                continue
+            # Platform update: deactivate v1, create v2 active with
+            # same schema + updated body.
+            v1.status = "retired"
+            new_version = IntelligencePromptVersion(
+                prompt_id=existing_prompt.id,
+                version_number=v1.version_number + 1,
+                system_prompt=spec["system_prompt"],
+                user_template=spec["user_template"],
+                variable_schema=_VAR_SCHEMA,
+                response_schema=_RESPONSE_SCHEMA,
+                model_preference="simple",
+                temperature=0.4,
+                max_tokens=2048,
+                force_json=True,
+                supports_streaming=False,
+                supports_tool_use=False,
+                status="active",
+                changelog=(
+                    "Platform update — vertical-aware terminology block "
+                    "added to prompt body."
+                ),
+                activated_at=datetime.now(timezone.utc),
+            )
+            db.add(new_version)
+            created_versions += 1
+            continue
+
+        # len == 0: prompt row exists but no versions. Create v1.
+        new_version = IntelligencePromptVersion(
+            prompt_id=existing_prompt.id,
             version_number=1,
             system_prompt=spec["system_prompt"],
             user_template=spec["user_template"],
@@ -257,9 +382,22 @@ def _seed_prompts(db: Session) -> int:
             changelog="Phase 6 seed — morning/evening narrative briefing.",
             activated_at=datetime.now(timezone.utc),
         )
-        db.add(version)
+        db.add(new_version)
+        created_versions += 1
+
     db.commit()
-    return created
+    if skipped_customized or noop_matched:
+        _log.info(
+            "Phase 6 prompt seed summary: prompts=%d versions=%d "
+            "matched_noop=%d skipped_customized=%d",
+            created_prompts,
+            created_versions,
+            noop_matched,
+            skipped_customized,
+        )
+    # Return prompts-created count for backward-compat with caller
+    # (existing `print(...)` in main() reads this).
+    return created_prompts
 
 
 # ── Email templates (managed — no on-disk files) ────────────────────
