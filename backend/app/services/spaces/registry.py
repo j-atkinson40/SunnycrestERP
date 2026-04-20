@@ -86,6 +86,10 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             accent="warm",
             is_default=True,
             pins=[
+                # Follow-up 1 — directors get their task triage queue
+                # pinned at the top of Arrangement so the decision
+                # stream is one click from their primary workspace.
+                PinSeed(pin_type="triage_queue", target="task_triage"),
                 PinSeed(pin_type="nav_item", target="/cases"),
                 PinSeed(pin_type="nav_item", target="/cases/new"),
                 PinSeed(
@@ -207,6 +211,11 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             accent="industrial",
             is_default=True,
             pins=[
+                # Follow-up 1 — production managers have cross-
+                # vertical tasks (equipment inspections, training
+                # renewals, etc.) flowing through task_triage. Same
+                # shortcut as director Arrangement.
+                PinSeed(pin_type="triage_queue", target="task_triage"),
                 PinSeed(
                     pin_type="saved_view",
                     target="saved_view_seed:production:active_pours",

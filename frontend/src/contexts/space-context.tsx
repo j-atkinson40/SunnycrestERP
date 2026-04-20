@@ -65,13 +65,13 @@ interface SpaceContextValue {
   addPin: (spaceId: string, body: AddPinBody) => Promise<ResolvedPin>;
   removePin: (spaceId: string, pinId: string) => Promise<void>;
   reorderPins: (spaceId: string, pinIds: string[]) => Promise<void>;
-  // Convenience — is this nav href / saved-view id pinned in the active space?
+  // Convenience — is this nav href / saved-view id / triage queue pinned in the active space?
   isPinned: (args: {
-    pinType: "nav_item" | "saved_view";
+    pinType: "nav_item" | "saved_view" | "triage_queue";
     targetId: string;
   }) => boolean;
   togglePinInActiveSpace: (args: {
-    pinType: "nav_item" | "saved_view";
+    pinType: "nav_item" | "saved_view" | "triage_queue";
     targetId: string;
     labelOverride?: string;
   }) => Promise<void>;
@@ -293,7 +293,10 @@ export function SpaceProvider({ children }: { children: React.ReactNode }) {
   // ── Pin convenience helpers ─────────────────────────────────────
 
   const isPinned = useCallback(
-    (args: { pinType: "nav_item" | "saved_view"; targetId: string }): boolean => {
+    (args: {
+      pinType: "nav_item" | "saved_view" | "triage_queue";
+      targetId: string;
+    }): boolean => {
       if (!activeSpace) return false;
       return activeSpace.pins.some(
         (p) => p.pin_type === args.pinType && p.target_id === args.targetId,
@@ -304,7 +307,7 @@ export function SpaceProvider({ children }: { children: React.ReactNode }) {
 
   const togglePinInActiveSpace = useCallback(
     async (args: {
-      pinType: "nav_item" | "saved_view";
+      pinType: "nav_item" | "saved_view" | "triage_queue";
       targetId: string;
       labelOverride?: string;
     }) => {

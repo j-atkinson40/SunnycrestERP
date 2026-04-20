@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InlineError } from "@/components/ui/inline-error";
 import { SkeletonCard } from "@/components/ui/skeleton";
+import { PinStar } from "@/components/spaces/PinStar";
 import { ListChecks } from "lucide-react";
 import {
   getQueueCount,
@@ -128,9 +129,16 @@ export default function TriageIndex() {
             <Card key={q.queue_id}>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">{q.queue_name}</CardTitle>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  {counts[q.queue_id] ?? "…"} pending
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                    {counts[q.queue_id] ?? "…"} pending
+                  </span>
+                  <PinStar
+                    pinType="triage_queue"
+                    targetId={q.queue_id}
+                    labelOverride={q.queue_name}
+                  />
+                </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p className="text-muted-foreground">{q.description}</p>

@@ -38,7 +38,11 @@ AccentName = Literal[
 
 DensityName = Literal["comfortable", "compact"]
 
-PinType = Literal["saved_view", "nav_item"]
+# Pin target types. Extending this union = extend `_resolve_pin`
+# (crud.py), `_build_pins_from_seeds` (seed.py), the API pin
+# request/response Pydantic models, the frontend `PinType` literal,
+# and PinStar's prop union. All must stay in lockstep.
+PinType = Literal["saved_view", "nav_item", "triage_queue"]
 
 
 # ── Pin ──────────────────────────────────────────────────────────────
@@ -170,6 +174,11 @@ class ResolvedPin:
     # Present only for saved_view pins when resolved successfully.
     saved_view_id: str | None = None
     saved_view_title: str | None = None
+    # Present only for triage_queue pins. Pending item count the user
+    # would see if they opened this queue right now — used as a sidebar
+    # badge. Excludes snoozed items (see triage.engine.queue_count).
+    # None for non-triage pin types + for unavailable triage pins.
+    queue_item_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -183,6 +192,7 @@ class ResolvedPin:
             "unavailable": self.unavailable,
             "saved_view_id": self.saved_view_id,
             "saved_view_title": self.saved_view_title,
+            "queue_item_count": self.queue_item_count,
         }
 
 

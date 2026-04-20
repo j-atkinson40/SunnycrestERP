@@ -6,6 +6,119 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Space-Scoped Triage Queue Pinning (UI/UX Arc Follow-up 1)
+
+**Date:** 2026-04-20
+**Migration head:** `r35_briefings_table` (unchanged — no new tables, no migration)
+**Tests passing:** 103 across Phase 3 + Phase 5 + follow-up regression (17 new follow-up tests in `test_space_pins_triage_queue.py`, 86 prior-phase spaces/triage tests unchanged)
+
+### What shipped
+
+Triage queues become a third pin target type alongside saved views
+and nav items. A director on the funeral_home vertical opens their
+auto-seeded Arrangement space and the first pin in the sidebar is
+their Task Triage queue with a pending-item count badge — one click
+opens the keyboard-driven workspace. A production manager on a
+manufacturing tenant gets the same treatment on their Production
+space.
+
+Under the hood:
+
+- `PinConfig.pin_type` literal extended with `"triage_queue"` on
+  backend and frontend types (`backend/app/services/spaces/types.py`,
+  `frontend/src/types/spaces.ts`).
+- `ResolvedPin` gains `queue_item_count: int | None` (null for
+  non-triage pins and for unavailable queues).
+- `TriageQueueConfig` gains `icon: str = "ListChecks"`. Platform
+  defaults: `task_triage` → `"CheckSquare"`,
+  `ss_cert_triage` → `"FileCheck"`. Frontend `PinnedSection.ICON_MAP`
+  gained all three names — verified present so no pin falls through
+  to the `Layers` default silently.
+- `_resolve_pin` has a new `triage_queue` branch that reads the
+  queue config from the Phase 5 registry via
+  `triage.registry.get_config` and pulls the pending count via
+  `triage.engine.queue_count`. On access-denied or unknown-queue the
+  pin renders with `unavailable=true, queue_item_count=null` and no
+  href — same UX as a saved-view pin whose view was deleted.
+- Permission check is **batched once per space resolution**: if any
+  pin on the space has `pin_type="triage_queue"`, `_resolve_space`
+  calls the new `_accessible_queue_ids_for_user(db, user)` helper
+  exactly once and passes the set down to each `_resolve_pin`. Spaces
+  without triage pins pay zero permission lookups.
+- Seed templates for (`funeral_home`, `director`) Arrangement and
+  (`manufacturing`, `production`) Production both start with
+  `PinSeed(pin_type="triage_queue", target="task_triage")` as the
+  first pin. Other role/vertical pairs stay unchanged per approved
+  scope.
+- `add_pin` validation tuple extended to accept `triage_queue`.
+  Idempotent: same (pin_type, target_id) returns the existing pin.
+- `PinStar` component accepts `pinType: "triage_queue"`; TriageIndex
+  (`/triage`) cards render a PinStar in the card header.
+- `PinnedSection` renders a pending-count badge on available
+  `triage_queue` pins (`queue_item_count > 0`) in the active-space
+  accent color. Capped at `99+` to keep the row tidy. Hidden on row
+  hover so the unpin X has room.
+- Space-scoped nav preference preserved: the pin shortcuts (PinStar
+  toggle, Cmd+[ / Cmd+] space switch, Cmd+Shift+1..5) work on the
+  new pin type without any additional wiring — Phase 3 keyboard
+  listeners already iterate the active space's pins generically.
+
+### API contract changes (additive, backward-compatible)
+
+- `POST /api/v1/spaces/{id}/pins` now accepts
+  `pin_type: "triage_queue"` with `target_id: <queue_id>` (e.g.
+  `"task_triage"`).
+- `_PinResponse` ships a new `queue_item_count: int | None` field.
+  Existing consumers ignore unknown fields; no frontend code that
+  already reads the response shape breaks.
+
+### Test additions
+
+- Backend: `backend/tests/test_space_pins_triage_queue.py` — 17 tests
+  across 6 test classes. Registry icon presence, seed-template
+  content, resolver behavior (available / label-override /
+  unavailable-by-vertical / unknown-queue), batched access-lookup
+  perf (spy asserts `_accessible_queue_ids_for_user` called exactly
+  once per space with ≥1 triage pin, zero when no triage pins),
+  add_pin validation + idempotency, full-stack API roundtrip +
+  cross-user isolation.
+- Playwright: `frontend/tests/e2e/space-triage-pin.spec.ts` — 5
+  scenarios covering the POST shape (icon, href, queue_item_count),
+  PinStar presence on /triage cards, sidebar reflection of a newly
+  pinned queue, unavailable pin wire contract, list-endpoint shape
+  for every triage pin.
+
+### Verification
+
+- `pytest tests/test_spaces_unit.py tests/test_spaces_api.py
+  tests/test_task_and_triage.py tests/test_space_pins_triage_queue.py`
+  → **103 passed**.
+- Frontend `tsc -b` clean.
+- ICON_MAP acceptance criterion: grepped
+  `frontend/src/components/spaces/PinnedSection.tsx`, confirmed
+  `CheckSquare`, `FileCheck`, `ListChecks` all imported from
+  `lucide-react` and registered in ICON_MAP. No pin renders with the
+  Layers fallback for shipped queue icons.
+
+### Design decisions / deviations (approved)
+
+- Queue icon sourced from `TriageQueueConfig.icon` (authoritative)
+  rather than a frontend queue_id → icon lookup table. Single source
+  of truth; tenant-customized queues can override via vault_item
+  metadata without a frontend change.
+- Seeded pin scope limited to (`funeral_home`, `director`) and
+  (`manufacturing`, `production`) per spec. Other role templates
+  unchanged; users in other roles can pin queues manually via the
+  PinStar on `/triage`.
+- Template additions do NOT backfill for already-seeded users
+  (matches Phase 3 precedent). Existing director/production users
+  can pin manually; next fresh seed picks up the template.
+- Role slug for manufacturing production template is `"production"`
+  (existing convention), not `"production_manager"` as a spec draft
+  mentioned.
+
+---
+
 ## Polish and Arc Finale (Phase 7 of UI/UX Arc — FINAL)
 
 **Date:** 2026-04-20

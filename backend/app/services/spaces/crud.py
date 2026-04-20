@@ -162,9 +162,20 @@ def _resolve_saved_view_id_to_title(
 
 
 def _resolve_pin(
-    db: Session, user: User, pin: PinConfig
+    db: Session,
+    user: User,
+    pin: PinConfig,
+    *,
+    accessible_queue_ids: set[str] | None = None,
 ) -> ResolvedPin:
-    """Build the API-facing ResolvedPin from a stored PinConfig."""
+    """Build the API-facing ResolvedPin from a stored PinConfig.
+
+    `accessible_queue_ids` is an optional pre-computed set used to
+    batch the triage-queue permission check across all pins of a
+    space (avoids per-pin `list_queues_for_user` traversal). Callers
+    that know a space has multiple pins should compute it once via
+    `_accessible_queue_ids_for_user(db, user)` and pass it down.
+    """
     if pin.pin_type == "nav_item":
         label, icon = reg.get_nav_label(pin.target_id) or (pin.target_id, "Link")
         if pin.label_override:
@@ -178,6 +189,66 @@ def _resolve_pin(
             icon=icon,
             href=pin.target_id,
             unavailable=False,
+        )
+
+    # triage_queue pin — resolve via Phase 5 registry + count
+    if pin.pin_type == "triage_queue":
+        queue_id = pin.target_id
+        # Use batched access set when caller provided it; otherwise
+        # fall back to a single-pin lookup.
+        if accessible_queue_ids is None:
+            accessible_queue_ids = _accessible_queue_ids_for_user(db, user)
+        if queue_id not in accessible_queue_ids:
+            return ResolvedPin(
+                pin_id=pin.pin_id,
+                pin_type="triage_queue",
+                target_id=queue_id,
+                display_order=pin.display_order,
+                label=pin.label_override or queue_id.replace("_", " ").title(),
+                icon="ListChecks",
+                href=None,
+                unavailable=True,
+                queue_item_count=None,
+            )
+        # Resolve display fields from the queue config + count.
+        from app.services.triage import (
+            engine as _triage_engine,
+            registry as _triage_registry,
+        )
+        try:
+            config = _triage_registry.get_config(
+                db, company_id=user.company_id, queue_id=queue_id
+            )
+        except Exception:
+            return ResolvedPin(
+                pin_id=pin.pin_id,
+                pin_type="triage_queue",
+                target_id=queue_id,
+                display_order=pin.display_order,
+                label=pin.label_override or queue_id.replace("_", " ").title(),
+                icon="ListChecks",
+                href=None,
+                unavailable=True,
+                queue_item_count=None,
+            )
+        # queue_count enforces access internally; our outer check above
+        # guarantees it won't raise, but be defensive.
+        try:
+            count = _triage_engine.queue_count(
+                db, user=user, queue_id=queue_id
+            )
+        except Exception:
+            count = None
+        return ResolvedPin(
+            pin_id=pin.pin_id,
+            pin_type="triage_queue",
+            target_id=queue_id,
+            display_order=pin.display_order,
+            label=pin.label_override or config.queue_name,
+            icon=config.icon,
+            href=f"/triage/{queue_id}",
+            unavailable=False,
+            queue_item_count=count,
         )
 
     # saved_view pin — two resolution paths
@@ -239,8 +310,33 @@ def _resolve_pin(
     )
 
 
+def _accessible_queue_ids_for_user(db: Session, user: User) -> set[str]:
+    """Queue_ids the user can currently access, computed once per
+    `_resolve_space` call. Protects against the N+1 pattern that
+    would otherwise run `list_queues_for_user` per pin."""
+    try:
+        from app.services.triage import list_queues_for_user as _list_queues
+
+        return {cfg.queue_id for cfg in _list_queues(db, user=user)}
+    except Exception:
+        # Triage package import failure or mid-migration state —
+        # fail closed so triage pins render as unavailable rather
+        # than crashing the whole /spaces response.
+        return set()
+
+
 def _resolve_space(db: Session, user: User, sp: SpaceConfig) -> ResolvedSpace:
-    resolved_pins = [_resolve_pin(db, user, p) for p in sp.pins]
+    # Phase 3 follow-up 1 — batch the triage-queue access check
+    # ONCE per space resolution (instead of per-pin) so a space with
+    # many triage pins doesn't pay N× permission checks.
+    has_triage_pin = any(p.pin_type == "triage_queue" for p in sp.pins)
+    accessible_queue_ids = (
+        _accessible_queue_ids_for_user(db, user) if has_triage_pin else None
+    )
+    resolved_pins = [
+        _resolve_pin(db, user, p, accessible_queue_ids=accessible_queue_ids)
+        for p in sp.pins
+    ]
     resolved_pins.sort(key=lambda p: p.display_order)
     return ResolvedSpace(
         space_id=sp.space_id,
@@ -459,7 +555,7 @@ def add_pin(
     if len(sp.pins) >= MAX_PINS_PER_SPACE:
         raise SpaceError(f"Space has the maximum {MAX_PINS_PER_SPACE} pins")
 
-    if pin_type not in ("saved_view", "nav_item"):
+    if pin_type not in ("saved_view", "nav_item", "triage_queue"):
         raise SpaceError(f"Unknown pin_type {pin_type!r}")
 
     # De-dupe: skip if a pin of the same (type, target) already

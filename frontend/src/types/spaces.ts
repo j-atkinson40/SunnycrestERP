@@ -22,7 +22,7 @@ export type AccentName =
 
 export type DensityName = "comfortable" | "compact";
 
-export type PinType = "saved_view" | "nav_item";
+export type PinType = "saved_view" | "nav_item" | "triage_queue";
 
 // ── Pin ─────────────────────────────────────────────────────────────
 
@@ -37,6 +37,9 @@ export interface ResolvedPin {
   unavailable: boolean;
   saved_view_id?: string | null;
   saved_view_title?: string | null;
+  // Phase 3 follow-up 1 — pending item count for triage_queue pins.
+  // null for other pin types or when the queue is unavailable.
+  queue_item_count?: number | null;
 }
 
 // ── Space ───────────────────────────────────────────────────────────

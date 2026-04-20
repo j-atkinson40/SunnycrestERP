@@ -41,6 +41,7 @@ _task_triage = TriageQueueConfig(
         "Process your open and urgent tasks. Approve (complete), "
         "reassign, defer, or cancel."
     ),
+    icon="CheckSquare",
     source_direct_query_key="task_triage",
     item_entity_type="task",
     item_display=ItemDisplayConfig(
@@ -134,6 +135,7 @@ _ss_cert_triage = TriageQueueConfig(
         "underlying service as the legacy "
         "/social-service-certificates page; side effects identical."
     ),
+    icon="FileCheck",
     source_direct_query_key="ss_cert_triage",
     item_entity_type="social_service_certificate",
     item_display=ItemDisplayConfig(

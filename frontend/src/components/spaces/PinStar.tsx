@@ -19,7 +19,7 @@ import { useSpaces } from "@/contexts/space-context";
 import { cn } from "@/lib/utils";
 
 export interface PinStarProps {
-  pinType: "nav_item" | "saved_view";
+  pinType: "nav_item" | "saved_view" | "triage_queue";
   targetId: string;
   /** Optional custom label for the pin. Defaults to the server's
    *  resolution (saved-view title / nav label table). */

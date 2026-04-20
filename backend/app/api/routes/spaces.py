@@ -49,7 +49,7 @@ router = APIRouter()
 
 class _PinResponse(BaseModel):
     pin_id: str
-    pin_type: Literal["saved_view", "nav_item"]
+    pin_type: Literal["saved_view", "nav_item", "triage_queue"]
     target_id: str
     display_order: int
     label: str
@@ -58,6 +58,9 @@ class _PinResponse(BaseModel):
     unavailable: bool
     saved_view_id: str | None = None
     saved_view_title: str | None = None
+    # Phase 3 follow-up 1 — pending item count for triage_queue pins.
+    # None for other pin types or when the queue is unavailable.
+    queue_item_count: int | None = None
 
 
 class _SpaceResponse(BaseModel):
@@ -99,7 +102,7 @@ class _ReorderRequest(BaseModel):
 
 
 class _AddPinRequest(BaseModel):
-    pin_type: Literal["saved_view", "nav_item"]
+    pin_type: Literal["saved_view", "nav_item", "triage_queue"]
     target_id: str
     label_override: str | None = None
     target_seed_key: str | None = None
@@ -139,6 +142,7 @@ def _pin_to_response(p: ResolvedPin) -> _PinResponse:
         unavailable=p.unavailable,
         saved_view_id=p.saved_view_id,
         saved_view_title=p.saved_view_title,
+        queue_item_count=p.queue_item_count,
     )
 
 

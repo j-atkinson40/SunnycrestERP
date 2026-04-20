@@ -257,6 +257,8 @@ Deferred items from Phases 1-7, organized by category. None of these block the S
 - Custom accent picker
 - Cross-tenant space sharing
 - Space export / import
+- ✅ **Follow-up 1 (April 2026) — Space-scoped triage queue pinning.** `triage_queue` added to `PinConfig.pin_type` union; server-side resolver pulls icon + pending count from the Phase 5 `TriageQueueConfig` registry with batched per-space permission lookup; director Arrangement + production Production templates seed a `task_triage` pin; PinStar component renders on `/triage` queue cards; sidebar badge shows pending count capped at `99+`. Zero new tables. See `FEATURE_SESSIONS.md` § "Space-Scoped Triage Queue Pinning".
+- Triage-pin seed coverage expansion (other role/vertical pairs deferred — backfill script needed OR role-version bump for existing users)
 
 ### NL Creation (Phase 4)
 - Multi-turn clarification dialogs (user follow-up when required fields missing)

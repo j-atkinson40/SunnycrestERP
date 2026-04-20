@@ -28,13 +28,16 @@ import {
   Building2,
   Calculator,
   Calendar,
+  CheckSquare,
   Factory,
+  FileCheck,
   FileText,
   FolderOpen,
   Home,
   Kanban,
   Layers,
   LayoutDashboard,
+  ListChecks,
   type LucideIcon,
   MapPin,
   Phone,
@@ -66,7 +69,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Building2,
   Calculator,
   Calendar,
+  CheckSquare,
   Factory,
+  FileCheck,
   FileText,
   FolderOpen,
   Home,
@@ -74,6 +79,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Layers,
   LayoutDashboard,
   Link: Layers, // the "Link" lucide icon isn't a space default
+  ListChecks,
   MapPin,
   Phone,
   Plus,
@@ -219,6 +225,15 @@ function PinRow({
     dragging && "opacity-40",
   );
 
+  // Phase 3 follow-up 1 — pending-item badge for triage_queue pins.
+  // Only renders when the queue is available AND has pending items.
+  // Hidden on hover so the remove X has room without layout shift.
+  const showQueueBadge =
+    pin.pin_type === "triage_queue" &&
+    !pin.unavailable &&
+    typeof pin.queue_item_count === "number" &&
+    pin.queue_item_count > 0;
+
   const body = (
     <>
       <Icon
@@ -230,6 +245,20 @@ function PinRow({
         }
       />
       <span className="truncate flex-1">{pin.label}</span>
+      {showQueueBadge && !hover && (
+        <span
+          className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums"
+          style={{
+            backgroundColor:
+              "color-mix(in srgb, var(--space-accent, var(--preset-accent)) 18%, transparent)",
+            color: "var(--space-accent, var(--preset-accent))",
+          }}
+          aria-label={`${pin.queue_item_count} pending items`}
+          data-testid={`pin-queue-count-${pin.pin_id}`}
+        >
+          {pin.queue_item_count! > 99 ? "99+" : pin.queue_item_count}
+        </span>
+      )}
       {hover && !pin.unavailable && (
         <button
           type="button"

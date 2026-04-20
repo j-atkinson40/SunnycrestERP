@@ -194,6 +194,13 @@ class TriageQueueConfig(BaseModel):
     queue_id: str
     queue_name: str
     description: str = ""
+    # Lucide icon name used for space pins + sidebar badges. Default
+    # is a generic triage icon; platform-default queues set specific
+    # icons (e.g. task_triage="CheckSquare", ss_cert_triage="FileCheck").
+    # Tenant-customized queues can override via vault_item metadata.
+    # Frontend consumers must ensure the icon is in
+    # `PinnedSection.ICON_MAP` or the pin falls back to `Layers`.
+    icon: str = "ListChecks"
     # Item stream source — exactly one of the following three must
     # be set:
     #   source_saved_view_id    — concrete Phase 2 saved view row

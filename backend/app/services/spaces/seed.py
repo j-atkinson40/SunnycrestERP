@@ -201,6 +201,19 @@ def _build_pins_from_seeds(
                     target_seed_key=seed.target,
                 )
             )
+        elif seed.pin_type == "triage_queue":
+            # seed.target IS the queue_id (stable in-code identifier).
+            # No seed_key indirection needed — queue_ids are platform
+            # defaults, not user-created UUIDs.
+            out.append(
+                PinConfig(
+                    pin_id=PinConfig.new_id(),
+                    pin_type="triage_queue",
+                    target_id=seed.target,
+                    display_order=i,
+                    label_override=seed.label_override,
+                )
+            )
         else:
             out.append(
                 PinConfig(
