@@ -358,6 +358,20 @@ export function useSpaces(): SpaceContextValue {
 }
 
 /**
+ * Null-safe variant of {@link useSpaces}. Returns `null` when
+ * SpaceProvider isn't mounted — e.g. the command bar renders above
+ * SpaceProvider in the App tree, so it's reachable on login /
+ * unauthenticated routes. Callers check for null before using.
+ *
+ * **Do NOT** use this in components that live INSIDE the
+ * SpaceProvider subtree (SpaceSwitcher, PinnedSection, etc.) — those
+ * should use `useSpaces()` which asserts the provider is present.
+ */
+export function useSpacesOptional(): SpaceContextValue | null {
+  return useContext(SpaceContext);
+}
+
+/**
  * Hook for callers that only need the active space id without
  * subscribing to the full context value. Used by command bar to
  * thread `active_space_id` into the query payload.

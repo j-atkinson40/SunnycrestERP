@@ -38,7 +38,7 @@ import {
   matchLocalActions,
 } from "@/services/actions";
 import { useAuth } from "@/contexts/auth-context";
-import { useActiveSpaceId, useSpaces } from "@/contexts/space-context";
+import { useActiveSpaceId, useSpacesOptional } from "@/contexts/space-context";
 import { useCommandBar } from "@/core/CommandBarProvider";
 import { WorkflowController, type WorkflowRunState } from "@/components/workflows/WorkflowController";
 import { NaturalLanguageOverlay } from "@/components/workflows/NaturalLanguageOverlay";
@@ -268,9 +268,12 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const { setShortcutRefs } = useCommandBar();
   // Phase 3 — active space id threaded into the command-bar query
   // context. Backend applies (a) pin boost, (b) space-switch
-  // result synthesis. null-safe when SpaceProvider isn't mounted.
+  // result synthesis. null-safe when SpaceProvider isn't mounted
+  // (CommandBar mounts ABOVE SpaceProvider in the App tree — reachable
+  // on login / unauthenticated routes).
   const activeSpaceId = useActiveSpaceId();
-  const { switchSpace: spaceSwitch } = useSpaces();
+  const spacesCtx = useSpacesOptional();
+  const spaceSwitch = spacesCtx?.switchSpace ?? null;
   // The auth User model exposes the role as `role_slug` (e.g. "admin", "office").
   const userRole = (user as unknown as { role_slug?: string })?.role_slug;
   // Pick registry based on tenant vertical — FH tenants get funeral_home actions,
@@ -794,7 +797,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         // SpaceProvider mounted fall through to a plain navigate
         // to `/` (dashboard), which is harmless.
         const spaceSwitchMatch = /[?&]__switch_space=([^&]+)/.exec(action.route);
-        if (spaceSwitchMatch) {
+        if (spaceSwitchMatch && spaceSwitch) {
           const targetId = decodeURIComponent(spaceSwitchMatch[1]);
           try {
             void spaceSwitch(targetId);
@@ -804,6 +807,8 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
           onClose();
           return;
         }
+        // spaceSwitch==null means SpaceProvider isn't mounted —
+        // fall through to the plain navigate below (harmless).
         navigate(action.route);
         onClose();
         return;
