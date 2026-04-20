@@ -2,11 +2,14 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import VoiceMemoButton from "@/components/ai/VoiceMemoButton";
 import { CommandBarProvider } from "@/core/CommandBarProvider";
+import { KeyboardHelpOverlay } from "@/components/core/KeyboardHelpOverlay";
+import { OfflineBanner } from "@/components/core/OfflineBanner";
 import { ExtensionProvider } from "@/contexts/extension-context";
 import { FeatureFlagProvider } from "@/contexts/feature-flag-context";
 import { DeviceProvider } from "@/contexts/device-context";
 import { LayoutProvider } from "@/contexts/layout-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
+import { SpaceProvider } from "@/contexts/space-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
 import { AppLayout } from "@/components/layout/app-layout";
@@ -24,6 +27,7 @@ import CompanyMigrationReviewPage from "@/pages/admin/company-migration-review";
 import CompanyClassificationPage from "@/pages/admin/company-classification";
 import CompaniesListPage from "@/pages/crm/companies";
 import CompanyDetailPage from "@/pages/crm/company-detail";
+import NewContactPage from "@/pages/crm/new-contact";
 import FuneralHomesPage from "@/pages/crm/funeral-homes";
 import BillingGroupsPage from "@/pages/crm/billing-groups";
 import BillingGroupDetailPage from "@/pages/crm/billing-group-detail";
@@ -31,6 +35,16 @@ import ContractorsPage from "@/pages/crm/contractors";
 import CrmSettingsPage from "@/pages/crm/crm-settings";
 import PipelinePage from "@/pages/crm/pipeline";
 import AiSettingsPage from "@/pages/settings/ai-settings";
+import SavedViewsIndex from "@/pages/saved-views/SavedViewsIndex";
+import SavedViewPage from "@/pages/saved-views/SavedViewPage";
+import SavedViewCreatePage from "@/pages/saved-views/SavedViewCreatePage";
+import TasksList from "@/pages/tasks/TasksList";
+import TaskCreate from "@/pages/tasks/TaskCreate";
+import TaskDetail from "@/pages/tasks/TaskDetail";
+import TriageIndex from "@/pages/triage/TriageIndex";
+import TriagePage from "@/pages/triage/TriagePage";
+import BriefingPage from "@/pages/briefings/BriefingPage";
+import BriefingPreferencesPage from "@/pages/settings/BriefingPreferences";
 import SavedOrdersPage from "@/pages/settings/SavedOrders";
 import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
@@ -137,6 +151,7 @@ import SafetyToolboxTalksPage from "@/pages/safety/safety-toolbox-talks";
 import SafetyTrainingDocumentsPage from "@/pages/safety/safety-training-documents";
 import SafetyOSHA300YearEndPage from "@/pages/safety/safety-osha300-yearend";
 import ProductionBoardPage from "@/pages/production/production-board";
+import ProductionBoardDashboard from "@/pages/production/ProductionBoardDashboard";
 import PourEventCreatePage from "@/pages/production/pour-event-create";
 import WorkOrderDetailPage from "@/pages/production/work-order-detail";
 import { ConsoleLayout } from "@/components/layout/console-layout";
@@ -385,6 +400,8 @@ export default function App() {
       <CommandBarProvider>
       <CallContextProvider>
         <ImpersonationBanner />
+        <OfflineBanner />
+        <KeyboardHelpOverlay />
         <CallOverlay />
         <Routes>
           {slug ? (
@@ -396,7 +413,15 @@ export default function App() {
 
               {/* Protected routes */}
               <Route element={<ProtectedRoute />}>
-                <Route element={<PresetThemeProvider><AppLayout /></PresetThemeProvider>}>
+                <Route
+                  element={
+                    <PresetThemeProvider>
+                      <SpaceProvider>
+                        <AppLayout />
+                      </SpaceProvider>
+                    </PresetThemeProvider>
+                  }
+                >
                   {/* Dashboard — all authenticated users */}
                   <Route
                     element={
@@ -531,6 +556,41 @@ export default function App() {
                   <Route path="/settings/ai-intelligence" element={<AiSettingsPage />} />
                   <Route path="/settings/saved-orders" element={<SavedOrdersPage />} />
                   <Route path="/settings/external-accounts" element={<ExternalAccountsPage />} />
+
+                  {/* Saved Views — universal primitive (Phase 2). */}
+                  {/* Order matters: /new and /:viewId/edit must be
+                      declared BEFORE /:viewId so the static
+                      segments aren't shadowed by the param route. */}
+                  <Route path="/saved-views" element={<SavedViewsIndex />} />
+                  <Route path="/saved-views/new" element={<SavedViewCreatePage mode="create" />} />
+                  <Route path="/saved-views/:viewId/edit" element={<SavedViewCreatePage mode="edit" />} />
+                  <Route path="/saved-views/:viewId" element={<SavedViewPage />} />
+
+                  {/* Phase 5 — Tasks. Static /tasks/new declared
+                      BEFORE /:taskId so the static route doesn't
+                      get shadowed by the param route. */}
+                  <Route path="/tasks" element={<TasksList />} />
+                  <Route path="/tasks/new" element={<TaskCreate />} />
+                  <Route path="/tasks/:taskId" element={<TaskDetail />} />
+
+                  {/* Phase 5 — Triage Workspace. */}
+                  <Route path="/triage" element={<TriageIndex />} />
+                  <Route path="/triage/:queueId" element={<TriagePage />} />
+
+                  {/* Phase 6 — Briefings. `/briefing` (no id) shows the
+                      latest morning briefing via useBriefing hook; the
+                      `:id` variant fetches a specific row. Static paths
+                      NOT at risk of shadow — no literal /briefing/X
+                      segments collide. Legacy `MorningBriefingCard` at
+                      manufacturing-dashboard.tsx + order-station.tsx
+                      stays — this route is additive per the Phase 6
+                      coexist strategy. */}
+                  <Route path="/briefing" element={<BriefingPage />} />
+                  <Route path="/briefing/:id" element={<BriefingPage />} />
+                  <Route
+                    path="/settings/briefings"
+                    element={<BriefingPreferencesPage />}
+                  />
 
                   {/* Products — core feature, no module gate */}
                   <Route
@@ -855,7 +915,12 @@ export default function App() {
 
                   {/* Work Orders & Production — requires work_orders module */}
                   <Route element={<ProtectedRoute requiredPermission="work_orders.view" requiredModule="work_orders" />}>
-                    <Route path="/production" element={<ProductionBoardPage />} />
+                    {/* Phase 2 UI Arc — /production is now the saved-
+                        views-composed dashboard. Legacy bespoke board
+                        preserved at /production/legacy for one release
+                        while Playwright parity is verified. */}
+                    <Route path="/production" element={<ProductionBoardDashboard />} />
+                    <Route path="/production/legacy" element={<ProductionBoardPage />} />
                     <Route path="/production/pour-events/new" element={<PourEventCreatePage />} />
                     <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
                   </Route>
@@ -1194,6 +1259,14 @@ export default function App() {
                     >
                       <Route path="crm">
                         <Route index element={<CRMHub />} />
+                        {/* Phase 4 — Tab-fallback target for the NL
+                            contact overlay. Accessible via the
+                            Phase 1 `create.contact` command-bar
+                            action URL `/vault/crm/contacts/new`. */}
+                        <Route
+                          path="contacts/new"
+                          element={<NewContactPage />}
+                        />
                         <Route
                           path="companies"
                           element={<CompaniesListPage />}

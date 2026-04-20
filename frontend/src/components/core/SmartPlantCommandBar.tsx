@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useMicrophone } from "@/hooks/useMicrophone";
-import { manufacturingActions, matchLocalActions } from "@/core/actionRegistry";
+import { getActionsForVertical, matchLocalActions } from "@/services/actions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,8 +96,14 @@ export function SmartPlantCommandBar({ isOpen, onClose }: SmartPlantCommandBarPr
         // fall through to local match
       }
 
-      // Local fallback
-      const localMatches = matchLocalActions(transcript, manufacturingActions, 3);
+      // Local fallback — SmartPlant runs on manufacturing tenants only,
+      // so we pull the manufacturing slice directly rather than
+      // threading a vertical prop through the plant-mode UI.
+      const localMatches = matchLocalActions(
+        transcript,
+        getActionsForVertical("manufacturing"),
+        3,
+      );
       if (localMatches.length === 0) {
         setPhase("low");
         setResults([]);

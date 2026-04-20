@@ -60,7 +60,6 @@
 - 3.12 Bridgeable Documents — Native Document Layer
 - 3.13 Three-Channel Commerce Architecture
 - 3.14 Platform UX Vision — The Four User Paradigms
-- 3.15 Bridgeable Vault — V-1 Roll-Up (April 2026, complete)
 - 3.15 The Three Primitives — Spaces, Saved Views, Pins
 - 3.16 UX Patterns and Design Principles
 - 3.17 The Command Bar as Universal Interface
@@ -70,6 +69,7 @@
 - 3.21 Knowledge Ingestion as Platform Capability
 - 3.22 Cross-Tenant Saved Views and Multi-Party Coordination
 - 3.23 The Full Cross-Tenant Feature Landscape
+- 3.24 Bridgeable Vault — V-1 Roll-Up (April 2026, complete)
 
 ### Part 4 — Technical Stack
 - 4.1 Backend Stack
@@ -2637,6 +2637,777 @@ Every new product built for the arrangement conference must simultaneously be av
 **The licensee territory rights across all three channels:**
 
 The territory addendum covers all three channels explicitly. Any Bridgeable product sold to a funeral home or cemetery in a licensee's territory generates territory revenue — regardless of which channel the purchase came through. Conference, portal, or website — same territory, same revenue.
+
+---
+
+## 3.14 Platform UX Vision — The Four User Paradigms
+
+### Core Thesis
+
+Bridgeable serves users with fundamentally different relationships to the software. One UI paradigm cannot serve all of them well. The platform provides four distinct UI paradigms, each matched to users' actual working relationship with the platform.
+
+### The Four User Paradigms
+
+**1. Power Operators.** Directors, managers, sales staff, accountants. Spend hours daily in the platform. Do varied, complex work. Interface: **command-bar-centric, dense, expressive, keyboard-and-voice-driven**. This is the main Bridgeable experience.
+
+**2. Focused Executors.** Drivers, production workers, yard operators, maintenance technicians, embalmers, groundskeepers. Spend minutes daily in the app, often with dirty hands, gloves, bad lighting, or in motion. Do narrow, repetitive tasks. Interface: **single-purpose, tap-based, glance-friendly, minimal navigation**. Purpose-built surfaces per role.
+
+**3. Occasional Participants.** Families, contractors, vendors, prospects. Use the platform a few times total. Interface: **portal-style, zero-learning-curve, linear, frictionless**. Web links, no install, single-task flows.
+
+**4. Monitors.** Owners, executives, auditors, regulators. Check in periodically for status and insight rather than doing work. Interface: **briefing-style, digest-oriented, ambient**. Briefings, reports, dashboards.
+
+All four paradigms read and write against the same vault through the same primitives. The platform is one platform with four front-end paradigms, not four platforms.
+
+### Design Principle
+
+**Each user type gets UI matched to their actual working relationship with the platform. Do not force a single interface paradigm across all user types. The command bar is the primary interface for Power Operators; other user types get purpose-built alternatives that call the same underlying platform primitives.**
+
+### Implications for Existing Mobile Surfaces
+
+- **The production board**: becomes a Power Operator surface within a "Production" space, implemented as saved-view widgets. Focused Executors (production workers) get a dedicated single-purpose mobile UI for pour logging, schedule viewing, and issue reporting.
+- **The driver app (existing mobile-first work)**: correctly follows the Focused Executor paradigm. Keep as-is. Refine detail over time. Do not migrate to the command bar.
+- **Power Operator mobile experience**: should be rebuilt around the command bar (see 3.17).
+
+---
+
+## 3.15 The Three Primitives — Spaces, Saved Views, Pins
+
+Every advanced UX pattern in Bridgeable emerges from combining three underlying primitives. Widgets, dashboards, scheduled reports, custom command bar entries, and shared workspaces all compose from these three. No standalone widget system, no standalone reporting module, no standalone favorites feature — just three primitives that compose into everything.
+
+### 3.15.1 Spaces — Work Contexts Within a User's Day
+
+Inspired by Arc browser's Spaces concept. A single Power Operator plays multiple roles across their day; a single nav cannot serve all of them without clutter.
+
+**Examples:**
+- Funeral director: Arrangement mode / Administrative mode / Ownership mode
+- Manufacturing: Production mode / Sales mode / Ownership mode
+- Cemetery: Grounds mode / Arrangement mode / Business mode
+
+Each space has its own pinned nav, pinned action buttons, default dashboard, visual accent color, and notification posture.
+
+**Space switching:**
+
+- Desktop keyboard: `Cmd+[` and `Cmd+]` for prev/next; `Cmd+Shift+1`-`5` for direct-to-space
+- Desktop gesture: two-finger trackpad swipe where supported
+- Mobile gesture: horizontal swipe on main content area; visible space indicator for tap-to-switch
+- Cap: 5 spaces per user (psychological clarity threshold)
+
+**Data model:**
+
+```
+vault_item.type = "user_space"
+{
+  space_id
+  user_id
+  name
+  icon
+  color_accent
+  display_order
+  pinned_nav_items: [vault_item refs]
+  pinned_action_buttons: [workflow/action registry refs]
+  default_dashboard_config
+  notification_rules
+  is_default: bool
+}
+```
+
+**Role-based seeding:** New users provisioned with pre-configured spaces matching their role. Day-one workspace is functional; users modify from there.
+
+**Space-scoped behaviors:**
+
+- **Notifications follow the space.** Arrangement space surfaces case/family/scribe notifications; Business space surfaces AR/payroll/compliance notifications.
+- **AI assistant inherits space context.** Same question returns different answers depending on current space.
+- **Command bar result ranking adjusts per space.** Same search, different relevance weighting.
+- **Visual accent color shifts on switch.** Warm tones for arrangement-style work; crisp tones for admin-style work.
+- **One-sentence orientation on switch.** Brief context snippet disappears after a second.
+- **Workflow handoff between spaces.** A workflow step can hand off to another space with the next task pre-loaded.
+- **Shared team spaces (read-mostly).** "Today's Services" space visible to all staff shows the house's current state — replaces the morning standup.
+- **Intelligence-suggested space switches.** AI notices cross-space patterns and suggests appropriate switches.
+- **Visual personality per space (Arc-inspired).** Spaces feel like different rooms — subtle differences in typography weights, background texture, information density. Same platform, different atmospheres.
+
+### 3.15.2 Saved Views — The Universal Platform Primitive
+
+A saved view is a **query against the vault with a chosen presentation**. Once treated this way, the same view renders in every surface the platform offers:
+
+- As a page in the sidebar (pinned nav item)
+- As a widget on any dashboard
+- As an action in the command bar
+- As a scheduled report
+- As a data source for AI prompts
+- As a permissioned share with cross-tenant partners or families
+- As a component in a tenant's customer-facing portal
+- As a triage queue
+
+**One query, infinite rendering contexts. This is the composability unlock.**
+
+**Data model:**
+
+```
+vault_item.type = "saved_view"
+{
+  view_id
+  owner_user_id
+  shared_with: [users | roles | tenants | families | cross-tenant refs]
+  name
+  icon
+  query: {
+    item_types, filters, sort, grouping, limit
+  }
+  presentation: {
+    mode: list | kanban | calendar | table | cards | chart | stat
+    columns_or_fields
+    grouping_display
+    color_coding
+  }
+  permissions: { field-level visibility matrix }
+}
+```
+
+**Architectural consequence: widgets become a rendering engine, not a feature.**
+
+Rather than building individual widgets (`AgedReceivablesWidget`, `TodaysCasesWidget`), build one widget component that renders any saved view in any presentation mode. Users pick a saved view and a presentation mode. Dramatically less code, dramatically more capability.
+
+**Composition patterns:**
+
+- **Views + Spaces:** views pin to spaces, not globally. Role-appropriate widgets per space.
+- **Views + Role seeding:** role templates include default views AND their widget placements.
+- **Views + Command bar:** views appear as command bar results.
+- **Views + AI:** "show me" prompts generate views on the fly; users save with one click.
+- **Views + Intelligence:** any view can be analyzed — "summarize this view," "what changed," "flag anomalies."
+- **Views + Triage:** any view can be entered as a triage queue (see 3.19).
+- **Views + Cross-tenant:** views are the primary surface of the cross-tenant coordination layer (see 3.22).
+- **Views + Scheduled reports:** scheduled reports are a trivial layer on top of views.
+
+**UI reference:** Airtable's filter/sort/group builder is the gold standard for the query construction UI.
+
+### 3.15.3 Pins — User-Chosen Placement
+
+Any Vault Hub view or specific page has a star icon in the header. Click to pin to the current space's sidebar. Same interaction unpins.
+
+**Rules:**
+
+- Pins live within a space, not globally. Different spaces have different pins.
+- Pinned items render below default nav items, visually distinct (smaller, subtle divider). Hierarchy: platform-designed defaults above; user choices below.
+- Flat — no folders, no groups, no nested favorites. If list gets unmanageable, the user is over-pinning; more organizational tools would not solve the underlying issue.
+- Persisted as vault items; pins follow the user across devices.
+
+**Pinned action buttons (workflow triggers):**
+
+Pins can also be workflow kickoffs, not just destinations. Arrangement space: "Start new case," "Begin Scribe session," "Submit death certificate." One click, workflow begins. The command bar and pinned buttons invoke the same underlying Compose handlers.
+
+**Telemetry:** pins are data. Patterns across tenants inform default nav evolution.
+
+---
+
+## 3.16 UX Patterns and Design Principles
+
+This section documents specific UX patterns drawn from best-in-class software, and the meta-principles that govern pattern selection. Every pattern has been evaluated against the Bridgeable architecture for coherent composition.
+
+### 3.16.1 Patterns Worth Adopting
+
+**For speed and precision (primarily Power Operator surfaces):**
+
+- **Linear's "peek" panels.** Arrow-key through any list; selected item's full detail appears in a side panel instantly without navigating away. Applied to every list view in Bridgeable (cases, orders, invoices, tasks, triage queues).
+- **Linear's inline creation.** Creation happens in context — a related task from within a case, a follow-up from within triage.
+- **Superhuman's "remind me."** Right-click or keyboard shortcut on any item to defer it with a timer. Applied across cases, tasks, orders, communications, documents.
+- **Slack's "mark as unread."** Any item the user reads can be made unreadable-again with one keystroke. Combined with "remind me" gives deterministic control over attention queue.
+- **Linear's state preservation on navigation.** Every navigation preserves state — draft text, scroll position, current selection, open items. Discipline choice in codebase architecture; enormous UX payoff.
+- **Arc's "little arc" mini mode.** Global hotkey reveals compact interface for quick lookups. Especially valuable for Monitors who want visibility without switching primary context.
+
+**For navigability of complex information:**
+
+- **Notion's inline everything.** Case files are surfaces where users embed related saved views, reference linked vault items, mix structured data with free-form notes, all live.
+- **Obsidian's backlinks.** Every vault item shows reverse-references. A family contact shows "3 cases reference this contact." A product catalog entry shows "47 orders reference this product." Connections navigable in both directions.
+- **Figma's multiplayer cursors.** "Sarah is also viewing this case right now." Prevents simultaneous-edit collisions.
+- **Linear's "triage vs. backlog" separation.** Items needing a decision are cognitively distinct from items queued for work.
+- **Notion's "@" mentions everywhere.** In any text input, `@` references any vault item. References become clickable, hoverable, and act as bidirectional backlinks.
+- **Roam Research's block-level references.** Every significant piece of content is individually addressable. Deep linking at the block level, not just document level.
+
+**For delight and craft:**
+
+- **Raycast's micro-interactions.** Lightning-fast but alive — subtle animations, thoughtful transitions. Every animation has purpose. Nothing cosmetic.
+- **Superhuman's "done" celebrations.** Cleared triage queue produces a brief animation. Willingness to triage again tomorrow is partly emotional. Reward the emotional moment.
+- **Arc's visual personality per space.** Subtle differences in typography, texture, density make spaces feel like different rooms.
+- **Stripe Dashboard's restraint.** Dense but readable, perfect information hierarchy, nothing cluttered. The Monitor-paradigm design target.
+
+**For collaborative work:**
+
+- **Google Sheets' real-time collaboration.** Multiple concurrent users on the same document without friction. "Stale data you must refresh" problem should not exist anywhere in Bridgeable.
+- **Claude's artifact pattern.** AI-generated substantial content lives in an adjacent panel — persistent and editable, not one-shot.
+- **GitHub Copilot's inline suggestions.** AI suggestions appear as ghost text in any text input. Accept with tab, ignore by typing.
+- **Notion AI's "ask about this."** Every major vault item has "Ask AI about this" as a contextual action, scoped to that specific item.
+
+**For sensitive or template-heavy interactions:**
+
+- **Intercom's variable-driven saved replies.** Template replies with vault-variable substitution. Applied to FH sympathy messages, service follow-ups, aftercare communications.
+- **Calendly's permissioned calendar sharing.** Share booking availability without revealing full calendar. Family schedules arrangement time; vendors pick delivery windows.
+
+**For mobile (Focused Executor surfaces specifically):**
+
+- **Things 3's swipe gestures.** Swipe right to schedule, swipe left to complete, long-press to edit. Design target for Focused Executor mobile UIs.
+- **Apple Messages' sheet behaviors.** Input UI slides up from bottom in composable, one-handed-friendly way.
+- **Google's pull-down search.** Pulling down on a list reveals search. Natural gesture for Focused Executor UIs.
+- **Spotify's "swipe to queue."** Swipe = "later" not "now." Reversibility by default.
+
+### 3.16.2 Patterns to Avoid
+
+- **Card-based everything.** Slow for power users vs. keyboard-driven lists. Available as a presentation mode; never default.
+- **Kanban as default.** Available as one presentation mode; never default.
+- **Emoji reactions on business records.** Wrong for cases, orders, or invoices.
+- **Infinite scroll.** Wrong for business data. Pagination and explicit "load more" preserve user control and scroll position.
+- **Onboarding tours.** Better: contextual help when user seems stuck, command bar fallback, excellent defaults.
+- **Stuffed dashboards.** Restraint wins. Morning Briefing narrative beats 12-widget dashboard. Don't over-widget.
+
+### 3.16.3 Meta-Principles for Design Decisions
+
+**"Keyboard for power users; gesture for mobile; voice for hands-busy."**
+Three primary input modalities, each dominant in appropriate context.
+
+**"Progressive disclosure with a ceiling."**
+Complexity is available but never required. Command bar and good defaults mean most users never need to configure anything.
+
+**"Respect the user's existing mental state."**
+Every navigation, click, and AI intervention preserves what the user was thinking about. Scroll positions, draft text, open items, current selection — all preserved by default.
+
+**"Speed is a feature."**
+Sub-100ms for local operations, sub-500ms for search, sub-2s for AI responses. Speed is trust.
+
+**"Honesty over confidence."**
+When AI isn't sure, it says so. Trust comes from accurate calibration, not confident guessing.
+
+**"Reversibility by default."**
+Almost every action is reversible. Soft deletes. Undo everywhere. Version history preserved.
+
+---
+
+## 3.17 The Command Bar as Universal Interface
+
+### 3.17.1 Core Thesis
+
+For Power Operators, the command bar is not a feature of Bridgeable — it is the primary surface of the platform. Every intent a user has, they express in the command bar. Everything else in the UI (dashboards, hubs, nav, pages) is for reading, monitoring, and browsing. Any time a user wants to **do** something, they go to the command bar.
+
+This is the operating system model. macOS Spotlight, iOS Shortcuts, Raycast all do this well in their domains. No vertical SaaS platform has done it. Bridgeable is first.
+
+### 3.17.2 The 18 Unified Capabilities
+
+The command bar provides one surface for eighteen distinct user intents:
+
+1. **Navigation** — jump to any page, record, or saved view
+2. **Universal search** — find anything in the vault (cases, orders, documents, communications, contacts, all of it)
+3. **Natural language creation** — typed or spoken sentences create full vault items with live entity resolution (see 3.17.3)
+4. **Fuzzy + typo-tolerant matching** — "bredgable" still works, "invocie" still finds invoices
+5. **Filter pill syntax** — "assigned:me status:open due:today" renders as removable pills
+6. **Entity-aware deep actions** — type a case number and get case-specific actions directly
+7. **Action chaining** — select a result, tab for contextual actions
+8. **Workflow triggers** — every registered workflow is searchable and invokable from Cmd+K
+9. **Slash commands inside text inputs** — inline creation within notes, messages, comments
+10. **Coaching on calls, Scribe, and in-person** — questions detected in conversation surface answers via Assist (see 3.18)
+11. **Fallback commands** — no matches offer "create task," "create reminder," or external search — no dead ends
+12. **Space switching and space-scoped ranking** — results prioritized by current work context
+13. **AI question handling** — "how many cases did we close last quarter?" routes to Intelligence and returns an answer
+14. **Intent classification** — the bar distinguishes search vs. navigation vs. creation vs. question
+15. **Voice input** — speak instead of type, same pipeline
+16. **Triage mode entry** — process inbound queues with keyboard/swipe actions (see 3.19)
+17. **Saved view creation** — useful searches become permanent widgets with one click
+18. **Cross-tenant search with permissioning** — find things across the network when authorized (see 3.22)
+
+### 3.17.3 Natural Language Creation with Live Overlay
+
+Inspired by Fantastical's calendar-entry pattern, adapted for Bridgeable's full entity model.
+
+User types or speaks one natural sentence. As they type, an overlay appears showing fields being extracted in real time with check marks, pills, and missing-field prompts.
+
+**Example — sales order creation:**
+
+User types: `"Monticello full equipment St. Mary's DeWitt Saturday 2pm"`
+
+```
+New Sales Order
+─────────────────────────────
+✓ Customer:       Monticello Funeral Home
+✓ Package:        Full Equipment
+✓ Cemetery:       St. Mary's Cemetery, DeWitt NY
+✓ Service date:   Saturday, April 25, 2026
+✓ Service time:   2:00 PM
+
+Missing:
+• Deceased name
+• Vault model (use Monticello's default: Wilbert Triune Bronze?)
+• Delivery driver
+
+[Enter to create with current data]
+[Tab to fill missing fields]
+```
+
+**Technical pipeline:**
+
+1. **Entity recognition against the vault.** Vault entities matched via fuzzy search. "Monticello" resolves to the Monticello Funeral Home CRM record.
+2. **Structured parsers for generic types.** Dates, times, quantities, prices, package names have deterministic parsers.
+3. **AI fallback via Intelligence for ambiguity.** When deterministic parsers cannot resolve, hand input plus partial extraction to Intelligence for inference.
+
+Structured parsers run first for speed and predictability. AI fills gaps.
+
+**The overlay is non-negotiable.** Without live feedback, natural language input is scary. With the overlay, trust builds in real time; users correct course mid-sentence.
+
+**Entity-aware extensions:**
+- Customer defaults auto-fill from history
+- Cross-tenant resolution — "St. Mary's DeWitt" matches a cemetery tenant; cemetery notified automatically
+- Package expansion — "Full equipment" expands to specific SKUs with pricing, labor, and delivery
+
+### 3.17.4 Compose as Registry, Not Menu
+
+Compose becomes a **registry** of creatable entity types powering direct command bar invocation.
+
+```
+Cmd+K → "new sales order" → sales order creation opens directly
+```
+
+```
+Compose Registry:
+  sales_order → { label, aliases: ["order", "SO"], handler, field_schema }
+  quote       → { label, aliases: ["estimate", "bid"], handler, field_schema }
+  case        → { label, aliases: ["arrangement", "file"], handler, field_schema }
+  invoice     → { label, aliases: ["bill"], handler, field_schema }
+```
+
+Aliases matter: a director says "arrangement"; an admin says "case." Both work. Compose engine stays; only the user-facing "Compose" menu goes away.
+
+### 3.17.5 The Command Bar Platform Architecture
+
+```
+CAPTURE LAYER
+  Keyboard input
+  Voice input (with ambient-listen mode for Assist)
+  Camera input (via Bridgeable Vision — see 3.20)
+
+INTENT ENGINE
+  Classifies: search / navigate / create / action / question / coach
+
+RESOLUTION ENGINE
+  Entity resolution (fuzzy, alias-aware)
+  Context weighting (space-scoped)
+  Permission-aware filtering
+
+ACTION REGISTRY
+  Compose registry (creatable entities)
+  Workflow registry (invokable workflows)
+  Navigation targets
+  Saved views
+
+RETRIEVAL ENGINE
+  Vault queries
+  Knowledge base lookups
+  AI synthesis via Intelligence
+  Cross-tenant network queries
+
+SURFACE RENDERER
+  Overlay (extracted fields, live feedback)
+  Result list (entity icons, secondary context, previews)
+  Action chain menu (Tab from selected result)
+  Voice response (spoken + visual card)
+```
+
+**Build it once; everything uses it.**
+
+### 3.17.6 Mobile Command Bar
+
+For Power Operators on mobile, the command bar is the entire UI.
+
+- **Main content area (top)** — space's home surface. Read-optimized.
+- **Space indicator** — thin bar showing current space with accent tint.
+- **Persistent command bar (bottom)** — thumb-reachable, always present. Large mic button.
+
+No hamburger menu. No tab bar. No nested navigation. One input surface; everything happens there.
+
+Voice is the killer feature on mobile. "New disinterment order for Johnson at St. Mary's next Tuesday" completes in 4 seconds while walking. **Latency target:** under 2 seconds from voice captured to action complete.
+
+### 3.17.7 The Demo Centerpiece
+
+For the September 2026 Wilbert licensee meeting:
+
+1. Cmd+K → "new case John Smith DOD tonight daughter Mary wants Thursday service Hopkins FH"
+2. Overlay populates six fields from one sentence. Enter. Case opens. Scribe primed.
+3. Director places demo call. Scribe captures case details. Overlay surfaces answer when family asks about green burial.
+4. Call ends. Case 70% populated.
+5. Cmd+K → "Sunnycrest Wilbert Triune Thursday 2pm." Sales order opens, fully populated, ready to send cross-tenant.
+
+Every licensee in the room understands what they are seeing. Nobody in the industry has seen anything like it.
+
+---
+
+## 3.18 Bridgeable Assist — Unified Real-Time Knowledge Surfacing
+
+### 3.18.1 Core Thesis
+
+Call overlay and command bar search are the same system in different contexts. The underlying capability — *real-time knowledge retrieval and answer surfacing for employees while they interact with someone* — is one platform layer that manifests across multiple surfaces.
+
+### 3.18.2 The Unified Pipeline
+
+```
+1. Input capture        (keyboard, voice, ambient audio, call transcript, camera)
+2. Intent extraction    (what is the question/need?)
+3. Entity resolution    (which products, customers, regulations referenced?)
+4. Knowledge retrieval  (vault, knowledge base, docs, prior answers, network)
+5. Answer synthesis     (canned retrieval or AI generation via Intelligence)
+6. Surface rendering    (right place, right format, right timing)
+```
+
+Steps 2-5 are identical regardless of input source. Only 1 and 6 differ across surfaces.
+
+### 3.18.3 Two Modes — Pull vs. Push
+
+**Pull (Search).** User explicitly asks. Employee types question into command bar; gets answer.
+
+**Push (Coaching).** System detects employee needs information they haven't asked for. Contractor on call asks "what about well separation requirements?" — overlay surfaces answer before employee has to look.
+
+### 3.18.4 Surfaces
+
+Calls (RingCentral), Command bar, Scribe sessions, In-person counter, Driver conversations, Internal conversations, Vision interactions. All one system. Different inputs, different surfaces, shared pipeline.
+
+### 3.18.5 Active Listening — Phased Approach
+
+**Phase 1 (pre-September + immediately post):** Explicit session activation — Calls via RingCentral (already permissioned) + Scribe sessions. Gets 80% of coaching value with 20% of complexity.
+
+**Phase 2 (post-September 2026 → 2027):** Desk/Counter Active Listening. Always-on individual workstation or counter with directional mic and visible indicator.
+
+**Phase 3 (2028+):** Shop Floor / Yard Ambient Listening. Tied to Smart Plant hardware. Multi-year arc.
+
+### 3.18.6 Privacy and Consent — First-Class Design Element
+
+- Explicit informed opt-in consent from every employee whose voice may be captured
+- Customer notification where required
+- Visible active indicator when capture is active
+- Easy opt-out and data deletion
+- Configurable retention policies
+- Audit logs of access
+- On-device processing where feasible
+- State-by-state consent law compliance (NY one-party, CA two-party, etc.)
+
+---
+
+## 3.19 Triage Mode and Morning/Evening Briefings
+
+### 3.19.1 Triage Mode — Queue-Based Work as a First-Class Pattern
+
+Triage takes any saved view and processes items one at a time. Each item renders with:
+
+- Primary content (the item itself)
+- Overlay context surfaced by Assist (relevant data, similar past items, AI recommendations)
+- Configured actions for that item type (registered in the action registry)
+- Keyboard shortcuts (desktop) or swipe gestures (mobile)
+
+**Triage works on any saved view.** Build the engine once; every queue of every item type gets triage for free.
+
+### 3.19.2 Triage Use Cases Across the Platform
+
+**Communications:** Missed calls, emails, SMS threads, web form submissions, voicemails.
+
+**Financial:** Time entries, expense reports, invoice approvals, bills to pay, bank transaction categorization, payment application.
+
+**Operational:** Sales orders needing review, quotes awaiting approval, delivery scheduling conflicts, inventory discrepancies.
+
+**Compliance:** Safety inspection findings, training certifications expiring, incident reports, regulatory filings.
+
+**FH-specific:** Scribe transcripts needing review, case documents needing signature, aftercare follow-ups, family portal messages, death certificate verification.
+
+**Cemetery-specific:** Plot inquiries, interment scheduling, maintenance work orders, monument installation approvals.
+
+**Manufacturing-specific:** Incoming orders for allocation, drawing approvals, QC failures, mold allocation, raw material reorders.
+
+**Cross-tenant:** Incoming cross-tenant orders, delivery confirmations, document handoffs, payment applications across tenant boundaries.
+
+**HR:** New hire onboarding items, PTO requests, benefits enrollment reviews, offboarding checklists.
+
+### 3.19.3 AI Coaching Inside Triage
+
+The overlay during triage is active coaching, not just context. Bank transaction: "This vendor categorized as 'shop supplies' 47/48 times. Recommend: shop supplies." User accepts (one key/swipe) or overrides. System learns which suggestions get accepted and improves.
+
+### 3.19.4 Safeguards
+
+- **Undo on everything.** Cmd+Z or queue navigation reversal.
+- **Automatic audit trail.** Every triage decision logs who/when/what for financial and compliance queues.
+- **Confidence gating.** High-risk decisions require slower review.
+- **Approval chains.** Some items need multi-person triage.
+
+### 3.19.5 Morning and Evening Briefings — The Workday Container
+
+**Morning Briefing — "Orient."** Purpose: start the day with clarity in under 30 seconds.
+
+Content (priority order):
+1. **Situational awareness** — what happened since you left (AI-summarized)
+2. **Today's commitments** — calendar events with prep status
+3. **Triage queue summary** — what queues need attention, estimated time
+4. **Decisions people are waiting on** — where *you* are the bottleneck
+5. **Anomalies and things worth knowing** — Intelligence-surfaced items
+6. **Gaps and risks** — what hasn't flagged itself yet
+
+**Evening Briefing — "Close."** Purpose: end the day with resolution; leave without mental load.
+
+Content:
+1. Triage close-out — final pass on queues that shouldn't sit overnight
+2. Decisions still pending on you
+3. Day summary — what got done
+4. Tomorrow preview
+5. Flagged items for tomorrow
+6. Loose threads
+
+**Narrative, not dashboard.** Delivered as AI-written narrative, not widget dashboard. Example:
+
+> *"Good morning, James. It's Monday. Three voicemails came in overnight — all contractors asking about pricing, no emergencies. The Monticello family called at 11pm; Sarah took it, and you'll want to review her intake notes before your 9am. Today you have three arrangements and a delivery to Hopkins. The Martinez conference at 9 is going to be difficult — the family lost a young child. Your Scribe is primed. Before the day gets away from you: Mike needs your approval on the extra weekend pour, and Sarah sent the Monticello quote for review. Queues this morning: 4 invoices, 7 family messages, 3 cases to review — about 20 minutes. One thing worth flagging: revenue this week is pacing 23% below last week."*
+
+**Delivery formats:** In-app briefing surface + email (V1). Voice delivery during morning drive (future, Bridgeable Communications).
+
+**Role and Space Customization:** Briefings shaped by role and current space. Individual → Team → Network dimensions.
+
+---
+
+## 3.20 Bridgeable Vision — Universal Camera-to-Platform Layer
+
+### 3.20.1 Core Thesis
+
+Bridgeable Vision is the camera-based expression of the Input-Modality-as-Platform-Layer principle. All camera-based input flows through a unified pipeline that produces structured platform actions.
+
+**"Bridgeable can see."** Once that primitive exists, every camera-based capability becomes a configuration of the existing pipeline rather than a new system.
+
+### 3.20.2 The Unified Pipeline
+
+```
+CAPTURE
+  Still image / burst capture
+  Video stream (for real-time recognition)
+  LIDAR depth data (iPhone Pro / iPad Pro)
+  Multi-frame capture
+
+RECOGNITION
+  Document recognition   (checks, invoices, forms, drawings, contracts)
+  Object recognition     (equipment, parts, products, vehicles)
+  Scene recognition      (yards, rooms, installation sites)
+  Spatial recognition    (dimensions, layouts via LIDAR)
+  Text recognition       (labels, serial numbers, handwriting, OCR)
+  Condition recognition  (damage, wear, anomalies)
+
+CONTEXT RESOLUTION
+  Vault entity matching
+  Cross-tenant entity matching
+  Current user/role/space context
+  Physical location context (GPS, beacon, time of day)
+
+INTELLIGENCE PROCESSING
+  Structured data extraction
+  Decision/recommendation generation
+  Confidence scoring
+
+OUTPUT TO VAULT
+  Create vault items    (payments, orders, cases, quotes, documents)
+  Update vault items    (maintenance history, inspection records)
+  Query vault items     (retrieve answers, pull specifications)
+  Trigger workflows     (approval chains, compliance flows)
+
+SURFACE RENDERING
+  AR overlay            (spatial work like wall design, plot fit)
+  Camera viewfinder     (live annotations, recognition feedback)
+  Capture confirmation  (review before commit)
+  Voice response + visual card
+```
+
+### 3.20.3 Scoping Discipline — Tenant-Scoped Recognition
+
+Vision does not attempt to recognize anything in the world — only things the platform already knows about. Set of recognizable objects per tenant is small (dozens to hundreds). Training examples come from tenant's own onboarding photos. Context radically reduces ambiguity.
+
+**Fallback architecture:** Tenant-scoped first → QR code backstop → General vision model (Claude Vision, Gemini Vision) → "I'm not sure" UX flow.
+
+### 3.20.4 LIDAR / Spatial Capabilities
+
+**Primary use case: Redi-Rock Wall Designer (Q-2 in Quoting Hub, planned).**
+- LIDAR depth + RGB capture at installation site → block configuration, geogrid specification, structural analysis → Quote vault item with AR rendering
+
+Additional: cemetery plot measurement, crypt/mausoleum measurement, monument foundation sizing, pre-need plot visualization, arrangement room layout, yard layout capture, damage documentation.
+
+LIDAR supported where available; flat-camera fallback for non-LIDAR devices.
+
+### 3.20.5 OSHA Walkthrough — Flagship Compliance Vision Use Case
+
+Safety manager activates "OSHA Walkthrough" mode. As they walk, Vision recognizes fire extinguishers (inspection tag read), eyewash stations, electrical panels (LIDAR measures clearance, flags <3-foot per 29 CFR 1910.303), chemical storage (labels cross-referenced against SDS library), machines (LOTO station presence verified), PPE stations (inventory count), exit signs and fall protection.
+
+**Output produced automatically:** complete compliance checklist, photo documentation, regulatory citations, corrective action tasks auto-created, audit-ready report, delta from previous walkthrough.
+
+**30 minutes of walking produces complete audit-ready compliance record.** Generalizes to every regulated inspection.
+
+### 3.20.6 Hardware Evolution — Phones to Smart Plant to Smart Glasses
+
+**Current — Phone-Based Vision.** Zero infrastructure cost. Best for deliberate-action work (OSHA walkthroughs, receiving, maintenance, site surveys).
+
+**Middle — Smart Plant Fixed Cameras.** Ambient continuous observation. Q4 2026 / Q1 2027 Sunnycrest pilot. Identical pipeline downstream.
+
+**Future — Smart Glasses.** Head-worn AR, continuous passive vision, hands-free voice, AR overlay in field of view. Technology timeline: 2027-2028 work-grade models; 2029-2030 mainstream.
+
+**When glasses arrive commercially, Bridgeable is ready.** Glasses are simply a new capture source for the existing pipeline. This is the compounding value of the Input-Modality-as-Platform-Layer principle.
+
+### 3.20.7 Build Sequencing
+
+**Pre-September 2026:** Keep existing check scanning. Defer full Vision layer. Optionally prototype one demo-quality capability.
+
+**Post-September 2026 (Q4/Q1 2027):** Formalize Vision platform layer. Refactor check scanning. Build maintenance use case. Add Drawing Analyzer (unblocks Quoting Hub Q-3).
+
+**Q2-Q3 2027:** Build Redi-Rock Wall Designer with LIDAR (unblocks Quoting Hub Q-2). Extend to remaining use cases.
+
+**Architectural prep now:** Equipment vault items support photo attachments as first-class. Document processing pipeline architected to accept image input.
+
+---
+
+## 3.21 Knowledge Ingestion as Platform Capability
+
+### 3.21.1 Core Thesis
+
+Knowledge ingestion is not a one-time onboarding task — it is a continuous platform capability serving every knowledge-retrieval surface (command bar search, Assist, Vision, briefings, AI question-answering).
+
+**Approach: Retrieval-Augmented Generation (RAG), not model fine-tuning.** Cheaper, faster to build, easier to update, legally cleaner, better results for factual lookup.
+
+### 3.21.2 The Four Knowledge Tiers
+
+**Tier 1 — Tenant-Uploaded Documentation.** Foundation layer. Manuals, SDSs, specs, drawings, internal SOPs, training materials, policies. Tenant owns source material.
+
+**Tier 2 — Public Manufacturer Documentation (Web-Scraped).** Targeted scrapers per manufacturer (Mixer Systems, Redi-Rock, Wilbert, Eljen, Infiltrator, Batesville, Hobart, Caterpillar, forklift manufacturers). Scheduled refresh; structured extraction; attribution preserved; respect robots.txt and ToS. Legal framing: analogous to an employee reading the manual.
+
+**Tier 3 — Industry-Wide Public Knowledge.** OSHA regulations, EPA guidelines, ACI/NPCA/PCI standards, FTC Funeral Rule, NFDA/ICCFA standards, state DOT specs, building codes, IRS tax code (relevant portions), local health department requirements. Tagged by jurisdiction, industry, topic.
+
+**Tier 4 — Network Knowledge Base.** Knowledge contributed and shared across Bridgeable tenants with permissioning. Grows with network. Becomes meaningful at hundreds of tenants.
+
+### 3.21.3 Knowledge Source Registry
+
+Every ingested source is itself a vault item (`vault_item.type = "knowledge_source"`) with source_name, source_type, scrape_schedule, license, attribution_required, beneficiary_tenants, and source_authority_rating.
+
+### 3.21.4 Retrieval Priority
+
+1. Tenant-specific knowledge (highest trust, most specific)
+2. Manufacturer documentation for tenant's equipment
+3. Industry regulatory/standards (authoritative for compliance)
+4. Network knowledge base (peer experience)
+
+Results ranked by relevance × source authority × freshness.
+
+### 3.21.5 Partnership Upgrade Path
+
+Scraping is baseline. Long-term: formal partnerships where manufacturers provide structured data feeds in exchange for usage data, attribution, and targeted product awareness.
+
+### 3.21.6 Ingestion Priorities by Vertical
+
+**Manufacturing:** Mixer Systems, Wilbert, Hobart, major equipment manufacturers; ACI/NPCA/PCI; OSHA; State DOT specs.
+
+**Redi-Rock:** Full Redi-Rock documentation; geotechnical engineering basics; regional soil/frost-line data; jurisdiction-specific retaining wall codes.
+
+**Wastewater:** Eljen, Infiltrator, Zabel documentation; state-by-state septic regulations; EPA guidelines.
+
+**Funeral Home:** FTC Funeral Rule; all 50 state vital records requirements; preneed trust/insurance regulations; religion-specific traditions; NFDA best practices; casket/vault manufacturer documentation.
+
+**Cemetery:** State cemetery regulations; ICCFA standards; Monument Builders standards.
+
+---
+
+## 3.22 Cross-Tenant Saved Views and Multi-Party Coordination
+
+### 3.22.1 The Core Primitive
+
+A cross-tenant saved view is a query that spans the vault boundary between two or more tenants, with explicit permissioning controlling what each side sees. **The view is a contract.** Participating tenants agree to share specific fields about specific shared items. Vault enforces the contract.
+
+### 3.22.2 Two-Way Views
+
+Use cases: FH ↔ Manufacturer order pipeline, FH ↔ Cemetery plot management, FH ↔ Crematory chain of custody, FH ↔ Insurance claim flow, any supplier ↔ customer pair.
+
+### 3.22.3 N-Way Views — Where Coordination Becomes Transformative
+
+**Example: Cement supplier + Trucking company + Precast manufacturer.**
+
+```
+Shared View: Lehigh + Smith Trucking + Sunnycrest
+Delivery: 40 yards Portland Type I, Job #2847
+─────────────────────────────────────────────
+Status:          In transit, delayed
+ETA:             Originally 8:30 AM, updated 10:15 AM
+Current location: I-81 near Binghamton
+Driver:          Bill Reynolds
+Load temp:       68°F (within spec)
+```
+
+All three see the same real-time status. Sunnycrest replans without calls. Smith Trucking doesn't field status questions.
+
+**Three-way views enable:** accountability clarity, proactive rerouting, pricing transparency, quality chain of custody, payment velocity.
+
+### 3.22.4 N-Way Use Cases
+
+**Death care chain:** FH + Cemetery + Vault Manufacturer. Schedule changes propagate to all three.
+**Funeral service chain:** FH + Crematory + Urn Supplier + Cemetery. Four-way; family portal spans all four.
+**Pre-need chain:** FH + Trust Company + Cemetery + Monument Company. Persists years.
+**Manufacturing chain:** Raw Material + Trucking + Manufacturer + End Customer.
+**Disaster response:** Multiple FHs + Multiple Manufacturers + Regional Coordinator.
+
+### 3.22.5 Architectural Implications
+
+**Matrix permissioning.** Each field in a multi-party view has its own visibility matrix — freight cost visible to Lehigh and Smith Trucking but hidden from Sunnycrest.
+
+**Formal sharing contracts.** Versioned agreement history, audit log of access, formal notice of terms changes, clean termination when party exits.
+
+**Network dynamics.** 100 tenants: 4,950 two-way relationships, 161,700 three-way. Value scales combinatorially. Every new tenant exponentially expands coordination capacity.
+
+---
+
+## 3.23 The Full Cross-Tenant Feature Landscape
+
+### 3.23.1 The Underlying Principle
+
+**Any vault item can, in principle, be cross-tenant with appropriate permissioning. The platform's value scales with how much of its operational fabric crosses tenant boundaries.**
+
+Design heuristic for every future feature: default to "yes, cross-tenant support" unless there's a reason not to. This is the opposite of how most SaaS platforms are built. It is what makes Bridgeable categorically different.
+
+### 3.23.2 Cross-Tenant Feature Categories
+
+**Near-term (natural extensions):**
+- Cross-tenant saved views (3.22)
+- Cross-tenant workflows — Workflow Engine steps executing across tenants
+- Cross-tenant documents — shared with joint authorship, chain-of-custody traveling with cases
+- Cross-tenant calendar events — service events across FH/cemetery/manufacturer
+- Cross-tenant communications — threaded conversations on shared vault items, unified contact records
+- Cross-tenant tasks — pass-through tasks, escalations, approval chains
+
+**Medium-term (significant value, moderate complexity):**
+- Cross-tenant inventory — supplier-managed visibility, distributor allocation, demand forecasting
+- Cross-tenant compliance — joint requirements in sync, real-time license verification, shared training records
+- Cross-tenant financial records — reconciliation, cross-tenant credit management, pricing benchmarks (anonymized)
+- Cross-tenant employee records — cross-certification, industry-wide training records
+- Cross-tenant insights and AI — network-wide pricing intelligence, anomaly detection, best-practice diffusion
+- Cross-tenant knowledge base — industry knowledge shared, manufacturer product knowledge inherited by FH customers
+- Cross-tenant reporting — joint business reviews, benchmarking reports, industry trend reports
+
+**Long-term (speculative but architecturally possible):**
+- Cross-tenant marketplaces — product, service, capacity, professional services
+- Regulatory/government integration — vital records filing, regulatory reporting
+- Family-facing unified views — multi-provider family experience, family-initiated services
+- Community and culture — trade association operations, peer networking, mentorship
+
+### 3.23.3 Strategic Implication
+
+If even a meaningful portion of this cross-tenant landscape ships, Bridgeable becomes **the operating fabric** for its verticals. Not software that businesses use — the infrastructure that coordinates an entire industry's operations.
+
+This is a different kind of company:
+- Valued differently (infrastructure multiples, not SaaS multiples)
+- Regulated differently (data handling, competition law)
+- Acquired differently (strategic infrastructure acquisition)
+- Funded differently (deeper patience, infrastructure-scale capital)
+- Priced differently (per tenant, per relationship, per transaction volume)
+
+**The reframe:**
+
+Bridgeable is not a funeral home platform, not death care SaaS, not vertical SaaS for the physical economy. It is an operating system for multi-party coordination in fragmented industries. Features (CRM, accounting, workflows, documents, communications) are surfaces on that core capability. Death care focus is the wedge; Wilbert licensee network is go-to-market; the thing itself is a general-purpose coordination platform.
+
+**Cross-References:**
+- **3.10 Intelligence** — powers natural language parsing (3.17), answer synthesis (3.18), briefings (3.19), cross-tenant insights (3.23)
+- **3.11 QuotingEngine** — quote creation uses natural language creation (3.17.3); quotes accessible cross-tenant (3.22)
+- **3.12 Documents** — documents are vault items; can be cross-tenant (3.23)
+- **FH Vertical** — Arrangement + Business two-hub UI is a special case of Spaces (3.15.1); Scribe uses Assist overlay pattern (3.18)
+- **Manufacturing Vertical** — production workers get Focused Executor UI (3.14); supply chain uses N-way saved views (3.22)
+- **Smart Plant** — fixed cameras are future capture source for Vision (3.20); ambient listening phase 3 ties to Smart Plant hardware
+
+---
 
 ## 3.24 Bridgeable Vault — V-1 Roll-Up (April 2026, complete)
 

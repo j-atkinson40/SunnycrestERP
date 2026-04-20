@@ -28,7 +28,11 @@
     --destructive: oklch(0.58 0.22 27);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    /* Phase 7 — darkened from oklch(0.708 0 0) to pass WCAG 3:1
+     * focus-indicator contrast against white + all 6 space-accent-light
+     * chip backdrops. Verified programmatically at
+     * backend/tests/test_arc_focus_ring_contrast.py. */
+    --ring: oklch(0.48 0 0);
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
@@ -239,5 +243,36 @@
     @media (min-width: 768px) {
       flex-direction: row;
     }
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Phase 7 — prefers-reduced-motion global retrofit.
+ *
+ * Phase 1-6 shipped transitions without motion-safe gating. Rather
+ * than retrofit 40+ component files individually, this global block
+ * honors the user's OS-level accessibility preference: if they've
+ * asked for reduced motion, every animation + transition is
+ * neutralized.
+ *
+ * Covers:
+ *   - tw-animate-css `animate-*` classes (fade-in, zoom-in, slide-in)
+ *   - Tailwind `transition-*` (colors, transform, all, opacity)
+ *   - `animate-pulse` / `animate-spin` used in skeletons / loaders
+ *   - shadcn + @base-ui dialog/dropdown enter/exit animations
+ *
+ * Phase 7 new components use `motion-safe:` variants directly
+ * (Skeleton, OnboardingTouch, InlineError, KeyboardHelpOverlay,
+ * BriefingCard etc). This global block catches everything that
+ * predates the convention.
+ * ──────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

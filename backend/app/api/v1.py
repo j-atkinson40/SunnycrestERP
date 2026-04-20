@@ -12,6 +12,12 @@ from app.api.routes import (
     accounting_connection,
     ai,
     ai_command,
+    command_bar,
+    saved_views,
+    spaces,
+    nl_creation,
+    tasks,
+    triage,
     ai_settings,
     core,
     configurable_items,
@@ -46,6 +52,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     bom,
     briefings,
     bundles,
+    onboarding_touches,
     company_entities,
     carrier_portal,
     cases,
@@ -174,6 +181,27 @@ v1_router.include_router(
 )
 v1_router.include_router(ai.router, prefix="/ai", tags=["AI"])
 v1_router.include_router(ai_command.router, prefix="/ai", tags=["AI Command"])
+# Command Bar Platform Layer (Phase 1). New contract at
+# /api/v1/command-bar/query. See CLAUDE.md §4 "Command Bar Migration
+# Tracking" for the deprecation plan on the legacy /ai-command/*
+# routes above.
+v1_router.include_router(
+    command_bar.router, prefix="/command-bar", tags=["Command Bar"]
+)
+# Saved Views Platform Layer — Phase 2.
+v1_router.include_router(
+    saved_views.router, prefix="/saved-views", tags=["Saved Views"]
+)
+# Spaces — Phase 3 of UI/UX Arc. Per-user workspace contexts.
+v1_router.include_router(spaces.router, prefix="/spaces", tags=["Spaces"])
+# NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
+v1_router.include_router(
+    nl_creation.router, prefix="/nl-creation", tags=["NL Creation"]
+)
+# Tasks — Phase 5 (deferred from Phase 4). Generic task entity.
+v1_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
+# Triage — Phase 5 of UI/UX Arc. Platform layer for queue-based decision work.
+v1_router.include_router(triage.router, prefix="/triage", tags=["Triage"])
 v1_router.include_router(ai_settings.router, prefix="/settings/ai", tags=["AI Settings"])
 v1_router.include_router(
     ancillary_orders.router, prefix="/extensions/funeral-kanban", tags=["Ancillary Orders"]
@@ -209,6 +237,11 @@ v1_router.include_router(
 )
 v1_router.include_router(
     briefings.router, prefix="/briefings", tags=["Morning Briefings"]
+)
+v1_router.include_router(
+    onboarding_touches.router,
+    prefix="/onboarding-touches",
+    tags=["Phase 7 Onboarding Touches"],
 )
 v1_router.include_router(
     bundles.router, prefix="/products", tags=["Product Bundles"]

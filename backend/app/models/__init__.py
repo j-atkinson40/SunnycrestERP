@@ -378,8 +378,20 @@ from app.models.funeral_case import (
     VaultAccessLog,
     CasketProduct,
 )
+# Phase 5 — Task + Triage infrastructure.
+from app.models.task import Task, TASK_PRIORITIES, TASK_STATUSES
+from app.models.triage import TriageSession, TriageSnooze
+# Phase 6 — Briefings (new table, coexists with legacy employee_briefings).
+from app.models.briefing import Briefing, BRIEFING_TYPES
 
 __all__ = [
+    "Task",
+    "TASK_PRIORITIES",
+    "TASK_STATUSES",
+    "TriageSession",
+    "TriageSnooze",
+    "Briefing",
+    "BRIEFING_TYPES",
     "AccountingConnection",
     "AgentActivityLog",
     "AgentAlert",

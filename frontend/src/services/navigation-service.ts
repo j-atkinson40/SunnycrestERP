@@ -14,6 +14,11 @@ export interface NavItem {
   isDividerBefore?: boolean; // render a subtle divider line before this item
   isDividerAfter?: boolean; // render a subtle divider line after this item
   settingsGroup?: string; // group label inside the Settings section
+  // Command Bar Platform Layer Phase 1: synonyms used by the command
+  // bar registry to surface a nav item when the user types shorthand
+  // (e.g. "AR" for "AR Aging"). Optional — items without aliases are
+  // still discoverable via label + keyword substring match.
+  aliases?: string[];
 }
 
 export interface NavSection {
@@ -732,4 +737,38 @@ function filterByPermission(
     }
     return true;
   });
+}
+
+
+// ── Command Bar Platform Layer Phase 1 — flat iteration ──────────────
+//
+// The backend registry (`backend/app/services/command_bar/registry.py`)
+// hardcodes its own navigate actions today. This helper exists for two
+// reasons:
+//
+//   1. Client-side fallback matching when the backend is reachable
+//      but the user's tenant / role filters would hide the target in
+//      the server response. The command bar can still suggest it as
+//      a nav target (subject to frontend permission check).
+//   2. Future Phase 2/3 work that needs to enumerate every route the
+//      current user can see without a round-trip — e.g. pre-warming
+//      a search index in the browser.
+//
+// This is a pure iteration — it flattens `sections[].items[]` + any
+// `children[]` into a single list. Callers apply their own filtering.
+
+export function getAllNavItemsFlat(nav: NavigationConfig): NavItem[] {
+  const out: NavItem[] = [];
+  const walk = (items: NavItem[]) => {
+    for (const item of items) {
+      out.push(item);
+      if (item.children && item.children.length > 0) {
+        walk(item.children);
+      }
+    }
+  };
+  for (const section of nav.sections) {
+    walk(section.items);
+  }
+  return out;
 }

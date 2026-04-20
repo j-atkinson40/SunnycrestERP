@@ -29,6 +29,7 @@ from app.api.routes.admin import (
     audit as admin_audit,
     migrations as admin_migrations,
     chat as admin_chat,
+    arc_telemetry as admin_arc_telemetry,
 )
 
 platform_router = APIRouter()
@@ -106,4 +107,9 @@ platform_router.include_router(
 )
 platform_router.include_router(
     admin_chat.router, prefix="/admin/chat", tags=["Admin Chat"]
+)
+platform_router.include_router(
+    admin_arc_telemetry.router,
+    prefix="/admin/arc-telemetry",
+    tags=["Phase 7 Arc Telemetry"],
 )

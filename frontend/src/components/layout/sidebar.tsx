@@ -80,6 +80,7 @@ import { useLocations } from "@/contexts/location-context";
 import { cn } from "@/lib/utils";
 import { OnboardingSidebarWidget } from "@/components/onboarding/sidebar-widget";
 import { LocationSelector } from "@/components/core/LocationSelector";
+import { PinnedSection } from "@/components/spaces/PinnedSection";
 import type { NavItem, NavSection } from "@/services/navigation-service";
 
 // ---- Icon lookup ----
@@ -284,6 +285,10 @@ export function Sidebar() {
 
       {/* Navigation sections */}
       <nav className="flex-1 overflow-y-auto px-3 py-3">
+        {/* Phase 3 — Pinned section renders ABOVE the base nav when
+            an active space has pins. Base nav stays visible below —
+            spaces add emphasis, don't remove access. */}
+        <PinnedSection />
         <div className="space-y-4">
           {filteredNavigation.sections.map((section, idx) => (
             <SidebarSection

@@ -9,6 +9,7 @@ import { MigrationsPanel } from "./pages/MigrationsPanel"
 import { FeatureFlagsPage } from "./pages/FeatureFlagsPage"
 import { DeploymentsPage } from "./pages/DeploymentsPage"
 import { StagingCreatePage } from "./pages/StagingPage"
+import { ArcTelemetry } from "./pages/ArcTelemetry"
 
 /**
  * Accessed via either:
@@ -31,6 +32,8 @@ export function BridgeableAdminApp() {
         <Route path="/deployments" element={<DeploymentsPage />} />
         <Route path="/staging/create" element={<StagingCreatePage />} />
         <Route path="/staging" element={<StagingCreatePage />} />
+        {/* Phase 7 — arc telemetry (minimal process-scoped counters) */}
+        <Route path="/telemetry" element={<ArcTelemetry />} />
       </Routes>
     </AdminLayout>
   )

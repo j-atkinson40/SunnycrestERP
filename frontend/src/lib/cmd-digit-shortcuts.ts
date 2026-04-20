@@ -7,7 +7,7 @@
 // updates. When the command bar is closed, the handler does nothing and
 // normal browser Cmd+N tab switching works as expected.
 
-import type { CommandAction } from "@/core/actionRegistry"
+import type { CommandAction } from "@/services/actions"
 
 interface ShortcutState {
   isOpen: boolean

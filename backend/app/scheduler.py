@@ -281,6 +281,22 @@ def job_price_version_activation():
     _run_global("PRICE_VERSION_ACTIVATION", activate_scheduled_versions)
 
 
+def job_briefing_sweep():
+    """Phase 6 — per-user morning/evening briefing sweep.
+
+    First per-user scheduled pattern on the platform. Runs every 15 min.
+    For each user whose configured morning_delivery_time or
+    evening_delivery_time falls in the trailing 15-minute window AND
+    who hasn't already received that briefing today (per the briefings
+    table's daily-plus-type unique), generates + delivers one briefing.
+
+    Idempotent: a second run inside the same 15-min window finds the
+    row via the window check and skips. Per-user failures log + continue.
+    """
+    from app.services.briefings import sweep_briefings_to_generate
+    _run_global("BRIEFING_SWEEP", sweep_briefings_to_generate)
+
+
 def job_platform_health_recalculate():
     """Daily 2am — recalculate tenant health scores from open incidents."""
     run_id = _log_job_run("PLATFORM_HEALTH_RECALCULATE")
@@ -410,6 +426,7 @@ JOB_REGISTRY: dict[str, callable] = {
     "platform_incident_dispatcher": job_platform_incident_dispatcher,
     "safety_program_generation": job_safety_program_generation,
     "quote_auto_expiry": job_quote_auto_expiry,
+    "briefing_sweep": job_briefing_sweep,
 }
 
 
@@ -612,6 +629,19 @@ def register_all_jobs():
         name="workflow_time_based_check",
         replace_existing=True,
         misfire_grace_time=300,
+    )
+
+    # EVERY 15 MINUTES — Phase 6 per-user briefing sweep.
+    # First per-user scheduled pattern on the platform — see
+    # `app.services.briefings.scheduler_integration` for the window-fire
+    # logic and `docs/briefings_architecture.md` for the pattern doc.
+    scheduler.add_job(
+        job_briefing_sweep,
+        CronTrigger(minute="*/15"),
+        id="briefing_sweep",
+        name="briefing_sweep",
+        replace_existing=True,
+        misfire_grace_time=900,
     )
 
     logger.info(f"Registered {len(scheduler.get_jobs())} scheduled jobs")

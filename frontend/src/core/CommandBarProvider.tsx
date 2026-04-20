@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { CommandBar } from "@/components/core/CommandBar";
-import type { CommandAction } from "@/core/actionRegistry";
+import type { CommandAction } from "@/services/actions";
 import { setCmdShortcutState } from "@/lib/cmd-digit-shortcuts";
 
 interface CommandBarContextValue {

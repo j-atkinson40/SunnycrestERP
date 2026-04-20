@@ -97,8 +97,11 @@ class VaultItem(Base):
         String(30), nullable=False, default="system_generated"
     )  # system_generated | user_upload | agent_created | migrated | calendar_sync
     source_entity_id: Mapped[Optional[str]] = mapped_column(
-        String(36), nullable=True
-    )  # ID of the source record (e.g. delivery.id) for back-reference
+        String(128), nullable=True
+    )  # ID of the source record (e.g. delivery.id) for back-reference.
+    # Widened from 36 → 128 in r32 to fit semantic seed keys like
+    # `saved_view_seed:{role_slug}:{template_id}` — UUID-shaped
+    # values still fit.
 
     created_by: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True

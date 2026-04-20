@@ -1,4 +1,45 @@
-"""AI Command Bar, Natural Language Filters, and Company Chat endpoints."""
+"""AI Command Bar, Natural Language Filters, and Company Chat endpoints.
+
+========================================================================
+DEPRECATION NOTICE — Command Bar Platform Layer Phase 1 (2026-04-20)
+========================================================================
+
+The command-bar query path here (POST /ai-command/command) is now
+DEPRECATED in favor of POST /api/v1/command-bar/query, which is
+backed by the new platform layer at
+`backend/app/services/command_bar/`.
+
+Migration schedule (per CLAUDE.md §4 "Command Bar Migration
+Tracking"):
+
+  - Phase 1 (this build): new endpoint ships; legacy kept alive.
+  - Phase 2+: frontend migrates to new endpoint as features are
+    added; legacy callers untouched.
+  - Retirement: when no frontend caller references the legacy
+    endpoint, it will be removed in a focused cleanup.
+
+Endpoints in this file:
+
+  POST /ai-command/command          DEPRECATED — see /command-bar/query
+  POST /ai-command/command/execute  KEPT — action execution (not yet
+                                    reimplemented in the new layer;
+                                    will migrate in Phase 5 when the
+                                    workflow registry lands)
+  POST /ai-command/parse-filters    KEPT — orthogonal feature
+                                    (NL → structured filters for
+                                    table views); no replacement
+                                    planned in this arc
+  POST /ai-command/company-chat     KEPT — distinct feature
+                                    (per-company Q&A); will move to
+                                    Intelligence layer, not the
+                                    command bar
+  POST /ai-command/briefing/enhance KEPT — briefing enhancement
+                                    (Phase 6 briefings will own its
+                                    own path; this stays until then)
+
+Do NOT add new callers to /ai-command/command. New work uses
+/command-bar/query.
+"""
 
 import json
 import logging
@@ -51,7 +92,7 @@ class CompanyChatRequest(BaseModel):
 
 # ── Command Bar ──────────────────────────────────────────────────────────────
 
-@router.post("/command")
+@router.post("/command", deprecated=True)  # DEPRECATED — see module docstring.
 def process_command(
     data: CommandRequest,
     current_user: User = Depends(get_current_user),

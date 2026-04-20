@@ -25,19 +25,31 @@ import {
 import apiClient from "@/lib/api-client";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useMicrophone } from "@/hooks/useMicrophone";
-import type { CommandAction, RecentAction } from "@/core/actionRegistry";
+import type { CommandAction, RecentAction } from "@/services/actions";
+import {
+  adaptQueryResponse,
+  type CommandBarQueryResponse,
+} from "@/core/commandBarQueryAdapter";
 import {
   addRecentAction,
   filterActionsByRole,
   getActionsForVertical,
   getRecentActions,
   matchLocalActions,
-} from "@/core/actionRegistry";
+} from "@/services/actions";
 import { useAuth } from "@/contexts/auth-context";
+import { useActiveSpaceId, useSpaces } from "@/contexts/space-context";
 import { useCommandBar } from "@/core/CommandBarProvider";
 import { WorkflowController, type WorkflowRunState } from "@/components/workflows/WorkflowController";
 import { NaturalLanguageOverlay } from "@/components/workflows/NaturalLanguageOverlay";
+// Phase 4 — entity-centric NL creation overlay. Coexists with the
+// workflow-scoped NaturalLanguageOverlay above; used for case /
+// event / contact entity types that don't have associated workflows.
+import { NLCreationMode } from "@/components/nl-creation/NLCreationMode";
+import { detectNLIntent } from "@/components/nl-creation/detectNLIntent";
+import type { NLEntityType } from "@/types/nl-creation";
 import { SlideOver } from "@/components/ui/SlideOver";
+import { OnboardingTouch } from "@/components/onboarding/OnboardingTouch";
 
 // ── Icon map ────────────────────────────────────────────────────────────────
 
@@ -240,12 +252,24 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     name: string
     steps: Array<{ step_order: number; step_key: string; step_type: string; config?: Record<string, unknown> }>
   } | null>(null);
+  // Phase 4 — entity-centric NL overlay state. Mutually exclusive
+  // with activeNLWorkflow (those route to the workflow-scoped path).
+  const [activeNLEntity, setActiveNLEntity] = useState<{
+    entityType: NLEntityType
+    nlContent: string
+    tabFallbackUrl: string
+  } | null>(null);
   const [aiMode, setAiMode] = useState<{ query: string; answer: string; loading: boolean } | null>(null);
   const [openSlideOver, setOpenSlideOver] = useState<{ recordType: string; recordId: string; title: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const { user, company } = useAuth();
   const { setShortcutRefs } = useCommandBar();
+  // Phase 3 — active space id threaded into the command-bar query
+  // context. Backend applies (a) pin boost, (b) space-switch
+  // result synthesis. null-safe when SpaceProvider isn't mounted.
+  const activeSpaceId = useActiveSpaceId();
+  const { switchSpace: spaceSwitch } = useSpaces();
   // The auth User model exposes the role as `role_slug` (e.g. "admin", "office").
   const userRole = (user as unknown as { role_slug?: string })?.role_slug;
   // Pick registry based on tenant vertical — FH tenants get funeral_home actions,
@@ -293,6 +317,47 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     }
   }, [isOpen, voiceMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Phase 4 — detect CREATE_WITH_NL intent from the typed query and
+  // activate the entity-centric NL overlay. Workflow-scoped NL
+  // (setActiveNLWorkflow) is NOT triggered here — those fire only
+  // when the user explicitly picks a workflow-bound create action
+  // from the results list (see line 640-654 in this file).
+  //
+  // Rule: if the query starts with "new case John Smith..." etc,
+  // enter NL mode. If the user backspaces to just "new case" (empty
+  // invocation), exit NL mode. Keeps the transition smooth.
+  useEffect(() => {
+    if (!isOpen) {
+      setActiveNLEntity(null);
+      return;
+    }
+    // Don't activate NL mode if a workflow overlay is already up,
+    // or if the user is mid-AI-answer.
+    if (activeNLWorkflow || activeWorkflow || aiMode) return;
+
+    const hit = detectNLIntent(query);
+    if (hit) {
+      // Only update state if the entity type or content changed —
+      // prevents extraction-hook from remounting on every keystroke.
+      setActiveNLEntity((prev) => {
+        if (
+          prev &&
+          prev.entityType === hit.entityType &&
+          prev.nlContent === hit.nlContent
+        ) {
+          return prev;
+        }
+        return {
+          entityType: hit.entityType,
+          nlContent: hit.nlContent,
+          tabFallbackUrl: hit.tabFallbackUrl,
+        };
+      });
+    } else {
+      setActiveNLEntity(null);
+    }
+  }, [query, isOpen, activeNLWorkflow, activeWorkflow, aiMode]);
+
   // Debounced search
   useEffect(() => {
     if (!isOpen) return;
@@ -313,9 +378,15 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
       abortRef.current = controller;
 
       try {
-        // Fire core command + workflow command-bar + document search in parallel
+        // Fire core command + workflow command-bar + document search
+        // + Phase 1 /command-bar/query in parallel. The Phase 1
+        // endpoint contributes navigate + create + search_result
+        // tiles from the platform layer; the other three endpoints
+        // keep their existing behavior (workflow detection, document
+        // search, the legacy intent classifier). See CLAUDE.md §4
+        // "Command Bar Migration Tracking" for the deprecation plan.
         setSearchingDocs(q.length >= 3);
-        const [coreRes, wfRes, docsRes] = await Promise.allSettled([
+        const [coreRes, wfRes, docsRes, platformRes] = await Promise.allSettled([
           apiClient.post<CoreCommandResponse>(
             "/core/command",
             { query: q, context: { current_page: window.location.pathname } },
@@ -335,8 +406,33 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
                 { params: { q, include_documents: true }, signal: controller.signal }
               )
             : Promise.resolve({ data: { documents: [] } as CommandBarSearchResponse }),
+          apiClient.post<CommandBarQueryResponse>(
+            "/command-bar/query",
+            {
+              query: q,
+              max_results: 10,
+              context: {
+                current_page: window.location.pathname,
+                active_space_id: activeSpaceId,
+              },
+            },
+            { signal: controller.signal }
+          ),
         ]);
         setSearchingDocs(false);
+
+        // Phase 1: results from /api/v1/command-bar/query. Adapter
+        // translates the backend's ResultItem shape → CommandAction
+        // (interface-only translation; see commandBarQueryAdapter.ts).
+        // These results join the existing sources list and go through
+        // the same type-ranked merge. The backend already applied
+        // intent-aware weighting + trigram similarity + recency; here
+        // they just contribute navigate + create + search_result
+        // tiles to the pool.
+        const platformLayerActions: CommandAction[] =
+          platformRes.status === "fulfilled"
+            ? adaptQueryResponse(platformRes.value.data, tenantVertical)
+            : [];
 
         // Workflow results — always ranked above everything else
         const workflowActions: CommandAction[] =
@@ -512,7 +608,20 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         // Ask AI stays in both branches so users can always escalate to AI.
         const sources: CommandAction[][] = wasAnswered
           ? [answerActions, recordActions, docActions, askAiActions]
-          : [workflowActions, answerActions, filteredApiResults, recordActions, docActions, localMatches, askAiActions];
+          : [
+              workflowActions,
+              answerActions,
+              filteredApiResults,
+              // Phase 1 platform-layer hits slot between API results
+              // and record actions — they're pre-ranked by the backend,
+              // and the dedupe-by-id step below prevents duplicates
+              // against local / API sources.
+              platformLayerActions,
+              recordActions,
+              docActions,
+              localMatches,
+              askAiActions,
+            ];
 
         const byId = new Map<string, CommandAction>();
         for (const a of sources.flat()) {
@@ -675,13 +784,32 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         return;
       }
       if (action.route) {
+        // Phase 3 — intercept space-switch URLs synthesized by the
+        // command-bar retrieval orchestrator. The URL shape is
+        // `/?__switch_space=<space_id>`. Rather than navigate to
+        // "/" and pass the space id through the query string, we
+        // call the SpaceContext switch directly and skip the
+        // real navigation. Legacy clients that don't have
+        // SpaceProvider mounted fall through to a plain navigate
+        // to `/` (dashboard), which is harmless.
+        const spaceSwitchMatch = /[?&]__switch_space=([^&]+)/.exec(action.route);
+        if (spaceSwitchMatch) {
+          const targetId = decodeURIComponent(spaceSwitchMatch[1]);
+          try {
+            void spaceSwitch(targetId);
+          } catch {
+            /* silent — error surfaces via SpaceContext.error */
+          }
+          onClose();
+          return;
+        }
         navigate(action.route);
         onClose();
         return;
       }
       onClose();
     },
-    [navigate, onClose]
+    [navigate, onClose, spaceSwitch]
   );
 
   const handleKeyDown = useCallback(
@@ -757,15 +885,26 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command bar"
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
 
       {/* Modal */}
       <div
         className="relative w-full max-w-[640px] mx-4 bg-white rounded-xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Phase 7 — first-time command bar tooltip */}
+        <OnboardingTouch
+          touchKey="command_bar_intro"
+          title="Press \u2318K anytime."
+          body="Search, create, or take any action. Try typing 'new case' or a record number."
+          position="bottom"
+          className="!top-[calc(100%+8px)] !mt-0 right-4 w-72"
+        />
         {/* Input row */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
           <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />
@@ -777,6 +916,12 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             placeholder="Search, create, or ask anything..."
             className="flex-1 text-base outline-none bg-transparent placeholder:text-gray-400 text-gray-900"
             readOnly={isListening}
+            aria-label="Command bar search"
+            aria-describedby="command-bar-footer-hint"
+            aria-autocomplete="list"
+            aria-controls="command-bar-results"
+            role="combobox"
+            aria-expanded={results.length > 0 || query.length >= 2}
           />
           {loading && <Loader2 className="h-4 w-4 animate-spin text-gray-400 flex-shrink-0" />}
 
@@ -810,6 +955,29 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
             <span className="text-sm text-blue-600">
               {interimTranscript || "Listening..."}
             </span>
+          </div>
+        )}
+
+        {/* Phase 4 — entity-centric NL overlay. Activates when the
+            user types "new <entity> <nl_content>". Renders instead
+            of the standard results list (not underneath — this is a
+            mode switch). Escape / create / tab unwind via the
+            wrapper's handlers. */}
+        {activeNLEntity && !activeNLWorkflow && !activeWorkflow && (
+          <div className="p-3">
+            <NLCreationMode
+              entityType={activeNLEntity.entityType}
+              text={activeNLEntity.nlContent}
+              activeSpaceId={activeSpaceId}
+              tabFallbackUrl={activeNLEntity.tabFallbackUrl}
+              onCreated={() => {
+                setActiveNLEntity(null);
+                onClose();
+              }}
+              onCancel={() => {
+                setActiveNLEntity(null);
+              }}
+            />
           </div>
         )}
 
@@ -883,7 +1051,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         )}
 
         {/* AI panel — opened when the user selects Ask Bridgeable AI */}
-        {!activeWorkflow && !activeNLWorkflow && aiMode && (
+        {!activeWorkflow && !activeNLWorkflow && !activeNLEntity && aiMode && (
           <div className="flex flex-col">
             <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
               <button
@@ -930,7 +1098,13 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         )}
 
         {/* Results */}
-        {!activeWorkflow && !activeNLWorkflow && !aiMode && <div className="max-h-[380px] overflow-y-auto">
+        {!activeWorkflow && !activeNLWorkflow && !activeNLEntity && !aiMode && <div
+          id="command-bar-results"
+          className="max-h-[380px] overflow-y-auto"
+          role="listbox"
+          aria-label="Search results"
+          aria-live="polite"
+        >
           {/* Recent actions when empty */}
           {showRecent && (
             <div className="p-2">
@@ -1048,15 +1222,37 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
 
           {/* Empty state (has query, not loading, no results) */}
           {query.length >= 2 && !loading && !searchingDocs && results.length === 0 && !apiAnswer && (
-            <div className="py-8 text-center text-sm text-gray-400">
-              No results for &ldquo;{query}&rdquo;
+            <div
+              className="space-y-2 py-8 text-center text-sm"
+              data-testid="command-bar-no-results"
+            >
+              <div className="text-gray-500">
+                No results for &ldquo;{query}&rdquo;
+              </div>
+              <div className="text-xs text-gray-400">
+                Try{" "}
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                  new case
+                </span>{" "}
+                ·{" "}
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                  my invoices
+                </span>{" "}
+                ·{" "}
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                  switch to production
+                </span>
+              </div>
             </div>
           )}
         </div>}
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-4 py-2 text-[10px] text-gray-400">
-          <span>↑↓ navigate · Enter select · Esc close · ⌥1–5 quick-pick</span>
+        <div
+          id="command-bar-footer-hint"
+          className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-4 py-2 text-[10px] text-gray-400"
+        >
+          <span>↑↓ navigate · Enter select · Esc close · ⌥1–5 quick-pick · ? for help</span>
           <span className="flex items-center gap-1">
             {searchOnly && (
               <span className="rounded bg-gray-200 px-1 py-0.5 text-[9px] font-medium text-gray-500">

@@ -125,6 +125,36 @@ def register_user(db: Session, data: RegisterRequest, company: Company) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Saved Views Phase 2: seed role-based default views for the new
+    # user. Idempotent + best-effort — a seed failure must never
+    # block user registration. Same defensive pattern as V-1d
+    # notification fan-outs.
+    try:
+        from app.services.saved_views.seed import seed_for_user as seed_saved_views
+
+        seed_saved_views(db, user=user)
+    except Exception:  # pragma: no cover — best-effort
+        import logging
+        logging.getLogger(__name__).exception(
+            "Saved views seed failed for newly-registered user %s (non-fatal)",
+            user.id,
+        )
+
+    # Spaces Phase 3: seed role-based default spaces + pins. Same
+    # defensive pattern. Runs AFTER saved-view seeding so seed_key
+    # pins can resolve to the user's freshly-created saved views.
+    try:
+        from app.services.spaces.seed import seed_for_user as seed_spaces
+
+        seed_spaces(db, user=user)
+    except Exception:  # pragma: no cover — best-effort
+        import logging
+        logging.getLogger(__name__).exception(
+            "Spaces seed failed for newly-registered user %s (non-fatal)",
+            user.id,
+        )
+
     return user
 
 

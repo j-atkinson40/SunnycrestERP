@@ -4,6 +4,7 @@ import { useLayout } from "@/contexts/layout-context";
 import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
 import { NotificationDropdown } from "./notification-dropdown";
+import { SpaceSwitcher } from "@/components/spaces/SpaceSwitcher";
 import { AccountingReminderBanner } from "@/components/accounting-reminder-banner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,11 @@ export function AppLayout() {
         <header className="flex h-14 items-center justify-between border-b px-6">
           <div />
           <div className="flex items-center gap-3">
+            {/* Phase 3 — Spaces switcher. Shows the active space
+                name + lets the user jump between spaces via click
+                or Cmd+[/]/Shift+N. Null-renders when no spaces
+                exist (SpaceProvider absent or seed pending). */}
+            <SpaceSwitcher />
             <NotificationDropdown />
             <Separator orientation="vertical" className="h-6" />
             <Link

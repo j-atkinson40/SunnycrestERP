@@ -1,0 +1,742 @@
+"""Triage engine — session orchestration.
+
+Public functions:
+  start_session(user, queue_id)           → TriageSession row
+  get_session(session_id, user)           → TriageSession row
+  next_item(session_id, user)             → TriageItemSummary | None
+  apply_action(session_id, item_id,
+               action_id, user, ...)      → TriageActionResult
+  snooze_item(session_id, item_id, user,
+              wake_at, reason)            → None
+  end_session(session_id, user)           → TriageSessionSummary
+  queue_count(queue_id, user)             → int (pending items)
+
+Item stream strategy:
+  The queue's `source_saved_view_id` points at a Saved View (Phase 2).
+  We call `saved_views.execute(view_config, tenant, tenant)` per
+  `next_item` call and skip items the current user has snoozed.
+  Simple, correct, and re-fetches fresh on each navigation so items
+  that turned into "ineligible" between calls (someone else approved,
+  status transition, etc) self-correct.
+
+Performance:
+  - next_item p50 <100ms target. Hitting the saved view executor is
+    ~15ms (Phase 2 measured); snooze filter is ~2ms; assembling the
+    summary is <1ms. Plenty of headroom.
+  - apply_action p50 <200ms. Most handlers are single-row UPDATE +
+    commit; the SS cert approve handler also sends an email (non-
+    blocking in the service — it catches on failure).
+
+Session state is persisted to `triage_sessions` so the user can
+resume after a browser reload or nav away.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.models.triage import TriageSession, TriageSnooze
+from app.models.user import User
+from app.models.vault_item import VaultItem
+from app.services.saved_views import (
+    SavedView,
+    execute as execute_saved_view,
+    get_saved_view,
+)
+from app.services.triage import action_handlers, embedded_actions, registry
+from app.services.triage.types import (
+    ActionConfig,
+    ActionNotAllowed,
+    HandlerError,
+    NoPendingItems,
+    QueueNotFound,
+    SessionNotFound,
+    TriageActionResult,
+    TriageItemSummary,
+    TriageQueueConfig,
+    TriageSessionSummary,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ── Session lifecycle ───────────────────────────────────────────────
+
+
+def start_session(
+    db: Session, *, user: User, queue_id: str
+) -> TriageSession:
+    """Start a new triage session. If the user has an open session
+    for this queue, returns that one (resume semantics) rather than
+    opening a second parallel session — prevents accidental forked
+    sessions."""
+    config = registry.get_config(db, company_id=user.company_id, queue_id=queue_id)
+    _check_user_can_access_queue(db, user, config)
+
+    existing = (
+        db.query(TriageSession)
+        .filter(
+            TriageSession.user_id == user.id,
+            TriageSession.queue_id == queue_id,
+            TriageSession.ended_at.is_(None),
+        )
+        .first()
+    )
+    if existing is not None:
+        return existing
+
+    session = TriageSession(
+        id=str(uuid.uuid4()),
+        company_id=user.company_id,
+        user_id=user.id,
+        queue_id=queue_id,
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def get_session(
+    db: Session, *, session_id: str, user: User
+) -> TriageSession:
+    session = (
+        db.query(TriageSession)
+        .filter(
+            TriageSession.id == session_id,
+            TriageSession.user_id == user.id,
+        )
+        .first()
+    )
+    if session is None:
+        raise SessionNotFound(f"Triage session {session_id!r} not found")
+    return session
+
+
+def end_session(
+    db: Session, *, session_id: str, user: User
+) -> TriageSessionSummary:
+    session = get_session(db, session_id=session_id, user=user)
+    if session.ended_at is None:
+        session.ended_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(session)
+    return _to_summary(session)
+
+
+# ── Item stream ─────────────────────────────────────────────────────
+
+
+def next_item(
+    db: Session, *, session_id: str, user: User
+) -> TriageItemSummary:
+    """Return the next pending item in the queue. Skips:
+      - Items currently snoozed by this user for this queue
+      - Items already processed in this session (tracked in
+        cursor_meta.processed_ids)
+    Raises NoPendingItems when none remain.
+    """
+    session = get_session(db, session_id=session_id, user=user)
+    if session.ended_at is not None:
+        raise SessionNotFound("Session already ended")
+
+    config = registry.get_config(
+        db, company_id=user.company_id, queue_id=session.queue_id
+    )
+
+    snoozed_ids = _active_snooze_entity_ids(
+        db, user_id=user.id, queue_id=session.queue_id
+    )
+    processed_ids = set((session.cursor_meta or {}).get("processed_ids", []))
+
+    items = _execute_queue_saved_view(db, config=config, user=user)
+    for row in items:
+        eid = row.get("id")
+        if not eid:
+            continue
+        if eid in snoozed_ids or eid in processed_ids:
+            continue
+        session.current_item_id = eid
+        db.commit()
+        return _row_to_item_summary(config, row)
+
+    raise NoPendingItems("No pending items in queue")
+
+
+def queue_count(
+    db: Session, *, user: User, queue_id: str
+) -> int:
+    """Pending item count for a queue — used by briefings (Phase 6)
+    + sidebar badges. Excludes items currently snoozed by the user."""
+    config = registry.get_config(
+        db, company_id=user.company_id, queue_id=queue_id
+    )
+    _check_user_can_access_queue(db, user, config)
+    snoozed_ids = _active_snooze_entity_ids(
+        db, user_id=user.id, queue_id=queue_id
+    )
+    items = _execute_queue_saved_view(db, config=config, user=user)
+    return sum(1 for r in items if r.get("id") not in snoozed_ids)
+
+
+# ── Action application ──────────────────────────────────────────────
+
+
+def apply_action(
+    db: Session,
+    *,
+    session_id: str,
+    item_id: str,
+    action_id: str,
+    user: User,
+    reason: str | None = None,
+    reason_code: str | None = None,
+    note: str | None = None,
+    payload: dict[str, Any] | None = None,
+) -> TriageActionResult:
+    session = get_session(db, session_id=session_id, user=user)
+    if session.ended_at is not None:
+        raise SessionNotFound("Session already ended")
+    config = registry.get_config(
+        db, company_id=user.company_id, queue_id=session.queue_id
+    )
+
+    action = _find_action(config, action_id)
+    if action is None:
+        raise ActionNotAllowed(
+            f"Action {action_id!r} not defined for queue {session.queue_id!r}"
+        )
+    if action.required_permission:
+        from app.services.permission_service import user_has_permission
+
+        if not user_has_permission(user, db, action.required_permission):
+            raise ActionNotAllowed(
+                f"Missing permission {action.required_permission!r}"
+            )
+    if action.requires_reason and not (reason or reason_code):
+        return TriageActionResult(
+            status="errored",
+            message=f"Action {action_id!r} requires a reason.",
+        )
+
+    # Step 1 — run the handler (the state-changing core).
+    handler = action_handlers.get_handler(action.handler)
+    if handler is None:
+        raise HandlerError(
+            f"Handler {action.handler!r} not registered. "
+            f"Available: {action_handlers.list_handler_keys()}"
+        )
+    ctx = {
+        "db": db,
+        "user": user,
+        "entity_type": config.item_entity_type,
+        "entity_id": item_id,
+        "queue_id": session.queue_id,
+        "action_id": action_id,
+        "reason": reason,
+        "reason_code": reason_code,
+        "note": note,
+        "payload": payload or {},
+    }
+    handler_result = handler(ctx)
+    handler_status = handler_result.get("status", "applied")
+    handler_message = handler_result.get("message", "")
+
+    # Step 2 — Playwright (if configured + handler succeeded).
+    playwright_log_id: str | None = None
+    if action.playwright_step_id and handler_status == "applied":
+        pw = embedded_actions.run_playwright_action(
+            db,
+            script_name=action.playwright_step_id,
+            inputs={
+                "entity_id": item_id,
+                "entity_type": config.item_entity_type,
+                **(payload or {}),
+            },
+            company_id=user.company_id,
+            context_description=f"queue={session.queue_id} action={action_id}",
+        )
+        playwright_log_id = pw.get("log_id")
+        if pw["status"] == "errored":
+            # Append to message so caller sees the partial failure.
+            handler_message += f" (Playwright: {pw['message']})"
+
+    # Step 3 — Workflow trigger (if configured + handler succeeded).
+    workflow_run_id: str | None = None
+    if action.workflow_id and handler_status == "applied":
+        wf = embedded_actions.trigger_workflow_action(
+            db,
+            workflow_id=action.workflow_id,
+            input_data={
+                "entity_id": item_id,
+                "entity_type": config.item_entity_type,
+                "reason": reason,
+                **(payload or {}),
+            },
+            company_id=user.company_id,
+            user_id=user.id,
+        )
+        workflow_run_id = wf.get("workflow_run_id")
+        if wf["status"] == "errored":
+            handler_message += f" (Workflow: {wf['message']})"
+
+    # Step 4 — update session counters + mark item processed.
+    _mark_processed(
+        session,
+        item_id=item_id,
+        action_type=action.action_type.value,
+        handler_status=handler_status,
+    )
+    db.commit()
+
+    # Step 5 — auto-advance cursor to next item if handler succeeded.
+    next_item_id: str | None = None
+    if handler_status == "applied":
+        try:
+            nxt = next_item(db, session_id=session_id, user=user)
+            next_item_id = nxt.entity_id
+        except NoPendingItems:
+            pass
+
+    return TriageActionResult(
+        status=handler_status,  # type: ignore[arg-type]
+        message=handler_message,
+        next_item_id=next_item_id,
+        audit_log_id=None,
+        playwright_log_id=playwright_log_id,
+        workflow_run_id=workflow_run_id,
+    )
+
+
+# ── Snooze ──────────────────────────────────────────────────────────
+
+
+def snooze_item(
+    db: Session,
+    *,
+    session_id: str,
+    item_id: str,
+    user: User,
+    wake_at: datetime,
+    reason: str | None = None,
+) -> TriageActionResult:
+    """Snooze an item until `wake_at`. Removes it from the current
+    user's view of the queue until then. Per the uq_triage_snoozes_
+    active partial index, a second snooze on the same
+    (user, queue, entity) while another is pending raises an
+    integrity error — we convert that to a 409-equivalent errored
+    result. Re-snooze requires un-snoozing first."""
+    session = get_session(db, session_id=session_id, user=user)
+    if session.ended_at is not None:
+        raise SessionNotFound("Session already ended")
+    config = registry.get_config(
+        db, company_id=user.company_id, queue_id=session.queue_id
+    )
+
+    # The partial unique index enforces one-active-snooze-per-(user,
+    # queue, entity). We check first to convert IntegrityError into a
+    # clean errored result.
+    existing = (
+        db.query(TriageSnooze)
+        .filter(
+            TriageSnooze.user_id == user.id,
+            TriageSnooze.queue_id == session.queue_id,
+            TriageSnooze.entity_type == config.item_entity_type,
+            TriageSnooze.entity_id == item_id,
+            TriageSnooze.woken_at.is_(None),
+        )
+        .first()
+    )
+    if existing is not None:
+        return TriageActionResult(
+            status="skipped",
+            message="Item already snoozed.",
+        )
+
+    snooze = TriageSnooze(
+        id=str(uuid.uuid4()),
+        company_id=user.company_id,
+        user_id=user.id,
+        queue_id=session.queue_id,
+        entity_type=config.item_entity_type,
+        entity_id=item_id,
+        wake_at=wake_at,
+        reason=reason,
+    )
+    db.add(snooze)
+
+    _mark_processed(
+        session, item_id=item_id, action_type="snooze", handler_status="applied"
+    )
+    db.commit()
+
+    next_item_id: str | None = None
+    try:
+        nxt = next_item(db, session_id=session_id, user=user)
+        next_item_id = nxt.entity_id
+    except NoPendingItems:
+        pass
+
+    return TriageActionResult(
+        status="applied",
+        message=f"Snoozed until {wake_at.isoformat()}.",
+        next_item_id=next_item_id,
+    )
+
+
+# ── Helpers ─────────────────────────────────────────────────────────
+
+
+def _active_snooze_entity_ids(
+    db: Session, *, user_id: str, queue_id: str
+) -> set[str]:
+    rows = (
+        db.query(TriageSnooze.entity_id)
+        .filter(
+            TriageSnooze.user_id == user_id,
+            TriageSnooze.queue_id == queue_id,
+            TriageSnooze.woken_at.is_(None),
+            TriageSnooze.wake_at > datetime.now(timezone.utc),
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def _find_action(
+    config: TriageQueueConfig, action_id: str
+) -> ActionConfig | None:
+    for action in config.action_palette:
+        if action.action_id == action_id:
+            return action
+    return None
+
+
+def _check_user_can_access_queue(
+    db: Session, user: User, config: TriageQueueConfig
+) -> None:
+    # Super-admins bypass.
+    if getattr(user, "is_super_admin", False):
+        return
+    if not config.enabled:
+        raise ActionNotAllowed(f"Queue {config.queue_id!r} is disabled")
+    from app.services.permission_service import user_has_permission
+
+    for perm in config.permissions:
+        if not user_has_permission(user, db, perm):
+            raise ActionNotAllowed(
+                f"Missing permission {perm!r} for queue {config.queue_id!r}"
+            )
+
+
+def _execute_queue_saved_view(
+    db: Session, *, config: TriageQueueConfig, user: User
+) -> list[dict[str, Any]]:
+    """Execute the queue's source + return rows.
+
+    Three modes:
+      - `source_direct_query_key` set → dispatch to a registered
+        direct-query builder in `_DIRECT_QUERIES` (platform queues
+        against entities not in Phase 2's saved-views registry).
+      - `source_inline_config` set → parse the embedded
+        SavedViewConfig dict and execute via Phase 2 executor.
+      - `source_saved_view_id` set → resolve the saved view row
+        through the Phase 2 CRUD + execute (per-tenant queues).
+    """
+    from app.services.saved_views.types import SavedViewConfig
+
+    # Mode 1 — direct query (Phase 5 seed queues use this)
+    if config.source_direct_query_key:
+        fn = _DIRECT_QUERIES.get(config.source_direct_query_key)
+        if fn is None:
+            raise QueueNotFound(
+                f"Queue {config.queue_id!r} references unknown direct query "
+                f"{config.source_direct_query_key!r}. Available: "
+                f"{list(_DIRECT_QUERIES.keys())}"
+            )
+        try:
+            return fn(db, user)
+        except Exception as exc:
+            logger.exception(
+                "Triage direct query %s failed for queue %s",
+                config.source_direct_query_key, config.queue_id,
+            )
+            raise QueueNotFound(
+                f"Queue {config.queue_id!r} direct query failed: {exc}"
+            ) from exc
+
+    if config.source_inline_config is not None:
+        try:
+            sv_config = SavedViewConfig.from_dict(config.source_inline_config)
+        except Exception as exc:
+            logger.exception(
+                "Triage queue %s has malformed source_inline_config",
+                config.queue_id,
+            )
+            raise QueueNotFound(
+                f"Queue {config.queue_id!r} source_inline_config invalid: {exc}"
+            ) from exc
+        result = execute_saved_view(
+            db,
+            config=sv_config,
+            caller_company_id=user.company_id,
+            owner_company_id=user.company_id,
+        )
+        return result.rows
+
+    if not config.source_saved_view_id:
+        raise QueueNotFound(
+            f"Queue {config.queue_id!r} has neither source_saved_view_id "
+            f"nor source_inline_config."
+        )
+
+    try:
+        sv: SavedView = get_saved_view(
+            db, user=user, view_id=config.source_saved_view_id
+        )
+    except Exception as exc:
+        logger.exception(
+            "Triage queue %s references missing saved_view %s",
+            config.queue_id, config.source_saved_view_id,
+        )
+        raise QueueNotFound(
+            f"Queue {config.queue_id!r} source saved view unavailable: {exc}"
+        ) from exc
+    result = execute_saved_view(
+        db,
+        config=sv.config,
+        caller_company_id=user.company_id,
+        owner_company_id=sv.company_id,
+    )
+    return result.rows
+
+
+def _row_to_item_summary(
+    config: TriageQueueConfig, row: dict[str, Any]
+) -> TriageItemSummary:
+    return TriageItemSummary(
+        entity_type=config.item_entity_type,
+        entity_id=row["id"],
+        title=str(row.get(config.item_display.title_field, "(no title)")),
+        subtitle=(
+            str(row.get(config.item_display.subtitle_field))
+            if config.item_display.subtitle_field
+            and row.get(config.item_display.subtitle_field) is not None
+            else None
+        ),
+        extras={
+            k: row.get(k)
+            for k in config.item_display.body_fields
+            if row.get(k) is not None
+        },
+    )
+
+
+def _mark_processed(
+    session: TriageSession,
+    *,
+    item_id: str,
+    action_type: str,
+    handler_status: str,
+) -> None:
+    if handler_status != "applied":
+        return
+    cursor = dict(session.cursor_meta or {})
+    processed = list(cursor.get("processed_ids", []))
+    if item_id not in processed:
+        processed.append(item_id)
+    cursor["processed_ids"] = processed
+    session.cursor_meta = cursor
+    from sqlalchemy.orm.attributes import flag_modified
+
+    flag_modified(session, "cursor_meta")
+    session.items_processed_count = (session.items_processed_count or 0) + 1
+    if action_type == "approve":
+        session.items_approved_count += 1
+    elif action_type in ("reject", "reassign"):
+        session.items_rejected_count += 1
+    elif action_type == "snooze":
+        session.items_snoozed_count += 1
+    session.current_item_id = None
+
+
+def _to_summary(session: TriageSession) -> TriageSessionSummary:
+    return TriageSessionSummary(
+        session_id=session.id,
+        queue_id=session.queue_id,
+        user_id=session.user_id,
+        started_at=session.started_at,
+        ended_at=session.ended_at,
+        items_processed_count=session.items_processed_count,
+        items_approved_count=session.items_approved_count,
+        items_rejected_count=session.items_rejected_count,
+        items_snoozed_count=session.items_snoozed_count,
+        current_item_id=session.current_item_id,
+    )
+
+
+# ── Snooze sweep (called by a scheduler job in a post-arc pass) ─────
+
+
+def sweep_expired_snoozes(db: Session) -> int:
+    """Mark snoozes whose wake_at has passed as woken. Returns the
+    count awoken. Safe to call repeatedly; idempotent.
+
+    Phase 5 ships the function; wiring into APScheduler is a Phase 6
+    add (triage briefings + scheduled resurfacing).
+    """
+    now = datetime.now(timezone.utc)
+    rows = (
+        db.query(TriageSnooze)
+        .filter(
+            TriageSnooze.wake_at <= now,
+            TriageSnooze.woken_at.is_(None),
+        )
+        .all()
+    )
+    for row in rows:
+        row.woken_at = now
+    db.commit()
+    return len(rows)
+
+
+# ── Direct-query registry ───────────────────────────────────────────
+# Platform-default queues for entities NOT in Phase 2's saved-views
+# registry (task + social_service_certificate as of Phase 5) use
+# these direct query builders. Each function receives (db, user) and
+# returns a list of dicts shaped like saved-view rows (must include
+# "id" + whatever fields the queue's item_display references).
+#
+# Adding a new direct query:
+#   1. Write a `def _dq_<name>(db, user) -> list[dict]` function.
+#   2. Register in _DIRECT_QUERIES at module bottom.
+#   3. Reference from a queue config's `source_direct_query_key`.
+
+
+def _dq_task_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Open/in-progress tasks assigned to the current user, sorted
+    by priority then due date. Matches the spec's task_triage
+    saved-view description."""
+    from app.models.task import Task
+
+    priority_order = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
+    rows = (
+        db.query(Task)
+        .filter(
+            Task.company_id == user.company_id,
+            Task.assignee_user_id == user.id,
+            Task.is_active.is_(True),
+            Task.status.in_(("open", "in_progress", "blocked")),
+        )
+        .all()
+    )
+    rows.sort(
+        key=lambda t: (
+            priority_order.get(t.priority, 4),
+            t.due_date or datetime.max.date(),
+            t.created_at or datetime.max.replace(tzinfo=timezone.utc),
+        )
+    )
+    return [
+        {
+            "id": t.id,
+            "title": t.title,
+            "status": t.status,
+            "priority": t.priority,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "description": t.description,
+            "related_entity_type": t.related_entity_type,
+            "related_entity_id": t.related_entity_id,
+            "assignee_user_id": t.assignee_user_id,
+        }
+        for t in rows
+    ]
+
+
+def _dq_ss_cert_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Pending (unapproved) social service certificates for the
+    current tenant. Ordered oldest-first so the longest-waiting
+    certificates are processed first. Display fields (deceased
+    name, funeral home name) are derived from the related
+    sales_order + customer — matching the pattern used by the
+    legacy `/social-service-certificates` route."""
+    from app.models.social_service_certificate import (
+        SocialServiceCertificate,
+    )
+    from app.models.sales_order import SalesOrder
+
+    rows = (
+        db.query(SocialServiceCertificate)
+        .filter(
+            SocialServiceCertificate.company_id == user.company_id,
+            SocialServiceCertificate.status == "pending_approval",
+        )
+        .order_by(SocialServiceCertificate.generated_at.asc().nulls_last())
+        .all()
+    )
+    out: list[dict[str, Any]] = []
+    for c in rows:
+        order = (
+            db.query(SalesOrder)
+            .filter(SalesOrder.id == c.order_id)
+            .first()
+        )
+        deceased_name = None
+        funeral_home_name = None
+        if order is not None:
+            deceased_name = getattr(order, "deceased_name", None) or getattr(order, "ship_to_name", None)
+            customer = getattr(order, "customer", None)
+            if customer is not None:
+                funeral_home_name = getattr(customer, "name", None)
+        out.append(
+            {
+                "id": c.id,
+                "certificate_number": c.certificate_number,
+                "deceased_name": deceased_name,
+                "funeral_home_name": funeral_home_name,
+                "cemetery_name": None,  # not modeled on the cert today
+                "generated_at": (
+                    c.generated_at.isoformat() if c.generated_at else None
+                ),
+                "delivered_at": None,  # not modeled on the cert today
+                "status": c.status,
+                "order_id": c.order_id,
+                "order_number": order.number if order else None,
+            }
+        )
+    return out
+
+
+_DIRECT_QUERIES: dict[
+    str, "Callable[[Session, User], list[dict[str, Any]]]"
+] = {
+    "task_triage": _dq_task_triage,
+    "ss_cert_triage": _dq_ss_cert_triage,
+}
+
+
+# Typing forward-ref ergonomics — the dict literal above uses a
+# string forward-ref so `Callable` can be late-imported at runtime.
+from typing import Callable  # noqa: E402
+
+
+__all__ = [
+    "start_session",
+    "get_session",
+    "end_session",
+    "next_item",
+    "queue_count",
+    "apply_action",
+    "snooze_item",
+    "sweep_expired_snoozes",
+]

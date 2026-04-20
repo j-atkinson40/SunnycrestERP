@@ -79,6 +79,18 @@ class User(Base):
         String(36), ForeignKey("users.id"), nullable=True
     )
 
+    # Saved Views Phase 2 (r32): generic per-user JSONB flag bag.
+    # Today holds `saved_views_seeded_for_roles: list[str]` (see
+    # `app.services.saved_views.seed`). Future phases extend with
+    # additional per-user flags. `server_default='{}'` keeps reads
+    # null-safe without extra checks.
+    preferences: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default="{}",
+        default=dict,
+    )
+
     company = relationship("Company", back_populates="users", foreign_keys=[company_id])
     role_obj = relationship("Role", back_populates="users", foreign_keys=[role_id])
     permission_overrides = relationship(

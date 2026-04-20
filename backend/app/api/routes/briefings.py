@@ -781,3 +781,275 @@ def update_intelligence_settings(
 
     db.commit()
     return {"status": "ok"}
+
+
+# ═════════════════════════════════════════════════════════════════════
+# Phase 6 — /v2 endpoints. Coexist with legacy endpoints above.
+# Legacy keeps running; new surfaces use /v2/*.
+# ═════════════════════════════════════════════════════════════════════
+
+
+from datetime import datetime as _dt_v2, timezone as _tz_v2
+from fastapi import Query  # noqa: E402
+from app.models.briefing import Briefing, BRIEFING_TYPES as _BRIEFING_TYPES
+from app.services.briefings import (  # noqa: E402
+    BriefingPreferences as _BriefingPrefs,
+    collect_data_for_evening_briefing,
+    collect_data_for_morning_briefing,
+    deliver_briefing as _deliver,
+    generate_evening_briefing,
+    generate_morning_briefing,
+    get_preferences as _get_prefs,
+    seed_preferences_for_user as _seed_prefs,
+    update_preferences as _update_prefs,
+)
+
+
+class BriefingV2Out(BaseModel):
+    id: str
+    briefing_type: str
+    generated_at: str
+    delivered_at: str | None = None
+    delivery_channels: list[str] = []
+    narrative_text: str
+    structured_sections: dict = {}
+    active_space_id: str | None = None
+    active_space_name: str | None = None
+    role_slug: str | None = None
+    generation_duration_ms: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    read_at: str | None = None
+    created_at: str
+
+
+class BriefingV2PrefsOut(BaseModel):
+    morning_enabled: bool
+    morning_delivery_time: str
+    morning_channels: list[str]
+    morning_sections: list[str]
+    evening_enabled: bool
+    evening_delivery_time: str
+    evening_channels: list[str]
+    evening_sections: list[str]
+
+
+class BriefingV2PrefsUpdate(BaseModel):
+    morning_enabled: bool | None = None
+    morning_delivery_time: str | None = None
+    morning_channels: list[str] | None = None
+    morning_sections: list[str] | None = None
+    evening_enabled: bool | None = None
+    evening_delivery_time: str | None = None
+    evening_channels: list[str] | None = None
+    evening_sections: list[str] | None = None
+
+
+class BriefingV2GenerateRequest(BaseModel):
+    briefing_type: str  # "morning" | "evening"
+    deliver: bool = False
+
+
+def _to_v2_out(b: Briefing) -> BriefingV2Out:
+    return BriefingV2Out(
+        id=b.id,
+        briefing_type=b.briefing_type,
+        generated_at=b.generated_at.isoformat() if b.generated_at else "",
+        delivered_at=b.delivered_at.isoformat() if b.delivered_at else None,
+        delivery_channels=b.delivery_channels or [],
+        narrative_text=b.narrative_text,
+        structured_sections=b.structured_sections or {},
+        active_space_id=b.active_space_id,
+        active_space_name=b.active_space_name,
+        role_slug=b.role_slug,
+        generation_duration_ms=b.generation_duration_ms,
+        input_tokens=b.input_tokens,
+        output_tokens=b.output_tokens,
+        read_at=b.read_at.isoformat() if b.read_at else None,
+        created_at=b.created_at.isoformat() if b.created_at else "",
+    )
+
+
+@router.get("/v2", response_model=list[BriefingV2Out])
+def list_briefings_v2(
+    briefing_type: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List the current user's briefings (most recent first)."""
+    q = db.query(Briefing).filter(Briefing.user_id == current_user.id)
+    if briefing_type:
+        if briefing_type not in _BRIEFING_TYPES:
+            raise HTTPException(status_code=400, detail="Unknown briefing_type")
+        q = q.filter(Briefing.briefing_type == briefing_type)
+    rows = q.order_by(Briefing.generated_at.desc()).limit(limit).all()
+    return [_to_v2_out(b) for b in rows]
+
+
+@router.get("/v2/latest", response_model=BriefingV2Out | None)
+def latest_briefing_v2(
+    briefing_type: str = Query(default="morning"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the most-recent briefing of the requested type, or null."""
+    if briefing_type not in _BRIEFING_TYPES:
+        raise HTTPException(status_code=400, detail="Unknown briefing_type")
+    row = (
+        db.query(Briefing)
+        .filter(
+            Briefing.user_id == current_user.id,
+            Briefing.briefing_type == briefing_type,
+        )
+        .order_by(Briefing.generated_at.desc())
+        .first()
+    )
+    return _to_v2_out(row) if row else None
+
+
+@router.get("/v2/preferences", response_model=BriefingV2PrefsOut)
+def get_preferences_v2(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the current user's briefing preferences. Seeds defaults
+    (with legacy disabled_briefing_items translation) on first access."""
+    prefs = _seed_prefs(db, current_user)
+    return BriefingV2PrefsOut(**prefs.model_dump())
+
+
+@router.patch("/v2/preferences", response_model=BriefingV2PrefsOut)
+def update_preferences_v2(
+    body: BriefingV2PrefsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Patch-update preferences. Validates via Pydantic; unknown fields 422."""
+    updates = body.model_dump(exclude_unset=True, exclude_none=True)
+    try:
+        prefs = _update_prefs(db, current_user, updates)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid preferences: {e}") from e
+    return BriefingV2PrefsOut(**prefs.model_dump())
+
+
+@router.post("/v2/generate", response_model=BriefingV2Out)
+def generate_briefing_v2(
+    body: BriefingV2GenerateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """On-demand generation (bypasses the every-15-min sweep).
+
+    Creates a Briefing row. If `deliver=true`, ALSO dispatches via the
+    user's configured delivery channels. Otherwise the briefing is
+    in-app-only. Always returns the generated row.
+    """
+    btype = body.briefing_type
+    if btype not in _BRIEFING_TYPES:
+        raise HTTPException(status_code=400, detail="Unknown briefing_type")
+
+    # On-demand generate REPLACES today's briefing of this type. The
+    # daily unique index enforces one-per-day per type, and the user
+    # explicitly asked to regenerate, so we delete the existing row
+    # before creating the fresh one. Post-arc cleanup: rename this
+    # endpoint to /v2/regenerate to signal intent more clearly.
+    from sqlalchemy import func as _fn
+    existing_today = (
+        db.query(Briefing)
+        .filter(
+            Briefing.user_id == current_user.id,
+            Briefing.briefing_type == btype,
+            _fn.date(Briefing.generated_at) == _dt_v2.now(_tz_v2.utc).date(),
+        )
+        .all()
+    )
+    for row in existing_today:
+        db.delete(row)
+    if existing_today:
+        db.commit()
+
+    prefs = _seed_prefs(db, current_user)
+    if btype == "morning":
+        ctx = collect_data_for_morning_briefing(
+            db, current_user, requested_sections=prefs.morning_sections
+        )
+        generated = generate_morning_briefing(db, current_user, ctx)
+        channels = prefs.morning_channels if body.deliver else ["in_app"]
+    else:
+        ctx = collect_data_for_evening_briefing(
+            db, current_user, requested_sections=prefs.evening_sections
+        )
+        generated = generate_evening_briefing(db, current_user, ctx)
+        channels = prefs.evening_channels if body.deliver else ["in_app"]
+
+    briefing = Briefing(
+        company_id=current_user.company_id,
+        user_id=current_user.id,
+        briefing_type=btype,
+        generated_at=_dt_v2.now(_tz_v2.utc),
+        delivery_channels=[],
+        narrative_text=generated.narrative_text,
+        structured_sections=generated.structured_sections.model_dump(),
+        active_space_id=generated.active_space_id,
+        active_space_name=generated.active_space_name,
+        role_slug=generated.role_slug,
+        generation_context=generated.generation_context,
+        generation_duration_ms=generated.generation_duration_ms,
+        intelligence_cost_usd=generated.intelligence_cost_usd,
+        input_tokens=generated.input_tokens,
+        output_tokens=generated.output_tokens,
+    )
+    db.add(briefing)
+    db.commit()
+    db.refresh(briefing)
+    try:
+        _deliver(db, briefing, channels=channels)
+    except Exception:
+        logger.exception("Briefing delivery failed post-generate (non-fatal)")
+    return _to_v2_out(briefing)
+
+
+@router.get("/v2/{briefing_id}", response_model=BriefingV2Out)
+def get_briefing_v2(
+    briefing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return a specific briefing — tenant-scoped."""
+    row = (
+        db.query(Briefing)
+        .filter(
+            Briefing.id == briefing_id,
+            Briefing.user_id == current_user.id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Briefing not found")
+    return _to_v2_out(row)
+
+
+@router.post("/v2/{briefing_id}/mark-read", response_model=BriefingV2Out)
+def mark_read_v2(
+    briefing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stamp read_at on the briefing (idempotent — second call is a no-op)."""
+    row = (
+        db.query(Briefing)
+        .filter(
+            Briefing.id == briefing_id,
+            Briefing.user_id == current_user.id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Briefing not found")
+    if row.read_at is None:
+        row.read_at = _dt_v2.now(_tz_v2.utc)
+        db.commit()
+        db.refresh(row)
+    return _to_v2_out(row)

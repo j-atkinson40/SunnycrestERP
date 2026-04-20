@@ -283,6 +283,55 @@ def update_user(
                 from app.services.role_service import sync_functional_areas_for_role
                 sync_functional_areas_for_role(db, user.id, new_role.slug)
 
+                # UI/UX Arc — role-change re-seed hooks.
+                # Phase 2's saved-view seed + Phase 3's spaces seed
+                # are both idempotent via *_seeded_for_roles arrays
+                # in user.preferences. Calling them here lets a user
+                # promoted (e.g. office → director) pick up the new
+                # role's defaults without re-registering. Each call
+                # is best-effort; a seed failure MUST NOT block the
+                # role update or the response.
+                #
+                # Explicit two-line pattern (not a reseed_all helper)
+                # so future phases can attach additional seeds at
+                # this hook site transparently. See the approved
+                # Phase 3 plan for rationale.
+                try:
+                    from app.services.saved_views.seed import (
+                        seed_for_user as _seed_saved_views,
+                    )
+                    _seed_saved_views(db, user=user)
+                except Exception:  # pragma: no cover — best-effort
+                    import logging
+                    logging.getLogger(__name__).exception(
+                        "Saved views re-seed on role change failed "
+                        "for user %s (non-fatal)", user.id,
+                    )
+                try:
+                    from app.services.spaces.seed import (
+                        seed_for_user as _seed_spaces,
+                    )
+                    _seed_spaces(db, user=user)
+                except Exception:  # pragma: no cover — best-effort
+                    import logging
+                    logging.getLogger(__name__).exception(
+                        "Spaces re-seed on role change failed for "
+                        "user %s (non-fatal)", user.id,
+                    )
+                # Phase 6 — briefing preferences seed (idempotent per role).
+                # Tracked via preferences.briefings_seeded_for_roles.
+                try:
+                    from app.services.briefings.preferences import (
+                        seed_preferences_for_user as _seed_briefings,
+                    )
+                    _seed_briefings(db, user)
+                except Exception:  # pragma: no cover — best-effort
+                    import logging
+                    logging.getLogger(__name__).exception(
+                        "Briefing preferences re-seed on role change "
+                        "failed for user %s (non-fatal)", user.id,
+                    )
+
         # Notify user if their account was reactivated
         if "is_active" in changes and changes["is_active"]["new"] is True:
             notification_service.create_notification(
