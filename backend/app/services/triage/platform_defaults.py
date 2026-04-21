@@ -244,7 +244,138 @@ _ss_cert_triage = TriageQueueConfig(
 )
 
 
+# ── Queue: cash_receipts_matching_triage (Workflow Arc Phase 8b) ────
+
+
+_cash_receipts_triage = TriageQueueConfig(
+    queue_id="cash_receipts_matching_triage",
+    queue_name="Cash Receipts Matching",
+    description=(
+        "Review and resolve unmatched + suggested-match customer payments. "
+        "Approve / reject / override / request review. Side effects are "
+        "identical to the legacy ApprovalReview.tsx path — both route "
+        "through the same `cash_receipts_adapter` methods."
+    ),
+    icon="Coins",
+    source_direct_query_key="cash_receipts_matching_triage",
+    # Entity IS the anomaly row — handlers resolve it + apply
+    # PaymentApplication writes. The underlying payment is carried
+    # through `payload.payment_id`.
+    item_entity_type="cash_receipt_match",
+    item_display=ItemDisplayConfig(
+        title_field="description",
+        subtitle_field="customer_name",
+        body_fields=[
+            "payment_amount",
+            "payment_date",
+            "severity",
+            "payment_reference",
+        ],
+        display_component="generic",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="approve",
+            label="Approve match",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="CheckCircle",
+            handler="cash_receipts.approve",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="reject",
+            label="Reject",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="XCircle",
+            requires_reason=True,
+            confirmation_required=True,
+            handler="cash_receipts.reject",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="override",
+            label="Override match",
+            action_type=ActionType.CUSTOM,
+            keyboard_shortcut="o",
+            icon="ArrowRightLeft",
+            requires_reason=True,
+            confirmation_required=True,
+            handler="cash_receipts.override",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="request_review",
+            label="Request review",
+            action_type=ActionType.ESCALATE,
+            keyboard_shortcut="r",
+            icon="MessageCircle",
+            requires_reason=True,
+            handler="cash_receipts.request_review",
+        ),
+        ActionConfig(
+            action_id="skip",
+            label="Skip",
+            action_type=ActionType.SKIP,
+            keyboard_shortcut="n",
+            icon="SkipForward",
+            handler="skip",
+        ),
+    ],
+    context_panels=[
+        ContextPanelConfig(
+            panel_type=ContextPanelType.RELATED_ENTITIES,
+            title="Payment + candidate invoices",
+            display_order=1,
+            default_collapsed=False,
+            related_entity_type="customer_payment",
+        ),
+        # Follow-up 2 — interactive Q&A about this payment + the
+        # candidate invoices + this customer's past payment
+        # patterns. Uses the `triage.cash_receipts_context_question`
+        # prompt (seeded in Phase 8b via Option A idempotent seed).
+        ContextPanelConfig(
+            panel_type=ContextPanelType.AI_QUESTION,
+            title="Ask about this payment",
+            display_order=10,
+            default_collapsed=False,
+            ai_prompt_key="triage.cash_receipts_context_question",
+            suggested_questions=[
+                "What's the most likely invoice this payment applies to?",
+                "Why is this payment hard to match?",
+                "What's this customer's typical payment pattern?",
+                "Should I split this across multiple invoices?",
+            ],
+            max_question_length=500,
+        ),
+    ],
+    flow_controls=FlowControlsConfig(
+        # Unmatched payments can wait — tomorrow's run re-surfaces
+        # them anyway — so snooze is allowed.
+        snooze_enabled=True,
+        snooze_presets=[
+            SnoozePreset(label="Tomorrow", offset_hours=24),
+            SnoozePreset(label="Next week", offset_hours=24 * 7),
+        ],
+        approval_chain=[],
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(
+        ai_questions_enabled=True,
+        prioritization_enabled=True,
+        prompt_key="triage.cash_receipts_context_question",
+    ),
+    permissions=["invoice.approve"],
+    # Cross-vertical — applicable to any tenant with an accounting surface.
+    display_order=30,
+    enabled=True,
+)
+
+
 # Register at import time so the registry is populated the moment
 # the triage package loads.
 register_platform_config(_task_triage)
 register_platform_config(_ss_cert_triage)
+register_platform_config(_cash_receipts_triage)

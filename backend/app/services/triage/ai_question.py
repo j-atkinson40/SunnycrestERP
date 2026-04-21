@@ -319,6 +319,155 @@ def _build_ss_cert_related(
     return out
 
 
+def _build_cash_receipts_matching_related(
+    db: Session, user: User, item_row: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8b — related-entity context for a cash
+    receipts triage item.
+
+    Returns (a) the CustomerPayment row, (b) the paying Customer + AR
+    summary, (c) up to 5 candidate open invoices for that customer
+    ranked by |balance - payment_amount|, (d) the last 3 applied
+    payment/invoice pairs for that customer (pattern-matching aid).
+    """
+    from decimal import Decimal
+
+    from app.models.customer import Customer
+    from app.models.customer_payment import (
+        CustomerPayment,
+        CustomerPaymentApplication,
+    )
+    from app.models.invoice import Invoice
+
+    out: list[dict[str, Any]] = []
+
+    payment_id = item_row.get("payment_id")
+    if not payment_id:
+        return out
+    payment = (
+        db.query(CustomerPayment)
+        .filter(
+            CustomerPayment.id == payment_id,
+            CustomerPayment.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if payment is None:
+        return out
+
+    pay_amount = Decimal(str(payment.total_amount or 0))
+    out.append(
+        {
+            "entity_type": "customer_payment",
+            "entity_id": payment.id,
+            "context": "payment",
+            "display_label": (
+                f"Payment ${float(pay_amount):,.2f} on "
+                f"{payment.payment_date.date().isoformat() if payment.payment_date else '—'}"
+            ),
+            "amount": float(pay_amount),
+            "payment_date": (
+                payment.payment_date.isoformat() if payment.payment_date else None
+            ),
+            "payment_method": payment.payment_method,
+            "reference_number": payment.reference_number,
+        }
+    )
+
+    # Customer
+    customer = (
+        db.query(Customer)
+        .filter(Customer.id == payment.customer_id)
+        .first()
+    )
+    if customer is not None:
+        out.append(
+            {
+                "entity_type": "customer",
+                "entity_id": customer.id,
+                "context": "paying_customer",
+                "display_label": customer.name,
+                "account_status": getattr(customer, "account_status", None),
+            }
+        )
+
+        # Candidate open invoices — top 5 by |balance - payment_amount|
+        open_invoices = (
+            db.query(Invoice)
+            .filter(
+                Invoice.company_id == user.company_id,
+                Invoice.customer_id == customer.id,
+                Invoice.status.notin_(("paid", "void", "write_off", "draft")),
+            )
+            .all()
+        )
+        scored = []
+        for inv in open_invoices:
+            balance = Decimal(str(inv.total or 0)) - Decimal(str(inv.amount_paid or 0))
+            if balance <= 0:
+                continue
+            scored.append((abs(balance - pay_amount), inv, balance))
+        scored.sort(key=lambda t: t[0])
+        for _, inv, balance in scored[:5]:
+            out.append(
+                {
+                    "entity_type": "invoice",
+                    "entity_id": inv.id,
+                    "context": "candidate_invoice",
+                    "display_label": (
+                        f"Invoice {inv.number} — ${float(balance):,.2f} due"
+                    ),
+                    "number": inv.number,
+                    "balance_due": float(balance),
+                    "total": float(inv.total or 0),
+                    "status": inv.status,
+                    "invoice_date": (
+                        inv.invoice_date.isoformat() if inv.invoice_date else None
+                    ),
+                }
+            )
+
+        # Last 3 applied payment/invoice pairs for this customer
+        # (pattern-matching aid — "this customer usually pays lumped").
+        past = (
+            db.query(CustomerPaymentApplication, CustomerPayment, Invoice)
+            .join(
+                CustomerPayment,
+                CustomerPayment.id == CustomerPaymentApplication.payment_id,
+            )
+            .join(Invoice, Invoice.id == CustomerPaymentApplication.invoice_id)
+            .filter(
+                CustomerPayment.company_id == user.company_id,
+                CustomerPayment.customer_id == customer.id,
+                CustomerPayment.id != payment.id,
+            )
+            .order_by(CustomerPayment.payment_date.desc())
+            .limit(3)
+            .all()
+        )
+        for app_row, past_pay, past_inv in past:
+            out.append(
+                {
+                    "entity_type": "customer_payment_application",
+                    "entity_id": app_row.id,
+                    "context": "past_match_same_customer",
+                    "display_label": (
+                        f"${float(app_row.amount_applied):,.2f} → "
+                        f"Invoice {past_inv.number}"
+                    ),
+                    "amount_applied": float(app_row.amount_applied),
+                    "invoice_number": past_inv.number,
+                    "payment_date": (
+                        past_pay.payment_date.isoformat()
+                        if past_pay.payment_date
+                        else None
+                    ),
+                }
+            )
+
+    return out
+
+
 # Builder type: (db, user, item_row_dict) → list[related_entity_dict]
 _RELATED_ENTITY_BUILDERS: dict[
     str,
@@ -326,6 +475,7 @@ _RELATED_ENTITY_BUILDERS: dict[
 ] = {
     "task_triage": _build_task_related,
     "ss_cert_triage": _build_ss_cert_related,
+    "cash_receipts_matching_triage": _build_cash_receipts_matching_related,
 }
 
 

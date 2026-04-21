@@ -1132,6 +1132,71 @@ TIER_1_WORKFLOWS.extend([
         ],
     },
     {
+        # Workflow Arc Phase 8b — reconnaissance migration. First
+        # agent-backed wf_sys_* row that runs end-to-end through the
+        # workflow engine via the `call_service_method` action
+        # subtype. `agent_registry_key` is NULL (cleared in 8b-beta
+        # of the migration choreography): the workflow IS now the
+        # execution path. The legacy `POST /api/v1/agents/accounting`
+        # endpoint still works for ad-hoc forensic runs — see the
+        # operational coexistence contract in
+        # `WORKFLOW_MIGRATION_TEMPLATE.md`.
+        "id": "wf_sys_cash_receipts",
+        "name": "Cash Receipts Matching",
+        "description": (
+            "Nightly sweep that matches incoming customer payments to open "
+            "invoices. Auto-applies high-confidence matches, surfaces "
+            "suggested matches + unresolvable payments to the triage queue."
+        ),
+        "keywords": ["cash receipts", "payment matching", "unmatched payments"],
+        "tier": 1,
+        "vertical": None,
+        "trigger_type": "time_of_day",
+        "trigger_config": {
+            "time": "23:30",
+            "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        },
+        "icon": "coins",
+        "command_bar_priority": 0,
+        "is_system": True,
+        "source_service": "workflows/cash_receipts_adapter.py",
+        "steps": [
+            # Single step wraps the full 4-step agent pipeline via the
+            # parity adapter. The agent creates its own AgentJob row
+            # (which the triage queue reads anomalies from). Variable
+            # resolution lets tenants override dry_run via param
+            # enrollment if desired.
+            {
+                "step_order": 1,
+                "step_key": "run_matching",
+                "step_type": "action",
+                "config": {
+                    "action_type": "call_service_method",
+                    "method_name": "cash_receipts.run_match_pipeline",
+                    "kwargs": {
+                        "dry_run": False,
+                        "trigger_source": "workflow",
+                    },
+                },
+            },
+        ],
+        "params": [
+            {
+                "step_key": "run_matching",
+                "param_key": "dry_run",
+                "label": "Dry-run mode",
+                "param_type": "boolean",
+                "default_value": False,
+                "is_configurable": True,
+                "description": (
+                    "When true, emits the report + anomalies without "
+                    "creating any CustomerPaymentApplication rows. Use "
+                    "for the first production run to preview behavior."
+                ),
+            },
+        ],
+    },
+    {
         "id": "wf_fh_obituary_draft",
         "name": "Obituary Draft Generation",
         "description": "Drafts an obituary from case data after the arrangement conference.",

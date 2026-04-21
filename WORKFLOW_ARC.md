@@ -40,7 +40,21 @@ No migration of existing workflows yet. The 13 accounting agents stay in `AgentR
 
 ### Phase 8b — Reconnaissance Migration: Cash Receipts Matching
 
-**Not started.** Migrate the cash receipts matching agent into a workflow definition as the pattern-discovery vehicle. This is the reconnaissance phase — we'll learn what the generalized migration looks like by doing one carefully. Outputs: a reusable migration template for 8c-8f.
+**Shipped.** First accounting agent migrated into a real workflow definition. Patterns documented in `WORKFLOW_MIGRATION_TEMPLATE.md` at project root (primary deliverable, the checklist 8c–8f compare against).
+
+- Parity adapter (`backend/app/services/workflows/cash_receipts_adapter.py`) — thin bridge preserving side effects via service reuse (`approve_match` / `reject_match` / `override_match` / `request_review` + `run_match_pipeline`). Zero logic duplication; `run_match_pipeline` delegates end-to-end to `AgentRunner.run_job`.
+- New workflow engine action subtype `call_service_method` with a whitelisted dispatch registry (`_SERVICE_METHOD_REGISTRY`). Built once in 8b, reused for every 8c–8f migration.
+- New workflow row `wf_sys_cash_receipts` in `TIER_1_WORKFLOWS` with `trigger_type="time_of_day"` at 23:30 ET daily. `agent_registry_key=NULL` (8b-beta state of the badge choreography — never had a row before). Existing `workflow_scheduler.check_time_based_workflows` sweep fires it — no `backend/app/scheduler.py` changes.
+- New triage queue `cash_receipts_matching_triage` in `platform_defaults.py` (cross-vertical, `invoice.approve` permission). 4 action handlers under `cash_receipts.*` keys. Direct query builder + related-entity builder + AI question prompt (`triage.cash_receipts_context_question`).
+- BLOCKING parity test `test_cash_receipts_migration_parity.py` — 9 tests across 5 categories (PaymentApplication identity, reject no-write, anomaly resolution, negative PeriodLock, pipeline-scale equivalence + tenant isolation + triage engine integration).
+- BLOCKING latency gates `test_cash_receipts_triage_latency.py` — next_item p50=18.7ms/p99=20.1ms (budget 100/300) + apply_action p50=15.7ms/p99=22.5ms (budget 200/500).
+- Unit tests (18) cover queue registration, `_DIRECT_QUERIES` dispatch, `_RELATED_ENTITY_BUILDERS` dispatch, handler registration, workflow engine registry, workflow seed shape, adapter edge cases.
+- 5 Playwright E2E scenarios verify queue registration, workflow visibility + badge state, legacy coexistence (/agents + /agents/:id/review still mount).
+- Legacy `POST /api/v1/agents/accounting` + `AgentDashboard.tsx` + `ApprovalReview.tsx` preserved for ad-hoc forensic re-runs. Operational coexistence contract documented in both CLAUDE.md and the migration template. Legacy retirement deferred to Phase 8h+.
+
+Latent bugs surfaced + flagged for separate sessions:
+- `wf_sys_ar_collections` `trigger_type="scheduled"` not dispatched by `workflow_scheduler` today (latent bug predating 8b).
+- Approval-gate email body is hardcoded HTML, predating D-7 delivery abstraction. Parity requires preserving verbatim.
 
 ### Phase 8c — Core Accounting Migrations (Batch 1)
 

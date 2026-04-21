@@ -190,6 +190,157 @@ def _handle_ss_cert_void(ctx: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ── Cash Receipts Matching handlers (PARITY CRITICAL — Phase 8b) ────
+
+
+def _handle_cash_receipts_approve(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Approve via the existing `cash_receipts_adapter` — zero
+    duplicated logic. The PaymentApplication + Invoice writes are
+    identical to `CashReceiptsAgent._step_attempt_auto_match`
+    CONFIDENT_MATCH branch. Parity test guards this invariant."""
+    from app.services.workflows.cash_receipts_adapter import approve_match
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    payload = ctx.get("payload") or {}
+    invoice_id = payload.get("invoice_id")
+    if not invoice_id:
+        return {
+            "status": "errored",
+            "message": "Missing `invoice_id` in payload.",
+        }
+    try:
+        result = approve_match(
+            db,
+            user=user,
+            payment_id=payload.get("payment_id") or ctx.get("entity_id", ""),
+            invoice_id=invoice_id,
+            anomaly_id=ctx["entity_id"],
+            amount=payload.get("amount"),
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": result["message"],
+        "payment_application_id": result["payment_application_id"],
+        "invoice_status": result["invoice_status"],
+    }
+
+
+def _handle_cash_receipts_reject(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Reject a match — resolve the anomaly with a reason, no
+    financial writes."""
+    from app.services.workflows.cash_receipts_adapter import reject_match
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code")
+    if not reason:
+        return {
+            "status": "errored",
+            "message": "Reject reason is required.",
+        }
+    payload = ctx.get("payload") or {}
+    payment_id = payload.get("payment_id")
+    if not payment_id:
+        return {
+            "status": "errored",
+            "message": "Missing `payment_id` in payload.",
+        }
+    try:
+        reject_match(
+            db,
+            user=user,
+            payment_id=payment_id,
+            anomaly_id=ctx["entity_id"],
+            reason=reason,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": "Match rejected — payment stays unresolved.",
+    }
+
+
+def _handle_cash_receipts_override(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Override — force-apply a match the agent didn't suggest.
+    Same writes as approve + stamps override reason on anomaly."""
+    from app.services.workflows.cash_receipts_adapter import override_match
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code")
+    if not reason:
+        return {
+            "status": "errored",
+            "message": "Override reason is required.",
+        }
+    payload = ctx.get("payload") or {}
+    invoice_id = payload.get("invoice_id")
+    payment_id = payload.get("payment_id")
+    if not invoice_id or not payment_id:
+        return {
+            "status": "errored",
+            "message": "Both `payment_id` and `invoice_id` are required.",
+        }
+    try:
+        result = override_match(
+            db,
+            user=user,
+            payment_id=payment_id,
+            invoice_id=invoice_id,
+            anomaly_id=ctx["entity_id"],
+            reason=reason,
+            amount=payload.get("amount"),
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": result["message"],
+        "payment_application_id": result["payment_application_id"],
+        "invoice_status": result["invoice_status"],
+    }
+
+
+def _handle_cash_receipts_request_review(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Request-review — stamp a note on the anomaly without resolving.
+    Item stays in-queue for a teammate to pick up."""
+    from app.services.workflows.cash_receipts_adapter import request_review
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    note = ctx.get("note") or ctx.get("reason")
+    if not note:
+        return {
+            "status": "errored",
+            "message": "A note is required when requesting review.",
+        }
+    payload = ctx.get("payload") or {}
+    payment_id = payload.get("payment_id")
+    if not payment_id:
+        return {
+            "status": "errored",
+            "message": "Missing `payment_id` in payload.",
+        }
+    try:
+        request_review(
+            db,
+            user=user,
+            payment_id=payment_id,
+            anomaly_id=ctx["entity_id"],
+            note=note,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": "Review requested — item stays in queue.",
+    }
+
+
 # ── Generic skip/escalate ────────────────────────────────────────────
 
 
@@ -229,6 +380,11 @@ HANDLERS: dict[str, HandlerFn] = {
     # SS cert (parity-preserved)
     "ss_cert.approve": _handle_ss_cert_approve,
     "ss_cert.void": _handle_ss_cert_void,
+    # Cash Receipts Matching (Workflow Arc Phase 8b — parity-preserved)
+    "cash_receipts.approve": _handle_cash_receipts_approve,
+    "cash_receipts.reject": _handle_cash_receipts_reject,
+    "cash_receipts.override": _handle_cash_receipts_override,
+    "cash_receipts.request_review": _handle_cash_receipts_request_review,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,

@@ -6,6 +6,129 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Workflow Arc Phase 8b — Reconnaissance Migration (Cash Receipts Matching)
+
+**Date:** 2026-04-21
+**Migration head:** `r36_workflow_scope` (unchanged — no new tables, no migration)
+**Arc:** Workflow Arc — Phase 8b of 8a–8h. See `WORKFLOW_ARC.md`.
+**Tests passing:** 9 BLOCKING parity + 2 BLOCKING latency gates + 18 unit + 5 Playwright = **34 new this phase**. Adjacent regression: Phase 1–8a tests all green (UI/UX Arc + Phase 8a foundation).
+
+### Primary deliverable: WORKFLOW_MIGRATION_TEMPLATE.md
+
+This phase ships TWO things, not one:
+
+1. **The cash receipts migration** — one accounting agent migrated end-to-end through the workflow engine + triage queue, with parity preserved via a thin service-reuse adapter.
+2. **The migration template** — `WORKFLOW_MIGRATION_TEMPLATE.md` at project root, documenting the patterns discovered. It's the checklist 8c–8f migration audits compare their target agent against.
+
+Cash receipts was chosen as the reconnaissance vehicle for specific reasons: cross-vertical (not vertical-scoped), SIMPLE approval (no period lock — less risky than month-end close), no existing scheduler entry (net-new insertion, no transition to wrangle), mid-complexity anomaly taxonomy (4 types — enough to exercise per-entity and tenant-aggregate patterns).
+
+### Approved deviations from the audit recommendation
+
+1. **Scheduler from-scratch** (approved §1): cash receipts had no APScheduler entry today. Phase 8b adds `trigger_type="time_of_day"` at 23:30 ET daily on the `wf_sys_cash_receipts` workflow row. Existing `workflow_scheduler.check_time_based_workflows` 15-min sweep fires it. **The migration template accommodates both "add from scratch" (cash receipts) and "reuse existing" (for 8c agents that have scheduler entries).**
+2. **Agent_registry_key is informational-only** (approved §2): confirmed via code audit — nothing in `workflow_engine.py` reads it. It's a badge flag in the workflow row, not a dispatch switch. Parity test ensures both paths produce identical side effects when either runs.
+3. **Two-step badge choreography** (approved §3): the migration template documents both (a) "8b-alpha: insert with agent_registry_key + placeholder steps; 8b-beta: real steps + clear field" and (b) "8b-beta from birth" (cash receipts didn't have a prior row, so we jumped straight to the beta state). For 8c's existing stubs (`wf_sys_month_end_close` etc.), the alpha→beta transition is the concrete path — they already have rows with `agent_registry_key` set by r36's backfill.
+4. **`call_service_method` as new action subtype** (approved §4): single workflow engine extension. Whitelisted dispatch table (`_SERVICE_METHOD_REGISTRY`) mapping `"{agent}.{method}"` keys to importable callables with allowed-kwargs safelists. Auto-injected kwargs: `db`, `company_id`, `triggered_by_user_id`. Reused for every 8c–8f migration — zero further engine changes needed there.
+5. **`time_of_day` trigger, Path A** (approved §5): reused the existing `time_of_day` dispatch path. Path B (extending scheduler to honor `trigger_type="scheduled"` with cron config) flagged as latent cleanup for `wf_sys_ar_collections` — deferred to a separate session.
+6. **Operational coexistence contract** (approved §6): documented in both CLAUDE.md and §9 of the migration template. Triage queue = routine daily processing. Legacy `POST /api/v1/agents/accounting` = ad-hoc forensic re-runs only. Do not run both paths simultaneously on the same unresolved-item set. Phase 8c+ inherits this contract.
+7. **Parity test categories** (approved §7): all 5 categories implemented in `test_cash_receipts_migration_parity.py` — PaymentApplication row identity, reject no-write, anomaly resolution shape, negative PeriodLock assertion, pipeline-scale equivalence. Plus triage engine integration + cross-tenant isolation. 9 tests total.
+8. **Hardcoded approval email HTML** (approved §8): preserved verbatim for parity. Flagged for future cleanup in a separate session (platform-wide D-7 migration of approval-gate emails).
+9. **Template as comparison checklist, not copy-paste** (approved §9): `WORKFLOW_MIGRATION_TEMPLATE.md` structured around nine audit questions each 8c–8f migration must answer. Cash receipts is the working example throughout.
+10. **AI question prompt with 4 suggested questions** (approved §10): seeded via Option A idempotent pattern in `backend/scripts/seed_triage_phase8b.py`. Variables match the shared 4-field schema (`item_json`, `user_question`, `tenant_context`, `related_entities_json`).
+11. **wf_sys_ar_collections latent bug** (approved §11): its `trigger_type="scheduled"` isn't dispatched by `workflow_scheduler` today. Workflow isn't actually firing on schedule. Flagged for separate cleanup session.
+12. **Open questions** (approved §12): documented in §11 of the migration template — ApprovalReview.tsx future, start_run log when both paths present, period_lock discipline for 8c+, triage_approval step type vs input.
+
+### Backend additions
+
+- `backend/app/services/workflows/__init__.py` — new package.
+- `backend/app/services/workflows/cash_receipts_adapter.py` (~340 lines) — the parity adapter. Five public functions: `run_match_pipeline` (workflow-step surface) + `approve_match` / `reject_match` / `override_match` / `request_review` (per-item triage actions). Private helpers for tenant-scoped entity loading + the PaymentApplication write pattern. Zero-duplication discipline via delegation to `AgentRunner.run_job` for the pipeline path + independent replication of the agent's CONFIDENT_MATCH branch write logic for per-item approves (covered by parity test).
+- `backend/app/services/workflow_engine.py` — new `call_service_method` action subtype. Added to `_execute_action` dispatch chain at line 528. New `_handle_call_service_method` handler (~60 lines) with kwarg-allowlist filtering + dynamic callable import via `module:attr` paths. New `_SERVICE_METHOD_REGISTRY` global (one entry for Phase 8b).
+- `backend/app/data/default_workflows.py` — `wf_sys_cash_receipts` appended to `TIER_1_WORKFLOWS`. `trigger_type="time_of_day"` + `trigger_config.time="23:30"` + `source_service="workflows/cash_receipts_adapter.py"`. Single step with `action_type="call_service_method"`. Parameterized via `dry_run` config entry for tenant overrides.
+- `backend/app/services/triage/engine.py` — new `_dq_cash_receipts_matching_triage` function. Queries unresolved `AgentAnomaly` rows for `cash_receipts_matching` jobs. Denormalizes payment + customer info at query time. Returns rows sorted by severity (CRITICAL→WARNING→INFO) then amount desc. Registered in `_DIRECT_QUERIES` dict.
+- `backend/app/services/triage/ai_question.py` — new `_build_cash_receipts_matching_related` function. Returns payment + customer + top-5 candidate invoices (ranked by |balance − payment_amount| proximity) + past 3 applied payment/invoice pairs (pattern-matching aid). Registered in `_RELATED_ENTITY_BUILDERS` dict.
+- `backend/app/services/triage/action_handlers.py` — four new handlers (`_handle_cash_receipts_approve` / `_reject` / `_override` / `_request_review`) + 4 new registrations in `HANDLERS` dict under `cash_receipts.*` keys. Each handler validates payload kwargs (payment_id, invoice_id, reason/note) + delegates to the adapter; errors surface as `{"status": "errored", "message": "..."}` for engine-level handling.
+- `backend/app/services/triage/platform_defaults.py` — new `_cash_receipts_triage` `TriageQueueConfig` + `register_platform_config` call at module bottom. 5-action palette (approve/reject/override/request_review/skip), 2 context panels (related_entities + ai_question), `invoice.approve` permission gate, cross-vertical, snooze enabled, schema_version="1.0".
+- `backend/scripts/seed_triage_phase8b.py` (~165 lines) — Option A idempotent seed for `triage.cash_receipts_context_question` Intelligence prompt. Handles fresh-install / matching-content-noop / differing-content-update / multi-version-skip-with-warning cases. Uses shared 4-field variable schema + standard JSON response schema.
+
+### Tests
+
+- `backend/tests/test_cash_receipts_migration_parity.py` (~450 lines, 9 tests) — **BLOCKING**. Six test classes: TestApproveParity × 2 (PaymentApplication identity + anomaly resolution shape), TestRejectParity × 2 (no-write + reason required), TestNoPeriodLock × 1 (negative assertion), TestPipelineEquivalence × 1 (agent-run vs. adapter-run produce same shape), TestTriageEngineParity × 2 (engine dispatch + reason enforcement), TestTenantIsolation × 1 (cross-tenant anomaly rejection).
+- `backend/tests/test_cash_receipts_triage_latency.py` (~235 lines, 2 tests) — **BLOCKING**. `test_cash_receipts_triage_next_item_latency_gate` (p50<100/p99<300) and `test_cash_receipts_triage_apply_action_latency_gate` (p50<200/p99<500). 30 samples + 3 warmups each. Seeds 40 pending anomalies with matching payment/invoice triples.
+- `backend/tests/test_cash_receipts_phase8b_unit.py` (~330 lines, 18 tests) — 6 test classes: TestTriageRegistration × 2 (platform default + config shape), TestDirectQueryDispatch × 3 (key registered + empty new tenant + severity+amount ordering), TestRelatedEntitiesBuilder × 3 (registered + shape + empty on missing payment), TestHandlerRegistration × 2 (all 4 keys registered + graceful error on missing payload), TestWorkflowEngineRegistry × 4 (method in registry + unknown method errored + missing method_name errored + kwargs filtered by allowlist), TestCashReceiptsWorkflowSeed × 2 (entry present + expected shape with NULL agent_registry_key), TestAdapterEdgeCases × 2 (override without reason + request_review without note raise ValueError).
+- `frontend/tests/e2e/workflow-arc-phase-8b.spec.ts` (~200 lines, 5 scenarios) — Playwright. Queue registration via /triage/queues API, wf_sys_cash_receipts visible on Platform tab without agent badge, queue config endpoint returns context panels + AI prompt key, legacy /agents dashboard still mounts (coexistence), legacy /agents/:id/review route still resolves.
+
+### Performance
+
+- **cash_receipts_triage_next_item:** p50=18.7ms, p99=20.1ms (budget 100/300) — **5× headroom on p50, 15× on p99**.
+- **cash_receipts_triage_apply_action:** p50=15.7ms, p99=22.5ms (budget 200/500) — **13× headroom on p50, 22× on p99**.
+
+apply_action carries three writes per call (PaymentApplication insert + Invoice mutation + anomaly resolve) + commit. That 3-write pattern is representative of what 8c–8f migrations' hot paths will look like, so 13× p50 headroom is a reassuring floor.
+
+### Migration patterns extracted to template
+
+Documented in `WORKFLOW_MIGRATION_TEMPLATE.md` §§1–12:
+
+1. **Nine audit questions** every migration answers: write timing, anomaly structure, existing scheduler invocation, approval type, email template status, related entities, AI prompt shape, permission gate, vertical scoping.
+2. **Parity adapter pattern**: thin module at `backend/app/services/workflows/{agent}_adapter.py`. Pipeline entry (`run_match_pipeline` et al.) for workflow-step surface + per-item helpers for triage actions. Zero-duplication via delegation where possible + parity-tested replication where not. Tenant isolation via `_load_*_scoped` helpers.
+3. **Workflow definition structure**: seed entry in `TIER_1_WORKFLOWS` + `call_service_method` dispatch registration + two-step badge choreography (alpha→beta) for agent_registry_key transitions.
+4. **Triage queue configuration**: three files (engine.py direct query, ai_question.py related builder, action_handlers.py handlers) + platform_defaults.py config + 4 decision-oriented AI question chips.
+5. **Parity test requirements**: 5 categories of assertions, shared fixture pattern with per-test seeding (to avoid cross-test contamination from tenant-wide agent sweeps), BLOCKING classification convention.
+6. **Latency gate requirements**: two gates per migration (next_item + apply_action), 30 samples + 3 warmups, seeded-fixture methodology.
+7. **Scheduler transition patterns**: three paths documented (add-from-scratch, reuse-existing-agent-cron, reuse-existing-workflow-cron).
+8. **Agent badge clearing**: informational-only field; no cache clear or app restart needed — just clear the column and frontend re-renders without the badge.
+9. **Coexist-with-legacy contract**: four commitments (canonical routine path via triage, legacy endpoint for forensics, no concurrent processing, retirement deferred).
+10. **Post-migration verification checklist**: 13 items to check before closing a migration PR.
+
+### Patterns specific to cash receipts (WON'T generalize to 8c–8f)
+
+Documented in §1.1 / §1.4 / §1.5 of the template so 8c audits don't copy blindly:
+
+- Immediate-write pattern (writes during agent step 2) — month-end close is deferred-write; AR collections is none-write.
+- SIMPLE approval (no period lock) — month-end close is full approval with lock discipline.
+- Hardcoded approval email HTML — other agents may have different approval-email shapes or no approval email at all.
+- 4-rule matching ladder (CONFIDENT/POSSIBLE-any/POSSIBLE-subset/UNRESOLVABLE) — each agent has its own decision topology.
+
+### Legacy coexistence verified
+
+Post-8b, these still work (verified by tests + manual audit):
+
+- **`POST /api/v1/agents/accounting`** with `job_type="cash_receipts_matching"` — the Phase 1 accounting agent endpoint. Admin can still ad-hoc-run cash receipts via `/agents` hub.
+- **`/agents` dashboard** — AgentDashboard.tsx mounts, lists cash_receipts_matching as runnable.
+- **`/agents/:jobId/review`** — ApprovalReview.tsx route resolves.
+- **`/agents/approve/{token}`** — email-token approval path unchanged; existing inbox tokens still work.
+- **Vault accounting admin tab** `/vault/accounting/agents` — schedule + recent-jobs surfaces unaffected.
+
+### Surprises worth flagging for 8c–8f scoping
+
+1. **`agent_registry_key` is purely informational** — confirmed via full `grep` audit. Nothing in `workflow_engine.py` reads it. This simplifies the migration: no dispatch-routing code to change; clearing the field is a pure UI signal. 8c inherits this simplification.
+2. **No wf_sys_cash_receipts existed pre-8b** — the 16 `wf_sys_*` count from Phase 8a did NOT include cash receipts. Phase 8b had to insert the row from scratch. 8c's targets (month_end_close, ar_collections, expense_categorization) DO have existing rows with `agent_registry_key` set — their transition is the alpha→beta path, not birth-as-beta.
+3. **Agent sweeps are tenant-wide** — CashReceiptsAgent processes ALL unmatched payments, not just a specific subset. Fixture setup in parity tests must seed "path A" rows, run the agent, THEN seed "path B" rows to avoid cross-test contamination. Applies to other sweeping agents (expense categorization, AR collections).
+4. **`trigger_type="scheduled"` declared on wf_sys_ar_collections is dead** — `workflow_scheduler.check_time_based_workflows()` only dispatches `time_of_day` and `time_after_event`. AR collections isn't actually firing on schedule today. Flagged as latent cleanup (separate session).
+5. **Hardcoded approval email HTML predates D-7** — `ApprovalGateService._build_review_email_html()` builds the body inline in Python. Parity discipline requires preserving verbatim. Platform-wide migration to managed templates is future cleanup work.
+6. **Option B (enrollment + override) path untouched by Phase 8b** — cash receipts workflow seed includes a `params` block (dry_run override) demonstrating compatibility. Actual enrollment-override UX is still Phase 8c's polish item.
+
+### Latent bug flags (NOT fixed in 8b)
+
+These surfaced during the 8b audit but are explicitly out of scope. Each is tracked as a separate future session:
+
+1. `wf_sys_ar_collections` scheduled-trigger bug (§11 above).
+2. Hardcoded approval email HTML in `ApprovalGateService` (§11 above).
+3. Orphan migrations `r34_order_service_fields` → `r39_legacy_proof_fields` (pre-existing from Phase 8a audit, still unreconciled).
+
+### What Phase 8b did NOT ship (per approved scope)
+
+- Migration of any other accounting agent — that's 8c–8f systematically.
+- Deletion of legacy bespoke cash receipts UI — later phase.
+- Visual refresh of cash receipts triage surface — Aesthetic Arc.
+- Month-end close migration — Phase 8c with period lock discipline.
+- Dashboards showing cash receipts data as saved views — Phase 8g.
+- Tenant customization UX for cash receipts workflow — design work, later phase.
+- Fork-vs-override UX polish — deferred from 8a to 8c.
+- Triage queue customization admin UI — Phase 7 deferred, still out of scope.
+
+Next up: **Phase 8c — Core accounting migrations batch 1** (month_end_close + ar_collections + expense_categorization). Uses the migration template as the audit checklist. Each agent's audit answers the 9 questions documented in §1 of `WORKFLOW_MIGRATION_TEMPLATE.md`.
+
+---
+
 ## Workflow Arc Phase 8a — Foundation Infrastructure
 
 **Date:** 2026-04-21

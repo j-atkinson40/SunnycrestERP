@@ -527,6 +527,14 @@ def _execute_action(
         return _handle_generate_document(db, resolved_config, run)
     if action_type == "playwright_action":
         return _handle_playwright_action(db, resolved_config, run)
+    if action_type == "call_service_method":
+        # Phase 8b — parity adapter dispatch. Calls a whitelisted
+        # Python function by name + kwargs. The whitelist lives in
+        # `_SERVICE_METHOD_REGISTRY` below and is the explicit
+        # surface workflow definitions can invoke. This is how
+        # agent migrations (8b-8f) plug real service logic into
+        # the workflow engine without duplicating code.
+        return _handle_call_service_method(db, resolved_config, run, current_company)
 
     return {"status": "unknown_action_type", "action_type": action_type}
 
@@ -668,6 +676,118 @@ def _handle_playwright_action(db: Session, config: dict, run: WorkflowRun) -> di
             "step": step_hint,
             "screenshot_path": screenshot_path,
         }
+
+
+# ── Phase 8b — `call_service_method` action subtype ─────────────────
+#
+# Parity adapter dispatch. Calls a whitelisted importable Python
+# callable by `method_name` + kwargs. The registry is explicit:
+# workflow definitions cannot arbitrarily invoke any function; they
+# can only call methods this registry exposes.
+#
+# Adding a new adapter method (for 8c–8f migrations):
+#   1. Write the thin adapter function under
+#      `app/services/workflows/{agent_name}_adapter.py`.
+#   2. Register it in `_SERVICE_METHOD_REGISTRY` below with its
+#      allowed kwarg keys.
+#   3. Reference it from the workflow definition's step config as
+#      `{"action_type": "call_service_method",
+#        "method_name": "cash_receipts.run_match_pipeline",
+#        "kwargs": {...}}`.
+#
+# The workflow engine auto-injects `db`, `company_id`, and
+# `triggered_by_user_id` kwargs — workflow configs don't need to
+# spell those out.
+
+
+# Map: "dotted.method.name" → (importable callable, allowed kwarg keys).
+# Allowed kwargs are a safelist — any kwargs beyond those get dropped
+# from the call before dispatch to prevent privilege escalation via
+# crafted step configs.
+_SERVICE_METHOD_REGISTRY: dict[str, tuple[str, tuple[str, ...]]] = {
+    # Cash Receipts Matching (Phase 8b)
+    "cash_receipts.run_match_pipeline": (
+        "app.services.workflows.cash_receipts_adapter:run_match_pipeline",
+        ("dry_run", "trigger_source"),
+    ),
+}
+
+
+def _resolve_callable(import_path: str):
+    """Import a callable from a 'module:attr' path."""
+    module_path, attr = import_path.split(":", 1)
+    from importlib import import_module
+
+    mod = import_module(module_path)
+    return getattr(mod, attr)
+
+
+def _handle_call_service_method(
+    db: Session,
+    config: dict,
+    run: WorkflowRun,
+    current_company: Company | None,
+) -> dict:
+    """Dispatch a workflow step to a whitelisted adapter method.
+
+    Config keys:
+      method_name    : str  — dotted key in _SERVICE_METHOD_REGISTRY
+      kwargs         : dict — forwarded to the callable; filtered by
+                              the registry's allowed-kwargs list
+      triggered_by   : str  — optional override for audit attribution
+                              (defaults to run.triggered_by_user_id)
+
+    Auto-injected kwargs (method gets these regardless of config):
+      db, company_id, triggered_by_user_id
+
+    Returns the callable's return value (dict) merged with
+    {"method_name", "status": "applied" | "errored"}.
+    """
+    method_name = config.get("method_name")
+    if not method_name:
+        return {
+            "status": "errored",
+            "error": "call_service_method step missing method_name",
+        }
+    entry = _SERVICE_METHOD_REGISTRY.get(method_name)
+    if entry is None:
+        return {
+            "status": "errored",
+            "error": f"method_name {method_name!r} not in registry",
+            "method_name": method_name,
+        }
+    import_path, allowed_kwargs = entry
+    raw_kwargs = config.get("kwargs") or {}
+    kwargs = {k: v for k, v in raw_kwargs.items() if k in allowed_kwargs}
+
+    company_id = run.company_id if run is not None else None
+    if current_company is not None:
+        company_id = current_company.id
+
+    triggered_by = config.get("triggered_by") or (
+        run.triggered_by_user_id if run is not None else None
+    )
+
+    try:
+        fn = _resolve_callable(import_path)
+        result = fn(
+            db,
+            company_id=company_id,
+            triggered_by_user_id=triggered_by,
+            **kwargs,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface to workflow step
+        return {
+            "status": "errored",
+            "error": str(exc)[:500],
+            "method_name": method_name,
+        }
+    out: dict[str, Any] = {"status": "applied", "method_name": method_name}
+    if isinstance(result, dict):
+        out.update(result)
+    else:
+        out["result"] = result
+    return out
 
 
 def _handle_create_record(db: Session, config: dict, run: WorkflowRun) -> dict:

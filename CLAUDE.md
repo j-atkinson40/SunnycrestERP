@@ -429,6 +429,36 @@ The two paths coexist. `app/services/workflow_fork.py::fork_workflow_to_tenant` 
 
 **Fork UX (deferred to Phase 8c):** The specific UX for when to fork vs. when to use soft customization deserves a design conversation that hasn't happened yet. Phase 8a ships both paths functionally + minimal affordances (Fork button on Core/Vertical rows); decision-support UI, explanatory copy, and "you have both options" messaging land in Phase 8c or whenever workflow customization UX is designed.
 
+### Cash Receipts Matching — first agent-to-workflow migration (Workflow Arc Phase 8b)
+
+Phase 8b is the reconnaissance migration — one accounting agent migrated end-to-end into a real workflow to discover the migration template that Phases 8c–8f apply systematically. Cash receipts was chosen for reconnaissance because it has the right characteristics: cross-vertical, SIMPLE approval (no period lock), no existing scheduler entry (net-new insertion), mid-complexity anomaly taxonomy.
+
+**Primary deliverable:** [`WORKFLOW_MIGRATION_TEMPLATE.md`](WORKFLOW_MIGRATION_TEMPLATE.md) at project root — the checklist 8c–8f compare their audits against. Written as a deliverable alongside the migration itself (not retroactively).
+
+**Pattern: parity adapter via service reuse.** `backend/app/services/workflows/cash_receipts_adapter.py` is a thin module that bridges triage actions + workflow steps to existing agent logic. `run_match_pipeline()` delegates end-to-end execution to `AgentRunner.run_job()` (zero logic duplication). Per-item triage actions (`approve_match`, `reject_match`, `override_match`, `request_review`) replicate the agent's CONFIDENT_MATCH branch write pattern (CustomerPaymentApplication + Invoice.amount_paid + Invoice.status). **Parity discipline:** a dedicated BLOCKING parity test (`test_cash_receipts_migration_parity.py`) asserts triage-path and legacy agent-path produce identical side effects — 9 tests across 5 categories: (a) PaymentApplication identity, (b) reject no-write, (c) anomaly resolution shape, (d) negative PeriodLock assertion, (e) pipeline-scale equivalence + cross-tenant isolation + triage engine integration.
+
+**Pattern: `call_service_method` action subtype.** New in `workflow_engine.py` — a whitelisted dispatch table (`_SERVICE_METHOD_REGISTRY`) mapping `"{agent}.{method}"` keys to importable callables with allowed-kwargs safelists. Workflow definitions reference it via `{"action_type": "call_service_method", "method_name": "cash_receipts.run_match_pipeline", "kwargs": {...}}`. Auto-injected kwargs: `db`, `company_id`, `triggered_by_user_id`. Phase 8b adds one entry; 8c–8f add one per migrated agent — zero further engine changes needed.
+
+**Pattern: triage queue as user-facing approval surface.** New `cash_receipts_matching_triage` queue (`backend/app/services/triage/platform_defaults.py`) with 5 actions (approve/reject/override/request_review/skip), 2 context panels (related_entities + ai_question), invoice.approve permission gate, cross-vertical. Direct query builder (`_dq_cash_receipts_matching_triage`) returns unresolved `AgentAnomaly` rows ordered CRITICAL→WARNING→INFO with amount tiebreak. Related entity builder (`_build_cash_receipts_matching_related`) returns payment + customer + top-5 candidate invoices (ranked by |balance − payment| proximity) + past 3 applied payment/invoice pairs.
+
+**Pattern: AI question prompt seeded via Option A idempotent.** `triage.cash_receipts_context_question` seeded by `backend/scripts/seed_triage_phase8b.py`. Same seed discipline as Phase 6 briefings: fresh install → v1 active; matching content → no-op; differing content → deactivate v1, create v2; multiple versions (admin customization) → skip with warning log.
+
+**Pattern: `wf_sys_cash_receipts` workflow seed.** Added to `TIER_1_WORKFLOWS` with `trigger_type="time_of_day"` + `trigger_config.time="23:30"` (daily slot between ar_aging_monitor@11:00pm and ap_upcoming_payments@11:10pm). `agent_registry_key` is **NULL** on the seed entry (the "8b-beta" state per the migration template's badge choreography). Single step invokes the adapter via `call_service_method`. Existing workflow_scheduler 15-min sweep fires it — no changes to `backend/app/scheduler.py`.
+
+**Operational coexistence contract (applies to 8c–8f too):**
+- Triage queue (`/triage/cash_receipts_matching_triage`) = canonical path for routine daily processing.
+- Legacy `POST /api/v1/agents/accounting` + `/agents/:id/review` = ad-hoc forensic re-runs only.
+- Do not run both paths on the same unresolved-items set simultaneously.
+- Legacy retirement deferred to Phase 8h+.
+
+**Latency gates (BLOCKING):** `cash_receipts_triage_next_item` p50<100/p99<300 and `cash_receipts_triage_apply_action` p50<200/p99<500. Actual on dev: **p50=18.7ms/p99=20.1ms** (next_item, 5×/15× headroom) and **p50=15.7ms/p99=22.5ms** (apply_action, 13×/22× headroom).
+
+**Tests shipped Phase 8b:** 9 parity + 2 latency + 18 unit + 5 Playwright = **34 new tests**. All green. Phase 1–8a regression unaffected.
+
+**Latent bugs surfaced during 8b audit (flagged for separate sessions, NOT fixed in 8b):**
+- `wf_sys_ar_collections` declares `trigger_type="scheduled"` but `workflow_scheduler.check_time_based_workflows()` dispatches only `time_of_day` and `time_after_event`. The workflow isn't actually firing on schedule today.
+- Approval-gate email body is hardcoded HTML in `ApprovalGateService._build_review_email_html()` — predates D-7's delivery abstraction. Parity for cash receipts requires preserving verbatim.
+
 ## 5. Database
 
 - **~235 tables** (ORM models for all but the orphaned `tenant_settings` table)

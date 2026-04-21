@@ -717,11 +717,131 @@ def _dq_ss_cert_triage(
     return out
 
 
+def _dq_cash_receipts_matching_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8b — cash receipts matching triage items.
+
+    Returns unresolved `AgentAnomaly` rows from the most recent
+    cash_receipts_matching agent jobs for this tenant. Anomalies are
+    produced by `CashReceiptsAgent._step_attempt_auto_match` (type
+    `payment_possible_match`) and `_step_flag_unresolvable` (types
+    `payment_unmatched_stale` + `payment_unmatched_recent`).
+
+    Ordering: CRITICAL stale payments first (oldest + highest amount
+    top), then WARNING recent unmatched, then INFO possible matches.
+    Matches the operational priority — stale payments bleed the most
+    AR risk so they surface first.
+
+    Display fields denormalize the related CustomerPayment + Customer
+    at query time (similar to `_dq_ss_cert_triage` denormalizing the
+    sales_order + customer).
+    """
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+    from app.models.customer import Customer
+    from app.models.customer_payment import CustomerPayment
+
+    _severity_order = {"CRITICAL": 0, "WARNING": 1, "INFO": 2}
+
+    rows = (
+        db.query(AgentAnomaly)
+        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == "cash_receipts_matching",
+            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.anomaly_type.in_(
+                (
+                    "payment_possible_match",
+                    "payment_unmatched_stale",
+                    "payment_unmatched_recent",
+                )
+            ),
+        )
+        .all()
+    )
+
+    out: list[dict[str, Any]] = []
+    payment_cache: dict[str, CustomerPayment | None] = {}
+    customer_cache: dict[str, Customer | None] = {}
+
+    for a in rows:
+        payment = None
+        customer_name = None
+        payment_amount = None
+        payment_date = None
+        payment_reference = None
+        if a.entity_type == "payment" and a.entity_id:
+            payment = payment_cache.get(a.entity_id)
+            if a.entity_id not in payment_cache:
+                payment = (
+                    db.query(CustomerPayment)
+                    .filter(
+                        CustomerPayment.id == a.entity_id,
+                        CustomerPayment.deleted_at.is_(None),
+                    )
+                    .first()
+                )
+                payment_cache[a.entity_id] = payment
+            if payment is not None:
+                payment_amount = float(payment.total_amount or 0)
+                payment_date = (
+                    payment.payment_date.isoformat()
+                    if payment.payment_date
+                    else None
+                )
+                payment_reference = payment.reference_number
+                cid = payment.customer_id
+                if cid not in customer_cache:
+                    customer_cache[cid] = (
+                        db.query(Customer)
+                        .filter(Customer.id == cid)
+                        .first()
+                    )
+                cust = customer_cache[cid]
+                customer_name = cust.name if cust is not None else None
+
+        out.append(
+            {
+                # The triage engine uses `id` as the item id; for
+                # cash receipts, the item is the anomaly (so the
+                # handler can resolve it). The underlying payment
+                # is exposed via `payment_id`.
+                "id": a.id,
+                "anomaly_id": a.id,
+                "anomaly_type": a.anomaly_type,
+                "severity": a.severity,
+                "description": a.description,
+                "amount": float(a.amount) if a.amount is not None else None,
+                "payment_id": a.entity_id,
+                "payment_amount": payment_amount,
+                "payment_date": payment_date,
+                "payment_reference": payment_reference,
+                "customer_name": customer_name,
+                "created_at": (
+                    a.created_at.isoformat() if a.created_at else None
+                ),
+                "agent_job_id": a.agent_job_id,
+            }
+        )
+
+    out.sort(
+        key=lambda r: (
+            _severity_order.get(r.get("severity") or "", 3),
+            -(r.get("amount") or 0),
+            r.get("created_at") or "",
+        )
+    )
+    return out
+
+
 _DIRECT_QUERIES: dict[
     str, "Callable[[Session, User], list[dict[str, Any]]]"
 ] = {
     "task_triage": _dq_task_triage,
     "ss_cert_triage": _dq_ss_cert_triage,
+    "cash_receipts_matching_triage": _dq_cash_receipts_matching_triage,
 }
 
 
