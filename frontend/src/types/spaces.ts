@@ -57,6 +57,13 @@ export interface Space {
   // User can rename + recolor + reorder pins, but the delete action
   // is blocked server-side with a helpful error.
   is_system?: boolean;
+  // Phase 8e — deliberate-activation landing route. When the user
+  // switches INTO this space via a deliberate action (DotNav click,
+  // dropdown click, command-bar Switch-to-X result), the frontend
+  // navigates here. null = no nav. Keyboard shortcuts (Cmd+[, Cmd+])
+  // deliberately skip this navigation — rapid-switching across
+  // spaces shouldn't fling between routes.
+  default_home_route?: string | null;
   pins: ResolvedPin[];
   created_at: string | null;
   updated_at: string | null;
@@ -75,6 +82,7 @@ export interface CreateSpaceBody {
   accent?: AccentName;
   is_default?: boolean;
   density?: DensityName;
+  default_home_route?: string | null;
 }
 
 export interface UpdateSpaceBody {
@@ -83,6 +91,48 @@ export interface UpdateSpaceBody {
   accent?: AccentName;
   is_default?: boolean;
   density?: DensityName;
+  // Omit to leave unchanged; null to clear; string to set.
+  default_home_route?: string | null;
+}
+
+export interface ReapplyDefaultsResponse {
+  saved_views: number;
+  spaces: number;
+  briefings: number;
+}
+
+// ── Phase 8e.1 — topical affinity types ─────────────────────────────
+//
+// Per-user, per-space signal fed to command-bar ranking. Write path
+// is fire-and-forget from 4 deliberate-intent trigger points;
+// read path is server-side prefetch inside command_bar/retrieval.py.
+// See `SPACES_ARCHITECTURE.md` §9 for the full model + the
+// purpose-limitation (command bar ranking only; no other consumers
+// without a separate scope-expansion audit).
+
+export type AffinityTargetType =
+  | "nav_item"
+  | "saved_view"
+  | "entity_record"
+  | "triage_queue";
+
+export interface AffinityVisitBody {
+  space_id: string;
+  target_type: AffinityTargetType;
+  target_id: string;
+}
+
+export interface AffinityVisitResponse {
+  /** False when the server-side 60-second throttle suppressed the write. */
+  recorded: boolean;
+}
+
+export interface AffinityCountResponse {
+  count: number;
+}
+
+export interface AffinityClearResponse {
+  cleared: number;
 }
 
 export interface AddPinBody {
@@ -94,7 +144,11 @@ export interface AddPinBody {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-export const MAX_SPACES_PER_USER = 5;
+// Keep in lockstep with backend `spaces.types.MAX_SPACES_PER_USER`.
+// Phase 8e bumped 5 → 7 to accommodate Settings system space (Phase
+// 8a) + multiple role-seeded spaces + user-created spaces. DotNav
+// horizontal layout verified to accommodate 7 dots.
+export const MAX_SPACES_PER_USER = 7;
 
 // ── Accent CSS variable map ─────────────────────────────────────────
 //

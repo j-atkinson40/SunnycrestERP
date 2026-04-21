@@ -25,6 +25,17 @@ See `backend/app/services/spaces/registry.py` for role-template
 definitions.
 """
 
+from app.services.spaces.affinity import (
+    AffinityRow,
+    SpaceNotOwnedError,
+    boost_factor,
+    boost_for_target,
+    clear_affinity_for_user,
+    count_for_user,
+    delete_affinity_for_space,
+    prefetch_for_user_space,
+    record_visit,
+)
 from app.services.spaces.crud import (
     add_pin,
     create_space,
@@ -86,4 +97,14 @@ __all__ = [
     "reorder_pins",
     # Seed
     "seed_for_user",
+    # Affinity (Phase 8e.1)
+    "AffinityRow",
+    "SpaceNotOwnedError",
+    "record_visit",
+    "prefetch_for_user_space",
+    "boost_factor",
+    "boost_for_target",
+    "delete_affinity_for_space",
+    "clear_affinity_for_user",
+    "count_for_user",
 ]

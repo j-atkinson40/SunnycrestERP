@@ -34,7 +34,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.services.spaces.types import AccentName, DensityName, PinType
+from app.services.spaces.types import (
+    AccentName,
+    AccessMode,
+    DensityName,
+    PinType,
+    WriteMode,
+)
 
 # ── Template shapes ──────────────────────────────────────────────────
 
@@ -62,6 +68,18 @@ class SpaceTemplate:
     is_default: bool
     pins: list[PinSeed] = field(default_factory=list)
     density: DensityName = "comfortable"
+    # Phase 8e — deliberate-activation landing route for the seeded
+    # space. See SpaceConfig.default_home_route.
+    default_home_route: str | None = None
+    # Phase 8e.2 — portal-as-space-with-modifiers. Templates for
+    # operational roles (driver, future yard_operator, etc.) declare
+    # access_mode="portal_partner" to surface portal UX semantics
+    # when the user logs in. Existing office templates keep the
+    # "platform" default. See SPACES_ARCHITECTURE.md §10.
+    access_mode: AccessMode = "platform"
+    tenant_branding: bool = False
+    write_mode: WriteMode = "full"
+    session_timeout_minutes: int | None = None
 
 
 # ── Templates by (vertical, role_slug) ──────────────────────────────
@@ -85,6 +103,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="calendar-heart",
             accent="warm",
             is_default=True,
+            default_home_route="/cases",
             pins=[
                 # Follow-up 1 — directors get their task triage queue
                 # pinned at the top of Arrangement so the decision
@@ -108,6 +127,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="receipt",
             accent="crisp",
             is_default=False,
+            default_home_route="/financials",
             pins=[
                 PinSeed(pin_type="nav_item", target="/financials"),
                 PinSeed(pin_type="nav_item", target="/funeral-home/compliance"),
@@ -119,6 +139,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="trending-up",
             accent="neutral",
             is_default=False,
+            default_home_route="/dashboard",
             pins=[
                 PinSeed(pin_type="nav_item", target="/financials"),
                 PinSeed(pin_type="nav_item", target="/dashboard"),
@@ -134,6 +155,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="calendar-heart",
             accent="warm",
             is_default=True,
+            default_home_route="/cases",
             pins=[
                 PinSeed(pin_type="nav_item", target="/cases"),
                 PinSeed(
@@ -148,6 +170,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="receipt",
             accent="crisp",
             is_default=False,
+            default_home_route="/financials",
             pins=[
                 PinSeed(pin_type="nav_item", target="/financials"),
                 PinSeed(pin_type="nav_item", target="/funeral-home/compliance"),
@@ -163,6 +186,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="receipt",
             accent="crisp",
             is_default=True,
+            default_home_route="/financials",
             pins=[
                 PinSeed(
                     pin_type="saved_view",
@@ -177,6 +201,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="truck",
             accent="forward",
             is_default=False,
+            default_home_route="/scheduling",
             pins=[
                 PinSeed(pin_type="nav_item", target="/order-station"),
                 PinSeed(pin_type="nav_item", target="/scheduling"),
@@ -192,6 +217,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="receipt",
             accent="crisp",
             is_default=True,
+            default_home_route="/financials",
             pins=[
                 PinSeed(
                     pin_type="saved_view",
@@ -203,6 +229,10 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
     ],
 
     # ── Manufacturing — production ──
+    # Phase 8e enrichment — safety_program_triage pin added alongside
+    # task_triage. Production managers see both pending safety program
+    # reviews (post-Phase 8d.1) and task-triage items at the top of
+    # the Production space.
     ("manufacturing", "production"): [
         SpaceTemplate(
             template_id="production",
@@ -210,12 +240,15 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="factory",
             accent="industrial",
             is_default=True,
+            default_home_route="/production-hub",
             pins=[
                 # Follow-up 1 — production managers have cross-
                 # vertical tasks (equipment inspections, training
                 # renewals, etc.) flowing through task_triage. Same
                 # shortcut as director Arrangement.
                 PinSeed(pin_type="triage_queue", target="task_triage"),
+                # Phase 8e — safety program approvals (Phase 8d.1) pin.
+                PinSeed(pin_type="triage_queue", target="safety_program_triage"),
                 PinSeed(
                     pin_type="saved_view",
                     target="saved_view_seed:production:active_pours",
@@ -230,6 +263,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="kanban",
             accent="crisp",
             is_default=False,
+            default_home_route="/scheduling",
             pins=[
                 PinSeed(pin_type="nav_item", target="/scheduling"),
                 PinSeed(pin_type="nav_item", target="/order-station"),
@@ -245,6 +279,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="factory",
             accent="industrial",
             is_default=True,
+            default_home_route="/production-hub",
             pins=[
                 PinSeed(pin_type="nav_item", target="/production-hub"),
                 PinSeed(pin_type="nav_item", target="/console/operations"),
@@ -256,6 +291,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="store",
             accent="forward",
             is_default=False,
+            default_home_route="/quoting",
             pins=[
                 PinSeed(pin_type="nav_item", target="/quoting"),
                 PinSeed(pin_type="nav_item", target="/vault/crm"),
@@ -267,6 +303,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             icon="trending-up",
             accent="neutral",
             is_default=False,
+            default_home_route="/dashboard",
             pins=[
                 PinSeed(pin_type="nav_item", target="/financials"),
                 PinSeed(pin_type="nav_item", target="/dashboard"),
@@ -275,6 +312,319 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
                     target="saved_view_seed:admin:outstanding_invoices",
                 ),
             ],
+        ),
+    ],
+
+    # ────────────────────────────────────────────────────────────────
+    # Phase 8e — new (vertical, role) combinations
+    # ────────────────────────────────────────────────────────────────
+
+    # ── Cemetery — admin ──
+    # Cemetery operators manage interments + plots + deeds. Admin
+    # picks up Operations (primary), Administrative (books), Ownership
+    # (KPI lens) — mirrors manufacturing/admin's shape with cemetery-
+    # specific pins.
+    ("cemetery", "admin"): [
+        SpaceTemplate(
+            template_id="operations",
+            name="Operations",
+            icon="map-pin",
+            accent="industrial",
+            is_default=True,
+            default_home_route="/interments",
+            pins=[
+                PinSeed(pin_type="triage_queue", target="task_triage"),
+                PinSeed(pin_type="nav_item", target="/interments"),
+                PinSeed(pin_type="nav_item", target="/plots"),
+                PinSeed(pin_type="nav_item", target="/deeds"),
+                PinSeed(
+                    pin_type="saved_view",
+                    target="saved_view_seed:admin:recent_cases",
+                ),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="administrative",
+            name="Administrative",
+            icon="receipt",
+            accent="crisp",
+            is_default=False,
+            default_home_route="/financials",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/financials"),
+                PinSeed(
+                    pin_type="saved_view",
+                    target="saved_view_seed:admin:outstanding_invoices",
+                ),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="ownership",
+            name="Ownership",
+            icon="trending-up",
+            accent="neutral",
+            is_default=False,
+            default_home_route="/dashboard",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/financials"),
+                PinSeed(pin_type="nav_item", target="/dashboard"),
+            ],
+        ),
+    ],
+
+    # ── Cemetery — office ──
+    ("cemetery", "office"): [
+        SpaceTemplate(
+            template_id="administrative",
+            name="Administrative",
+            icon="receipt",
+            accent="crisp",
+            is_default=True,
+            default_home_route="/financials",
+            pins=[
+                PinSeed(
+                    pin_type="saved_view",
+                    target="saved_view_seed:office:outstanding_invoices",
+                ),
+                PinSeed(pin_type="nav_item", target="/financials"),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="operational",
+            name="Operational",
+            icon="map-pin",
+            accent="forward",
+            is_default=False,
+            default_home_route="/interments",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/interments"),
+                PinSeed(pin_type="nav_item", target="/plots"),
+            ],
+        ),
+    ],
+
+    # ── Crematory — admin ──
+    # Crematory operators run sequential cremation cases with strict
+    # chain-of-custody. Operations space (default) + Administrative.
+    # No Ownership tier today — add later if demand surfaces.
+    ("crematory", "admin"): [
+        SpaceTemplate(
+            template_id="operations",
+            name="Operations",
+            icon="factory",
+            accent="industrial",
+            is_default=True,
+            default_home_route="/crematory/schedule",
+            pins=[
+                PinSeed(pin_type="triage_queue", target="task_triage"),
+                PinSeed(pin_type="nav_item", target="/crematory/cases"),
+                PinSeed(pin_type="nav_item", target="/crematory/schedule"),
+                PinSeed(pin_type="nav_item", target="/crematory/custody"),
+                PinSeed(
+                    pin_type="saved_view",
+                    target="saved_view_seed:admin:recent_cases",
+                ),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="administrative",
+            name="Administrative",
+            icon="receipt",
+            accent="crisp",
+            is_default=False,
+            default_home_route="/financials",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/financials"),
+                PinSeed(
+                    pin_type="saved_view",
+                    target="saved_view_seed:admin:outstanding_invoices",
+                ),
+            ],
+        ),
+    ],
+
+    # ── Crematory — office ──
+    ("crematory", "office"): [
+        SpaceTemplate(
+            template_id="operations",
+            name="Operations",
+            icon="factory",
+            accent="industrial",
+            is_default=True,
+            default_home_route="/crematory/schedule",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/crematory/cases"),
+                PinSeed(pin_type="nav_item", target="/crematory/schedule"),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="administrative",
+            name="Administrative",
+            icon="receipt",
+            accent="crisp",
+            is_default=False,
+            default_home_route="/financials",
+            pins=[
+                PinSeed(
+                    pin_type="saved_view",
+                    target="saved_view_seed:office:outstanding_invoices",
+                ),
+                PinSeed(pin_type="nav_item", target="/financials"),
+            ],
+        ),
+    ],
+
+    # ── Funeral home — accountant ──
+    # Books (primary financial work) + Reports (compilation /
+    # analysis). Accountants in FH vertical rarely touch cases
+    # directly — no Arrangement space seeded.
+    ("funeral_home", "accountant"): [
+        SpaceTemplate(
+            template_id="books",
+            name="Books",
+            icon="calculator",
+            accent="crisp",
+            is_default=True,
+            default_home_route="/financials",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/financials"),
+                PinSeed(
+                    pin_type="saved_view",
+                    target="saved_view_seed:accountant:outstanding_invoices",
+                ),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="reports",
+            name="Reports",
+            icon="bar-chart-3",
+            accent="neutral",
+            is_default=False,
+            default_home_route="/reports",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/reports"),
+                PinSeed(pin_type="nav_item", target="/financials/board"),
+            ],
+        ),
+    ],
+
+    # ── Manufacturing — accountant ──
+    # Like FH accountant but with a Compliance lens because MFG
+    # tenants run OSHA + NPCA + training compliance that intersects
+    # with the books (training expenses, safety program costs, etc.).
+    ("manufacturing", "accountant"): [
+        SpaceTemplate(
+            template_id="books",
+            name="Books",
+            icon="calculator",
+            accent="crisp",
+            is_default=True,
+            default_home_route="/financials",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/financials"),
+                PinSeed(
+                    pin_type="saved_view",
+                    target="saved_view_seed:accountant:outstanding_invoices",
+                ),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="reports",
+            name="Reports",
+            icon="bar-chart-3",
+            accent="neutral",
+            is_default=False,
+            default_home_route="/reports",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/reports"),
+                PinSeed(pin_type="nav_item", target="/financials/board"),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="compliance",
+            name="Compliance",
+            icon="shield-check",
+            accent="forward",
+            is_default=False,
+            default_home_route="/compliance",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/compliance"),
+            ],
+        ),
+    ],
+
+    # ── Manufacturing — safety trainer ──
+    # Promoted from FALLBACK in Phase 8e. Safety trainers run the
+    # OSHA-300 + training-expiry + incident-reporting workstream.
+    # Compliance (primary) carries the safety_program_triage pin
+    # from Phase 8d.1; Training holds the calendar + toolbox talks.
+    ("manufacturing", "safety_trainer"): [
+        SpaceTemplate(
+            template_id="compliance",
+            name="Compliance",
+            icon="shield-check",
+            accent="forward",
+            is_default=True,
+            default_home_route="/safety",
+            pins=[
+                PinSeed(pin_type="triage_queue", target="safety_program_triage"),
+                PinSeed(pin_type="nav_item", target="/safety"),
+                PinSeed(pin_type="nav_item", target="/safety/osha-300"),
+                PinSeed(pin_type="nav_item", target="/safety/incidents"),
+            ],
+        ),
+        SpaceTemplate(
+            template_id="training",
+            name="Training",
+            icon="graduation-cap",
+            accent="neutral",
+            is_default=False,
+            default_home_route="/safety/training",
+            pins=[
+                PinSeed(pin_type="nav_item", target="/safety/training"),
+                PinSeed(pin_type="nav_item", target="/safety/training/calendar"),
+                PinSeed(pin_type="nav_item", target="/safety/toolbox-talks"),
+            ],
+        ),
+    ],
+
+    # ────────────────────────────────────────────────────────────────
+    # Phase 8e.2 — first portal template (reconnaissance)
+    # ────────────────────────────────────────────────────────────────
+    # MFG driver gets a portal-shaped space (access_mode=portal_partner,
+    # tenant_branding=True, write_mode=limited). This is the first
+    # concrete portal use case validating the portal-as-space-with-
+    # modifiers architecture from SPACES_ARCHITECTURE.md §10.
+    #
+    # Invariant (test-enforced): driver role MUST have access_mode
+    # starting with "portal_". Office roles (admin/director/etc.) MUST
+    # have access_mode="platform". See
+    # `tests/test_spaces_phase8e.py::TestDriverTemplatesUsePortalAccessMode`.
+    #
+    # Single space, no pins — drivers work one thing at a time. The
+    # DotNav, command bar, and settings are hidden by the portal shell.
+    # `default_home_route` navigates to the portal-scoped driver home
+    # (the slug is resolved at render time by the portal UI shell —
+    # the stored route is relative to the portal).
+    ("manufacturing", "driver"): [
+        SpaceTemplate(
+            template_id="driver_portal",
+            name="Driver",
+            icon="truck",
+            accent="industrial",
+            is_default=True,
+            # The portal URL shape is `/portal/<slug>/driver`. The
+            # slug is filled in at render time by PortalLayout; the
+            # stored route is the portal-relative suffix.
+            default_home_route="/driver",
+            density="comfortable",
+            access_mode="portal_partner",
+            tenant_branding=True,
+            write_mode="limited",
+            # 12-hour session matches a driver's workday — avoids
+            # mid-route logouts.
+            session_timeout_minutes=12 * 60,
+            pins=[],  # Driver portal: one space, no pin clutter.
         ),
     ],
 }
@@ -292,6 +642,7 @@ FALLBACK_TEMPLATE: SpaceTemplate = SpaceTemplate(
     icon="home",
     accent="neutral",
     is_default=True,
+    default_home_route="/dashboard",
     pins=[
         PinSeed(pin_type="nav_item", target="/dashboard"),
     ],
@@ -328,6 +679,9 @@ class SystemSpaceTemplate:
     # keeps them ahead of user-created spaces regardless of the
     # user's reorder history.
     display_order: int = -1000
+    # Phase 8e — deliberate-activation landing route (same contract
+    # as SpaceTemplate.default_home_route).
+    default_home_route: str | None = None
 
 
 SYSTEM_SPACE_TEMPLATES: list[SystemSpaceTemplate] = [
@@ -363,6 +717,7 @@ SYSTEM_SPACE_TEMPLATES: list[SystemSpaceTemplate] = [
             ),
         ],
         display_order=-1000,
+        default_home_route="/settings/workflows",
     ),
 ]
 
@@ -406,6 +761,26 @@ NAV_LABEL_TABLE: dict[str, tuple[str, str]] = {
     "/production-hub": ("Production", "Factory"),
     "/quoting": ("Quoting", "FileText"),
     "/vault/crm": ("CRM", "Building2"),
+    # ── Phase 8e additions ──────────────────────────────────────────
+    # Cemetery
+    "/interments": ("Interments", "MapPin"),
+    "/plots": ("Plot Map", "MapPin"),
+    "/deeds": ("Deeds", "FileText"),
+    # Crematory
+    "/crematory/cases": ("Cremation Cases", "FolderOpen"),
+    "/crematory/schedule": ("Schedule", "Calendar"),
+    "/crematory/custody": ("Chain of Custody", "Link"),
+    # Accountant
+    "/reports": ("Reports", "BarChart3"),
+    "/financials/board": ("Financials Board", "LayoutDashboard"),
+    # Compliance + safety
+    "/compliance": ("Compliance Hub", "ShieldCheck"),
+    "/safety": ("Safety", "ShieldCheck"),
+    "/safety/training": ("Safety Training", "BookOpen"),
+    "/safety/osha-300": ("OSHA 300", "FileCheck"),
+    "/safety/incidents": ("Incidents", "Bell"),
+    "/safety/training/calendar": ("Training Calendar", "Calendar"),
+    "/safety/toolbox-talks": ("Toolbox Talks", "Bell"),
 }
 
 

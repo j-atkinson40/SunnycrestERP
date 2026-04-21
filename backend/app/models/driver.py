@@ -21,6 +21,17 @@ class Driver(Base):
     employee_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
     )
+    # Phase 8e.2 — optional parallel link for portal-authed drivers.
+    # Business-logic invariant: exactly one of employee_id or
+    # portal_user_id is populated per Driver row in production.
+    # NOT enforced as a DB CHECK constraint — allows migration
+    # windows where a driver transitions between tenant-user and
+    # portal-user identities. Service layer + tests enforce.
+    portal_user_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("portal_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     license_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     license_class: Mapped[str | None] = mapped_column(String(10), nullable=True)
     license_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -40,3 +51,4 @@ class Driver(Base):
     company = relationship("Company")
     employee = relationship("User")
     preferred_vehicle = relationship("Vehicle")
+    portal_user = relationship("PortalUser", foreign_keys=[portal_user_id])

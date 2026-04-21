@@ -44,5 +44,15 @@ class UrnCatalogSyncLog(Base):
     pdf_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     products_skipped: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Phase 8d — catalog-fetch triage staging state.
+    #   pending_review: staged by scraper, awaiting admin approve/reject
+    #   published:      changes applied to live urn_products catalog
+    #   rejected:       admin rejected via triage; changes discarded
+    #   superseded:     overtaken by a newer fetch that approved first
+    # Pre-r39 rows all land as 'published' (no staging before Phase 8d).
+    publication_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="published", server_default="published"
+    )
+
     # Relationships
     tenant = relationship("Company", foreign_keys=[tenant_id])

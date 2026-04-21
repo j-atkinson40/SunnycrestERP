@@ -154,8 +154,12 @@ class TestSeedTemplatesIncludeTriagePin:
         templates = reg.get_templates("manufacturing", "production")
         production = next(t for t in templates if t.name == "Production")
         triage_pins = [p for p in production.pins if p.pin_type == "triage_queue"]
-        assert len(triage_pins) == 1
-        assert triage_pins[0].target == "task_triage"
+        # Phase 8e enrichment — Production space gained the
+        # safety_program_triage pin (from Phase 8d.1) alongside
+        # task_triage. Both must be present.
+        targets = {p.target for p in triage_pins}
+        assert "task_triage" in targets
+        assert "safety_program_triage" in targets
 
 
 class TestSeededTriagePin:
@@ -189,12 +193,16 @@ class TestSeededTriagePin:
         spaces = get_spaces_for_user(db_session, user=mfg_production)
         production = next(s for s in spaces if s.name == "Production")
         triage_pins = [p for p in production.pins if p.pin_type == "triage_queue"]
-        assert len(triage_pins) == 1
-        assert triage_pins[0].target_id == "task_triage"
-        # production role doesn't have "admin" slug so permission path
-        # still runs through user_has_permission — task_triage has no
-        # permission requirements, so this should resolve.
-        assert triage_pins[0].unavailable is False
+        # Phase 8e enrichment — task_triage + safety_program_triage.
+        targets = {p.target_id for p in triage_pins}
+        assert "task_triage" in targets
+        assert "safety_program_triage" in targets
+        # The task_triage pin specifically should resolve (no
+        # permission gate — the safety_program one may be unavailable
+        # depending on seeded config; we only assert task_triage
+        # here to preserve the pre-8e invariant).
+        task_pin = next(p for p in triage_pins if p.target_id == "task_triage")
+        assert task_pin.unavailable is False
 
 
 # ── Unit tests — resolver behavior ───────────────────────────────────

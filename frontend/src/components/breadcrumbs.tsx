@@ -73,25 +73,26 @@ export function Breadcrumbs() {
   if (!crumbs) return null;
 
   return (
-    <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
+    <nav className="flex items-center gap-1 font-plex-sans text-body-sm text-content-muted mb-4">
       <Link
         to="/dashboard"
-        className="hover:text-foreground transition-colors"
+        className="rounded-sm transition-colors duration-quick ease-settle hover:text-content-strong focus-ring-brass"
+        aria-label="Home"
       >
         <Home className="size-3.5" />
       </Link>
       {crumbs.map((crumb, i) => (
         <span key={i} className="flex items-center gap-1">
-          <ChevronRight className="size-3 text-muted-foreground/50" />
+          <ChevronRight className="size-3 text-content-subtle" />
           {crumb.href ? (
             <Link
               to={crumb.href}
-              className="hover:text-foreground transition-colors"
+              className="rounded-sm transition-colors duration-quick ease-settle hover:text-content-strong hover:underline underline-offset-2 focus-ring-brass"
             >
               {crumb.label}
             </Link>
           ) : (
-            <span className={cn(i === crumbs.length - 1 && "text-foreground font-medium")}>
+            <span className={cn(i === crumbs.length - 1 && "text-content-strong font-medium")}>
               {crumb.label}
             </span>
           )}

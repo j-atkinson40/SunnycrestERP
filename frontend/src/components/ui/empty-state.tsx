@@ -54,15 +54,15 @@ const ICON_SIZE: Record<EmptyStateSize, string> = {
 };
 
 const TITLE_SIZE: Record<EmptyStateSize, string> = {
-  default: "text-base font-medium",
-  sm: "text-sm font-medium",
-  xs: "text-xs font-medium",
+  default: "text-body font-medium",
+  sm: "text-body-sm font-medium",
+  xs: "text-caption font-medium",
 };
 
 const TONE_STYLES: Record<EmptyStateTone, string> = {
-  neutral: "text-muted-foreground",
-  positive: "text-emerald-700 dark:text-emerald-400",
-  filtered: "text-muted-foreground",
+  neutral: "text-content-muted",
+  positive: "text-status-success",
+  filtered: "text-content-muted",
 };
 
 export function EmptyState({
@@ -79,7 +79,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-md border border-dashed text-center",
+        "flex flex-col items-center justify-center rounded-md border border-dashed border-border-subtle font-plex-sans text-center",
         SIZE_STYLES[size],
         TONE_STYLES[tone],
         className,
@@ -89,11 +89,16 @@ export function EmptyState({
       data-size={size}
     >
       {Icon ? (
-        <Icon className={cn(ICON_SIZE[size], "opacity-60")} aria-hidden="true" />
+        <Icon className={cn(ICON_SIZE[size], "opacity-70")} aria-hidden="true" />
       ) : null}
-      <div className={cn(TITLE_SIZE[size], "text-foreground")}>{title}</div>
+      <div className={cn(TITLE_SIZE[size], "text-content-strong")}>{title}</div>
       {description ? (
-        <div className={cn("max-w-md", size === "xs" ? "text-xs" : "text-sm")}>
+        <div
+          className={cn(
+            "max-w-md",
+            size === "xs" ? "text-caption" : "text-body-sm",
+          )}
+        >
           {description}
         </div>
       ) : null}

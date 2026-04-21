@@ -37,8 +37,10 @@ export interface InlineErrorProps {
 }
 
 const SEVERITY_STYLES = {
-  error: "border-destructive/40 bg-destructive/5 text-destructive",
-  warning: "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400",
+  error:
+    "border-status-error/40 bg-status-error-muted text-status-error",
+  warning:
+    "border-status-warning/40 bg-status-warning-muted text-status-warning",
 };
 
 export function InlineError({
@@ -59,8 +61,8 @@ export function InlineError({
       data-testid={props["data-testid"] ?? "inline-error"}
       data-severity={severity}
       className={cn(
-        "flex items-start gap-3 rounded-md border px-3",
-        size === "sm" ? "py-2 text-xs" : "py-3 text-sm",
+        "flex items-start gap-3 rounded-md border font-plex-sans px-3",
+        size === "sm" ? "py-2 text-caption" : "py-3 text-body-sm",
         SEVERITY_STYLES[severity],
         className,
       )}

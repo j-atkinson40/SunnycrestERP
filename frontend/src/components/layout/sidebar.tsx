@@ -249,12 +249,12 @@ export function Sidebar() {
   const { open: openCommandBar } = useCommandBar();
 
   return (
-    <aside className="hidden md:flex h-full w-64 flex-col border-r bg-sidebar">
+    <aside className="hidden md:flex h-full w-64 flex-col border-r border-border-subtle bg-surface-sunken font-plex-sans">
       {/* Company header */}
-      <div className="flex h-14 shrink-0 items-center border-b px-5">
+      <div className="flex h-14 shrink-0 items-center border-b border-border-subtle px-5">
         <Link
           to="/"
-          className="truncate text-lg font-semibold text-sidebar-foreground"
+          className="truncate text-h4 font-medium text-content-strong focus-ring-brass rounded-sm"
         >
           {company?.name || (import.meta.env.VITE_APP_NAME || "Bridgeable")}
         </Link>
@@ -266,19 +266,19 @@ export function Sidebar() {
       </div>
 
       {/* Universal command bar trigger */}
-      <div className="shrink-0 border-b px-4 py-3">
+      <div className="shrink-0 border-b border-border-subtle px-4 py-3">
         <button
           type="button"
           onClick={openCommandBar}
           className={cn(
-            "flex w-full items-center gap-2 rounded-md border bg-background py-1.5 pl-3 pr-2 text-sm",
-            "text-muted-foreground/60 hover:text-muted-foreground hover:border-ring",
-            "transition-colors cursor-pointer",
+            "flex w-full items-center gap-2 rounded border border-border-base bg-surface-raised py-1.5 pl-3 pr-2 text-body-sm",
+            "text-content-muted hover:border-border-strong hover:text-content-base",
+            "transition-colors duration-quick ease-settle cursor-pointer focus-ring-brass",
           )}
         >
-          <Sparkles className="size-4 shrink-0" />
+          <Sparkles className="size-4 shrink-0 text-content-subtle" />
           <span className="flex-1 text-left truncate">Search or ask...</span>
-          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-sm border border-border-subtle bg-surface-base px-1.5 py-0.5 text-micro font-medium font-plex-mono text-content-subtle">
             ⌘K
           </kbd>
         </button>
@@ -314,8 +314,8 @@ export function Sidebar() {
       <DotNav />
 
       {/* Preset label */}
-      <div className="shrink-0 border-t px-5 py-2.5">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
+      <div className="shrink-0 border-t border-border-subtle px-5 py-2.5">
+        <span className="text-micro font-medium uppercase tracking-wider text-content-subtle">
           {presetLabel}
         </span>
       </div>
@@ -354,21 +354,21 @@ function SidebarSection({
             type="button"
             onClick={onToggle}
             className={cn(
-              "flex w-full items-center justify-between rounded-md px-2 py-1",
-              "text-[11px] font-semibold uppercase tracking-wider",
-              "text-muted-foreground/60 hover:text-muted-foreground transition-colors",
+              "flex w-full items-center justify-between rounded-sm px-2 py-1",
+              "text-micro font-semibold uppercase tracking-wider",
+              "text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-brass",
             )}
           >
             {section.title}
             <ChevronRight
               className={cn(
-                "size-3.5 transition-transform duration-200",
+                "size-3.5 transition-transform duration-quick ease-settle",
                 isOpen && "rotate-90",
               )}
             />
           </button>
         ) : (
-          <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+          <div className="px-2 py-1 text-micro font-semibold uppercase tracking-wider text-content-subtle">
             {section.title}
           </div>
         )
@@ -422,7 +422,7 @@ function SettingsGroupedItems({
     <div className="mt-1 space-y-3">
       {groups.map((group) => (
         <div key={group.label}>
-          <div className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/40">
+          <div className="px-2 py-0.5 text-micro font-semibold uppercase tracking-wider text-content-subtle/80">
             {group.label}
           </div>
           <div className="mt-0.5 space-y-0.5">
@@ -455,7 +455,7 @@ function SidebarItemWithDividers({
   return (
     <>
       {item.isDividerBefore && (
-        <div className="my-1.5 border-t border-sidebar-border" />
+        <div className="my-1.5 border-t border-border-subtle" />
       )}
       <SidebarItem
         item={item}
@@ -464,7 +464,7 @@ function SidebarItemWithDividers({
         isActive={isActive}
       />
       {item.isDividerAfter && (
-        <div className="my-1.5 border-t border-sidebar-border" />
+        <div className="my-1.5 border-t border-border-subtle" />
       )}
     </>
   );
@@ -496,10 +496,15 @@ function SidebarItem({
   }, [childActive]);
 
   // Use inline style for the accent color so it adapts to preset
+  // Note: Aesthetic Arc Session 2 — opacity bumped from 10 to 18 (hex)
+  // to give the preset accent enough presence against the new
+  // bg-surface-sunken sidebar background. The sunken tone is visually
+  // quieter than the old bg-sidebar, so active-state fill needs a
+  // small lift to stay legible without reading as "too bright."
   const activeStyle = (active && !hasChildren)
     ? {
         borderLeftColor: presetAccent,
-        backgroundColor: `${presetAccent}10`,
+        backgroundColor: `${presetAccent}18`,
       }
     : undefined;
 
@@ -511,13 +516,13 @@ function SidebarItem({
           type="button"
           onClick={() => setExpanded(!expanded)}
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+            "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-brass",
             "border-l-2 border-transparent",
             parentActive
-              ? "font-medium text-sidebar-foreground"
-              : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+              ? "font-medium text-content-strong"
+              : "text-content-muted hover:bg-brass-subtle hover:text-content-strong",
           )}
-          style={parentActive ? { borderLeftColor: presetAccent, backgroundColor: `${presetAccent}08` } : undefined}
+          style={parentActive ? { borderLeftColor: presetAccent, backgroundColor: `${presetAccent}12` } : undefined}
         >
           {Icon && (
             <Icon
@@ -528,13 +533,13 @@ function SidebarItem({
           <span className="truncate flex-1 text-left">{item.label}</span>
           <ChevronDown
             className={cn(
-              "size-3.5 shrink-0 transition-transform duration-200 text-muted-foreground/50",
+              "size-3.5 shrink-0 transition-transform duration-quick ease-settle text-content-subtle",
               !expanded && "-rotate-90",
             )}
           />
         </button>
         {expanded && (
-          <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2">
+          <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border-subtle pl-2">
             {item.children!.map((child) => (
               <SidebarItem
                 key={child.href}
@@ -553,11 +558,11 @@ function SidebarItem({
     <Link
       to={item.href}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+        "flex items-center gap-2.5 rounded px-2.5 py-1.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-brass",
         "border-l-2 border-transparent",
         active
-          ? "font-medium text-sidebar-foreground"
-          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+          ? "font-medium text-content-strong"
+          : "text-content-muted hover:bg-brass-subtle hover:text-content-strong",
       )}
       style={activeStyle}
     >
@@ -571,8 +576,8 @@ function SidebarItem({
       {item.badge != null && (
         <span
           className={cn(
-            "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-medium",
-            "bg-muted text-muted-foreground",
+            "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-micro font-medium font-plex-mono",
+            "bg-brass-muted text-content-on-brass",
           )}
         >
           {item.badge}

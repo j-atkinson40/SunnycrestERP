@@ -1549,3 +1549,73 @@ def _approval_gate_seeds() -> list[PlatformTemplateSeed]:
             "subject_template": EMAIL_APPROVAL_GATE_REVIEW_SUBJECT,
         },
     ]
+
+
+# ── FH Aftercare — 7-day follow-up email (Phase 8d) ──────────────────
+#
+# Replaces the hardcoded `template="aftercare_7day"` string reference
+# in wf_fh_aftercare_7day's seed. The workflow's send_email step
+# previously referenced a template that didn't exist anywhere in the
+# template registry — the run silently produced no email if the
+# scheduler fired. Phase 8d promotes the template to a proper D-2
+# managed row so the aftercare_adapter can render it via
+# `delivery_service.send_email_with_template`.
+#
+# Scope note: this is a condolence-tone, FH-branded message. Intentionally
+# warm; no metrics, no call-to-action buttons. The one render variable
+# is `family_surname` (e.g. "Martinez"); the FH's own branding comes
+# through via the platform email wrapper.
+
+EMAIL_FH_AFTERCARE_7DAY_SUBJECT = "Thinking of the {{ family_surname }} family"
+
+EMAIL_FH_AFTERCARE_7DAY = """<!DOCTYPE html>
+<html>
+<head><style>
+  body { margin:0; padding:0; background:#fafaf7; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Georgia,serif; color:#3f3f46; }
+  .wrapper { max-width:580px; margin:36px auto; background:#fff; border-radius:4px; padding:40px 44px; }
+  .greeting { font-size:18px; font-weight:500; color:#1f2937; margin:0 0 20px; }
+  .body p { margin:0 0 16px; line-height:1.7; font-size:15px; color:#3f3f46; }
+  .sig { margin-top:32px; color:#52525b; font-size:14px; font-style:italic; }
+  .footer { border-top:1px solid #e4e4e7; padding:16px 44px; background:#fafafa; font-size:12px; color:#71717a; }
+</style></head>
+<body>
+<div class="wrapper">
+  <p class="greeting">Dear family and friends of the {{ family_surname }} family,</p>
+  <div class="body">
+    <p>It has been a week since we gathered to honor your loved one, and we wanted to reach out simply to let you know that you are in our thoughts.</p>
+    <p>Grief moves at its own pace. The days and weeks ahead may bring unexpected waves — a song, a scent, a quiet moment that suddenly brings everything back. Please know that this is natural, and that you are not alone.</p>
+    <p>If there is anything we can do, or any question about paperwork, arrangements, or next steps, we are here. You can reply directly to this email.</p>
+    <p>With our continued care,</p>
+  </div>
+  <div class="sig">
+    {{ funeral_home_name | default('Your funeral home team') }}
+  </div>
+</div>
+<div class="footer" style="max-width:580px;margin:0 auto;">
+  <p>This message was sent seven days after the service as part of our aftercare program. If you would prefer not to receive further messages, please reply and let us know.</p>
+</div>
+</body>
+</html>"""
+
+
+def _aftercare_seeds() -> list[PlatformTemplateSeed]:
+    """Workflow Arc Phase 8d — managed template for 7-day aftercare
+    follow-up. Replaces the phantom `template="aftercare_7day"` in
+    the wf_fh_aftercare_7day seed (no template registry row ever
+    existed for that key pre-8d — the send silently no-op'd)."""
+    return [
+        {
+            "template_key": "email.fh_aftercare_7day",
+            "document_type": "email",
+            "output_format": "html",
+            "description": (
+                "FH aftercare follow-up email sent 7 days after a "
+                "service. Condolence-toned; one variable `family_surname`. "
+                "Rendered by aftercare_adapter via "
+                "delivery_service.send_email_with_template."
+            ),
+            "supports_variants": False,
+            "body_template": EMAIL_FH_AFTERCARE_7DAY,
+            "subject_template": EMAIL_FH_AFTERCARE_7DAY_SUBJECT,
+        },
+    ]

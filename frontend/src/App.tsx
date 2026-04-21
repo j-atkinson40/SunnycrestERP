@@ -11,6 +11,7 @@ import { LayoutProvider } from "@/contexts/layout-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
 import { SpaceProvider } from "@/contexts/space-context";
 import { PeekProvider } from "@/contexts/peek-context";
+import { AffinityVisitWatcher } from "@/components/spaces/AffinityVisitWatcher";
 import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
@@ -47,6 +48,7 @@ import TriageIndex from "@/pages/triage/TriageIndex";
 import TriagePage from "@/pages/triage/TriagePage";
 import BriefingPage from "@/pages/briefings/BriefingPage";
 import BriefingPreferencesPage from "@/pages/settings/BriefingPreferences";
+import SpacesSettings from "@/pages/settings/SpacesSettings";
 import SavedOrdersPage from "@/pages/settings/SavedOrders";
 import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
@@ -284,6 +286,7 @@ import LandingPage from "@/pages/landing";
 import CompanyRegisterPage from "@/pages/company-register";
 import PlatformAdminEntry from "@/pages/platform-admin-entry";
 import { BridgeableAdminApp } from "@/bridgeable-admin/BridgeableAdminApp";
+import { PortalApp } from "@/PortalApp";
 import ProductLinesPage from "@/pages/settings/ProductLines";
 import WorkflowsSettingsPage from "@/pages/settings/Workflows";
 import WorkflowBuilderPage from "@/pages/settings/WorkflowBuilder";
@@ -317,18 +320,25 @@ class ErrorBoundary extends Component<
   }
   render() {
     if (this.state.hasError) {
+      // Aesthetic Arc Session 3 refresh — uses DESIGN_LANGUAGE tokens
+      // via Tailwind classes rather than inline styles. Pairs with
+      // the Alert status-family recipe (status-error + surface-base).
       return (
-        <div style={{ padding: 40, fontFamily: "sans-serif" }}>
-          <h1 style={{ color: "#b91c1c" }}>Something went wrong</h1>
-          <pre style={{ whiteSpace: "pre-wrap", color: "#666", marginTop: 12 }}>
-            {this.state.error?.message}
-          </pre>
-          <button
-            onClick={() => window.location.reload()}
-            style={{ marginTop: 16, padding: "8px 16px", cursor: "pointer" }}
-          >
-            Reload page
-          </button>
+        <div className="min-h-screen bg-surface-base p-10 font-plex-sans text-content-base">
+          <div className="mx-auto max-w-content">
+            <div className="rounded-md border-l-4 border-l-status-error bg-status-error-muted p-6 text-status-error">
+              <h1 className="text-h2 font-medium">Something went wrong</h1>
+              <pre className="mt-4 whitespace-pre-wrap rounded bg-surface-base p-3 font-plex-mono text-caption text-content-base">
+                {this.state.error?.message}
+              </pre>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-4 inline-flex items-center rounded bg-brass px-5 py-2.5 font-plex-sans text-body-sm font-semibold text-content-on-brass shadow-level-1 transition-colors duration-quick ease-settle hover:bg-brass-hover active:bg-brass-active focus-ring-brass"
+              >
+                Reload page
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
@@ -364,6 +374,13 @@ export default function App() {
   const onBridgeableAdminPath =
     typeof window !== "undefined" &&
     window.location.pathname.startsWith("/bridgeable-admin")
+  // Phase 8e.2 — portal app (tenant-branded, operational-role UX).
+  // Same detection pattern as bridgeable-admin. Portal paths are
+  // /portal/<tenant-slug>/* and render an entirely separate shell
+  // from the tenant AppLayout.
+  const onPortalPath =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/portal/")
   const onAdminSubdomain = isPlatformAdmin()
   const useLegacyPlatform =
     typeof localStorage !== "undefined" &&
@@ -373,6 +390,19 @@ export default function App() {
     return (
       <BrowserRouter>
         <BridgeableAdminApp />
+        <Toaster />
+      </BrowserRouter>
+    )
+  }
+
+  // Phase 8e.2 — portal route tree. Entirely separate from the tenant
+  // AppLayout. Matches /portal/<slug>/* and mounts PortalApp. The
+  // portal app owns its own auth (PortalAuthProvider) + branding
+  // (PortalBrandProvider) contexts.
+  if (onPortalPath) {
+    return (
+      <BrowserRouter>
+        <PortalApp />
         <Toaster />
       </BrowserRouter>
     )
@@ -422,6 +452,11 @@ export default function App() {
                         <PeekProvider>
                           <AppLayout />
                           <PeekHost />
+                          {/* Phase 8e.1 — fire-and-forget topical
+                              affinity recorder. Watches route
+                              changes; on any match against the
+                              active space's pins, records a visit. */}
+                          <AffinityVisitWatcher />
                         </PeekProvider>
                       </SpaceProvider>
                     </PresetThemeProvider>
@@ -595,6 +630,10 @@ export default function App() {
                   <Route
                     path="/settings/briefings"
                     element={<BriefingPreferencesPage />}
+                  />
+                  <Route
+                    path="/settings/spaces"
+                    element={<SpacesSettings />}
                   />
 
                   {/* Products — core feature, no module gate */}

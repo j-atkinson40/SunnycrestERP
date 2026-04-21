@@ -269,10 +269,18 @@ def job_quote_auto_expiry():
     _run_per_tenant("QUOTE_AUTO_EXPIRY", expire_stale_quotes)
 
 
-def job_safety_program_generation():
-    """Monthly 1st at 6am — generate written safety programs for the month."""
-    from app.services.safety_program_generation_service import run_monthly_generation
-    _run_per_tenant("SAFETY_PROGRAM_GENERATION", run_monthly_generation)
+# job_safety_program_generation retired — Workflow Arc Phase 8d.1.
+# The wf_sys_safety_program_gen workflow now owns the monthly firing
+# via workflow_scheduler's `scheduled` dispatch (cron="0 6 1 * *",
+# timezone="America/New_York" — tenant-local 6am, an improvement over
+# the prior APScheduler cron which fired at container-UTC). The
+# workflow's single call_service_method step invokes
+# safety_program.run_generation_pipeline which calls the existing
+# `run_monthly_generation`. Keeping the APScheduler entry here would
+# double-fire on the 1st of each month, so it was removed in lockstep
+# with the migration. Template v2.2 §7.7 documents this convention
+# for future migrations whose targets have a dedicated APScheduler
+# cron calling the exact same pipeline function the adapter wraps.
 
 
 def job_price_version_activation():
@@ -424,7 +432,10 @@ JOB_REGISTRY: dict[str, callable] = {
     "price_version_activation": job_price_version_activation,
     "platform_health_recalculate": job_platform_health_recalculate,
     "platform_incident_dispatcher": job_platform_incident_dispatcher,
-    "safety_program_generation": job_safety_program_generation,
+    # "safety_program_generation" retired Phase 8d.1 — see comment above
+    # job_safety_program_generation. Manual ad-hoc invocation goes through
+    # the /safety/programs/generate API (bespoke) or the workflow's
+    # /workflows/{id}/start endpoint.
     "quote_auto_expiry": job_quote_auto_expiry,
     "briefing_sweep": job_briefing_sweep,
 }
@@ -591,14 +602,10 @@ def register_all_jobs():
     )
 
     # MONTHLY 1st at 6am — safety program generation
-    scheduler.add_job(
-        job_safety_program_generation,
-        CronTrigger(day=1, hour=6, minute=0),
-        id="safety_program_generation",
-        name="safety_program_generation",
-        replace_existing=True,
-        misfire_grace_time=86400,
-    )
+    # Retired in Workflow Arc Phase 8d.1. Monthly firing now owned by
+    # wf_sys_safety_program_gen via workflow_scheduler's `scheduled`
+    # dispatch (tenant-local 6am, cron="0 6 1 * *"). See retirement
+    # note on the retired job_safety_program_generation function.
 
     # DAILY at midnight ET — price version activation
     scheduler.add_job(

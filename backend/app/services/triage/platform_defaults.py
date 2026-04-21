@@ -683,6 +683,308 @@ _expense_categorization_triage = TriageQueueConfig(
 )
 
 
+# ── Queue: aftercare_triage (Workflow Arc Phase 8d) ─────────────────
+#
+# Per user-approved scope decision: NO AI question panels. The
+# aftercare queue is an audit/retry workspace, not a decision
+# workspace — the question "should I send the 7-day aftercare
+# email?" doesn't need AI assistance (the operator reads the case
+# row, clicks send). If engagement patterns later prove an AI panel
+# would help, a Phase 8d.1 follow-up can add one.
+
+
+_aftercare_triage = TriageQueueConfig(
+    queue_id="aftercare_triage",
+    queue_name="FH Aftercare",
+    description=(
+        "Send the 7-day aftercare follow-up email to families "
+        "whose service occurred a week ago. Each approve renders "
+        "the managed `email.fh_aftercare_7day` template + logs a "
+        "VaultItem. Replaces the pre-8d workflow step that "
+        "referenced a non-existent email template key — previously "
+        "the scheduled send silently no-op'd."
+    ),
+    icon="Heart",
+    source_direct_query_key="aftercare_triage",
+    item_entity_type="fh_aftercare_case",
+    item_display=ItemDisplayConfig(
+        title_field="family_surname",
+        subtitle_field="deceased_name",
+        body_fields=[
+            "case_number",
+            "primary_contact_name",
+            "primary_contact_email",
+            "service_date",
+        ],
+        display_component="generic",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="send",
+            label="Send aftercare email",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="Send",
+            confirmation_required=True,
+            handler="aftercare.send",
+        ),
+        ActionConfig(
+            action_id="skip",
+            label="Skip",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="SkipForward",
+            requires_reason=True,
+            handler="aftercare.skip",
+        ),
+        ActionConfig(
+            action_id="request_review",
+            label="Request review",
+            action_type=ActionType.ESCALATE,
+            keyboard_shortcut="r",
+            icon="MessageCircle",
+            requires_reason=True,
+            handler="aftercare.request_review",
+        ),
+    ],
+    # Context panels intentionally empty — the display row already
+    # carries the case + primary contact. No AI question panel per
+    # approved Phase 8d scope.
+    context_panels=[],
+    flow_controls=FlowControlsConfig(
+        snooze_enabled=True,
+        snooze_presets=[
+            SnoozePreset(label="Tomorrow", offset_hours=24),
+            SnoozePreset(label="Next week", offset_hours=168),
+        ],
+        approval_chain=[],
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(
+        ai_questions_enabled=False,  # explicit — Phase 8d scope decision
+        prioritization_enabled=False,
+    ),
+    # No special permission — any active FH user can process
+    # aftercare. If a tenant wants to gate it, they can override via
+    # vault_item customization (Phase 8g+).
+    permissions=[],
+    display_order=70,
+    required_vertical="funeral_home",
+    enabled=True,
+)
+
+
+# ── Queue: catalog_fetch_triage (Workflow Arc Phase 8d) ─────────────
+#
+# Per user-approved scope decision: NO AI question panels. Catalog
+# publication is a go/no-go on Wilbert's staged changes — the
+# decision is scanning the diff, not asking AI for guidance.
+
+
+_catalog_fetch_triage = TriageQueueConfig(
+    queue_id="catalog_fetch_triage",
+    queue_name="Catalog Publish Review",
+    description=(
+        "Review Wilbert catalog updates staged by the weekly "
+        "auto-fetch workflow. Approve publishes the parsed PDF to "
+        "the live urn_products catalog; reject discards the staged "
+        "ingestion. Most weeks the queue is empty — items appear "
+        "only when the MD5 hash of Wilbert's catalog PDF has changed."
+    ),
+    icon="BookOpen",
+    source_direct_query_key="catalog_fetch_triage",
+    item_entity_type="catalog_sync_log",
+    item_display=ItemDisplayConfig(
+        title_field="sync_log_id",
+        subtitle_field="r2_key",
+        body_fields=[
+            "products_preview",
+            "started_at",
+            "sync_type",
+            "publication_state",
+        ],
+        display_component="generic",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="approve",
+            label="Publish",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="CheckCircle",
+            confirmation_required=True,
+            handler="catalog_fetch.approve",
+            required_permission="invoice.approve",  # same admin gate
+        ),
+        ActionConfig(
+            action_id="reject",
+            label="Reject",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="XCircle",
+            requires_reason=True,
+            handler="catalog_fetch.reject",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="request_review",
+            label="Request review",
+            action_type=ActionType.ESCALATE,
+            keyboard_shortcut="r",
+            icon="MessageCircle",
+            requires_reason=True,
+            handler="catalog_fetch.request_review",
+        ),
+    ],
+    # No context panels — the staged sync_log row carries everything
+    # admins need (R2 PDF key, preview counts, fetch timestamp). No
+    # AI question panel per Phase 8d scope.
+    context_panels=[],
+    flow_controls=FlowControlsConfig(
+        # No snooze — staged catalogs are time-sensitive. Superseded
+        # by the next fetch if not acted on.
+        snooze_enabled=False,
+        approval_chain=[],
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(
+        ai_questions_enabled=False,
+        prioritization_enabled=False,
+    ),
+    permissions=["invoice.approve"],
+    display_order=80,
+    required_vertical="manufacturing",
+    required_extension="urn_sales",
+    enabled=True,
+)
+
+
+# ── Queue: safety_program_triage (Workflow Arc Phase 8d.1) ──────────
+#
+# First migration-arc queue exercising **AI-generation-with-approval
+# shape** — operator reviews an AI-generated safety program PDF +
+# HTML content, approves to promote it to the tenant's canonical
+# SafetyProgram row, or rejects with reason.
+#
+# AI question panel IS included (per Q1 approval) — this is the
+# reconnaissance for AI-assisted review of AI-generated artifacts,
+# and the question panel is the natural reconnaissance target.
+# Expected questions from compliance reviewers: "How does this
+# program change from last year's?" / "Are there OSHA requirements
+# for {topic} I should verify are in here?" / "Is this program
+# appropriate for a precast concrete operation?" / "What sections
+# need the most scrutiny for compliance?"
+#
+# Cardinality: per-generation-run (Template v2.2 §10 addition).
+# No AgentJob wrapper — SafetyProgramGeneration IS the tracking
+# entity, with its own status machine predating the arc.
+#
+# Snooze: disabled. Monthly cadence — no benefit to deferring a
+# month-specific program review. If the operator can't approve
+# today, request-review routes to a teammate.
+
+
+_safety_program_triage = TriageQueueConfig(
+    queue_id="safety_program_triage",
+    queue_name="Safety Program Review",
+    description=(
+        "Review AI-generated monthly safety programs against their "
+        "OSHA standard + prior-version baseline. Approve to promote "
+        "the generation to the tenant's canonical SafetyProgram "
+        "(legal safety-program-of-record). Reject with reason to "
+        "discard. Use the AI panel to ask about regulatory "
+        "compliance + year-over-year changes."
+    ),
+    icon="Shield",
+    source_direct_query_key="safety_program_triage",
+    item_entity_type="safety_program_generation",
+    item_display=ItemDisplayConfig(
+        title_field="topic_title",
+        subtitle_field="year_month_label",
+        body_fields=[
+            "osha_standard",
+            "generation_model",
+            "output_tokens",
+            "has_pdf",
+        ],
+        display_component="generic",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="approve",
+            label="Approve & publish",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="CheckCircle",
+            confirmation_required=True,
+            handler="safety_program.approve",
+            required_permission="safety.trainer.approve",
+        ),
+        ActionConfig(
+            action_id="reject",
+            label="Reject",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="XCircle",
+            requires_reason=True,
+            handler="safety_program.reject",
+            required_permission="safety.trainer.approve",
+        ),
+        ActionConfig(
+            action_id="request_review",
+            label="Request review",
+            action_type=ActionType.ESCALATE,
+            keyboard_shortcut="r",
+            icon="MessageCircle",
+            requires_reason=True,
+            handler="safety_program.request_review",
+        ),
+    ],
+    context_panels=[
+        ContextPanelConfig(
+            panel_type=ContextPanelType.RELATED_ENTITIES,
+            title="Program, OSHA source, prior version, PDF",
+            display_order=1,
+            default_collapsed=False,
+            related_entity_type="safety_program_generation",
+        ),
+        ContextPanelConfig(
+            panel_type=ContextPanelType.AI_QUESTION,
+            title="Ask about this safety program",
+            display_order=10,
+            default_collapsed=False,
+            ai_prompt_key="triage.safety_program_context_question",
+            suggested_questions=[
+                "How does this program change from last year's?",
+                "Are there OSHA requirements for {{topic_title}} I should verify are in here?",
+                "Is this program appropriate for a precast concrete operation?",
+                "What sections need the most scrutiny for compliance?",
+            ],
+            max_question_length=500,
+        ),
+    ],
+    flow_controls=FlowControlsConfig(
+        # Monthly cadence — no snooze. Request-review routes to a
+        # teammate if the operator can't decide today.
+        snooze_enabled=False,
+        approval_chain=[],
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(
+        ai_questions_enabled=True,
+        prioritization_enabled=False,
+        prompt_key="triage.safety_program_context_question",
+    ),
+    permissions=["safety.trainer.approve"],
+    display_order=90,
+    required_vertical="manufacturing",
+    enabled=True,
+)
+
+
 # Register at import time so the registry is populated the moment
 # the triage package loads.
 register_platform_config(_task_triage)
@@ -691,3 +993,6 @@ register_platform_config(_cash_receipts_triage)
 register_platform_config(_month_end_close_triage)
 register_platform_config(_ar_collections_triage)
 register_platform_config(_expense_categorization_triage)
+register_platform_config(_aftercare_triage)
+register_platform_config(_catalog_fetch_triage)
+register_platform_config(_safety_program_triage)

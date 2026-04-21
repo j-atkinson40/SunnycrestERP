@@ -170,15 +170,27 @@ class TestMigrationBackfill:
         )
         assert nulls == 0
 
-    def test_tier_1_workflows_are_core(self, db_session):
+    def test_tier_1_cross_vertical_workflows_are_core(self, db_session):
+        # Tightened by Phase 8d r38_fix_vertical_scope_backfill. The
+        # original r36 rule "tier=1 ⇒ scope=core" ignored the
+        # `vertical` column and misclassified 10 vertical-specific
+        # system workflows. Post-r38, the invariant is split:
+        #   tier=1 AND vertical IS NULL    → core
+        #   tier=1 AND vertical IS NOT NULL → vertical
+        # The companion regression gate lives in
+        # test_r38_scope_backfill_fix.py.
         from app.models.workflow import Workflow
 
-        tier1_not_core = (
+        tier1_cross_vertical_not_core = (
             db_session.query(Workflow)
-            .filter(Workflow.tier == 1, Workflow.scope != "core")
+            .filter(
+                Workflow.tier == 1,
+                Workflow.vertical.is_(None),
+                Workflow.scope != "core",
+            )
             .count()
         )
-        assert tier1_not_core == 0
+        assert tier1_cross_vertical_not_core == 0
 
     def test_tier_2_and_3_workflows_are_vertical(self, db_session):
         from app.models.workflow import Workflow

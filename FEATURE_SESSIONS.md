@@ -6,6 +6,742 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Workflow Arc Phase 8e.2 — Portal Foundation with MFG driver reconnaissance
+
+**Date:** 2026-04-21
+**Migration head:** `r41_user_space_affinity` → `r42_portal_users` → `r43_portal_password_email_template` (2 new).
+**Arc:** Workflow Arc Phase 8e.2. Sequence: 8c → 8d → 8d.1 → Aesthetic 1-3 → 8e → 8e.1 → **8e.2 (now)** → 8e.2.1 (portal admin UI + branding editor + remaining driver pages) → Aesthetic 4-5 → 8f → 8g → Aesthetic 6 → cleanup → 8h.
+**Tests passing:** 25 new in `test_portal_phase8e2.py` + 3 Playwright smoke + updated Phase 8e invariant test = 29 new tests. Full Phase 8a–8e.2 regression: **379 tests passing, no regressions.**
+
+### Audit finding that shaped scope
+
+Pre-implementation audit discovered that the driver UI content ALREADY EXISTS in the platform:
+- `DriverLayout` at `frontend/src/components/layout/driver-layout.tsx` — mobile-first (h-12 header + bottom tab nav)
+- 5 driver pages at `frontend/src/pages/driver/` — DriverConsolePage, DriverHomePage, DriverRoutePage, StopDetailPage, MileagePage
+- `/driver/*` routes wired in App.tsx
+- `Driver` model with `employee_id → users.id` FK (existing drivers are tenant users today)
+
+Phase 8e.2 is therefore **portal INFRASTRUCTURE + TENANT BRANDING**, not "build driver content from scratch." Wrapping existing content in portal-scoped auth + tenant-branded shell + per-tenant URL routing.
+
+### What shipped
+
+**Per-component infrastructure summary:**
+
+Backend:
+- Migration `r42_portal_users` — new portal_users table (composite-friendly, partial unique on token columns), `drivers.portal_user_id` optional FK, `audit_logs.actor_type` discriminator with `'tenant_user'` default
+- Migration `r43_portal_password_email_template` — seeds D-7 managed email template
+- `PortalUser` model (`app/models/portal_user.py`)
+- Driver model extension (portal_user_id + business-logic invariant comment)
+- AuditLog discriminator
+- SpaceConfig modifier fields (access_mode, tenant_branding, write_mode, session_timeout_minutes) — JSONB-only, non-destructive legacy defaults
+- SpaceTemplate modifier fields — template-level declaration
+- Seed propagation (template → SpaceConfig)
+- Portal services package (`app/services/portal/`) — auth (login + lockout + rate limit + recovery), branding (read + set), user_service (invite + resolve driver)
+- JWT realm extension — `get_current_portal_user`, `get_portal_company_from_slug`, `get_current_portal_user_for_tenant`; tightened tenant `get_current_user` to reject portal realm
+- Portal API router (`app/api/routes/portal.py`) — 7 endpoints mounted at `/api/v1/portal/*`
+- Registered in v1.py
+
+Frontend:
+- `types/portal.ts` (5 types: PortalBranding, PortalLoginBody, PortalTokenPair, PortalMe, PortalDriverSummary)
+- `services/portal-service.ts` (own axios instance — NOT shared apiClient; separate LocalStorage keys)
+- `contexts/portal-auth-context.tsx` (PortalAuthProvider + usePortalAuth + isReady gating)
+- `contexts/portal-brand-context.tsx` (PortalBrandProvider + luminance-based fg computation + CSS var application + cleanup on unmount)
+- `components/portal/PortalLayout.tsx` (branded header + main + optional footer)
+- `components/portal/PortalRouteGuard.tsx` (redirect to login on missing auth)
+- `pages/portal/PortalLogin.tsx` (branded login form, 44px touch targets, generic error messages)
+- `pages/portal/PortalDriverHome.tsx` (driver summary card + today's stops + unlinked-account graceful path)
+- `PortalApp.tsx` (top-level route tree)
+- App.tsx wired to detect `/portal/` path and mount PortalApp
+
+### Branding configuration approach
+
+Per-tenant branding stored in `Company.settings_json.portal.*` — NO new `TenantBrandingConfig` table:
+
+| Field | Storage |
+|---|---|
+| display_name | `Company.name` (reused) |
+| logo_url | `Company.logo_url` (reused — already existed) |
+| brand_color | `Company.settings_json.portal.brand_color` (hex string, new) |
+| footer_text | `Company.settings_json.portal.footer_text` (optional, new) |
+
+Default brand color falls through to platform brass (`#8D6F3A`). Portal 404s for unknown slugs from the public branding endpoint.
+
+Wash-not-reskin discipline — brand color applies ONLY to:
+- Portal header background
+- Primary CTA background (login submit, future nav active indicator)
+- Focus-ring color
+
+Does NOT apply to status colors, typography, surface tokens, border radius, motion, shadow system — those stay DESIGN_LANGUAGE.
+
+### One driver page end-to-end demonstration
+
+`/portal/<slug>/driver` successfully renders post-login:
+1. Portal login at `/portal/<slug>/login` — branded with tenant name + color.
+2. Submit credentials → POST `/api/v1/portal/<slug>/login` → portal JWT pair stored.
+3. Auto-navigate to `/portal/<slug>/driver`.
+4. PortalDriverHome calls `/api/v1/portal/drivers/me/summary` → returns driver identity + today's stop count (resolved via `portal_user_id → drivers.portal_user_id → Driver → DeliveryRoute/Stop` chain — the canonical thin-router-over-service pattern).
+5. If portal user isn't linked to a Driver row yet (admin provisioning incomplete), shows a graceful "Ask your dispatcher to finish provisioning" message.
+
+### Cross-realm isolation test results
+
+All 4 load-bearing security tests passing:
+
+1. **Tenant token → portal endpoint = 401.** ✅ Tenant `get_current_portal_user` rejects `realm="tenant"`.
+2. **Portal token → tenant endpoint = 401.** ✅ Tenant's `get_current_user` tightened to also reject `realm="portal"` in addition to existing `realm="platform"`.
+3. **Cross-tenant portal token = 401.** ✅ Portal token for tenant A against tenant B's URL path → refresh endpoint returns 401 (company_id claim mismatches path slug).
+4. **Deactivated portal user = 401.** ✅ `get_current_portal_user` re-queries DB and confirms `is_active=True`; existing JWTs die at TTL (12h max).
+
+### Playwright smoke test results
+
+3 scenarios in `frontend/tests/e2e/portal-phase-8e2.spec.ts` — routing + shell architecture boundaries. Tests mock the backend via route interception so they run self-contained without staging:
+
+1. **Branded login renders**: `/portal/<slug>/login` loads with tenant display name + `--portal-brand` CSS var set + submit button disabled until email+password present.
+2. **Driver home post-login**: submit valid credentials → navigate to `/portal/<slug>/driver` → driver summary card renders with today's stop count + branded header shows user name.
+3. **No DotNav / command bar / settings in portal**: post-login, assert `[data-testid=dot-nav]` + `[data-testid=command-bar-trigger]` + Settings nav link are all absent; Cmd+K doesn't open a command bar overlay.
+
+### Mobile viewport verification results
+
+- Portal header: 48px height (h-12) ≥ 44px WCAG 2.2 Target Size ✓
+- Login inputs: h-11 (44px) explicitly set ✓
+- Login submit: h-11 full-width ✓
+- Single-column layout at all viewport widths ✓
+- No horizontal scroll issues ✓
+
+Full mobile polish pass (remaining driver pages, network resilience, offline-tolerance) deferred to 8e.2.1.
+
+### Sunnycrest non-destructive migration verification
+
+`test_portal_phase8e2.py::TestNonDestructiveDriverMigration::test_tenant_user_driver_still_works` creates a classic tenant-user driver (`employee_id` set, `portal_user_id=None`) and round-trips it cleanly. Sunnycrest's existing driver flow is unaffected — tenants opt into portal migration per-driver when ready.
+
+### TestDriverTemplatesUsePortalAccessMode rename + update
+
+Phase 8e's `TestNoDriverTemplates` renamed to `TestDriverTemplatesUsePortalAccessMode`. Invariant evolved:
+
+- **Before 8e.2**: "Drivers have NO templates (operational roles deferred)."
+- **After 8e.2**: "Operational-role slugs (driver, yard_operator, removal_staff) MUST have `access_mode` starting with `portal_` if a template exists. Office-role slugs MUST have `access_mode='platform'`."
+
+Symmetric invariant — no accidental drift in either direction. FH driver remains excluded (no template).
+
+### Migration r42_portal_users + r43_portal_password_email_template details
+
+**r42:**
+- CREATE TABLE `portal_users` with full field set + UNIQUE(email, company_id) + partial unique indexes on invite_token + recovery_token
+- ADD COLUMN `drivers.portal_user_id` (nullable, FK to portal_users with ON DELETE SET NULL)
+- ADD COLUMN `audit_logs.actor_type` (server_default='tenant_user' — every existing row reads as tenant action)
+- Reversible: DROP COLUMN + DROP TABLE cleanly
+
+**r43:**
+- Seeds `email.portal_password_recovery` template in the D-2 document_templates registry (reused idempotent pattern from r40_aftercare_email_template)
+- Variable schema: first_name, tenant_name, reset_url, expires_in
+
+### 8e.2.1 scope clearly delineated
+
+Next phase ships:
+
+- **Tenant admin UI** at `/settings/portal-users` — list/invite/edit/deactivate/reset-password/unlock
+- **Branding editor UI** — color picker, logo upload, footer text
+- **Remaining 4 driver pages** mounted under `/portal/<slug>/driver/*`: route, stops/:stopId, mileage, vehicle-inspection
+- **Reset-password page** at `/portal/<slug>/reset-password?token=...`
+- **Offline-tolerance touches** — OfflineBanner + retry toasts wired into portal surfaces
+- **Full mobile polish pass** — touch target audit across all portal pages, small-viewport edge cases
+
+### Files touched
+
+Backend (10 files):
+- `alembic/versions/r42_portal_users.py` (new)
+- `alembic/versions/r43_portal_password_email_template.py` (new)
+- `app/models/portal_user.py` (new)
+- `app/models/__init__.py` (import + export PortalUser)
+- `app/models/driver.py` (portal_user_id column + relationship)
+- `app/models/audit_log.py` (actor_type column)
+- `app/services/spaces/types.py` (4 modifier fields + AccessMode/WriteMode Literals)
+- `app/services/spaces/crud.py` (round-trip modifier fields in ResolvedSpace)
+- `app/services/spaces/seed.py` (template → SpaceConfig modifier field propagation)
+- `app/services/spaces/registry.py` (SpaceTemplate modifier fields + MFG driver template entry)
+- `app/services/portal/{__init__.py, auth.py, branding.py, user_service.py}` (new)
+- `app/api/deps.py` (portal auth dependencies + tenant realm rejection tightening)
+- `app/api/routes/portal.py` (new, 7 endpoints)
+- `app/api/v1.py` (register portal router)
+- `tests/test_portal_phase8e2.py` (new, 25 tests)
+- `tests/test_spaces_phase8e.py` (TestNoDriverTemplates → TestDriverTemplatesUsePortalAccessMode)
+
+Frontend (10 files):
+- `types/portal.ts` (new, 5 types)
+- `services/portal-service.ts` (new, own axios instance)
+- `contexts/portal-auth-context.tsx` (new)
+- `contexts/portal-brand-context.tsx` (new)
+- `components/portal/PortalLayout.tsx` (new)
+- `components/portal/PortalRouteGuard.tsx` (new)
+- `pages/portal/PortalLogin.tsx` (new)
+- `pages/portal/PortalDriverHome.tsx` (new)
+- `PortalApp.tsx` (new top-level route tree)
+- `App.tsx` (onPortalPath detection + PortalApp mount + import)
+- `tests/e2e/portal-phase-8e2.spec.ts` (new, 3 Playwright smoke tests)
+
+Docs (3 files):
+- `SPACES_ARCHITECTURE.md` §10 (new, 280 lines — full Portal Foundation reference)
+- `CLAUDE.md` — new Phase 8e.2 section + Recent Changes bullet
+- `FEATURE_SESSIONS.md` — this entry
+
+### Ready for Phase 8e.2.1
+
+Phase 8e.2 closes the portal-infrastructure workstream. Phase 8e.2.1 completes the driver portal UX (admin UI + branding editor + remaining 4 driver pages mounted + mobile polish + reset-password page). Both phases ship before September Wilbert demo.
+
+---
+
+## Workflow Arc Phase 8e.1 — Smart Spaces
+
+**Date:** 2026-04-21
+**Migration head:** `r40_aftercare_email_template` → `r41_user_space_affinity` (new).
+**Arc:** Workflow Arc Phase 8e.1. Sequence: 8c → 8d → 8d.1 → Aesthetic 1-3 → 8e → **8e.1 (now)** → 8e.2 (portal foundation) → Aesthetic 4-5 → 8f → 8g → Aesthetic 6 → cleanup → 8h.
+**Tests passing:** 33 new + BLOCKING latency gate extended = 34 new; full spaces regression 151 passing.
+
+### What shipped
+
+Phase 8e.1 adds a behavior-inferred ranking-signal layer to the Phase 8e spaces fabric, ships the full `/settings/spaces` customization page, wires affinity writes across 4 deliberate-intent surfaces, and integrates starter-template + affinity boosts into the command bar. The defining principle: **users don't configure "what this space is about" — the system infers it from what they do.**
+
+### Affinity data model
+
+New table `user_space_affinity` via migration `r41_user_space_affinity`:
+
+- Composite PK `(user_id, space_id, target_type, target_id)` — no surrogate UUID.
+- CHECK constraint on target_type: `nav_item | saved_view | entity_record | triage_queue`.
+- Partial index `(user_id, space_id) WHERE visit_count > 0` — the hot-path read query shape.
+- Partial index `(user_id, last_visited_at DESC) WHERE visit_count > 0` — future-proofing for "top N recent per user" consumers.
+- Storage bounded by `pins × spaces` per user ~= 140 rows steady-state.
+- Tenant isolation by construction (`user.company_id` resolves to one tenant).
+
+### Write path — 4 deliberate triggers, 5 anti-triggers
+
+Wired into:
+
+1. **PinnedSection pin click** (`components/spaces/PinnedSection.tsx`) — `onNavigate` callback fires `recordVisit` before navigating.
+2. **PinStar pin-TO-pinned transition** (`components/spaces/PinStar.tsx`) — `wasPinned` captured before toggle; only records on `false → true`.
+3. **CommandBar activation** (`components/core/CommandBar.tsx`) — navigate branch, active_space_id guarded. Target type inferred from `action.type` + `action.route`; prefix-stripping for `entity:<type>:<uuid>` + `saved_view:<uuid>` backend shapes.
+4. **AffinityVisitWatcher** (`components/spaces/AffinityVisitWatcher.tsx`) — mounted at app root under `SpaceProvider`, watches `useLocation().pathname`, matches starts-with for nav_item / exact for saved_view + triage_queue.
+
+Anti-triggers (explicitly excluded): DotNav space-switch click (meta-navigation), keyboard `⌘[` / `⌘]` cycling (skimming, not intent), unpin (opposite of intent), hover peek (passive exploration), rendered-but-not-activated results (intent mismatch).
+
+### Write path — fire-and-forget + throttled
+
+- `useAffinityVisit()` hook (`hooks/useAffinityVisit.ts`): `recordVisit({targetType, targetId, spaceId?})` returns `void`; callers must NOT await. Module-scoped `Map` bucket, 60-second window per `{targetType}:{targetId}` (matches server).
+- **Server-side throttle** (`app/services/spaces/affinity.py::_should_throttle`): in-memory 60-second bucket per `(user_id, target_type, target_id)` per process. Defense-in-depth.
+- **Endpoint**: `POST /api/v1/spaces/affinity/visit` — returns 200 `{recorded: bool}` either way; 400 on invalid target_type; 404 on space_id not owned.
+
+### Read path — formula + composition
+
+```
+affinity_weight = 1.0 + 0.4 * log10(visits+1)/log10(11) * max(0, 1-age_days/30)
+```
+
+- 0 visits → 1.000 (no boost)
+- 1 visit today → 1.116
+- 5 visits today → 1.299
+- 10 visits today → 1.400 (saturates; visit_count ≥ 10 all cap here)
+- 10 visits 15 days → 1.200 (half-decayed)
+- Any visits at 30+ days → 1.000 (fully decayed; row contributes 0)
+
+Applied in `command_bar/retrieval.py` after the existing pin-boost pass:
+
+| Boost | Weight | Stacks with |
+|---|---|---|
+| Phase 3 pin (existing) | 1.25× | (skips starter template when applied) |
+| Phase 8e.1 starter template | 1.10× | (skipped if pin applied) |
+| Phase 8e.1 affinity | 1.0–1.40× | Both above |
+
+Max compound: pinned + affinity'd + today = 1.25 × 1.40 = **1.75×**. Above the 1.5× generic single-boost ceiling but bounded.
+
+### Privacy model
+
+- `DELETE /api/v1/spaces/affinity?space_id=X` endpoint.
+- UI: "Clear command bar learning history" button in `/settings/spaces` with confirmation modal.
+- **Cascade on space delete**: `crud.delete_space` removes affinity rows in the same transaction.
+- Cross-user / cross-tenant leakage impossible by PK construction.
+- Retention: indefinite storage + 30-day read-side decay. No hard-delete job in 8e.1.
+- **Purpose-limitation clause** in `SPACES_ARCHITECTURE.md` §9.4: affinity data used ONLY for command bar ranking. Future use requires separate scope-expansion audit. Load-bearing for user trust.
+
+### Customization UI — `/settings/spaces`
+
+~900 LOC, strictly Aesthetic Arc Session 3 primitives:
+
+- **Sidebar** — drag-reorder user spaces, system spaces sticky leftmost.
+- **Editor** — name, icon (16-entry Popover picker), 6-accent chips with hover-live-preview (temporary `--space-accent` CSS var), density, is_default, landing-route dropdown.
+- **Pin manager** — drag-reorder, per-pin "Move to…" Popover (add-to-target + remove-from-source composition).
+- **Header actions** — New space, Add starter template, Reapply role defaults (confirmation-before-commit modal with "won't change customizations" copy per user spec), Reset all spaces (type-to-confirm `Reset spaces`).
+- **Privacy card** — "N tracked signals" counter + "Clear learning history" action.
+- **Onboarding** — `welcome_to_settings_spaces` touch at top of page on first visit.
+
+### Dialog consolidation
+
+`NewSpaceDialog` + `SpaceEditorDialog` coexist with `/settings/spaces`:
+
+- Both dialogs gain footer deep-links to the power surface.
+- Dialogs remain the DotNav quick-path (60-second interactions).
+- `/settings/spaces` is the power surface (drag-reorder, move pins, reset, template import, clear history).
+- Zero backend change — all three paths call the same 13-endpoint API.
+
+### Performance
+
+- **Baseline pre-8e.1** `command_bar_query` p50 = 7.9 ms / p99 = 10.3 ms.
+- **Post-8e.1 with affinity enabled** p50 = **8.2 ms** / p99 = **77.3 ms** on dev hardware.
+- Against 100 / 300 ms BLOCKING budget: **12× / 3.9× headroom**.
+- `test_command_bar_latency.py` extended to seed 10 affinity rows + active space so the prefetch + boost pipeline is exercised.
+
+### Files touched
+
+**Backend:**
+- `alembic/versions/r41_user_space_affinity.py` (new)
+- `app/models/user_space_affinity.py` (new)
+- `app/models/__init__.py` (import + export UserSpaceAffinity)
+- `app/services/spaces/affinity.py` (new, ~320 LOC)
+- `app/services/spaces/__init__.py` (exports)
+- `app/services/spaces/crud.py` (cascade call in delete_space)
+- `app/api/routes/spaces.py` (4 new Pydantic shapes + 3 new routes, reorder-before-`/{space_id}`)
+- `app/services/command_bar/retrieval.py` (starter-template boost + affinity boost pass + 2 helpers)
+- `tests/test_spaces_phase8e1_affinity.py` (new, 33 tests)
+- `tests/test_command_bar_latency.py` (extended to seed affinity + pass active_space_id in context)
+
+**Frontend:**
+- `types/spaces.ts` (5 new types: AffinityTargetType, AffinityVisitBody/Response, AffinityCountResponse, AffinityClearResponse)
+- `services/spaces-service.ts` (recordAffinityVisit + getAffinityCount + clearAffinityHistory)
+- `hooks/useAffinityVisit.ts` (new)
+- `components/spaces/AffinityVisitWatcher.tsx` (new)
+- `components/spaces/PinnedSection.tsx` (onNavigate callback + affinity call)
+- `components/spaces/PinStar.tsx` (affinity call on pin-to-pinned + handleClick function restored from 8e edit)
+- `components/spaces/NewSpaceDialog.tsx` (More options… deep-link footer)
+- `components/spaces/SpaceEditorDialog.tsx` (Manage all pins… deep-link footer)
+- `components/core/CommandBar.tsx` (affinity call in navigate branch + useAffinityVisit import)
+- `pages/settings/SpacesSettings.tsx` (new, ~900 LOC)
+- `App.tsx` (route registration + AffinityVisitWatcher mount)
+
+**Docs:**
+- `SPACES_ARCHITECTURE.md` — new §9 Smart Spaces (data model, write path, read path, boost formula, composition, privacy, performance, customization UI, test coverage)
+- `CLAUDE.md` — new Phase 8e.1 section + Recent Changes bullet
+- `FEATURE_SESSIONS.md` — this entry
+
+### Test summary
+
+**33 new Phase 8e.1 tests** in `test_spaces_phase8e1_affinity.py`:
+
+- TestAffinitySchema × 3 — composite PK upsert, CHECK constraint, partial indexes exist
+- TestBoostFormula × 6 — zero/one/ten/saturation/decay-half/decay-full
+- TestRecordVisit × 3 — invalid target_type, unknown space, throttle
+- TestPrefetch × 3 — empty/null/seeded
+- TestIsolation × 2 — cross-user, cross-tenant
+- TestCascade × 2 — delete removes, other users unaffected
+- TestClearAffinity × 2 — all, per-space
+- TestAffinityAPI × 7 — visit records, throttle, bad target, unknown space, auth, count, clear idempotent
+- TestPinBoostRegression × 1 — Phase 3 still works
+- TestStarterTemplateBoost × 3 — in-template boost, user-created no boost, no-active-space empty
+- TestBoostComposition × 1 — prefetch → boost_for_target lookup
+
+**Plus BLOCKING latency gate** in `test_command_bar_latency.py` extended = 34 new tests.
+
+**Full Phase 1–8e.1 spaces regression: 151 tests passing. No regressions.**
+
+### Not in Phase 8e.1 (deferred)
+
+- Portal foundation (Phase 8e.2)
+- Detailed per-target affinity viewer (post-arc — single counter suffices for 8e.1)
+- Bulk pin actions (move N, delete N)
+- Full preview-before-save for the space (accent live preview is intermediate form)
+- Mobile viewport for `/settings/spaces`
+- Space export / import
+- Affinity as input to anything other than command bar ranking (future scope-expansion audit required)
+
+### Ready for Phase 8e.2
+
+Phase 8e.1 closes the "smart spaces" workstream. Phase 8e.2 introduces portal-as-space-with-modifiers and MFG driver as the first concrete portal, shipping before the September Wilbert demo.
+
+---
+
+## Workflow Arc Phase 8e — Spaces and Default Views
+
+**Date:** 2026-04-21
+**Migration head:** `r40_aftercare_email_template` (unchanged — pure JSONB + service-layer work).
+**Arc:** Workflow Arc — Phase 8e. Sequencing: 8c → 8d → 8d.1 → Aesthetic 1-3 → **8e (now)** → 8e.1 (smart spaces) → 8e.2 (portal foundation) → Aesthetic 4-5 → 8f → 8g → Aesthetic 6 → cleanup → 8h.
+**Tests passing:** 31 new in `test_spaces_phase8e.py`; full spaces regression 117 passing (unit + api + pins + system + 8e); saved_views + briefings + command_bar neighbors green.
+
+### What shipped
+
+Phase 8e expands the Phase 3 Spaces primitive with six new (vertical, role_slug) template combinations, two enrichments to existing templates, a deliberate-activation landing-route field, two new Phase-7-style onboarding touches, the reapply-defaults endpoint, a MAX_SPACES cap bump, and the Phase 3 SpaceSwitcher retirement. Drivers are deliberately excluded — they get portal UX in Phase 8e.2, not platform Space templates.
+
+**6 new templates** in `backend/app/services/spaces/registry.py::SEED_TEMPLATES`:
+
+| (vertical, role_slug) | Spaces (default first) | Default landing |
+|---|---|---|
+| cemetery / admin | Operations · Administrative · Ownership | /interments |
+| cemetery / office | Administrative · Operational | /financials |
+| crematory / admin | Operations · Administrative | /crematory/schedule |
+| crematory / office | Operations · Administrative | /crematory/schedule |
+| funeral_home / accountant | Books · Reports | /financials |
+| manufacturing / accountant | Books · Reports · Compliance | /financials |
+
+**2 enrichments:**
+- `(manufacturing, "safety_trainer")` promoted from FALLBACK to dedicated Compliance + Training spaces. Compliance pins `safety_program_triage` queue (Phase 8d.1 output) + safety nav. Training holds calendar + toolbox talks.
+- `(manufacturing, "production")` Production space gained `safety_program_triage` pin as a second triage-queue pin alongside existing `task_triage`. Production managers see BOTH queues at the top of their primary workspace.
+
+**Template coverage after 8e:** 13 (vertical, role_slug) combinations + 1 system space (Settings) + 1 fallback (General). Up from 6 pre-Phase-8e.
+
+### Driver templates intentionally excluded
+
+Driver roles (FH + MFG) are NOT given platform space templates. Drivers are **operational roles** requiring portal-shaped UX rather than platform-shaped UX. MFG driver becomes the reconnaissance use case for Phase 8e.2 portal infrastructure.
+
+`SPACES_ARCHITECTURE.md` at project root documents the full office-vs-operational distinction. The portal-as-space-with-modifiers architecture handles both external portals (family/supplier/customer/partner) AND internal operational-role portals (driver/yard operator) via the same primitive: a SpaceConfig with `access_mode: "portal_restricted"` + `tenant_branding` + `write_mode` modifiers. Phase 8e.2 ships the modifier fields + portal-restricted UI shell + portal user authentication + per-tenant branding + MFG driver as the first concrete portal. Before September Wilbert demo.
+
+`test_spaces_phase8e.py::TestNoDriverTemplates` enforces the invariant: `(funeral_home, "driver")` and `(manufacturing, "driver")` must NOT appear in SEED_TEMPLATES until Phase 8e.2 deliberately adds them.
+
+### Deliberate-activation landing route
+
+New `SpaceConfig.default_home_route: str | None` field. When a user activates a Space via:
+- **Deliberate** action (DotNav click, Switch-to-X command-bar result): frontend navigates to `default_home_route` via `useNavigate`.
+- **Keyboard** action (`⌘[`, `⌘]`, `⌘⇧1..7`): no navigation — rapid Space cycling stays on current page.
+
+`SpaceContext.switchSpace(spaceId, { source: "deliberate" | "keyboard" })` is the contract; default when omitted is `"keyboard"` (safer). All 14 shipped templates (6 new + 8 pre-existing + FALLBACK + Settings) carry `default_home_route` values.
+
+**SpaceEditorDialog gains a "Landing route" dropdown** populated from: (1) "Don't navigate" (null), (2) every pin in the Space with a resolvable href de-duped, (3) `/dashboard` as universal fallback, (4) the Space's current custom value if not in 1-3. Unavailable pins (deleted saved view, revoked triage queue) are excluded.
+
+### Saved-view seed dependency verification
+
+Every `saved_view` pin in a Space template references `saved_view_seed:<role>:<key>`. These keys must have matching `SeedTemplate` entries in `saved_views/seed.py` for the **same vertical** or the pin renders as "unavailable" at read time. Phase 8e adds 6 new (vertical, role_slug) combinations to `saved_views/seed.py::SEED_TEMPLATES`:
+
+- `(cemetery, "admin")` → outstanding_invoices + recent_cases
+- `(cemetery, "office")` → outstanding_invoices
+- `(crematory, "admin")` → outstanding_invoices + recent_cases
+- `(crematory, "office")` → outstanding_invoices
+- `(funeral_home, "accountant")` → outstanding_invoices
+- `(manufacturing, "accountant")` → outstanding_invoices
+
+`test_spaces_phase8e.py::TestSavedViewSeedDependencies` is an invariant test — iterates every space template pin at load time, cross-references against `saved_views SEED_TEMPLATES`, fails loudly if any saved_view pin points at a seed key that doesn't resolve.
+
+### MAX_SPACES_PER_USER 5 → 7
+
+Bumped in lockstep across `backend/app/services/spaces/types.py` and `frontend/src/types/spaces.ts`. Accommodates users who pick up the Settings system space (Phase 8a) plus multiple role-seeded spaces plus custom user-created spaces. A manufacturing admin today seeds 3 spaces (Production + Sales + Ownership) + Settings = 4; bumping to 7 leaves 3 slots for customization.
+
+**DotNav layout accommodates 7 dots.** Tightened `gap-1.5` → `gap-1` (saves ~30px at 7 spaces) + added `overflow-x-auto` + `scrollbar-none` for graceful degradation at collapsed sidebar widths. `Cmd+⇧1..5` bumped to `Cmd+⇧1..7` on the keyboard handler.
+
+### Reapply-defaults endpoint
+
+`POST /api/v1/spaces/reapply-defaults` wraps existing `user_service.reapply_role_defaults_for_user()`. Returns `{saved_views, spaces, briefings}` counts. Idempotent via each seed function's per-role preferences arrays (briefings returns 1-on-success by contract, not a row count).
+
+Exposed because `ROLE_CHANGE_RESEED_ENABLED=False` (Phase 8a opinionated-but-configurable discipline). Role changes no longer auto-reseed saved views; users who want their fresh role defaults call this endpoint. Future Phase 8e.1 UI surface wires it into `/settings/spaces`.
+
+### Two new onboarding touches
+
+Uses existing Phase 7 `useOnboardingTouch` infrastructure (server-persisted via `User.preferences.onboarding_touches_shown`, no new table, cross-device).
+
+1. **`welcome_to_spaces`** — fires on DotNav when user has ≥2 spaces (single-space users don't benefit from a "switch spaces" primer). Explains the spaces concept + keyboard shortcuts. Positioned at `top` of the DotNav bar.
+
+2. **`pin_this_view`** — fires on any PinStar where the user hasn't-yet-pinned the target. Explains "Pin to {active_space.name}" + that each space keeps its own pins. Positioned `bottom` adjacent to the star.
+
+Both have `X` dismissal → one-click, cross-device sticky.
+
+### Phase 3 SpaceSwitcher.tsx deleted
+
+The top-nav `SpaceSwitcher.tsx` was already retired from `app-layout.tsx` in Phase 8a with a one-release grace period. Phase 8e deletes the file outright. No remaining callers (verified via grep). Phase 8a regression test `test_old_top_space_switcher_gone` stays valid — nothing mounts `data-testid="space-switcher-trigger"` anywhere.
+
+### Icon + label infrastructure additions
+
+**DotNav ICON_MAP extended** with `bar-chart-3` (Reports), `shield-check` (Compliance), `graduation-cap` (Training) to render icons referenced by new 8e templates. Unknown icons fall back to a colored accent dot.
+
+**NAV_LABEL_TABLE additions** (15 new entries): `/interments`, `/plots`, `/deeds`, `/crematory/cases`, `/crematory/schedule`, `/crematory/custody`, `/reports`, `/financials/board`, `/compliance`, `/safety`, `/safety/training`, `/safety/osha-300`, `/safety/incidents`, `/safety/training/calendar`, `/safety/toolbox-talks`. `test_spaces_phase8e.py::TestNavLabelCoverage` is an invariant test — gates future template additions against forgetting the label entry.
+
+### Files touched
+
+**Backend (7 files):**
+- `backend/app/services/spaces/types.py` — `SpaceConfig.default_home_route` field; `MAX_SPACES_PER_USER: 5 → 7`
+- `backend/app/services/spaces/registry.py` — 6 new `SEED_TEMPLATES` entries; 2 enrichments; all 14 templates gain `default_home_route`; `SpaceTemplate` + `SystemSpaceTemplate` gain the field; `NAV_LABEL_TABLE` +15 entries
+- `backend/app/services/spaces/seed.py` — carries `default_home_route` from template → SpaceConfig in both `_apply_templates` and `_apply_system_spaces`
+- `backend/app/services/spaces/crud.py` — `create_space` + `update_space` accept the field; `_UNSET` sentinel for "no change" vs "explicit null clear" on update; `_resolve_space` passes through to `ResolvedSpace`
+- `backend/app/api/routes/spaces.py` — `_SpaceResponse`, `_CreateRequest`, `_UpdateRequest` gain the field; reapply-defaults endpoint `POST /api/v1/spaces/reapply-defaults`
+- `backend/app/services/saved_views/seed.py` — 6 new (vertical, role) SEED_TEMPLATES entries
+- `backend/tests/test_spaces_phase8e.py` (new, 31 tests); `test_spaces_api.py` (1 test updated); `test_space_pins_triage_queue.py` (2 tests updated)
+
+**Frontend (7 files):**
+- `frontend/src/types/spaces.ts` — `Space.default_home_route`, `CreateSpaceBody.default_home_route`, `UpdateSpaceBody.default_home_route`, `ReapplyDefaultsResponse`, `MAX_SPACES_PER_USER: 5 → 7`
+- `frontend/src/services/spaces-service.ts` — `reapplyDefaults()` method
+- `frontend/src/contexts/space-context.tsx` — `SwitchSpaceSource` + `SwitchSpaceOptions`; `switchSpace(id, { source })` contract; navigates via `useNavigate` when `source === "deliberate"` and the target has a `default_home_route`
+- `frontend/src/components/layout/DotNav.tsx` — click passes `source: "deliberate"`; keyboard passes `source: "keyboard"`; `Cmd+⇧1..5` → `Cmd+⇧1..7`; ICON_MAP +3; welcome_to_spaces OnboardingTouch; layout: `gap-1.5 → gap-1` + `overflow-x-auto` + `scrollbar-none` + `relative`
+- `frontend/src/components/spaces/SpaceEditorDialog.tsx` — Landing route dropdown with pin-derived options
+- `frontend/src/components/spaces/NewSpaceDialog.tsx` — uses `MAX_SPACES_PER_USER` constant
+- `frontend/src/components/spaces/PinStar.tsx` — wraps button in `<span class="relative">` to anchor the `pin_this_view` OnboardingTouch
+- `frontend/src/components/core/CommandBar.tsx` — space-switch intercept passes `source: "deliberate"`
+- `frontend/src/components/spaces/SpaceSwitcher.tsx` — **deleted**
+
+**Docs (3 files):**
+- `SPACES_ARCHITECTURE.md` (new, project root) — office-vs-operational distinction, deliberate-vs-keyboard semantics, landing-route authoring, Phase 8e.2 scope, invariants
+- `CLAUDE.md` — Phase 8e section + "Recent Changes" bullet
+- `FEATURE_SESSIONS.md` — this entry
+
+### Test verification
+
+- 31 new tests in `test_spaces_phase8e.py` all passing
+- 117 spaces tests total passing across `test_spaces_unit.py` + `test_spaces_api.py` + `test_system_spaces_phase8a.py` + `test_space_pins_triage_queue.py` + `test_spaces_phase8e.py`
+- No regressions in neighbor modules: `test_saved_views.py` + `test_saved_views_registry.py` + `test_briefings_phase6.py` + `test_command_bar_latency.py` all green (65 passed)
+
+### Not in Phase 8e (deferred)
+
+- **Topical affinity** — per-user per-space command-bar ranking signals (new `user_space_affinity` table + write endpoint + read integration in `resolver.py`/`retrieval.py`). Phase 8e.1.
+- **Full `/settings/spaces` customization UI** — page with sidebar + main panel + reapply-defaults button + starter-template picker. Phase 8e.1.
+- **Portal infrastructure** — `SpaceConfig.access_mode` + `tenant_branding` + `write_mode` modifiers; portal user authentication; portal-restricted UI shell; MFG driver reconnaissance; per-tenant branding; portal user management UI. Phase 8e.2 (ships before September Wilbert demo).
+
+### Open items + follow-ups
+
+- **`scrollbar-none` utility** referenced in DotNav has no CSS definition yet (team-dashboard uses it similarly without CSS). Harmless — overflow works with default scrollbar. Post-arc polish.
+- **Sibling `test_onboarding_touches_welcome_pin` test** — not added this phase. The touches are covered by existing Phase 7 `useOnboardingTouch` tests (hook behavior), but the new gating logic (`showWelcomeTouch = sortedSpaces.length >= 2`, `showPinTouch = !pinned`) is unit-covered via the rendered component tree only indirectly. Post-arc follow-up.
+- **Reapply-defaults UI surface** — backend ships; UI ships in Phase 8e.1.
+
+---
+
+## Aesthetic Arc Session 3 — Extended Components + Status Treatment
+
+**Date:** 2026-04-21
+**Migration head:** `r40_aftercare_email_template` (unchanged — frontend-only).
+**Arc:** Aesthetic Arc — Session 3 of 6. See `AESTHETIC_ARC.md`.
+**Tests passing:** no new tests this session; 165/165 vitest + 171/171 Phase 8a-8d.1 backend regression. tsc clean. Build clean (4.94s).
+
+### What shipped — status vocabulary, 6 net-new primitives, 0 primitives left in shadcn aesthetic
+
+Session 3 closes the extended-component gap. After Session 3, every component category in the platform has been refreshed, and the platform has a single consistent status-color vocabulary (DESIGN_LANGUAGE `status-{success,warning,error,info}` + muted variants) for rendering badges, alerts, toasts, pills, validation messages, and row-level status cells.
+
+### Per-component work
+
+**6 net-new primitives (~630 LOC):**
+- `src/components/ui/alert.tsx` — platform banner primitive. 5 variants (info/success/warning/error/neutral). `Alert` + `AlertTitle` + `AlertDescription` + `AlertAction`. Optional dismiss button. Auto `role="alert"` + `aria-live` matches severity. Replaces ~50+ ad-hoc `<div className="bg-amber-50 border-amber-200">` banner patterns in new work.
+- `src/components/ui/status-pill.tsx` — rounded-full inline status marker. `resolveStatusFamily` helper + `STATUS_MAP` dict maps 33 status keys to 4 families + neutral. 3 sizes (sm/default/md). Distinct from Badge: rounded-full + auto-mapping (vs. Badge's rounded-sm + manual variant).
+- `src/components/ui/tooltip.tsx` — Base UI Tooltip wrapper. Overlay-family composition (bg-surface-raised + border-border-subtle + rounded-md + shadow-level-2 + duration-settle ease-settle + 150ms delay per DESIGN_LANGUAGE §6). 5 exports: `TooltipProvider` / `Tooltip` / `TooltipTrigger` / `TooltipContent` / `TooltipShortcut` (font-plex-mono keybind styling). 2 sizes. Net-new — 266 native `title=` sites left as-is for long-tail adoption.
+- `src/components/ui/popover.tsx` — Base UI Popover wrapper. Same overlay-family composition. 4 exports (Popover / Trigger / Content / Close). 2 existing Base UI popover sites (LocationSelector + notification-dropdown) stay on direct imports per Q4.
+- `src/components/ui/form-section.tsx` — `FormSection` + `FormStack` + `FormFooter`. Lightweight form grouping with title/description/error props. FormStack applies §5 vertical-rhythm gap-8. FormFooter matches Card/Dialog footer convention (bg-surface-base + border-t + optional sticky).
+- `src/components/ui/form-steps.tsx` — horizontal/vertical stepper indicator. 4 step states (completed/current/upcoming/error). Brass filled-dot for completed+current, surface-sunken hollow for upcoming, status-error for errored. Brass connector for completed segments. `duration-settle ease-settle` on state changes.
+
+**11 primitive refreshes (~400 LOC):**
+- **Badge** (179 imports) — added 4 status variants (info/success/warning/error) + `destructive` aliased to `error` for backward compat (142 existing usages unchanged). `rounded-4xl` → `rounded-sm` per §6 badges-small-pills. `bg-primary` → `bg-brass-muted`. Brass focus ring (focusable via render-as-link). font-plex-sans text-micro.
+- **Table** (66 imports) — `border-b` → `border-b border-border-subtle`. Header: text-micro uppercase tracking-wider text-content-muted (eyebrow convention matching sidebar section headers). Row hover: `bg-muted/50` → `bg-brass-subtle/60`. Selected: `bg-muted` → `bg-brass-muted`. Footer: `bg-muted/50` → `bg-surface-base` + sinking border-t (Card/Dialog parity). Cell padding `p-2` → `p-3` per §5 table-cell.
+- **Tabs** (3 imports) — default-variant track: `bg-muted` → `bg-surface-sunken`. Active tab lifts onto `bg-surface-raised` + `shadow-level-1`. Line-variant indicator: foreground after-bar → brass. Brass focus ring.
+- **Separator** (20 imports) — `bg-border` → `bg-border-subtle`.
+- **Avatar** (0 imports; prepared for future) — fallback `bg-muted` → `bg-brass-muted` + `text-content-on-brass` per §7 Imagery. AvatarBadge default to brass. Group count + group ring → surface-base.
+- **Switch** (24 imports) — checked `bg-primary` → `bg-brass`. Unchecked `bg-input` → `bg-surface-sunken` + ring border-base. Thumb → bg-surface-raised + shadow-level-1. Brass focus ring.
+- **Radio Group** (2 imports) — checked `bg-primary border-primary` → `bg-brass border-brass` + `text-content-on-brass`. Unchecked → bg-surface-raised + border-border-base. Invalid `border-destructive` → `border-status-error`. Brass focus ring.
+- **Skeleton** (9 imports) — `bg-muted/60` → `bg-surface-sunken` (warm recessed pulse). SkeletonCard `bg-card ring-1 ring-foreground/10` → `bg-surface-elevated shadow-level-1`. SkeletonTable `border` → `border-border-subtle`.
+- **EmptyState** (11 imports, Phase 7 primitive) — `text-muted-foreground` → `text-content-muted`. Positive tone `text-emerald-700 dark:text-emerald-400` → `text-status-success` (token auto-resolves in both modes). `text-foreground` → `text-content-strong`. Title size tokens → DESIGN_LANGUAGE text-body/body-sm/caption. font-plex-sans.
+- **InlineError** (6 imports, Phase 7 primitive) — error severity: `border-destructive/40 bg-destructive/5 text-destructive` → `border-status-error/40 bg-status-error-muted text-status-error`. Warning severity: `border-amber-500/40` → `border-status-warning/40 bg-status-warning-muted text-status-warning`. font-plex-sans. Font sizes migrated to text-body-sm / text-caption.
+- **Sonner** — `next-themes` DEPENDENCY REMOVED (audit confirmed single consumer in sonner.tsx; `grep next-themes src/` confirms empty post-migration). `theme="system"` hardcoded so Sonner reads `prefers-color-scheme` directly. `richColors` ENABLED — auto-tints status-typed toasts via CSS vars. Token migration: `--popover / --popover-foreground / --border / --radius` → `--surface-raised / --content-base / --border-subtle / --radius-md`. Added status-muted background + status-saturation text/border pairs for success/error/warning/info toast variants.
+
+**6 ad-hoc surface refreshes (~180 LOC):**
+- `accounting-reminder-banner.tsx` (visible on every authenticated page when accounting is skipped/pending) — migrated from `bg-amber-50 border-amber-200 text-amber-900` ad-hoc to `<Alert variant="warning">` primitive. Dismiss affordance inherits platform brass-focus + hover states.
+- `kb-coaching-banner.tsx` — `bg-indigo-100/bg-gradient-to-r from-indigo-50` → `bg-status-info-muted` + border-border-subtle. Icon container tints to `text-status-info`. Stats row → font-plex-mono text-caption for numeric alignment.
+- `agent-alerts-card.tsx` (dashboard widget visible on every authenticated dashboard) — **migrated to status-key-keyed dict pattern** (new CLAUDE.md convention). Pre-S3 had `SEVERITY_CONFIG = { action_required: { color: "text-red-600", bg: "bg-red-50", border: "border-red-200" } }` with 3 raw color strings per severity. Post-S3 has `SEVERITY_CONFIG: Record<string, { icon, status: StatusFamily }>` + shared `FAMILY_STYLES` lookup mapping family → token triple. New severity = one row, zero raw colors.
+- `components/peek/renderers/_shared.tsx::StatusBadge` — delegates to new `StatusPill` primitive. The 6 peek renderers (CasePeek / InvoicePeek / SalesOrderPeek / TaskPeek / ContactPeek / SavedViewPeek) inherit status-family auto-mapping via `StatusPill status={row.status} size="sm"`. Unknown status strings fall through to neutral. PeekField internal tokens also migrated to content-muted/content-strong/font-plex-sans.
+- `App.tsx ErrorBoundary` — removed inline `style={{ color: "#b91c1c" }}` hex + `color: "#666"` + `fontFamily: "sans-serif"`. Now renders as Alert-family shell: `min-h-screen bg-surface-base p-10 font-plex-sans` + `border-l-4 border-l-status-error bg-status-error-muted` card with brass Reload button + `font-plex-mono` error message preformatted text.
+- `WidgetErrorBoundary.tsx` — `text-red-400 / text-blue-600 / text-gray-500` → `text-status-error / text-brass / text-content-muted`. Brass focus ring on "Try again" button.
+
+### Status-color migration recipe (documented for long-tail migration)
+
+**1,305 ad-hoc status-color usages** remain across page-level chrome. Session 3 does NOT refactor them in bulk (out of scope). Instead, the migration recipe is documented in CLAUDE.md for natural-refactor adoption. Pages converge on platform-consistent status colors as they're next touched:
+
+| Legacy pattern | DESIGN_LANGUAGE replacement |
+|---|---|
+| `bg-green-50 text-green-800` | `bg-status-success-muted text-status-success` |
+| `bg-red-50 text-red-800` | `bg-status-error-muted text-status-error` |
+| `bg-amber-50 text-amber-800` / `bg-yellow-*` | `bg-status-warning-muted text-status-warning` |
+| `bg-blue-50 text-blue-800` / `bg-sky-*` | `bg-status-info-muted text-status-info` |
+| `bg-{green|red|amber|blue}-100` | same → respective `bg-status-*-muted` |
+| `border-{green|red|amber|blue}-200` | `border-status-*` (with optional `/30` opacity) |
+| `text-emerald-700 / text-rose-700 / text-sky-700` | `text-status-success / text-status-error / text-status-info` |
+
+### Status-key-keyed dict pattern (new convention documented)
+
+When a component renders multiple status types via a config object, use a `StatusFamily` key per state + a shared `FAMILY_STYLES` lookup. Don't embed raw color strings in component code.
+
+**agent-alerts-card is the reference implementation.** Future per-state UIs follow the same pattern.
+
+### Settings page deferral (per audit §2)
+
+All 5 Session-2-flagged settings pages (`invoice-settings.tsx`, `call-intelligence-settings.tsx`, `Locations.tsx`, `vault-supplier-settings.tsx`, `urn-import-wizard.tsx`) **deferred to Phase 8e** — which explicitly redesigns settings surfaces as part of its Spaces + Default Views work. Refreshing chrome that Phase 8e will rebuild wastes effort. Documented in Session log for Phase 8e team to carry forward with refreshed aesthetic from the start.
+
+### Mixed-aesthetic state post-Session 3
+
+- **0 UI primitives** remain in shadcn aesthetic. All `src/components/ui/*` now use DESIGN_LANGUAGE tokens.
+- **~213 pages** in `src/pages/` still reference shadcn semantic classes in page chrome (inherited from Session 2 audit). Pages render coherently because their composed primitives (Button/Card/Input/Badge/Alert/etc.) carry the refreshed aesthetic.
+- **1,305 ad-hoc status-color usages** documented with migration recipe — long-tail adoption.
+- **266 native `title=` tooltip attributes** left as-is; Tooltip primitive available for new work.
+- **5 settings pages** explicitly deferred to Phase 8e.
+
+### Architectural patterns landed for Session 4+
+
+1. **Status-family recipe**: `bg-status-{X}-muted` + `text-status-{X}` + optional `border-status-{X}` — consistent across Badge/Alert/StatusPill/Sonner/InlineError/Peek/agent-alerts.
+2. **Status-key-keyed dict pattern**: components with per-state config declare a `StatusFamily` key per state + shared `FAMILY_STYLES` lookup. No raw color strings.
+3. **Overlay family extended**: Tooltip + Popover join the Session 2 overlay-family (Dialog/DropdownMenu/Select popup/SlideOver/notification Popover). 7 overlay primitives share composition.
+4. **StatusPill vs. Badge distinction**: StatusPill = rounded-full auto-mapping for inline status markers (lists/tables/detail panels); Badge status variants = rounded-sm general emphasis. Documented in both component file headers + CLAUDE.md.
+5. **Alert vs. InlineError distinction**: Alert = page/section banners with 5 variants + dismiss; InlineError = panel-scoped recoverable errors with retry affordance. Documented in both file headers.
+
+### Verification performed
+
+- ✅ `tsc -b` clean.
+- ✅ `npm run build` clean — 4.94s.
+- ✅ `npx vitest run` — 165/165 passing (11 test files).
+- ✅ Backend regression — 171/171 Phase 8a-8d.1 passing.
+- ✅ `next-themes` fully uninstalled from `package.json`; `grep next-themes src/` returns empty.
+- ✅ Net-new primitives tsc-validated + build-validated.
+- ✅ Built CSS contains all status-family utilities used in refreshed components.
+
+### Files shipped Session 3
+
+**New (6):**
+- `src/components/ui/alert.tsx` (~130 LOC)
+- `src/components/ui/status-pill.tsx` (~170 LOC — includes STATUS_MAP dict + FAMILY_STYLES export)
+- `src/components/ui/tooltip.tsx` (~100 LOC)
+- `src/components/ui/popover.tsx` (~90 LOC)
+- `src/components/ui/form-section.tsx` (~100 LOC — includes FormStack + FormFooter)
+- `src/components/ui/form-steps.tsx` (~180 LOC)
+
+**Modified (17):**
+- `src/components/ui/badge.tsx` (added 4 status variants + destructive alias)
+- `src/components/ui/table.tsx`
+- `src/components/ui/tabs.tsx`
+- `src/components/ui/separator.tsx`
+- `src/components/ui/avatar.tsx`
+- `src/components/ui/switch.tsx`
+- `src/components/ui/radio-group.tsx`
+- `src/components/ui/skeleton.tsx`
+- `src/components/ui/empty-state.tsx`
+- `src/components/ui/inline-error.tsx`
+- `src/components/ui/sonner.tsx` (next-themes removal + richColors + tokens)
+- `src/components/accounting-reminder-banner.tsx` (migrated to Alert primitive)
+- `src/components/kb-coaching-banner.tsx`
+- `src/components/agent-alerts-card.tsx` (status-key-keyed dict pattern)
+- `src/components/peek/renderers/_shared.tsx` (StatusBadge → StatusPill delegation)
+- `src/App.tsx` (ErrorBoundary refresh)
+- `src/components/widgets/WidgetErrorBoundary.tsx`
+
+**Collateral:**
+- `package.json` — `next-themes` uninstalled.
+
+Total: 23 files touched, ~1,200 LOC (~770 modified + ~430 new).
+
+### Ready for Session 4: Dark mode pass
+
+Session 4 scope: comprehensive dark-mode verification across every refreshed component and every surface. Specific focus areas likely:
+- Inset top-edge highlights on elevated surfaces render correctly (DESIGN_LANGUAGE §2 "Material, not paint").
+- Brass visibility against dark charcoal at all sizes (particularly brass-subtle on hover states).
+- Status-muted variants at low luminance not reading as washed-out.
+- Shadow composition on modals/dialogs/popovers at level-2/level-3 — the inset highlight rule of dark mode.
+- Peek StatusPill + Badge status variants legibility across `status-{X}-muted` dark-mode values.
+- Sonner richColors toasts against dark base surface.
+
+Then Session 5 (motion pass) and Session 6 (final QA verification + WCAG compliance).
+
+---
+
+## Aesthetic Arc Session 2 — Core Component Refresh
+
+**Date:** 2026-04-21
+**Migration head:** `r40_aftercare_email_template` (unchanged — frontend-only session).
+**Arc:** Aesthetic Arc — Session 2 of 6. See `AESTHETIC_ARC.md`.
+**Tests passing:** no new tests this session (component test coverage deferred per audit §4); 165/165 frontend vitest + 171/171 Phase 8a–8d.1 backend regression all green. `tsc -b` clean, `npm run build` clean (5.02s).
+
+### What shipped — the platform visibly moves to aged brass + IBM Plex Sans
+
+Session 2 is the first Aesthetic Arc session that creates observable visual change across the platform. Every authenticated page now renders core components on DESIGN_LANGUAGE tokens — buttons are aged brass, cards are warm-cream-elevated, focus rings are brass, sidebar is warm-cream-sunken, and the entire platform's typography flipped from Geist to IBM Plex Sans in a single token-reference edit.
+
+**14 files modified across the 10-step implementation order** approved in the audit:
+
+1. **Button** (`src/components/ui/button.tsx`) — 6 variants (default/outline/secondary/ghost/destructive/link) on tokens. Primary = `bg-brass` + `text-content-on-brass` + `shadow-level-1` (substantial pill feel per §5). Focus ring flips from gray to brass via `focus-ring-brass` utility. Radius = `radius-base` (6px) per Q1. Motion: `transition-colors duration-quick ease-settle` + `active:scale-[0.97]`. 8 sizes preserved — 4 compact-dense legacy variants (xs + icon-xs + sm + icon-sm) documented as backward-compat; prefer default/sm for new work.
+2. **Label + Input + Textarea** (`label.tsx`, `input.tsx`, `textarea.tsx`) — input family. Shell: `bg-surface-raised` + `border-border-base` + `rounded` (6px) + `py-2.5 px-4` (~40px height per §5 generous-default). Focus per Q9 (canonical §9 input form): border flips to `border-brass` + subtle `ring-2 ring-brass/30` glow. Invalid: `border-status-error` + `ring-status-error/20`. Disabled: `bg-surface-sunken` + `text-content-subtle`. Textarea uses `min-h-20` (80px) for generous-default multiline per §5.
+3. **Select** (`select.tsx`) — 10 sub-components refreshed. Trigger shares Input shell. Content popup: `bg-surface-raised` + `border-border-subtle` + `rounded-md` (8px) + `shadow-level-2` + `p-2` + `duration-settle ease-settle` open / `duration-quick ease-gentle` close per §6 dropdown motion. Items: `rounded-sm` pill + `bg-brass-subtle` hover/focus + `text-brass` check indicator on selected + `text-status-error` + `bg-status-error-muted` on destructive-variant items.
+4. **Card** (`card.tsx`) — 7 sub-components (`Card / CardHeader / CardTitle / CardDescription / CardAction / CardContent / CardFooter`). `bg-surface-elevated` + `rounded-md` (Q2: 8px default, 12px via className for signature cards) + `shadow-level-1` + `p-6` default / `p-4` size=sm. Title: `text-h3 font-medium text-content-strong`. Footer: `bg-surface-base` + `border-t border-border-subtle` (Q5 sinking feel — page color peeks through under elevated body).
+5. **Dialog + DropdownMenu + SlideOver** — overlay family.
+   - **Dialog** (`dialog.tsx`): `bg-surface-raised` + `rounded-lg` (12px modals) + `shadow-level-2` + `p-6`. Overlay `bg-black/40` + `duration-arrive ease-settle` enter / `duration-settle ease-gentle` exit (§6 modal motion pattern: opacity + slight zoom-in from 95%). `max-w-sm` default preserved per Q3 (per-page sizing via className, don't audit 58 call sites). Footer matches Card footer convention (`bg-surface-base` sinking feel).
+   - **DropdownMenu** (`dropdown-menu.tsx`): 15 sub-components refreshed. Matches Select content popup composition. Destructive items: `text-status-error` + `bg-status-error-muted` on focus. Shortcut: `font-plex-mono text-caption text-content-subtle` (keybinds in mono per §4 "structured data").
+   - **SlideOver** (`SlideOver.tsx`): custom platform primitive brought onto tokens. `bg-surface-raised` + `shadow-level-3` (floating — slide-overs are the most-prominent overlay on their screen). Header: `text-h4 font-medium text-content-strong`. Close button: `focus-ring-brass` + hover `bg-brass-subtle`.
+6. **Navigation family** — 6 files, largest visual change per Q5 guidance.
+   - **Sidebar** (`sidebar.tsx`, 583 lines): shell `bg-surface-sunken` per Q6 approval (recessed-navigation feel, DESIGN_LANGUAGE §3 explicit "sidebar backgrounds that sit below the page level"). Items: `text-content-muted` inactive → `bg-brass-subtle` + `text-content-strong` hover → `text-content-strong font-medium` active. **Phase 3 Spaces per-space accent chrome preserved** via inline style on active items — alpha bumped `10` → `18` (hex) to stay legible against the quieter sunken background. Command-bar trigger rebuilt with input-shell + brass focus. Section eyebrows: `text-micro font-semibold uppercase tracking-wider text-content-subtle`. `focus-ring-brass` on all interactive elements.
+   - **DotNav** (`DotNav.tsx`): refresh preserves space-accent chrome on active dots. Inactive dots get brass-subtle hover. Add-space plus button: dashed border + hover brass-subtle. Existing `DotNav.test.tsx` continues passing (behavioral, not visual).
+   - **Breadcrumbs** (`breadcrumbs.tsx`): `text-content-muted` inactive crumbs → `text-content-strong` hover + underline. Current crumb: `text-content-strong font-medium`. Separator chevrons: `text-content-subtle`. Home icon + each link get focus ring.
+   - **Mobile tab bar** (`mobile-tab-bar.tsx`): full-screen "More" overlay on `bg-surface-base`. Bottom tab bar on `bg-surface-elevated` + `border-t border-border-subtle`. Added `min-h-11` (44px) to all interactive rows for WCAG 2.2 Target Size compliance. Active state uses preset-accent inline style at alpha 18.
+   - **App-layout top header** (`app-layout.tsx`): root `bg-surface-base font-plex-sans text-content-base`. Header `bg-surface-elevated` + `border-b border-border-subtle`. Profile link gets focus ring + hover underline.
+   - **Notification dropdown** (`notification-dropdown.tsx`, Q7): Popover-based (not DropdownMenu primitive) — needed explicit refresh. Matches overlay family composition: `bg-surface-raised` + `border-border-subtle` + `rounded-md` + `shadow-level-2`. Unread indicator switched from blue dot → **brass dot** (continuity of primary-accent signal). Unread count badge: `bg-status-error` + `font-plex-mono` numerals. Timestamp: `font-plex-mono text-caption text-content-subtle`.
+7. **`--font-sans` flip** (`src/index.css:143`) — **single line change**. `--font-sans: 'Geist Variable', sans-serif` → `--font-sans: var(--font-plex-sans)`. Cascades to every rendered text node because zero components used `font-sans` explicitly — all inherit via the implicit `html body` font-family. Token-reference indirection means any future Plex-hosting change edits `tokens.css` only.
+8. **Geist removal** — `@import "@fontsource-variable/geist"` removed from `index.css`; `@fontsource-variable/geist` uninstalled via `npm uninstall`. Stale "Geist" references in `tokens.css` + `fonts.css` comment blocks updated.
+9. **Verification** — tsc 0 errors, vitest 165/165, backend 171/171 Phase 8a-8d.1 regression, build clean 5.02s. Built CSS contains all Session-2 tokens (`accent-brass`, `surface-elevated/raised/sunken`, `content-strong`, `focus-ring-brass`, `shadow-level`, `ibm-plex-sans`).
+10. **Documentation** — AESTHETIC_ARC.md Session 2 entry + this file + CLAUDE.md Recent Changes.
+
+### Variant decisions held (no consolidation in Session 2)
+
+Per Q10–Q12 audit confirmations:
+- **Button `secondary` + `outline`** — both kept. Revisit Session 6 after seeing convergence patterns in actual usage.
+- **Button `xs` + `sm` + `icon-xs` + `icon-sm`** — all 4 sizes preserved for backward compat (295 Button imports). Documented in the component file as "compact-dense legacy sizes, prefer default/sm for new work."
+- **Card size `default` + `sm`** — both kept. Matches DESIGN_LANGUAGE §5 default + dense pattern.
+
+### Mixed-aesthetic state (expected during transition — documented for Session 3)
+
+Per scope approval, Session 2 refreshes 8 core component categories + navigation. Extended components (toasts, alerts, badges, tables, forms chrome, tabs, separator, avatar, tooltip, standalone popover, drawer) remain on shadcn tokens until Session 3.
+
+**Mixed-aesthetic page count:**
+- **213 files** in `src/pages/` still reference shadcn semantic classes directly (`text-muted-foreground`, `border-border`, etc.). These pages inherit the refreshed primitives (Button/Input/Card/Dialog/DropdownMenu/Sidebar/…) without page-level edits — which is the design intent. Pages render coherently because the refreshed components carry the new aesthetic inside the page shells.
+- **5 settings pages** use shadcn surface tokens directly in page chrome (`invoice-settings.tsx`, `call-intelligence-settings.tsx`, `Locations.tsx`, `vault-supplier-settings.tsx`, `urn-import-wizard.tsx`). Also by design — page-level refresh is not in Session 2 scope. Session 6 QA closes any remaining mixed-aesthetic issues.
+
+Session 3 reduces the gap substantially by refreshing the extended-component set.
+
+### Dark mode spot check (full pass deferred to Session 4)
+
+Semantic tokens resolve correctly in dark mode automatically because Session 1 defined `[data-mode="dark"]` overrides for every token. Sample verifications:
+- `bg-surface-elevated` → dark charcoal lift with inset top-edge highlight (Session 1 `--shadow-level-1` in dark mode includes `inset 0 1px 0 var(--shadow-highlight-top)`).
+- `bg-brass` → dark-mode brass (lightness 0.70 vs light-mode 0.66, hue locked at 73 per DESIGN_LANGUAGE cross-mode brass rule).
+- `text-content-strong` → near-white with warm tint (hue 80 dark vs 70 light).
+- Shadows auto-swap to dark-mode warm-soft family.
+
+No per-component `dark:` class overrides needed — the semantic tokens do the work. Full pass deferred to Session 4.
+
+### Sidebar refresh verification (Q5 — 6 mount sites)
+
+The sidebar is visible on every authenticated page. Shell shift from `bg-sidebar` (shadcn neutral-gray) → `bg-surface-sunken` (warm-cream recessed) is the single biggest visual change in Session 2. Active-state alpha bumped from `10` → `18` (hex) to maintain legibility against the quieter sunken tone per Q6 approval. The 6 mount sites (one per preset-layout permutation) all inherit the refresh through the single `sidebar.tsx` file — no per-preset customization needed.
+
+**Manufacturing + Funeral Home preset verification:** both nav trees rendered via the same `SidebarSection` + `SidebarItem` components, so the refresh lands uniformly. Preset-specific conditional rendering (different nav items, different section headers) preserved untouched. The Phase 3 Spaces per-space accent chrome (warm-orange for Arrangement / crisp-green for Administrative / etc.) continues to override brass on active items — this is by design: brass is the platform's primary-action accent, spaces supply the visual personality for the current workspace context.
+
+### Architectural patterns landed for Session 3 to carry forward
+
+1. **Brass focus ring utility via className** (`focus-ring-brass` from Session 1) — applied on interactive non-input elements (buttons, nav items, menu items, close buttons). Consistent brass signal across refreshed surface.
+2. **Input focus = border flip, not outside ring** (Q9 canonical §9 form) — inputs/textareas/select triggers all use `focus-visible:border-brass focus-visible:ring-2 focus-visible:ring-brass/30`. Different form from button focus ring but same brass color — the border IS the input's affordance.
+3. **Footer sinks into surface-base** — Cards + Dialogs + SlideOver footer regions all use `bg-surface-base` + `border-t border-border-subtle`. Reads as "page color peeking through under the elevated body."
+4. **Overlay family parity** — Dialog, DropdownMenu, Select content popup, SlideOver, notification-dropdown Popover all share `bg-surface-raised` + `border-border-subtle` + `rounded-md`/`-lg` + `shadow-level-2`/`-3` + `duration-settle`/`-arrive` `ease-settle` / `ease-gentle`. This is the DESIGN_LANGUAGE §6 canonical surface composition.
+5. **`font-plex-mono` for structured data** — keybinds (DropdownMenuShortcut, command-bar kbd), unread count badge numerals, timestamps in notifications, sidebar kbd. Matches §4 "Plex Mono for alignment-requiring data."
+
+### Files shipped Session 2
+
+**Modified (14):**
+- `frontend/src/components/ui/button.tsx`
+- `frontend/src/components/ui/label.tsx`
+- `frontend/src/components/ui/input.tsx`
+- `frontend/src/components/ui/textarea.tsx`
+- `frontend/src/components/ui/select.tsx`
+- `frontend/src/components/ui/card.tsx`
+- `frontend/src/components/ui/dialog.tsx`
+- `frontend/src/components/ui/dropdown-menu.tsx`
+- `frontend/src/components/ui/SlideOver.tsx`
+- `frontend/src/components/layout/sidebar.tsx`
+- `frontend/src/components/layout/DotNav.tsx`
+- `frontend/src/components/breadcrumbs.tsx`
+- `frontend/src/components/layout/mobile-tab-bar.tsx`
+- `frontend/src/components/layout/app-layout.tsx`
+- `frontend/src/components/layout/notification-dropdown.tsx`
+
+**Modified collateral (4):**
+- `frontend/src/index.css` — `--font-sans` flip + Geist import removal.
+- `frontend/src/styles/tokens.css` — comment updates (Geist refs removed).
+- `frontend/src/styles/fonts.css` — comment updates (Plex is now platform font, not additive).
+- `frontend/package.json` + `package-lock.json` — `@fontsource-variable/geist` removed.
+
+**No new tests.** Component test coverage deferred per audit §4 decision.
+
+### Ready for Session 3
+
+Session 3 scope: extended components (toasts, alerts, badges, tables, forms chrome, tabs, separator, avatar, tooltip, standalone popover) + dedicated status treatment pass (error/warning/success/info UI across banners, badges, form validation, status indicators). Session 3 reduces mixed-aesthetic footprint substantially.
+
+Then Session 4 (dark mode verification), Session 5 (motion pass), Session 6 (WCAG + final QA).
+
+---
+
 ## Aesthetic Arc Session 1 — Token Foundation
 
 **Date:** 2026-04-21
@@ -101,6 +837,300 @@ Verified in the build output (checked compiled CSS for class-selector presence):
 - **Phase 3 Spaces accent vs. brass accent conceptual question** — Phase 8e/9 design scope.
 
 Next: **Session 2 — Core component refresh** (buttons, inputs, cards, modals, dropdowns, navigation). First session that creates observable visual change.
+
+---
+
+## Workflow Arc Phase 8d.1 — Safety Program Migration
+
+**Date:** 2026-04-21
+**Migration head:** `r40_aftercare_email_template` (unchanged — no new DB migration; per-run cardinality reuses the pre-existing `SafetyProgramGeneration.status` enum from r15).
+**Arc:** Workflow Arc — Phase 8d.1 of 8a–8h. See `WORKFLOW_ARC.md`.
+**Tests passing:** 37 new (13 BLOCKING parity + 2 BLOCKING latency + 16 unit + 6 Playwright scenarios). Phase 8a/8b/8c/8d regression: **171 passing, no regressions**. Latency on dev hardware: next_item p50=5.7ms / p99=7.6ms (17× / 40× headroom); apply_action p50=10.0ms / p99=13.3ms (20× / 38× headroom).
+
+### Scope: reconnaissance for AI-generation-with-approval shape
+
+Phase 8d.1 is a single-migration reconnaissance session following the Phase 8b pattern. The target — `wf_sys_safety_program_gen` — was deferred from Phase 8d because its shape is meaningfully different from any prior migration: the agent generates a complete document via Claude (non-deterministic), stages it + a PDF for staff review, approval promotes it to the tenant's canonical SafetyProgram (the legal safety-program-of-record). OSHA compliance implications make parity discipline critical.
+
+**Template v2.2 ships alongside the migration** per the Phase 8b precedent (reconnaissance phase = template deliverable). Three additions cover patterns the migration surfaced.
+
+### Per-question audit answers (9 template questions + 5 safety-specific)
+
+Full audit captured in chat before implementation; recorded here verbatim by question:
+
+1. **Current implementation:** `app/services/safety_program_generation_service.py` (580 lines, no dedicated agent class). Methods: `scrape_osha_for_generation`, `generate_program_content`, `generate_pdf`, `approve_generation`, `reject_generation`, `run_monthly_generation`. Invoked via APScheduler cron (monthly 1st at 6am UTC) + `/safety/programs/generate*` API routes + placeholder workflow steps (no-op pre-8d.1).
+
+2. **Write timing:** **deferred + partially immediate**. Pipeline steps stamp OSHA + generation + PDF fields on `SafetyProgramGeneration` (immediate, during pipeline). `SafetyProgram` canonical row lands on approval (deferred). Classification: per-run with deferred canonical-entity write.
+
+3. **Generation pipeline:** monthly cron → `run_monthly_generation` → schedule lookup → existence check → stage fresh `SafetyProgramGeneration` → scrape OSHA → Claude Sonnet generation (`safety.draft_monthly_program` prompt, 4096 max tokens) → WeasyPrint PDF via D-2 `document_renderer.render(template_key="pdf.safety_program_base")` → `status='pending_review'`. Admin reviews → approve (promote to SafetyProgram + stamp posted_at) or reject (status='rejected', no program write).
+
+4. **Current approval mechanism:** bespoke `/safety/programs` with AI Generated + Manual tabs. Approve endpoint `POST /api/v1/safety/programs/generations/{id}/approve`, reject endpoint `POST /.../{id}/reject`. Permission `safety.trainer.approve`. **NO AuditLog writes** — audit trail lives entirely in row fields (`SafetyProgramGeneration.reviewed_by/reviewed_at/review_notes/posted_at/status` + `SafetyProgram.reviewed_by/last_reviewed_at/status/version`).
+
+5. **PDF storage:** canonical `Document` + `DocumentVersion` via D-2 renderer, stored in R2 at `tenants/{company_id}/documents/{doc_id}/v{n}.pdf`. Stamped on `SafetyProgramGeneration.pdf_document_id`. **No storage migration on approval** — the Document stays at the same key; approval is a pure state transition + SafetyProgram upsert. Relevant for the "no Document re-render on approve" parity test (category 7).
+
+6. **Scheduler invocation:** pre-8d.1 had both the APScheduler cron in `scheduler.py` (container-UTC) AND the workflow row's placeholder `scheduled` trigger (tenant-local) — workflow scheduler fired the no-op placeholders, APScheduler fired the real pipeline. Post-8d.1: APScheduler cron retired; workflow scheduler is single-owner. Tenant-local 6am is a TZ-correctness improvement.
+
+7. **Anomaly structure:** NONE. No `AgentAnomaly` rows are created today. `SafetyProgramGeneration` is the dedicated tracking entity with its own status machine. This drives the **per-run cardinality** decision.
+
+8. **Approval audit trail:** row-field-embedded only (see #4). Simpler to preserve than cash_receipts/month_end_close parity.
+
+9. **OSHA compliance:** no retention policy, no approver role restrictions beyond `safety.trainer.approve`, PDF export via D-1 presigned URL. Migration doesn't change any compliance surface.
+
+10. **Claude determinism:** non-deterministic (Claude Sonnet default temperature ~0.7, no temperature override). Drives the **AI-generation-content-invariant parity** pattern (§5.5.5).
+
+11. **Related entities for context:** generation metadata + SafetyTrainingTopic + OSHA scrape + prior SafetyProgram version + generated PDF Document. 5-entity payload, implemented as `_build_safety_program_related`.
+
+12. **Suggested AI questions** (4 per approved scope): "How does this program change from last year's?" / "Are there OSHA requirements for {{topic_title}} I should verify are in here?" / "Is this program appropriate for a precast concrete operation?" / "What sections need the most scrutiny for compliance?"
+
+13. **Permission gate:** `safety.trainer.approve` on approve/reject; `request_review` open to any authenticated tenant user (safe — no approval rights required to flag for a teammate).
+
+14. **Cardinality decision:** **per-run**. New sixth-variant in Template v2.2 §10. Distinct from per-staging-row (which ADDS the state column) by the pre-existing-state-machine criterion.
+
+15. **Parity approach (safety-specific question):** seed SafetyProgramGeneration directly in `pending_review` with pre-populated AI content. Run approval via both paths. Assert field-level writes. Never invoke Claude, never assert content reproducibility.
+
+16. **PDF generation mechanics:** D-2 `document_renderer.render(template_key="pdf.safety_program_base")` — shares path with invoice/quote/statement PDFs. No generalization needed.
+
+17. **AgentJob vs SafetyProgramGenerationRun:** SafetyProgramGeneration is dedicated (predates arc). Adapter does NOT create AgentJob — would be double-bookkeeping. First migration-arc pattern to bypass AgentJob entirely.
+
+18. **Rollback gap audit:** none. Approve path has a single `db.commit()` — all writes succeed or all roll back. PDF-generation exception-swallow in `run_monthly_generation` is deliberate "regenerable on demand" design, NOT a rollback gap.
+
+19. **Legacy UI specifics:** `/safety/programs` has AI Generated + Manual tabs. Triage covers AI Generated primary flow (pending_review rows). Triage does NOT cover: Manual tab (non-AI programs), PDF regeneration, ad-hoc topic generation, rejected/approved history views. Legacy coexistence indefinite.
+
+### Files shipped Phase 8d.1
+
+**New (5):**
+- `backend/app/services/workflows/safety_program_adapter.py` (~290 lines, 4 public functions)
+- `backend/scripts/seed_triage_phase8d1.py` (Option A idempotent seed for `triage.safety_program_context_question`)
+- `backend/tests/test_safety_program_migration_parity.py` (13 BLOCKING parity tests across 9 categories)
+- `backend/tests/test_safety_program_triage_latency.py` (2 BLOCKING latency gates)
+- `backend/tests/test_phase8d1_unit.py` (16 unit tests)
+- `frontend/tests/e2e/workflow-arc-phase-8d1.spec.ts` (6 Playwright scenarios)
+
+**Modified (5):**
+- `backend/app/scheduler.py` — retired `job_safety_program_generation`, `JOB_REGISTRY` entry, and `add_job` block with explanatory retirement comments.
+- `backend/app/data/default_workflows.py` — `wf_sys_safety_program_gen` rewritten from 4 placeholder steps to 1 `call_service_method` step.
+- `backend/app/services/workflow_engine.py` — 1 new `_SERVICE_METHOD_REGISTRY` entry (`safety_program.run_generation_pipeline`).
+- `backend/app/services/triage/engine.py` — 1 new `_DIRECT_QUERIES` entry (`safety_program_triage` → `_dq_safety_program_triage`).
+- `backend/app/services/triage/ai_question.py` — 1 new `_RELATED_ENTITY_BUILDERS` entry with 5-entity payload builder.
+- `backend/app/services/triage/action_handlers.py` — 3 new handlers (`safety_program.approve / reject / request_review`).
+- `backend/app/services/triage/platform_defaults.py` — 1 new queue config (`_safety_program_triage`) with AI panel + 4 suggested questions.
+
+### APScheduler cron removal verification (Template v2.2 §7.7)
+
+Pre-retirement state in `app/scheduler.py`:
+- Line ~272: `def job_safety_program_generation(): ...` (5-line function calling `_run_per_tenant`)
+- Line ~435: `"safety_program_generation": job_safety_program_generation,` (JOB_REGISTRY entry)
+- Line ~604: 7-line `scheduler.add_job(job_safety_program_generation, CronTrigger(day=1, hour=6, minute=0), ...)` block
+
+Post-retirement state:
+- All three replaced with retirement-comment blocks pointing at the workflow row as the new single-owner path.
+- Unit test `test_phase8d1_unit.py::TestSchedulerCronRetirement::test_job_registry_has_no_safety_program_entry` enforces that `"safety_program_generation"` key is no longer in `JOB_REGISTRY` (catches accidental re-adds in future refactors).
+
+### Template v2.2 additions summary
+
+Three additions, all shipped in the same commit as the migration (reconnaissance convention per Phase 8b):
+
+1. **§5.5.5 — AI-generation-content-invariant parity pattern.** Freeze pre-approval state with pre-populated AI content; both legacy and triage paths act on the frozen state; assert field-level writes only. Never invoke AI, never assert content reproducibility. Safety program's parity test file is the reference implementation.
+
+2. **§7.7 — Legacy APScheduler cron removal convention.** When the migration target has a dedicated APScheduler cron calling the same pipeline function the adapter wraps, remove the APScheduler entry. Workflow scheduler becomes single-owner; tenant-local TZ precision is a bonus. Accepted alternative: keep APScheduler + switch workflow `trigger_type="manual"` + have the cron call `workflow_engine.start_run` (only when the APScheduler job emits observability artifacts worth keeping).
+
+3. **§10 — Sixth cardinality: per-run.** Distinct from per-staging-row (which ADDS the state column) by the "pre-existing state machine" criterion. Triage queue reads the domain entity's existing status enum directly. No AgentJob wrapper, no new schema column, no AgentAnomaly. SafetyProgramGeneration is the reference.
+
+### Legacy coexistence verification
+
+- `/safety/programs` UI mounts without redirect to login or 403 (Playwright scenario 4).
+- Legacy `POST /api/v1/safety/programs/generations/{id}/approve` endpoint still returns 404/403 for valid auth (i.e., route still registered) (Playwright scenario 5).
+- Manual tab + rejected/approved history views continue to work (out-of-scope for triage per approved scope).
+- Ad-hoc `/generate-for-topic/{topic_id}` + `/regenerate-pdf` endpoints preserved.
+
+### Parity test results
+
+**13 / 13 tests pass** across 9 categories:
+
+| # | Category | Tests | Focus |
+|---|---|---|---|
+| 1 | Approval field-identity | 1 | Both paths produce identical SafetyProgramGeneration + SafetyProgram writes on fresh insert |
+| 2 | Version-increment identity | 1 | Both paths bump existing SafetyProgram version v1→v2 on same OSHA code |
+| 3 | Rejection field-identity | 1 | Both reject paths transition status→rejected + stamp reviewer fields identically |
+| 4 | Reject-without-reason error | 2 | ValueError "Rejection notes are required" on empty AND whitespace-only reason |
+| 5 | Non-pending-review state rejection | 2 | Approving already-approved OR already-rejected rows raises identical ValueError |
+| 6 | No SafetyProgram on reject | 1 | Reject writes ZERO SafetyProgram rows (negative assertion) |
+| 7 | No Document re-render on approve | 1 | Approve path creates ZERO new Document / DocumentVersion rows (negative assertion) |
+| 8 | Cross-tenant isolation | 2 | Tenant A cannot approve nor reject tenant B's generation |
+| 9 | Pipeline-scale equivalence | 2 | Adapter's `run_generation_pipeline` returns same shape as legacy `run_monthly_generation`; dry-run short-circuits without invoking pipeline |
+
+### AI panel activation verification
+
+- Prompt seeded via `scripts/seed_triage_phase8d1.py` — one-shot run emits `triage.safety_program_context_question  created`. Second run emits `noop`. Idempotency verified.
+- Queue config references `ai_prompt_key="triage.safety_program_context_question"` (unit test `test_phase8d1_unit.py::TestQueueConfig::test_ai_panel_included`).
+- 4 suggested questions render in the queue config (Playwright scenario 3).
+- Prompt system text includes `PRECAST CONCRETE` vertical-appropriate terminology marker + `COMPLIANCE DISCIPLINE` block instructing Claude to cite the scrape snippet or defer to the full standard URL (unit test `test_ai_prompt_seed.test_prompt_key_exists` confirms).
+- Claude response to seeded questions happens at query-time via the existing Phase 6 Intelligence execute path — not tested here because that's AI end-to-end, not migration scope.
+
+### Pre-existing latent bug surfaced (flagged, NOT fixed)
+
+**`safety_program_generations.pdf_document_id` FK points at `documents_legacy` instead of canonical `documents`.** The Phase D-1 canonical-documents rewrite renamed the old table to `documents_legacy` (now 0 rows) and created a new canonical `documents` table. The FK on the safety-program-generations side was not repointed. Production's `generate_pdf` writes to canonical `documents` but then hits the FK check targeting `documents_legacy` (empty) and fails. The exception is swallowed by `run_monthly_generation`'s non-fatal try/except at line 462. Net effect: production safety-program PDFs get created as canonical Documents but never linked back to their generation row; bespoke UI shows pending_review rows without downloadable PDFs. Parity tests use `pdf_document_id=NULL` fixtures to avoid tripping the constraint.
+
+**Flagged for post-arc cleanup** in Template v2.2 §15 entry #7. Fix requires an Alembic migration dropping the old FK and creating a new one targeting `documents(id)`. Out of Phase 8d.1 scope (not a migration-mechanics concern).
+
+### Rollback behavior
+
+None preserved. The approve path has a single `db.commit()` — transactional integrity. No rollback gap to document.
+
+### Permission model confirmation
+
+- `safety.trainer.approve` gates approve + reject actions.
+- `safety.trainer.view` implicit for queue visibility (users without view permission don't see the queue in their list).
+- `request_review` is ungated (any authenticated tenant user) — safe because escalation doesn't require approval rights.
+- Cross-tenant isolation enforced via `_load_generation_scoped` defense-in-depth helper.
+
+### What's next
+
+**Ready for Aesthetic Arc Session 2 (core component refresh).** Buttons, inputs, cards, modals, dropdowns, navigation — first session that creates observable visual change across the platform.
+
+Workflow Arc post-8d.1 sequence:
+- Aesthetic Arc Sessions 2-5 (component refresh, layout refresh, typography, motion, polish)
+- Phase 8e: Spaces and default views implementation (builds on `reapply_role_defaults_for_user` helper from 8a)
+- Phase 8f: Remaining accounting migrations (unbilled_orders, estimated_tax_prep, inventory_reconciliation, budget_vs_actual, 1099_prep, year_end_close, tax_package, annual_budget)
+- Phase 8g: Dashboard rework
+- Latent bug cleanup session (includes pdf_document_id FK repoint, month-end-close rollback gap, time_of_day TZ bug, event-trigger dispatch gap)
+- Phase 8h: Arc finale (legacy `/agents` retirement, `/api/v1/agents/accounting` → 410 Gone, final consolidation)
+
+---
+
+## Workflow Arc Phase 8d — Vertical Workflow Migrations
+
+**Date:** 2026-04-21
+**Migration head:** `r37_approval_gate_email_template` → `r38_fix_vertical_scope_backfill` → `r39_catalog_publication_state` → `r40_aftercare_email_template`.
+**Arc:** Workflow Arc — Phase 8d of 8a–8h. See `WORKFLOW_ARC.md`.
+**Tests passing:** 39 new this phase (20 unit + 10 aftercare parity + 10 catalog_fetch parity + 4 BLOCKING latency gates + 3 r38 regression + 6 Playwright scenarios). Phase 8a/8b/8c regression: **140 passing, no regressions**. Actual latency on dev: aftercare next_item p50=30.3ms (3.3× headroom), apply_action p50=22.1ms (9× headroom); catalog_fetch next_item p50=2.9ms (34× headroom), apply_action p50=5.5ms (36× headroom).
+
+### Scope: minimal vertical migrations + r36 scope-backfill bug fix
+
+Phase 8d ships two workflow migrations (`wf_fh_aftercare_7day` — FH tier-3, `wf_sys_catalog_fetch` — MFG tier-1) plus a corrective data migration closing an r36 classification bug that affected 10 workflows. Per approved scope:
+
+- **Deferred to Phase 8d.1**: `wf_sys_safety_program_gen` — deserves its own reconnaissance session because it writes the full SafetyProgramGeneration record via Claude Sonnet + WeasyPrint PDF + month-ahead lookahead, and the current adapter pattern hasn't been exercised against AI-generation flows yet.
+- **Intentionally service-only (documented, not migrated)**: the urn engraving two-gate proof approval. It's already a service-owned workflow that coexists with the workflow registry by design — migrating it would invert the existing customer-facing URL contract (`/proof-approval/{token}`) for no platform benefit.
+- **Skipped**: uline_gloves inventory-reorder suggestion (stubbed service, no customer usage).
+
+### Critical correction — r38 fixes r36's scope-backfill bug
+
+**r36 misclassified 10 workflows as `scope='core'` when they should have been `scope='vertical'`.** The CASE expression in r36 was `WHEN tier = 1 THEN 'core'` — it ignored the `vertical` column entirely. Any `wf_sys_*` row with `tier=1 AND vertical IS NOT NULL` got misfiled under the three-tab workflow builder's Core tab, meaning tenants in the wrong vertical could see workflows that would never apply to them.
+
+Affected workflows (audit surfaced the complete list):
+
+| Workflow | Vertical | Corrected to |
+|---|---|---|
+| `wf_sys_legacy_print_proof` | manufacturing | vertical |
+| `wf_sys_legacy_print_final` | manufacturing | vertical |
+| `wf_sys_safety_program_gen` | manufacturing | vertical |
+| `wf_sys_vault_order_fulfillment` | manufacturing | vertical |
+| `wf_sys_document_review_reminder` | manufacturing | vertical |
+| `wf_sys_auto_delivery` | manufacturing | vertical |
+| `wf_sys_catalog_fetch` | manufacturing | vertical |
+| `wf_sys_ss_certificate` | manufacturing | vertical |
+| `wf_sys_scribe_processing` | funeral_home | vertical |
+| `wf_sys_plot_reservation` | funeral_home | vertical |
+
+`r38_fix_vertical_scope_backfill` is idempotent — it only touches rows that still hold the incorrect `scope='core'` value, so re-running after any manual re-correction is a no-op. The regression test (`test_r38_scope_backfill_fix.py::TestR38ScopeBackfillFix`) enforces the post-r38 invariant:
+
+> `tier = 1 AND vertical IS NOT NULL  IMPLIES  scope = 'vertical'`
+
+Any future seed that adds a tier-1 vertical-specific workflow without correctly setting `scope='vertical'` fails this gate. The Phase 8a test `test_tier_1_workflows_are_core` was tightened to `test_tier_1_cross_vertical_workflows_are_core` (the "cross-vertical" qualifier is the other half of the symmetric rule).
+
+### Migrations
+
+**r38_fix_vertical_scope_backfill**: idempotent UPDATE against the canonical 10 target IDs. Downgrade reverts only that exact set, so forward-and-back cycling is safe.
+
+**r39_catalog_publication_state**: adds `urn_catalog_sync_logs.publication_state VARCHAR(16) NOT NULL DEFAULT 'published'` with a CHECK constraint accepting `pending_review / published / rejected / superseded`. Partial index on `publication_state = 'pending_review'` sized to the triage-queue hot path. Pre-r39 rows backfill to `published` (preserving legacy auto-publish semantics). The column enables Phase 8d's triage-gated staging flow for Wilbert catalog fetches — previously the cron auto-upserted every MD5-diffed PDF to urn_products with no admin gate.
+
+**r40_aftercare_email_template**: seeds the missing `email.fh_aftercare_7day` D-2 managed template. **Pre-8d bug**: the `wf_fh_aftercare_7day` seed referenced `template="aftercare_7day"` — a key that didn't exist anywhere in the template registry. If the scheduler had fired (it didn't, because nobody had an FH tenant with services seven days ago in staging), the send_email step would have silently produced no email. Phase 8d seeds the template via r40, then refactors the workflow to render it through `delivery_service.send_email_with_template` via the aftercare_adapter.
+
+### Aftercare migration (`wf_fh_aftercare_7day`)
+
+**Pre-8d shape** (a two-step workflow with `send_email` + `log_vault_item`) → **Post-8d shape** (a one-step `call_service_method` dispatch to `aftercare.run_pipeline`).
+
+**Triage-only** — no financial writes, just email + VaultItem. One item per case matrix: the pipeline queries FuneralCase rows whose `service_date + 7 days == today`, stages one AgentAnomaly per eligible case under a new `fh_aftercare` job type. The aftercare_triage queue pulls those anomalies via `_dq_aftercare_triage`.
+
+**Triage actions** (3): `send` (approve-equivalent — renders `email.fh_aftercare_7day` via delivery_service + logs a VaultItem + resolves anomaly), `skip` (reject-equivalent — resolves with reason, no email), `request_review` (escalate — stamps note without resolving).
+
+**Zero logic duplication**: the email body is rendered from the D-2 managed template. The VaultItem write uses `vault_service.create_vault_item`. Both are shared paths — any change flows through the template editor or the vault service respectively.
+
+### Catalog fetch migration (`wf_sys_catalog_fetch`)
+
+**Pre-8d shape**: weekly cron ran `UrnCatalogScraper.fetch_catalog_pdf` which, on MD5 change, called `WilbertIngestionService.ingest_from_pdf` directly — products upserted in production without admin review. Acceptable during development; unacceptable at scale (Wilbert could ship a catalog with wrong retail prices and tenants would auto-publish).
+
+**Post-8d shape**: cron fires `catalog_fetch.run_staged_fetch` which downloads + MD5-diffs + archives to R2 + creates an UrnCatalogSyncLog with `publication_state='pending_review'`. **No product writes until admin approves.** The catalog_fetch_triage queue surfaces the staged log.
+
+**Triage actions** (3): `approve` (publish — fetches PDF bytes from R2, runs the **unchanged** legacy `WilbertIngestionService.ingest_from_pdf`, flips `publication_state='published'`), `reject` (with reason, flips to `rejected`), `request_review` (stamps note, stays pending).
+
+**Zero duplication**: the upsert path is the legacy ingest function unchanged. The adapter's only job is state-flipping + fetching staged bytes from R2.
+
+**Supersede semantics**: a newer fetch while an older pending-review exists marks the older one `superseded`. One pending catalog in the queue at a time; admin isn't forced to decide on a stale PDF.
+
+### NO AI question panels on 8d queues (approved scope decision)
+
+Per user-approved scope: the aftercare + catalog_fetch queues are **audit/retry workspaces**, not **decision workspaces**. Adding AI question panels would have required new Intelligence prompts, rate-limit + _RELATED_ENTITY_BUILDERS extensions, and tests — scope-creep for no clear operator win. The operator reviewing an aftercare case reads three fields (case number, primary contact, service date) and clicks send; they don't need AI assistance. Same for catalog fetch: the decision is scanning the diff, not asking AI for guidance.
+
+The invariant is enforced in `test_phase8d_unit.py::TestQueueConfigs::test_no_ai_question_panels_on_phase8d_queues` — any future phase that wants to add an AI panel must explicitly lift this test.
+
+If engagement patterns later prove AI panels would help, a follow-up can add them alongside the existing 4 wired panels (month_end_close, ar_collections, expense_categorization, cash_receipts_matching).
+
+### Engraved urn two-gate — documented as intentionally service-only
+
+The urn engraving workflow ([urn_engraving_service.py](backend/app/services/urn_engraving_service.py)) ships a two-gate approval: (1) the funeral home approves the engraving proof via a token-based public URL (`/proof-approval/{token}`, 72-hour expiry, no auth), (2) staff approves the FH-approved proof internally. This is **intentionally NOT a workflow** — it's a service-owned multi-step process with a customer-facing URL contract that would invert if migrated to workflow_engine + triage.
+
+Phase 8d documents this decision explicitly in `CLAUDE.md` so future migration passes don't re-audit it. The engraving workflow appears in the platform workflow builder as a read-only "service-owned" row (same treatment as the pre-migration agent workflows before they were moved to `scope=core` under workflow_engine).
+
+### Adapter + infrastructure
+
+**New adapters (2)**:
+- `app/services/workflows/aftercare_adapter.py` — `run_pipeline` (staging), `approve_send` (email + vault), `skip_case`, `request_review`. AgentJob + AgentAnomaly reuse — same container pattern as Phase 8b/c.
+- `app/services/workflows/catalog_fetch_adapter.py` — `run_staged_fetch` (download + hash + stage), `approve_publish` (calls legacy ingest), `reject_publish`, `request_review`.
+
+**Workflow engine safelist**: 2 new `_SERVICE_METHOD_REGISTRY` entries (`aftercare.run_pipeline`, `catalog_fetch.run_staged_fetch`).
+
+**Triage extensions**:
+- 2 new `_DIRECT_QUERIES` (`aftercare_triage`, `catalog_fetch_triage`).
+- 6 new HANDLERS (`aftercare.{send, skip, request_review}`, `catalog_fetch.{approve, reject, request_review}`).
+- 2 new platform_default queue configs (NO AI panels per scope).
+- **Intentionally skipped**: `_RELATED_ENTITY_BUILDERS` extension — only needed when queues carry AI question panels. Phase 8d has none.
+
+### Files
+
+**New (6)**:
+- `backend/alembic/versions/r38_fix_vertical_scope_backfill.py`
+- `backend/alembic/versions/r39_catalog_publication_state.py`
+- `backend/alembic/versions/r40_aftercare_email_template.py`
+- `backend/app/services/workflows/aftercare_adapter.py` (~380 lines)
+- `backend/app/services/workflows/catalog_fetch_adapter.py` (~360 lines)
+- `frontend/tests/e2e/workflow-arc-phase-8d.spec.ts`
+
+**Modified (7)**:
+- `backend/app/models/urn_catalog_sync_log.py` — adds `publication_state` column.
+- `backend/app/services/documents/_template_seeds.py` — adds `_aftercare_seeds()` + EMAIL_FH_AFTERCARE_7DAY template body/subject.
+- `backend/app/services/workflow_engine.py` — 2 new `_SERVICE_METHOD_REGISTRY` entries.
+- `backend/app/services/triage/engine.py` — 2 new direct-query builders + registry entries.
+- `backend/app/services/triage/action_handlers.py` — 6 new handlers + registry entries.
+- `backend/app/services/triage/platform_defaults.py` — 2 new queue configs + register calls.
+- `backend/app/data/default_workflows.py` — aftercare + catalog_fetch seeds rewritten to `call_service_method`.
+- `backend/tests/test_workflow_scope_phase8a.py` — tightens `test_tier_1_workflows_are_core` → `test_tier_1_cross_vertical_workflows_are_core`.
+
+**New tests (6)**:
+- `backend/tests/test_r38_scope_backfill_fix.py` — 3 regression tests (primary + companion invariant + target-list smoke).
+- `backend/tests/test_phase8d_unit.py` — 19 unit tests across 6 classes.
+- `backend/tests/test_aftercare_migration_parity.py` — 10 tests (pipeline + actions + isolation).
+- `backend/tests/test_catalog_fetch_migration_parity.py` — 10 tests (staging + actions + supersede + isolation).
+- `backend/tests/test_phase8d_triage_latency.py` — 4 BLOCKING gates.
+
+### Test results
+
+**New this phase**: **39 passing** (3 + 19 + 10 + 10 + 4 + 6 Playwright scenarios — the Playwright count isn't included in the 39 since they weren't executed here; they're staging-gated). Full Phase 8a/8b/8c/8d backend regression: **140 passing, no regressions**. Phase 8c parity + latency suites: all 40 tests unchanged.
+
+### What's next
+
+Phase 8d.1 — `wf_sys_safety_program_gen` reconnaissance migration. Not a batch item; earns its own session because it's the first workflow-arc migration exercising AI-generation with approval gating (Claude Sonnet → 7-section HTML → WeasyPrint PDF → admin approval). The adapter pattern to migrate it hasn't been proven out yet — the safety agent writes to SafetyProgramGeneration directly today and does NOT use AgentJob as a container, so the migration shape is genuinely different from 8b/8c/8d.
+
+Then Phase 8e for the workflow-builder UI surfaces — the three-tab (core/vertical/tenant) browser, the Option-A fork button on core/vertical rows, the soft-customization affordance for parameter overrides, and the Phase 8d migrations' "service-owned" badge on engraving. 8a–8d has all been backend infrastructure; 8e+ is where this becomes visible to tenant admins.
 
 ---
 

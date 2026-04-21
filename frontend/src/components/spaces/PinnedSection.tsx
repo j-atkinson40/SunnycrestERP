@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 
 import { useSpaces } from "@/contexts/space-context";
+import { useAffinityVisit } from "@/hooks/useAffinityVisit";
 import type { ResolvedPin } from "@/types/spaces";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +104,7 @@ function resolveIcon(name: string): LucideIcon {
 
 export function PinnedSection() {
   const { activeSpace, removePin, reorderPins } = useSpaces();
+  const { recordVisit } = useAffinityVisit();
   const location = useLocation();
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
@@ -174,6 +176,20 @@ export function PinnedSection() {
             onRemove={() =>
               void removePin(activeSpace.space_id, pin.pin_id)
             }
+            onNavigate={() => {
+              // Phase 8e.1 — record affinity when user clicks a pin.
+              // Fire-and-forget, no await.
+              const affinityTargetId =
+                pin.pin_type === "saved_view"
+                  ? pin.saved_view_id ?? pin.target_id
+                  : pin.target_id;
+              if (affinityTargetId) {
+                recordVisit({
+                  targetType: pin.pin_type,
+                  targetId: affinityTargetId,
+                });
+              }
+            }}
           />
         ))}
       </div>
@@ -193,6 +209,9 @@ interface PinRowProps {
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onRemove: () => void;
+  /** Phase 8e.1 — fires when the pin row is activated (Link click).
+   *  Records topical affinity; fire-and-forget. */
+  onNavigate: () => void;
 }
 
 function PinRow({
@@ -203,6 +222,7 @@ function PinRow({
   onDragOver,
   onDrop,
   onRemove,
+  onNavigate,
 }: PinRowProps) {
   const Icon = resolveIcon(pin.icon);
   const [hover, setHover] = useState(false);
@@ -307,7 +327,7 @@ function PinRow({
   }
 
   return (
-    <Link to={pin.href} {...shared}>
+    <Link to={pin.href} onClick={onNavigate} {...shared}>
       {body}
     </Link>
   );

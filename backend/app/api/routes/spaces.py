@@ -29,11 +29,15 @@ from app.services.spaces import (
     SpaceError,
     SpaceLimitExceeded,
     SpaceNotFound,
+    SpaceNotOwnedError,
     add_pin,
+    clear_affinity_for_user,
+    count_for_user,
     create_space,
     delete_space,
     get_active_space_id,
     get_spaces_for_user,
+    record_visit,
     remove_pin,
     reorder_pins,
     reorder_spaces,
@@ -75,6 +79,9 @@ class _SpaceResponse(BaseModel):
     # are non-deletable. Frontend DotNav uses this to disable the
     # delete option on the space editor.
     is_system: bool = False
+    # Phase 8e — deliberate-activation landing route. Null when the
+    # space should not trigger navigation on activation.
+    default_home_route: str | None = None
     pins: list[_PinResponse]
     created_at: str | None
     updated_at: str | None
@@ -91,6 +98,8 @@ class _CreateRequest(BaseModel):
     accent: str = "neutral"
     is_default: bool = False
     density: str = "comfortable"
+    # Phase 8e — optional landing route at create time.
+    default_home_route: str | None = Field(default=None, max_length=256)
 
 
 class _UpdateRequest(BaseModel):
@@ -99,6 +108,13 @@ class _UpdateRequest(BaseModel):
     accent: str | None = None
     is_default: bool | None = None
     density: str | None = None
+    # Phase 8e — Pydantic-nullable: omitted in JSON → field absent
+    # → service treats as "no change"; explicit null → clear route.
+    # Using Field with `exclude_unset=True` on the model would be
+    # cleaner but Pydantic v2 loses the distinction through
+    # model_dump(). We rely on `.model_fields_set` inside the route
+    # handler to detect "was this field supplied".
+    default_home_route: str | None = Field(default=None, max_length=256)
 
 
 class _ReorderRequest(BaseModel):
@@ -129,6 +145,7 @@ def _resolved_to_response(sp: ResolvedSpace) -> _SpaceResponse:
         is_default=sp.is_default,
         density=sp.density,
         is_system=sp.is_system,
+        default_home_route=sp.default_home_route,
         pins=[_pin_to_response(p) for p in sp.pins],
         created_at=sp.created_at,
         updated_at=sp.updated_at,
@@ -182,7 +199,8 @@ def create(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> _SpaceResponse:
-    """Create a new space. Max 5 per user."""
+    """Create a new space. Per-user cap enforced server-side
+    (MAX_SPACES_PER_USER = 7 as of Phase 8e)."""
     try:
         sp = create_space(
             db,
@@ -192,10 +210,131 @@ def create(
             accent=body.accent,
             is_default=body.is_default,
             density=body.density,
+            default_home_route=body.default_home_route,
         )
         return _resolved_to_response(sp)
     except SpaceError as exc:
         raise _translate(exc) from exc
+
+
+# ── Phase 8e.1 — affinity request/response shapes ────────────────────
+
+
+class _AffinityVisitRequest(BaseModel):
+    """Body of POST /spaces/affinity/visit. Client fires fire-and-
+    forget; the server upserts the (user, space, target) row."""
+
+    space_id: str = Field(..., min_length=1, max_length=36)
+    target_type: Literal[
+        "nav_item", "saved_view", "entity_record", "triage_queue"
+    ]
+    target_id: str = Field(..., min_length=1, max_length=255)
+
+
+class _AffinityVisitResponse(BaseModel):
+    """Minimal ack shape. `recorded=False` when the server-side
+    throttle suppressed the write; clients don't need to distinguish
+    but expose the field for observability + tests."""
+
+    recorded: bool
+
+
+class _AffinityCountResponse(BaseModel):
+    count: int
+
+
+class _AffinityClearResponse(BaseModel):
+    cleared: int
+
+
+# ── Phase 8e.1 — affinity routes ─────────────────────────────────────
+# IMPORTANT: these routes MUST be declared BEFORE the `/{space_id}`
+# routes below. FastAPI matches paths in declaration order; otherwise
+# `DELETE /spaces/affinity` would match `DELETE /spaces/{space_id}`
+# with `space_id="affinity"` and fail with 404 SpaceNotFound.
+
+
+@router.post(
+    "/affinity/visit",
+    response_model=_AffinityVisitResponse,
+    status_code=200,
+)
+def record_affinity_visit(
+    body: _AffinityVisitRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _AffinityVisitResponse:
+    """Phase 8e.1 — record a topical-affinity visit.
+
+    Called fire-and-forget from the client on deliberate-intent
+    signals: pin click, PinStar toggle to pinned, command-bar
+    navigate with an active space, pinned-nav direct page visit.
+    Server-side upsert increments visit_count + refreshes
+    last_visited_at. 60-second in-memory throttle per (user,
+    target_type, target_id) prevents write storms — throttled
+    requests return `recorded=false` with 200.
+
+    400 on invalid target_type (Pydantic enforces before handler).
+    404 when space_id doesn't belong to the caller (defense-in-
+    depth — Space IDs are opaque UUIDs but we validate anyway).
+    """
+    try:
+        recorded = record_visit(
+            db,
+            user=current_user,
+            space_id=body.space_id,
+            target_type=body.target_type,
+            target_id=body.target_id,
+        )
+    except SpaceNotOwnedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _AffinityVisitResponse(recorded=recorded)
+
+
+@router.get(
+    "/affinity/count",
+    response_model=_AffinityCountResponse,
+)
+def get_affinity_count(
+    space_id: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _AffinityCountResponse:
+    """Phase 8e.1 — count of active affinity rows for the caller.
+
+    Powers the "N tracked signals" counter on /settings/spaces.
+    Optional `space_id` query param narrows to a single space.
+    """
+    return _AffinityCountResponse(
+        count=count_for_user(
+            db, user=current_user, space_id=space_id
+        )
+    )
+
+
+@router.delete(
+    "/affinity",
+    response_model=_AffinityClearResponse,
+)
+def clear_affinity(
+    space_id: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _AffinityClearResponse:
+    """Phase 8e.1 — privacy "clear command bar learning history"
+    action. Deletes all affinity rows for the caller; optional
+    `space_id` query param narrows to a single space. Returns
+    count deleted. Idempotent (calling twice is fine; second call
+    returns 0)."""
+    deleted = clear_affinity_for_user(
+        db, user=current_user, space_id=space_id
+    )
+    return _AffinityClearResponse(cleared=deleted)
+
+
+# ── Space read/mutation routes (parameterized — after /affinity/*) ───
 
 
 @router.get("/{space_id}", response_model=_SpaceResponse)
@@ -221,8 +360,19 @@ def update(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> _SpaceResponse:
-    """Partial update — name, icon, accent, is_default, density."""
+    """Partial update — name, icon, accent, is_default, density,
+    default_home_route. Pass `default_home_route: null` explicitly to
+    clear; omit the key to leave unchanged."""
     try:
+        from app.services.spaces.crud import _UNSET
+
+        # Detect field-supplied-vs-omitted via model_fields_set;
+        # defaults to _UNSET (no change) when the client omitted it.
+        route_update: Any = (
+            body.default_home_route
+            if "default_home_route" in body.model_fields_set
+            else _UNSET
+        )
         sp = update_space(
             db,
             user=current_user,
@@ -232,6 +382,7 @@ def update(
             accent=body.accent,
             is_default=body.is_default,
             density=body.density,
+            default_home_route=route_update,
         )
         return _resolved_to_response(sp)
     except SpaceError as exc:
@@ -357,6 +508,44 @@ def reorder_pins_route(
         return _resolved_to_response(sp)
     except SpaceError as exc:
         raise _translate(exc) from exc
+
+
+class _ReapplyDefaultsResponse(BaseModel):
+    """Shape of POST /spaces/reapply-defaults. Mirrors the dict
+    returned by `user_service.reapply_role_defaults_for_user`."""
+
+    saved_views: int
+    spaces: int
+    briefings: int
+
+
+@router.post("/reapply-defaults", response_model=_ReapplyDefaultsResponse)
+def reapply_defaults(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _ReapplyDefaultsResponse:
+    """Phase 8e — opt-in re-run of Phase 2 (saved_views) +
+    Phase 3 (spaces) + Phase 6 (briefings) role-based seeding for
+    the caller. The underlying seed functions are idempotent per
+    their own `preferences.*_seeded_for_roles` arrays, so calling
+    this when nothing new needs to seed is a no-op returning all
+    zeros. Exposed because `ROLE_CHANGE_RESEED_ENABLED=False`
+    gates the saved_views auto-reseed on role change (opinionated-
+    but-configurable discipline); this endpoint is the user-driven
+    escape hatch that future customization UI wires into.
+
+    Returns per-subsystem counts of new rows created.
+    """
+    from app.services.user_service import reapply_role_defaults_for_user
+
+    counts = reapply_role_defaults_for_user(db, current_user)
+    # Defensive — ensure all three keys present even if the helper
+    # shape drifts in a future arc.
+    return _ReapplyDefaultsResponse(
+        saved_views=int(counts.get("saved_views", 0)),
+        spaces=int(counts.get("spaces", 0)),
+        briefings=int(counts.get("briefings", 0)),
+    )
 
 
 # Explicitly silence unused-import warnings from the defensive

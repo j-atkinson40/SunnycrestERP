@@ -8,11 +8,15 @@ from app.core.security import decode_token
 from app.database import get_db
 from app.models.api_key import ApiKey
 from app.models.company import Company
+from app.models.portal_user import PortalUser
 from app.models.role import Role
 from app.models.user import User
 from app.services.permission_service import user_has_permission
 
 bearer_scheme = HTTPBearer()
+# Phase 8e.2 — portal endpoints also consume Authorization: Bearer
+# but with realm="portal" tokens. Same scheme instance; different
+# realm enforcement in the dependency.
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +42,14 @@ def get_current_user(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Platform tokens cannot access tenant endpoints",
+            )
+        # Phase 8e.2 — reject portal tokens on tenant endpoints too.
+        # Load-bearing security boundary: portal identities must never
+        # cross into tenant-scoped UX.
+        if payload.get("realm") == "portal":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Portal tokens cannot access tenant endpoints",
             )
         user_id: str = payload.get("sub")
         token_company_id: str = payload.get("company_id")
@@ -394,3 +406,130 @@ def require_api_scope(scope: str):
         return api_key
 
     return _check_scope
+
+
+# ---------------------------------------------------------------------------
+# Phase 8e.2 — portal auth dependencies
+# ---------------------------------------------------------------------------
+#
+# Portal tokens carry realm="portal" with scope claims for company_id
+# and space_id. `get_current_portal_user` is the load-bearing security
+# boundary between portal and tenant endpoints — NEVER reuse
+# `get_current_user` for portal routes (different identity store).
+#
+# Portal endpoints live at /api/v1/portal/<slug>/* and resolve the
+# tenant from the URL path segment, not the X-Company-Slug header.
+# This keeps portal URL = tenant slug identity tight.
+
+
+def get_portal_company_from_slug(
+    tenant_slug: str, db: Session = Depends(get_db)
+) -> Company:
+    """Resolve a company by URL slug for portal endpoints. Used as a
+    path-parameter dependency so `/portal/{tenant_slug}/*` routes
+    auto-inject the company.
+
+    Returns 404 if the slug doesn't match an active company — matches
+    the tenant company resolver's behavior.
+    """
+    slug = (tenant_slug or "").lower().strip()
+    if not slug:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portal tenant slug required",
+        )
+    company = (
+        db.query(Company)
+        .filter(Company.slug == slug, Company.is_active.is_(True))
+        .first()
+    )
+    if company is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Portal for '{slug}' not found",
+        )
+    return company
+
+
+def get_current_portal_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> PortalUser:
+    """Validate a portal access token and return the PortalUser.
+
+    Enforces:
+      - token type=access
+      - token realm="portal" (rejects tenant + platform tokens)
+      - portal user exists + is_active
+      - not locked out
+
+    Deliberately does NOT consume the path slug — portal endpoints
+    use a separate `Depends(get_portal_company_from_slug)` for tenant
+    resolution, allowing middleware to match the token's company_id
+    against the URL slug independently (belt-and-suspenders).
+    """
+    token = credentials.credentials
+    try:
+        payload = decode_token(token)
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        ) from exc
+
+    if payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
+    if payload.get("realm") != "portal":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not a portal token",
+        )
+
+    user_id = payload.get("sub")
+    company_id = payload.get("company_id")
+    if not user_id or not company_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing required claims",
+        )
+
+    portal_user = (
+        db.query(PortalUser)
+        .filter(
+            PortalUser.id == user_id,
+            PortalUser.company_id == company_id,
+        )
+        .first()
+    )
+    if portal_user is None or not portal_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Portal user not found or inactive",
+        )
+
+    # Stash the token's space_id on the user for downstream
+    # scope-enforcement (handlers that need to verify resource
+    # belongs to the user's assigned space).
+    portal_user._token_space_id = payload.get("space_id") or ""  # type: ignore[attr-defined]
+    return portal_user
+
+
+def get_current_portal_user_for_tenant(
+    tenant_slug: str,
+    portal_user: PortalUser = Depends(get_current_portal_user),
+    company: Company = Depends(get_portal_company_from_slug),
+) -> PortalUser:
+    """Variant that BOTH validates the portal token AND confirms the
+    token's company_id matches the URL path's tenant slug. Belt-and-
+    suspenders — a portal token for tenant A used against tenant B's
+    portal URL gets 401.
+    """
+    if portal_user.company_id != company.id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token does not match this portal tenant",
+        )
+    return portal_user

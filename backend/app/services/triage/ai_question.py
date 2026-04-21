@@ -819,6 +819,203 @@ def _build_expense_categorization_related(
     return out
 
 
+def _build_safety_program_related(
+    db: Session, user: User, item_row: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8d.1 — safety_program related entities.
+
+    AI panel grounds in:
+      - The generation itself (generated_at, token usage, model)
+      - The SafetyTrainingTopic (title, OSHA code, description, key_points)
+      - OSHA scrape preview (text snippet + scrape URL)
+      - Prior SafetyProgram version for the same OSHA code (so
+        Claude can answer "what's changing from last year?")
+      - PDF download URL via D-1 presigned URL (inline — dedicated
+        DOCUMENT_PREVIEW panel type is post-arc polish per approved
+        scope)
+    """
+    from app.models.canonical_document import Document as CanonicalDocument
+    from app.models.safety_program import SafetyProgram
+    from app.models.safety_program_generation import (
+        SafetyProgramGeneration,
+    )
+    from app.models.safety_training_topic import SafetyTrainingTopic
+
+    out: list[dict[str, Any]] = []
+
+    generation_id = item_row.get("generation_id") or item_row.get("id")
+    if not generation_id:
+        return out
+
+    gen = (
+        db.query(SafetyProgramGeneration)
+        .filter(
+            SafetyProgramGeneration.id == generation_id,
+            SafetyProgramGeneration.tenant_id == user.company_id,
+        )
+        .first()
+    )
+    if gen is None:
+        return out
+
+    # 1. Generation summary — the core artifact being reviewed.
+    token_usage = gen.generation_token_usage or {}
+    out.append(
+        {
+            "entity_type": "safety_program_generation",
+            "entity_id": gen.id,
+            "context": "generation_summary",
+            "display_label": (
+                f"Safety program generation — "
+                f"{gen.year}-{gen.month_number:02d}"
+            ),
+            "year": gen.year,
+            "month_number": gen.month_number,
+            "status": gen.status,
+            "generation_model": gen.generation_model,
+            "input_tokens": token_usage.get("input_tokens"),
+            "output_tokens": token_usage.get("output_tokens"),
+            "generated_at": (
+                gen.generated_at.isoformat() if gen.generated_at else None
+            ),
+        }
+    )
+
+    # 2. Training topic — Claude's target: title, OSHA code, key points.
+    if gen.topic_id:
+        topic = (
+            db.query(SafetyTrainingTopic)
+            .filter(SafetyTrainingTopic.id == gen.topic_id)
+            .first()
+        )
+        if topic is not None:
+            out.append(
+                {
+                    "entity_type": "safety_training_topic",
+                    "entity_id": topic.id,
+                    "context": "target_topic",
+                    "display_label": topic.title,
+                    "title": topic.title,
+                    "osha_standard": topic.osha_standard,
+                    "osha_standard_label": topic.osha_standard_label,
+                    "description": topic.description,
+                    "key_points": topic.key_points,
+                    "is_high_risk": topic.is_high_risk,
+                    "month_number": topic.month_number,
+                }
+            )
+
+    # 3. OSHA scrape result — what Claude saw as the regulatory
+    # source. Snippet only (first 500 chars); full text stays on
+    # the gen row.
+    if gen.osha_scraped_text or gen.osha_scrape_url:
+        out.append(
+            {
+                "entity_type": "osha_scrape",
+                "entity_id": gen.id,  # keyed on generation; no scrape id
+                "context": "regulatory_source",
+                "display_label": (
+                    f"OSHA standard {gen.osha_standard_code}"
+                    if gen.osha_standard_code
+                    else "OSHA scrape"
+                ),
+                "osha_standard_code": gen.osha_standard_code,
+                "scrape_url": gen.osha_scrape_url,
+                "scrape_status": gen.osha_scrape_status,
+                "text_snippet": (
+                    (gen.osha_scraped_text or "")[:500]
+                    if gen.osha_scraped_text
+                    else None
+                ),
+                "scraped_at": (
+                    gen.osha_scraped_at.isoformat()
+                    if gen.osha_scraped_at
+                    else None
+                ),
+            }
+        )
+
+    # 4. Prior SafetyProgram version — "what's changing from last
+    # year's program?" Keyed on matching osha_standard_code.
+    if gen.osha_standard_code:
+        prior = (
+            db.query(SafetyProgram)
+            .filter(
+                SafetyProgram.company_id == user.company_id,
+                SafetyProgram.osha_standard_code == gen.osha_standard_code,
+            )
+            .order_by(SafetyProgram.updated_at.desc().nulls_last())
+            .first()
+        )
+        if prior is not None:
+            out.append(
+                {
+                    "entity_type": "safety_program",
+                    "entity_id": prior.id,
+                    "context": "prior_version",
+                    "display_label": (
+                        f"Prior program (v{prior.version}) — "
+                        f"{prior.program_name}"
+                    ),
+                    "program_name": prior.program_name,
+                    "version": prior.version,
+                    "status": prior.status,
+                    "last_reviewed_at": (
+                        prior.last_reviewed_at.isoformat()
+                        if prior.last_reviewed_at
+                        else None
+                    ),
+                    # Content is large; include first 1000 chars for
+                    # Claude's diff-style reasoning. Full text is
+                    # accessible via the bespoke UI if needed.
+                    "content_snippet": (
+                        (prior.content or "")[:1000]
+                        if prior.content
+                        else None
+                    ),
+                }
+            )
+
+    # 5. PDF download URL via D-1 — inline per approved scope (no
+    # dedicated DOCUMENT_PREVIEW panel). Best-effort: if R2 isn't
+    # configured (tests), skip the entity rather than raise.
+    if gen.pdf_document_id:
+        doc = (
+            db.query(CanonicalDocument)
+            .filter(
+                CanonicalDocument.id == gen.pdf_document_id,
+                CanonicalDocument.company_id == user.company_id,
+            )
+            .first()
+        )
+        if doc is not None:
+            signed_url: str | None = None
+            try:
+                from app.services.legacy_r2_client import generate_signed_url
+
+                signed_url = generate_signed_url(doc.storage_key, expires_in=3600)
+            except Exception:  # noqa: BLE001 — non-fatal
+                signed_url = None
+            out.append(
+                {
+                    "entity_type": "document",
+                    "entity_id": doc.id,
+                    "context": "generated_pdf",
+                    "display_label": f"Generated PDF ({doc.title})",
+                    "title": doc.title,
+                    "storage_key": doc.storage_key,
+                    "download_url": signed_url,
+                    "pdf_generated_at": (
+                        gen.pdf_generated_at.isoformat()
+                        if gen.pdf_generated_at
+                        else None
+                    ),
+                }
+            )
+
+    return out
+
+
 # Builder type: (db, user, item_row_dict) → list[related_entity_dict]
 _RELATED_ENTITY_BUILDERS: dict[
     str,
@@ -831,6 +1028,8 @@ _RELATED_ENTITY_BUILDERS: dict[
     "month_end_close_triage": _build_month_end_close_related,
     "ar_collections_triage": _build_ar_collections_related,
     "expense_categorization_triage": _build_expense_categorization_related,
+    # Phase 8d.1 — AI-generation-with-approval
+    "safety_program_triage": _build_safety_program_related,
 }
 
 

@@ -7,6 +7,30 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
+/**
+ * Bridgeable Dialog — Aesthetic Arc Session 2 refresh.
+ *
+ * Modal composition per DESIGN_LANGUAGE.md §6:
+ *   - Overlay: bg-black/40 scrim (canonical form §9), duration-arrive
+ *     ease-settle for enter / duration-settle ease-gentle for exit.
+ *   - Content: bg-surface-raised (level-2 raised — one step above
+ *     surrounding page / card content), rounded-lg (12px per Q2 —
+ *     modals + signature surfaces), shadow-level-2, p-6 (§5 generous
+ *     default — 24px).
+ *   - Default size: max-w-sm preserved per Q3 (per-page sizing via
+ *     className override across 58 existing call sites).
+ *   - Close button: Ghost variant inherits the refreshed brass focus
+ *     treatment.
+ *
+ * Motion:
+ *   - Enter: duration-arrive (400ms) ease-settle — opacity + zoom-in
+ *     from 95% (slight scale-in, "arriving" per §6 motion pattern).
+ *   - Exit: duration-settle (300ms) ease-gentle — opacity fade only.
+ *
+ * Footer: bg-surface-base + border-t border-border-subtle — sinking
+ * feel against elevated modal body, identical logic to CardFooter.
+ */
+
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
@@ -31,7 +55,7 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-50 bg-black/40 transition-opacity duration-arrive ease-settle supports-backdrop-filter:backdrop-blur-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:duration-settle data-closed:ease-gentle",
         className
       )}
       {...props}
@@ -53,7 +77,7 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-background p-4 text-sm ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border-subtle bg-surface-raised p-6 font-plex-sans text-body-sm text-content-base shadow-level-2 outline-none duration-arrive ease-settle sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-settle data-closed:ease-gentle",
           className
         )}
         {...props}
@@ -70,8 +94,7 @@ function DialogContent({
               />
             }
           >
-            <XIcon
-            />
+            <XIcon />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         )}
@@ -102,7 +125,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-lg border-t border-border-subtle bg-surface-base p-4 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -121,7 +144,10 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-base leading-none font-medium", className)}
+      className={cn(
+        "text-h3 font-medium leading-snug text-content-strong",
+        className
+      )}
       {...props}
     />
   )
@@ -135,7 +161,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        "text-body-sm text-content-muted *:[a]:underline *:[a]:underline-offset-3 *:[a]:text-brass *:[a]:hover:text-brass-hover",
         className
       )}
       {...props}

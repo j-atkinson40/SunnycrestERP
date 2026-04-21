@@ -3,11 +3,20 @@
  *
  * Keeps spacing + typography consistent so peek panels feel like
  * one product across entity types.
+ *
+ * Aesthetic Arc Session 3 refresh:
+ *   - PeekField types migrated to DESIGN_LANGUAGE tokens.
+ *   - StatusBadge now re-exports the `StatusPill` primitive from
+ *     `@/components/ui/status-pill` so peek panels inherit the
+ *     platform's status-family color vocabulary instead of the old
+ *     neutral-only rendering. Name preserved for backward compat
+ *     across the 6 peek renderer imports.
  */
 
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { StatusPill } from "@/components/ui/status-pill";
 
 
 export interface PeekFieldProps {
@@ -20,9 +29,11 @@ export interface PeekFieldProps {
 export function PeekField({ label, value, className }: PeekFieldProps) {
   if (value === null || value === undefined || value === "") return null;
   return (
-    <div className={cn("flex justify-between gap-3 py-0.5", className)}>
-      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      <span className="text-xs font-medium text-right truncate">{value}</span>
+    <div className={cn("flex justify-between gap-3 py-0.5 font-plex-sans", className)}>
+      <span className="text-caption text-content-muted shrink-0">{label}</span>
+      <span className="text-caption font-medium text-content-strong text-right truncate">
+        {value}
+      </span>
     </div>
   );
 }
@@ -58,11 +69,13 @@ export function fmtCurrency(value: number | null | undefined): string | null {
 }
 
 
+/**
+ * Session 3: delegates to the StatusPill primitive. The status string
+ * is auto-mapped to the correct DESIGN_LANGUAGE status family
+ * (success/warning/error/info) — e.g., "approved" → success muted+
+ * saturation treatment. Unmapped statuses render as neutral.
+ */
 export function StatusBadge({ status }: { status: string | null | undefined }) {
   if (!status) return null;
-  return (
-    <span className="inline-flex items-center rounded-full border bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-      {status.replace(/_/g, " ")}
-    </span>
-  );
+  return <StatusPill status={status} size="sm" />;
 }

@@ -72,24 +72,25 @@ export function KBCoachingBanner({ onNavigate }: { onNavigate?: (section: string
   if (!step.action && stats.documents >= 15) return null;
 
   return (
-    <div className="rounded-xl border bg-gradient-to-r from-indigo-50 to-purple-50 p-5 relative">
+    <div className="relative rounded-md border border-border-subtle bg-status-info-muted p-5 font-plex-sans">
       <button
         onClick={() => setDismissed(true)}
-        className="absolute top-3 right-3 p-1 rounded hover:bg-white/60 transition-colors"
+        className="absolute top-3 right-3 p-1 rounded text-content-muted transition-colors duration-quick ease-settle hover:bg-brass-subtle hover:text-content-strong focus-ring-brass"
+        aria-label="Dismiss coaching banner"
       >
-        <X className="h-4 w-4 text-muted-foreground" />
+        <X className="h-4 w-4" />
       </button>
 
       <div className="flex items-start gap-4">
-        <div className="rounded-lg bg-indigo-100 p-2.5 shrink-0">
-          <Lightbulb className="h-5 w-5 text-indigo-600" />
+        <div className="rounded-md bg-status-info/10 p-2.5 shrink-0">
+          <Lightbulb className="h-5 w-5 text-status-info" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-sm text-gray-900">{step.title}</h3>
-          <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
+          <h3 className="font-medium text-body-sm text-content-strong">{step.title}</h3>
+          <p className="text-body-sm text-content-muted mt-1">{step.description}</p>
 
           {/* Stats row */}
-          <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+          <div className="flex gap-4 mt-3 text-caption text-content-muted font-plex-mono">
             <span className="flex items-center gap-1">
               <BookOpen className="h-3.5 w-3.5" />
               {stats.documents} documents

@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   Dialog,
@@ -47,6 +48,11 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+// Phase 8e — landing route dropdown special values.
+// Any string that starts with "/" is a real route. Sentinel values
+// use a "@" prefix so they can never collide with a route.
+const LANDING_ROUTE_NONE = "@none";
+
 export function SpaceEditorDialog({ spaceId, open, onOpenChange }: Props) {
   const { spaces, updateSpace, deleteSpace } = useSpaces();
   const space = spaces.find((s) => s.space_id === spaceId) ?? null;
@@ -55,6 +61,11 @@ export function SpaceEditorDialog({ spaceId, open, onOpenChange }: Props) {
   const [accent, setAccent] = useState<AccentName>("neutral");
   const [density, setDensity] = useState<DensityName>("comfortable");
   const [isDefault, setIsDefault] = useState(false);
+  // Phase 8e — landing route. Internal state is either a route
+  // string or LANDING_ROUTE_NONE sentinel so <Select> can render it.
+  const [landingRoute, setLandingRoute] = useState<string>(
+    LANDING_ROUTE_NONE,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,9 +75,56 @@ export function SpaceEditorDialog({ spaceId, open, onOpenChange }: Props) {
       setAccent(space.accent);
       setDensity(space.density);
       setIsDefault(space.is_default);
+      setLandingRoute(space.default_home_route ?? LANDING_ROUTE_NONE);
       setError(null);
     }
-  }, [space?.space_id, space?.name, space?.accent, space?.density, space?.is_default]);
+  }, [
+    space?.space_id,
+    space?.name,
+    space?.accent,
+    space?.density,
+    space?.is_default,
+    space?.default_home_route,
+  ]);
+
+  // Build the landing route choices. Sources, in order:
+  //   1. "Don't navigate" (explicit noop)
+  //   2. Every pin in the space with an href (de-duped by href)
+  //   3. "/dashboard" as a universal fallback (if not already present)
+  // Unknown saved-view pins (unavailable=true) are excluded — you
+  // can't land somewhere you can't reach.
+  const landingChoices = (() => {
+    if (!space) return [] as Array<{ value: string; label: string }>;
+    const seen = new Set<string>();
+    const out: Array<{ value: string; label: string }> = [
+      { value: LANDING_ROUTE_NONE, label: "Don't navigate" },
+    ];
+    for (const p of space.pins) {
+      if (p.unavailable) continue;
+      if (!p.href) continue;
+      if (seen.has(p.href)) continue;
+      seen.add(p.href);
+      out.push({ value: p.href, label: `${p.label} (${p.href})` });
+    }
+    if (!seen.has("/dashboard")) {
+      out.push({ value: "/dashboard", label: "Home (/dashboard)" });
+    }
+    // Edge case — the space's stored default_home_route isn't in
+    // the pin list AND isn't /dashboard. Preserve it as an option
+    // so users don't see their setting silently disappear from the
+    // dropdown.
+    if (
+      space.default_home_route &&
+      !seen.has(space.default_home_route) &&
+      space.default_home_route !== "/dashboard"
+    ) {
+      out.push({
+        value: space.default_home_route,
+        label: `${space.default_home_route} (custom)`,
+      });
+    }
+    return out;
+  })();
 
   async function handleSave() {
     if (!space) return;
@@ -77,11 +135,14 @@ export function SpaceEditorDialog({ spaceId, open, onOpenChange }: Props) {
     setBusy(true);
     setError(null);
     try {
+      const routeValue =
+        landingRoute === LANDING_ROUTE_NONE ? null : landingRoute;
       await updateSpace(space.space_id, {
         name: name.trim(),
         accent,
         density,
         is_default: isDefault,
+        default_home_route: routeValue,
       });
       onOpenChange(false);
     } catch (err) {
@@ -168,6 +229,30 @@ export function SpaceEditorDialog({ spaceId, open, onOpenChange }: Props) {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1">
+              <Label>Landing route</Label>
+              <Select
+                value={landingRoute}
+                onValueChange={(v) =>
+                  setLandingRoute(v ?? LANDING_ROUTE_NONE)
+                }
+              >
+                <SelectTrigger data-testid="edit-space-landing-route">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {landingChoices.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                When you switch to this space, navigate here. Keyboard
+                shortcuts (⌘[ / ⌘]) stay on the current page.
+              </p>
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -185,6 +270,19 @@ export function SpaceEditorDialog({ spaceId, open, onOpenChange }: Props) {
           </div>
         ) : null}
 
+        {/* Phase 8e.1 — deep-link to the full customization surface. */}
+        {space ? (
+          <div className="-mt-2 text-caption text-content-muted">
+            <Link
+              to={`/settings/spaces#pins-${space.space_id}`}
+              onClick={() => onOpenChange(false)}
+              className="text-brass hover:text-brass-hover hover:underline focus-ring-brass"
+              data-testid="edit-space-manage-pins"
+            >
+              Manage all pins, move items between spaces, import templates…
+            </Link>
+          </div>
+        ) : null}
         <DialogFooter className="justify-between">
           <Button
             variant="ghost"

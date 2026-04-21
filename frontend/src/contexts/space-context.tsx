@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -48,6 +49,20 @@ import type {
 } from "@/types/spaces";
 import { applyAccentVars } from "@/types/spaces";
 
+/**
+ * Phase 8e — switchSpace gains a `source` parameter. Deliberate
+ * activations (DotNav click, dropdown click, command-bar Switch-to-X
+ * result) navigate to the target space's `default_home_route` if set.
+ * Keyboard shortcuts (Cmd+[/Cmd+]) pass source="keyboard" so rapid
+ * switching doesn't fling the user between routes. See
+ * SPACES_ARCHITECTURE.md for the rationale.
+ */
+export type SwitchSpaceSource = "deliberate" | "keyboard";
+
+export interface SwitchSpaceOptions {
+  source?: SwitchSpaceSource;
+}
+
 interface SpaceContextValue {
   spaces: Space[];
   activeSpace: Space | null;
@@ -56,7 +71,10 @@ interface SpaceContextValue {
   error: string | null;
   // Mutations
   refresh: () => Promise<void>;
-  switchSpace: (spaceId: string) => Promise<void>;
+  switchSpace: (
+    spaceId: string,
+    options?: SwitchSpaceOptions,
+  ) => Promise<void>;
   createSpace: (body: CreateSpaceBody) => Promise<Space>;
   updateSpace: (spaceId: string, body: UpdateSpaceBody) => Promise<Space>;
   deleteSpace: (spaceId: string) => Promise<void>;
@@ -81,6 +99,7 @@ const SpaceContext = createContext<SpaceContextValue | null>(null);
 
 export function SpaceProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
@@ -138,9 +157,22 @@ export function SpaceProvider({ children }: { children: React.ReactNode }) {
   // ── Mutations with optimistic updates + reconciliation ──────────
 
   const switchSpace = useCallback(
-    async (spaceId: string) => {
+    async (spaceId: string, options?: SwitchSpaceOptions) => {
+      const source: SwitchSpaceSource = options?.source ?? "keyboard";
       // Optimistic: update local state immediately.
       setActiveSpaceId(spaceId);
+      // Phase 8e — deliberate-activation landing-route navigation.
+      // Look up the target space's default_home_route from the
+      // already-loaded spaces array (single-source-of-truth avoids
+      // an extra round trip). Keyboard shortcuts deliberately do
+      // not navigate — see SPACES_ARCHITECTURE.md.
+      if (source === "deliberate") {
+        const target = spaces.find((s) => s.space_id === spaceId);
+        const route = target?.default_home_route ?? null;
+        if (route) {
+          navigate(route);
+        }
+      }
       try {
         await apiActivate(spaceId);
       } catch (err) {
@@ -149,7 +181,7 @@ export function SpaceProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
     },
-    [fetchSpaces],
+    [fetchSpaces, navigate, spaces],
   );
 
   const createSpace = useCallback(
@@ -367,7 +399,7 @@ export function useSpaces(): SpaceContextValue {
  * unauthenticated routes. Callers check for null before using.
  *
  * **Do NOT** use this in components that live INSIDE the
- * SpaceProvider subtree (SpaceSwitcher, PinnedSection, etc.) — those
+ * SpaceProvider subtree (DotNav, PinnedSection, etc.) — those
  * should use `useSpaces()` which asserts the provider is present.
  */
 export function useSpacesOptional(): SpaceContextValue | null {

@@ -26,7 +26,7 @@ export function Skeleton({ className, ...props }: SkeletonProps) {
       data-slot="skeleton"
       aria-hidden="true"
       className={cn(
-        "rounded-md bg-muted/60 motion-safe:animate-pulse",
+        "rounded bg-surface-sunken motion-safe:animate-pulse",
         className,
       )}
       {...props}
@@ -68,7 +68,7 @@ export function SkeletonCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10",
+        "flex flex-col gap-3 rounded-md bg-surface-elevated p-4 shadow-level-1",
         className,
       )}
       data-testid="skeleton-card"
@@ -106,7 +106,10 @@ export function SkeletonTable({
 }) {
   return (
     <div
-      className={cn("divide-y rounded-md border", className)}
+      className={cn(
+        "divide-y divide-border-subtle rounded-md border border-border-subtle",
+        className,
+      )}
       data-testid="skeleton-table"
     >
       {Array.from({ length: rows }).map((_, i) => (

@@ -32,9 +32,11 @@ import {
 
 } from "react";
 import {
+  BarChart3,
   Calculator,
   CalendarHeart,
   Factory,
+  GraduationCap,
   Home,
   Kanban,
   Layers,
@@ -43,6 +45,7 @@ import {
   Plus,
   Receipt,
   Settings as SettingsIcon,
+  ShieldCheck,
   Store,
   TrendingUp,
   Truck,
@@ -53,6 +56,7 @@ import { useSpaces } from "@/contexts/space-context";
 import { cn } from "@/lib/utils";
 import { NewSpaceDialog } from "@/components/spaces/NewSpaceDialog";
 import { SpaceEditorDialog } from "@/components/spaces/SpaceEditorDialog";
+import { OnboardingTouch } from "@/components/onboarding/OnboardingTouch";
 import type { Space } from "@/types/spaces";
 
 
@@ -74,6 +78,11 @@ const ICON_MAP: Record<string, LucideIcon> = {
   "map-pin": MapPin,
   users: Users,
   layers: Layers,
+  // Phase 8e additions — bar-chart-3 (Reports), shield-check
+  // (Compliance), graduation-cap (Training).
+  "bar-chart-3": BarChart3,
+  "shield-check": ShieldCheck,
+  "graduation-cap": GraduationCap,
 };
 
 
@@ -146,13 +155,15 @@ export function DotNav() {
         if (target.isContentEditable) return;
       }
 
+      // Phase 8e — keyboard shortcuts pass source="keyboard" so
+      // rapid-switching doesn't fling the user between routes.
       if (e.key === "]") {
         e.preventDefault();
         const idx = sortedSpaces.findIndex(
           (s) => s.space_id === activeSpace?.space_id,
         );
         const next = sortedSpaces[(idx + 1) % sortedSpaces.length];
-        if (next) void switchSpace(next.space_id);
+        if (next) void switchSpace(next.space_id, { source: "keyboard" });
         return;
       }
       if (e.key === "[") {
@@ -164,14 +175,16 @@ export function DotNav() {
           sortedSpaces[
             (idx - 1 + sortedSpaces.length) % sortedSpaces.length
           ];
-        if (prev) void switchSpace(prev.space_id);
+        if (prev) void switchSpace(prev.space_id, { source: "keyboard" });
         return;
       }
-      if (e.shiftKey && e.key >= "1" && e.key <= "5") {
+      // Phase 8e — Cmd+Shift+1..7 (bumped from 1..5 alongside
+      // MAX_SPACES_PER_USER = 7).
+      if (e.shiftKey && e.key >= "1" && e.key <= "7") {
         e.preventDefault();
         const n = parseInt(e.key, 10) - 1;
         const target = sortedSpaces[n];
-        if (target) void switchSpace(target.space_id);
+        if (target) void switchSpace(target.space_id, { source: "keyboard" });
       }
     };
 
@@ -186,7 +199,9 @@ export function DotNav() {
         setEditorTarget(spaceId);
         return;
       }
-      void switchSpace(spaceId);
+      // Phase 8e — click = deliberate activation, triggers the
+      // target space's default_home_route navigation.
+      void switchSpace(spaceId, { source: "deliberate" });
     },
     [switchSpace],
   );
@@ -197,14 +212,40 @@ export function DotNav() {
     return null;
   }
 
+  // Phase 8e — welcome touch only renders for users who have ≥2
+  // spaces (single-space users don't benefit from a "switch spaces"
+  // primer). Same gating rationale as Phase 7 SpaceSwitcher intro.
+  // This is the main "welcome" moment that explains the spaces
+  // concept on first login post-seed.
+  const showWelcomeTouch = sortedSpaces.length >= 2;
+
   return (
     <>
+      {/* Phase 8e — MAX_SPACES_PER_USER bumped 5 → 7. Dot layout
+          tightened from gap-1.5 to gap-1 and given overflow-x-auto
+          so a collapsed 240px sidebar still fits 7 dots + plus
+          gracefully. Horizontal scroll bar is hidden via scrollbar-
+          none utility; users still navigate via shortcuts.
+          `relative` anchors the OnboardingTouch welcome card. */}
       <div
-        className="flex items-center gap-1.5 border-t px-3 py-2"
+        className="scrollbar-none relative flex items-center gap-1 overflow-x-auto border-t border-border-subtle px-3 py-2"
         role="toolbar"
         aria-label="Space switcher"
         data-testid="dot-nav"
       >
+        {showWelcomeTouch ? (
+          <OnboardingTouch
+            touchKey="welcome_to_spaces"
+            title="Spaces organize your day."
+            body={
+              "Click a dot to switch — each space pins the views " +
+              "and pages you need for that kind of work. ⌘[ and " +
+              "⌘] cycle without changing pages."
+            }
+            position="top"
+            className="left-3 right-3 w-auto"
+          />
+        ) : null}
         {sortedSpaces.map((space) => {
           const active = space.space_id === activeSpace?.space_id;
           const label = `Switch to ${space.name}${space.is_system ? " (system)" : ""}`;
@@ -217,10 +258,10 @@ export function DotNav() {
               aria-label={label}
               aria-pressed={active}
               className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors",
+                "inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors duration-quick ease-settle focus-ring-brass",
                 active
                   ? "border-[color:var(--space-accent,var(--preset-accent))] bg-[color:var(--space-accent-light,transparent)] ring-1 ring-[color:var(--space-accent,var(--preset-accent))]"
-                  : "border-transparent text-muted-foreground/70 hover:bg-muted hover:text-foreground",
+                  : "border-transparent text-content-muted hover:bg-brass-subtle hover:text-content-strong",
               )}
               data-testid="dot-nav-dot"
               data-space-id={space.space_id}
@@ -236,7 +277,7 @@ export function DotNav() {
           onClick={() => setCreatorOpen(true)}
           title="Add a new space"
           aria-label="Add a new space"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed text-muted-foreground/60 transition-colors hover:border-solid hover:text-foreground"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-border-base text-content-muted transition-colors duration-quick ease-settle hover:border-solid hover:border-brass hover:text-content-strong focus-ring-brass"
           data-testid="dot-nav-add"
         >
           <Plus className="h-3.5 w-3.5" />

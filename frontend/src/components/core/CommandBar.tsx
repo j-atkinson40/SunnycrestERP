@@ -42,6 +42,7 @@ import {
 } from "@/services/actions";
 import { useAuth } from "@/contexts/auth-context";
 import { useActiveSpaceId, useSpacesOptional } from "@/contexts/space-context";
+import { useAffinityVisit } from "@/hooks/useAffinityVisit";
 import { useCommandBar } from "@/core/CommandBarProvider";
 import { WorkflowController, type WorkflowRunState } from "@/components/workflows/WorkflowController";
 import { NaturalLanguageOverlay } from "@/components/workflows/NaturalLanguageOverlay";
@@ -282,6 +283,11 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
   const activeSpaceId = useActiveSpaceId();
   const spacesCtx = useSpacesOptional();
   const spaceSwitch = spacesCtx?.switchSpace ?? null;
+  // Phase 8e.1 — affinity recording when user activates a command
+  // bar result with an active space. The hook is null-safe via
+  // useActiveSpaceId — returns null when SpaceProvider isn't
+  // mounted, in which case recordVisit is a no-op.
+  const { recordVisit: recordAffinity } = useAffinityVisit();
   // The auth User model exposes the role as `role_slug` (e.g. "admin", "office").
   const userRole = (user as unknown as { role_slug?: string })?.role_slug;
   // Pick registry based on tenant vertical — FH tenants get funeral_home actions,
@@ -808,7 +814,9 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         if (spaceSwitchMatch && spaceSwitch) {
           const targetId = decodeURIComponent(spaceSwitchMatch[1]);
           try {
-            void spaceSwitch(targetId);
+            // Phase 8e — command-bar Switch-to-X is a deliberate
+            // activation; target space's default_home_route fires.
+            void spaceSwitch(targetId, { source: "deliberate" });
           } catch {
             /* silent — error surfaces via SpaceContext.error */
           }
@@ -817,13 +825,60 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
         }
         // spaceSwitch==null means SpaceProvider isn't mounted —
         // fall through to the plain navigate below (harmless).
+
+        // Phase 8e.1 — record affinity on navigate when an active
+        // space is set. Fire-and-forget; no await.
+        //
+        // Backend ResultItem.id has these shapes (see retrieval.py):
+        //   - search_result → "entity:<type>:<id>"  → RECORD
+        //   - saved_view    → "saved_view:<id>"    → VIEW
+        //   - action:*      → "action:<action_id>" → NAV/ACTION
+        // The frontend adapter passes item.id through verbatim, so
+        // we strip the prefix here to get the raw affinity target_id
+        // (which matches what the backend affinity table stores).
+        if (activeSpaceId) {
+          if (action.type === "VIEW" && action.id) {
+            const viewId = action.id.startsWith("saved_view:")
+              ? action.id.slice("saved_view:".length)
+              : action.id;
+            recordAffinity({
+              targetType: "saved_view",
+              targetId: viewId,
+            });
+          } else if (action.type === "RECORD" && action.id) {
+            // "entity:<type>:<id>" — take everything after the 2nd ":".
+            const parts = action.id.startsWith("entity:")
+              ? action.id.split(":", 3)
+              : null;
+            const entityId =
+              parts && parts.length === 3 ? parts[2] : action.id;
+            recordAffinity({
+              targetType: "entity_record",
+              targetId: entityId,
+            });
+          } else if (action.route && action.route.startsWith("/triage/")) {
+            const queueId = action.route.split("/")[2];
+            if (queueId) {
+              recordAffinity({
+                targetType: "triage_queue",
+                targetId: queueId,
+              });
+            }
+          } else if (action.route) {
+            recordAffinity({
+              targetType: "nav_item",
+              targetId: action.route,
+            });
+          }
+        }
+
         navigate(action.route);
         onClose();
         return;
       }
       onClose();
     },
-    [navigate, onClose, spaceSwitch]
+    [navigate, onClose, spaceSwitch, activeSpaceId, recordAffinity]
   );
 
   const handleKeyDown = useCallback(

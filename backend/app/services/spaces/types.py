@@ -44,6 +44,37 @@ DensityName = Literal["comfortable", "compact"]
 # and PinStar's prop union. All must stay in lockstep.
 PinType = Literal["saved_view", "nav_item", "triage_queue"]
 
+# ── Phase 8e.2 — portal-as-space-with-modifiers types ──────────────
+#
+# Three modifier fields on SpaceConfig distinguish platform spaces
+# from portal spaces without introducing a separate primitive. Per
+# SPACES_ARCHITECTURE.md §10:
+#
+#   - access_mode = "platform": office UX (DotNav, command bar,
+#     customization). Existing pre-8e.2 behavior.
+#   - access_mode = "portal_partner": internal-but-restricted
+#     operational role (driver, yard operator, removal staff).
+#     Portal UI shell; no DotNav / command bar / settings.
+#   - access_mode = "portal_external": external-user portal (family,
+#     supplier, customer, partner). Same restricted UI shell as
+#     portal_partner; audit + security semantics may differ.
+#
+# tenant_branding: when True, portal UI shell applies tenant
+# branding (logo, brand color) on the highest-attention surfaces
+# (header, primary CTA, active tab indicator). Brand color is a
+# wash, not a reskin — status colors, typography, surface tokens
+# stay platform per DESIGN_LANGUAGE.
+#
+# write_mode: narrows the set of actions permitted on data reachable
+# from this space.
+#   - "full": same as any tenant user.
+#   - "limited": can update specific fields (e.g., driver updates
+#     delivery status, proof-of-delivery) but not edit underlying
+#     orders.
+#   - "read_only": cannot mutate any data.
+AccessMode = Literal["platform", "portal_partner", "portal_external"]
+WriteMode = Literal["full", "limited", "read_only"]
+
 
 # ── Pin ──────────────────────────────────────────────────────────────
 
@@ -121,6 +152,28 @@ class SpaceConfig:
     # from preferences.spaces on next load — defense in depth against
     # manual JSONB edits.
     is_system: bool = False
+    # Phase 8e — deliberate-activation landing route.
+    # When the user switches INTO this space via a deliberate action
+    # (DotNav click, dropdown click, Switch-to-X command-bar result),
+    # the frontend navigates here. None = no navigation (stay on
+    # whatever route they were on). Keyboard shortcuts (Cmd+[/Cmd+])
+    # deliberately do NOT trigger the landing-route navigation —
+    # rapid-switching across spaces shouldn't fling the user between
+    # routes. See SPACES_ARCHITECTURE.md for the "deliberate vs.
+    # keyboard" distinction.
+    default_home_route: str | None = None
+    # Phase 8e.2 — portal-as-space-with-modifiers.
+    # See SPACES_ARCHITECTURE.md §10. For legacy rows (pre-8e.2),
+    # `from_dict` defaults these to platform/False/full, preserving
+    # existing behavior.
+    access_mode: AccessMode = "platform"
+    tenant_branding: bool = False
+    write_mode: WriteMode = "full"
+    # Optional per-space JWT TTL override (minutes). None → the
+    # portal realm default (12h for portal_partner, likely 1h for
+    # portal_external per type). Future portal types declare their
+    # preferred TTL here.
+    session_timeout_minutes: int | None = None
     created_at: str | None = None  # ISO-8601
     updated_at: str | None = None
 
@@ -134,6 +187,11 @@ class SpaceConfig:
             "is_default": self.is_default,
             "density": self.density,
             "is_system": self.is_system,
+            "default_home_route": self.default_home_route,
+            "access_mode": self.access_mode,
+            "tenant_branding": self.tenant_branding,
+            "write_mode": self.write_mode,
+            "session_timeout_minutes": self.session_timeout_minutes,
             "pins": [p.to_dict() for p in self.pins],
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -151,6 +209,13 @@ class SpaceConfig:
             pins=[PinConfig.from_dict(p) for p in data.get("pins", [])],
             density=data.get("density", "comfortable"),
             is_system=bool(data.get("is_system", False)),
+            default_home_route=data.get("default_home_route"),
+            # Phase 8e.2 — legacy rows (pre-8e.2) default to platform
+            # semantics; unchanged behavior.
+            access_mode=data.get("access_mode", "platform"),
+            tenant_branding=bool(data.get("tenant_branding", False)),
+            write_mode=data.get("write_mode", "full"),
+            session_timeout_minutes=data.get("session_timeout_minutes"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
         )
@@ -221,6 +286,12 @@ class ResolvedSpace:
     created_at: str | None
     updated_at: str | None
     is_system: bool = False
+    default_home_route: str | None = None
+    # Phase 8e.2 — see SpaceConfig.
+    access_mode: AccessMode = "platform"
+    tenant_branding: bool = False
+    write_mode: WriteMode = "full"
+    session_timeout_minutes: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -232,6 +303,11 @@ class ResolvedSpace:
             "is_default": self.is_default,
             "density": self.density,
             "is_system": self.is_system,
+            "default_home_route": self.default_home_route,
+            "access_mode": self.access_mode,
+            "tenant_branding": self.tenant_branding,
+            "write_mode": self.write_mode,
+            "session_timeout_minutes": self.session_timeout_minutes,
             "pins": [p.to_dict() for p in self.pins],
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -240,9 +316,12 @@ class ResolvedSpace:
 
 # ── Constants ────────────────────────────────────────────────────────
 
-# Max number of spaces per user. Psychological clarity threshold per
-# the UX arc architecture doc. Enforced at the API layer.
-MAX_SPACES_PER_USER = 5
+# Max number of spaces per user. Phase 8e bumped 5 → 7 to accommodate
+# users who pick up the Settings system space (Phase 8a) plus multiple
+# role-seeded spaces plus custom user-created spaces. DotNav horizontal
+# layout verified to accommodate 7 dots at default sidebar widths.
+# Still bounded for psychological clarity — 10+ creates UI noise.
+MAX_SPACES_PER_USER = 7
 
 # Max pins per space. Not a hard-coded contract today — clients
 # render more if present — but the API soft-caps creation to keep

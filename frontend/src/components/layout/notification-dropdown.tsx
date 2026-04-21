@@ -151,7 +151,7 @@ export function NotificationDropdown() {
       >
         <Bell className="size-4" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-error px-1 text-micro font-semibold font-plex-mono text-[oklch(0.98_0.006_82)]">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -163,14 +163,14 @@ export function NotificationDropdown() {
           side="bottom"
           sideOffset={4}
         >
-          <Popover.Popup className="w-80 rounded-lg border bg-popover text-popover-foreground shadow-md">
+          <Popover.Popup className="w-80 rounded-md border border-border-subtle bg-surface-raised font-plex-sans text-content-base shadow-level-2">
             {/* Header */}
-            <div className="flex items-center justify-between border-b px-3 py-2">
-              <span className="text-sm font-medium">Notifications</span>
+            <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2.5">
+              <span className="text-body-sm font-medium text-content-strong">Notifications</span>
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllAsRead}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  className="flex items-center gap-1 rounded-sm text-caption text-content-muted transition-colors duration-quick ease-settle hover:text-brass focus-ring-brass"
                 >
                   <CheckCheck className="size-3" />
                   Mark all read
@@ -181,11 +181,11 @@ export function NotificationDropdown() {
             {/* Content */}
             <div className="max-h-80 overflow-y-auto">
               {loading ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
+                <div className="py-8 text-center text-body-sm text-content-muted">
                   Loading...
                 </div>
               ) : notifications.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
+                <div className="py-8 text-center text-body-sm text-content-muted">
                   No notifications
                 </div>
               ) : (
@@ -194,8 +194,8 @@ export function NotificationDropdown() {
                     key={notification.id}
                     onClick={() => handleNotificationClick(notification)}
                     className={cn(
-                      "flex cursor-pointer items-start gap-2 border-b px-3 py-2.5 transition-colors last:border-b-0 hover:bg-muted/50",
-                      !notification.is_read && "bg-muted/30"
+                      "flex cursor-pointer items-start gap-2 border-b border-border-subtle px-3 py-2.5 transition-colors duration-quick ease-settle last:border-b-0 hover:bg-brass-subtle",
+                      !notification.is_read && "bg-brass-subtle/60"
                     )}
                   >
                     <div className="mt-0.5">
@@ -205,29 +205,29 @@ export function NotificationDropdown() {
                       <div className="flex items-center gap-1.5">
                         <span
                           className={cn(
-                            "text-sm leading-tight",
+                            "text-body-sm leading-tight",
                             notification.is_read
-                              ? "text-muted-foreground"
-                              : "font-medium"
+                              ? "text-content-muted"
+                              : "font-medium text-content-strong"
                           )}
                         >
                           {notification.title}
                         </span>
                         {!notification.is_read && (
-                          <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />
+                          <span className="size-1.5 shrink-0 rounded-full bg-brass" />
                         )}
                       </div>
-                      <p className="truncate text-xs text-muted-foreground">
+                      <p className="truncate text-caption text-content-muted">
                         {notification.message}
                       </p>
-                      <p className="text-xs text-muted-foreground/70">
+                      <p className="text-caption font-plex-mono text-content-subtle">
                         {timeAgo(notification.created_at)}
                       </p>
                     </div>
                     {!notification.is_read && (
                       <button
                         onClick={(e) => handleMarkAsRead(e, notification)}
-                        className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+                        className="mt-0.5 shrink-0 rounded-sm p-1 text-content-muted transition-colors duration-quick ease-settle hover:text-brass focus-ring-brass"
                         title="Mark as read"
                       >
                         <Check className="size-3.5" />
@@ -240,13 +240,13 @@ export function NotificationDropdown() {
 
             {/* Footer */}
             {notifications.length > 0 && (
-              <div className="border-t">
+              <div className="border-t border-border-subtle">
                 <button
                   onClick={() => {
                     setOpen(false);
                     navigate("/vault/notifications");
                   }}
-                  className="w-full px-3 py-2 text-center text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                  className="w-full px-3 py-2 text-center text-body-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-brass-subtle hover:text-content-strong focus-ring-brass rounded-b-md"
                 >
                   View all notifications
                 </button>

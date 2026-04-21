@@ -730,9 +730,24 @@ FUNERAL_HOME_WORKFLOWS = [
         ],
     },
     {
+        # Workflow Arc Phase 8d — migrated to triage-only.
+        # Pre-8d: scheduled fire ran `send_email` step that
+        # referenced a phantom `template="aftercare_7day"` —
+        # silently no-op'd. The log_vault_item step would have
+        # stamped a vault row per case but no email ever left.
+        # Post-8d: the workflow stages items via `aftercare.run_pipeline`
+        # (finds cases where service_date + 7 days = today, creates
+        # one AgentAnomaly per case). Triage approve + skip + review
+        # via `aftercare_adapter` — email renders from the managed
+        # `email.fh_aftercare_7day` template (seeded via r40) and
+        # the VaultItem log writes on approval.
         "id": "wf_fh_aftercare_7day",
         "name": "7-Day Aftercare Follow-Up",
-        "description": "Send a care message to families 7 days after service",
+        "description": (
+            "Staged 7-day aftercare follow-up. Scheduler creates one "
+            "triage item per eligible case; operator reviews the "
+            "primary contact + case details and approves to send."
+        ),
         "keywords": [],
         "tier": 3,
         "vertical": "funeral_home",
@@ -746,29 +761,16 @@ FUNERAL_HOME_WORKFLOWS = [
         "icon": "heart",
         "command_bar_priority": 0,
         "is_system": True,
+        "source_service": "workflows/aftercare_adapter.py",
         "steps": [
             {
                 "step_order": 1,
-                "step_key": "send_message",
+                "step_key": "stage_aftercare_items",
                 "step_type": "action",
                 "config": {
-                    "action_type": "send_email",
-                    "to": "{current_record.primary_contact_email}",
-                    "subject": "We're thinking of you",
-                    "template": "aftercare_7day",
-                },
-            },
-            {
-                "step_order": 2,
-                "step_key": "log_event",
-                "step_type": "action",
-                "config": {
-                    "action_type": "log_vault_item",
-                    "item_type": "communication",
-                    "event_type": "aftercare_message",
-                    "related_entity_type": "funeral_case",
-                    "related_entity_id": "{current_record.id}",
-                    "title": "7-day aftercare message sent",
+                    "action_type": "call_service_method",
+                    "method_name": "aftercare.run_pipeline",
+                    "kwargs": {"trigger_source": "workflow"},
                 },
             },
         ],
@@ -1028,9 +1030,30 @@ TIER_1_WORKFLOWS = [
         ],
     },
     {
+        # Workflow Arc Phase 8d.1 — migrated to triage with AI panel.
+        # Pre-8d.1: 4 placeholder description steps (no side effects)
+        # + a legacy APScheduler cron (scheduler.py) calling the same
+        # run_monthly_generation. Workflow scheduler fired the
+        # placeholders post-8b.5 — harmless no-op. Post-8d.1: the
+        # APScheduler cron is retired (see scheduler.py retirement
+        # comments), the workflow scheduler's `scheduled` dispatch is
+        # the single-owner path. One step invokes
+        # safety_program.run_generation_pipeline which wraps the
+        # existing run_monthly_generation unchanged. Triage queue
+        # safety_program_triage surfaces pending_review generations
+        # for approve/reject/request_review. AI panel included — first
+        # migration-arc queue exercising AI-generation-with-approval
+        # shape, so AI question panel is the natural reconnaissance
+        # target.
         "id": "wf_sys_safety_program_gen",
         "name": "Safety Program Generation",
-        "description": "Monthly AI-generated safety program via OSHA scrape + Claude + PDF.",
+        "description": (
+            "Monthly AI-generated safety program via OSHA scrape + "
+            "Claude + PDF. Scheduler stages a pending-review "
+            "generation row; admin reviews the generated program + "
+            "PDF in the safety_program_triage queue and approves to "
+            "promote to the tenant's canonical SafetyProgram."
+        ),
         "keywords": [],
         "tier": 1,
         "vertical": "manufacturing",
@@ -1039,12 +1062,18 @@ TIER_1_WORKFLOWS = [
         "icon": "shield",
         "command_bar_priority": 0,
         "is_system": True,
-        "source_service": "safety_program_generation_service.py",
+        "source_service": "workflows/safety_program_adapter.py",
         "steps": [
-            {"step_order": 1, "step_key": "scrape_osha", "step_type": "action", "config": {"description": "Scrape OSHA standard pages"}},
-            {"step_order": 2, "step_key": "generate_program", "step_type": "action", "config": {"description": "Claude generates 7-section program"}},
-            {"step_order": 3, "step_key": "render_pdf", "step_type": "action", "config": {"description": "WeasyPrint renders PDF with cover page"}},
-            {"step_order": 4, "step_key": "approval_gate", "step_type": "input", "config": {"prompt": "Review + approve program"}},
+            {
+                "step_order": 1,
+                "step_key": "run_monthly_safety_program",
+                "step_type": "action",
+                "config": {
+                    "action_type": "call_service_method",
+                    "method_name": "safety_program.run_generation_pipeline",
+                    "kwargs": {"trigger_source": "workflow"},
+                },
+            },
         ],
     },
     {
@@ -1159,9 +1188,27 @@ TIER_1_WORKFLOWS.extend([
         ],
     },
     {
+        # Workflow Arc Phase 8d — migrated to triage-gated publish.
+        # Pre-8d: weekly cron ran legacy UrnCatalogScraper.fetch_catalog_pdf
+        # which auto-published MD5-diffed PDFs to urn_products with no
+        # admin gate (a new Wilbert catalog could shift retail prices in
+        # production without a human ever seeing it).
+        # Post-8d: cron fires `catalog_fetch.run_staged_fetch` which
+        # downloads + archives to R2 + stages an UrnCatalogSyncLog with
+        # publication_state='pending_review'. The catalog_fetch_triage
+        # queue surfaces the staged log; admin approve/reject via
+        # catalog_fetch_adapter. Approval calls the legacy
+        # WilbertIngestionService.ingest_from_pdf unchanged — zero
+        # duplicated logic. r38 corrected the scope misclassification
+        # from core → vertical (manufacturing).
         "id": "wf_sys_catalog_fetch",
         "name": "Wilbert Catalog Auto-Fetch",
-        "description": "Checks for Wilbert catalog PDF updates using hash-based change detection.",
+        "description": (
+            "Weekly check for Wilbert catalog PDF updates. When the "
+            "MD5 hash changes, stages a pending-review ingestion for "
+            "admin approval via the catalog_fetch_triage queue. No "
+            "product writes until approved."
+        ),
         "keywords": [],
         "tier": 1,
         "vertical": "manufacturing",
@@ -1170,12 +1217,18 @@ TIER_1_WORKFLOWS.extend([
         "icon": "book-open",
         "command_bar_priority": 0,
         "is_system": True,
-        "source_service": "urn_catalog_scraper.py",
+        "source_service": "workflows/catalog_fetch_adapter.py",
         "steps": [
-            {"step_order": 1, "step_key": "fetch_catalog", "step_type": "action",
-             "config": {"action_type": "system_job", "job": "wilbert_catalog_fetch"}},
-            {"step_order": 2, "step_key": "notify_if_updated", "step_type": "action",
-             "config": {"action_type": "system_job", "job": "catalog_update_notify"}},
+            {
+                "step_order": 1,
+                "step_key": "stage_catalog_fetch",
+                "step_type": "action",
+                "config": {
+                    "action_type": "call_service_method",
+                    "method_name": "catalog_fetch.run_staged_fetch",
+                    "kwargs": {"trigger_source": "workflow"},
+                },
+            },
         ],
     },
     {

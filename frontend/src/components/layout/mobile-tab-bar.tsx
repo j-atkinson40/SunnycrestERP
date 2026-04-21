@@ -97,14 +97,15 @@ export function MobileTabBar() {
     <>
       {/* Full-screen "More" overlay */}
       {moreOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-background md:hidden">
+        <div className="fixed inset-0 z-50 flex flex-col bg-surface-base font-plex-sans md:hidden">
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <span className="text-lg font-semibold">All Sections</span>
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+            <span className="text-h4 font-medium text-content-strong">All Sections</span>
             <button
               type="button"
               onClick={handleCloseMore}
-              className="rounded-md p-1.5 hover:bg-accent"
+              className="rounded p-2 text-content-muted hover:bg-brass-subtle hover:text-content-strong focus-ring-brass transition-colors duration-quick ease-settle"
+              aria-label="Close all sections"
             >
               <X className="size-5" />
             </button>
@@ -115,7 +116,7 @@ export function MobileTabBar() {
             <div className="space-y-5">
               {navigation.sections.map((section) => (
                 <div key={section.title}>
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  <div className="mb-1.5 text-micro font-semibold uppercase tracking-wider text-content-subtle">
                     {section.title}
                   </div>
                   <div className="space-y-0.5">
@@ -128,14 +129,15 @@ export function MobileTabBar() {
                           to={item.href}
                           onClick={handleCloseMore}
                           className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors",
+                            // Mobile touch targets: min-h-11 (44px) per WCAG AA touch-target + Apple HIG.
+                            "flex items-center gap-3 min-h-11 rounded px-3 py-2.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-brass",
                             active
                               ? "font-medium"
-                              : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                              : "text-content-muted hover:bg-brass-subtle hover:text-content-strong",
                           )}
                           style={
                             active
-                              ? { color: presetAccent, backgroundColor: `${presetAccent}10` }
+                              ? { color: presetAccent, backgroundColor: `${presetAccent}18` }
                               : undefined
                           }
                         >
@@ -155,7 +157,7 @@ export function MobileTabBar() {
       {/* Bottom tab bar */}
       <nav
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-40 border-t bg-background md:hidden",
+          "fixed bottom-0 left-0 right-0 z-40 border-t border-border-subtle bg-surface-elevated font-plex-sans md:hidden",
           "safe-area-inset-bottom",
         )}
       >
@@ -196,8 +198,8 @@ function MobileTab({
         type="button"
         onClick={onClick}
         className={cn(
-          "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]",
-          active ? "font-medium" : "text-muted-foreground",
+          "flex flex-1 flex-col items-center gap-0.5 py-2 min-h-11 text-micro transition-colors duration-quick ease-settle focus-ring-brass",
+          active ? "font-medium" : "text-content-muted hover:text-content-strong",
         )}
         style={active ? { color: presetAccent } : undefined}
       >
@@ -212,8 +214,8 @@ function MobileTab({
       to={item.href}
       onClick={onClick}
       className={cn(
-        "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]",
-        active ? "font-medium" : "text-muted-foreground",
+        "flex flex-1 flex-col items-center gap-0.5 py-2 min-h-11 text-micro transition-colors duration-quick ease-settle focus-ring-brass",
+        active ? "font-medium" : "text-content-muted hover:text-content-strong",
       )}
       style={active ? { color: presetAccent } : undefined}
     >

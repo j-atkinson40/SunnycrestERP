@@ -24,6 +24,18 @@ class AuditLog(Base):
     user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
+    # Phase 8e.2 — discriminator for who performed the action.
+    # "tenant_user" (default): user_id is a tenant User FK.
+    # "portal_user": user_id holds a portal_users.id (no FK — different
+    # identity table). Existing queries continue working unchanged;
+    # future queries that need to join to the correct identity table
+    # should filter by actor_type first. See SPACES_ARCHITECTURE.md §10.
+    actor_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="tenant_user",
+        server_default="tenant_user",
+    )
     action: Mapped[str] = mapped_column(String(50), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
     entity_id: Mapped[str | None] = mapped_column(String(36), nullable=True)

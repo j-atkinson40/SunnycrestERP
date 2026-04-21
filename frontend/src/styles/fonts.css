@@ -10,12 +10,15 @@
  * Weight 400 italic for Plex Sans is included for inline semantic
  * italics (titles of works, foreign-language terms) per Section 4.
  *
- * Plex is ADDITIVE this session — loaded alongside the existing
- * Geist font. Platform continues using Geist via the existing
- * `--font-sans` token; Plex becomes available under new tokens
- * `--font-plex-sans`, `--font-plex-serif`, `--font-plex-mono` and
- * the Tailwind `font-plex-sans` / `-serif` / `-mono` utilities.
- * Sessions 2-3 migrate components to Plex.
+ * Aesthetic Arc Session 2 — Plex Sans becomes the platform font.
+ * `--font-sans` in index.css points at `var(--font-plex-sans)` so
+ * every `font-sans` Tailwind utility and the html body default
+ * resolve to Plex Sans. The additive tokens --font-plex-{sans,
+ * serif,mono} remain for explicit `font-plex-*` utility usage in
+ * components that need to be explicit (rare; Plex Mono for
+ * structured data, Plex Serif for gravitas moments).
+ *
+ * Geist font package removed Session 2. Platform is Plex.
  * ============================================================ */
 
 /* IBM Plex Sans — variable font covering weights 100-700.

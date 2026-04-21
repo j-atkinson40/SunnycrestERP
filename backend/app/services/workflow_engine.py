@@ -726,6 +726,26 @@ _SERVICE_METHOD_REGISTRY: dict[str, tuple[str, tuple[str, ...]]] = {
         "app.services.workflows.expense_categorization_adapter:run_categorization_pipeline",
         ("dry_run", "trigger_source"),
     ),
+    # FH Aftercare 7-day follow-up (Phase 8d) — triage-only. Staged
+    # per-case items; approve sends email + logs VaultItem.
+    "aftercare.run_pipeline": (
+        "app.services.workflows.aftercare_adapter:run_pipeline",
+        ("dry_run", "trigger_source"),
+    ),
+    # Wilbert catalog auto-fetch (Phase 8d) — triage-gated publish.
+    # Stages a pending-review sync_log; approve runs the legacy
+    # ingest_from_pdf unchanged.
+    "catalog_fetch.run_staged_fetch": (
+        "app.services.workflows.catalog_fetch_adapter:run_staged_fetch",
+        ("dry_run", "trigger_source"),
+    ),
+    # Safety Program generation (Phase 8d.1) — AI-generation-with-approval.
+    # Wraps the existing run_monthly_generation verbatim; no AgentJob
+    # wrapper. Triage queue reads pending_review generations directly.
+    "safety_program.run_generation_pipeline": (
+        "app.services.workflows.safety_program_adapter:run_generation_pipeline",
+        ("dry_run", "trigger_source"),
+    ),
 }
 
 

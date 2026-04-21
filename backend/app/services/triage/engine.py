@@ -1131,6 +1131,235 @@ def _dq_expense_categorization_triage(
     return out
 
 
+def _dq_aftercare_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8d — aftercare_7day triage items.
+
+    Returns one row per unresolved AgentAnomaly of type
+    ``fh_aftercare_pending`` that the aftercare_adapter staged. The
+    anomaly carries the funeral_case id; we denormalize the deceased
+    name, informant name + email, and case_number for the display.
+    One-item-per-case matrix.
+    """
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+    from app.models.funeral_case import (
+        CaseDeceased,
+        CaseInformant,
+        CaseService,
+        FuneralCase,
+    )
+    from app.services.workflows.aftercare_adapter import (
+        AFTERCARE_JOB_TYPE,
+        ANOMALY_TYPE,
+    )
+
+    rows = (
+        db.query(AgentAnomaly, AgentJob)
+        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == AFTERCARE_JOB_TYPE,
+            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.anomaly_type == ANOMALY_TYPE,
+        )
+        .order_by(AgentAnomaly.created_at.asc())
+        .all()
+    )
+
+    out: list[dict[str, Any]] = []
+    for anomaly, job in rows:
+        case_id = anomaly.entity_id
+        if not case_id:
+            continue
+        fc = (
+            db.query(FuneralCase)
+            .filter(FuneralCase.id == case_id)
+            .first()
+        )
+        deceased = (
+            db.query(CaseDeceased)
+            .filter(CaseDeceased.case_id == case_id)
+            .first()
+        )
+        informant = (
+            db.query(CaseInformant)
+            .filter(
+                CaseInformant.case_id == case_id,
+                CaseInformant.is_primary.is_(True),
+            )
+            .first()
+        )
+        if informant is None:
+            informant = (
+                db.query(CaseInformant)
+                .filter(CaseInformant.case_id == case_id)
+                .order_by(CaseInformant.created_at.asc())
+                .first()
+            )
+        service = (
+            db.query(CaseService)
+            .filter(CaseService.case_id == case_id)
+            .first()
+        )
+
+        deceased_name = None
+        if deceased is not None:
+            deceased_name = " ".join(
+                p for p in [deceased.first_name, deceased.last_name] if p
+            ) or None
+
+        out.append(
+            {
+                "id": anomaly.id,
+                "anomaly_id": anomaly.id,
+                "case_id": case_id,
+                "case_number": fc.case_number if fc else None,
+                "family_surname": (
+                    deceased.last_name
+                    if deceased and deceased.last_name
+                    else None
+                ),
+                "deceased_name": deceased_name,
+                "primary_contact_name": (
+                    informant.name if informant else None
+                ),
+                "primary_contact_email": (
+                    informant.email if informant else None
+                ),
+                "service_date": (
+                    service.service_date.isoformat()
+                    if service and service.service_date
+                    else None
+                ),
+                "missing_email": not bool(
+                    informant and informant.email
+                ),
+                "agent_job_id": anomaly.agent_job_id,
+                "created_at": (
+                    anomaly.created_at.isoformat()
+                    if anomaly.created_at
+                    else None
+                ),
+            }
+        )
+    return out
+
+
+def _dq_safety_program_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8d.1 — safety_program pending-review items.
+
+    Returns one row per SafetyProgramGeneration with
+    ``status='pending_review'``. Anomaly-less (like catalog_fetch):
+    the generation row itself is the review unit, state machine
+    lives on the domain entity (`draft/pending_review/approved/
+    rejected`) pre-dating the arc.
+
+    Cardinality: per-generation-run. Ordered newest-first by
+    generated_at so the most-recently-generated program surfaces
+    at the top (operator typically reviews immediately after the
+    1st-of-month generation finishes).
+
+    Denormalizes the related SafetyTrainingTopic so the display
+    can show title + OSHA standard without a second round-trip.
+    """
+    from app.models.safety_program_generation import (
+        SafetyProgramGeneration,
+    )
+    from app.models.safety_training_topic import SafetyTrainingTopic
+
+    rows = (
+        db.query(SafetyProgramGeneration, SafetyTrainingTopic)
+        .outerjoin(
+            SafetyTrainingTopic,
+            SafetyTrainingTopic.id == SafetyProgramGeneration.topic_id,
+        )
+        .filter(
+            SafetyProgramGeneration.tenant_id == user.company_id,
+            SafetyProgramGeneration.status == "pending_review",
+        )
+        .order_by(SafetyProgramGeneration.generated_at.desc().nulls_last())
+        .all()
+    )
+    out: list[dict[str, Any]] = []
+    for gen, topic in rows:
+        token_usage = gen.generation_token_usage or {}
+        out.append(
+            {
+                "id": gen.id,
+                "generation_id": gen.id,
+                "topic_id": gen.topic_id,
+                "topic_title": topic.title if topic else None,
+                "osha_standard": topic.osha_standard if topic else None,
+                "osha_standard_label": (
+                    topic.osha_standard_label if topic else None
+                ),
+                "year": gen.year,
+                "month_number": gen.month_number,
+                "year_month_label": (
+                    f"{gen.year}-{gen.month_number:02d}"
+                ),
+                "generated_at": (
+                    gen.generated_at.isoformat() if gen.generated_at else None
+                ),
+                "generation_model": gen.generation_model,
+                "input_tokens": token_usage.get("input_tokens"),
+                "output_tokens": token_usage.get("output_tokens"),
+                "pdf_document_id": gen.pdf_document_id,
+                "has_pdf": bool(gen.pdf_document_id),
+                "osha_scrape_status": gen.osha_scrape_status,
+                "status": gen.status,
+            }
+        )
+    return out
+
+
+def _dq_catalog_fetch_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8d — catalog_fetch pending-review items.
+
+    Returns one row per UrnCatalogSyncLog with
+    ``publication_state='pending_review'``. Unlike the accounting
+    queues, this one is NOT anomaly-backed — the sync_log row itself
+    is the unit of review. Ordered newest-first so the most recent
+    Wilbert change surfaces at the top if somehow multiple pending
+    reviews exist (the adapter marks older ones superseded so this
+    should normally be a single row).
+    """
+    from app.models.urn_catalog_sync_log import UrnCatalogSyncLog
+
+    rows = (
+        db.query(UrnCatalogSyncLog)
+        .filter(
+            UrnCatalogSyncLog.tenant_id == user.company_id,
+            UrnCatalogSyncLog.publication_state == "pending_review",
+        )
+        .order_by(UrnCatalogSyncLog.started_at.desc())
+        .all()
+    )
+    out: list[dict[str, Any]] = []
+    for log in rows:
+        out.append(
+            {
+                "id": log.id,
+                "sync_log_id": log.id,
+                "r2_key": log.pdf_filename,
+                "products_preview": log.products_updated or 0,
+                "started_at": (
+                    log.started_at.isoformat() if log.started_at else None
+                ),
+                "sync_type": log.sync_type,
+                "publication_state": log.publication_state,
+                "has_r2_pdf": bool(log.pdf_filename),
+            }
+        )
+    return out
+
+
 _DIRECT_QUERIES: dict[
     str, "Callable[[Session, User], list[dict[str, Any]]]"
 ] = {
@@ -1141,6 +1370,11 @@ _DIRECT_QUERIES: dict[
     "month_end_close_triage": _dq_month_end_close_triage,
     "ar_collections_triage": _dq_ar_collections_triage,
     "expense_categorization_triage": _dq_expense_categorization_triage,
+    # Phase 8d — vertical workflow migrations
+    "aftercare_triage": _dq_aftercare_triage,
+    "catalog_fetch_triage": _dq_catalog_fetch_triage,
+    # Phase 8d.1 — AI-generation-with-approval
+    "safety_program_triage": _dq_safety_program_triage,
 }
 
 

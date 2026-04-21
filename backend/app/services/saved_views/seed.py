@@ -335,6 +335,155 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
             ),
         ),
     ],
+
+    # ────────────────────────────────────────────────────────────────
+    # Phase 8e — saved view seeds for new space templates
+    # Each Phase 8e space template that references
+    # `saved_view_seed:<role>:<key>` needs a matching SeedTemplate
+    # here (seed key = `saved_view_seed:{role_slug}:{template_id}`).
+    # ────────────────────────────────────────────────────────────────
+
+    # ── Cemetery — admin ──
+    ("cemetery", "admin"): [
+        SeedTemplate(
+            template_id="outstanding_invoices",
+            title="Outstanding invoices",
+            description="Invoices that aren't paid.",
+            entity_type="invoice",
+            config_factory=lambda role: _basic_table(
+                entity_type="invoice",
+                filters=[
+                    Filter(field="status", operator="not_in",
+                           value=["paid", "cancelled"]),
+                ],
+                sort=[Sort(field="due_date", direction="asc")],
+                columns=["number", "status", "total", "due_date"],
+                role_slug=role,
+            ),
+        ),
+        SeedTemplate(
+            template_id="recent_cases",
+            title="Recent cases",
+            description="Cases updated in the last 30 days.",
+            entity_type="fh_case",
+            config_factory=lambda role: _basic_list(
+                entity_type="fh_case",
+                sort=[Sort(field="updated_at", direction="desc")],
+                role_slug=role,
+            ),
+        ),
+    ],
+
+    # ── Cemetery — office ──
+    ("cemetery", "office"): [
+        SeedTemplate(
+            template_id="outstanding_invoices",
+            title="Outstanding invoices",
+            description="Invoices that aren't paid.",
+            entity_type="invoice",
+            config_factory=lambda role: _basic_table(
+                entity_type="invoice",
+                filters=[
+                    Filter(field="status", operator="not_in",
+                           value=["paid", "cancelled"]),
+                ],
+                sort=[Sort(field="due_date", direction="asc")],
+                columns=["number", "status", "total", "invoice_date", "due_date"],
+                role_slug=role,
+            ),
+        ),
+    ],
+
+    # ── Crematory — admin ──
+    ("crematory", "admin"): [
+        SeedTemplate(
+            template_id="outstanding_invoices",
+            title="Outstanding invoices",
+            description="Invoices that aren't paid.",
+            entity_type="invoice",
+            config_factory=lambda role: _basic_table(
+                entity_type="invoice",
+                filters=[
+                    Filter(field="status", operator="not_in",
+                           value=["paid", "cancelled"]),
+                ],
+                sort=[Sort(field="due_date", direction="asc")],
+                columns=["number", "status", "total", "due_date"],
+                role_slug=role,
+            ),
+        ),
+        SeedTemplate(
+            template_id="recent_cases",
+            title="Recent cases",
+            description="Cases updated in the last 30 days.",
+            entity_type="fh_case",
+            config_factory=lambda role: _basic_list(
+                entity_type="fh_case",
+                sort=[Sort(field="updated_at", direction="desc")],
+                role_slug=role,
+            ),
+        ),
+    ],
+
+    # ── Crematory — office ──
+    ("crematory", "office"): [
+        SeedTemplate(
+            template_id="outstanding_invoices",
+            title="Outstanding invoices",
+            description="Invoices that aren't paid.",
+            entity_type="invoice",
+            config_factory=lambda role: _basic_table(
+                entity_type="invoice",
+                filters=[
+                    Filter(field="status", operator="not_in",
+                           value=["paid", "cancelled"]),
+                ],
+                sort=[Sort(field="due_date", direction="asc")],
+                columns=["number", "status", "total", "invoice_date", "due_date"],
+                role_slug=role,
+            ),
+        ),
+    ],
+
+    # ── Funeral home — accountant ──
+    ("funeral_home", "accountant"): [
+        SeedTemplate(
+            template_id="outstanding_invoices",
+            title="Outstanding invoices",
+            description="Invoices that aren't paid.",
+            entity_type="invoice",
+            config_factory=lambda role: _basic_table(
+                entity_type="invoice",
+                filters=[
+                    Filter(field="status", operator="not_in",
+                           value=["paid", "cancelled"]),
+                ],
+                sort=[Sort(field="due_date", direction="asc")],
+                columns=["number", "status", "total", "invoice_date", "due_date"],
+                role_slug=role,
+            ),
+        ),
+    ],
+
+    # ── Manufacturing — accountant ──
+    ("manufacturing", "accountant"): [
+        SeedTemplate(
+            template_id="outstanding_invoices",
+            title="Outstanding invoices",
+            description="Invoices that aren't paid.",
+            entity_type="invoice",
+            config_factory=lambda role: _basic_table(
+                entity_type="invoice",
+                filters=[
+                    Filter(field="status", operator="not_in",
+                           value=["paid", "cancelled"]),
+                ],
+                sort=[Sort(field="due_date", direction="asc")],
+                columns=["number", "status", "total", "due_date"],
+                role_slug=role,
+            ),
+        ),
+    ],
 }
 
 

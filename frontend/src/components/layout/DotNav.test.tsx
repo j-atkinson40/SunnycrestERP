@@ -117,7 +117,9 @@ describe("DotNav", () => {
     expect(dots[0].getAttribute("data-is-system")).toBe("true");
   });
 
-  it("clicking a dot invokes switchSpace", () => {
+  it("clicking a dot invokes switchSpace with deliberate source", () => {
+    // Phase 8e — DotNav click passes { source: "deliberate" } so
+    // the target space's default_home_route navigation fires.
     const a = makeSpace({ space_id: "sp_a" });
     const b = makeSpace({ space_id: "sp_b" });
     renderWithCtx([a, b], a);
@@ -125,7 +127,9 @@ describe("DotNav", () => {
       .getAllByTestId("dot-nav-dot")
       .find((d) => d.getAttribute("data-space-id") === "sp_b")!;
     fireEvent.click(bDot);
-    expect(switchSpaceMock).toHaveBeenCalledWith("sp_b");
+    expect(switchSpaceMock).toHaveBeenCalledWith("sp_b", {
+      source: "deliberate",
+    });
   });
 
   it("contains the expected icon entries for seeded spaces", () => {

@@ -25,8 +25,8 @@ The Aesthetic Arc's job is to take DESIGN_LANGUAGE.md from document to shipped s
 | Session | Status | Scope |
 |---|---|---|
 | 1 — Token foundation | ✅ Shipped | CSS variables, Plex fonts, Tailwind v4 `@theme inline` extensions, mode-switching mechanism. Infrastructure only; no visual refresh. |
-| 2 — Core component refresh | ⬜ Not started | Buttons, inputs, cards, modals, dropdowns, navigation. First session that creates observable visual change. |
-| 3 — Extended component refresh + status treatment | ⬜ Not started | Toasts, alerts, badges, tables, forms. Dedicated pass on status colors + error/warning/success/info UI. |
+| 2 — Core component refresh | ✅ Shipped | Buttons, inputs, cards, modals, dropdowns, navigation + `--font-sans` flip to Plex + Geist removal. First observable visual change; entire platform now renders in IBM Plex Sans. |
+| 3 — Extended component refresh + status treatment | ✅ Shipped | 6 net-new primitives (Alert, StatusPill, Tooltip, Popover, FormSection, FormSteps) + 11 primitive refreshes (Badge+status, Table, Tabs, Separator, Avatar, Switch, Radio, Skeleton, EmptyState, InlineError, Sonner) + 6 ad-hoc surface refreshes (accounting-reminder-banner, kb-coaching-banner, agent-alerts-card, peek StatusBadge, App ErrorBoundary, WidgetErrorBoundary). `next-themes` removed. 0 primitives remain in shadcn aesthetic. |
 | 4 — Dark mode verification | ⬜ Not started | Every refreshed component verified in dark mode. Fixes dark-mode-only regressions. |
 | 5 — Motion pass | ⬜ Not started | Apply `ease-settle` / `ease-gentle` + named durations consistently. Hover, focus, modal/dropdown entrances, toast arrivals. |
 | 6 — Accessibility + QA across all surfaces | ⬜ Not started | Full WCAG 2.2 AA verification. Contrast automation. Keyboard navigation. Reduced-motion spot checks. Screen reader pass on refreshed components. |
@@ -114,6 +114,188 @@ Two files modified:
 
 ---
 
+## Session 2 — Core Component Refresh (✅ Shipped)
+
+**Date:** 2026-04-21
+**Migration head:** `r40_aftercare_email_template` (unchanged — frontend-only session).
+**Tests:** no new tests; 165/165 vitest + 171/171 Phase 8a-8d.1 backend regression continue passing. `tsc -b` clean. Production build clean (5.02s).
+
+### What shipped
+
+**14 files modified.** Estimated LOC touched: ~480 lines across component class strings + CSS imports + package.json.
+
+**Core UI primitives (8 files, ~200 modified lines):**
+- `src/components/ui/button.tsx` — 6 variants (default/outline/secondary/ghost/destructive/link) on DESIGN_LANGUAGE tokens. Primary = `bg-brass` + `text-content-on-brass` + `shadow-level-1`. Focus ring flips from gray to brass platform-wide (via `focus-ring-brass` utility from Session 1). Radius = `radius-base` (6px) per Q1 audit decision. 8 sizes preserved (default/lg/sm/xs + 4 icon variants — documented as "compact-dense legacy" for the 4 xs sizes; prefer default/sm for new work).
+- `src/components/ui/label.tsx` — `text-body-sm font-medium text-content-base`. UI label role per §4 size-weight pairings.
+- `src/components/ui/input.tsx` — shell: `bg-surface-raised` + `border-border-base` + `rounded` + `py-2.5 px-4`. Focus: `border-brass` + `ring-2 ring-brass/30` subtle glow (Q9 canonical §9 form). Invalid: `border-status-error` + `ring-status-error/20`. Disabled: `bg-surface-sunken` + `text-content-subtle`.
+- `src/components/ui/textarea.tsx` — identical shell to Input with `min-h-20` (80px) for multiline generous-default per §5.
+- `src/components/ui/select.tsx` — 10 sub-components. Trigger shares Input shell. Content popup: `bg-surface-raised` + `border-border-subtle` + `rounded-md` (8px) + `shadow-level-2` + `p-2` + `duration-settle ease-settle` open / `duration-quick ease-gentle` close. Items: `rounded-sm` pill + `bg-brass-subtle` on hover/focus + `text-brass` checkmark on selected.
+- `src/components/ui/card.tsx` — `bg-surface-elevated` + `rounded-md` (Q2: 8px default; 12px via className for signature cards) + `shadow-level-1`. CardTitle: `text-h3 font-medium text-content-strong`. CardFooter: `bg-surface-base` + `border-t border-border-subtle` (Q5 sinking feel).
+- `src/components/ui/dialog.tsx` — `bg-surface-raised` + `rounded-lg` (12px modals) + `shadow-level-2` + `p-6`. Overlay `bg-black/40` + `duration-arrive ease-settle` enter / `duration-settle ease-gentle` exit. max-w-sm default preserved per Q3.
+- `src/components/ui/dropdown-menu.tsx` — matches Select content popup composition. 15 sub-components refreshed. Destructive items: `text-status-error` + `bg-status-error-muted` on focus. Shortcut: `font-plex-mono text-caption text-content-subtle` (keybinds render in mono per §4 "structured data that benefits from fixed-width").
+- `src/components/ui/SlideOver.tsx` — `bg-surface-raised` + `shadow-level-3` (floating family) + `bg-black/40` backdrop + `duration-arrive ease-settle`. Header text: `text-h4 font-medium text-content-strong`. Close button: Ghost-button treatment inheriting brass focus ring.
+
+**Navigation family (6 files, ~180 modified lines):**
+- `src/components/layout/sidebar.tsx` (583 lines — biggest single-file edit) — shell `bg-surface-sunken` + `border-r border-border-subtle` per Q6 approval (recessed-navigation feel). Items: `text-content-muted` inactive, `bg-brass-subtle` + `text-content-strong` hover, `text-content-strong font-medium` active. Active-state border-left color + fill preserve the **Phase 3 Spaces per-space accent** (inline style, not brass) — alpha bumped from `10` to `18` hex to stay legible against the new quieter sunken background. Command-bar trigger rebuilt with input-shell + brass focus. Section eyebrows: `text-micro font-semibold uppercase tracking-wider text-content-subtle`. Keyboard-navigable via `focus-ring-brass` on all interactive elements.
+- `src/components/layout/DotNav.tsx` — refresh preserves space-accent chrome on active dots + brass-subtle hover on inactive + focus-ring-brass on all dots + the plus button. Existing `DotNav.test.tsx` continues passing (behavioral test, not visual).
+- `src/components/breadcrumbs.tsx` — `text-content-muted` inactive crumbs with `text-content-strong` hover + underline. Current crumb `text-content-strong font-medium`. Separator chevrons in `text-content-subtle`.
+- `src/components/layout/mobile-tab-bar.tsx` — full-screen "More" overlay: `bg-surface-base` + brass-subtle item hovers. Bottom tab bar: `bg-surface-elevated` + `border-t border-border-subtle`. Added `min-h-11` (44px) to all interactive rows for WCAG 2.2 touch-target compliance on mobile.
+- `src/components/layout/app-layout.tsx` — root shell `bg-surface-base font-plex-sans text-content-base`. Header `bg-surface-elevated` + `border-b border-border-subtle`. Profile link refreshed with brass focus ring + hover underline.
+- `src/components/layout/notification-dropdown.tsx` (Q7 — Popover-based, not DropdownMenu primitive) — matches Dialog/DropdownMenu composition: `bg-surface-raised` + `border-border-subtle` + `rounded-md` + `shadow-level-2`. Unread indicator switched from blue dot to brass dot (continuity of primary-accent signal). Unread count badge: `bg-status-error` + `font-plex-mono`. Row hovers: `bg-brass-subtle`. Timestamp: `font-plex-mono text-caption text-content-subtle`.
+
+**Platform-wide font flip (1 line):**
+- `src/index.css:143` — `--font-sans: 'Geist Variable', sans-serif;` → `--font-sans: var(--font-plex-sans);`. Single-line change cascades to every rendered text node because zero components used `font-sans` explicitly — all inherit via the implicit html body font-family. Token-reference indirection means any future Plex-hosting change edits `tokens.css` only.
+
+**Geist removal:**
+- `src/index.css` — `@import "@fontsource-variable/geist"` removed; replaced with session-2 explanatory comment.
+- `package.json` — `@fontsource-variable/geist` uninstalled via `npm uninstall`. Confirmed: `grep geist package.json` returns empty.
+- Stale references to "Geist" updated in `tokens.css` + `fonts.css` comments.
+
+### Variant decisions held (no consolidation)
+
+Per Q10 / Q11 / Q12 audit confirmations:
+- **Button `secondary` + `outline`** — both kept. Revisit Session 6 after seeing convergence patterns.
+- **Button `xs` + `sm` + `icon-xs` + `icon-sm`** — all 4 preserved for backward compat (295 Button imports). Documented in the component file as "compact-dense legacy sizes, prefer default/sm for new work."
+- **Card size `default` + `sm`** — both kept. Matches DESIGN_LANGUAGE §5 default + dense convention.
+
+### Verification performed
+
+- ✅ `tsc -b` — 0 errors.
+- ✅ `npm run build` — clean (5.02s). Plex Sans woff2 subsets bundle as expected (latin + latin-ext + cyrillic + greek + vietnamese; standard + italic axes). No Geist assets in build output.
+- ✅ `npx vitest run` — 165/165 passing across 11 test files. `DotNav.test.tsx` continues green post-refresh (behavioral test, not visual).
+- ✅ Backend regression — Phase 8a/8b/8c/8d/8d.1 full suite: **171/171 passing**, zero regressions.
+- ✅ Built CSS (`dist/assets/index-*.css`) contains: `accent-brass`, `surface-elevated`, `surface-raised`, `surface-sunken`, `content-strong`, `focus-ring-brass`, `shadow-level`, `ibm-plex-sans` — all Session-2 tokens present in minified output.
+
+### Mixed-aesthetic state (expected during transition)
+
+Per scope, Session 2 refreshes 8 core component categories + navigation. Extended components (toasts, alerts, badges, tables, forms, tabs, separator, avatar, tooltip, popover-standalone, drawer) remain on shadcn tokens until Session 3. Pages will render in a **mixed aesthetic** during the Session 2–3 window:
+
+- **213 files** in `src/pages/` still reference shadcn semantic classes (`bg-card`, `text-muted-foreground`, `border-border`, `bg-background`, `bg-popover`, `text-foreground`, etc.). This is by design; these pages inherit the refreshed Button / Input / Select / Card / Dialog / DropdownMenu / SlideOver / sidebar / nav without editing the pages themselves.
+- **5 settings pages** use shadcn surface tokens directly in page chrome (`invoice-settings.tsx`, `call-intelligence-settings.tsx`, `Locations.tsx`, `vault-supplier-settings.tsx`, `urn-import-wizard.tsx`). Also by design — page-level refresh is not in Session 2 scope.
+- Session 6 QA closes any remaining mixed-aesthetic issues. Session 3 reduces the gap substantially by refreshing the extended-component set.
+
+### Dark mode spot check (deferred full pass to Session 4)
+
+Semantic tokens resolve correctly in dark mode automatically: `bg-surface-elevated` → dark charcoal lift with inset top-edge highlight, `bg-brass` → dark-mode brass (lightness 0.70 vs light 0.66, hue locked at 73), `text-content-strong` → near-white with warm tint. The Session 1 `--shadow-level-1/2/3` dark-mode override (`inset 0 1px 0 var(--shadow-highlight-top)`) lands on every refreshed Card + Dialog + DropdownMenu + Select content popup automatically via the token reference. Full pass deferred to Session 4.
+
+### Sidebar refresh verification (Q5 - biggest visual change, 6 mount sites)
+
+The sidebar is mounted on every authenticated page. Visual change is significant: light-mode shell shifts from the old `bg-sidebar` (shadcn's neutral-gray slate) to DESIGN_LANGUAGE's `bg-surface-sunken` (warm-cream recessed). The new sunken tone reads slightly quieter than the old sidebar background; per Q6 guidance, active-state fill alpha was bumped from `10` to `18` hex on the preset-accent inline style to compensate. Section eyebrows pick up the DESIGN_LANGUAGE `text-micro` + `tracking-wider` + `content-subtle` treatment. The 6 mount sites (one per preset-layout permutation) all inherit the refresh through the single `sidebar.tsx` file; no per-preset customization was required.
+
+### Architectural patterns to carry into Session 3
+
+1. **Brass focus ring via utility class** (`.focus-ring-brass` from Session 1) — applied via className on interactive non-input elements (buttons, nav items, dropdown menu items). Consistent signal across the refreshed surface.
+2. **Input focus = border flip, not outside ring** — Q9 decision. Inputs/Textarea/Select trigger all use `focus-visible:border-brass focus-visible:ring-2 focus-visible:ring-brass/30` (border flip + subtle glow) because the border IS the input's affordance. Different form from button focus ring but consistent brass signal color.
+3. **Footer sinks into surface-base** — Cards + Dialogs + SlideOver all use `bg-surface-base` + `border-t border-border-subtle` for footer regions. Q5 decision; reads as "page color peeking through under the elevated body."
+4. **Overlay family parity** — Dialog, DropdownMenu, Select content popup, SlideOver all share the level-2/level-3 composition (raised surface + subtle border + shadow-level-2/3). This composition is the DESIGN_LANGUAGE §6 canonical surface pattern applied consistently.
+5. **`font-plex-mono` for structured data tokens** — keybinds (DropdownMenuShortcut, command-bar kbd), unread count badge numerals, timestamp labels in notifications. Matches §4 "Plex Mono for alignment-requiring data."
+
+### Component dependency order respected
+
+1. Button (brass signal foundation) → 2. Label + Input + Textarea (input family) → 3. Select (depends on input family + dropdown style) → 4. Card (203-import foundation) → 5. Dialog + DropdownMenu + SlideOver (overlay family) → 6. Sidebar + top header + DotNav + breadcrumbs + mobile tab bar + notification dropdown (navigation family, largest visible change) → 7. `--font-sans` flip → 8. Geist removal → 9. Verification → 10. Docs.
+
+### Ready for Session 3
+
+Session 3 scope: extended components + status treatment. Toasts / Sonner notifications, alerts / banners, badges, tables, forms layout + fieldsets + multi-step, tabs, separator, avatar, tooltip, popover-standalone, drawer (if any standalone drawer surfaces exist beyond SlideOver). Session 3 also does a dedicated pass on status color treatment (error/warning/success/info UI across forms, banners, badges).
+
+---
+
+## Session 3 — Extended Components + Status Treatment (✅ Shipped)
+
+**Date:** 2026-04-21
+**Migration head:** `r40_aftercare_email_template` (unchanged — frontend-only session).
+**Tests:** no new tests this session (component test coverage deferred per audit). 165/165 vitest + 171/171 Phase 8a-8d.1 backend regression all green. `tsc -b` clean, `npm run build` clean (4.94s).
+
+### What shipped — status-color vocabulary + 6 net-new primitives + overlay family extension
+
+Session 3 closes the extended-component gap. After Session 3, **every component category in the platform has been refreshed**, and the platform has a consistent status-color vocabulary (DESIGN_LANGUAGE `status-{success,warning,error,info}` + `-muted` variants) for rendering badges, alerts, toasts, pills, validation, and row-level status cells.
+
+**Component deliverables:**
+
+**6 net-new primitives:**
+- `src/components/ui/alert.tsx` — platform banner primitive with 5 variants (info/success/warning/error/neutral). `Alert` + `AlertTitle` + `AlertDescription` + `AlertAction` + optional dismiss button. `role="alert"` + aria-live matches variant. Replaces the ad-hoc `<div className="bg-amber-50 border-amber-200">` pattern in ~50+ page-level banner sites.
+- `src/components/ui/status-pill.tsx` — rounded-full inline status marker. Auto-maps status strings (approved / pending_review / rejected / etc) to DESIGN_LANGUAGE status families via a central `STATUS_MAP` dict (33 status keys → 4 families + neutral). `resolveStatusFamily` helper exported for direct programmatic use. 3 sizes (sm/default/md).
+- `src/components/ui/tooltip.tsx` — Base UI Tooltip wrapper. Overlay-family composition (bg-surface-raised + border-border-subtle + rounded-md + shadow-level-2 + duration-settle ease-settle + 150ms delay per DESIGN_LANGUAGE §6). Exports `TooltipProvider` (app-root wrap), `Tooltip`, `TooltipTrigger`, `TooltipContent`, `TooltipShortcut` (font-plex-mono keybind styling). 2 sizes.
+- `src/components/ui/popover.tsx` — Base UI Popover wrapper. Same overlay-family composition as Tooltip. Net-new primitive; the 2 existing Base UI popover usage sites (LocationSelector + notification-dropdown, both Session-2-refreshed) stay on their direct imports per Q4 scope decision.
+- `src/components/ui/form-section.tsx` — `FormSection` + `FormStack` + `FormFooter`. Lightweight form grouping primitives. Complements (doesn't replace) Card. `FormSection` takes title/description/error props. `FormStack` applies DESIGN_LANGUAGE §5 vertical-rhythm gap-8 between sections. `FormFooter` matches Dialog/Card footer convention (bg-surface-base + border-t + sticky option).
+- `src/components/ui/form-steps.tsx` — horizontal/vertical stepper indicator for multi-step forms. 4 step states (completed/current/upcoming/error) with brass filled-dot for completed+current, surface-sunken hollow for upcoming, status-error for errored step. Brass connector line for completed segments. Motion: `duration-settle ease-settle` on state changes per DESIGN_LANGUAGE §6.
+
+**11 primitive refreshes onto DESIGN_LANGUAGE tokens:**
+- **Badge** (179 imports) — added 4 status variants (info/success/warning/error) + `destructive` aliases `error` for backward compat (142 existing usages unchanged). `rounded-4xl` → `rounded-sm` per §6 badges=small pills. `bg-primary` → `bg-brass-muted`. font-plex-sans + text-micro.
+- **Table** — `border-b` → `border-b border-border-subtle`. Header cells: `text-foreground` → text-micro uppercase tracking-wider `text-content-muted`. Rows: `hover:bg-muted/50` → `hover:bg-brass-subtle/60`; selected: `bg-muted` → `bg-brass-muted`. Footer: `bg-muted/50` → `bg-surface-base` + sinking-feel border-t (Card/Dialog parity). Cell padding bumped 8px → 12px per §5.
+- **Tabs** — `bg-muted` → `bg-surface-sunken` (default variant track). Active tab lifts onto `bg-surface-raised` + `shadow-level-1`. Line-variant indicator flips to brass underline. Brass focus ring.
+- **Separator** — `bg-border` → `bg-border-subtle`.
+- **Avatar** — fallback `bg-muted` → `bg-brass-muted` + `text-content-on-brass` per §7 imagery rules. AvatarBadge default to `bg-brass`. 0 current imports; primitive prepared for future use.
+- **Switch** — checked `bg-primary` → `bg-brass`. Unchecked `bg-input` → `bg-surface-sunken` + ring border-base. Thumb on surface-raised + shadow-level-1. Brass focus ring.
+- **RadioGroup** — checked `bg-primary` → `bg-brass` + `content-on-brass` indicator dot. Border base → brass on check. Brass focus ring. Invalid `border-destructive` → `border-status-error`.
+- **Skeleton** — `bg-muted/60` → `bg-surface-sunken` (warm recessed pulse). SkeletonCard `bg-card ring-1 ring-foreground/10` → `bg-surface-elevated shadow-level-1`. SkeletonTable `border` → `border-border-subtle`.
+- **EmptyState** — `text-muted-foreground` → `text-content-muted`; positive tone `text-emerald-700` → `text-status-success`; title `text-base` → text-body font-plex-sans; border-dashed gets `border-border-subtle`.
+- **InlineError** — severity styles migrated: `border-destructive/40 bg-destructive/5 text-destructive` → `border-status-error/40 bg-status-error-muted text-status-error`. Warning variant: `border-amber-500/40` → `border-status-warning/40 bg-status-warning-muted text-status-warning`. font-plex-sans.
+- **Sonner** — `next-themes` DEPENDENCY REMOVED (audit confirmed single consumer). `theme="system"` hardcoded. `richColors` enabled (auto-tints status toasts). CSS vars: `--popover/--popover-foreground/--border/--radius` → `--surface-raised / --content-base / --border-subtle / --radius-md`. Status tints via `--{success|error|warning|info}-{bg|text|border}` mapped to DESIGN_LANGUAGE status-muted + status tokens.
+
+**6 ad-hoc surface refreshes:**
+- `accounting-reminder-banner.tsx` (visible on every authenticated page when connection is skipped/pending) — migrated to `<Alert variant="warning">`. Raw `bg-amber-*/text-amber-900` chrome replaced.
+- `kb-coaching-banner.tsx` — migrated to `bg-status-info-muted` + tokens. `bg-indigo-100/from-indigo-50` replaced.
+- `agent-alerts-card.tsx` (dashboard widget, visible on every authenticated dashboard) — **migrated to status-key-keyed dict pattern** (new CLAUDE.md convention). Replaced `SEVERITY_CONFIG = { action_required: { color: "text-red-600", bg: "bg-red-50" } }` with `{ status: "error" }` + a `FAMILY_STYLES` lookup that maps status-family to DESIGN_LANGUAGE token triples. Pattern documented for platform re-use.
+- `peek/renderers/_shared.tsx::StatusBadge` — delegates to new `StatusPill` primitive. 6 peek renderers inherit status-family auto-mapping; unmapped statuses render as neutral.
+- `App.tsx ErrorBoundary` — removed inline `style={{ color: "#b91c1c" }}` hex. Now renders as `<Alert variant="error">`-styled shell with brass reload button + surface-base page background + content-base content. font-plex-sans.
+- `WidgetErrorBoundary.tsx` — `text-red-400/text-blue-600/text-gray-500` → `text-status-error/text-brass/text-content-muted`. Brass focus ring on retry.
+
+### Status-color migration recipe (documented in CLAUDE.md for long-tail adoption)
+
+Long-tail migration for the **1,305 ad-hoc status-color usages** across the platform is deferred to natural refactor. Session 3 documents a mechanical find-replace recipe:
+
+| Legacy pattern (find) | DESIGN_LANGUAGE replacement |
+|---|---|
+| `bg-green-50 text-green-800` | `bg-status-success-muted text-status-success` |
+| `bg-red-50 text-red-800` | `bg-status-error-muted text-status-error` |
+| `bg-amber-50 text-amber-800` | `bg-status-warning-muted text-status-warning` |
+| `bg-blue-50 text-blue-800` | `bg-status-info-muted text-status-info` |
+| `bg-green-100` / `bg-red-100` / `bg-amber-100` / `bg-blue-100` | `bg-status-*-muted` (same family per color) |
+| `border-green-*` / `border-red-*` / `border-amber-*` / `border-blue-*` | `border-status-*` (with optional `/30` opacity) |
+| `text-emerald-*` / `text-rose-*` / `text-sky-*` | `text-status-success` / `text-status-error` / `text-status-info` |
+
+Pages adopting the recipe when next touched will converge on platform-consistent status colors without a big-bang refactor.
+
+### Architectural patterns extracted for Session 4+
+
+1. **Status-family recipe** (new) — `bg-status-{X}-muted` + `text-status-{X}` + optional `border-status-{X}`. Used consistently across Badge/Alert/StatusPill/Sonner/InlineError/Peek StatusBadge/agent-alerts.
+2. **Status-key-keyed dict pattern** (new) — components with per-state config (agent-alerts-card, peek StatusBadge, future status renderers) declare a `StatusFamily` key per state and a shared `FAMILY_STYLES` lookup. No raw color strings in component code.
+3. **Overlay family extended** — Tooltip + Popover join Dialog/DropdownMenu/Select popup/SlideOver/notification Popover. Shared composition now standard across 7 overlay primitives.
+4. **StatusPill vs. Badge distinction** — documented in both component headers + CLAUDE.md. StatusPill = rounded-full auto-mapping from status strings; Badge status variants = rounded-sm general emphasis.
+5. **Alert vs. InlineError distinction** — documented. Alert = page/section banners, 5 variants including neutral; InlineError = panel-scoped recoverable errors with retry affordance.
+
+### Verification performed
+
+- ✅ `tsc -b` clean.
+- ✅ `npm run build` clean — 4.94s build, Plex Sans woff2 subsets bundled, no next-themes assets.
+- ✅ `npx vitest run` — 165/165 passing (DotNav behavioral test green post-refresh).
+- ✅ Backend regression — 171/171 Phase 8a-8d.1 passing.
+- ✅ `next-themes` fully uninstalled — no remaining references in src/ (`grep next-themes src/` returns empty).
+- ✅ All 6 net-new primitives tsc-validated + build-validated.
+- ✅ Built CSS contains all status-family utilities: `status-success-muted`, `status-warning-muted`, `status-error-muted`, `status-info-muted`.
+
+### Mixed-aesthetic state post-Session 3
+
+- **0 primitives** remaining in shadcn aesthetic. All UI primitives (`src/components/ui/*`) now use DESIGN_LANGUAGE tokens.
+- **~213 pages** still reference shadcn semantic classes in page-level chrome (accepted state per audit §9). Session 6 QA verifies no net-new mixed aesthetic introduced.
+- **5 settings pages** explicitly deferred to Phase 8e (which redesigns them as part of Spaces work) per audit §2.
+- **1,305 ad-hoc status-color usages** documented with migration recipe (CLAUDE.md) — long-tail adoption.
+- **266 native `title=` attributes** left as-is; Tooltip primitive available for new work.
+
+### Deferred to Sessions 4-6
+
+- Dark mode full QA pass (Session 4).
+- Motion pass applying `ease-settle`/`ease-gentle` + named durations consistently (Session 5).
+- WCAG 2.2 AA accessibility audit across all refreshed components (Session 6).
+- Long-tail migration of page chrome + native tooltips + ad-hoc status colors (post-arc natural refactor).
+
+### Ready for Session 4: Dark mode pass
+
+Session 4 scope: comprehensive dark-mode verification across every refreshed component and every surface (hub dashboards, triage queues, workflow builders, forms). Dark-mode failures likely concentrate around: inset top-edge highlights on elevated surfaces rendering correctly, brass visibility against dark charcoal at all sizes, status-muted variants at low luminance not reading as washed-out, and shadow composition on modals/dialogs at level-2/level-3.
+
+---
+
 ## Cross-arc integration with Workflow Arc
 
 Aesthetic Arc and Workflow Arc run in parallel. The integration rule: **every Workflow Arc session ships with design-language-consistent styling** — using DESIGN_LANGUAGE tokens where components are refactored or created fresh, and carrying forward shadcn-token styling where components are simply extended.
@@ -132,3 +314,5 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 ## Changelog
 
 - **2026-04-21 (Session 1 shipped):** Token foundation + Plex fonts + Tailwind v4 `@theme inline` extensions + `[data-mode="dark"]` mechanism + flash-prevention inline script + `theme-mode.ts` runtime API. No visual regression (status-color hex→oklch drift accepted).
+- **2026-04-21 (Session 2 shipped):** Core component refresh across 14 files (~480 LOC modified). 8 UI primitives (Button, Label, Input, Textarea, Select, Card, Dialog, DropdownMenu, SlideOver) + 6 navigation components (sidebar, DotNav, breadcrumbs, mobile tab bar, app-layout header, notification dropdown) on DESIGN_LANGUAGE tokens. `--font-sans` flipped from Geist to `var(--font-plex-sans)` in one line — entire platform renders in IBM Plex Sans. Geist `@fontsource-variable/geist` package uninstalled. Brass focus ring replaces gray everywhere. Tests: 165/165 vitest + 171/171 backend regression, tsc clean, build clean. Mixed-aesthetic pages expected during Session 2–3 window (213 pages still reference shadcn tokens; Session 3 closes extended-component gap).
+- **2026-04-21 (Session 3 shipped):** Extended components + status treatment across 23 files (~1,200 LOC touched). **6 net-new primitives** (Alert, StatusPill, Tooltip, Popover, FormSection + FormStack + FormFooter, FormSteps) — ~630 new LOC. **11 primitive refreshes** onto DESIGN_LANGUAGE tokens (Badge with 4 new status variants + destructive alias; Table + Tabs + Separator + Avatar + Switch + Radio + Skeleton + EmptyState + InlineError + Sonner) — ~400 LOC. **6 ad-hoc surface refreshes** (accounting-reminder-banner, kb-coaching-banner, agent-alerts-card with new status-key-keyed dict pattern, peek StatusBadge → StatusPill, App ErrorBoundary, WidgetErrorBoundary) — ~180 LOC. `next-themes` removed from package.json (single consumer; confirmed). **0 UI primitives remain in shadcn aesthetic.** ~213 pages still carry shadcn page-chrome (accepted per audit §9); migration recipe documented in CLAUDE.md for natural-refactor adoption. 5 flagged settings pages deferred to Phase 8e per audit §2. Tests: 165/165 vitest + 171/171 backend, tsc clean, build clean 4.94s.

@@ -347,6 +347,12 @@ def _resolve_space(db: Session, user: User, sp: SpaceConfig) -> ResolvedSpace:
         is_default=sp.is_default,
         density=sp.density,
         is_system=sp.is_system,
+        default_home_route=sp.default_home_route,
+        # Phase 8e.2 — portal modifier fields round-trip.
+        access_mode=sp.access_mode,
+        tenant_branding=sp.tenant_branding,
+        write_mode=sp.write_mode,
+        session_timeout_minutes=sp.session_timeout_minutes,
         pins=resolved_pins,
         created_at=sp.created_at,
         updated_at=sp.updated_at,
@@ -388,8 +394,9 @@ def create_space(
     accent: str = "neutral",
     is_default: bool = False,
     density: str = "comfortable",
+    default_home_route: str | None = None,
 ) -> ResolvedSpace:
-    """Create a new space. Enforces the 5-space cap."""
+    """Create a new space. Enforces the per-user cap."""
     if not name or not name.strip():
         raise SpaceError("Space name is required")
 
@@ -419,12 +426,16 @@ def create_space(
         is_default=is_default,
         pins=[],
         density=density,  # type: ignore[arg-type]
+        default_home_route=default_home_route,
         created_at=now_iso(),
         updated_at=now_iso(),
     )
     spaces.append(new_space)
     _persist_spaces(db, user, spaces)
     return _resolve_space(db, user, new_space)
+
+
+_UNSET = object()
 
 
 def update_space(
@@ -437,7 +448,11 @@ def update_space(
     accent: str | None = None,
     is_default: bool | None = None,
     density: str | None = None,
+    default_home_route: Any = _UNSET,
 ) -> ResolvedSpace:
+    """Update a space. `default_home_route` uses a sentinel so callers
+    can explicitly clear the route (pass None) vs. omit-no-change
+    (sentinel = _UNSET)."""
     spaces = _load_spaces(user)
     hit = _find_space(spaces, space_id)
     if hit is None:
@@ -454,6 +469,12 @@ def update_space(
         sp.accent = accent  # type: ignore[assignment]
     if density is not None:
         sp.density = density  # type: ignore[assignment]
+    if default_home_route is not _UNSET:
+        # Empty string → None (treated as "clear"). Leading slash
+        # enforcement is light-touch: API layer validates the format
+        # before reaching here.
+        route = default_home_route
+        sp.default_home_route = route if route else None
     if is_default is True:
         # Flipping to default — clear others.
         for s in spaces:
@@ -514,6 +535,23 @@ def delete_space(db: Session, *, user: User, space_id: str) -> None:
         s.display_order = i
         prefs["spaces"][i]["display_order"] = i
     _save_prefs(db, user, prefs)
+
+    # Phase 8e.1 — cascade affinity rows for the deleted space.
+    # Best-effort: if the affinity delete fails (e.g. migration
+    # gap) we log + continue; the space delete already committed.
+    try:
+        from app.services.spaces.affinity import (
+            delete_affinity_for_space,
+        )
+
+        delete_affinity_for_space(
+            db, user_id=user.id, space_id=space_id
+        )
+    except Exception:  # pragma: no cover — best-effort
+        logger.exception(
+            "Failed to cascade affinity rows for deleted space %s",
+            space_id,
+        )
 
 
 def set_active_space(

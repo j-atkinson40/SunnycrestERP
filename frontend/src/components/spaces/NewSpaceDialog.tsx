@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   Dialog,
@@ -28,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSpaces } from "@/contexts/space-context";
-import type { AccentName } from "@/types/spaces";
+import { MAX_SPACES_PER_USER, type AccentName } from "@/types/spaces";
 
 const ACCENT_CHOICES: { value: AccentName; label: string }[] = [
   { value: "warm", label: "Warm — amber, soft" },
@@ -71,7 +72,7 @@ export function NewSpaceDialog({ open, onOpenChange }: Props) {
     }
   }
 
-  const atCap = spaces.length >= 5;
+  const atCap = spaces.length >= MAX_SPACES_PER_USER;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -87,8 +88,8 @@ export function NewSpaceDialog({ open, onOpenChange }: Props) {
 
         {atCap ? (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-            You already have 5 spaces (the maximum). Delete or merge
-            one to create another.
+            You already have {MAX_SPACES_PER_USER} spaces (the maximum).
+            Delete or merge one to create another.
           </div>
         ) : (
           <div className="space-y-3">
@@ -129,6 +130,19 @@ export function NewSpaceDialog({ open, onOpenChange }: Props) {
           </div>
         )}
 
+        {/* Phase 8e.1 — deep-link to the full customization surface. */}
+        <div className="-mt-2 text-caption text-content-muted">
+          Want to pick an icon, landing route, density, or import a
+          starter template?{" "}
+          <Link
+            to="/settings/spaces?new=1"
+            onClick={() => onOpenChange(false)}
+            className="text-brass hover:text-brass-hover hover:underline focus-ring-brass"
+            data-testid="new-space-more-options"
+          >
+            More options…
+          </Link>
+        </div>
         <DialogFooter>
           <Button
             variant="outline"

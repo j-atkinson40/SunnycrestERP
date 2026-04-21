@@ -11,7 +11,12 @@
 import apiClient from "@/lib/api-client";
 import type {
   AddPinBody,
+  AffinityClearResponse,
+  AffinityCountResponse,
+  AffinityVisitBody,
+  AffinityVisitResponse,
   CreateSpaceBody,
+  ReapplyDefaultsResponse,
   ResolvedPin,
   Space,
   SpacesListResponse,
@@ -84,6 +89,67 @@ export async function reorderPins(
   const r = await apiClient.post<Space>(
     `/spaces/${spaceId}/pins/reorder`,
     { pin_ids: pinIds },
+  );
+  return r.data;
+}
+
+/**
+ * Phase 8e — opt-in re-run of Phase 2 (saved_views) + Phase 3
+ * (spaces) + Phase 6 (briefings) role-based seeding for the caller.
+ * Idempotent via the underlying seed functions' per-role
+ * preferences arrays. Returns per-subsystem counts of new rows
+ * created.
+ */
+export async function reapplyDefaults(): Promise<ReapplyDefaultsResponse> {
+  const r = await apiClient.post<ReapplyDefaultsResponse>(
+    "/spaces/reapply-defaults",
+  );
+  return r.data;
+}
+
+// ── Phase 8e.1 — affinity endpoints ─────────────────────────────────
+
+/**
+ * Fire-and-forget affinity visit record. Callers do NOT await — the
+ * UI should never block on this write. Errors are swallowed to
+ * honor the fire-and-forget contract; brief server downtime simply
+ * loses the signal for that interaction (acceptable — affinity is
+ * a signal, not transactional state).
+ */
+export function recordAffinityVisit(body: AffinityVisitBody): void {
+  // Deliberately not returning the promise. Don't await.
+  apiClient
+    .post<AffinityVisitResponse>("/spaces/affinity/visit", body)
+    .catch(() => {
+      // Silent — fire-and-forget.
+    });
+}
+
+/**
+ * Returns the count of active affinity signals tracked for the
+ * caller. Powers the "N tracked signals" counter on /settings/spaces.
+ * Optional space_id narrows to a single space.
+ */
+export async function getAffinityCount(
+  spaceId?: string,
+): Promise<AffinityCountResponse> {
+  const query = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : "";
+  const r = await apiClient.get<AffinityCountResponse>(
+    `/spaces/affinity/count${query}`,
+  );
+  return r.data;
+}
+
+/**
+ * "Clear command bar learning history" action. Returns count
+ * deleted. Optional space_id narrows to a single space.
+ */
+export async function clearAffinityHistory(
+  spaceId?: string,
+): Promise<AffinityClearResponse> {
+  const query = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : "";
+  const r = await apiClient.delete<AffinityClearResponse>(
+    `/spaces/affinity${query}`,
   );
   return r.data;
 }

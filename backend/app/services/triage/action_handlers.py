@@ -569,6 +569,271 @@ def _handle_escalate(ctx: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ── Aftercare handlers (Workflow Arc Phase 8d — triage-only) ────────
+
+
+def _handle_aftercare_send(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Approve-equivalent for aftercare_triage. Sends the 7-day
+    follow-up email via the D-7 managed-template path and logs a
+    VaultItem. Zero template duplication — body comes from
+    `email.fh_aftercare_7day` managed template."""
+    from app.services.workflows.aftercare_adapter import approve_send
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    try:
+        result = approve_send(
+            db, user=user, anomaly_id=ctx["entity_id"]
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": result["message"],
+        "delivery_id": result.get("delivery_id"),
+    }
+
+
+def _handle_aftercare_skip(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Skip the aftercare send. Resolves the anomaly with a reason;
+    no email sent. Case stays eligible for manual follow-up."""
+    from app.services.workflows.aftercare_adapter import skip_case
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code")
+    if not reason:
+        return {
+            "status": "errored",
+            "message": "Skip reason is required.",
+        }
+    try:
+        skip_case(
+            db,
+            user=user,
+            anomaly_id=ctx["entity_id"],
+            reason=reason,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": "Aftercare skipped.",
+    }
+
+
+def _handle_aftercare_request_review(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Escalate to a teammate. Stamps a review note without
+    resolving; item stays in-queue."""
+    from app.services.workflows.aftercare_adapter import request_review
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    note = ctx.get("note") or ctx.get("reason")
+    if not note:
+        return {
+            "status": "errored",
+            "message": "A note is required when requesting review.",
+        }
+    try:
+        request_review(
+            db, user=user, anomaly_id=ctx["entity_id"], note=note
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": "Review requested — case stays in queue.",
+    }
+
+
+# ── Catalog fetch handlers (Workflow Arc Phase 8d) ──────────────────
+
+
+def _handle_catalog_fetch_approve(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Approve — publish the staged catalog via the legacy
+    `WilbertIngestionService.ingest_from_pdf` path. Zero logic
+    duplication — the adapter fetches the staged PDF from R2 and
+    calls the unchanged legacy service."""
+    from app.services.workflows.catalog_fetch_adapter import approve_publish
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    try:
+        result = approve_publish(
+            db, user=user, sync_log_id=ctx["entity_id"]
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": result["message"],
+        "products_added": result.get("products_added"),
+        "products_updated": result.get("products_updated"),
+    }
+
+
+def _handle_catalog_fetch_reject(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Reject — flip publication_state='rejected' on the staging
+    sync_log. No product writes; admin must supply a reason."""
+    from app.services.workflows.catalog_fetch_adapter import reject_publish
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code")
+    if not reason:
+        return {
+            "status": "errored",
+            "message": "Rejection reason is required.",
+        }
+    try:
+        reject_publish(
+            db,
+            user=user,
+            sync_log_id=ctx["entity_id"],
+            reason=reason,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": "Catalog rejected — no products modified.",
+    }
+
+
+def _handle_catalog_fetch_request_review(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Stamp a review note on the staging sync_log's audit trail
+    without changing state. Item stays pending_review for a teammate."""
+    from app.services.workflows.catalog_fetch_adapter import request_review
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    note = ctx.get("note") or ctx.get("reason")
+    if not note:
+        return {
+            "status": "errored",
+            "message": "A note is required when requesting review.",
+        }
+    try:
+        request_review(
+            db, user=user, sync_log_id=ctx["entity_id"], note=note
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": "Review requested — catalog stays in queue.",
+    }
+
+
+# ── Safety Program handlers (Workflow Arc Phase 8d.1) ──────────────
+#
+# AI-generation-with-approval shape. Delegates to safety_program_adapter
+# which in turn delegates to safety_program_generation_service (legacy
+# service unchanged). Parity is on approval mechanics, not on
+# non-deterministic AI-generated content (Template v2.2 §5.5.5).
+
+
+def _handle_safety_program_approve(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Approve — promotes the pending_review generation to the
+    tenant's canonical SafetyProgram (insert new or version++
+    existing). Same writes as legacy /safety/programs/generations/
+    {id}/approve. Zero logic duplication."""
+    from app.services.workflows.safety_program_adapter import (
+        approve_generation,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    payload = ctx.get("payload") or {}
+    notes = (
+        payload.get("notes")
+        or ctx.get("note")
+        or ctx.get("reason")  # accept reason as approval-notes alias
+        or None
+    )
+    try:
+        result = approve_generation(
+            db,
+            user=user,
+            generation_id=ctx["entity_id"],
+            notes=notes,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": result["message"],
+        "safety_program_id": result.get("safety_program_id"),
+        "generation_status": result.get("generation_status"),
+    }
+
+
+def _handle_safety_program_reject(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Reject — transitions status to 'rejected'. Reason REQUIRED.
+    No SafetyProgram write (negative parity assertion)."""
+    from app.services.workflows.safety_program_adapter import (
+        reject_generation,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code")
+    if not reason:
+        return {
+            "status": "errored",
+            "message": "Rejection notes are required.",
+        }
+    try:
+        reject_generation(
+            db,
+            user=user,
+            generation_id=ctx["entity_id"],
+            reason=reason,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": "Safety program rejected — no program promoted.",
+    }
+
+
+def _handle_safety_program_request_review(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Request-review — stamps a timestamped note on review_notes
+    without resolving. Item stays pending_review for a teammate
+    (e.g., compliance officer) to pick up."""
+    from app.services.workflows.safety_program_adapter import (
+        request_review,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    note = ctx.get("note") or ctx.get("reason")
+    if not note:
+        return {
+            "status": "errored",
+            "message": "A note is required when requesting review.",
+        }
+    try:
+        request_review(
+            db,
+            user=user,
+            generation_id=ctx["entity_id"],
+            note=note,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return {
+        "status": "applied",
+        "message": "Review requested — generation stays in queue.",
+    }
+
+
 # ── Handler registry ─────────────────────────────────────────────────
 
 
@@ -600,6 +865,18 @@ HANDLERS: dict[str, HandlerFn] = {
     "expense_categorization.approve": _handle_expense_categorization_approve,
     "expense_categorization.reject": _handle_expense_categorization_reject,
     "expense_categorization.request_review": _handle_expense_categorization_request_review,
+    # FH Aftercare (Workflow Arc Phase 8d — triage-only)
+    "aftercare.send": _handle_aftercare_send,
+    "aftercare.skip": _handle_aftercare_skip,
+    "aftercare.request_review": _handle_aftercare_request_review,
+    # Wilbert Catalog Fetch (Workflow Arc Phase 8d — triage-gated publish)
+    "catalog_fetch.approve": _handle_catalog_fetch_approve,
+    "catalog_fetch.reject": _handle_catalog_fetch_reject,
+    "catalog_fetch.request_review": _handle_catalog_fetch_request_review,
+    # Safety Program (Workflow Arc Phase 8d.1 — AI-generation-with-approval)
+    "safety_program.approve": _handle_safety_program_approve,
+    "safety_program.reject": _handle_safety_program_reject,
+    "safety_program.request_review": _handle_safety_program_request_review,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,

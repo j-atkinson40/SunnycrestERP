@@ -192,8 +192,20 @@ class TestSpacesAPI:
         ids = [s["space_id"] for s in r.json()["spaces"]]
         assert ids == [c["space_id"], a["space_id"], b["space_id"]]
 
-    def test_five_space_cap_enforced_at_api(self, client, auth):
-        for i in range(5):
+    def test_space_cap_enforced_at_api(self, client, auth):
+        # Phase 8e — cap bumped 5 → 7. Test renamed from
+        # `test_five_space_cap_enforced_at_api`. The `ctx` fixture
+        # user has a `director` role on `funeral_home`, which seeds
+        # 3 spaces (Arrangement + Administrative + Ownership) on
+        # register. So we can only create 4 more before hitting the
+        # 7-space cap.
+        from app.services.spaces.types import MAX_SPACES_PER_USER
+
+        # Find out how many already exist (seeded on creation).
+        existing = client.get("/api/v1/spaces", headers=auth).json()
+        start = len(existing["spaces"])
+        # Create up to cap.
+        for i in range(MAX_SPACES_PER_USER - start):
             client.post(
                 "/api/v1/spaces", json={"name": f"S{i}"}, headers=auth
             )
@@ -201,7 +213,7 @@ class TestSpacesAPI:
             "/api/v1/spaces", json={"name": "Over"}, headers=auth
         )
         assert r.status_code == 400
-        assert "up to 5" in r.json()["detail"]
+        assert f"up to {MAX_SPACES_PER_USER}" in r.json()["detail"]
 
     def test_add_nav_pin(self, client, auth):
         sp = client.post(

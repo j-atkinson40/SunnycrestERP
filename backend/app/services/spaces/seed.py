@@ -152,6 +152,7 @@ def _apply_system_spaces(
             is_default=False,
             density=tpl.density,
             is_system=True,
+            default_home_route=tpl.default_home_route,
             pins=_build_pins_from_seeds(db, user, tpl.pins),
             created_at=now_iso(),
             updated_at=now_iso(),
@@ -212,6 +213,13 @@ def _apply_templates(
             display_order=len(spaces),
             is_default=template.is_default,
             density=template.density,
+            default_home_route=template.default_home_route,
+            # Phase 8e.2 — portal modifier fields carry through from
+            # template to the user's stored SpaceConfig.
+            access_mode=template.access_mode,
+            tenant_branding=template.tenant_branding,
+            write_mode=template.write_mode,
+            session_timeout_minutes=template.session_timeout_minutes,
             pins=_build_pins_from_seeds(db, user, template.pins),
             created_at=now_iso(),
             updated_at=now_iso(),

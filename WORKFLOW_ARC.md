@@ -86,7 +86,43 @@ Test counts: 25 parity (8+8+9) + 6 BLOCKING latency gates + 20 unit + 9 Playwrig
 
 ### Phase 8d — Vertical Workflow Migrations
 
-**Not started.** Work through the remaining Tier 2 / Tier 3 vertical workflows (manufacturing, funeral_home). Surface any patterns that the Core migrations missed. Expected to be substantially lighter than 8c because vertical workflows are already stored as real workflow rows — this phase is mostly about evolving the builder UX for vertical-specific needs.
+**Shipped (minimal scope).** Two vertical workflow migrations + a corrective scope-backfill fix + a staging-state schema extension + a seeded template filling a pre-existing phantom reference. Shipped alongside documentation of two deferred items.
+
+**r38 fix — r36 scope-backfill bug.** r36's CASE expression `WHEN tier = 1 THEN 'core'` ignored the `vertical` column, misclassifying 10 vertical-specific tier-1 workflows under `scope='core'` in the three-tab workflow builder. `r38_fix_vertical_scope_backfill` idempotently corrects them (full list in the migration module). Phase 8a's `test_tier_1_workflows_are_core` tightened to `test_tier_1_cross_vertical_workflows_are_core`; companion regression gate `test_r38_scope_backfill_fix.py` enforces `tier=1 AND vertical IS NOT NULL IMPLIES scope='vertical'`.
+
+**Migrated: `wf_fh_aftercare_7day` (FH tier 3).** Triage-only. Stages one AgentAnomaly per eligible case (service_date + 7 days == today) via `aftercare_adapter.run_pipeline`. Triage approve renders the newly-seeded `email.fh_aftercare_7day` managed template via `delivery_service.send_email_with_template` + logs a VaultItem. Closes a pre-existing silent bug: the pre-8d seed referenced `template="aftercare_7day"` — a template that never existed in the D-2 registry, so the send step would have silently no-op'd if the scheduler had ever fired.
+
+**Migrated: `wf_sys_catalog_fetch` (MFG tier 1).** Triage-gated publish. `run_staged_fetch` downloads + MD5-diffs + archives to R2 + creates a pending-review `UrnCatalogSyncLog` (new column from r39). Triage approve fetches R2 bytes, runs the **unchanged** legacy `WilbertIngestionService.ingest_from_pdf` (zero duplication), flips `publication_state='published'`. Supersede semantics prevent the queue holding two competing catalogs. Closes a pre-existing operational risk: the legacy auto-publish path shifted retail prices in production without any admin review.
+
+**NO AI question panels on 8d queues** per approved scope. Aftercare + catalog_fetch are audit/retry workspaces, not decision workspaces. Test-enforced invariant at `test_phase8d_unit.py::test_no_ai_question_panels_on_phase8d_queues`.
+
+**Deferred to Phase 8d.1: `wf_sys_safety_program_gen`.** First workflow-arc migration exercising AI-generation-with-approval-gating (Claude Sonnet → 7-section HTML → WeasyPrint PDF → admin approval → SafetyProgramGeneration row writes + month-ahead lookahead). Earns its own reconnaissance session because the current adapter pattern hasn't been exercised against AI-generation flows yet. Tests shipped in 8d regression-guard the pre-8d shape so the migration can be compared against a known baseline.
+
+**Documented as intentionally service-only: urn engraving two-gate.** The token-based public FH approval URL (`/proof-approval/{token}`, 72-hour expiry, no auth) + internal staff approval path is customer-facing; migration would invert the URL contract for no platform benefit.
+
+**Tests shipped Phase 8d:** 20 unit + 10 aftercare parity + 10 catalog_fetch parity + 4 BLOCKING latency gates + 3 r38 regression + 6 Playwright scenarios = **39 new**. Phase 8a/8b/8c regression: 140 passing, no regressions. Latency on dev: aftercare p50=30.3ms/22.1ms (next_item/apply_action); catalog_fetch p50=2.9ms/5.5ms.
+
+**Migration head:** `r37_approval_gate_email_template` → `r38_fix_vertical_scope_backfill` → `r39_catalog_publication_state` → `r40_aftercare_email_template`.
+
+### Phase 8d.1 — wf_sys_safety_program_gen Migration
+
+**Shipped.** Dedicated reconnaissance session for AI-generation-with-approval shape. One migration target, three template additions (WORKFLOW_MIGRATION_TEMPLATE v2.2), 37 new tests, no new DB migration.
+
+**Migration completed:** `wf_sys_safety_program_gen` (MFG tier 1) — 4 placeholder steps → 1 `call_service_method` step invoking `safety_program.run_generation_pipeline`. Adapter at `backend/app/services/workflows/safety_program_adapter.py` delegates to `safety_program_generation_service` verbatim; zero logic duplication. Triage queue `safety_program_triage` surfaces `SafetyProgramGeneration WHERE status='pending_review'` via a direct query — no AgentJob wrapper, no AgentAnomaly, no new schema column. Per-run cardinality (new Template v2.2 §10 sixth variant). AI panel INCLUDED — first migration-arc queue with AI-assisted review of AI-generated artifacts.
+
+**Approach: sixth cardinality, "per-run".** The status machine (`draft / pending_review / approved / rejected`) on `SafetyProgramGeneration` predates the arc (r15_safety_program_generation). Phase 8d.1 is purely an alternate UX surface over the existing state. Distinct from per-staging-row (which ADDS the state column during migration) by the pre-existing-state-machine criterion.
+
+**AI-generation-content-invariant parity (Template v2.2 §5.5.5).** The migration established the parity pattern for non-deterministic AI output. Seed SafetyProgramGeneration with pre-populated `generated_content`; both legacy `svc.approve_generation` and triage `safety_program_adapter.approve_generation` act on the frozen state; assert byte-identical field writes on SafetyProgramGeneration + SafetyProgram. Never invoke Claude, never assert content reproducibility. Future AI-generation migrations (safety topics, COA recommendations, audit package commentary) inherit this pattern.
+
+**Legacy APScheduler cron removed (Template v2.2 §7.7).** Pre-8d.1, the monthly safety-program generation fired at container-UTC via APScheduler cron. Post-migration, workflow scheduler's `scheduled` dispatch owns the firing at tenant-local 6am (cron `0 6 1 * *`, timezone `America/New_York`). Three call sites in `app/scheduler.py` (function, JOB_REGISTRY entry, add_job block) replaced with retirement comments. Unit test enforces retirement.
+
+**AI panel prompt** `triage.safety_program_context_question` seeded idempotently via `scripts/seed_triage_phase8d1.py` (Option A pattern). System prompt carries VERTICAL-APPROPRIATE TERMINOLOGY block (precast concrete / burial vault hazards) and COMPLIANCE DISCIPLINE block (hallucination in regulatory citations causes legal exposure; cite the scrape snippet or defer to the full standard URL). 4 suggested questions on year-over-year diff, OSHA requirement verification, industry-appropriateness, and compliance scrutiny.
+
+**Pre-existing latent bug surfaced (NOT fixed in 8d.1).** `safety_program_generations.pdf_document_id` FK still points at `documents_legacy` (0 rows) instead of canonical `documents` (170 rows) after Phase D-1's rename. Production's `generate_pdf` writes a canonical Document, then fails the FK check, swallowed by `run_monthly_generation`'s non-fatal try/except. Cataloged in Template v2.2 §15 entry #7 for a post-arc D-model hygiene session.
+
+**Tests shipped Phase 8d.1:** 13 BLOCKING parity + 2 BLOCKING latency + 16 unit + 6 Playwright = 37 new. Phase 8a-8d regression: 171 passing, no regressions. Latency on dev: next_item p50=5.7ms / p99=7.6ms (17× / 40× headroom); apply_action p50=10.0ms / p99=13.3ms (20× / 38× headroom).
+
+**Migration head unchanged:** `r40_aftercare_email_template` (no new DB migration — per-run cardinality reuses existing schema).
 
 ### Phase 8e — Spaces + Default Views
 

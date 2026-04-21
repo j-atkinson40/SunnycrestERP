@@ -26,10 +26,10 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-surface-base font-plex-sans text-content-base">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center justify-between border-b px-6">
+        <header className="flex h-14 items-center justify-between border-b border-border-subtle bg-surface-elevated px-6">
           <div />
           <div className="flex items-center gap-3">
             {/* Workflow Arc Phase 8a — SpaceSwitcher replaced by
@@ -39,7 +39,7 @@ export function AppLayout() {
             <Separator orientation="vertical" className="h-6" />
             <Link
               to="/profile"
-              className="text-sm text-muted-foreground hover:underline"
+              className="rounded-sm text-body-sm text-content-muted transition-colors duration-quick ease-settle hover:text-content-strong hover:underline underline-offset-2 focus-ring-brass"
             >
               {user?.first_name} {user?.last_name}
             </Link>

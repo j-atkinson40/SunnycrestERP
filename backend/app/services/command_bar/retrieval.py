@@ -132,6 +132,13 @@ _WEIGHT_RESOLVER_DEFAULT: float = 1.0           # entity result baseline
 # pinned but poor-match result jump a genuinely better hit.
 _WEIGHT_ACTIVE_SPACE_PIN_BOOST: float = 1.25
 
+# Phase 8e.1 — starter-template target boost. Smaller than the
+# pin boost (1.25): "this is the kind of thing this space is about,
+# even if you unpinned it" is a weaker signal than "you pinned it."
+# Compound max with pin + affinity (1.25 * 1.10 * 1.40 = 1.925)
+# stays below the generic create-intent ceiling.
+_WEIGHT_STARTER_TEMPLATE_BOOST: float = 1.10
+
 # Phase 3 — score for synthesized space-switch results. Sits
 # between a create action hit (1.5) and a registry default (1.0) so
 # typing "arrangement" in a funeral director tenant surfaces the
@@ -388,6 +395,73 @@ def query(
                 boosted.append((item, score))
         results = boosted
 
+    # 6. Starter-template target boost (Phase 8e.1).
+    # Applied when the active space was seeded from a role template
+    # AND the result's target appears in that template's pin set —
+    # even if the user has since unpinned it. "This is the kind of
+    # thing this space is for" is a weaker signal than "you pinned
+    # this," so the weight (1.10) is smaller than the pin boost
+    # (1.25). Max-stacking with pin boost: a result that is BOTH
+    # pinned AND in the starter template gets pin-boost only —
+    # these are not additive.
+    starter_targets = _active_space_starter_template_targets(
+        user=user, active_space_id=qc.active_space_id,
+    )
+    if starter_targets:
+        boosted = []
+        for item, score in results:
+            # Skip if already pinned (pin boost already applied above).
+            if pinned_targets and _result_matches_pin_target(
+                item, pinned_targets
+            ):
+                boosted.append((item, score))
+                continue
+            if _result_matches_pin_target(item, starter_targets):
+                new_score = score * _WEIGHT_STARTER_TEMPLATE_BOOST
+                item.score = new_score
+                boosted.append((item, new_score))
+            else:
+                boosted.append((item, score))
+        results = boosted
+
+    # 7. Topical affinity boost (Phase 8e.1).
+    # Single prefetch query → in-memory dict → O(1) lookup per
+    # result. Composes multiplicatively with starter-template and
+    # pin boost: "I work on this AND I pinned it AND it's in the
+    # template" stacks up to ~1.925x for the ideal hit.
+    #
+    # Identifying which target a result refers to:
+    #   - navigate actions: url matches nav_item affinity
+    #   - create actions: not affinity-boosted (no target identity)
+    #   - search_result entity hits: result_entity_type + entity_id
+    #     embedded in item.id ("entity:<type>:<id>")
+    #   - saved_view: item.id ("saved_view:<view_id>")
+    #
+    # If prefetch_for_user_space fails (migration gap), returns
+    # empty dict — no boost, no crash.
+    if qc.active_space_id:
+        from app.services.spaces.affinity import (
+            boost_for_target,
+            prefetch_for_user_space,
+        )
+
+        affinity = prefetch_for_user_space(
+            db, user=user, space_id=qc.active_space_id
+        )
+        if affinity:
+            boosted = []
+            for item, score in results:
+                factor = _affinity_factor_for_result(
+                    item, affinity, boost_for_target
+                )
+                if factor > 1.0:
+                    new_score = score * factor
+                    item.score = new_score
+                    boosted.append((item, new_score))
+                else:
+                    boosted.append((item, score))
+            results = boosted
+
     # ── Merge + rank ──────────────────────────────────────────────────
     # Deduplicate by `id` — a registry hit + resolver hit for the same
     # record won't collide because one is "action:nav.foo" and the
@@ -590,3 +664,97 @@ def _result_matches_pin_target(
         if view_id in pin_targets:
             return True
     return False
+
+
+# ── Phase 8e.1 — starter-template + affinity helpers ─────────────────
+
+
+def _active_space_starter_template_targets(
+    *, user: User, active_space_id: str | None,
+) -> set[str]:
+    """Return the set of target_ids from the role-template that
+    seeded the user's active space.
+
+    Resolution:
+      1. Find the active space in user.preferences.spaces.
+      2. Look up the tenant's vertical (company.vertical).
+      3. Walk `spaces/registry.py::SEED_TEMPLATES[(vertical, role)]`
+         for a template whose name matches the active space's name.
+      4. Return the pin.target values.
+
+    Returns an empty set when:
+      - No active space is set.
+      - The space is user-created (not matching any template name).
+      - The tenant vertical can't be resolved.
+
+    This function is intentionally defensive (silent-empty on any
+    mismatch) because it sits on the command-bar hot path.
+    """
+    if not active_space_id:
+        return set()
+
+    prefs = user.preferences or {}
+    raw_spaces = prefs.get("spaces") or []
+    active = next(
+        (s for s in raw_spaces if s.get("space_id") == active_space_id),
+        None,
+    )
+    if active is None:
+        return set()
+    active_name = (active.get("name") or "").strip().lower()
+    if not active_name:
+        return set()
+
+    from app.services.spaces import registry as space_reg
+
+    # Identify the user's role_slug via preferences.spaces_seeded_for_roles
+    # — the most reliable signal of which (vertical, role) seeded this
+    # user. Falls back to any role whose template matches the space
+    # name; either approach avoids a DB round-trip.
+    seeded_roles = prefs.get("spaces_seeded_for_roles") or []
+
+    # Scan templates across all seeded roles for a name match.
+    for (vertical, role_slug), templates in space_reg.SEED_TEMPLATES.items():
+        if seeded_roles and role_slug not in seeded_roles:
+            continue
+        for tpl in templates:
+            if tpl.name.lower() == active_name:
+                return {p.target for p in tpl.pins}
+    return set()
+
+
+def _affinity_factor_for_result(
+    item: ResultItem,
+    affinity: dict[tuple[str, str], object],
+    boost_for_target,
+) -> float:
+    """Map a ResultItem to its affinity boost factor via the prefetch
+    dict. Inspects item.type + item.url + item.id + result_entity_type
+    to identify the (target_type, target_id) key.
+
+    Returns 1.0 (no boost) when no matching affinity row exists.
+    """
+    # Entity-record hits — item.id has shape "entity:<type>:<id>";
+    # we use the entity_id portion as target_id.
+    if item.type == "search_result" and item.id.startswith("entity:"):
+        parts = item.id.split(":", 2)
+        if len(parts) == 3:
+            return float(boost_for_target(affinity, "entity_record", parts[2]))
+        return 1.0
+
+    # Saved-view hits — item.id has shape "saved_view:<id>".
+    if item.type == "saved_view" and item.id.startswith("saved_view:"):
+        view_id = item.id.split(":", 1)[1]
+        return float(boost_for_target(affinity, "saved_view", view_id))
+
+    # Navigate actions with a URL — check for nav_item affinity.
+    # Match exactly on URL (the affinity write path records the same
+    # href as the nav pin's target_id).
+    if item.type == "navigate" and item.url:
+        # Triage queue nav URLs: /triage/<queue_id>
+        if item.url.startswith("/triage/"):
+            queue_id = item.url.rsplit("/", 1)[-1]
+            return float(boost_for_target(affinity, "triage_queue", queue_id))
+        return float(boost_for_target(affinity, "nav_item", item.url))
+
+    return 1.0

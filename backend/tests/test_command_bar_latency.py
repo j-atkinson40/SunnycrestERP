@@ -84,7 +84,14 @@ def client():
 
 def _seed_tenant_and_user():
     """Seed a tenant + admin user + ~20 entity rows representative
-    of a small production tenant."""
+    of a small production tenant.
+
+    Phase 8e.1 update — also seeds:
+      - 1 user-created space (sp_lat_primary) so active_space_id
+        lookup works in retrieval.
+      - 10 user_space_affinity rows (~5 per target_type) so the
+        affinity boost pass gets exercised in the latency sample.
+    """
     from app.core.security import create_access_token
     from app.database import SessionLocal
     from app.models.canonical_document import Document
@@ -98,6 +105,7 @@ def _seed_tenant_and_user():
     from app.models.role import Role
     from app.models.sales_order import SalesOrder
     from app.models.user import User
+    from app.models.user_space_affinity import UserSpaceAffinity
 
     db = SessionLocal()
     try:
@@ -222,6 +230,62 @@ def _seed_tenant_and_user():
                 )
             )
 
+        # Phase 8e.1 — seed a user space + affinity rows so the
+        # latency gate exercises the boost path. We attach a single
+        # space to user.preferences directly (bypasses the normal
+        # create_space flow to avoid its own seed side effects).
+        space_id = "sp_lattest00001"
+        user.preferences = {
+            "spaces": [
+                {
+                    "space_id": space_id,
+                    "name": "Latency Test Space",
+                    "icon": "home",
+                    "accent": "neutral",
+                    "display_order": 0,
+                    "is_default": True,
+                    "density": "comfortable",
+                    "is_system": False,
+                    "default_home_route": "/dashboard",
+                    "pins": [],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ],
+            "active_space_id": space_id,
+            "spaces_seeded_for_roles": ["admin"],
+        }
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(user, "preferences")
+
+        # Seed ~10 affinity rows across the 4 target_types so the
+        # prefetch + boost loop runs a realistic dict size.
+        now = datetime.now(timezone.utc)
+        affinity_seeds = [
+            ("nav_item", "/dashboard", 5),
+            ("nav_item", "/financials", 3),
+            ("nav_item", "/scheduling", 2),
+            ("saved_view", str(uuid.uuid4()), 7),
+            ("saved_view", str(uuid.uuid4()), 2),
+            ("entity_record", str(uuid.uuid4()), 4),
+            ("entity_record", str(uuid.uuid4()), 1),
+            ("triage_queue", "task_triage", 6),
+            ("triage_queue", "safety_program_triage", 2),
+            ("nav_item", "/production-hub", 8),
+        ]
+        for target_type, target_id, visit_count in affinity_seeds:
+            db.add(
+                UserSpaceAffinity(
+                    user_id=user.id,
+                    company_id=co.id,
+                    space_id=space_id,
+                    target_type=target_type,
+                    target_id=target_id,
+                    visit_count=visit_count,
+                    last_visited_at=now,
+                )
+            )
+
         db.commit()
         token = create_access_token({"sub": user.id, "company_id": co.id})
         return {
@@ -229,6 +293,7 @@ def _seed_tenant_and_user():
             "user_id": user.id,
             "token": token,
             "slug": co.slug,
+            "space_id": space_id,
         }
     finally:
         db.close()
@@ -250,31 +315,38 @@ def headers(seeded_tenant):
 # ── The gate ─────────────────────────────────────────────────────────
 
 
-def test_command_bar_p50_p99_under_budget(client, headers):
+def test_command_bar_p50_p99_under_budget(client, headers, seeded_tenant):
     """BLOCKING CI gate. Fails the test run if p50 > 100 ms or
     p99 > 300 ms on the sequential sample.
 
-    If this fails in CI, the command bar is too slow. Profile before
-    shipping.
+    Phase 8e.1 — the seeded tenant carries 10 user_space_affinity
+    rows and an active_space_id; queries pass `active_space_id` in
+    the context so the affinity prefetch + starter-template boost
+    passes are both exercised. If this fails in CI, the command bar
+    is too slow. Profile before shipping.
     """
-    # Warm-up — not counted.
-    for _ in range(_WARMUP_COUNT):
-        client.post(
+    active_space_id = seeded_tenant["space_id"]
+
+    def _post(query: str):
+        return client.post(
             "/api/v1/command-bar/query",
-            json={"query": "Dashboard"},
+            json={
+                "query": query,
+                "context": {"active_space_id": active_space_id},
+            },
             headers=headers,
         )
+
+    # Warm-up — not counted.
+    for _ in range(_WARMUP_COUNT):
+        _post("Dashboard")
 
     # Sample N calls with mixed shapes.
     durations_ms: list[float] = []
     for i in range(_SAMPLE_COUNT):
         q = _QUERY_SHAPES[i % len(_QUERY_SHAPES)]
         t0 = time.perf_counter()
-        resp = client.post(
-            "/api/v1/command-bar/query",
-            json={"query": q},
-            headers=headers,
-        )
+        resp = _post(q)
         t1 = time.perf_counter()
         # Record only successful queries — 5xx responses shouldn't
         # distort percentile math, but should also fail the test
@@ -289,7 +361,7 @@ def test_command_bar_p50_p99_under_budget(client, headers):
     diag = (
         f"p50={p50:.1f}ms p99={p99:.1f}ms "
         f"(n={_SAMPLE_COUNT}, sample min={min(durations_ms):.1f}ms "
-        f"max={max(durations_ms):.1f}ms)"
+        f"max={max(durations_ms):.1f}ms, affinity=ENABLED)"
     )
     # Emit stats into pytest output for visibility on green runs.
     print(f"\n[command-bar-latency] {diag}")

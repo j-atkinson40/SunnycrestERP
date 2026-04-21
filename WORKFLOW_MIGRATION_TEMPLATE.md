@@ -371,6 +371,27 @@ def test_override_replaces_ai_suggestion(self, ...):
 
 Backend ships the override kwarg; frontend UI for operator entry may lag (Phase 8e).
 
+#### 5.5.5 AI-generation-content-invariant parity (v2.2 — Phase 8d.1 addition)
+
+**When to use this pattern:** the migration target generates an artifact via a non-deterministic AI call (Claude generation of a document, AI-drafted content that changes per run, etc.). Traditional byte-identity parity — "legacy path and triage path produce the same output" — is unprovable because generation isn't reproducible.
+
+**The parity claim shifts:** instead of asserting AI output reproducibility, assert that the APPROVAL MECHANICS produce byte-identical downstream writes given a frozen pre-approval staging state.
+
+**Test pattern:** seed the domain entity directly in `status='pending_review'` (or equivalent) with pre-populated AI-generated fields (content, HTML, PDF pointer). Do NOT invoke the AI. Both legacy and triage approval paths then act on this frozen state and the parity assertion is on approval-time field writes.
+
+**What's testable, what's not:**
+
+| Testable (parity) | Not testable (AI non-determinism) |
+|---|---|
+| Field writes on the domain entity (status transition, reviewer stamps, posted_at, etc.) | That Claude produces the same HTML on two runs |
+| Upsert writes on the downstream canonical entity (version increment, content update) | That scraped OSHA text is stable across environments |
+| Error behavior on malformed inputs (empty reason, wrong status, etc.) | That token usage is identical |
+| Negative assertions (no write when rejected, no new document on approve) | Artifact quality / compliance content validity |
+
+**Safety Program as working example (Phase 8d.1):** `test_safety_program_migration_parity.py` seeds `SafetyProgramGeneration` with pre-populated `generated_content` + `generated_html`. Both `svc.approve_generation` and `safety_program_adapter.approve_generation` act on this frozen staging state. Parity is asserted on SafetyProgramGeneration status/reviewer fields + SafetyProgram row upsert (content, version++, reviewed_by). The generated_content is treated as opaque bytes.
+
+**The parity test MUST NOT invoke the AI service.** If the test environment has `ANTHROPIC_API_KEY` set, the AI could still be called. Guard by monkey-patching or by seeding frozen content so no code path reaches a live Claude call.
+
 ---
 
 ## 6. Latency gate requirements
@@ -462,6 +483,42 @@ Until the event infrastructure ships (future horizontal arc), migrations with ev
 
 8d+ migrations declaring event triggers inherit this convention. Flag in the migration audit under question 3 (scheduler invocation).
 
+### 7.7 Legacy APScheduler cron removal (v2.2 — Phase 8d.1 addition)
+
+**When to use this pattern:** the migration target has a dedicated APScheduler cron entry in `backend/app/scheduler.py` that calls the EXACT SAME pipeline function the adapter will wrap. Post-migration the workflow scheduler's `scheduled` dispatch will also fire the workflow — double-fire risk on the same cron tick.
+
+**Convention: remove the APScheduler cron entry** in the same commit as the workflow migration. The workflow scheduler becomes the single-owner firing path. Rationale:
+
+1. **Avoids double-fire.** Both paths writing to the same side effects (e.g., both calling `run_monthly_generation`) on the same 1st-of-month tick creates duplicate rows or race conditions.
+2. **Consolidates scheduling.** New central place to understand when a workflow fires is the workflow row's `trigger_config`, not a mix of APScheduler + workflow_scheduler code.
+3. **Enables tenant-local cron precision.** `workflow_scheduler`'s `scheduled` dispatch interprets cron in the tenant's timezone (per §7 preamble). APScheduler direct crons fire at container UTC — so migration also closes a latent TZ bug.
+
+**Alternative (accepted but less clean):** keep the APScheduler entry + switch workflow `trigger_type="manual"` + have the APScheduler job call `workflow_engine.start_run(wf_id, company_id)` instead of the pipeline function. Use this path ONLY when the APScheduler job emits observability artifacts (e.g., `job_runs` audit rows) that you want to keep alongside workflow_runs — redundancy with a reason.
+
+**Migration checklist:**
+
+- [ ] Delete `job_<agent_name>_generation()` function in `app/scheduler.py`.
+- [ ] Remove its entry from `JOB_REGISTRY` dict.
+- [ ] Remove its `scheduler.add_job(...)` block from startup init.
+- [ ] Replace all three with retirement-comment blocks pointing at the workflow row as the new single-owner path.
+- [ ] Add a unit test asserting the JOB_REGISTRY no longer contains the retired key (catches future re-adds).
+
+**Safety Program as working example (Phase 8d.1):**
+
+```python
+# app/scheduler.py — lines 272, 435, 604 all became retirement comments:
+
+# job_safety_program_generation retired — Workflow Arc Phase 8d.1.
+# The wf_sys_safety_program_gen workflow now owns the monthly firing
+# via workflow_scheduler's `scheduled` dispatch (cron="0 6 1 * *",
+# timezone="America/New_York" — tenant-local 6am, an improvement over
+# the prior APScheduler cron which fired at container-UTC). ...
+```
+
+Test: `test_phase8d1_unit.py::TestSchedulerCronRetirement::test_job_registry_has_no_safety_program_entry`.
+
+**When NOT to apply:** if the APScheduler job calls a different pipeline (e.g., `collections_sequence` in `agent_service.py` is NOT the same function as `ar_collections` agent the 8c migration wrapped — they run DIFFERENT code paths serving different operational needs, both legitimately run). Audit the function names carefully before removing.
+
 ---
 
 ## 8. Agent badge clearing (when + how)
@@ -523,24 +580,42 @@ Not in scope for 8c–8f. Revisit at 8h.
 
 ---
 
-## 10. Queue cardinality matrix (v2 — Phase 8c addition)
+## 10. Queue cardinality matrix (v2 — Phase 8c; v2.1 — Phase 8d; v2.2 — Phase 8d.1)
 
-The triage queue's "item cardinality" — what a single queue item represents — drives the direct-query shape, the action grain, and the parity-test structure. Phase 8c's three migrations surfaced four distinct cardinalities:
+The triage queue's "item cardinality" — what a single queue item represents — drives the direct-query shape, the action grain, and the parity-test structure. Phase 8c surfaced four cardinalities; Phase 8d added per-staging-row; Phase 8d.1 added per-run.
 
 | Cardinality | What the item represents | Examples | When to use |
 |---|---|---|---|
 | **per-anomaly** | One unresolved `AgentAnomaly` row. Item ID == anomaly ID. | cash_receipts (Phase 8b), expense_categorization (Phase 8c) | When the agent emits granular findings that a user approves/rejects independently. Each anomaly has clear entity linkage. |
-| **per-entity** | One business entity (customer, vendor, project) with a pending decision. Item ID == anomaly ID; the entity is denormalized via `entity_id`. | ar_collections (Phase 8c) — one item per customer with an overdue balance + drafted email. | When the agent aggregates per-entity decisions. Operator makes one yes/no per entity, not per underlying record. |
+| **per-entity** | One business entity (customer, vendor, project) with a pending decision. Item ID == anomaly ID; the entity is denormalized via `entity_id`. | ar_collections (Phase 8c) — one item per customer with an overdue balance + drafted email; aftercare (Phase 8d) — one item per funeral case. | When the agent aggregates per-entity decisions. Operator makes one yes/no per entity, not per underlying record. |
 | **per-job** | One `AgentJob` row in `awaiting_approval`. Item ID == job ID. Anomalies surface as sub-context inside the panel, not as separate items. | month_end_close (Phase 8c) | When the entire run is the approval decision — approving partially doesn't make sense. Usually coincides with full-approval (period lock) agents. |
 | **per-record** | One business record (SalesOrder, InventoryItem, etc.) flagged by the agent. Item ID == record ID. | Future 8f: `unbilled_orders` likely fits here (one-per-SalesOrder). | When the agent produces a flat list of records needing human attention, rather than anomalies off a single job. |
+| **per-staging-row** | One staging row that captures a proposed change awaiting review. Item ID == staging-row ID. Anomaly-less: the queue draws directly from the table carrying a state column (e.g., `publication_state='pending_review'`), not from `AgentAnomaly`. New state column + CHECK constraint + partial index added as part of the migration. | catalog_fetch (Phase 8d) — `UrnCatalogSyncLog` with `publication_state='pending_review'` (r39 column added). | When the migration target produces bulk proposed changes (hundreds of product upserts) that don't decompose into anomalies cleanly. Pair with a CHECK-constrained state column + partial index on the pending-review partition. |
+| **per-run** | One domain-entity row with a pre-existing state machine carrying review semantics natively. Item ID == domain-entity-row ID. Anomaly-less AND no new column needed — the migration target ALREADY has a status enum (`pending_review / approved / rejected`) predating the arc. | safety_program (Phase 8d.1) — `SafetyProgramGeneration` with `status='pending_review'` — the generation itself IS the review unit. | When the migration target's domain entity already carries its own approval-state machine. No AgentJob wrapper, no new schema column, no AgentAnomaly. Triage queue reads the domain table directly. |
+
+**When to use per-staging-row vs. per-run.** Both are anomaly-less and queue-the-domain-table patterns. The distinction:
+
+- **per-staging-row** — migration ADDS the state column. Used when the target is bulk external-data ingestion where the legacy path wrote through without review, and the migration's job is to introduce the review gate. Requires a new migration + CHECK constraint + partial index.
+- **per-run** — migration REUSES an existing state machine. Used when the target already has a review workflow built into its domain model (`draft / pending_review / approved / rejected` pre-dates the arc). Migration is purely a UX change: bespoke review UI → triage UI. No schema change needed.
+
+**Safety Program as working example of per-run (Phase 8d.1):** `SafetyProgramGeneration.status` was a 4-state machine added at feature-build time (r15_safety_program_generation). Pre-8d.1, the operator reviewed via bespoke `/safety/programs` UI. Phase 8d.1 adds `safety_program_triage` as an alternate canonical path reading from the same column. No new column, no new machine — just an alternate UX surface over existing state. The bespoke UI remains operational (legacy coexistence).
+
+**When to use per-run.** If a code audit (question 7 — "Anomaly structure") reveals the target agent:
+- Creates NO AgentAnomaly rows.
+- Has a dedicated domain-entity table with a status enum covering the review state.
+- Already has bespoke review UI that transitions the state.
+
+Then the answer is per-run. Add a `_dq_<name>_triage` direct-query reading the domain table directly; adapter action functions take the domain entity's `id` as the item identifier.
 
 ### Choosing a cardinality
 
-Ask: "What does a single approval decision cover?"
+Ask first: "What does a single approval decision cover?"
 - If the answer is "one finding" → **per-anomaly**.
 - If the answer is "one business counterparty across all their findings" → **per-entity**.
 - If the answer is "the whole run at once" → **per-job**.
 - If the answer is "one record at a time" → **per-record**.
+- If the answer is "a batch of proposed writes from an external source" → **per-staging-row** (migration ADDS the state column).
+- If the answer is "one generation run, decided as a whole, and the domain already has a review-status machine" → **per-run** (migration REUSES the existing state machine).
 
 ### Impact on the direct-query shape
 
@@ -563,6 +638,8 @@ The adapter's action functions take an identifier matching the queue's cardinali
 - per-anomaly / per-entity: `action(db, *, user, anomaly_id, ...)`
 - per-job: `action(db, *, user, agent_job_id, ...)`
 - per-record: `action(db, *, user, record_id, ...)`
+- per-staging-row: `action(db, *, user, sync_log_id, ...)` (catalog_fetch)
+- per-run: `action(db, *, user, generation_id, ...)` (safety_program)
 
 ### Impact on parity-test fan-out
 
@@ -735,6 +812,22 @@ Alternatives:
 - **Seed script:** `backend/scripts/seed_triage_phase8c.py` (3 AI prompts, Option A idempotent)
 - **Playwright E2E:** `frontend/tests/e2e/workflow-arc-phase-8c.spec.ts`
 
+### Phase 8d.1 — Safety Program (AI-generation-with-approval, per-run cardinality)
+
+- **Parity adapter:** `backend/app/services/workflows/safety_program_adapter.py` — delegates to `safety_program_generation_service` verbatim; no AgentJob wrapper; per-run cardinality
+- **Workflow seed:** `TIER_1_WORKFLOWS` entry `wf_sys_safety_program_gen` — single `call_service_method` step → `safety_program.run_generation_pipeline`, `trigger_type="scheduled"`, `cron="0 6 1 * *"`, `timezone="America/New_York"`
+- **Triage direct query:** `_dq_safety_program_triage` — reads `SafetyProgramGeneration WHERE status='pending_review'` directly; no AgentJob lookup
+- **Related entities builder:** `_build_safety_program_related` — 5-entity payload (generation, topic, OSHA scrape, prior program, generated PDF with presigned URL)
+- **Action handlers:** `safety_program.approve` / `reject` / `request_review`
+- **Platform default config:** `_safety_program_triage` with AI panel INCLUDED (first migration-arc AI panel on AI-generated artifacts); 4 suggested questions
+- **AI prompt:** `triage.safety_program_context_question` (seeded by `seed_triage_phase8d1.py`)
+- **Scheduler retirement:** `backend/app/scheduler.py` `job_safety_program_generation` + `JOB_REGISTRY` entry + `add_job` block ALL retired with explanatory comments (§7.7 convention)
+- **BLOCKING parity test:** `backend/tests/test_safety_program_migration_parity.py` — **13 tests across 9 categories** including AI-generation-content-invariant (§5.5.5), version-increment identity, no-document-re-render, cross-tenant isolation
+- **BLOCKING latency gates:** `backend/tests/test_safety_program_triage_latency.py` — 2 gates (next_item + apply_action)
+- **Unit tests:** `backend/tests/test_phase8d1_unit.py` (16 tests covering registry wiring + queue shape + scheduler retirement)
+- **Playwright E2E:** `frontend/tests/e2e/workflow-arc-phase-8d1.spec.ts` — 6 scenarios
+- **No new DB migration.** Uses existing `SafetyProgramGeneration.status` enum — r15's status machine was pre-existing.
+
 ---
 
 ## 15. Latent bugs surfaced during Phases 8b/8b.5/8c (flagged for separate sessions)
@@ -751,6 +844,10 @@ Not 8b's scope, but discovered during the audit:
 5. **Event trigger type declared but not dispatched** (flagged in Phase 8c). Workflows declaring `trigger_type="event"` never fire — no event subscription registry exists. `expense_categorization` worked around this by switching to `trigger_type="scheduled"` + `*/15 * * * *` cron. Future horizontal arc builds proper event infrastructure.
 6. **Month-end-close statement-run rollback gap** (flagged in Phase 8c). `_trigger_statement_run` catches exceptions and still proceeds to the period lock, potentially leaving partial statement rows + locked period in inconsistent state. See §11 for the documentation pattern. Dedicated cleanup session with transaction-boundary refactor.
 
+**Added in Phase 8d.1:**
+
+7. **`safety_program_generations.pdf_document_id` FK still points at `documents_legacy` (Phase D-1 migration gap).** The Phase D-1 canonical-documents rewrite renamed the old `documents` table to `documents_legacy` and created a new canonical `documents` table. The `safety_program_generations.pdf_document_id` FK was not repointed — today it still reads `FOREIGN KEY (pdf_document_id) REFERENCES documents_legacy(id)`. Production's `generate_pdf` writes to the canonical `documents` table (170 rows on dev), then tries to stamp `gen.pdf_document_id` and fails the FK check (`documents_legacy` has 0 rows — nothing to match). The exception is swallowed by `run_monthly_generation`'s non-fatal try/except. Net effect: production safety-program PDFs are created but never linked back to their generation row; the bespoke UI shows pending_review rows without a downloadable PDF until someone hits the manual `/regenerate-pdf` endpoint (which would also fail). A post-arc cleanup session needs an Alembic migration that drops the old FK and creates a new one targeting `documents(id)`. **NOT a Phase 8d.1 scope item** — flagged separately for a D-model hygiene session.
+
 ---
 
 ## 16. Template changelog
@@ -762,4 +859,15 @@ Not 8b's scope, but discovered during the audit:
   - **§10 (NEW):** Queue cardinality matrix (per-anomaly / per-entity / per-job / per-record).
   - **§11 (NEW):** Rollback-gap documentation convention, with month_end_close as the working example.
   - §15: three new latent bugs cataloged.
-- _Future updates land at the end of each phase (8d, 8e, 8f, ...) as patterns evolve._
+- **2026-04-21 (Phase 8d complete) — v2.1:** Two vertical workflow migrations (aftercare, catalog_fetch) + r36 scope-backfill fix. Minor additions:
+  - §10: fifth cardinality added — **per-staging-row** for external-data-ingestion flows (catalog_fetch as the working example). Use when the "finding" is a batch of proposed writes rather than a single anomaly.
+  - **NEW PATTERN — triage-gated external ingestion:** extend the staging table with a CHECK-constrained `publication_state` column (`pending_review / published / rejected / superseded`) + partial index on pending-review. The adapter's approve path calls the legacy upsert unchanged against staged bytes. catalog_fetch is the reference implementation.
+  - **NEW PATTERN — phantom-template seeding:** when a pre-8d workflow references a `template="..."` key that doesn't exist in the D-2 registry (silent no-op bug), the migration must seed the template via a dedicated r-migration before refactoring the seed to `call_service_method`. Aftercare + r40_aftercare_email_template is the reference.
+  - **NEW CONVENTION — scope re-validation on tier-1 migrations:** every Phase 8d+ migration must check whether the workflow it's touching has `tier=1 AND vertical IS NOT NULL` — if so, verify scope is correctly set to `'vertical'` and not `'core'` (r36's bug). r38 corrected 10 pre-existing rows; new seeds must land with the correct scope from day one.
+  - **Deferred — Phase 8d.1:** wf_sys_safety_program_gen earns its own reconnaissance because it exercises AI-generation-with-approval-gating, a shape no prior migration has touched.
+- **2026-04-21 (Phase 8d.1 complete) — v2.2:** Safety program migration — reconnaissance for **AI-generation-with-approval** shape. Major additions:
+  - **§5.5.5 (NEW):** AI-generation-content-invariant parity pattern. When AI generation is non-deterministic, the parity claim shifts from artifact identity to approval-mechanics identity. Seed the domain entity in `pending_review` state with pre-populated AI content; both paths act on the frozen staging state; tests assert field-level writes. safety_program as reference implementation.
+  - **§7.7 (NEW):** Legacy APScheduler cron removal convention. When the migration target has a dedicated APScheduler cron calling the exact same pipeline function the adapter wraps, remove the APScheduler cron entry to avoid double-fire. Workflow scheduler becomes the single-owner firing path with the bonus of tenant-local TZ precision.
+  - §10: sixth cardinality added — **per-run** for migration targets whose domain entity already has an approval-state machine predating the arc. No new schema column, no AgentJob wrapper — the triage queue reads the domain table directly. safety_program's `SafetyProgramGeneration.status` is the reference; distinct from per-staging-row (which ADDS the state column) by the pre-existence criterion.
+  - **NEW PATTERN — AI panel on AI-generated artifacts:** when the migration target is itself AI-generated content being reviewed for compliance/quality, AI-assisted review via the AI_QUESTION context panel is the natural UX. Prompt grounds in related entities that enable comparison (prior version for year-over-year diff, source material for ground-truthing). safety_program's prompt + `_build_safety_program_related` with 5-entity payload (generation, topic, OSHA scrape, prior program, generated PDF) is the reference.
+- _Future updates land at the end of each phase (8e, 8f, ...) as patterns evolve._

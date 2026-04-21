@@ -17,6 +17,7 @@ from app.api.routes import (
     spaces,
     nl_creation,
     peek,
+    portal,
     tasks,
     triage,
     ai_settings,
@@ -195,6 +196,11 @@ v1_router.include_router(
 )
 # Spaces — Phase 3 of UI/UX Arc. Per-user workspace contexts.
 v1_router.include_router(spaces.router, prefix="/spaces", tags=["Spaces"])
+# Phase 8e.2 — portal endpoints (both public + portal-authed).
+# Path segment carries the tenant slug so portal URLs are identity-
+# tight (no X-Company-Slug header dependency). See
+# SPACES_ARCHITECTURE.md §10.
+v1_router.include_router(portal.router, prefix="/portal", tags=["Portal"])
 # NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
 v1_router.include_router(
     nl_creation.router, prefix="/nl-creation", tags=["NL Creation"]
