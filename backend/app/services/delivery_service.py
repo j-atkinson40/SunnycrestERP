@@ -98,7 +98,22 @@ def get_driver(db: Session, driver_id: str, company_id: str) -> Driver | None:
     )
 
 
-def get_driver_by_employee(db: Session, employee_id: str, company_id: str) -> Driver | None:
+# Phase 8e.2.1 — get_driver_by_employee retired. Driver identity
+# resolves via portal_user_id going forward (see
+# app.services.portal.user_service.resolve_driver_for_portal_user).
+# Kept as a deprecation stub only because one caller in
+# routes/extensions.py was rewritten to the portal path; removing
+# the function entirely would orphan any straggler imports during
+# the transition.
+def get_driver_by_employee(db: Session, employee_id: str, company_id: str) -> "Driver | None":  # noqa: F821
+    import warnings
+
+    warnings.warn(
+        "get_driver_by_employee is retired (Phase 8e.2.1). Use "
+        "portal.user_service.resolve_driver_for_portal_user.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return (
         db.query(Driver)
         .filter(Driver.employee_id == employee_id, Driver.company_id == company_id)

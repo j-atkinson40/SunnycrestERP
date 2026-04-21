@@ -519,3 +519,50 @@ Plus **3 Playwright smoke tests** at `frontend/tests/e2e/portal-phase-8e2.spec.t
 3. No DotNav, no command bar, no settings in portal shell (architectural boundary)
 
 Full Phase 1–8e.2 backend regression: **379 tests passing, no regressions.** Migration head advances `r41_user_space_affinity` → `r42_portal_users` → `r43_portal_password_email_template`.
+
+### 10.13 Phase 8e.2.1 — portal completion (the driver portal, end to end)
+
+Phase 8e.2.1 closes the items deferred in §10.11. The architecture doesn't change; it gets filled in. Three things ship:
+
+**1. Tenant-admin surfaces for managing portals.** Two new settings pages — `/settings/portal-users` and `/settings/portal-branding` — backed by a new `/api/v1/portal/admin/*` router. These are **tenant-realm** (JWT `realm="tenant"` + `require_admin`), distinct from `/api/v1/portal/*` (which is portal-realm and portal-user-facing). The realm separation is the same boundary Phase 8e.2 established: only tenant admins provision portal users; portal users themselves never reach the admin endpoints. The routing split is explicit — `portal_admin.router` is mounted BEFORE `portal.router` in `api/v1.py` so the parameterized `/{tenant_slug}/…` routes in the public portal don't swallow `/admin/*` by matching `tenant_slug="admin"`.
+
+Admin user CRUD: list (with status + space filters), invite (POST, 201), edit (PATCH), deactivate, reactivate, unlock, reset-password, resend-invite. Email dispatch rides D-7's `send_email_with_template` with two separate managed templates — `email.portal_invite` (r45) is onboarding-flavored, distinct from the existing `email.portal_password_recovery`. Admin branding: GET + PATCH (brand_color + footer_text) + POST /branding/logo (PNG or JPG only, ≤2 MB, 50–1024 px dimensions, Pillow-verified). SVG logos are explicitly rejected for safety (future polish can add sanitization).
+
+**2. Driver page completion.** The 4 remaining driver pages mount at `/portal/<slug>/driver/{route,stops/:stopId,mileage}` + the auth-flow reset page at `/portal/<slug>/reset-password`. The backend ships thin-router mirrors at `/portal/drivers/me/{route,stops/{id},stops/{id}/status,stops/{id}/exception,mileage}` — each one follows the canonical thin-router-over-service pattern (§10.7): resolve `portal_user → Driver via portal_user_id` then delegate to the existing `driver_mobile_service`. **Zero duplication** of route-loading or stop-status logic. The portal routes enforce driver-scoped isolation: cross-driver stop access 404s, cross-tenant access 404s (tenant context comes from the portal JWT — there's no X-Company-Slug sidechannel on portal-authed endpoints). `OfflineBanner` from Phase 7 is mounted inside `PortalLayout` (not the top-level PortalApp) so it only renders in the authed shell.
+
+**3. Dual-identity migration for `Driver`.** Pre-8e.2.1 drivers linked to a tenant `User` via `drivers.employee_id` (NOT NULL). Post-8e.2.1, `employee_id` is nullable (migration **r44**) and `portal_user_id` is the canonical path forward. Both paths coexist during the migration window — legacy `employee_id`-only drivers continue to read cleanly; new drivers auto-create via the portal invite flow. **Actual column drop is deferred** to a latent-bug cleanup session; a test guarantees `is_nullable='YES'` is the post-r44 schema invariant. `widget_data.team_driver_performance` was rewritten from an INNER JOIN on `employee_id` to a two-lookup pattern that resolves display name from either `employees` OR `portal_users` — the widget now shows every active driver regardless of identity path.
+
+**Auto-create Driver on invite (narrow scope).** `user_service._is_driver_space_template` checks the admin's assigned-space JSONB for a space named literally `"Driver"` (case-insensitive). Only that exact match triggers `_maybe_auto_create_driver_row`, which inserts a `Driver` row with `employee_id=NULL + portal_user_id=<new portal user>`. Future operational portals (yard_operator, removal_staff, family, supplier) will not accidentally become drivers — the predicate is deliberately narrow.
+
+**Legacy `POST /api/v1/delivery/drivers` retired.** The tenant-admin create-driver endpoint was deleted. The portal invite flow is the only path for creating a new Driver row going forward. Manual `Driver` table inserts are still permitted for data migrations and tests; the HTTP-addressable surface is gone.
+
+**Test coverage:** 31 new tests in `tests/test_portal_phase8e21.py` across 8 test classes:
+
+- `TestAdminListAndInvite` × 5 (empty list, invite creates pending, duplicate email 409, status-filter correctness, non-admin 403)
+- `TestAutoCreateDriverOnInvite` × 2 (driver-space triggers auto-create, non-driver-space does not)
+- `TestAdminLifecycleActions` × 5 (edit, deactivate+reactivate cycle, unlock clears lockout, reset-password stamps token, resend-invite pending-only)
+- `TestBrandingAdmin` × 3 (read, patch, invalid-hex 422)
+- `TestLogoUpload` × 6 (SVG reject, empty reject, too-small reject, too-large reject, corrupt bytes reject, JPG happy path)
+- `TestLegacyCreateDriverRetired` × 1 (POST /delivery/drivers returns 404 or 405)
+- `TestPortalDriverDataMirror` × 8 (route shell when none, route with rows, 404 for unlinked, cross-driver stop 404, patch status, exception, mileage happy path, mileage end<start 400)
+- `TestAdminRoutesCrossRealm` × 1 (portal token rejected on `/portal/admin/users`)
+
+Plus **7 Playwright mobile scenarios** at `frontend/tests/e2e/portal-phase-8e21.spec.ts` (run under the Pixel 5 project in `playwright.config.ts`):
+1. Driver route page renders mobile stop list
+2. Stop detail allows marking delivered
+3. Mileage page validates end≥start + navigates on success
+4. Reset-password page renders branded with token param
+5. Reset-password without token renders a helpful error
+6. Mobile touch targets on stop detail meet 44px WCAG 2.2 minimum
+7. OfflineBanner appears on offline event in portal shell
+
+**Migration head advances** `r43_portal_password_email_template` → `r44_drivers_employee_id_nullable` → `r45_portal_invite_email_template`.
+
+### 10.14 Deferred to post-8e.2.1
+
+- Actual drop of `drivers.employee_id` column (latent-bug cleanup session after full production drift settles)
+- Invite vs. recovery token column consolidation (`recovery_token` reused for both today — clean split is post-arc polish)
+- Mobile touch-target audit beyond stop detail (lint-style coverage on every interactive element in the portal shell)
+- Vehicle inspection page (mentioned in §10.11 but not shipped this phase — not blocking James dogfood, surfaces when the pre-trip-inspection workflow lands)
+- Tenant-logo SVG support with server-side sanitization
+

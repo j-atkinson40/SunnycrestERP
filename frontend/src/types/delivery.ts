@@ -49,8 +49,16 @@ export interface PaginatedVehicles {
 export interface Driver {
   id: string;
   company_id: string;
-  employee_id: string;
+  // Phase 8e.2.1 — dual-identity during transition window.
+  // `employee_id` is legacy (pre-8e.2.1 tenant-user drivers);
+  // `portal_user_id` is the canonical identity for new drivers.
+  // Exactly one is populated per row in production. Column drop
+  // + single-identity simplification lands in the latent-bug
+  // cleanup session after prod is verified empty.
+  employee_id: string | null;
   employee_name: string | null;
+  portal_user_id: string | null;
+  portal_user_name: string | null;
   license_number: string | null;
   license_class: string | null;
   license_expiry: string | null;
@@ -61,8 +69,14 @@ export interface Driver {
   modified_at: string | null;
 }
 
+/**
+ * @deprecated Phase 8e.2.1 retired the tenant-admin create-driver
+ * flow. New drivers flow through `/settings/portal-users` → portal
+ * invite → auto-create Driver. This interface is kept for
+ * backward compatibility with any remaining imports.
+ */
 export interface DriverCreate {
-  employee_id: string;
+  employee_id?: string | null;
   license_number?: string | null;
   license_class?: string | null;
   license_expiry?: string | null;

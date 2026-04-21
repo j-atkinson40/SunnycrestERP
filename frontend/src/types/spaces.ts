@@ -24,6 +24,11 @@ export type DensityName = "comfortable" | "compact";
 
 export type PinType = "saved_view" | "nav_item" | "triage_queue";
 
+// Phase 8e.2 — portal-as-space-with-modifiers. See
+// SPACES_ARCHITECTURE.md §10.1.
+export type AccessMode = "platform" | "portal_partner" | "portal_external";
+export type WriteMode = "full" | "limited" | "read_only";
+
 // ── Pin ─────────────────────────────────────────────────────────────
 
 export interface ResolvedPin {
@@ -64,6 +69,12 @@ export interface Space {
   // deliberately skip this navigation — rapid-switching across
   // spaces shouldn't fling between routes.
   default_home_route?: string | null;
+  // Phase 8e.2 — portal modifier fields. Default `platform / false /
+  // full / null` for legacy spaces (backend `from_dict` defaults).
+  access_mode?: AccessMode;
+  tenant_branding?: boolean;
+  write_mode?: WriteMode;
+  session_timeout_minutes?: number | null;
   pins: ResolvedPin[];
   created_at: string | null;
   updated_at: string | null;

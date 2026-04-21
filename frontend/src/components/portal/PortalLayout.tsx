@@ -20,6 +20,7 @@
 
 import { Outlet, useNavigate } from "react-router-dom";
 
+import { OfflineBanner } from "@/components/core/OfflineBanner";
 import { usePortalAuth } from "@/contexts/portal-auth-context";
 import { usePortalBrand } from "@/contexts/portal-brand-context";
 
@@ -30,6 +31,12 @@ export function PortalLayout() {
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-base">
+      {/* Phase 8e.2.1 — drivers in the field work on flaky cell signal.
+          The Phase 7 OfflineBanner is mounted here (not at PortalApp
+          root) so it only renders inside the authed shell, after the
+          user has a valid portal session. */}
+      <OfflineBanner />
+
       {/* Header — tenant-branded. Background is the tenant's brand
           color; foreground is contrast-safe. Height matches the
           pre-existing DriverLayout (h-12 = 48px) which is WCAG 2.2

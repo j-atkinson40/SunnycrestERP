@@ -104,9 +104,18 @@ export const deliveryService = {
     return response.data;
   },
 
-  async createDriver(data: DriverCreate): Promise<Driver> {
-    const response = await apiClient.post<Driver>("/delivery/drivers", data);
-    return response.data;
+  /**
+   * @deprecated Phase 8e.2.1 — POST /delivery/drivers endpoint
+   * removed. Driver creation now flows through /settings/portal-
+   * users → portal invite → auto-create Driver. This method will
+   * throw a 404 if called.
+   */
+  async createDriver(_data: DriverCreate): Promise<Driver> {
+    throw new Error(
+      "createDriver is retired. Invite a portal user via " +
+        "/settings/portal-users; a Driver row is auto-created when " +
+        "the invite's assigned_space_id is a driver space.",
+    );
   },
 
   async updateDriver(id: string, data: DriverUpdate): Promise<Driver> {

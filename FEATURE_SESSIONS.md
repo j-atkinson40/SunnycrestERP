@@ -6,6 +6,76 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Workflow Arc Phase 8e.2.1 — Portal Completion (driver portal end to end)
+
+**Date:** 2026-04-21
+**Migration head:** `r43_portal_password_email_template` → `r44_drivers_employee_id_nullable` → `r45_portal_invite_email_template` (2 new).
+**Arc:** Workflow Arc Phase 8e.2.1. Sequence: 8e → 8e.1 → 8e.2 → **8e.2.1 (now)** → Aesthetic 4–5 → 8f → 8g → Aesthetic 6 → cleanup → 8h.
+**Tests passing:** 31 new in `test_portal_phase8e21.py` + 7 Playwright mobile scenarios. Full portal regression (8e.2 + 8e.2.1): **58/58 passing.** Full Phase 8a–8e.2.1 backend regression run after landing (target: **zero regressions**).
+
+### What this session completed
+
+Phase 8e.2 shipped the portal foundation as a reconnaissance slice — enough to validate portal-as-space-with-modifiers end-to-end but explicitly deferring the admin UI, branding editor, the 4 remaining driver pages, and the auth-flow password-set page. Phase 8e.2.1 closes those deferrals. **The James dogfood flow ("log in at sunnycrest.getbridgeable.com/portal/sunnycrest, see today's route, mark a stop delivered, submit mileage") works end-to-end on first invocation.**
+
+### Per-component summary
+
+**Backend:**
+- `app/services/portal/user_service.py` — 7 new admin CRUD functions (`list_portal_users_for_tenant`, `update_portal_user_profile`, `deactivate/reactivate/unlock_portal_user`, `issue_admin_reset_password`, `resend_invite`) + `PortalUserSummary` dataclass + `_is_driver_space_template` / `_maybe_auto_create_driver_row` helpers. `invite_portal_user` now calls auto-create when the assigned space is named literally "Driver" (case-insensitive).
+- `app/api/routes/portal_admin.py` — new ~540-line router at `/api/v1/portal/admin/*`. Registered BEFORE the public `portal.router` in `api/v1.py` so the parameterized `/{tenant_slug}/…` routes don't swallow `/admin/*` by matching `tenant_slug="admin"`. 13 endpoints: list/invite/edit/deactivate/reactivate/unlock/reset-password/resend-invite for users + GET/PATCH branding + POST /branding/logo. Logo upload validates PNG/JPG only (SVG rejected), ≤2 MB, 50–1024 px, Pillow-verified. Uses `legacy_r2_client.upload_bytes` with stable key `tenants/{company_id}/portal/logo.{ext}`.
+- `app/api/routes/portal.py` — 5 new driver-data mirror endpoints at `/portal/drivers/me/{route,stops/{id},stops/{id}/exception,stops/{id}/status,mileage}`. Each follows the canonical thin-router-over-service pattern: resolve `portal_user → Driver via portal_user_id` via `resolve_driver_for_portal_user`, then delegate to `driver_mobile_service`. Zero duplication.
+- `app/models/driver.py` — `employee_id` relaxed to `Mapped[str | None]` (nullable). Actual column drop deferred to latent-bug cleanup.
+- `app/services/delivery_service.py::get_driver_by_employee` — deprecation stub that returns the old behavior with a `DeprecationWarning`.
+- `app/api/routes/deliveries.py` — POST /delivery/drivers endpoint removed (the legacy tenant-admin create-driver path). `list_drivers` rewritten to enrich from both employee + portal_user paths.
+- `app/api/routes/widget_data.py::team_driver_performance` — rewritten from INNER JOIN on `employee_id` to LEFT JOIN both identity paths; widget now shows every active driver regardless of identity type.
+- Migration **r44_drivers_employee_id_nullable** — logs driver counts at upgrade time ("total / with_employee_id / with_portal_user_id"), flips NOT NULL → nullable, downgrade restores NOT NULL only if no NULL rows exist (safety gate).
+- Migration **r45_portal_invite_email_template** — seeds `email.portal_invite` via D-7 idempotent pattern. Subject "Welcome to the {{ tenant_name }} driver portal"; onboarding body distinct from password recovery.
+
+**Frontend:**
+- `frontend/src/types/portal-admin.ts` — new shapes: `PortalUserStatus` literal, `PortalUserSummary`, `PortalUsersListResponse`, `InvitePortalUserBody`, `EditPortalUserBody`, `PortalBrandingResponse`, `BrandingPatchBody`, `LogoUploadResponse`.
+- `frontend/src/services/portal-admin-service.ts` — uses shared tenant `apiClient` (tenant JWT). 11 methods matching backend endpoints.
+- `frontend/src/pages/settings/PortalUsersSettings.tsx` — ~400-line admin page. Status filter, table via Session 3 primitives (Table + StatusPill + DropdownMenu), per-row action menu, InviteDialog filtering space options to portal spaces only.
+- `frontend/src/pages/settings/PortalBrandingSettings.tsx` — ~300-line branding editor. Logo upload with preview + validation feedback, 8 color swatches + hex input, live preview pane that temporarily applies `--portal-brand` CSS var (cleanup on unmount), footer text editor. FormSection/FormStack layout.
+- `frontend/src/services/portal-service.ts` — 5 new portal-realm methods: `fetchTodayRoute`, `fetchStop`, `markStopException`, `updateStopStatus`, `submitMileage` using `_portalAxios()`.
+- `frontend/src/pages/portal/PortalDriverRoute.tsx` — mobile-first stop list with 88 px touch targets per row, StatusPill per stop, Log mileage button, offline error handling.
+- `frontend/src/pages/portal/PortalStopDetail.tsx` — stop detail with address/contacts, 3 h-12 action buttons (Mark delivered/arrived/Report exception), exception dialog with Select + Textarea, Google Maps deep link, offline toasts.
+- `frontend/src/pages/portal/PortalMileage.tsx` — start/end mileage inputs (type="number" inputMode="decimal" font-plex-mono for digits), live delta display, notes textarea, inline validation.
+- `frontend/src/pages/portal/PortalResetPassword.tsx` — branded reset page at `/portal/:slug/reset-password?token=...`. Token-gated (no auth required), 8-char min password + confirmation, success navigates to login after 2 s.
+- `frontend/src/components/portal/PortalLayout.tsx` — OfflineBanner mounted inside the authed shell (not the top-level PortalApp).
+- `frontend/src/PortalApp.tsx` — route tree extended: `/portal/:slug/reset-password` + `/portal/:slug/driver/{route,stops/:stopId,mileage}`.
+- `frontend/src/App.tsx` — `/settings/portal-users` + `/settings/portal-branding` registered under an `adminOnly` guard.
+- `frontend/src/services/delivery-service.ts::createDriver` — now throws an error directing callers to `/settings/portal-users` (portal invite is the only path forward).
+
+**Tests:**
+- 31 new backend in `backend/tests/test_portal_phase8e21.py` (8 test classes, covered in SPACES_ARCHITECTURE §10.13)
+- 7 new Playwright mobile scenarios in `frontend/tests/e2e/portal-phase-8e21.spec.ts`
+- `test_portal_phase8e2.py::TestDriverDualIdentityInvariant` evolved: 3 new tests covering legacy-employee driver readability, portal-driver canonical shape, `employee_id` nullable invariant post-r44.
+
+### Architectural discipline
+
+Two details deserve flagging because they'd otherwise look like corner-cut decisions:
+
+**1. Router mount order in `api/v1.py`.** `portal_admin.router` now mounts BEFORE `portal.router`. FastAPI uses first-match routing. The public portal's `@router.get("/{tenant_slug}/branding")` would otherwise match `/portal/admin/branding` with `tenant_slug="admin"` — returning "Portal not found" for `admin` (no such tenant). Tests caught it immediately; fix is a two-line reorder with an explanatory comment. No regression to §10.4 path-scoped routing.
+
+**2. Auto-create Driver is name-scoped to "Driver" only.** The predicate in `_is_driver_space_template` checks the admin-user's assigned-space JSONB for `name == "Driver"` (case-insensitive). Yard-operator, removal-staff, family, and supplier portals (future) will NOT accidentally become drivers — the predicate is deliberately narrow. When a new operational portal type lands, it adds its own explicit predicate (or the predicate grows a registry — whichever fits the portal shape better).
+
+### James dogfood flow (end-to-end smoke — manual, not automated)
+
+The reason for locking this phase on the latency budget of "works on first invocation":
+
+1. James (tenant admin at Sunnycrest) visits `/settings/portal-users`
+2. Clicks "Invite portal user" → fills email + first/last + selects the "Driver" space → submits
+3. Backend auto-creates a Driver row (portal_user_id populated, employee_id=NULL), fires `email.portal_invite` via D-7, returns 201
+4. Email arrives with a branded link to `https://sunnycrest.getbridgeable.com/portal/sunnycrest/reset-password?token=…`
+5. Driver clicks the link on iPhone — PortalResetPassword renders with Sunnycrest logo + brand color
+6. Driver sets password, gets redirected to login, signs in
+7. Lands on PortalDriverHome showing today's stops count
+8. Taps "Log mileage" → fills start + end → submits → navigates back to Route
+9. Taps a stop → "Mark delivered" → status pill flips, mark-delivered button disables
+
+This flow exercises every 8e.2.1 endpoint + every new page + the D-7 email template + r44 migration + r45 seed + the auto-create path. No part of it short-circuits via stubbing.
+
+---
+
 ## Workflow Arc Phase 8e.2 — Portal Foundation with MFG driver reconnaissance
 
 **Date:** 2026-04-21

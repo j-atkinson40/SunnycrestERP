@@ -59,8 +59,13 @@ class PaginatedVehicles(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# Phase 8e.2.1 — DriverCreate retained ONLY for schema-module
+# backward compatibility with any remaining imports; POST /delivery/
+# drivers endpoint removed. Fields kept with employee_id optional
+# so the schema can construct but shouldn't be used for new writes.
+# Actual removal lands in the latent-bug cleanup session.
 class DriverCreate(BaseModel):
-    employee_id: str
+    employee_id: str | None = None  # retired — portal invite path instead
     license_number: str | None = None
     license_class: str | None = None
     license_expiry: date | None = None
@@ -80,8 +85,12 @@ class DriverUpdate(BaseModel):
 class DriverResponse(BaseModel):
     id: str
     company_id: str
-    employee_id: str
+    # Phase 8e.2.1 — employee_id nullable; portal_user_id is the
+    # canonical identity for new drivers.
+    employee_id: str | None = None
     employee_name: str | None = None
+    portal_user_id: str | None = None
+    portal_user_name: str | None = None
     license_number: str | None = None
     license_class: str | None = None
     license_expiry: date | None = None

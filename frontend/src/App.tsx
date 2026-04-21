@@ -49,6 +49,8 @@ import TriagePage from "@/pages/triage/TriagePage";
 import BriefingPage from "@/pages/briefings/BriefingPage";
 import BriefingPreferencesPage from "@/pages/settings/BriefingPreferences";
 import SpacesSettings from "@/pages/settings/SpacesSettings";
+import PortalUsersSettings from "@/pages/settings/PortalUsersSettings";
+import PortalBrandingSettings from "@/pages/settings/PortalBrandingSettings";
 import SavedOrdersPage from "@/pages/settings/SavedOrders";
 import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
@@ -635,6 +637,23 @@ export default function App() {
                     path="/settings/spaces"
                     element={<SpacesSettings />}
                   />
+
+                  {/* Phase 8e.2.1 — tenant-admin surfaces for managing
+                      portal users + tenant-branded portal chrome. Both
+                      gated adminOnly because portal-user management
+                      affects who can access external driver accounts,
+                      and branding changes affect every FH/cemetery
+                      rep who sees the tenant's logo in their email. */}
+                  <Route element={<ProtectedRoute adminOnly />}>
+                    <Route
+                      path="/settings/portal-users"
+                      element={<PortalUsersSettings />}
+                    />
+                    <Route
+                      path="/settings/portal-branding"
+                      element={<PortalBrandingSettings />}
+                    />
+                  </Route>
 
                   {/* Products — core feature, no module gate */}
                   <Route

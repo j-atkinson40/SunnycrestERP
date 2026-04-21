@@ -138,26 +138,30 @@ def list_drivers(
     items, total = delivery_service.list_drivers(
         db, current_user.company_id, active_only=active_only, page=page, per_page=per_page
     )
-    # Enrich with employee name
+    # Phase 8e.2.1 — enrich with either legacy employee_name OR
+    # portal_user_name depending on which identity the driver row
+    # uses. Portal-authed drivers are the canonical path forward;
+    # employee-linked drivers remain readable during the transition
+    # window (until column drop in latent-bug cleanup session).
     result_items = []
     for d in items:
         resp = DriverResponse.model_validate(d)
         if d.employee:
             resp.employee_name = f"{d.employee.first_name} {d.employee.last_name}"
+        if d.portal_user is not None:
+            resp.portal_user_name = (
+                f"{d.portal_user.first_name} {d.portal_user.last_name}"
+            )
         result_items.append(resp)
     return {"items": result_items, "total": total, "page": page, "per_page": per_page}
 
 
-@router.post("/drivers", response_model=DriverResponse, status_code=201)
-def create_driver(
-    data: DriverCreate,
-    db: Session = Depends(get_db),
-    _module: User = Depends(require_module(MODULE)),
-    current_user: User = Depends(require_permission("drivers.create")),
-):
-    return delivery_service.create_driver(
-        db, current_user.company_id, data.model_dump(exclude_none=True)
-    )
+# Phase 8e.2.1 — POST /delivery/drivers retired. Driver creation now
+# flows through /settings/portal-users → portal invite → auto-create
+# Driver on invite (when assigned_space_id matches a driver space).
+# The previous tenant-admin "create driver by employee" surface is
+# dead code. Future removal of DriverCreate schema + the remaining
+# `employee_id` vestiges lands in the latent-bug cleanup session.
 
 
 @router.get("/drivers/{driver_id}", response_model=DriverResponse)

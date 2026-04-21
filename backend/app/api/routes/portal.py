@@ -406,6 +406,300 @@ def read_driver_summary(
     )
 
 
+# ── Phase 8e.2.1 — portal driver-data mirror endpoints ──────────────
+#
+# Thin routers over the existing `driver_mobile_service`. Portal
+# token → portal_user → Driver → same business logic as the tenant-
+# authed /driver/* endpoints. Canonical thin-router-over-service
+# pattern (SPACES_ARCHITECTURE.md §10.7).
+#
+# Endpoint shape mirrors `routes/driver_mobile.py` under the
+# `/portal/drivers/me/*` namespace. Adjacent to the Phase 8e.2
+# `/portal/drivers/me/summary` that proved the pattern.
+
+
+class _PortalRouteStopShape(BaseModel):
+    """Lean per-stop response for portal driver UI. Matches the
+    DeliveryStop fields the mobile driver pages actually display."""
+
+    id: str
+    sequence_number: int | None = None
+    status: str
+    status_label: str | None = None
+    address: str | None = None
+    customer_name: str | None = None
+    notes: str | None = None
+    cemetery_contact: str | None = None
+    funeral_home_contact: str | None = None
+
+
+class _PortalRouteResponse(BaseModel):
+    id: str
+    driver_id: str
+    route_date: str
+    status: str
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    total_mileage: float | None = None
+    total_stops: int
+    vehicle_name: str | None = None
+    driver_name: str | None = None
+    stops: list[_PortalRouteStopShape] = Field(default_factory=list)
+
+
+class _StopExceptionRequest(BaseModel):
+    reason_code: str = Field(..., min_length=1, max_length=50)
+    note: str | None = None
+
+
+class _StopStatusRequest(BaseModel):
+    status: str = Field(..., min_length=1, max_length=30)
+    note: str | None = None
+
+
+class _MileageSubmitRequest(BaseModel):
+    start_mileage: float = Field(..., ge=0)
+    end_mileage: float = Field(..., ge=0)
+    notes: str | None = None
+
+
+def _require_driver_for_portal(
+    db: Session, *, portal_user: PortalUser
+) -> Any:
+    """Resolve the portal user's Driver row or 404. Reused by every
+    driver-data mirror endpoint."""
+    driver = resolve_driver_for_portal_user(db, portal_user=portal_user)
+    if driver is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No driver record is linked to your account yet. "
+                "Ask your dispatcher to finish provisioning."
+            ),
+        )
+    return driver
+
+
+def _portal_stop_to_response(stop: Any) -> _PortalRouteStopShape:
+    """Extract the portal-relevant subset from a DeliveryStop row.
+    Portal UI doesn't need the full DeliveryStop shape — just what
+    the mobile driver displays."""
+    address_parts = [
+        stop.address_line1 if getattr(stop, "address_line1", None) else None,
+        stop.address_city if getattr(stop, "address_city", None) else None,
+        stop.address_state if getattr(stop, "address_state", None) else None,
+    ]
+    address = ", ".join(p for p in address_parts if p) or None
+    return _PortalRouteStopShape(
+        id=stop.id,
+        sequence_number=getattr(stop, "sequence_number", None),
+        status=getattr(stop, "status", "pending"),
+        status_label=getattr(stop, "status", None),
+        address=address,
+        customer_name=getattr(stop, "customer_name", None),
+        notes=getattr(stop, "notes", None),
+        cemetery_contact=getattr(stop, "cemetery_contact", None),
+        funeral_home_contact=getattr(stop, "funeral_home_contact", None),
+    )
+
+
+@router.get("/drivers/me/route", response_model=_PortalRouteResponse)
+def portal_get_today_route(
+    portal_user: PortalUser = Depends(get_current_portal_user),
+    db: Session = Depends(get_db),
+) -> _PortalRouteResponse:
+    """Today's route + stops for the portal-authed driver. Thin
+    router — resolves Driver, delegates to driver_mobile_service."""
+    from app.services import driver_mobile_service
+    from app.models.delivery_route import DeliveryRoute
+
+    driver = _require_driver_for_portal(db, portal_user=portal_user)
+    route = driver_mobile_service.get_today_route(
+        db, driver.id, portal_user.company_id
+    )
+    if route is None:
+        # No route today — return a minimal shell so the UI can
+        # render "no route scheduled" cleanly.
+        return _PortalRouteResponse(
+            id="",
+            driver_id=driver.id,
+            route_date=date.today().isoformat(),
+            status="none",
+            total_stops=0,
+        )
+    resp = _PortalRouteResponse(
+        id=route.id,
+        driver_id=driver.id,
+        route_date=route.route_date.isoformat(),
+        status=route.status,
+        started_at=route.started_at,
+        completed_at=route.completed_at,
+        total_mileage=float(route.total_mileage) if route.total_mileage else None,
+        total_stops=route.total_stops or 0,
+        vehicle_name=route.vehicle.name if route.vehicle else None,
+        driver_name=f"{portal_user.first_name} {portal_user.last_name}",
+        stops=[_portal_stop_to_response(s) for s in (route.stops or [])],
+    )
+    return resp
+
+
+@router.get(
+    "/drivers/me/stops/{stop_id}", response_model=_PortalRouteStopShape
+)
+def portal_get_stop(
+    stop_id: str,
+    portal_user: PortalUser = Depends(get_current_portal_user),
+    db: Session = Depends(get_db),
+) -> _PortalRouteStopShape:
+    """Get a single stop by id. Scoped to the portal user's driver
+    — a stop from another driver's route 404s."""
+    from app.models.delivery_route import DeliveryRoute
+    from app.models.delivery_stop import DeliveryStop
+
+    driver = _require_driver_for_portal(db, portal_user=portal_user)
+    stop = (
+        db.query(DeliveryStop)
+        .join(DeliveryRoute, DeliveryStop.route_id == DeliveryRoute.id)
+        .filter(
+            DeliveryStop.id == stop_id,
+            DeliveryRoute.driver_id == driver.id,
+            DeliveryRoute.company_id == portal_user.company_id,
+        )
+        .first()
+    )
+    if stop is None:
+        raise HTTPException(status_code=404, detail="Stop not found")
+    return _portal_stop_to_response(stop)
+
+
+@router.post(
+    "/drivers/me/stops/{stop_id}/exception",
+    response_class=Response,
+)
+def portal_mark_stop_exception(
+    stop_id: str,
+    body: _StopExceptionRequest,
+    portal_user: PortalUser = Depends(get_current_portal_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Mark a stop with an exception status + reason. Portal
+    driver-authored action. Writes directly to the DeliveryStop;
+    audit layer stamps `actor_type="portal_user"` via the
+    audit_logs discriminator added in r42."""
+    from app.models.delivery_route import DeliveryRoute
+    from app.models.delivery_stop import DeliveryStop
+
+    driver = _require_driver_for_portal(db, portal_user=portal_user)
+    stop = (
+        db.query(DeliveryStop)
+        .join(DeliveryRoute, DeliveryStop.route_id == DeliveryRoute.id)
+        .filter(
+            DeliveryStop.id == stop_id,
+            DeliveryRoute.driver_id == driver.id,
+            DeliveryRoute.company_id == portal_user.company_id,
+        )
+        .first()
+    )
+    if stop is None:
+        raise HTTPException(status_code=404, detail="Stop not found")
+    # Minimal status + note write. Full exception workflow (photo
+    # evidence, dispatcher notification) is covered by the bespoke
+    # `/driver/stops/{id}/exception` endpoint; portal path mirrors
+    # the simple status/note update.
+    stop.status = "exception"
+    if hasattr(stop, "notes"):
+        note_parts = []
+        if stop.notes:
+            note_parts.append(stop.notes)
+        note_parts.append(f"[exception: {body.reason_code}]")
+        if body.note:
+            note_parts.append(body.note)
+        stop.notes = "\n".join(note_parts)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.patch(
+    "/drivers/me/stops/{stop_id}/status",
+    response_model=_PortalRouteStopShape,
+)
+def portal_update_stop_status(
+    stop_id: str,
+    body: _StopStatusRequest,
+    portal_user: PortalUser = Depends(get_current_portal_user),
+    db: Session = Depends(get_db),
+) -> _PortalRouteStopShape:
+    """Update a stop's status (arrived, delivered, etc.). Portal
+    driver-authored. Restricted write_mode=limited — can update
+    status + note, cannot edit upstream order/invoice data."""
+    from app.models.delivery_route import DeliveryRoute
+    from app.models.delivery_stop import DeliveryStop
+
+    driver = _require_driver_for_portal(db, portal_user=portal_user)
+    stop = (
+        db.query(DeliveryStop)
+        .join(DeliveryRoute, DeliveryStop.route_id == DeliveryRoute.id)
+        .filter(
+            DeliveryStop.id == stop_id,
+            DeliveryRoute.driver_id == driver.id,
+            DeliveryRoute.company_id == portal_user.company_id,
+        )
+        .first()
+    )
+    if stop is None:
+        raise HTTPException(status_code=404, detail="Stop not found")
+    stop.status = body.status
+    if body.note and hasattr(stop, "notes"):
+        if stop.notes:
+            stop.notes = f"{stop.notes}\n{body.note}"
+        else:
+            stop.notes = body.note
+    db.commit()
+    db.refresh(stop)
+    return _portal_stop_to_response(stop)
+
+
+@router.post("/drivers/me/mileage", response_class=Response)
+def portal_submit_mileage(
+    body: _MileageSubmitRequest,
+    portal_user: PortalUser = Depends(get_current_portal_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Submit today's start + end mileage for the portal-authed
+    driver's route. Validates end >= start."""
+    from app.models.delivery_route import DeliveryRoute
+
+    if body.end_mileage < body.start_mileage:
+        raise HTTPException(
+            status_code=400,
+            detail="End mileage must be greater than or equal to start mileage.",
+        )
+
+    driver = _require_driver_for_portal(db, portal_user=portal_user)
+    today = date.today()
+    route = (
+        db.query(DeliveryRoute)
+        .filter(
+            DeliveryRoute.driver_id == driver.id,
+            DeliveryRoute.company_id == portal_user.company_id,
+            DeliveryRoute.route_date == today,
+        )
+        .first()
+    )
+    if route is None:
+        raise HTTPException(
+            status_code=404, detail="No route scheduled for today"
+        )
+    route.total_mileage = body.end_mileage - body.start_mileage
+    if body.notes:
+        existing_notes = route.notes or ""
+        route.notes = (
+            f"{existing_notes}\n[mileage note] {body.notes}".strip()
+        )
+    db.commit()
+    return Response(status_code=204)
+
+
 # ── Helpers ─────────────────────────────────────────────────────────
 
 

@@ -58,3 +58,47 @@ export interface PortalDriverSummary {
   today_stops_count: number;
   tenant_display_name: string;
 }
+
+// ── Phase 8e.2.1 — portal driver data mirrors ───────────────────
+
+export interface PortalRouteStop {
+  id: string;
+  sequence_number: number | null;
+  status: string;
+  status_label: string | null;
+  address: string | null;
+  customer_name: string | null;
+  notes: string | null;
+  cemetery_contact: string | null;
+  funeral_home_contact: string | null;
+}
+
+export interface PortalRoute {
+  id: string;
+  driver_id: string;
+  route_date: string;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  total_mileage: number | null;
+  total_stops: number;
+  vehicle_name: string | null;
+  driver_name: string | null;
+  stops: PortalRouteStop[];
+}
+
+export interface StopExceptionBody {
+  reason_code: string;
+  note?: string | null;
+}
+
+export interface StopStatusBody {
+  status: string;
+  note?: string | null;
+}
+
+export interface MileageSubmitBody {
+  start_mileage: number;
+  end_mileage: number;
+  notes?: string | null;
+}

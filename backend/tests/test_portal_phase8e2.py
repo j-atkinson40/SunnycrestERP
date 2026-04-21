@@ -657,7 +657,11 @@ class TestDriverDataMirror:
 
     def test_summary_for_linked_driver(self, client, db_session):
         """Create a portal user + a Driver linked via portal_user_id.
-        Summary should return driver_id populated."""
+        Summary should return driver_id populated.
+
+        Phase 8e.2.1 — employee_id now nullable; the canonical
+        portal-era Driver has portal_user_id only, no employee_id.
+        """
         from app.models.driver import Driver
         from app.models.portal_user import PortalUser
         from app.models.user import User
@@ -666,12 +670,10 @@ class TestDriverDataMirror:
         uid = _make_portal_user(
             ctx["company_id"], email="linked@test.co", password="goodpass123"
         )
-        # Need an employee_id too (nullable=False on the existing
-        # Driver column). Reuse the tenant admin for convenience.
         driver = Driver(
             id=str(uuid.uuid4()),
             company_id=ctx["company_id"],
-            employee_id=ctx["admin_id"],
+            employee_id=None,  # canonical portal-era shape
             portal_user_id=uid,
             license_number="ABC123",
             active=True,
@@ -693,38 +695,91 @@ class TestDriverDataMirror:
         assert body["driver_id"] == driver.id
 
 
-# ── Non-destructive migration: tenant-user drivers unchanged ────────
+# ── Phase 8e.2.1 — dual-identity transition invariant ──────────────
+# Previously TestNonDestructiveDriverMigration; renamed + evolved.
+# Phase 8e.2 promise: "tenant-user drivers continue working unchanged."
+# Phase 8e.2.1 evolved promise: "drivers can use either identity
+# path during the migration window; portal_user_id is the canonical
+# path forward; employee_id is nullable legacy."
 
 
-class TestNonDestructiveDriverMigration:
-    def test_tenant_user_driver_still_works(self, db_session):
-        """Sunnycrest's existing tenant-user drivers (employee_id →
-        users.id) must keep working after r42. No portal link
-        required."""
+class TestDriverDualIdentityInvariant:
+    """After Phase 8e.2.1, drivers have two identity-link paths:
+
+    Legacy (pre-8e.2.1): Driver.employee_id → User.id. Still
+    readable; still creatable for backward compatibility; column
+    nullable (r44). Actual column drop deferred to latent-bug
+    cleanup session.
+
+    Canonical (post-8e.2.1): Driver.portal_user_id → PortalUser.id.
+    Auto-created by the portal-user invite flow when
+    assigned_space_id matches a known driver space template.
+
+    Both paths coexist during the migration window. Service layer
+    enforces "new drivers use portal_user_id"; DB does not.
+    """
+
+    def test_legacy_employee_driver_still_readable(self, db_session):
+        """A driver with only employee_id populated (pre-8e.2.1
+        shape) round-trips cleanly. Preserved for reading existing
+        data; new creation uses the portal flow."""
         from app.models.driver import Driver
-        from app.models.user import User
 
         ctx = _make_tenant()
-        # Create a classic tenant-user driver (no portal_user_id).
         driver = Driver(
             id=str(uuid.uuid4()),
             company_id=ctx["company_id"],
             employee_id=ctx["admin_id"],
-            portal_user_id=None,  # non-destructive — tenant-user path.
-            license_number="XYZ789",
+            portal_user_id=None,  # legacy — pre-8e.2.1 shape
+            license_number="LEGACY-001",
             active=True,
         )
         db_session.add(driver)
         db_session.commit()
-        # Read back.
         fetched = (
             db_session.query(Driver).filter(Driver.id == driver.id).first()
         )
         assert fetched is not None
         assert fetched.employee_id == ctx["admin_id"]
         assert fetched.portal_user_id is None
-        # Phase 8e.2 business-logic invariant (not DB-enforced):
-        # exactly one of employee_id / portal_user_id populated.
-        # Tenant-user path: employee_id set, portal_user_id None.
-        assert fetched.employee_id is not None
-        assert fetched.portal_user_id is None
+
+    def test_portal_driver_no_employee_id(self, db_session):
+        """Phase 8e.2.1 canonical shape: employee_id nullable,
+        portal_user_id populated. Reads back cleanly."""
+        from app.models.driver import Driver
+
+        ctx = _make_tenant()
+        portal_id = _make_portal_user(
+            ctx["company_id"], email="canon@test.co"
+        )
+        driver = Driver(
+            id=str(uuid.uuid4()),
+            company_id=ctx["company_id"],
+            employee_id=None,  # canonical portal-era: no tenant-user link
+            portal_user_id=portal_id,
+            license_number="PORTAL-001",
+            active=True,
+        )
+        db_session.add(driver)
+        db_session.commit()
+        fetched = (
+            db_session.query(Driver).filter(Driver.id == driver.id).first()
+        )
+        assert fetched is not None
+        assert fetched.employee_id is None
+        assert fetched.portal_user_id == portal_id
+
+    def test_employee_id_is_nullable_after_r44(self, db_session):
+        """Direct schema assertion — employee_id's NOT NULL was
+        relaxed in r44_drivers_employee_id_nullable."""
+        from sqlalchemy import text
+
+        row = db_session.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns "
+                "WHERE table_name = 'drivers' "
+                "AND column_name = 'employee_id'"
+            )
+        ).first()
+        assert row is not None
+        assert row[0] == "YES"

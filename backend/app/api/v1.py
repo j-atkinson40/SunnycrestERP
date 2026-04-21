@@ -18,6 +18,7 @@ from app.api.routes import (
     nl_creation,
     peek,
     portal,
+    portal_admin,
     tasks,
     triage,
     ai_settings,
@@ -196,6 +197,14 @@ v1_router.include_router(
 )
 # Spaces — Phase 3 of UI/UX Arc. Per-user workspace contexts.
 v1_router.include_router(spaces.router, prefix="/spaces", tags=["Spaces"])
+# Phase 8e.2.1 — tenant-admin portal user + branding management.
+# TENANT realm (require_admin), mounted at /api/v1/portal/admin/*.
+# Registered BEFORE the public /portal router so the /{tenant_slug}/…
+# parameterized routes don't swallow `/admin/*` by matching
+# `tenant_slug="admin"` (FastAPI uses first-match routing).
+v1_router.include_router(
+    portal_admin.router, prefix="/portal/admin", tags=["Portal Admin"]
+)
 # Phase 8e.2 — portal endpoints (both public + portal-authed).
 # Path segment carries the tenant slug so portal URLs are identity-
 # tight (no X-Company-Slug header dependency). See

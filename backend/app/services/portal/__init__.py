@@ -31,9 +31,18 @@ from app.services.portal.auth import (
     verify_portal_refresh_token,
 )
 from app.services.portal.branding import get_portal_branding
+from app.services.portal.branding import set_portal_branding
 from app.services.portal.user_service import (
+    PortalUserSummary,
+    deactivate_portal_user,
     invite_portal_user,
+    issue_admin_reset_password,
+    list_portal_users_for_tenant,
+    reactivate_portal_user,
+    resend_invite,
     resolve_driver_for_portal_user,
+    unlock_portal_user,
+    update_portal_user_profile,
 )
 
 __all__ = [
@@ -45,5 +54,15 @@ __all__ = [
     "verify_portal_refresh_token",
     "invite_portal_user",
     "get_portal_branding",
+    "set_portal_branding",
     "resolve_driver_for_portal_user",
+    # Phase 8e.2.1 admin surface
+    "PortalUserSummary",
+    "list_portal_users_for_tenant",
+    "update_portal_user_profile",
+    "deactivate_portal_user",
+    "reactivate_portal_user",
+    "unlock_portal_user",
+    "issue_admin_reset_password",
+    "resend_invite",
 ]

@@ -18,15 +18,17 @@ class Driver(Base):
     company_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("companies.id"), nullable=False, index=True
     )
-    employee_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=False
+    # Phase 8e.2.1 — employee_id relaxed to nullable (r44).
+    # Driver creation going forward uses portal_user_id; employee_id
+    # is retained for migration-window compatibility with legacy rows.
+    # Actual column drop deferred to the latent-bug cleanup session
+    # after production is verified empty.
+    employee_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
     )
-    # Phase 8e.2 — optional parallel link for portal-authed drivers.
-    # Business-logic invariant: exactly one of employee_id or
-    # portal_user_id is populated per Driver row in production.
-    # NOT enforced as a DB CHECK constraint — allows migration
-    # windows where a driver transitions between tenant-user and
-    # portal-user identities. Service layer + tests enforce.
+    # Phase 8e.2 — portal-authed driver link. Phase 8e.2.1 invariant:
+    # `portal_user_id` is REQUIRED for new Driver rows; service layer
+    # enforces (no DB CHECK — allows migration-window transitions).
     portal_user_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("portal_users.id", ondelete="SET NULL"),

@@ -10,11 +10,16 @@
 import axios, { type AxiosInstance } from "axios";
 
 import type {
+  MileageSubmitBody,
   PortalBranding,
   PortalDriverSummary,
   PortalLoginBody,
   PortalMe,
+  PortalRoute,
+  PortalRouteStop,
   PortalTokenPair,
+  StopExceptionBody,
+  StopStatusBody,
 } from "@/types/portal";
 
 // Base URL matches the shared apiClient — same backend, same
@@ -126,6 +131,47 @@ export async function fetchPortalDriverSummary(): Promise<PortalDriverSummary> {
     "/portal/drivers/me/summary",
   );
   return r.data;
+}
+
+// ── Phase 8e.2.1 — portal driver data mirrors ──────────────────
+
+export async function fetchTodayRoute(): Promise<PortalRoute> {
+  const r = await _portalAxios().get<PortalRoute>(
+    "/portal/drivers/me/route",
+  );
+  return r.data;
+}
+
+export async function fetchStop(stopId: string): Promise<PortalRouteStop> {
+  const r = await _portalAxios().get<PortalRouteStop>(
+    `/portal/drivers/me/stops/${encodeURIComponent(stopId)}`,
+  );
+  return r.data;
+}
+
+export async function markStopException(
+  stopId: string,
+  body: StopExceptionBody,
+): Promise<void> {
+  await _portalAxios().post(
+    `/portal/drivers/me/stops/${encodeURIComponent(stopId)}/exception`,
+    body,
+  );
+}
+
+export async function updateStopStatus(
+  stopId: string,
+  body: StopStatusBody,
+): Promise<PortalRouteStop> {
+  const r = await _portalAxios().patch<PortalRouteStop>(
+    `/portal/drivers/me/stops/${encodeURIComponent(stopId)}/status`,
+    body,
+  );
+  return r.data;
+}
+
+export async function submitMileage(body: MileageSubmitBody): Promise<void> {
+  await _portalAxios().post("/portal/drivers/me/mileage", body);
 }
 
 // ── Storage keys (exported for testing + PortalAuthContext) ──────

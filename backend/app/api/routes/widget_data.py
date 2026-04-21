@@ -613,22 +613,31 @@ def team_driver_performance(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Driver delivery performance metrics over the last N days."""
+    """Driver delivery performance metrics over the last N days.
+
+    Phase 8e.2.1 — widget adapted to the dual-identity world.
+    Drivers may be linked to either a tenant `User` (via legacy
+    `employee_id`) OR a `PortalUser` (new portal-authed path).
+    Widget shows every active Driver row regardless of identity
+    type; name resolves from whichever identity is populated.
+    """
     from app.models.driver import Driver
     from app.models.delivery import Delivery
     from app.models.delivery_route import DeliveryRoute
+    from app.models.portal_user import PortalUser
     from datetime import timedelta
 
     today = date.today()
     start_date = today - timedelta(days=days)
 
+    # Fetch all active drivers for the tenant, regardless of which
+    # identity store they use. No inner-join — would filter portal
+    # drivers out.
     drivers = (
         db.query(Driver)
-        .join(User, User.id == Driver.employee_id)
         .filter(
             Driver.company_id == current_user.company_id,
             Driver.active == True,
-            User.is_active == True,
         )
         .all()
     )
@@ -665,16 +674,35 @@ def team_driver_performance(
         stats["total_stops"] += r.total_stops or 0
         stats["total_mileage"] += float(r.total_mileage or 0)
 
-    # Get employee names
-    emp_ids = list(set(driver_employee_map.values()))
+    # Resolve names from whichever identity each driver links to.
+    # Legacy drivers → User via employee_id. Portal drivers →
+    # PortalUser via portal_user_id. A driver in transition may
+    # have both; legacy wins for display consistency (admins see
+    # the same name they saw pre-migration).
+    emp_ids = list({eid for eid in driver_employee_map.values() if eid})
     employees = {
         u.id: u
         for u in db.query(User).filter(User.id.in_(emp_ids)).all()
     } if emp_ids else {}
+    portal_ids = list({d.portal_user_id for d in drivers if d.portal_user_id})
+    portal_users = {
+        pu.id: pu
+        for pu in db.query(PortalUser)
+        .filter(PortalUser.id.in_(portal_ids))
+        .all()
+    } if portal_ids else {}
+
+    def _display_name(d: Driver) -> str:
+        emp = employees.get(d.employee_id) if d.employee_id else None
+        if emp is not None:
+            return f"{emp.first_name} {emp.last_name}"
+        pu = portal_users.get(d.portal_user_id) if d.portal_user_id else None
+        if pu is not None:
+            return f"{pu.first_name} {pu.last_name}"
+        return "Unknown"
 
     result = []
     for d in drivers:
-        emp = employees.get(d.employee_id)
         stats = driver_stats[d.id]
         completion_rate = (
             round(stats["routes_completed"] / stats["routes_total"] * 100)
@@ -684,7 +712,8 @@ def team_driver_performance(
         result.append({
             "driver_id": d.id,
             "employee_id": d.employee_id,
-            "name": f"{emp.first_name} {emp.last_name}" if emp else "Unknown",
+            "portal_user_id": d.portal_user_id,
+            "name": _display_name(d),
             "license_expiry": d.license_expiry.isoformat() if d.license_expiry else None,
             "routes_total": stats["routes_total"],
             "routes_completed": stats["routes_completed"],
