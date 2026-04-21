@@ -45,20 +45,27 @@
 /* Apply this class to interactive elements that should use the
  * DESIGN_LANGUAGE brass focus ring. Composition per Section 6:
  *   - 2px inner ring matching the surface (creates a gap)
- *   - 3px outer brass ring at 40% opacity via color-mix
+ *   - 3px outer brass ring at alpha per --focus-ring-alpha (Session 4, m2)
+ *     • Light mode: 0.40 (DL §6 spec)
+ *     • Dark mode:  0.48 (tokens.css override — lifts contrast on
+ *       raised surfaces where 0.40 was ~3.00:1 at WCAG 2.4.7 edge)
  *   - matches element radius inherently
  *   - fades in with `duration-quick` + `ease-settle`
  *
  * Sessions 2-3 apply this class to refreshed components. Global
  * `* { outline-ring/50 }` from index.css keeps firing for
  * non-refreshed components during the transition window.
+ *
+ * The gap-ring color (`var(--surface-base)`) is spec-conformant per
+ * DL §6 but drifts when the focused element sits on an elevated
+ * surface — Session 6 revisit.
  */
 
 .focus-ring-brass:focus-visible {
   outline: none;
   box-shadow:
     0 0 0 2px var(--surface-base),
-    0 0 0 5px color-mix(in oklch, var(--accent-brass) 40%, transparent);
+    0 0 0 5px color-mix(in oklch, var(--accent-brass) calc(var(--focus-ring-alpha, 0.40) * 100%), transparent);
   transition: box-shadow var(--duration-quick) var(--ease-settle);
 }
 

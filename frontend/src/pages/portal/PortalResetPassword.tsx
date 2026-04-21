@@ -97,7 +97,7 @@ export default function PortalResetPassword() {
         className="flex h-14 items-center justify-center px-4"
         style={{
           backgroundColor: "var(--portal-brand, var(--accent-brass))",
-          color: "var(--portal-brand-fg, white)",
+          color: "var(--portal-brand-fg, var(--content-on-brass))",
         }}
       >
         {branding.logo_url ? (
@@ -173,7 +173,7 @@ export default function PortalResetPassword() {
                 style={{
                   backgroundColor:
                     "var(--portal-brand, var(--accent-brass))",
-                  color: "var(--portal-brand-fg, white)",
+                  color: "var(--portal-brand-fg, var(--content-on-brass))",
                 }}
                 data-testid="portal-reset-submit"
               >

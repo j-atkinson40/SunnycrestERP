@@ -20,7 +20,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { ImageOff, Upload } from "lucide-react";
+import { CheckCircle2, ImageOff, Moon, Sun, Upload, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert } from "@/components/ui/alert";
@@ -63,6 +63,10 @@ export default function PortalBrandingSettings() {
   const [footerText, setFooterText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Session 4 (M3): preview mode toggle — lets admins verify brand
+  // color against both portal surfaces before saving. Default light;
+  // toggle persists in-session (no localStorage).
+  const [previewMode, setPreviewMode] = useState<"light" | "dark">("light");
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Track whether we've applied the preview CSS var so we can
   // clean up on unmount.
@@ -295,24 +299,159 @@ export default function PortalBrandingSettings() {
                 </span>
               )}
             </div>
-            {/* Live preview header */}
+            {/* Live preview header with mode toggle + WCAG readout
+                (Session 4, M3). Preview simulates both the portal
+                page surface AND the branded header sitting on top of
+                it, so admins can see how their color renders against
+                cream (light mode) AND dark charcoal (dark mode).
+                WCAG contrast readout below the preview shows the
+                computed brand→fg contrast with pass/fail against
+                4.5:1 AA body-text threshold. */}
             <div className="space-y-2">
-              <Label className="text-caption">Preview</Label>
-              <div
-                className="flex h-12 items-center justify-between rounded-md px-4 shadow-level-1"
-                style={{
-                  backgroundColor: _isValidHex(brandColor)
-                    ? brandColor
-                    : "#8D6F3A",
-                  color: _isLight(brandColor) ? "#1a1a1a" : "#ffffff",
-                }}
-                data-testid="brand-color-preview"
-              >
-                <span className="text-body-sm font-semibold truncate">
-                  {branding.display_name}
-                </span>
-                <span className="text-caption">Driver / Sign Out</span>
+              <div className="flex items-center justify-between">
+                <Label className="text-caption">Preview</Label>
+                <div
+                  className="inline-flex rounded-sm border border-border-subtle bg-surface-sunken p-0.5"
+                  role="radiogroup"
+                  aria-label="Preview mode"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={previewMode === "light"}
+                    onClick={() => setPreviewMode("light")}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-caption transition-colors duration-quick ease-settle focus-ring-brass",
+                      previewMode === "light"
+                        ? "bg-surface-raised text-content-strong shadow-level-1"
+                        : "text-content-muted hover:text-content-base",
+                    )}
+                    data-testid="preview-mode-light"
+                  >
+                    <Sun className="h-3 w-3" aria-hidden="true" />
+                    Light
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={previewMode === "dark"}
+                    onClick={() => setPreviewMode("dark")}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-caption transition-colors duration-quick ease-settle focus-ring-brass",
+                      previewMode === "dark"
+                        ? "bg-surface-raised text-content-strong shadow-level-1"
+                        : "text-content-muted hover:text-content-base",
+                    )}
+                    data-testid="preview-mode-dark"
+                  >
+                    <Moon className="h-3 w-3" aria-hidden="true" />
+                    Dark
+                  </button>
+                </div>
               </div>
+              {/* Scoped preview container — data-mode attribute drives
+                  our token vars inside this subtree only, so the rest
+                  of the admin page stays in the user's current mode.
+                  Surface color is sampled from tokens.css per preview
+                  mode (not from runtime CSS vars) so admins see the
+                  true portal surface regardless of their own mode. */}
+              <div
+                data-mode={previewMode}
+                className="overflow-hidden rounded-md border border-border-subtle"
+                data-testid="brand-color-preview-wrapper"
+              >
+                <div
+                  className="p-6"
+                  style={{
+                    backgroundColor:
+                      previewMode === "dark"
+                        ? "oklch(0.16 0.012 65)"
+                        : "oklch(0.94 0.018 82)",
+                  }}
+                >
+                  <div
+                    className="flex h-12 items-center justify-between rounded-md px-4 shadow-level-1"
+                    style={{
+                      backgroundColor: _isValidHex(brandColor)
+                        ? brandColor
+                        : "#8D6F3A",
+                      color: _isLight(brandColor) ? "#1a1a1a" : "#ffffff",
+                    }}
+                    data-testid="brand-color-preview"
+                  >
+                    <span className="text-body-sm font-semibold truncate">
+                      {branding.display_name}
+                    </span>
+                    <span className="text-caption">Driver / Sign Out</span>
+                  </div>
+                </div>
+              </div>
+              {/* WCAG contrast readout — brand→fg pairing against
+                  4.5:1 AA body-text threshold. Separate advisory for
+                  brand-against-surface visibility (the "will this
+                  dark navy disappear into the dark charcoal page"
+                  concern). */}
+              {_isValidHex(brandColor) ? (
+                <div className="rounded-sm border border-border-subtle bg-surface-sunken px-3 py-2 space-y-1">
+                  {(() => {
+                    const fg = _isLight(brandColor) ? "#1a1a1a" : "#ffffff";
+                    const ratio = _wcagContrast(brandColor, fg);
+                    const pass = ratio >= 4.5;
+                    return (
+                      <div
+                        className="flex items-center justify-between gap-2 text-caption"
+                        data-testid="brand-wcag-fg"
+                      >
+                        <span className="text-content-muted">
+                          Brand → header text:
+                        </span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 font-plex-mono",
+                            pass
+                              ? "text-status-success"
+                              : "text-status-error",
+                          )}
+                        >
+                          {pass ? (
+                            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                          ) : (
+                            <XCircle className="h-3 w-3" aria-hidden="true" />
+                          )}
+                          {ratio.toFixed(2)}:1 {pass ? "AA" : "FAIL"}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  {(() => {
+                    const pageBg =
+                      previewMode === "dark" ? "#25201C" : "#F0EAD9";
+                    const ratio = _wcagContrast(brandColor, pageBg);
+                    const visible = ratio >= 1.5;
+                    return (
+                      <div
+                        className="flex items-center justify-between gap-2 text-caption"
+                        data-testid="brand-wcag-surface"
+                      >
+                        <span className="text-content-muted">
+                          Brand against {previewMode} page:
+                        </span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 font-plex-mono",
+                            visible
+                              ? "text-content-base"
+                              : "text-status-warning",
+                          )}
+                        >
+                          {ratio.toFixed(2)}:1{" "}
+                          {visible ? "visible" : "low-contrast"}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : null}
             </div>
           </div>
         </FormSection>
@@ -358,4 +497,29 @@ function _isLight(hex: string): boolean {
   const b = parseInt(h.slice(4, 6), 16);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.5;
+}
+
+// Session 4 (M3): WCAG relative luminance + contrast ratio.
+// Proper sRGB gamma per WCAG 2.x; used for the brand-color
+// contrast readout in the preview panel. Note: PortalBrandProvider
+// still uses BT.601 for the fg-picker threshold — the two formulas
+// diverge <5% for most colors, and aligning PortalBrandProvider is
+// deferred (see SPACES_ARCHITECTURE.md §10.6 note).
+function _wcagContrast(hexA: string, hexB: string): number {
+  if (!_isValidHex(hexA) || !_isValidHex(hexB)) return 0;
+  const lA = _wcagLuminance(hexA);
+  const lB = _wcagLuminance(hexB);
+  const lighter = Math.max(lA, lB);
+  const darker = Math.min(lA, lB);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function _wcagLuminance(hex: string): number {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const channel = (c: number) =>
+    c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 }

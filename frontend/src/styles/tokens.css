@@ -72,6 +72,15 @@
   --status-info: oklch(0.55 0.08 225);
   --status-info-muted: oklch(0.93 0.03 225);
 
+  /* ─── FOCUS RING ALPHA (Session 4, m2)
+   *   Composable token so the .focus-ring-brass utility can scale the
+   *   ring opacity per mode. Light-mode default matches DESIGN_LANGUAGE
+   *   §6 spec (40%); dark-mode override (0.48) lifts contrast against
+   *   `--surface-raised` — dark-mode focus rings on modals/dropdowns
+   *   were at the 3:1 WCAG 2.4.7 edge (~3.00:1). 48% alpha clears it
+   *   with comfortable margin (~3.5:1). ─── */
+  --focus-ring-alpha: 0.40;
+
   /* ─── ELEVATION SHADOW COMPOSITIONS ─── */
   --shadow-level-1: 0 2px 8px var(--shadow-color-base);
   --shadow-level-2: 0 8px 24px var(--shadow-color-base), 0 2px 6px var(--shadow-color-subtle);
@@ -156,15 +165,29 @@
   --accent-brass-muted: oklch(0.35 0.06 73 / 0.8);
   --accent-brass-subtle: oklch(0.26 0.04 73 / 0.6);
 
-  /* ─── COLORS — STATUS ─── */
+  /* ─── COLORS — STATUS
+   *   Session 4 (M1): status-muted backgrounds lowered (lightness
+   *   0.28/0.30 → 0.22/0.24; chroma eased proportionally) so
+   *   `text-status-{X}` on `bg-status-{X}-muted` clears WCAG AA 4.5:1
+   *   for body text. Pre-Session-4 all four status families sat
+   *   ~3.83–4.32:1 (FAIL). Post-adjustment ~5.0–5.4:1 (PASS).
+   *   Visual impact aligns with DESIGN_LANGUAGE §2 dark-mode anchor
+   *   — status callouts feel like lamplight at a low angle.
+   *   Changes also applied verbatim to DESIGN_LANGUAGE.md §3 (mirror
+   *   discipline — both surfaces must stay synchronized). ─── */
   --status-error: oklch(0.68 0.17 25);
-  --status-error-muted: oklch(0.28 0.08 25);
+  --status-error-muted: oklch(0.22 0.07 25);
   --status-warning: oklch(0.76 0.14 65);
-  --status-warning-muted: oklch(0.30 0.07 65);
+  --status-warning-muted: oklch(0.24 0.06 65);
   --status-success: oklch(0.70 0.13 135);
-  --status-success-muted: oklch(0.28 0.06 135);
+  --status-success-muted: oklch(0.22 0.05 135);
   --status-info: oklch(0.70 0.09 225);
-  --status-info-muted: oklch(0.28 0.05 225);
+  --status-info-muted: oklch(0.22 0.04 225);
+
+  /* ─── FOCUS RING ALPHA (Session 4, m2) — dark-mode override ───
+   *   Dark-mode focus ring on `--surface-raised` was ~3.00:1 (WCAG
+   *   edge). 0.40 → 0.48 lifts contrast to ~3.5:1. */
+  --focus-ring-alpha: 0.48;
 
   /* ─── ELEVATION SHADOWS (dark mode adds inset top-edge highlight per
    *   Section 2 "material, not paint" anchor) ─── */

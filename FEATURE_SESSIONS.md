@@ -6,6 +6,121 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Aesthetic Arc Session 4 — Dark Mode Pass
+
+**Date:** 2026-04-21
+**Session type:** Verification + surgical token/component fixes. Not a net-new aesthetic session.
+**LOC touched:** ~180 (~30 tokens/base.css + ~20 portal fg fallback + ~4 notification-dropdown + ~10 PortalLayout logout + ~130 branding-editor preview + ~60 documentation).
+**Tests:** 0 new. vitest 165/165 unchanged. tsc clean (force-clean-cache verified). vite build clean.
+
+### Audit findings summary
+
+Audit identified **5 moderate issues** + **4 minor issues** + **long-tail pre-S3 pages**. No blocking issues. WCAG compliance gap on dark-mode status text (4 status families all failed 4.5:1 AA). Tokens matched DESIGN_LANGUAGE §3 spec exactly. Core + extended primitives all used semantic tokens. Issues concentrated in: (a) portal shell hardcoded fallbacks, (b) 1 missed Session-3 component (NotificationDropdown), (c) branding-editor-has-no-dark-preview, (d) dark-mode-specific WCAG contrast miss in status-muted chrome.
+
+### Issue resolution
+
+| # | Severity | Disposition |
+|---|---|---|
+| M1 — dark-mode status-muted WCAG fail | Moderate | **Shipped** (token adjustment) |
+| M2 — portal fg fallback literal white | Moderate | **Shipped** (6 substitutions) |
+| M3 — branding-editor preview light-only | Moderate | **Shipped** (new feature: toggle + WCAG readout) |
+| M4 — tenant brand in dark mode | Design decision | **Resolved: Option A** (identical hex; M3 as verification tool) |
+| M5 — NotificationDropdown hardcoded colors | Moderate / Session 3 miss | **Shipped** (4 classname migrations) |
+| m1 — focus-ring gap color on elevated surfaces | Minor | **Deferred to Session 6** |
+| m2 — focus ring ~3.00:1 on surface-raised | Minor | **Shipped** (new `--focus-ring-alpha` token) |
+| m3 — PortalLayout logout focus ring hardcoded | Minor | **Shipped** (1 classname migration) |
+| m4 — OfflineBanner hardcoded amber | Minor | **Deferred to natural refactor** |
+| Long-tail (~20 pre-S3 pages) | — | **Deferred per Session 3 convention** |
+
+### Token adjustments shipped (before → after, dark-mode block)
+
+| Token | Before | After | WCAG effect |
+|---|---|---|---|
+| `--status-error-muted` | `oklch(0.28 0.08 25)` | `oklch(0.22 0.07 25)` | `text-status-error` 3.83:1 → 5.3:1 ✅ |
+| `--status-warning-muted` | `oklch(0.30 0.07 65)` | `oklch(0.24 0.06 65)` | `text-status-warning` 4.32:1 → 5.0:1 ✅ |
+| `--status-success-muted` | `oklch(0.28 0.06 135)` | `oklch(0.22 0.05 135)` | `text-status-success` 4.05:1 → 5.1:1 ✅ |
+| `--status-info-muted` | `oklch(0.28 0.05 225)` | `oklch(0.22 0.04 225)` | `text-status-info` 4.05:1 → 5.4:1 ✅ |
+| `--focus-ring-alpha` (new) | *(absent; hardcoded 40% in base.css)* | `:root 0.40` / `[data-mode="dark"] 0.48` | Focus ring on `surface-raised` ~3.00:1 → ~3.5:1 ✅ |
+
+`.focus-ring-brass` utility in `base.css` updated to compose via `color-mix(in oklch, var(--accent-brass) calc(var(--focus-ring-alpha) * 100%), transparent)` with 0.40 fallback.
+
+### Component adjustments shipped
+
+| File | Change |
+|---|---|
+| `frontend/src/styles/tokens.css` | 4 status-muted L/C adjustments in `[data-mode="dark"]`; new `--focus-ring-alpha` token in both blocks |
+| `frontend/src/styles/base.css` | `.focus-ring-brass` utility composes via `--focus-ring-alpha` |
+| `frontend/src/components/portal/PortalLayout.tsx` | (a) header fg fallback `white` → `var(--content-on-brass)`; (b) logout button focus ring brand-color-aware |
+| `frontend/src/pages/portal/PortalLogin.tsx` | header + submit button fg fallback (2 sites) |
+| `frontend/src/pages/portal/PortalResetPassword.tsx` | header + submit button fg fallback (2 sites) |
+| `frontend/src/components/layout/notification-dropdown.tsx` | 4 status icons migrated to `text-status-{success,warning,error,info}` |
+| `frontend/src/pages/settings/PortalBrandingSettings.tsx` | Light/Dark toggle + scoped `data-mode` preview wrapper + simulated page backdrop + 2 WCAG contrast readouts (brand→fg, brand→page-surface) + proper `_wcagContrast`/`_wcagLuminance` helpers |
+
+### Tenant brand color approach decision
+
+**Option A confirmed:** tenants configure a single hex applied identically in both light and dark modes. `PortalBrandProvider.applyBrandColor` picks `--portal-brand-fg` as white or dark charcoal based on brand-color luminance, per-mode-agnostic. Admins verify dark-mode rendering via the M3 preview toggle before saving.
+
+Options B (auto-adjust luminance per mode) and C (separate light/dark brand schema) explicitly rejected. Revisit if post-arc production signal shows tenants regularly pick poor-contrast dark brands.
+
+**Known minor discrepancy (documented, deferred):** `PortalBrandProvider.applyBrandColor` uses BT.601 luminance (`0.299R + 0.587G + 0.114B`); the new `PortalBrandingSettings` WCAG readout uses proper WCAG sRGB-gamma luminance (`0.2126·R + 0.7152·G + 0.0722·B` with linearization). The two diverge <5% for most colors. Aligning `PortalBrandProvider` with WCAG is deferred; noted in `SPACES_ARCHITECTURE.md §10.6`.
+
+### Branding editor preview (M3) — new tenant-facing feature
+
+`/settings/portal-branding` preview panel gains:
+- **Light/Dark toggle** above the preview pane. Role=radiogroup, segmented control w/ Sun/Moon icons.
+- **Scoped `data-mode` preview wrapper** — `data-mode="dark"` applies only to the preview subtree; the rest of the admin page stays in the user's current mode. CSS vars cascade correctly within the scope.
+- **Simulated page backdrop** — behind the branded header, a block at the mode's `surface-base` color (light: cream, dark: dark charcoal). Shows how the branded header sits on the actual portal page surface.
+- **WCAG contrast readout card** below the preview:
+  - "Brand → header text": computed ratio + pass/fail vs 4.5:1 AA (with check/x icon)
+  - "Brand against {light|dark} page": computed ratio + visible/low-contrast advisory (1.5:1 threshold)
+- **Proper WCAG sRGB-gamma luminance** computed in-component (`_wcagContrast` + `_wcagLuminance` helpers — single-function implementations at the bottom of the file).
+
+### WCAG compliance status (post-Session-4, dark mode)
+
+| Surface | Pairing | Ratio | Result |
+|---|---|---|---|
+| Body text on surface-base | `content-base` @ 0.90 × 0.014 75 / surface @ 0.16 × 0.012 65 | 13.3:1 | ✅ AAA |
+| Body text on surface-elevated | `content-base` / 0.20 surface | 9.6:1 | ✅ AAA |
+| Body text on surface-raised | `content-base` / 0.24 surface | 8.0:1 | ✅ AAA |
+| Secondary text | `content-muted` / 0.16 surface | 7.4:1 | ✅ AAA |
+| Tertiary (placeholder) | `content-subtle` / 0.16 surface | 3.95:1 | ✅ 3:1 (large text only) |
+| Status text on muted bg (all 4 families) | post-M1 adjustment | **5.0–5.4:1** | ✅ AA (was 3.83–4.32:1 FAIL) |
+| Text on brass | `content-on-brass` / brass @ 0.70 | 6.4:1 | ✅ AAA |
+| Focus ring on surface-base | brass α 0.48 | 3.5:1 | ✅ (WCAG 2.4.7 3:1) |
+| Focus ring on surface-raised | brass α 0.48 | ~3.5:1 | ✅ (was ~3.00:1 edge) |
+
+### Visual verification per surface category
+
+Per-surface verification rested on three legs: (1) DESIGN_LANGUAGE spec-conformance review (tokens.css matches §3 verbatim), (2) code-path review for hardcoded colors bypassing semantic tokens, (3) computed contrast ratios via oklch → sRGB-linear Y → WCAG formula. Live browser visual verification was performed via `data-mode="dark"` on `documentElement` in devtools console.
+
+- **Core primitives (Button/Input/Select/Card/Dialog/DropdownMenu/SlideOver):** all use semantic tokens cleanly; no dark-mode issues.
+- **Extended primitives (Alert/StatusPill/Tooltip/Popover/FormSection/FormSteps + 11 refreshes):** post-M1 adjustment, all status-rendering primitives pass WCAG.
+- **Navigation (Sidebar/DotNav/Breadcrumbs/MobileTabBar/AppLayoutHeader/NotificationDropdown):** post-M5, all clean.
+- **Phase 8e–8e.2.1 new surfaces:** `/settings/spaces`, `/settings/portal-users`, `/settings/portal-branding`, `SpaceEditorDialog`, `PinnedSection` — all use semantic tokens. Portal login/reset/driver pages post-M2 clean.
+- **Shadow composition:** level-1/2/3 compositions include dark-mode inset top-edge highlights per DL §6; material-not-paint mood holds.
+- **Tenant brand color in dark mode:** Option A approach + M3 preview helper as verification tool. BT.601 vs WCAG luminance gap noted as known minor item.
+
+### Long-tail dark mode issues documented
+
+- ~20 pre-Session-3 pages (vault-mold-settings.tsx, tax-settings.tsx, et al.) use hardcoded Tailwind grays/ambers/blues/reds. Per Session 3 convention: "natural refactor as pages are next touched."
+- OfflineBanner hardcoded `bg-amber-500 text-amber-950` — transient banner, mode-identical amber. Low priority deferral.
+- `focus-ring-brass` gap-ring color spec-vs-pragmatism call deferred to Session 6.
+
+### Arc status
+
+4/6 sessions complete.
+
+- ✅ Session 1 (token foundation)
+- ✅ Session 2 (core component refresh)
+- ✅ Session 3 (extended components + status treatment)
+- ✅ **Session 4 (dark mode pass — this session)**
+- ⬜ Session 5 (motion pass)
+- ⬜ Session 6 (final QA)
+
+**Ready for Session 5.** Motion pass will verify every transition, animation, and micro-interaction against DL §6 timing scale + easing curves. Likely focus: overlay entry/exit durations, Peek hover-to-click promotion, triage keyboard-driven transitions, briefing reveal, command bar result-list animations, reduced-motion compliance re-verification.
+
+---
+
 ## Workflow Arc Phase 8e.2.1 — Portal Completion (driver portal end to end)
 
 **Date:** 2026-04-21

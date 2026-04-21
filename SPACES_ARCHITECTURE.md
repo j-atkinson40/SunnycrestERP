@@ -442,6 +442,12 @@ Frontend components:
 - `PortalRouteGuard` (`frontend/src/components/portal/PortalRouteGuard.tsx`) — `ProtectedRoute` equivalent for portal realm. Redirects to `/portal/<slug>/login`.
 - `PortalLogin` page, `PortalDriverHome` page.
 
+**Tenant brand color in dark mode (Aesthetic Arc Session 4 decision — Option A).** Tenant configures a single hex color applied in both modes. Provider computes a contrast-safe `--portal-brand-fg` (white or dark charcoal) based on the brand color's luminance. Admins verify dark-mode rendering via the Light/Dark toggle in the `/settings/portal-branding` preview panel — both a brand→fg WCAG contrast readout (pass/fail against 4.5:1 AA) and a brand→page-surface visibility readout (1.5:1 advisory threshold) surface in the editor. Options B (auto-adjust luminance per mode) and C (separate light/dark brand schema) were explicitly considered and rejected. If post-arc production signal shows tenants regularly pick poor-contrast dark brands, revisit.
+
+**Known minor discrepancy (deferred):** `PortalBrandProvider.applyBrandColor` computes the brand-color luminance via BT.601 (`0.299R + 0.587G + 0.114B`) to pick between `#1a1a1a` and `#ffffff` for `--portal-brand-fg`. The branding-editor preview panel uses proper WCAG relative luminance (sRGB gamma-corrected, `0.2126·R + 0.7152·G + 0.0722·B` with linearization). The two formulas diverge <5% for most colors; no shipping issue. Aligning `PortalBrandProvider` with WCAG is deferred because it's tangential to current portal UX concerns. Revisit if/when portal branding becomes a larger focus area.
+
+**Fallback discipline (Session 4, M2):** the 3 portal pages that set header/CTA colors via inline styles use `var(--portal-brand-fg, var(--content-on-brass))` for the text fallback — NOT a literal `white`. This matters during PortalBrandProvider's first load (before branding has been fetched) and when a tenant has no custom brand (the underlying brass color shows through). Per DESIGN_LANGUAGE §3, dark-mode `content-on-brass` is deep warm charcoal, which correctly reads as "glowing pill with dark text" on brass. Hardcoding `white` inverted that in dark mode.
+
 ### 10.7 Thin-router-over-service pattern (canonical)
 
 When a portal endpoint needs data the tenant side already has, the pattern is **thin router over existing service**:

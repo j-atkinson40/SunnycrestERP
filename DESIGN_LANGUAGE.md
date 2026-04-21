@@ -296,6 +296,8 @@ If any step fails, either the token is wrong or this section is wrong. Both are 
 
 This section commits to specific oklch values for every semantic color token in the platform. All values fall within the ranges specified in Section 2 and are verifiable against Section 2's rules. Section 3 is the *answer*; Section 2 is the *test*.
 
+**Mirror discipline:** The values in this section and `frontend/src/styles/tokens.css` **must stay synchronized**. A change to either requires a same-commit update to the other. Documentation drift between this canonical reference and the implementation is treated as a defect. Sonnet should verify this invariant before committing any token change.
+
 **Structure:**
 - The three anchor tokens are locked explicitly.
 - Derived tokens (elevated surfaces, text, borders, muted variants) are derived from anchors per Section 2's translation rules.
@@ -432,19 +434,20 @@ Derivation approach:
 | Token | Light mode | Dark mode |
 |---|---|---|
 | `--status-error` | `oklch(0.55 0.18 25)` | `oklch(0.68 0.17 25)` |
-| `--status-error-muted` | `oklch(0.92 0.04 25)` | `oklch(0.28 0.08 25)` |
+| `--status-error-muted` | `oklch(0.92 0.04 25)` | `oklch(0.22 0.07 25)` |
 | `--status-warning` | `oklch(0.70 0.14 65)` | `oklch(0.76 0.14 65)` |
-| `--status-warning-muted` | `oklch(0.94 0.04 65)` | `oklch(0.30 0.07 65)` |
+| `--status-warning-muted` | `oklch(0.94 0.04 65)` | `oklch(0.24 0.06 65)` |
 | `--status-success` | `oklch(0.58 0.12 135)` | `oklch(0.70 0.13 135)` |
-| `--status-success-muted` | `oklch(0.93 0.04 135)` | `oklch(0.28 0.06 135)` |
+| `--status-success-muted` | `oklch(0.93 0.04 135)` | `oklch(0.22 0.05 135)` |
 | `--status-info` | `oklch(0.55 0.08 225)` | `oklch(0.70 0.09 225)` |
-| `--status-info-muted` | `oklch(0.93 0.03 225)` | `oklch(0.28 0.05 225)` |
+| `--status-info-muted` | `oklch(0.93 0.03 225)` | `oklch(0.22 0.04 225)` |
 
 *Notes:*
 - Status `muted` variants are backgrounds for status callouts (the yellow tint behind a warning message). Status `base` is the foreground (border, icon, bold text).
 - Warning is close to brass hue (65 vs 73) but meaningfully different. The 8° gap is enough that they don't confuse; use warning for *transient* state signals (form validation, inline warnings) and brass for *affordance* (actionable emphasis). They should not appear adjacent in the same component.
 - Info chroma is noticeably lower than the others. This is deliberate — info is the coolest color in the system and needs restraint to avoid reading as out-of-place against the warm platform.
 - Success hue (135) is yellow-green, not blue-green. This matches the olive/garden green of the light-mode reference and reads as organic rather than synthetic.
+- **Aesthetic Arc Session 4 (M1) adjustment — dark-mode `status-*-muted` backgrounds.** Pre-Session-4 dark-mode muted lightness values were 0.28/0.30 with chroma 0.05–0.08. That placed `text-status-{X}` on `bg-status-{X}-muted` at 3.83–4.32:1 — below WCAG AA 4.5:1 for body text. Current values (L 0.22/0.24, chroma eased) clear 5.0–5.4:1. Visually aligns with Section 2 dark-mode anchor "concentrated warm light pools" — status callouts read as lamplight at low angle rather than a washed-out tinted rectangle.
 
 ### Full CSS variable list
 
@@ -492,6 +495,11 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --status-success-muted: oklch(0.93 0.04 135);
   --status-info: oklch(0.55 0.08 225);
   --status-info-muted: oklch(0.93 0.03 225);
+
+  /* Focus ring alpha — default (Session 4, m2).
+     Composed into the brass focus ring via
+     `color-mix(in oklch, var(--accent-brass) calc(var(--focus-ring-alpha) * 100%), transparent)`. */
+  --focus-ring-alpha: 0.40;
 }
 
 [data-mode="dark"] {
@@ -527,15 +535,20 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --accent-brass-muted: oklch(0.35 0.06 73 / 0.8);
   --accent-brass-subtle: oklch(0.26 0.04 73 / 0.6);
 
-  /* Status */
+  /* Status (Session 4 M1: muted backgrounds tightened for WCAG AA) */
   --status-error: oklch(0.68 0.17 25);
-  --status-error-muted: oklch(0.28 0.08 25);
+  --status-error-muted: oklch(0.22 0.07 25);
   --status-warning: oklch(0.76 0.14 65);
-  --status-warning-muted: oklch(0.30 0.07 65);
+  --status-warning-muted: oklch(0.24 0.06 65);
   --status-success: oklch(0.70 0.13 135);
-  --status-success-muted: oklch(0.28 0.06 135);
+  --status-success-muted: oklch(0.22 0.05 135);
   --status-info: oklch(0.70 0.09 225);
-  --status-info-muted: oklch(0.28 0.05 225);
+  --status-info-muted: oklch(0.22 0.04 225);
+
+  /* Focus ring alpha — dark-mode override (Session 4, m2).
+     0.40 → 0.48 lifts contrast on `--surface-raised` from
+     ~3.00:1 (WCAG 2.4.7 edge) to ~3.5:1. */
+  --focus-ring-alpha: 0.48;
 }
 ```
 

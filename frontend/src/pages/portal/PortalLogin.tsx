@@ -91,7 +91,7 @@ export default function PortalLogin() {
         className="flex h-14 items-center justify-center px-4"
         style={{
           backgroundColor: "var(--portal-brand, var(--accent-brass))",
-          color: "var(--portal-brand-fg, white)",
+          color: "var(--portal-brand-fg, var(--content-on-brass))",
         }}
         data-testid="portal-login-header"
       >
@@ -170,7 +170,7 @@ export default function PortalLogin() {
               style={{
                 backgroundColor:
                   "var(--portal-brand, var(--accent-brass))",
-                color: "var(--portal-brand-fg, white)",
+                color: "var(--portal-brand-fg, var(--content-on-brass))",
               }}
             >
               {authLoading ? "Signing in…" : "Sign in"}

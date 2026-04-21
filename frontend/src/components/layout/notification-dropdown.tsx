@@ -31,16 +31,22 @@ function timeAgo(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
+// Session 4 (M5): migrated from hardcoded Tailwind colors
+// (text-green-500 / -yellow-500 / -red-500 / -blue-500) to the
+// DESIGN_LANGUAGE warm status palette. Pre-Session-4 these rendered
+// as generic bright-primary hues bypassing the platform's warm-family
+// palette; post-migration they match Alert + StatusPill + InlineError
+// status colors and track mode via tokens.css.
 function NotificationIcon({ type }: { type: string }) {
   switch (type) {
     case "success":
-      return <CheckCircle className="size-4 text-green-500" />;
+      return <CheckCircle className="size-4 text-status-success" />;
     case "warning":
-      return <AlertTriangle className="size-4 text-yellow-500" />;
+      return <AlertTriangle className="size-4 text-status-warning" />;
     case "error":
-      return <XCircle className="size-4 text-red-500" />;
+      return <XCircle className="size-4 text-status-error" />;
     default:
-      return <Info className="size-4 text-blue-500" />;
+      return <Info className="size-4 text-status-info" />;
   }
 }
 
