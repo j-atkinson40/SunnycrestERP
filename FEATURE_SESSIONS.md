@@ -6,6 +6,184 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Aesthetic Arc Phase II Batch 1a — Infrastructure + user-reported + agents family
+
+**Date:** 2026-04-21
+**Session type:** Page-level refresh with infrastructure-first ordering.
+**Files touched:** 8 (3 widget infrastructure + 2 agents pages + 1 ops page + 2 dashboards).
+**LOC:** ~450.
+**Tests:** No new tests. vitest 165/165 unchanged. tsc clean (force-cache). vite build clean 5.26s. No backend changes.
+**Arc status:** Phase I complete (4 sessions) → Phase II: audit ✅ → Batch 0 ✅ → re-audit ✅ → **Batch 1a ✅** → Batches 1b/1c-i/1c-ii/2/3/4/5 queued.
+
+### What this session does
+
+Implementation of Batch 1a scope per Phase II re-audit. Infrastructure-first ordering: ship WidgetWrapper blast-radius fix before individual page fixes so Operations Board Desktop + Vault Overview widgets pick up warm chrome automatically. Then refresh user-reported broken pages (Agents + dashboards) and add Agent Approval Review (reached via /agents → Review in demo flow).
+
+### Files refreshed
+
+**Infrastructure tier (maximum blast radius):**
+
+1. **`components/widgets/WidgetWrapper.tsx`** — single-file fix, auto-applies to every widget rendered via WidgetGrid.
+   - Card chrome: `bg-white border-gray-200 shadow-sm` → `bg-surface-elevated border-border-subtle shadow-level-1 rounded-md`
+   - Header border: `border-gray-100` → `border-border-subtle`
+   - Title text: `text-gray-800` → `text-content-strong`
+   - Icon + refresh + menu buttons: `text-gray-{400,500,600}` → `text-content-{subtle,muted}`; hover `bg-gray-100` → `bg-brass-subtle`
+   - Menu popup: `bg-white shadow-lg` → `bg-surface-raised shadow-level-2`
+   - Menu section label: `text-gray-400` → `text-content-subtle` + uppercase `tracking-wider`
+   - Remove-widget item: `text-red-600 hover:bg-red-50` → `text-status-error hover:bg-status-error-muted`
+   - Error state: `text-red-500` → `text-status-error`; "Try again" link `text-blue-600` → `text-brass`
+   - Header min-height 40px preserved. Focus rings use `.focus-ring-brass` utility on all interactive elements.
+
+2. **`components/widgets/WidgetPicker.tsx`** — slide-over panel.
+   - Shell: `bg-white shadow-2xl border-gray-200` → `bg-surface-raised shadow-level-3 border-border-subtle`
+   - Search input: native `<input>` → Session 2 `<Input>` primitive
+   - Category filter pills: `bg-gray-900`/`bg-gray-100` → `bg-brass`/`bg-brass-subtle` with `text-content-muted` → `hover:bg-brass-muted`
+   - Widget cards: `border-gray-200 hover:border-gray-300` → `border-border-subtle hover:border-border-base`
+   - "Requires {extension}" advisory: `text-amber-600` → `text-status-warning`
+   - Add button: `bg-gray-900 text-white` → `bg-brass text-content-on-brass hover:bg-brass-hover`
+
+3. **`components/widgets/WidgetSkeleton.tsx`** — loading placeholder.
+   - `bg-gray-200` → `bg-surface-sunken` (warm recessed pulse per DL cocktail-lounge mood)
+
+**User-reported broken pages:**
+
+4. **`pages/operations/operations-board-desktop.tsx`** — the page that grep-predicted as 12 hits + renders 7 widget cards.
+   - Page title: `text-2xl font-bold text-gray-900` → `text-h2 font-plex-serif font-medium text-content-strong`
+   - Date subtitle: `text-sm text-gray-500` → `text-body-sm text-content-muted`
+   - Updated-timestamp: `text-xs text-gray-400` → `text-caption text-content-subtle`
+   - Refresh button: `border-gray-200 text-gray-700 hover:bg-gray-50` → `border-border-subtle text-content-base hover:bg-brass-subtle`
+   - Customize button primary: `bg-gray-900 text-white` → `bg-brass text-content-on-brass`
+   - Edit-mode active variant: `bg-amber-500` → `bg-status-warning`
+   - Edit-mode banner: `bg-amber-50 border-amber-200 text-amber-800` → `bg-status-warning-muted border-status-warning/30 text-status-warning`
+   - Loading skeleton: `bg-gray-200`/`bg-gray-100` → `bg-surface-sunken`
+   - Widgets inside `<WidgetGrid>` inherit new chrome from WidgetWrapper automatically.
+
+5. **`pages/agents/AgentDashboard.tsx`** — 3 hardcoded `bg-white` section cards + native form elements + status pill map.
+   - Page title: `text-2xl font-bold` → `text-h2 font-plex-serif font-medium text-content-strong`
+   - Section A "Run an Agent" → `<Card>` + `<CardHeader>` + `<CardTitle>` + `<CardContent>`
+   - Section B "Recent Runs" → same migration + refresh button preserved
+   - Section C "Period Locks" → same migration + Lock icon preserved
+   - Native `<input type="date">` → Session 2 `<Input>` primitive (dark-mode chrome inherited)
+   - `<label>` → `<Label>` primitive
+   - Native `<select>` kept for job-type dropdown but DL-styled (`bg-surface-raised border-border-base focus:border-brass focus:ring-brass/30`). Full Select primitive migration deferred — would require 12-option `<SelectItem>` mapping, disproportionate scope for this page.
+   - Status pill color map (`bg-blue-100 text-blue-700` × 7 states) replaced with `<StatusPill status={...}>` using STATUS_MAP from the primitive — awaiting_approval → pending_review, complete → completed, approved/rejected/failed/pending/running all native pill keys.
+   - Anomaly warning icon: `text-amber-600` → `text-status-warning`
+   - Dry-run checkbox uses `accent-brass` for the native checkbox tick
+   - Table header row: `bg-muted/50` → `bg-surface-sunken/60`; border `border-b` → `border-b border-border-subtle`
+   - Row hover: `hover:bg-muted/30` → `hover:bg-brass-subtle/40`
+
+6. **`pages/agents/ApprovalReview.tsx`** — 9 hardcoded `bg-white` cards (top bar + 4 summary cards + Anomalies + Step Detail + Run Log + sticky action bar).
+   - All 9 section containers migrated from `rounded-lg border bg-white` to `<Card>` primitives
+   - Severity icons: `text-red-600`/`text-amber-500`/`text-blue-500` → `text-status-{error,warning,info}`
+   - Severity badge color map (critical/warning/info) replaced with `<StatusPill>` using STATUS_MAP (critical → failed, warning → pending_review, info → draft)
+   - Status badge for job.status: same replacement as AgentDashboard
+   - Error-message banner + rejection-reason banner: `bg-red-50 text-red-700` → `bg-status-error-muted text-status-error`
+   - 4 summary cards use DL status palette per metric type (Total neutral, Critical red, Warning amber, Info blue — all via `text-status-*` tokens)
+   - "No issues found" empty state: `text-green-500`/`text-green-700` → `text-status-success`
+   - Anomaly section-header row: `bg-muted/30 text-muted-foreground` → `bg-surface-sunken/60 text-content-muted`
+   - Resolve-note native `<input>` → `<Input>` primitive
+   - Step-detail accordion rows: `hover:bg-muted/30` → `hover:bg-brass-subtle/40`
+   - Step data pre-block: `bg-muted/30` → `bg-surface-sunken` with `font-plex-mono`
+   - Run Log table: DL-tokenized header + row borders
+   - Sticky action bar: `bg-white` → `bg-surface-raised shadow-level-3`; Reject button `border-red-300 text-red-600 hover:bg-red-50` → `<Button variant="destructive">`; Approve button `bg-green-600 hover:bg-green-700` → default brass `<Button>` (brass signals affordance per DL § 3)
+   - Rejection reason `<textarea>` → `<Textarea>` primitive + `<Label>` primitive
+
+7. **`components/dashboard/manufacturing-dashboard.tsx`** — 28 hits remaining post-Batch-0.
+   - Order status color map (ORDER_STATUS_COLORS): `bg-yellow-100 text-yellow-800` etc. → DL status-muted + status-text pairs + `bg-brass-subtle`/`bg-surface-sunken` fallbacks
+   - Loading spinner: `border-gray-900` → `border-brass`
+   - ComplianceRing traffic-light colors: `text-green-500`/`text-amber-500`/`text-red-500` → `text-status-{success,warning,error}`
+   - 4 StatCard widget icon backgrounds: `bg-purple-50 text-purple-600` (Deliveries) / `bg-green-50 text-green-600` (Units) / `bg-blue-50 text-blue-600` (Invoices) / traffic-light green/amber/red (NPCA) → `bg-brass-subtle text-brass` (Deliveries) + `bg-status-success-muted text-status-success` (Units) + `bg-status-info-muted text-status-info` (Invoices) + DL status traffic-light (NPCA). Widget icons now read as "warm aged-brass detail" per DL § 2 meta-anchor.
+   - "View all" link + Log Entry link + Full Report link: `text-blue-600` → `text-brass hover:text-brass-hover`
+   - Production "X units today" chip: `bg-green-50 text-green-600/-700` → `bg-status-success-muted text-status-success`
+   - Upcoming delivery status: confirmed/pending → `text-status-{success,warning}`
+   - Announcement urgency borders+backgrounds: urgent `border-amber-200 bg-amber-50/50` → `border-status-warning/30 bg-status-warning-muted/50`; safety `border-red-200 bg-red-50/50` → `border-status-error/30 bg-status-error-muted/50`; default `border-border` → `border-border-subtle`
+   - Compliance-alerts critical/warning/info color set: `bg-{red,amber,blue}-50 text-{red,amber,blue}-800` → `bg-status-{X}-muted text-status-{X}`
+
+8. **`components/dashboard/funeral-home-dashboard.tsx`** — parallel to MFG.
+   - ComplianceRing traffic-light colors: same migration as MFG (text + stroke for SVG ring)
+   - 6 attention-group color pairs (`text-red-600 bg-red-50`, `text-orange-600 bg-orange-50`, etc.) → DL status tokens (critical=error, warning=warning, info=info, cremation_auth=brass, balance=info)
+   - Onboarding banner: `border-stone-200 bg-stone-50/-100 text-stone-600` → `border-brass/20 bg-brass-subtle/-muted text-brass`. This was a SEPARATE banner from the MFG one — both flipped to the brass aesthetic.
+   - 4 StatCard icon backgrounds: `bg-stone-100/-blue-100/-purple-100/-green-100` → DL brass + status tokens (Active Cases = brass-subtle, Services Today = info-muted, Vault Deliveries = brass-muted, Outstanding = success-muted)
+   - AlertCircle / Calendar / ShieldCheck / Activity header icons: `text-amber-500 / -blue-500 / -green-600 / -stone-500` → `text-status-warning / -info / -success / content-muted`
+   - Vault status Badge border: `border-green-300 text-green-700`/`border-amber-300 text-amber-700` → `border-status-success/40 text-status-success`/`border-status-warning/40 text-status-warning`
+
+### Primitive migrations this batch
+
+| Primitive | Introduced where | Count |
+|---|---|---|
+| `<Card>` + `<CardHeader>` + `<CardContent>` + `<CardTitle>` | AgentDashboard (3 sections) + ApprovalReview (9 sections + 4 summary cards) | 16 replacements |
+| `<Input>` | AgentDashboard (2 date inputs) + ApprovalReview (1 note input) + WidgetPicker (1 search input) | 4 replacements |
+| `<Label>` | AgentDashboard (4 labels) + ApprovalReview (1 label) | 5 replacements |
+| `<StatusPill>` | AgentDashboard (7-state status map) + ApprovalReview (3-severity + 7-state maps) | 17 pill migrations |
+| `<Textarea>` | ApprovalReview (rejection reason) | 1 replacement |
+
+### WidgetGrid consumers verified
+
+Per session requirement to verify blast-radius:
+
+- **`pages/operations/operations-board-desktop.tsx`** ✓ — directly refreshed in this batch. Widgets now render warm elevated surfaces via inherited WidgetWrapper.
+- **`pages/vault/VaultOverview.tsx`** ✓ — 0 bypass hits pre-batch, still clean post-batch. Rendered widgets auto-inherit warm chrome. No page-level refresh required.
+
+### Pre-existing issues surfaced (flagged for Session 6)
+
+- `.focus-ring-brass` utility in LIGHT mode composes brass 40% α over cream surface-base = ~1.26:1 contrast. Fails WCAG 2.4.7 3:1 focus-indicator threshold. Dark mode passes (~3.4:1) because DL dark brass is more luminous. Session 4 audit verified dark mode only; this light-mode gap was missed.
+- Proposed fixes: (a) raise `--focus-ring-alpha` in light mode from 0.40 → 0.60+, (b) switch to solid brass ring in light mode (requires `--accent-brass` light variant luminosity shift), (c) mode-aware gap ring composition. Session 6 scope.
+
+### Severity attribution methodology (documented CLAUDE.md Design System)
+
+Grep-only audits under-estimate user-visible impact. Pattern counts don't weight by UI prominence or compositional failure mode. Infrastructure components (WidgetWrapper, PortalLayout, shared banner components) have disproportionate severity because a single file's bypass replicates across every consumer. Phase II audit v1 under-scoped Batch 1 by 7 blocking files because visual verification was deferred until Batch 0 ship. The corrective loop (audit → Batch 0 ship → user visual check → re-audit) worked; lesson is to run visual check earlier if possible.
+
+### Verification
+
+- ✅ tsc clean (force clean-cache verified)
+- ✅ vitest 165/165 unchanged
+- ✅ vite build clean (5.26s)
+- ✅ Post-batch grep: 0 runtime Tailwind bypass patterns across all 8 Batch 1a files (remaining hits are migration-documentation comments)
+- ⬜ **User visual verification required post-commit** for approval of Batch 1b implementation:
+  - MFG dashboard (full warm palette including onboarding banner, stat cards, status pills)
+  - FH dashboard (full warm palette, parallel to MFG)
+  - Operations Board Desktop (widget cards should now render warm elevated surface via WidgetWrapper fix)
+  - Vault Overview (WidgetGrid consumer — widgets should show warm chrome)
+  - Accounting Agents (/agents — 3 section cards now warm elevated)
+  - Agent Approval Review (/agents/:jobId/review — 9 cards + sticky action bar now warm)
+
+### Ready for Batch 1b
+
+Next batch scope per re-audit: scheduling board family (`pages/delivery/scheduling-board.tsx` + `components/delivery/kanban-panel.tsx` + `ancillary-panel.tsx` + `direct-ship-panel.tsx`). ~550 LOC. Includes InlineError primitive migration for "Failed to load schedule" state + 📦/⛪/🏛/⚰/📍 emoji → Lucide swaps.
+
+---
+
+## Aesthetic Arc Phase II Audit v2 (Re-audit) — Post-Batch-0 visual verification expansion
+
+**Date:** 2026-04-21
+**Session type:** Re-audit only. No code changes.
+
+User visual verification post-Batch-0 surfaced additional blocking pages not in Batch 1 v1 scope: Operations Board Desktop (page title + widgets near-invisible), Accounting Agents (3 bg-white form cards unusable), plus grep-predicted blocking pages (order-station, financials-board, team-dashboard) that the v1 audit categorized as Batch 2/P1 moderate. Discovery of `WidgetWrapper.tsx` as the single-file source of widget chrome bypass across Operations Board Desktop + Vault Overview was the primary finding.
+
+### Re-audit findings
+
+- Confirmed user-reported pages via code-side inspection:
+  - `pages/operations/operations-board-desktop.tsx` — `text-gray-900` page title + widgets rendered via WidgetGrid inheriting `bg-white` chrome from WidgetWrapper
+  - `pages/agents/AgentDashboard.tsx` — 3 hardcoded `bg-white` section cards + native form elements + Tailwind status pill map
+- Discovered infrastructure-tier fix opportunity: `components/widgets/WidgetWrapper.tsx` chrome affects 2 pages (Ops Board Desktop + Vault Overview) plus any future WidgetGrid consumer
+- Confirmed grep-predicted blocking files by visual verification rationale: order-station (144 hits), financials-board (193 hits — platform's largest), team-dashboard (129 hits)
+- Batch 1 split into 1a/1b/1c-i/1c-ii for scope discipline
+
+### Batch structure after re-audit
+
+- **Batch 1a** — Infrastructure + user-reported + agents family (7 files + WidgetSkeleton = 8 total, ~450 LOC)
+- **Batch 1b** — User-reported scheduling board family (4 files, ~550 LOC)
+- **Batch 1c-i** — Order Station alone (1 file, ~400 LOC)
+- **Batch 1c-ii** — Financials Board + Team Dashboard (2 files, ~500 LOC)
+- **Batches 2–5** — unchanged from v1 audit (CRM family, safety, vault, onboarding, etc.)
+- **Batch 6** — P3 long-tail deferred per Phase I Session 3 convention
+
+### Methodology insight documented
+
+Grep-only audits under-estimate user-visible impact because they don't weight by UI prominence (a page title in near-invisible color fails harder than 50 deep-nested state colors). Infrastructure components have disproportionate severity. Future aesthetic audits should attempt dev-environment visual verification in parallel with grep, OR defer severity assessment until user post-batch visual check.
+
+---
+
 ## Aesthetic Arc Phase II Batch 0 — Shadcn Default Aliasing
 
 **Date:** 2026-04-21

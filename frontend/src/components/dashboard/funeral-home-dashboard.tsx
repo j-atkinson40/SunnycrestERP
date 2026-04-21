@@ -73,9 +73,25 @@ function StatCard({
 // ── Compliance Score Ring ──
 
 function ComplianceRing({ score }: { score: number }) {
-  const color = score >= 90 ? "text-green-600" : score >= 70 ? "text-amber-500" : "text-red-500";
-  const bgColor = score >= 90 ? "stroke-green-100" : score >= 70 ? "stroke-amber-100" : "stroke-red-100";
-  const fgColor = score >= 90 ? "stroke-green-600" : score >= 70 ? "stroke-amber-500" : "stroke-red-500";
+  // Phase II Batch 1a — DL status palette.
+  const color =
+    score >= 90
+      ? "text-status-success"
+      : score >= 70
+        ? "text-status-warning"
+        : "text-status-error";
+  const bgColor =
+    score >= 90
+      ? "stroke-status-success-muted"
+      : score >= 70
+        ? "stroke-status-warning-muted"
+        : "stroke-status-error-muted";
+  const fgColor =
+    score >= 90
+      ? "stroke-status-success"
+      : score >= 70
+        ? "stroke-status-warning"
+        : "stroke-status-error";
   const circumference = 2 * Math.PI * 36;
   const offset = circumference - (score / 100) * circumference;
 
@@ -118,12 +134,16 @@ function buildAttentionGroups(data: FHDashboardData): AttentionGroup[] {
   const groups: AttentionGroup[] = [];
   const na = data.needs_attention;
 
+  // Phase II Batch 1a — attention-group colors mapped from pastel
+  // Tailwind palettes to DL status tokens. Each urgency maps to a
+  // platform-native warm-family status signal rather than a distinct
+  // pastel per category.
   if (na.needs_arrangement.length > 0) {
     groups.push({
       key: "arrangement",
       label: "Needs Arrangement Conference",
       cases: na.needs_arrangement,
-      color: "text-red-600 bg-red-50",
+      color: "text-status-error bg-status-error-muted",
     });
   }
   if (na.vault_not_ordered.length > 0) {
@@ -131,7 +151,7 @@ function buildAttentionGroups(data: FHDashboardData): AttentionGroup[] {
       key: "vault_order",
       label: "Vault Not Ordered",
       cases: na.vault_not_ordered,
-      color: "text-orange-600 bg-orange-50",
+      color: "text-status-warning bg-status-warning-muted",
     });
   }
   if (na.vault_at_risk.length > 0) {
@@ -139,7 +159,7 @@ function buildAttentionGroups(data: FHDashboardData): AttentionGroup[] {
       key: "vault_risk",
       label: "Vault Delivery at Risk",
       cases: na.vault_at_risk,
-      color: "text-amber-600 bg-amber-50",
+      color: "text-status-warning bg-status-warning-muted",
     });
   }
   if (na.awaiting_cremation_auth.length > 0) {
@@ -147,7 +167,7 @@ function buildAttentionGroups(data: FHDashboardData): AttentionGroup[] {
       key: "cremation_auth",
       label: "Awaiting Cremation Authorization",
       cases: na.awaiting_cremation_auth,
-      color: "text-purple-600 bg-purple-50",
+      color: "text-brass bg-brass-subtle",
     });
   }
   if (na.invoice_not_sent.length > 0) {
@@ -155,7 +175,7 @@ function buildAttentionGroups(data: FHDashboardData): AttentionGroup[] {
       key: "invoice",
       label: "Invoice Not Sent",
       cases: na.invoice_not_sent,
-      color: "text-blue-600 bg-blue-50",
+      color: "text-status-info bg-status-info-muted",
     });
   }
   if (na.outstanding_balance.length > 0) {
@@ -163,7 +183,7 @@ function buildAttentionGroups(data: FHDashboardData): AttentionGroup[] {
       key: "balance",
       label: "Outstanding Balance",
       cases: na.outstanding_balance,
-      color: "text-indigo-600 bg-indigo-50",
+      color: "text-status-info bg-status-info-muted",
     });
   }
 
@@ -295,24 +315,25 @@ export function FuneralHomeDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Onboarding Banner */}
+      {/* Onboarding Banner — Phase II Batch 1a: stone-palette swapped
+          for brass per DL material-thread anchor. */}
       {onboardingPercent !== null && onboardingPercent < 100 && (
         <Link
           to="/onboarding"
-          className="block rounded-xl border-2 border-stone-200 bg-gradient-to-r from-stone-50 to-stone-100 p-5 transition-all hover:border-stone-300 hover:shadow-md"
+          className="block rounded-xl border-2 border-brass/20 bg-gradient-to-r from-brass-subtle to-brass-muted/40 p-5 transition-all duration-settle ease-settle hover:border-brass/40 hover:shadow-level-1 focus-ring-brass"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-stone-200">
-                <Rocket className="h-6 w-6 text-stone-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brass-muted">
+                <Rocket className="h-6 w-6 text-brass" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold">
+                <h2 className="text-h4 font-medium text-content-strong">
                   {onboardingCompleted === 0
                     ? "Let's get you set up"
                     : `${onboardingCompleted} of ${onboardingTotal} setup steps complete`}
                 </h2>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-body-sm text-content-muted">
                   {onboardingCompleted === 0
                     ? "Complete your setup to start managing cases — takes about 15 minutes"
                     : "Continue where you left off"}
@@ -322,18 +343,18 @@ export function FuneralHomeDashboard() {
             <div className="flex items-center gap-4">
               {onboardingTotal > 0 && (
                 <div className="hidden sm:flex items-center gap-2">
-                  <div className="h-2 w-32 overflow-hidden rounded-full bg-stone-200">
+                  <div className="h-2 w-32 overflow-hidden rounded-full bg-brass-subtle">
                     <div
-                      className="h-full rounded-full bg-stone-500 transition-all"
+                      className="h-full rounded-full bg-brass transition-all duration-settle ease-settle"
                       style={{ width: `${onboardingPercent}%` }}
                     />
                   </div>
-                  <span className="text-sm font-medium text-muted-foreground">
+                  <span className="text-body-sm font-medium text-content-muted">
                     {onboardingPercent}%
                   </span>
                 </div>
               )}
-              <div className="flex items-center gap-1 text-sm font-medium text-stone-600">
+              <div className="flex items-center gap-1 text-body-sm font-medium text-brass">
                 Continue setup
                 <ArrowRight className="h-4 w-4" />
               </div>
@@ -350,31 +371,33 @@ export function FuneralHomeDashboard() {
         </p>
       </div>
 
-      {/* Top Row — Stat Cards */}
+      {/* Top Row — Stat Cards. Phase II Batch 1a: stat card icon
+          backgrounds migrated from pastel Tailwind palettes to DL
+          brass + status tokens. */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Active Cases"
           value={activeCases.length}
           icon={Briefcase}
-          color="bg-stone-100 text-stone-600"
+          color="bg-brass-subtle text-brass"
         />
         <StatCard
           label="Services Today"
           value={servicesToday.length}
           icon={Calendar}
-          color="bg-blue-100 text-blue-600"
+          color="bg-status-info-muted text-status-info"
         />
         <StatCard
           label="Vault Deliveries Today"
           value={deliveriesToday}
           icon={Package}
-          color="bg-purple-100 text-purple-600"
+          color="bg-brass-muted text-brass"
         />
         <StatCard
           label="Outstanding Invoices"
           value={outstandingTotal > 0 ? currency(outstandingTotal) : "$0"}
           icon={DollarSign}
-          color="bg-green-100 text-green-600"
+          color="bg-status-success-muted text-status-success"
         />
       </div>
 
@@ -384,7 +407,7 @@ export function FuneralHomeDashboard() {
         <Card className="lg:col-span-2">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <AlertCircle className="h-4 w-4 text-amber-500" />
+              <AlertCircle className="h-4 w-4 text-status-warning" />
               Cases Needing Attention
             </CardTitle>
           </CardHeader>
@@ -445,7 +468,7 @@ export function FuneralHomeDashboard() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Calendar className="h-4 w-4 text-blue-500" />
+              <Calendar className="h-4 w-4 text-status-info" />
               Upcoming Services
             </CardTitle>
           </CardHeader>
@@ -495,8 +518,8 @@ export function FuneralHomeDashboard() {
                                 className={cn(
                                   "text-[10px]",
                                   c.vault_order.status === "delivered"
-                                    ? "border-green-300 text-green-700"
-                                    : "border-amber-300 text-amber-700",
+                                    ? "border-status-success/40 text-status-success"
+                                    : "border-status-warning/40 text-status-warning",
                                 )}
                               >
                                 Vault: {c.vault_order.status.replace(/_/g, " ")}
@@ -520,7 +543,7 @@ export function FuneralHomeDashboard() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <ShieldCheck className="h-4 w-4 text-green-600" />
+              <ShieldCheck className="h-4 w-4 text-status-success" />
               FTC Compliance Score
             </CardTitle>
           </CardHeader>
@@ -559,7 +582,7 @@ export function FuneralHomeDashboard() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Activity className="h-4 w-4 text-stone-500" />
+              <Activity className="h-4 w-4 text-content-muted" />
               Recent Activity
             </CardTitle>
           </CardHeader>

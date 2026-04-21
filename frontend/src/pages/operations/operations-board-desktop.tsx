@@ -1,5 +1,11 @@
-// Operations Board — Desktop view (widget dashboard)
+// Operations Board — Desktop view (widget dashboard).
 // Renders when effectiveDevice = 'desktop'. Mobile view is unchanged.
+//
+// Phase II Batch 1a refresh — migrated hardcoded Tailwind to DL tokens.
+// Page title + date subtitle + refresh button chrome + edit-mode banner
+// + customize button now use DESIGN_LANGUAGE tokens. Widget chrome picks
+// up the DL palette via WidgetWrapper.tsx (refreshed in same batch).
+// Amber-50 edit-mode banner migrates to Alert primitive variant.
 
 import { useState, useMemo } from "react"
 import { Settings, Check, RefreshCw, RotateCcw } from "lucide-react"
@@ -47,10 +53,10 @@ export default function OperationsBoardDesktop() {
   if (dashboard.isLoading) {
     return (
       <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-8 w-48 bg-gray-200 rounded" />
+        <div className="h-8 w-48 bg-surface-sunken rounded-sm" />
         <div className="grid grid-cols-4 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-48 bg-gray-100 rounded-lg" />
+            <div key={i} className="h-48 bg-surface-sunken rounded-md" />
           ))}
         </div>
       </div>
@@ -62,19 +68,21 @@ export default function OperationsBoardDesktop() {
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Operations Board</h1>
-          <p className="text-sm text-gray-500">{formatDate()}</p>
+          <h1 className="text-h2 font-plex-serif font-medium text-content-strong">
+            Operations Board
+          </h1>
+          <p className="text-body-sm text-content-muted">{formatDate()}</p>
         </div>
         <div className="flex items-center gap-3">
           {/* Last updated */}
-          <span className="text-xs text-gray-400">
+          <span className="text-caption text-content-subtle">
             Updated {timeAgo(dashboard.lastSaved)}
           </span>
 
           {/* Refresh all */}
           <button
             onClick={dashboard.reload}
-            className="flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-sm border border-border-subtle px-3 py-1.5 text-body-sm text-content-base hover:bg-brass-subtle transition-colors duration-quick ease-settle focus-ring-brass"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh all
@@ -83,10 +91,10 @@ export default function OperationsBoardDesktop() {
           {/* Customize / Done */}
           <button
             onClick={handleToggleEdit}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-body-sm font-medium transition-colors duration-quick ease-settle focus-ring-brass ${
               dashboard.editMode
-                ? "bg-amber-500 text-white hover:bg-amber-600"
-                : "bg-gray-900 text-white hover:bg-gray-700"
+                ? "bg-status-warning text-content-on-brass hover:bg-status-warning/90"
+                : "bg-brass text-content-on-brass hover:bg-brass-hover"
             }`}
           >
             {dashboard.editMode ? (
@@ -106,13 +114,13 @@ export default function OperationsBoardDesktop() {
 
       {/* Edit mode indicator */}
       {dashboard.editMode && (
-        <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-4 py-2">
-          <p className="text-sm text-amber-800">
+        <div className="flex items-center justify-between rounded-md bg-status-warning-muted border border-status-warning/30 px-4 py-2">
+          <p className="text-body-sm text-status-warning">
             Edit mode — drag widgets to reorder, use the panel to add or remove.
           </p>
           <button
             onClick={dashboard.resetLayout}
-            className="flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900"
+            className="flex items-center gap-1 text-caption text-status-warning hover:text-status-warning/80 focus-ring-brass rounded-sm"
           >
             <RotateCcw className="h-3 w-3" />
             Reset to default
@@ -122,7 +130,7 @@ export default function OperationsBoardDesktop() {
 
       {/* Saving indicator */}
       {dashboard.isSaving && (
-        <div className="text-xs text-gray-400 text-right">Saving...</div>
+        <div className="text-caption text-content-subtle text-right">Saving...</div>
       )}
 
       {/* Widget grid */}

@@ -89,12 +89,16 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString();
 const fmtTime = (d: string) =>
   new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+// Phase II Batch 1a — status map now routes through StatusPill (Session 3)
+// via its STATUS_MAP. Kept as a compatibility shim so existing callers using
+// .tsx expressions like ORDER_STATUS_COLORS[order.status] still resolve.
+// Prefer <StatusPill status={order.status}> directly for new work.
 const ORDER_STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  in_progress: "bg-blue-100 text-blue-800",
-  ready: "bg-green-100 text-green-800",
-  shipped: "bg-purple-100 text-purple-800",
-  delivered: "bg-gray-100 text-gray-700",
+  pending: "bg-status-warning-muted text-status-warning",
+  in_progress: "bg-status-info-muted text-status-info",
+  ready: "bg-status-success-muted text-status-success",
+  shipped: "bg-brass-subtle text-brass",
+  delivered: "bg-surface-sunken text-content-muted",
 };
 
 // ── Stat Card ──
@@ -147,7 +151,11 @@ function ComplianceRing({
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
   const color =
-    score >= 90 ? "text-green-500" : score >= 70 ? "text-amber-500" : "text-red-500";
+    score >= 90
+      ? "text-status-success"
+      : score >= 70
+        ? "text-status-warning"
+        : "text-status-error";
 
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -338,7 +346,7 @@ export function ManufacturingDashboard() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brass" />
       </div>
     );
   }
@@ -416,27 +424,32 @@ export function ManufacturingDashboard() {
         </div>
       </div>
 
-      {/* Snapshot Stats */}
+      {/* Snapshot Stats — Phase II Batch 1a: pastel icon backgrounds
+          migrated from bg-{purple,green,blue,amber,red}-50 to brass-subtle
+          + warm status-muted variants. Icons on the stat cards now read
+          as "warm aged-brass detail" per DL §2 meta-anchor, not pastel
+          highlight chrome. NPCA-score traffic-light threshold uses the
+          DL status-family palette, auto-mode-switching. */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Deliveries Today"
           value={stats.deliveriesToday}
           icon={Truck}
-          color="bg-purple-50 text-purple-600"
+          color="bg-brass-subtle text-brass"
         />
         {showProduction && (
           <StatCard
             label="Units Produced Today"
             value={stats.unitsToday}
             icon={Factory}
-            color="bg-green-50 text-green-600"
+            color="bg-status-success-muted text-status-success"
           />
         )}
         <StatCard
           label="Open Invoices"
           value={currency(stats.openInvoices)}
           icon={FileText}
-          color="bg-blue-50 text-blue-600"
+          color="bg-status-info-muted text-status-info"
         />
         {isNpcaEnabled && (
           <StatCard
@@ -445,10 +458,10 @@ export function ManufacturingDashboard() {
             icon={ShieldCheck}
             color={cn(
               stats.npcaScore >= 90
-                ? "bg-green-50 text-green-600"
+                ? "bg-status-success-muted text-status-success"
                 : stats.npcaScore >= 70
-                  ? "bg-amber-50 text-amber-600"
-                  : "bg-red-50 text-red-600",
+                  ? "bg-status-warning-muted text-status-warning"
+                  : "bg-status-error-muted text-status-error",
             )}
           />
         )}
@@ -467,7 +480,7 @@ export function ManufacturingDashboard() {
               </CardTitle>
               <Link
                 to="/sales-orders"
-                className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                className="text-body-sm text-brass hover:text-brass-hover hover:underline flex items-center gap-1 focus-ring-brass rounded-sm"
               >
                 View all <ChevronRight className="h-3.5 w-3.5" />
               </Link>
@@ -493,7 +506,8 @@ export function ManufacturingDashboard() {
                           <span
                             className={cn(
                               "rounded-full px-2 py-0.5 text-xs font-medium",
-                              ORDER_STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-700",
+                              ORDER_STATUS_COLORS[order.status] ??
+                                "bg-surface-sunken text-content-muted",
                             )}
                           >
                             {order.status.replace(/_/g, " ")}
@@ -560,8 +574,8 @@ export function ManufacturingDashboard() {
                           className={cn(
                             "text-xs font-medium",
                             del.status === "confirmed"
-                              ? "text-green-600"
-                              : "text-amber-600",
+                              ? "text-status-success"
+                              : "text-status-warning",
                           )}
                         >
                           {del.status}
@@ -587,15 +601,15 @@ export function ManufacturingDashboard() {
                 </CardTitle>
                 <Link
                   to="/production-log"
-                  className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                  className="text-body-sm text-brass hover:text-brass-hover hover:underline flex items-center gap-1 focus-ring-brass rounded-sm"
                 >
                   Log Entry <Plus className="h-3.5 w-3.5" />
                 </Link>
               </CardHeader>
               <CardContent>
-                <div className="mb-3 flex items-center gap-2 rounded-md bg-green-50 px-3 py-2">
-                  <Factory className="h-4 w-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">
+                <div className="mb-3 flex items-center gap-2 rounded-md bg-status-success-muted px-3 py-2">
+                  <Factory className="h-4 w-4 text-status-success" />
+                  <span className="text-body-sm font-medium text-status-success">
                     {stats.unitsToday} units today
                   </span>
                 </div>
@@ -650,7 +664,7 @@ export function ManufacturingDashboard() {
                   </CardTitle>
                   <Link
                     to="/announcements"
-                    className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                    className="text-body-sm text-brass hover:text-brass-hover hover:underline flex items-center gap-1 focus-ring-brass rounded-sm"
                   >
                     View All <ChevronRight className="h-3.5 w-3.5" />
                   </Link>
@@ -662,9 +676,11 @@ export function ManufacturingDashboard() {
                         key={ann.id}
                         className={cn(
                           "flex items-start gap-2 rounded-md border px-3 py-2.5",
-                          ann.urgency === "urgent" ? "border-amber-200 bg-amber-50/50" :
-                          ann.urgency === "safety" ? "border-red-200 bg-red-50/50" :
-                          "border-border",
+                          ann.urgency === "urgent"
+                            ? "border-status-warning/30 bg-status-warning-muted/50"
+                            : ann.urgency === "safety"
+                              ? "border-status-error/30 bg-status-error-muted/50"
+                              : "border-border-subtle",
                         )}
                       >
                         <div className="min-w-0 flex-1">
@@ -711,7 +727,7 @@ export function ManufacturingDashboard() {
               </CardTitle>
               <Link
                 to="/compliance"
-                className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                className="text-body-sm text-brass hover:text-brass-hover hover:underline flex items-center gap-1 focus-ring-brass rounded-sm"
               >
                 Full Report <ChevronRight className="h-3.5 w-3.5" />
               </Link>
@@ -733,12 +749,12 @@ export function ManufacturingDashboard() {
                     <div
                       key={alert.id}
                       className={cn(
-                        "flex items-start gap-2 rounded-md px-3 py-2 text-sm",
+                        "flex items-start gap-2 rounded-md px-3 py-2 text-body-sm",
                         alert.severity === "critical"
-                          ? "bg-red-50 text-red-800"
+                          ? "bg-status-error-muted text-status-error"
                           : alert.severity === "warning"
-                            ? "bg-amber-50 text-amber-800"
-                            : "bg-blue-50 text-blue-800",
+                            ? "bg-status-warning-muted text-status-warning"
+                            : "bg-status-info-muted text-status-info",
                       )}
                     >
                       {alert.severity === "critical" ? (

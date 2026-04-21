@@ -1,4 +1,10 @@
-// WidgetWrapper — standard chrome around every widget
+// WidgetWrapper — standard chrome around every widget.
+//
+// Aesthetic Arc Phase II Batch 1a refresh — blast-radius migration.
+// Prior: `bg-white border-gray-200 shadow-sm` + `border-gray-100` + `text-gray-{400,500,600,800}`.
+// Now: DESIGN_LANGUAGE tokens across the board. A single file flip cascades to
+// every widget rendered via WidgetGrid — Operations Board Desktop + Vault
+// Overview + any future consumer — without touching widget component code.
 
 import { useState, useEffect, useRef, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
@@ -56,26 +62,28 @@ export default function WidgetWrapper({
   }, [menuOpen])
 
   return (
-    <div className="flex flex-col rounded-lg border border-gray-200 bg-white shadow-sm h-full overflow-hidden">
+    <div className="flex flex-col rounded-md border border-border-subtle bg-surface-elevated shadow-level-1 h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2 min-h-[40px]">
+      <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 min-h-[40px]">
         {editMode && (
           <div
-            className="cursor-grab text-gray-400 hover:text-gray-600 shrink-0"
+            className="cursor-grab text-content-subtle hover:text-content-muted shrink-0"
             {...(dragHandleProps || {})}
           >
             <GripVertical className="h-4 w-4" />
           </div>
         )}
 
-        {icon && <span className="shrink-0 text-gray-500">{icon}</span>}
-        <h3 className="text-sm font-semibold text-gray-800 truncate flex-1">{title}</h3>
+        {icon && <span className="shrink-0 text-content-muted">{icon}</span>}
+        <h3 className="text-body-sm font-semibold text-content-strong truncate flex-1">
+          {title}
+        </h3>
 
         {/* Refresh */}
         {onRefresh && (
           <button
             onClick={onRefresh}
-            className="shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+            className="shrink-0 text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-brass rounded"
             title="Refresh"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
@@ -86,17 +94,17 @@ export default function WidgetWrapper({
         <div className="relative shrink-0" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-brass rounded"
           >
             <MoreHorizontal className="h-4 w-4" />
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 z-50 w-40 rounded-md border bg-white py-1 shadow-lg">
+            <div className="absolute right-0 top-full mt-1 z-50 w-40 rounded-md border border-border-subtle bg-surface-raised py-1 shadow-level-2">
               {/* Size options */}
               {supportedSizes && supportedSizes.length > 1 && onSizeChange && (
                 <>
-                  <div className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase">
+                  <div className="px-3 py-1 text-micro font-semibold text-content-subtle uppercase tracking-wider">
                     Size
                   </div>
                   <div className="flex gap-1 px-3 pb-1.5">
@@ -107,13 +115,13 @@ export default function WidgetWrapper({
                           onSizeChange(s)
                           setMenuOpen(false)
                         }}
-                        className="rounded border px-1.5 py-0.5 text-[11px] font-mono text-gray-600 hover:bg-gray-100"
+                        className="rounded-sm border border-border-subtle px-1.5 py-0.5 text-caption font-plex-mono text-content-muted hover:bg-brass-subtle focus-ring-brass"
                       >
                         {s}
                       </button>
                     ))}
                   </div>
-                  <div className="border-t border-gray-100 my-1" />
+                  <div className="border-t border-border-subtle my-1" />
                 </>
               )}
 
@@ -124,7 +132,7 @@ export default function WidgetWrapper({
                     onRemove()
                     setMenuOpen(false)
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-body-sm text-status-error hover:bg-status-error-muted focus-ring-brass"
                 >
                   <X className="h-3.5 w-3.5" />
                   Remove widget
@@ -138,7 +146,7 @@ export default function WidgetWrapper({
         {editMode && onRemove && (
           <button
             onClick={onRemove}
-            className="shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+            className="shrink-0 text-content-subtle hover:text-status-error transition-colors duration-quick ease-settle focus-ring-brass rounded"
             title="Remove widget"
           >
             <X className="h-4 w-4" />
@@ -151,12 +159,12 @@ export default function WidgetWrapper({
         {isLoading ? (
           <WidgetSkeleton />
         ) : error ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-4 text-center text-sm text-gray-500">
-            <p className="text-red-500">{error}</p>
+          <div className="flex flex-col items-center justify-center gap-2 py-4 text-center text-body-sm text-content-muted">
+            <p className="text-status-error">{error}</p>
             {onRefresh && (
               <button
                 onClick={onRefresh}
-                className="text-xs text-blue-600 hover:underline"
+                className="text-caption text-brass hover:text-brass-hover hover:underline focus-ring-brass rounded"
               >
                 Try again
               </button>
