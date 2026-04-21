@@ -71,6 +71,10 @@ class _SpaceResponse(BaseModel):
     display_order: int
     is_default: bool
     density: str
+    # Workflow Arc Phase 8a — platform-owned system spaces (Settings)
+    # are non-deletable. Frontend DotNav uses this to disable the
+    # delete option on the space editor.
+    is_system: bool = False
     pins: list[_PinResponse]
     created_at: str | None
     updated_at: str | None
@@ -124,6 +128,7 @@ def _resolved_to_response(sp: ResolvedSpace) -> _SpaceResponse:
         display_order=sp.display_order,
         is_default=sp.is_default,
         density=sp.density,
+        is_system=sp.is_system,
         pins=[_pin_to_response(p) for p in sp.pins],
         created_at=sp.created_at,
         updated_at=sp.updated_at,

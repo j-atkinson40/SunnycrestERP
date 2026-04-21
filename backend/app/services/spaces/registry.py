@@ -298,6 +298,92 @@ FALLBACK_TEMPLATE: SpaceTemplate = SpaceTemplate(
 )
 
 
+# ── System spaces (Workflow Arc Phase 8a) ──────────────────────────
+# Platform-owned spaces gated by permission, not (vertical, role).
+# Unlike role-based SEED_TEMPLATES:
+#   - Conditionally seeded based on a live user_has_permission check
+#   - Set is_system=True on the stored SpaceConfig (blocks delete)
+#   - Tracked via preferences.system_spaces_seeded list[str]
+#   - DotNav renders them leftmost
+#   - User can rename + recolor + reorder pins; cannot delete
+
+
+@dataclass
+class SystemSpaceTemplate:
+    """A platform-owned system space. Unlike role-based templates,
+    system spaces are conditionally seeded based on a live permission
+    check — not a (vertical, role_slug) lookup."""
+
+    template_id: str
+    name: str
+    icon: str
+    accent: AccentName
+    pins: list[PinSeed] = field(default_factory=list)
+    density: DensityName = "comfortable"
+    # Permission required to see this system space. Matches the
+    # permission_service vocabulary. None = everyone gets it
+    # (reserved for future; not used today).
+    required_permission: str | None = None
+    # System spaces always sort leftmost — negative display_order
+    # keeps them ahead of user-created spaces regardless of the
+    # user's reorder history.
+    display_order: int = -1000
+
+
+SYSTEM_SPACE_TEMPLATES: list[SystemSpaceTemplate] = [
+    SystemSpaceTemplate(
+        template_id="settings",
+        name="Settings",
+        icon="settings",
+        accent="neutral",
+        required_permission="admin",
+        # Phase 8a ships four pins; existing Settings nav sub-section
+        # stays during transition so the full 30+ settings pages
+        # remain reachable. Phase 8h+ migrates additional pages.
+        pins=[
+            PinSeed(
+                pin_type="nav_item",
+                target="/settings/workflows",
+                label_override="Workflows",
+            ),
+            PinSeed(
+                pin_type="nav_item",
+                target="/saved-views",
+                label_override="Saved views",
+            ),
+            PinSeed(
+                pin_type="nav_item",
+                target="/admin/users",
+                label_override="Users",
+            ),
+            PinSeed(
+                pin_type="nav_item",
+                target="/admin/roles",
+                label_override="Roles",
+            ),
+        ],
+        display_order=-1000,
+    ),
+]
+
+
+def get_system_space_templates_for_user(
+    db: Any, user: Any
+) -> list[SystemSpaceTemplate]:
+    """Return system space templates visible to this user based on
+    each template's required_permission. Evaluated at seed time AND
+    at resolve time so permission revocations hide the space from
+    the dot nav without a re-seed."""
+    from app.services.permission_service import user_has_permission
+
+    out: list[SystemSpaceTemplate] = []
+    for tpl in SYSTEM_SPACE_TEMPLATES:
+        perm = tpl.required_permission
+        if perm is None or user_has_permission(user, db, perm):
+            out.append(tpl)
+    return out
+
+
 # ── Static label table for nav-item pins ────────────────────────────
 # Labels for nav hrefs seen in the templates above. Keeps backend
 # self-sufficient without having to ingest navigation-service.ts.

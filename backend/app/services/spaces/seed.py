@@ -95,8 +95,76 @@ def seed_for_user(
         already_seeded.append(role_slug)
 
     prefs["spaces_seeded_for_roles"] = already_seeded
+
+    # Workflow Arc Phase 8a — seed system spaces (Settings etc.)
+    # based on live permissions. Idempotent via
+    # preferences.system_spaces_seeded. Re-runs on role change
+    # pick up newly-granted admin permission without forcing the
+    # user-space re-seed (which is gated by ROLE_CHANGE_RESEED_ENABLED
+    # in user_service.update_user).
+    created_total += _apply_system_spaces(db, user, prefs)
+
     _save_prefs(db, user, prefs)
     return created_total
+
+
+def _apply_system_spaces(
+    db: Session,
+    user: User,
+    prefs: dict[str, Any],
+) -> int:
+    """Append system spaces (Settings etc.) to prefs['spaces']
+    based on the user's current permissions. Tracked via
+    preferences.system_spaces_seeded list[str] of template_ids."""
+    system_templates = reg.get_system_space_templates_for_user(db, user)
+    already_seeded = set(prefs.get("system_spaces_seeded", []))
+    spaces_raw = prefs.get("spaces") or []
+    spaces: list[SpaceConfig] = [SpaceConfig.from_dict(s) for s in spaces_raw]
+    existing_names = {s.name.lower() for s in spaces}
+    existing_system_ids = {
+        s.space_id.replace("sys_", "", 1)
+        for s in spaces
+        if s.is_system and s.space_id.startswith("sys_")
+    }
+
+    added = 0
+    for tpl in system_templates:
+        # Idempotency: skip if the template_id is already in the
+        # per-user array OR we see a system space with matching id
+        # prefix OR a space with the same name exists.
+        if tpl.template_id in already_seeded:
+            continue
+        if tpl.template_id in existing_system_ids:
+            already_seeded.add(tpl.template_id)
+            continue
+        if tpl.name.lower() in existing_names:
+            already_seeded.add(tpl.template_id)
+            continue
+
+        new_space = SpaceConfig(
+            # Stable space_id so the same user re-seeding doesn't
+            # create duplicates and the dot nav can key on it.
+            space_id=f"sys_{tpl.template_id}",
+            name=tpl.name,
+            icon=tpl.icon,
+            accent=tpl.accent,
+            display_order=tpl.display_order,
+            is_default=False,
+            density=tpl.density,
+            is_system=True,
+            pins=_build_pins_from_seeds(db, user, tpl.pins),
+            created_at=now_iso(),
+            updated_at=now_iso(),
+        )
+        spaces.append(new_space)
+        existing_names.add(tpl.name.lower())
+        already_seeded.add(tpl.template_id)
+        added += 1
+
+    if added > 0:
+        prefs["spaces"] = [s.to_dict() for s in spaces]
+    prefs["system_spaces_seeded"] = sorted(already_seeded)
+    return added
 
 
 # ── Internal helpers ─────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import {
   Zap,
   Clock,
@@ -11,6 +11,8 @@ import {
   Sparkles,
   Sliders,
   Bell,
+  Cpu,
+  GitFork,
   Loader2,
 } from "lucide-react"
 import apiClient from "@/lib/api-client"
@@ -21,6 +23,18 @@ interface WorkflowCard {
   description: string | null
   keywords: string[]
   tier: number
+  // Workflow Arc Phase 8a — canonical three-scope classification.
+  // Core = platform-wide shipped workflows (tier 1 + wf_sys_*)
+  // Vertical = default workflows tied to a tenant's vertical
+  // Tenant = tenant-owned (forks + custom built-in-house)
+  scope?: "core" | "vertical" | "tenant"
+  forked_from_workflow_id?: string | null
+  forked_at?: string | null
+  // Set when the workflow's execution delegates to
+  // app.services.agents.agent_runner.AgentRunner.AGENT_REGISTRY.
+  // Rendered as a "Built-in implementation" badge; click-through is
+  // view-only (Phase 8b-8f migrates agents into real workflow defs).
+  agent_registry_key?: string | null
   vertical: string | null
   trigger_type: string
   icon: string | null
@@ -271,6 +285,7 @@ function PlatformGrouped({ rows, showVertical }: { rows: WorkflowCard[]; showVer
 }
 
 function Card({ card, showVertical }: { card: WorkflowCard; showVertical: boolean }) {
+  const navigate = useNavigate()
   const TriggerIcon =
     card.trigger_type === "scheduled" || card.trigger_type.startsWith("time")
       ? Clock
@@ -278,15 +293,53 @@ function Card({ card, showVertical }: { card: WorkflowCard; showVertical: boolea
         ? Calendar
         : Zap
 
+  // Workflow Arc Phase 8a — agent-backed workflows route to
+  // read-only view; the builder editor would mislead users into
+  // thinking they can edit steps that are actually Python classes
+  // in AgentRunner.AGENT_REGISTRY. Phase 8b-8f migrates these into
+  // real workflow definitions.
+  const isAgentBacked = Boolean(card.agent_registry_key)
   const destination =
     card.is_coming_soon
       ? "#"  // ComingSoonAction handles click
-      : card.editable
-        ? `/settings/workflows/${card.id}/edit`
-        : `/settings/workflows/${card.id}/view`
+      : isAgentBacked
+        ? `/settings/workflows/${card.id}/view`
+        : card.editable
+          ? `/settings/workflows/${card.id}/edit`
+          : `/settings/workflows/${card.id}/view`
 
   const [notified, setNotified] = useState(false)
   const [notifying, setNotifying] = useState(false)
+  const [forking, setForking] = useState(false)
+
+  // Workflow Arc Phase 8a — fork mechanism (Option A, hard fork).
+  // Available on Core + Vertical rows (scope classification).
+  // Soft customization (parameter overrides) continues via the
+  // existing param-editor path. UX of when-to-fork vs when-to-override
+  // is deferred to Phase 8c per the audit's G finding.
+  const canFork =
+    card.scope === "core" || card.scope === "vertical"
+  const forkWorkflow = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (forking) return
+    setForking(true)
+    try {
+      const resp = await apiClient.post<{ id: string }>(
+        `/workflows/${card.id}/fork`,
+        {},
+      )
+      // Jump straight into the fork's editor.
+      navigate(`/settings/workflows/${resp.data.id}/edit`)
+    } catch (err) {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response
+          ?.data?.detail ?? "Fork failed."
+      alert(detail)
+    } finally {
+      setForking(false)
+    }
+  }
 
   const notifyMe = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -321,6 +374,33 @@ function Card({ card, showVertical }: { card: WorkflowCard; showVertical: boolea
             <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
               <Lock className="h-3 w-3" />
               {card.configurable ? "Configurable" : "Platform"}
+            </span>
+          )}
+          {/* Workflow Arc Phase 8a — agent-backed workflows.
+              Execution is delegated to the accounting agent system
+              (AgentRunner.AGENT_REGISTRY). Clicking the card opens
+              a read-only view; the badge signals to users that the
+              step list isn't editable. Phase 8b-8f migrates these
+              agents into real workflow definitions and the badge
+              disappears per row as each transition lands. */}
+          {isAgentBacked && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700"
+              title={`Execution delegated to ${card.agent_registry_key!} in AgentRunner. View-only until Phase 8b-8f migration completes.`}
+              data-testid="workflow-agent-badge"
+            >
+              <Cpu className="h-3 w-3" />
+              Built-in implementation
+            </span>
+          )}
+          {card.forked_from_workflow_id && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
+              title="Forked from a platform or vertical workflow. Platform updates do not propagate."
+              data-testid="workflow-fork-badge"
+            >
+              <GitFork className="h-3 w-3" />
+              Fork
             </span>
           )}
           {card.configurable && card.tier === 1 && (
@@ -366,6 +446,28 @@ function Card({ card, showVertical }: { card: WorkflowCard; showVertical: boolea
             <Bell className="h-3 w-3" />
           )}
           {notified ? "Notified" : "Notify me"}
+        </button>
+      ) : canFork && !isAgentBacked ? (
+        // Workflow Arc Phase 8a — fork button on Core / Vertical
+        // cards. Agent-backed workflows can still be forked in
+        // theory, but the fork won't carry the agent delegation
+        // (fork.agent_registry_key is cleared server-side). Hide
+        // the fork button on agent-backed rows for now to avoid
+        // confusion — users customize via params for agent-backed
+        // ones, full fork lands when the agent migrates in 8b-8f.
+        <button
+          onClick={forkWorkflow}
+          disabled={forking}
+          className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 transition hover:bg-slate-50"
+          title="Create an independent tenant copy. Platform updates won't propagate."
+          data-testid="workflow-fork-btn"
+        >
+          {forking ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <GitFork className="h-3 w-3" />
+          )}
+          {forking ? "Forking..." : "Fork"}
         </button>
       ) : card.editable ? (
         <Edit3 className="h-3.5 w-3.5 text-slate-300" />

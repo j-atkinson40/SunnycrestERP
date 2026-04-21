@@ -346,6 +346,7 @@ def _resolve_space(db: Session, user: User, sp: SpaceConfig) -> ResolvedSpace:
         display_order=sp.display_order,
         is_default=sp.is_default,
         density=sp.density,
+        is_system=sp.is_system,
         pins=resolved_pins,
         created_at=sp.created_at,
         updated_at=sp.updated_at,
@@ -480,6 +481,20 @@ def delete_space(db: Session, *, user: User, space_id: str) -> None:
     if hit is None:
         raise SpaceNotFound(f"Space {space_id} not found")
     idx, sp = hit
+
+    # Workflow Arc Phase 8a — system spaces are platform-owned and
+    # non-deletable. Users can rename + recolor + reorder pins, but
+    # delete raises SpaceError so the UI can render a clear message.
+    # Matches the audit-approved "can be hidden but not deleted"
+    # affordance without requiring separate hide infrastructure in
+    # this phase (hide is effectively "move to end + collapse pins";
+    # Phase 8e's default-views work may formalize it).
+    if sp.is_system:
+        raise SpaceError(
+            "System spaces can be hidden but not deleted. "
+            "Rename, recolor, or reorder pins to customize it."
+        )
+
     was_default = sp.is_default
 
     # If active_space_id points here, clear it.

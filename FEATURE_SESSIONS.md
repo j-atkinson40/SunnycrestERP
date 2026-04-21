@@ -6,6 +6,90 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Workflow Arc Phase 8a — Foundation Infrastructure
+
+**Date:** 2026-04-21
+**Migration head:** `r36_workflow_scope` (advances from `r35_briefings_table`)
+**Arc:** Workflow Arc (new) — see `WORKFLOW_ARC.md` at project root for the full 8a–8h plan.
+**Tests passing:** 30 backend (16 workflow scope/fork + 14 system space / role decoupling) + 5 BLOCKING latency gates + 6 vitest (DotNav) + 6 Playwright scenarios = **47 new this phase**. Adjacent regression: UI/UX Arc Phase 1–7 tests + all follow-ups passing; frontend vitest full run 165/165; `tsc -b` clean.
+
+### What shipped — groundwork for Phase 8b–8h
+
+Phase 8a is the foundation the remaining Workflow Arc phases build on. No workflow migrations yet, no agent retirement yet. What it establishes:
+
+1. **Workflow scope field** — `core` / `vertical` / `tenant` classification as a first-class workflow attribute. All 37 existing workflows backfilled: 16 `wf_sys_*` rows → `core`, 21 vertical (manufacturing + funeral_home) → `vertical`, 0 tenant on the seeded dev tenant.
+2. **Tenant fork mechanism** — `POST /api/v1/workflows/{id}/fork` creates an independent tenant copy with fresh IDs, remapped DAG edges, and copied platform-default step params. `forked_from_workflow_id` + `forked_at` stamped. Coexists with the existing `WorkflowEnrollment` + `WorkflowStepParam` soft-customization path — both are deliberate per the approved spec.
+3. **Settings as a platform space** — registered via new `SYSTEM_SPACE_TEMPLATES` mechanism. Seeded for admins at registration. Non-deletable (can be renamed, recolored, and have pins reordered). Stable space ID `sys_settings`.
+4. **DotNav** — horizontal dots at the bottom of the left sidebar. Replaces the Phase 3 top-bar `SpaceSwitcher`. System spaces sort leftmost regardless of display_order. Phase 3 keyboard shortcuts (`Cmd+[`, `Cmd+]`, `Cmd+Shift+1..5`) preserved. Old `SpaceSwitcher` component left in the repo for a one-release grace window; the mount is removed.
+5. **Role decoupling preparation** — `ROLE_CHANGE_RESEED_ENABLED: bool = False` module constant in `user_service.py` gates the role-change reseed block. Registration-time seeds preserved. Spaces seed still runs on role change (idempotent + permission recheck — needed so new permissions surface Settings in the dot nav promptly). Public helper `reapply_role_defaults_for_user(db, user)` available for the opt-in UI landing in Phase 8e.
+6. **Agent-backed workflow stubs** — three `wf_sys_*` rows (`wf_sys_month_end_close`, `wf_sys_ar_collections`, `wf_sys_expense_categorization`) get `agent_registry_key` populated, corresponding to existing entries in `AgentRunner.AGENT_REGISTRY`. Frontend renders a "Built-in implementation" badge on those cards; click routes read-only to `/view` rather than `/edit`. Badges clear per row as agents migrate to real workflow definitions in 8b–8f.
+
+### Approved deviations from the spec
+
+1. **Both customization paths preserved** (audit A) — the existing enrollment + override (Option B) path stays unchanged; fork (Option A) adds alongside. The UX for "when to use which" lands in Phase 8c.
+2. **System space re-seed runs unconditionally on role change** (audit D) — even with `ROLE_CHANGE_RESEED_ENABLED=False`, the spaces seed block still runs because the Settings system space is permission-gated and needs to appear in the dot nav when a user is promoted to admin. The seed is idempotent: existing user spaces are untouched; only the Settings dot is added if the permission grant just happened.
+3. **Latency gates adjusted for Phase 8a data sizes** (audit F) — the five new BLOCKING gates (workflow-scope-core, workflow-scope-core+used_by, workflow-scope-vertical, spaces-with-system, workflow-fork) run against the seeded dev tenant (~40 workflow rows). Budgets chosen to match UI/UX Arc conventions: scope filters at p50<100ms/p99<300ms, fork at p50<200ms/p99<500ms (wider because it's a multi-table write path).
+4. **Agent badge shipped in 8a** (audit G1) — rather than deferred. The "Built-in implementation" badge + read-only routing for agent-backed rows is minimal and lets Phase 8b's migration template work against a representative UI the whole time.
+5. **Fork-vs-override UX polish deferred to 8c** (audit G2) — the fork API + button ships in 8a so the infrastructure is proven; the decision-tree UI ("when to use fork vs enrollment override") is Phase 8c work alongside the first real migration.
+
+### Backend additions
+
+- `backend/alembic/versions/r36_workflow_scope.py` — new migration. Adds `workflows.scope` (String 16, NOT NULL, server_default `"tenant"`), `workflows.forked_from_workflow_id` (FK → workflows.id ON DELETE SET NULL, nullable), `workflows.forked_at` (DateTime tz, nullable), `workflows.agent_registry_key` (String 100, nullable). CHECK constraint `scope IN ('core','vertical','tenant')`. Indexes on `(company_id, scope)` + partial on `forked_from_workflow_id WHERE NOT NULL`. Data backfill: scope derived from tier (tier 1 → core, tier 2/3 → vertical, tier 4 → tenant); agent_registry_key populated for the three existing agent-backed stubs. Idempotent-safe via the `env.py` op wrappers.
+- `backend/app/models/workflow.py` — 4 new Mapped columns (`scope`, `forked_from_workflow_id`, `forked_at`, `agent_registry_key`).
+- `backend/app/services/workflow_fork.py` — new service (~230 lines). `fork_workflow_to_tenant(db, *, user, source_workflow_id, new_name=None) -> Workflow` copies source with fresh UUIDs, two-pass ID map to remap DAG edges, copies platform-default `WorkflowStepParam` rows (those with `company_id IS NULL`), stamps `forked_from_workflow_id` + `forked_at`, clears `agent_registry_key` on the copy. Raises typed `ForkNotAllowed` / `SourceNotFound` / `AlreadyForked`. Also exports `count_tenants_using_workflow()` aggregating distinct active enrollments (for the `include_used_by=true` query path).
+- `backend/app/api/routes/workflows.py` — `_serialize_workflow` extended with `scope`, `forked_from_workflow_id`, `forked_at`, `agent_registry_key`, `company_id`, `used_by_count`. `list_workflows` gains `scope` + `include_used_by` query params with regex validation on scope. New `POST /{workflow_id}/fork` endpoint with `_ForkRequest` Pydantic body.
+- `backend/app/services/spaces/registry.py` — new `SystemSpaceTemplate` dataclass with `required_permission` + `SYSTEM_SPACE_TEMPLATES: list[SystemSpaceTemplate]` containing the Settings template (stable id `sys_settings`, icon `"settings"`, accent `"neutral"`, 4 seed pins: `/settings/workflows`, `/saved-views`, `/admin/users`, `/admin/roles`). `get_system_space_templates_for_user(db, user)` filters by `user_has_permission`.
+- `backend/app/services/spaces/types.py` — `SpaceConfig` gains `is_system: bool = False`; `ResolvedSpace` propagates it. to_dict / from_dict roundtrip.
+- `backend/app/services/spaces/seed.py` — new `_apply_system_spaces(db, user)` seeds system spaces the user has permission for; tracks via `user.preferences["system_spaces_seeded"]: list[str]`; appended to `created_total` return. Called from both `register_user` path and `update_user` role-change path (idempotent).
+- `backend/app/services/spaces/crud.py` — `delete_space` raises `SpaceError("System spaces can be hidden but not deleted. Rename, recolor, or reorder pins to customize it.")` when target is `is_system=True`. `_resolve_space` propagates is_system into the response.
+- `backend/app/api/routes/spaces.py` — `_SpaceResponse` gains `is_system: bool = False`; `_resolved_to_response` propagates.
+- `backend/app/services/user_service.py` — module-level constant `ROLE_CHANGE_RESEED_ENABLED: bool = False`. New public `reapply_role_defaults_for_user(db, user) -> dict[str, int]` helper calling saved_views + spaces + briefings seeds. The role-change hook in `update_user` now: (a) skips saved_views + briefings seeds when flag is False, (b) still runs spaces seed unconditionally (permission recheck for system spaces).
+
+### Frontend additions
+
+- `frontend/src/components/layout/DotNav.tsx` — new ~260-line component. Horizontal dot row rendered at the bottom of the existing sidebar (between `OnboardingSidebarWidget` and the preset label). System spaces sort leftmost regardless of display_order. `_DOT_NAV_ICON_MAP` for lucide icons (exported for vitest); falls back to a colored dot in `space.accent` when no icon maps. Active dot gets `aria-pressed="true"` + `data-active="true"`. Keyboard shortcuts: `Cmd+[` / `Cmd+]` prev/next, `Cmd+Shift+1..5` direct access (ignores inputs/textareas/contenteditables). Shift+click on a dot opens `SpaceEditorDialog`; plus button opens `NewSpaceDialog`. `data-testid`s: `dot-nav`, `dot-nav-dot`, `dot-nav-add`. Null-renders when no spaces exist (matches Phase 3 behavior).
+- `frontend/src/components/layout/sidebar.tsx` — mounts `<DotNav />` between `OnboardingSidebarWidget` and the preset label.
+- `frontend/src/components/layout/app-layout.tsx` — `SpaceSwitcher` import + mount removed from the header. Comment notes the component stays in-repo for a one-release grace window; future cleanup removes the file.
+- `frontend/src/types/spaces.ts` — `Space` interface gains optional `is_system?: boolean`.
+- `frontend/src/pages/settings/Workflows.tsx` — `WorkflowCard` extended with `scope`, `forked_from_workflow_id`, `forked_at`, `agent_registry_key`. New `isAgentBacked` guard routes agent-backed rows to `/view` instead of `/edit`. `forkWorkflow(id)` async handler calls `POST /api/v1/workflows/{id}/fork` and navigates to the new fork's edit page. "Built-in implementation" badge (indigo) renders when `agent_registry_key` is set; "Fork" badge (emerald) renders when `forked_from_workflow_id` is set. Fork button appears on Core/Vertical rows (`canFork && !isAgentBacked`).
+
+### Tests
+
+- `backend/tests/test_workflow_scope_phase8a.py` — 16 tests across 3 classes:
+  - `TestScopeFiltering` (5): Core tab returns core only, Vertical tab returns vertical only, Tenant tab returns tenant only, unknown scope → 400, no scope param returns all.
+  - `TestForkEndpoint` (8): creates independent copy, clears agent_registry_key, stamps forked_from + forked_at, two-pass DAG remap correctness, platform-default step params copied, AlreadyForked rejection, SourceNotFound → 404, non-admin → 403.
+  - `TestCountTenantsUsingWorkflow` (3): counts distinct enrollments, excludes inactive, returns zero when no enrollments.
+- `backend/tests/test_system_spaces_phase8a.py` — 14 tests across 4 classes:
+  - `TestSystemSpaceTemplates` (3): Settings template exists + has required_permission, get_system_space_templates_for_user filters by permission, unknown permission hides template.
+  - `TestSystemSpaceSeeding` (4): admin user gets Settings seeded at registration, non-admin doesn't, idempotent re-seed, tracks via preferences.system_spaces_seeded array.
+  - `TestSystemSpaceNonDeletion` (3): delete_space raises SpaceError for is_system=True, allows rename + accent change + pin reorder.
+  - `TestRoleDecouplingFlag` (4): flag default False, saved_views seed skipped when False, briefings seed skipped when False, spaces seed runs unconditionally (permission recheck for new grants).
+- `backend/tests/test_workflow_scope_latency_phase8a.py` — 5 BLOCKING latency gates (20 samples each, 3 warmups):
+  - `workflow-scope-core` (budget p50<100ms/p99<300ms): **p50=15.4ms, p99=38.4ms** (6×/8× headroom).
+  - `workflow-scope-core+used_by` (same budget): **p50=24.8ms, p99=26.0ms** (4×/12× headroom).
+  - `workflow-scope-vertical` (same budget): **p50=5.0ms, p99=6.3ms** (20×/48× headroom).
+  - `spaces-with-system` (same budget): **p50=2.1ms, p99=2.1ms** (48×/143× headroom).
+  - `workflow-fork` (budget p50<200ms/p99<500ms): **p50=5.1ms, p99=5.3ms** (39×/94× headroom).
+- `frontend/src/components/layout/DotNav.test.tsx` — 6 vitest: null-renders with no spaces, renders one dot per space + plus button, active dot aria-pressed, system space sorts leftmost regardless of display_order, click invokes switchSpace, icon map contains expected entries.
+- `frontend/tests/e2e/workflow-arc-phase-8a.spec.ts` — 6 Playwright scenarios: dot_nav_renders_at_bottom, dot_nav_switches_spaces (with aria-pressed update), settings_dot_visible_for_admin (skips cleanly when staging data is older), workflows_page_shows_scope_cards (agent badge on wf_sys_month_end_close), fork_core_workflow_flow (mocked fork endpoint), old_top_space_switcher_gone (regression).
+
+### Orphan migration flag
+
+During the Phase 8a audit, a chain of six orphan migration files surfaced — `r34_order_service_fields.py` through `r39_legacy_proof_fields.py` — branching off from `r33_lifecycle_gaps` which isn't on the main chain. `alembic heads` still shows a single head (`r35_briefings_table` before this phase, now `r36_workflow_scope`), confirming the orphans aren't reachable. They appear to be pre-existing feature-branch artifacts that never reconciled with the UI/UX Arc chain. Per the approved audit clarification E, **do NOT touch these in Phase 8a** — flagged in `WORKFLOW_ARC.md` → Post-Arc Backlog so a future cleanup session picks them up with a dedicated review.
+
+### Phase 8a Final State
+
+- **Migration head:** `r36_workflow_scope`
+- **Tables modified:** `workflows` gains 4 columns + CHECK + 2 indexes. No new tables.
+- **Workflow scope distribution on seeded dev tenant:** 16 core / 21 vertical / 0 tenant (after r36 backfill).
+- **Agent-backed workflows surfaced:** 3 (`month_end_close`, `ar_collections`, `expense_categorization`) — each shows the "Built-in implementation" badge + read-only click-through until migrated in 8b–8f.
+- **BLOCKING CI gates total:** 12 (5 new + 7 from the UI/UX Arc).
+- **Infrastructure ready for:** Phase 8b reconnaissance migration (Cash Receipts Matching), 8c–8f accounting + vertical migrations, 8e spaces + default views expansion, 8g dashboard rework, 8h arc finale.
+
+Next up: **Phase 8b — Reconnaissance Migration: Cash Receipts Matching**. Deliberate one-agent learning phase. Output is a reusable migration template for 8c–8f.
+
+---
+
 ## Peek Panels (UI/UX Arc Follow-up 4 — Arc Finale)
 
 **Date:** 2026-04-20

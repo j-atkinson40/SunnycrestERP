@@ -39,13 +39,21 @@ class EnrollmentPatch(BaseModel):
     is_active: bool
 
 
-def _serialize_workflow(w: Workflow, step_count: int = 0) -> dict:
+def _serialize_workflow(
+    w: Workflow, step_count: int = 0, used_by_count: int | None = None
+) -> dict:
     return {
         "id": w.id,
         "name": w.name,
         "description": w.description,
         "keywords": w.keywords or [],
         "tier": w.tier,
+        # Workflow Arc Phase 8a — scope + fork + agent metadata
+        "scope": w.scope,
+        "forked_from_workflow_id": w.forked_from_workflow_id,
+        "forked_at": w.forked_at.isoformat() if w.forked_at else None,
+        "agent_registry_key": w.agent_registry_key,
+        "company_id": w.company_id,
         "vertical": w.vertical,
         "trigger_type": w.trigger_type,
         "trigger_config": w.trigger_config,
@@ -55,6 +63,9 @@ def _serialize_workflow(w: Workflow, step_count: int = 0) -> dict:
         "icon": w.icon,
         "command_bar_priority": w.command_bar_priority,
         "step_count": step_count,
+        # used_by_count only populated for core/vertical rows when
+        # the caller asks for it (see /workflows?scope=core query).
+        "used_by_count": used_by_count,
     }
 
 
@@ -206,18 +217,132 @@ def list_step_types(
 def list_workflows(
     trigger_type: str | None = Query(None),
     vertical: str | None = Query(None),
+    scope: str | None = Query(
+        None,
+        description="Filter by workflow scope. Valid values: core, vertical, tenant.",
+        regex="^(core|vertical|tenant)$",
+    ),
+    include_used_by: bool = Query(
+        False,
+        description=(
+            "Populate used_by_count on core/vertical rows. Costs an extra "
+            "aggregate query per workflow — only request when rendering "
+            "the three-tab builder."
+        ),
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """List workflows visible to the caller.
+
+    Default behavior unchanged — no scope filter returns the full
+    tenant-visible list via workflow_engine. Scope filter narrows:
+
+      - scope=core: all workflows with scope='core' (platform-global,
+        visible to every tenant)
+      - scope=vertical: workflows with scope='vertical' matching the
+        tenant's vertical (and any vertical explicitly passed)
+      - scope=tenant: workflows owned by the caller's tenant
+        (company_id == caller's company) — includes forks + custom
+
+    `include_used_by` returns per-row tenant-enrollment counts on
+    core/vertical rows for the "Used by N tenants" column. Not
+    computed for tenant-scope because each tenant sees only their
+    own, so the count is always 1.
+    """
     vert = vertical or _company_vertical(db, current_user.company_id)
-    workflows = workflow_engine.get_active_workflows_for_tenant(
-        db, current_user.company_id, vertical=vert, trigger_type=trigger_type
-    )
+
+    if scope is not None:
+        # Three-tab filtering path.
+        q = db.query(Workflow)
+        if scope == "core":
+            q = q.filter(Workflow.scope == "core")
+        elif scope == "vertical":
+            q = q.filter(Workflow.scope == "vertical")
+            # Restrict to vertical matching caller's tenant.
+            if vert:
+                q = q.filter(Workflow.vertical == vert)
+        elif scope == "tenant":
+            q = q.filter(
+                Workflow.scope == "tenant",
+                Workflow.company_id == current_user.company_id,
+            )
+        q = q.filter(Workflow.is_active.is_(True))
+        q = q.order_by(Workflow.tier.asc(), Workflow.name.asc())
+        workflows = q.all()
+    else:
+        # Legacy path — unfiltered tenant-visible list via engine.
+        workflows = workflow_engine.get_active_workflows_for_tenant(
+            db,
+            current_user.company_id,
+            vertical=vert,
+            trigger_type=trigger_type,
+        )
+
     out = []
     for w in workflows:
-        count = db.query(WorkflowStep).filter(WorkflowStep.workflow_id == w.id).count()
-        out.append(_serialize_workflow(w, step_count=count))
+        count = (
+            db.query(WorkflowStep)
+            .filter(WorkflowStep.workflow_id == w.id)
+            .count()
+        )
+        used_by: int | None = None
+        if include_used_by and w.scope in ("core", "vertical"):
+            from app.services.workflow_fork import count_tenants_using_workflow
+
+            used_by = count_tenants_using_workflow(db, workflow_id=w.id)
+        out.append(
+            _serialize_workflow(w, step_count=count, used_by_count=used_by)
+        )
     return out
+
+
+# ── Workflow Arc Phase 8a — fork mechanism (Option A) ───────────────
+
+
+class _ForkRequest(BaseModel):
+    new_name: str | None = None
+
+
+@router.post("/{workflow_id}/fork")
+def fork_workflow(
+    workflow_id: str,
+    body: _ForkRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fork a core or vertical workflow into a tenant-owned copy.
+
+    Option A — independent copies. Platform updates to the source
+    workflow do NOT propagate to the fork. The fork is the tenant's
+    to edit, rename, activate/deactivate, and ultimately delete.
+
+    For soft customization (parameter overrides while staying enrolled
+    in the platform workflow), use PATCH /workflows/{id}/enrollment
+    instead. The two paths are documented in CLAUDE.md § Workflows
+    under the dual-path rationale.
+
+    409 if the tenant already has an active fork of this source.
+    """
+    from app.services.workflow_fork import (
+        WorkflowForkError,
+        fork_workflow_to_tenant,
+    )
+
+    try:
+        fork = fork_workflow_to_tenant(
+            db,
+            user=current_user,
+            source_workflow_id=workflow_id,
+            new_name=body.new_name,
+        )
+    except WorkflowForkError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=str(exc)) from exc
+
+    step_count = (
+        db.query(WorkflowStep).filter(WorkflowStep.workflow_id == fork.id).count()
+    )
+    return _serialize_workflow(fork, step_count=step_count)
 
 
 @router.get("/command-bar")

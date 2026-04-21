@@ -19,6 +19,36 @@ class Workflow(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     keywords: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     tier: Mapped[int] = mapped_column(Integer, default=2)
+    # Workflow Arc Phase 8a — three-tab scope (Core / Vertical / Tenant).
+    # Backfilled from tier via r36: tier==1 → core, tier in (2,3) →
+    # vertical, tier==4 or tenant-owned → tenant. CHECK constraint
+    # in r36 enforces the three-value set.
+    scope: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="tenant",
+        server_default="tenant",
+    )
+    # Option-A hard-fork mechanism. Soft customization (parameter
+    # overrides while staying enrolled in the platform workflow)
+    # continues via WorkflowEnrollment + WorkflowStepParam. The dual
+    # path is documented in CLAUDE.md § Workflows.
+    forked_from_workflow_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workflows.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    forked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # When set, this row is a stub pointing at the accounting agent
+    # system (app.services.agents.agent_runner.AgentRunner
+    # .AGENT_REGISTRY). Execution happens in the agent runner, NOT
+    # workflow_engine. UI renders a "Built-in implementation" badge
+    # and skips the step-level builder editor. Phase 8b-8f migrates
+    # agents into real workflow definitions — this field clears per
+    # row as each transition completes.
+    agent_registry_key: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
     vertical: Mapped[str | None] = mapped_column(String(50), nullable=True)
     trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
     trigger_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

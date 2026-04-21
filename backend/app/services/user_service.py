@@ -12,6 +12,66 @@ from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.services import audit_service, notification_service
 
 
+# Workflow Arc Phase 8a — role decoupling.
+# When False (the Phase 8a default), role changes stop auto-re-seeding
+# saved views + briefing preferences. Roles become permission grants
+# only; UX content is preserved. Flip to True to restore the UI/UX Arc
+# Phase 3 behavior (useful for migration utilities or feature-parity
+# tests). Documented in CLAUDE.md § Roles.
+#
+# Spaces seed STILL runs on role change because its role-tuple
+# seeding is idempotent AND the Phase-8a _apply_system_spaces pass
+# checks live admin permission for the Settings system space —
+# promotion-to-admin should surface Settings in the dot nav.
+ROLE_CHANGE_RESEED_ENABLED: bool = False
+
+
+def reapply_role_defaults_for_user(db: Session, user: User) -> dict[str, int]:
+    """Opt-in re-apply of role-based defaults across Phase 2 (saved
+    views), Phase 3 (spaces), Phase 6 (briefing preferences).
+
+    Returns counts per domain: `{saved_views, spaces, briefings}`.
+
+    Phase 8a ships this as a public function callable from a future
+    UI (Phase 8e) or from migration utilities. It's NOT called on
+    role change by default — role change is permission-only. This
+    gives users an explicit "start over from role defaults" action.
+    """
+    counts = {"saved_views": 0, "spaces": 0, "briefings": 0}
+    try:
+        from app.services.saved_views.seed import (
+            seed_for_user as _seed_saved_views,
+        )
+        counts["saved_views"] = _seed_saved_views(db, user=user) or 0
+    except Exception:  # pragma: no cover — best-effort
+        import logging
+        logging.getLogger(__name__).exception(
+            "reapply_role_defaults: saved_views failed for user %s", user.id
+        )
+    try:
+        from app.services.spaces.seed import (
+            seed_for_user as _seed_spaces,
+        )
+        counts["spaces"] = _seed_spaces(db, user=user) or 0
+    except Exception:  # pragma: no cover — best-effort
+        import logging
+        logging.getLogger(__name__).exception(
+            "reapply_role_defaults: spaces failed for user %s", user.id
+        )
+    try:
+        from app.services.briefings.preferences import (
+            seed_preferences_for_user as _seed_briefings,
+        )
+        _seed_briefings(db, user)
+        counts["briefings"] = 1
+    except Exception:  # pragma: no cover — best-effort
+        import logging
+        logging.getLogger(__name__).exception(
+            "reapply_role_defaults: briefings failed for user %s", user.id
+        )
+    return counts
+
+
 def _get_default_employee_role(db: Session, company_id: str) -> Role:
     """Look up the system employee role for a company."""
     role = (
@@ -283,30 +343,42 @@ def update_user(
                 from app.services.role_service import sync_functional_areas_for_role
                 sync_functional_areas_for_role(db, user.id, new_role.slug)
 
-                # UI/UX Arc — role-change re-seed hooks.
-                # Phase 2's saved-view seed + Phase 3's spaces seed
-                # are both idempotent via *_seeded_for_roles arrays
-                # in user.preferences. Calling them here lets a user
-                # promoted (e.g. office → director) pick up the new
-                # role's defaults without re-registering. Each call
-                # is best-effort; a seed failure MUST NOT block the
-                # role update or the response.
+                # Workflow Arc Phase 8a — role decoupling.
+                # Roles are permission grants only. UX content (saved
+                # views, briefing prefs) is NOT force-re-seeded. User's
+                # existing content stays theirs. Opt-in re-apply is
+                # available via reapply_role_defaults_for_user().
                 #
-                # Explicit two-line pattern (not a reseed_all helper)
-                # so future phases can attach additional seeds at
-                # this hook site transparently. See the approved
-                # Phase 3 plan for rationale.
-                try:
-                    from app.services.saved_views.seed import (
-                        seed_for_user as _seed_saved_views,
-                    )
-                    _seed_saved_views(db, user=user)
-                except Exception:  # pragma: no cover — best-effort
-                    import logging
-                    logging.getLogger(__name__).exception(
-                        "Saved views re-seed on role change failed "
-                        "for user %s (non-fatal)", user.id,
-                    )
+                # Spaces seed STILL runs — it's idempotent per role and
+                # the Phase-8a _apply_system_spaces pass checks live
+                # admin permission (Settings appears on promotion-to-
+                # admin, disappears on demotion at resolve time).
+                if ROLE_CHANGE_RESEED_ENABLED:
+                    try:
+                        from app.services.saved_views.seed import (
+                            seed_for_user as _seed_saved_views,
+                        )
+                        _seed_saved_views(db, user=user)
+                    except Exception:  # pragma: no cover — best-effort
+                        import logging
+                        logging.getLogger(__name__).exception(
+                            "Saved views re-seed on role change failed "
+                            "for user %s (non-fatal)", user.id,
+                        )
+                    try:
+                        from app.services.briefings.preferences import (
+                            seed_preferences_for_user as _seed_briefings,
+                        )
+                        _seed_briefings(db, user)
+                    except Exception:  # pragma: no cover — best-effort
+                        import logging
+                        logging.getLogger(__name__).exception(
+                            "Briefing preferences re-seed on role change "
+                            "failed for user %s (non-fatal)", user.id,
+                        )
+                # Spaces seed runs unconditionally — idempotent per role
+                # + system-space permission check needs to run on every
+                # role change (admin grant/revoke → Settings appears/hides).
                 try:
                     from app.services.spaces.seed import (
                         seed_for_user as _seed_spaces,
@@ -315,21 +387,8 @@ def update_user(
                 except Exception:  # pragma: no cover — best-effort
                     import logging
                     logging.getLogger(__name__).exception(
-                        "Spaces re-seed on role change failed for "
+                        "Spaces seed on role change failed for "
                         "user %s (non-fatal)", user.id,
-                    )
-                # Phase 6 — briefing preferences seed (idempotent per role).
-                # Tracked via preferences.briefings_seeded_for_roles.
-                try:
-                    from app.services.briefings.preferences import (
-                        seed_preferences_for_user as _seed_briefings,
-                    )
-                    _seed_briefings(db, user)
-                except Exception:  # pragma: no cover — best-effort
-                    import logging
-                    logging.getLogger(__name__).exception(
-                        "Briefing preferences re-seed on role change "
-                        "failed for user %s (non-fatal)", user.id,
                     )
 
         # Notify user if their account was reactivated

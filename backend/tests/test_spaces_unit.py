@@ -479,6 +479,12 @@ class TestManufacturingAdminSeeding:
         seed_for_user(db_session, user=fresh_admin_mfg)
         spaces = get_spaces_for_user(db_session, user=fresh_admin_mfg)
         names = {s.name for s in spaces}
-        assert {"Production", "Sales", "Ownership"} == names
+        # Phase 8a: admin users also receive the Settings system space
+        # alongside their role-template seeds. The role-template output
+        # is still Production + Sales + Ownership; assert is_system=False
+        # for those three and the default is still Production.
+        role_names = {s.name for s in spaces if not s.is_system}
+        assert {"Production", "Sales", "Ownership"} == role_names
+        assert "Settings" in names
         default = next(s for s in spaces if s.is_default)
         assert default.name == "Production"

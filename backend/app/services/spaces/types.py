@@ -113,6 +113,14 @@ class SpaceConfig:
     is_default: bool
     pins: list[PinConfig] = field(default_factory=list)
     density: DensityName = "comfortable"
+    # Workflow Arc Phase 8a — platform-owned system spaces (Settings
+    # being the first) set is_system=True. Users can rename, recolor,
+    # reorder pins, and hide them via display_order tricks, but
+    # CANNOT delete them. The delete-space service raises SpaceError
+    # with a helpful message. System spaces also re-seed if missing
+    # from preferences.spaces on next load — defense in depth against
+    # manual JSONB edits.
+    is_system: bool = False
     created_at: str | None = None  # ISO-8601
     updated_at: str | None = None
 
@@ -125,6 +133,7 @@ class SpaceConfig:
             "display_order": self.display_order,
             "is_default": self.is_default,
             "density": self.density,
+            "is_system": self.is_system,
             "pins": [p.to_dict() for p in self.pins],
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -141,6 +150,7 @@ class SpaceConfig:
             is_default=bool(data.get("is_default", False)),
             pins=[PinConfig.from_dict(p) for p in data.get("pins", [])],
             density=data.get("density", "comfortable"),
+            is_system=bool(data.get("is_system", False)),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
         )
@@ -210,6 +220,7 @@ class ResolvedSpace:
     pins: list[ResolvedPin]
     created_at: str | None
     updated_at: str | None
+    is_system: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -220,6 +231,7 @@ class ResolvedSpace:
             "display_order": self.display_order,
             "is_default": self.is_default,
             "density": self.density,
+            "is_system": self.is_system,
             "pins": [p.to_dict() for p in self.pins],
             "created_at": self.created_at,
             "updated_at": self.updated_at,

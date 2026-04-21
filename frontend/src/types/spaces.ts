@@ -52,6 +52,11 @@ export interface Space {
   display_order: number;
   is_default: boolean;
   density: DensityName;
+  // Workflow Arc Phase 8a — platform-owned system spaces (Settings).
+  // Non-deletable. DotNav renders them leftmost (display_order = -1000).
+  // User can rename + recolor + reorder pins, but the delete action
+  // is blocked server-side with a helpful error.
+  is_system?: boolean;
   pins: ResolvedPin[];
   created_at: string | null;
   updated_at: string | null;

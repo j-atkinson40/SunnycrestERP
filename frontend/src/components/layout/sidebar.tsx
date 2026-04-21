@@ -81,6 +81,7 @@ import { cn } from "@/lib/utils";
 import { OnboardingSidebarWidget } from "@/components/onboarding/sidebar-widget";
 import { LocationSelector } from "@/components/core/LocationSelector";
 import { PinnedSection } from "@/components/spaces/PinnedSection";
+import { DotNav } from "@/components/layout/DotNav";
 import type { NavItem, NavSection } from "@/services/navigation-service";
 
 // ---- Icon lookup ----
@@ -305,6 +306,12 @@ export function Sidebar() {
 
       {/* Onboarding widget */}
       <OnboardingSidebarWidget />
+
+      {/* Workflow Arc Phase 8a — DotNav replaces the top-of-screen
+          SpaceSwitcher. Horizontal dots at the bottom of the sidebar
+          rail with a plus button at the end. Settings system space
+          (when admin) appears leftmost. */}
+      <DotNav />
 
       {/* Preset label */}
       <div className="shrink-0 border-t px-5 py-2.5">
