@@ -16,7 +16,7 @@ This document is the definitive reference for the Bridgeable UI/UX arc. It exist
 
 Before the arc, Bridgeable had a working ERP platform — tables, forms, reports, an AI command bar that was 5,900 lines and mostly scaffolding. Features lived in silos. Users navigated to do anything consequential.
 
-After the arc, Bridgeable has seven composable platform primitives. A funeral director hits `⌘K`, types `new case John Smith DOD tonight daughter Mary wants Thursday service Hopkins FH`, hits Enter — a case record is created in 5 seconds with the decedent, the informant, the service date, and a pilled reference to the Hopkins FH CRM record. Switching to Arrangement space versus Administrative space changes which information emphasizes in their morning briefing. Processing 12 pending invoices becomes a keyboard-driven triage session instead of clicking through 12 detail pages.
+After the arc, Bridgeable has seven composable platform primitives + four post-arc follow-ups closing the last open seams. A funeral director hits `⌘K`, types `new case John Smith DOD tonight daughter Mary wants Thursday service Hopkins FH`, hits Enter — a case record is created in 5 seconds with the decedent, the informant, the service date, and a pilled reference to the Hopkins FH CRM record. Switching to Arrangement space versus Administrative space changes which information emphasizes in their morning briefing. Processing 12 pending invoices becomes a keyboard-driven triage session instead of clicking through 12 detail pages. Hovering an entity reference in any of those flows opens a peek panel with key facts — no navigation needed.
 
 The command bar is not a component; it's a platform layer. Saved views are not a feature; they're the universal data pattern across every list, kanban, calendar, and chart. Spaces aren't personalization; they're cognitive context switching. Natural-language creation isn't a form replacement; it's how the platform removes the friction between intent and record.
 
@@ -235,7 +235,15 @@ Before the September meeting:
 
 ## Post-arc Backlog (Consolidated)
 
-Deferred items from Phases 1-7, organized by category. None of these block the September demo. Each is a legitimate post-arc workstream.
+Deferred items from Phases 1-7 + post-arc-followup-1-through-4 closure, organized by category. None of these block the September demo. Each is a legitimate post-arc workstream.
+
+**All four post-arc follow-ups are delivered.** See FEATURE_SESSIONS.md for build records:
+
+1. ✅ **Follow-up 1 (April 2026) — Space-scoped triage queue pinning** (commit `1590ebe`)
+2. ✅ **Follow-up 2 (April 2026) — AI questions in triage context panels** (commit `7f1cc31`)
+3. ✅ **Follow-up 3 (April 2026) — Saved view live preview in builder** (commit `2f52b4c`)
+4. ✅ **Follow-up 4 (April 2026, arc finale) — Peek panels** (commit pending)
+
 
 ### Command Bar (Phase 1)
 - Voice-in-command-bar polish (existing voice input works; polish deferred)
@@ -279,7 +287,8 @@ Deferred items from Phases 1-7, organized by category. None of these block the S
 - Question suggestions based on item type / past questions (post-arc learning)
 - Answer export / save to record notes
 - bridgeable-admin portal action registry unification
-- Wire the remaining context panel stubs: `ai_summary`, `saved_view`, `communication_thread`, fully-interactive `related_entities`
+- ✅ **Follow-up 4 (April 2026, arc finale) — `related_entities` panel wired.** Third Phase 5 stub closed (after `document_preview` Phase 5 + `ai_question` follow-up 2). New endpoint `GET /api/v1/triage/sessions/{id}/items/{item_id}/related` exposes follow-up 2's `_RELATED_ENTITY_BUILDERS` to the frontend; tiles render as click-to-peek. See `FEATURE_SESSIONS.md` § "Peek Panels".
+- Wire the remaining context panel stubs: `ai_summary` (passive variant of ai_question), `saved_view` (needs per-item scoping in Phase 2 executor), `communication_thread` (needs platform messaging system)
 - Dynamic saved-view scoping for `include_saved_view_context` (requires Phase 2 executor extension for per-row filter injection)
 - Swap ai_question rate limiter to Redis-backed for cross-process enforcement (in-memory acceptable at current scale)
 
@@ -305,12 +314,26 @@ Deferred items from Phases 1-7, organized by category. None of these block the S
 - Dark mode polish across arc surfaces
 - Cross-arc layout consistency (max-width conventions) — explicitly deferred as unnecessary per user approval
 
+### Peek Panels (Follow-up 4, arc finale)
+- ✅ **Delivered.** Six entity types (fh_case, invoice, sales_order, task, contact, saved_view). `GET /api/v1/peek/{type}/{id}` + arc-telemetry `peek_fetch`. Hover (debounced 200ms) + click (pinned). Session cache 5-min TTL. Mounted on 4 surfaces (command bar eye icon, briefing pending_decisions, saved view builder rows, triage related_entities). p50=3.7ms / p99=7.4ms.
+- Keyboard-triggered peek (Ctrl+Space on focused result) — post-arc enhancement
+- Nested peek (peek within peek — clicking a reference inside a peek opens another peek) — post-arc enhancement
+- Peek for additional entity types: spaces, briefings, users, documents, products, vault_items
+- Peek editing (currently view-only; edits happen on detail page) — explicit non-goal for now
+- Peek multi-select for bulk actions — post-arc
+- Mobile-optimized peek interactions (touch-and-hold for hover-equivalent, swipe-to-dismiss) — currently functional via tap→click degradation
+- Voice peek ("tell me about this case") — post-arc
+- Briefing prompt v3 — narrative-inline `[[type:id]]` reference tokens + frontend hover-peek replacement (deferred from follow-up 4 audit). Available on user request; current path uses structured `pending_decisions` instead, which gives reliable typed peek triggers without prompt-compliance risk
+- Per-tenant peek customization (which fields show in fh_case peek, etc.) — post-arc admin UI
+- PEEK_BUILDERS expansion is one-file-per-entity — pattern matches `_DIRECT_QUERIES` + `_RELATED_ENTITY_BUILDERS`
+
 ### Architectural debt
 - FastAPI `@app.on_event` → lifespan context manager migration
 - Orphaned `tenant_settings` table (orphaned since platform_1 era)
 - Legacy Document models coexist with canonical Document (D-9 closeout)
+- PeekHost is a single floating-host component rather than `base-ui` Popover/Tooltip pair (deviation from item-10 audit-approved spec; documented in FEATURE_SESSIONS.md § "Peek Panels"). Equivalent ARIA semantics with manually wired Esc + click-outside + focus return; no functional regression. Migration to base-ui primitives if their controlled-mode API stabilizes is a low-priority post-arc cleanup.
 
-**Total: ~45 items across 10 categories.** None blocking; all well-understood; each has a clear owner shape when scoped.
+**Total: ~50 items across 11 categories** (added Peek Panels). None blocking; all well-understood; each has a clear owner shape when scoped.
 
 ---
 
@@ -323,12 +346,14 @@ Deferred items from Phases 1-7, organized by category. None of these block the S
 - **BLOCKING CI latency gates per primitive.** Every hot-path endpoint shipped with a test that fails CI if p50/p99 regresses. This caught a regression in Phase 6 scheduler flood-testing before merge. Without the gates, we'd have shipped slow code and debugged it in production.
 - **In-code platform defaults + vault_item tenant overrides.** Pattern pivot in Phase 5 from "store platform defaults as vault_items with company_id=NULL" — blocked by NOT NULL constraint — to "platform defaults in Python, tenant overrides in vault_items." Made tenant customization cleaner AND avoided a schema change.
 - **Phase 7 reserved for polish, documented upfront.** The audit in Phase 1 said "polish lives in Phase 7." Every phase from 2-6 could defer empty-state / loading / error polish to a dedicated phase without feeling incomplete. Phase 7 caught 30+ discrete polish items that would have been individually forgotten.
+- **Post-arc follow-ups as the cleanup vehicle.** The 7-phase arc closed cleanly enough that 4 follow-ups picked up the obvious next-steps (triage queue pinning, AI questions, saved view live preview, peek panels) without re-opening any phase. Every follow-up was: extend an existing arc primitive registry, add one endpoint, wire ≤4 frontend surfaces, BLOCKING latency gate. The arc-finale peek follow-up wired three of the four trigger surfaces against existing infrastructure (`_DIRECT_QUERIES`, `_RELATED_ENTITY_BUILDERS`, `commandBarQueryAdapter`, briefing's `pending_decisions` typed link) — confirming the arc's "registries + composition" thesis hold past the original phase scope.
+- **First-class interaction-pattern primitives ship as their own thing, not as part of a feature.** Peek (follow-up 4) is arguably the 8th platform primitive after the 7 from the arc — cross-cutting trigger surfaces, hover-vs-click semantic discipline, session cache, mobile degradation. By scoping it as one follow-up rather than a sub-feature of triage or saved views, it became reusable across all 4 surfaces immediately and any future surface (spaces, briefings, users, documents) gets peek by adding a builder + a trigger.
 
 ### Patterns that didn't work / required revision
 
 - **"Replace the old" default stance in early planning.** Phase 6 initial plan called for replacing `briefing_service.py`. Audit recalibrated to coexist. Every subsequent phase benefited from asking "does the old need to die before the new ships?" Answer was usually no.
 - **Keyboard shortcut sequences (`G B` Vim-style).** Proposed in Phase 7 plan; dropped after realizing the infrastructure didn't exist + the benefit was marginal. `⌘K` + search covers the same user intent.
-- **"Live preview" in builder UIs (Phase 2, 5, 7).** Consistently proposed, consistently deferred. The save-then-view pattern is not a regression; builders live long enough that users don't switch-save-switch-save repeatedly.
+- **"Live preview" in builder UIs (Phase 2, 5, 7).** Consistently proposed, consistently deferred — until follow-up 3 actually shipped it for saved views. The build came in at one new endpoint + one component + ~15-line debounce hook, no schema work. Deferring it through 6 phases turned out to be the right call (it became dramatically simpler once the executor + Phase 7 polish primitives existed) — but it shouldn't have been deferred indefinitely. Lesson for future similar items: keep small "polish-y" UX wins on the explicit roadmap rather than the indefinite-deferred bucket.
 - **Self-paced loops and automation on arc work.** We discussed automating the per-surface polish pass with a repeated prompt. It would have produced 10× the code with 10% the quality. Human audit + structured refactor yielded better outcomes.
 
 ### Meta-findings

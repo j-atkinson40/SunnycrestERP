@@ -37,6 +37,7 @@ from app.services.triage import (
 from app.services.triage.ai_question import (
     RateLimited,
     ask_question,
+    list_related_entities,
 )
 
 router = APIRouter()
@@ -368,6 +369,63 @@ def snooze_endpoint(
         message=result.message,
         next_item_id=result.next_item_id,
     )
+
+
+# ── Follow-up 4 — Related entities for triage context panel ─────────
+
+
+class _RelatedEntityResponse(BaseModel):
+    entity_type: str
+    entity_id: str
+    context: str
+    display_label: str
+    # Additional per-row fields from the builder (status, priority,
+    # etc.) — pass-through dict to keep the route thin.
+    extras: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.get(
+    "/sessions/{session_id}/items/{item_id}/related",
+    response_model=list[_RelatedEntityResponse],
+)
+def list_related_entities_endpoint(
+    session_id: str,
+    item_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[_RelatedEntityResponse]:
+    """Related-entity tiles for the triage related_entities context
+    panel. Wires the Phase 5 stub using follow-up 2's
+    `_RELATED_ENTITY_BUILDERS` infrastructure. Returns an empty list
+    (not an error) when the queue has no builder registered — the
+    panel renders an empty state in that case."""
+    try:
+        raw = list_related_entities(
+            db,
+            user=current_user,
+            session_id=session_id,
+            item_id=item_id,
+        )
+    except TriageError as exc:
+        raise _translate(exc) from exc
+
+    # Split builder rows into the typed header fields + a pass-through
+    # `extras` bucket for any additional per-row metadata the builder
+    # produced.
+    known = {"entity_type", "entity_id", "context", "display_label"}
+    out: list[_RelatedEntityResponse] = []
+    for row in raw:
+        extras = {k: v for k, v in row.items() if k not in known}
+        out.append(
+            _RelatedEntityResponse(
+                entity_type=str(row.get("entity_type") or ""),
+                entity_id=str(row.get("entity_id") or ""),
+                context=str(row.get("context") or ""),
+                display_label=str(row.get("display_label") or ""),
+                extras=extras,
+            )
+        )
+    return out
 
 
 # ── Follow-up 2 — AI Question panel ──────────────────────────────────

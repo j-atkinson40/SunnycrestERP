@@ -22,12 +22,20 @@ export interface TableRendererProps {
   result: SavedViewResult;
   entity: EntityTypeMetadata;
   tableConfig?: TableConfig | null;
+  // Follow-up 4 — when provided, the FIRST column cell becomes a
+  // click-to-peek trigger. Other cells display normally.
+  onPeek?: (
+    entityType: string,
+    entityId: string,
+    anchorElement: HTMLElement,
+  ) => void;
 }
 
 export function TableRenderer({
   result,
   entity,
   tableConfig,
+  onPeek,
 }: TableRendererProps) {
   const fieldIndex = indexFields(entity.available_fields);
   const columns =
@@ -69,13 +77,48 @@ export function TableRenderer({
         <tbody>
           {result.rows.map((row, i) => {
             const id = (row.id as string | undefined) ?? `row-${i}`;
+            const realId = row.id as string | undefined;
             return (
               <tr key={id} className="border-t hover:bg-accent/40">
-                {columns.map((col) => (
-                  <td key={col} className="px-3 py-2 whitespace-nowrap">
-                    {formatCellValue(row[col], fieldIndex[col]?.field_type)}
-                  </td>
-                ))}
+                {columns.map((col, colIdx) => {
+                  const cellValue = formatCellValue(
+                    row[col],
+                    fieldIndex[col]?.field_type,
+                  );
+                  // First column becomes peek trigger if onPeek provided.
+                  if (colIdx === 0 && onPeek && realId) {
+                    return (
+                      <td
+                        key={col}
+                        className="px-3 py-2 whitespace-nowrap"
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onPeek(
+                              entity.entity_type,
+                              realId,
+                              e.currentTarget as HTMLElement,
+                            );
+                          }}
+                          className="text-left hover:underline"
+                          data-testid="saved-view-row-peek-trigger"
+                          data-peek-entity-type={entity.entity_type}
+                          data-peek-entity-id={realId}
+                        >
+                          {cellValue}
+                        </button>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={col} className="px-3 py-2 whitespace-nowrap">
+                      {cellValue}
+                    </td>
+                  );
+                })}
               </tr>
             );
           })}

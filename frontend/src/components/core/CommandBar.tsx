@@ -7,6 +7,7 @@ import {
   Calendar,
   CheckSquare,
   Clock,
+  Eye,
   Layers,
   Loader2,
   Mic,
@@ -22,6 +23,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { usePeekOptional } from "@/contexts/peek-context";
+import type { PeekEntityType } from "@/types/peek";
 import apiClient from "@/lib/api-client";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useMicrophone } from "@/hooks/useMicrophone";
@@ -239,6 +242,11 @@ interface CommandBarProps {
 export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarProps) {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
+  // Follow-up 4 — peek icon on RECORD/VIEW tiles when the result
+  // includes a peek-eligible entity_type. Null-safe: command bar
+  // mounts above PeekProvider in the unauthenticated tree, so peek
+  // is None on login routes (icons just don't render).
+  const peek = usePeekOptional();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<CommandAction[]>([]);
@@ -1171,7 +1179,7 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
                     )}
                   <button
                     onClick={() => executeAction(action)}
-                    className={`flex w-full gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
+                    className={`group flex w-full gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
                       isAnswer ? "items-start" : "items-center"
                     } ${
                       i === selectedIdx
@@ -1203,6 +1211,35 @@ export function CommandBar({ isOpen, onClose, voiceMode = false }: CommandBarPro
                         </p>
                       )}
                     </div>
+                    {/* Follow-up 4 — peek-icon affordance on
+                        peek-eligible RECORD/VIEW tiles. Hover-reveal:
+                        opacity 0 default, opacity 60 on row hover.
+                        Click stops propagation so primary tile click
+                        (navigate) doesn't fire. Span+role=button so
+                        we can nest inside the outer <button>. */}
+                    {peek && action.peekEntityType && action.peekEntityId && (
+                      <span
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={`Preview ${action.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          peek.openPeek({
+                            entityType: action.peekEntityType as PeekEntityType,
+                            entityId: action.peekEntityId as string,
+                            triggerType: "click",
+                            anchorElement: e.currentTarget as HTMLElement,
+                          });
+                        }}
+                        className="flex-shrink-0 rounded p-1 text-gray-400 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 hover:bg-gray-100"
+                        data-testid="commandbar-peek-icon"
+                        data-peek-entity-type={action.peekEntityType}
+                        data-peek-entity-id={action.peekEntityId}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </span>
+                    )}
                     <div className={isAnswer ? "mt-0.5 flex-shrink-0" : "flex-shrink-0"}>
                       <TypeBadge type={action.type} />
                     </div>

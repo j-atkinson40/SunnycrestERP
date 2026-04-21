@@ -586,4 +586,55 @@ __all__ = [
     "QuestionTooLong",
     "RateLimited",
     "ask_question",
+    "list_related_entities",
 ]
+
+
+# ── Follow-up 4 — exposed related-entity list for the triage
+#    related_entities context panel. Same dispatch table as the
+#    Q&A path; returns the raw list without invoking Intelligence.
+
+
+def list_related_entities(
+    db: Session,
+    *,
+    user: User,
+    session_id: str,
+    item_id: str,
+) -> list[dict[str, Any]]:
+    """Fetch the related-entity tiles for the current item.
+
+    Reuses follow-up 2's `_RELATED_ENTITY_BUILDERS` so the triage
+    context panel renders the exact same rows that Q&A grounds on —
+    no drift between what users peek and what Claude reasons over.
+    Returns an empty list when no builder is registered for the
+    queue (rather than erroring) so the panel degrades gracefully
+    for tenant-custom queues that haven't opted in.
+    """
+    session = _engine.get_session(db, session_id=session_id, user=user)
+    if session.ended_at is not None:
+        raise SessionNotFound("Session already ended")
+    config = _registry.get_config(
+        db, company_id=user.company_id, queue_id=session.queue_id
+    )
+    _engine._check_user_can_access_queue(db, user, config)
+
+    rows = _engine._execute_queue_saved_view(db, config=config, user=user)
+    item_row = next((r for r in rows if r.get("id") == item_id), None)
+    if item_row is None:
+        raise ItemNotFound(
+            f"Item {item_id!r} not found in queue {config.queue_id!r}"
+        )
+
+    if not config.source_direct_query_key:
+        return []
+    builder = _RELATED_ENTITY_BUILDERS.get(config.source_direct_query_key)
+    if builder is None:
+        return []
+    try:
+        return builder(db, user, item_row)
+    except Exception:
+        logger.exception(
+            "Related-entity builder failed for queue %s", config.queue_id
+        )
+        return []

@@ -48,6 +48,12 @@ export interface CommandAction {
   sourceSection?: string | null;
   excerpt?: string;
   confidence?: number;
+  // Follow-up 4 (arc finale) — when populated, the command bar renders
+  // an inline peek-icon affordance on the tile that opens a click-mode
+  // peek without navigating. Primary tile click behavior is unchanged
+  // (still navigates) — this is an additive eye-icon affordance.
+  peekEntityType?: string;
+  peekEntityId?: string;
 }
 
 export interface RecentAction {

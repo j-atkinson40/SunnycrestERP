@@ -6,6 +6,125 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Peek Panels (UI/UX Arc Follow-up 4 — Arc Finale)
+
+**Date:** 2026-04-20
+**Migration head:** `r35_briefings_table` (unchanged — no new tables, no migration)
+**Tests passing:** 21 backend (14 peek API + 6 triage related + 1 BLOCKING latency gate) + 25 frontend vitest (8 PeekContext + 5 adapter + 12 renderers) + 8 Playwright scenarios = **54 new this follow-up**. Adjacent regression: 184 saved-views + spaces + triage + ai_question + briefings + command_bar + nl_creation tests passing — no regressions. Frontend full vitest: 159 across 10 files. Frontend `tsc -b` clean; `npm run build` clean.
+
+### What shipped — final follow-up of the UI/UX arc
+
+Lightweight entity previews without navigation. Two interaction modes — **hover** (transient, info-only) and **click** (pinned, can include actions). Six entity types: `fh_case`, `invoice`, `sales_order`, `task`, `contact`, `saved_view`. Wired across four trigger surfaces:
+
+1. **Command bar RECORD/VIEW tiles** — hover-reveal eye icon on tile (opacity 0 → 60 on row hover), click → click-mode peek. Primary tile click still navigates.
+2. **Briefing `pending_decisions`** — title-click on each decision row opens click-mode peek when the `link_type` matches the known peek-entity whitelist. "Open →" link untouched.
+3. **Saved view builder preview rows** — title-cell click opens click-mode peek (List/Table renderers). Detail page + widget callers don't pass `onPeek` so click-to-navigate behavior preserved.
+4. **Triage related-entities panel** — closes the third Phase 5 stub. Tiles render via the new `/related` endpoint that exposes follow-up 2's `_RELATED_ENTITY_BUILDERS`. Each tile is click-to-peek.
+
+### Approved deviations from the spec
+
+1. **New endpoint** `GET /api/v1/peek/{entity_type}/{entity_id}` + `PEEK_BUILDERS` dict (6 builders). Reuse-existing-detail-endpoints option rejected per audit because detail responses average ~30 fields.
+2. **`peek_fetch`** as 7th `arc_telemetry` `TRACKED_ENDPOINTS` key.
+3. **BLOCKING CI gate** at `tests/test_peek_latency.py` — p50 < 100 ms, p99 < 300 ms across 24 mixed-shape samples (6 entity types × 4 rotations). **Actual: p50 = 3.7 ms, p99 = 7.4 ms** (27×/40× headroom).
+4. **Briefing peek path uses structured `pending_decisions`** (no prompt v3 narrative-token bump per audit recommendation A).
+5. **Command bar peek icon, NOT click-semantic swap** (per audit recommendation B). Affordance matches dominant intent: command bar = action-style (navigate on click), other surfaces = browse-style (peek on click).
+6. **Triage related_entities wired** in this follow-up (per audit recommendation C). Closes the third Phase 5 stub; uses follow-up 2's `_RELATED_ENTITY_BUILDERS` infrastructure verbatim.
+
+### Implementation deviation worth flagging
+
+**Item 10 audit-approved spec said "base-ui Tooltip for hover, base-ui Popover for click."** The shipped `PeekHost.tsx` is a single floating-host component with controlled state from PeekContext. ARIA semantics are equivalent (`role="dialog" aria-modal="true"` for click; `role="tooltip"` for hover); Esc handling, click-outside backdrop, and focus return are manually wired (~30 lines total). Trade-off: the hover→click promotion is a state mutation rather than a component remount → no flash; single render path → simpler testing. The base-ui Popover/Tooltip migration is filed in the post-arc backlog under "Architectural debt" if the controlled-mode API ever becomes ergonomic for our context-driven peek state.
+
+### Backend additions
+
+- `backend/app/services/peek/types.py` — `PeekResponse` envelope + `PeekError` / `UnknownEntityType` / `EntityNotFound` / `PeekPermissionDenied` typed errors.
+- `backend/app/services/peek/builders.py` — six per-entity builder functions + `PEEK_BUILDERS` dispatch dict + `build_peek()` public dispatcher. Mirrors Phase 5 `_DIRECT_QUERIES` + follow-up 2 `_RELATED_ENTITY_BUILDERS` shape. ~330 lines total (~30 per builder + helpers).
+- `backend/app/services/peek/__init__.py` — public exports.
+- `backend/app/api/routes/peek.py` — single route handler, telemetry-wrapped via try/finally.
+- `backend/app/api/v1.py` — registers peek router under `/peek` prefix.
+- `backend/app/services/arc_telemetry.py` — `TRACKED_ENDPOINTS` extended with `peek_fetch`.
+- `backend/app/services/triage/ai_question.py` — new `list_related_entities()` public function (reuses `_RELATED_ENTITY_BUILDERS`); exported in `__all__`.
+- `backend/app/api/routes/triage.py` — new `GET /sessions/{id}/items/{item_id}/related` route + `_RelatedEntityResponse` Pydantic shape.
+
+### Frontend additions
+
+- `frontend/src/types/peek.ts` — `PeekEntityType`, `PeekTriggerType`, `PeekPayload` discriminated union (6 entity types), `PeekResponse` generic envelope, `PeekResponseBase`.
+- `frontend/src/services/peek-service.ts` — `fetchPeek(entityType, entityId, {signal})` with AbortSignal pass-through.
+- `frontend/src/services/triage-service.ts` — `fetchRelatedEntities(sessionId, itemId)` + `TriageRelatedEntity` shape.
+- `frontend/src/contexts/peek-context.tsx` — `PeekProvider`, `usePeek` (throws when absent), `usePeekOptional` (null-safe). Holds the single active-peek state, the session-scoped `Map<"{type}:{id}", {data, fetchedAt}>` cache (5-min TTL), AbortController for cancellation, hover debounce (200ms), `promoteToClick`. Cleared on provider unmount.
+- `frontend/src/components/peek/PeekHost.tsx` — single floating-panel renderer. `useLayoutEffect` positions it relative to `current.anchorElement` via `getBoundingClientRect()`; flips above when not enough room below. Auto-focuses panel on click open + restores focus to anchor on close. Esc handler. Hover-mouse-leave-with-grace-period dismiss. Renders one of 6 per-entity renderers based on `data.entity_type`. Footer "Open full detail →" navigates + closes.
+- `frontend/src/components/peek/PeekTrigger.tsx` — `<PeekTrigger>` wrapper for any element + `IconOnlyPeekTrigger` variant. Coarse-pointer detection collapses hover triggers to click on touch devices. Keyboard: Tab focuses, Enter/Space opens.
+- `frontend/src/components/peek/renderers/` — 6 per-entity renderers (CasePeek, InvoicePeek, SalesOrderPeek, TaskPeek, ContactPeek, SavedViewPeek) + shared `_shared.tsx` (PeekField, fmtDate, fmtCurrency, StatusBadge).
+- `frontend/src/components/triage/RelatedEntitiesPanel.tsx` — wires the Phase 5 stub. Tiles are click-to-peek (when entity type is peek-supported) or non-peekable display only.
+- `frontend/src/components/triage/TriageContextPanel.tsx` — dispatcher swap: `case "related_entities"` now renders `RelatedEntitiesPanel` instead of the EmptyState stub.
+- `frontend/src/components/saved-views/SavedViewRenderer.tsx` — optional `onPeek` prop threaded through to `ListRenderer` + `TableRenderer`.
+- `frontend/src/components/saved-views/renderers/ListRenderer.tsx` + `TableRenderer.tsx` — title cell becomes click-to-peek button when `onPeek` provided + the row has an id.
+- `frontend/src/components/saved-views/SavedViewBuilderPreview.tsx` — passes peek handler to renderer when PeekProvider is in scope.
+- `frontend/src/pages/briefings/BriefingPage.tsx` — `PendingDecisionsCard` converts title to click-peek button when `_BRIEFING_LINK_TYPE_TO_PEEK` whitelist matches.
+- `frontend/src/components/core/CommandBar.tsx` — peek-icon affordance on RECORD/VIEW tiles when `peek && action.peekEntityType && action.peekEntityId`. Span+role=button to nest inside the outer button. `stopPropagation` so primary tile click is unaffected.
+- `frontend/src/core/commandBarQueryAdapter.ts` — propagates backend `result_entity_type` into `peekEntityType` for the 6 supported types + saved_view; sets undefined for non-peekable types.
+- `frontend/src/services/actions/registry.ts` — `CommandAction` interface gains optional `peekEntityType` + `peekEntityId`.
+- `frontend/src/App.tsx` — mounts `<PeekProvider>` + `<PeekHost />` inside the authenticated tenant tree (after `SpaceProvider`). Platform admin / login routes unaffected.
+
+### Tests
+
+- `backend/tests/test_peek_api.py` — 14 tests across 4 classes: happy path × 6 entity types, errors (unknown type, not found, tenant isolation, auth), telemetry registration + wrap on success/error.
+- `backend/tests/test_peek_latency.py` — 1 BLOCKING latency gate (24 samples mixed across 6 types).
+- `backend/tests/test_triage_related_endpoint.py` — 6 tests: happy-path with siblings, empty list when no builder/no siblings, session/item 404s, cross-user isolation, auth required.
+- `frontend/src/contexts/peek-context.test.tsx` — 8 tests: click-mode happy path, close+abort race, hover debounce + cancel, hover fires after 200ms, session cache hit on repeat open, different entity bypasses cache, promoteToClick state mutation, error path surfaces detail.
+- `frontend/src/core/commandBarQueryAdapter.peek.test.ts` — 5 tests: 5 peek-supported types map correctly + saved_view, non-peekable types skip mapping, navigate/create skip mapping, null entity_type skips.
+- `frontend/src/components/peek/renderers/renderers.test.tsx` — 12 tests: each of 6 renderers checks required-field rendering + null-field omission + format helpers + status badge.
+- `frontend/tests/e2e/peek-panels.spec.ts` — 8 Playwright scenarios: command-bar peek, open-full-detail navigates + closes, saved-view builder row peek, triage related peek, two panels (second replaces first), keyboard Enter/Escape, cache single-call, mobile tap → click peek.
+
+### Performance discipline verified
+
+- **Peek endpoint p50 < 100ms / p99 < 300ms** (BLOCKING). Actual: **p50=3.7ms / p99=7.4ms** across 24 mixed samples.
+- **Hover debounce 200ms**. Asserted in vitest (`hover open without close fires fetch after 200ms` + `cancel before debounce expires`).
+- **Session cache 5-min TTL**. Asserted in vitest (`repeat open of same entity hits cache (single network call)`) and Playwright (`peek_cache_single_call`).
+- **AbortController cancels superseded fetches**. Asserted in vitest (`close clears state to idle and aborts in-flight request`).
+- **Arc telemetry records peek_fetch**. Asserted in backend tests (success + errored both record).
+
+### Context panel wiring status (per requirement 13)
+
+- ✅ **Wired**: `document_preview` (Phase 5), `ai_question` (follow-up 2), `related_entities` (follow-up 4)
+- 🔵 **Remaining stubs**: `saved_view`, `communication_thread`
+  - `saved_view` panel — needs per-item scoping in Phase 2 executor (current executor takes a static config; embedding a saved view scoped to "items related to current triage item" requires an executor extension for per-row filter injection)
+  - `communication_thread` panel — needs platform messaging system; no platform messaging primitive exists today
+
+### Arc completion (per requirement 14)
+
+**The UI/UX arc plus all four post-arc follow-ups are complete.** Seven platform primitives established by Phases 1-7:
+
+1. Command bar (Phase 1)
+2. Saved views (Phase 2)
+3. Spaces (Phase 3)
+4. Natural language creation (Phase 4)
+5. Triage workspace (Phase 5)
+6. Morning + evening briefings (Phase 6)
+7. Polish infrastructure (Phase 7)
+
+Plus the 8th interaction-pattern primitive established by follow-up 4: **peek panels** (cross-cutting trigger surfaces, hover-vs-click discipline, session cache, mobile degradation). Arguably a primitive — six entity types ship today; new entity types add a builder + an existing trigger gets peek for free.
+
+**The platform is ready for the September Wilbert meeting.** The arc plus follow-ups deliver every UX claim made in `CLAUDE.md` § 1a (command-bar-as-platform-layer, monitoring-through-hubs / acting-through-command-bar). All BLOCKING CI latency gates green; all 7 telemetry-tracked endpoints inside their budgets with substantial headroom.
+
+**Remaining platform work is different-mode work outside this arc**: HR/Payroll integration via Check, Smart Plant pilot at Sunnycrest, vertical expansion (cemetery, crematory verticals beyond foundation work). None of these need re-opening any arc phase.
+
+### Surprises worth recording
+
+1. **The command bar adapter already had `result_entity_type` from Phase 1.** The peek-icon wire-up was a 2-line change to the adapter (propagate the field) plus the icon render in CommandBar.tsx. Phase 1 over-built the response shape with field-completeness in mind; that paid off in follow-up 4 with zero backend changes for surface 1.
+2. **`_RELATED_ENTITY_BUILDERS` was already structured for cross-feature reuse.** Follow-up 2 built it for the AI question Q&A grounding. Follow-up 4 exposed it to the frontend via one small endpoint; the related-entities panel wiring was a small frontend component. Confirming the arc's pattern: build infra for the immediate feature in a way that the next feature gets it free.
+3. **The 6 peek entity types didn't all live in one registry.** `task` is in Phase 5 direct-queries; `saved_view` is meta. The new `PEEK_BUILDERS` dict avoided forcing a unification — each builder is independent, takes a tenant + id, returns a typed shape. No cross-entity coupling.
+4. **Briefing prompt v3 deferral was the right call.** Pursuing inline narrative tokens would have cost the same as everything else combined, with prompt-compliance risk per vertical and a re-seed dance. Using the existing `pending_decisions` typed list got 80% of the UX with 5% of the work.
+
+### Verification
+
+- `pytest tests/test_peek_api.py tests/test_peek_latency.py tests/test_triage_related_endpoint.py` → **21 passed**
+- Adjacent backend regression (saved-views, spaces, triage, ai_question, briefings, command_bar, nl_creation) → **184 passed, no regressions**
+- `npx vitest run` → **159 passed across 10 files**
+- `npx tsc -b` → clean
+- `npm run build` → clean
+
+---
+
 ## Saved View Live Preview in Builder (UI/UX Arc Follow-up 3)
 
 **Date:** 2026-04-20

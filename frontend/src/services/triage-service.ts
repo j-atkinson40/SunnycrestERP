@@ -136,6 +136,29 @@ export async function endSession(
   return data;
 }
 
+// ── Follow-up 4 — Related entities for context panel ──────────────
+
+export interface TriageRelatedEntity {
+  entity_type: string;
+  entity_id: string;
+  context: string;
+  display_label: string;
+  // Pass-through bag from the per-queue builder (status, priority,
+  // due_date, etc.). Renderer picks up what it needs.
+  extras: Record<string, unknown>;
+}
+
+export async function fetchRelatedEntities(
+  sessionId: string,
+  itemId: string,
+): Promise<TriageRelatedEntity[]> {
+  const { data } = await apiClient.get<TriageRelatedEntity[]>(
+    `/triage/sessions/${encodeURIComponent(sessionId)}/items/${encodeURIComponent(itemId)}/related`,
+  );
+  return data;
+}
+
+
 // ── Follow-up 2 — AI Question panel ────────────────────────────────
 
 export class TriageRateLimitedError extends Error {

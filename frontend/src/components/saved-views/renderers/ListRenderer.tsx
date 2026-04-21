@@ -21,6 +21,13 @@ import { formatCellValue, indexFields } from "../formatters";
 export interface ListRendererProps {
   result: SavedViewResult;
   entity: EntityTypeMetadata;
+  // Follow-up 4 — when provided, the title cell becomes a click-to-
+  // peek trigger. Row-area click still navigates via the Link.
+  onPeek?: (
+    entityType: string,
+    entityId: string,
+    anchorElement: HTMLElement,
+  ) => void;
 }
 
 function pickTitleField(entity: EntityTypeMetadata): string {
@@ -49,7 +56,7 @@ function buildHref(template: string, row: Record<string, unknown>): string {
   });
 }
 
-export function ListRenderer({ result, entity }: ListRendererProps) {
+export function ListRenderer({ result, entity, onPeek }: ListRendererProps) {
   const fieldIndex = indexFields(entity.available_fields);
   const titleField = pickTitleField(entity);
   const subtitleField = pickSubtitleField(entity, titleField);
@@ -82,9 +89,30 @@ export function ListRenderer({ result, entity }: ListRendererProps) {
               fieldIndex[subtitleField]?.field_type,
             )
           : null;
+        // Follow-up 4 — title cell becomes click-to-peek when
+        // onPeek is provided. The cell's click stops propagation so
+        // the surrounding row Link doesn't ALSO fire navigate.
+        const titleNode = onPeek && id ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onPeek(entity.entity_type, id, e.currentTarget as HTMLElement);
+            }}
+            className="font-medium truncate text-left hover:underline"
+            data-testid="saved-view-row-peek-trigger"
+            data-peek-entity-type={entity.entity_type}
+            data-peek-entity-id={id}
+          >
+            {titleVal}
+          </button>
+        ) : (
+          <span className="font-medium truncate">{titleVal}</span>
+        );
         const content = (
           <div className="flex items-baseline justify-between gap-3 px-4 py-2.5">
-            <span className="font-medium truncate">{titleVal}</span>
+            {titleNode}
             {subtitleVal && (
               <span className="text-xs text-muted-foreground truncate">
                 {subtitleVal}

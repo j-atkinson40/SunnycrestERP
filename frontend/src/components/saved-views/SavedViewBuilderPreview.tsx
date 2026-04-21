@@ -43,6 +43,8 @@ import { SkeletonCard } from "@/components/ui/skeleton";
 import { SavedViewRenderer } from "@/components/saved-views/SavedViewRenderer";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { previewSavedView } from "@/services/saved-views-service";
+import { usePeekOptional } from "@/contexts/peek-context";
+import type { PeekEntityType } from "@/types/peek";
 import type {
   EntityTypeMetadata,
   PresentationMode,
@@ -76,6 +78,10 @@ export function SavedViewBuilderPreview({
   className,
 }: SavedViewBuilderPreviewProps) {
   const debouncedConfig = useDebouncedValue(config, DEBOUNCE_MS);
+  // Follow-up 4 — when PeekProvider is in scope, the renderer's
+  // title cells become click-to-peek. Builder lives inside the
+  // tenant tree so this is generally non-null.
+  const peek = usePeekOptional();
   const [result, setResult] = useState<SavedViewResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,6 +254,17 @@ export function SavedViewBuilderPreview({
             config={config}
             result={result}
             entity={entity}
+            onPeek={
+              peek
+                ? (et, eid, anchor) =>
+                    peek.openPeek({
+                      entityType: et as PeekEntityType,
+                      entityId: eid,
+                      triggerType: "click",
+                      anchorElement: anchor,
+                    })
+                : undefined
+            }
           />
         )}
       </div>

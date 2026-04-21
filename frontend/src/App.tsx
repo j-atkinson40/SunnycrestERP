@@ -10,6 +10,8 @@ import { DeviceProvider } from "@/contexts/device-context";
 import { LayoutProvider } from "@/contexts/layout-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
 import { SpaceProvider } from "@/contexts/space-context";
+import { PeekProvider } from "@/contexts/peek-context";
+import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
 import { AppLayout } from "@/components/layout/app-layout";
@@ -417,7 +419,10 @@ export default function App() {
                   element={
                     <PresetThemeProvider>
                       <SpaceProvider>
-                        <AppLayout />
+                        <PeekProvider>
+                          <AppLayout />
+                          <PeekHost />
+                        </PeekProvider>
                       </SpaceProvider>
                     </PresetThemeProvider>
                   }

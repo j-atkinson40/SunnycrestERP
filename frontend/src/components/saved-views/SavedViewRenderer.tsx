@@ -30,10 +30,24 @@ import { TableRenderer } from "./renderers/TableRenderer";
 // Lazy — keeps recharts out of the initial bundle.
 const ChartRenderer = lazy(() => import("./renderers/ChartRenderer"));
 
+// Follow-up 4 — when caller provides onPeek, the title-cell of each
+// row in supported renderers (List, Table, Cards, Kanban) becomes a
+// click-to-peek trigger. Detail-page + widget callers don't pass
+// the prop; those surfaces keep title clicks navigating as before.
+// Build preview surface (follow-up 3) opts in to surface peeks
+// inline as users scrub through configs.
+export type SavedViewPeekHandler = (
+  entityType: string,
+  entityId: string,
+  anchorElement: HTMLElement,
+) => void;
+
+
 export interface SavedViewRendererProps {
   config: SavedViewConfig;
   result: SavedViewResult;
   entity: EntityTypeMetadata;
+  onPeek?: SavedViewPeekHandler;
 }
 
 function MaskedBanner({ fields }: { fields: string[] }) {
@@ -58,19 +72,23 @@ export function SavedViewRenderer({
   config,
   result,
   entity,
+  onPeek,
 }: SavedViewRendererProps) {
   const mode = config.presentation.mode;
 
   const body = (() => {
     switch (mode) {
       case "list":
-        return <ListRenderer result={result} entity={entity} />;
+        return (
+          <ListRenderer result={result} entity={entity} onPeek={onPeek} />
+        );
       case "table":
         return (
           <TableRenderer
             result={result}
             entity={entity}
             tableConfig={config.presentation.table_config}
+            onPeek={onPeek}
           />
         );
       case "kanban":

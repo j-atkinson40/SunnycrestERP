@@ -44,6 +44,8 @@ import type {
   QueueSummarySection,
 } from "@/types/briefing";
 import { useBriefing } from "@/hooks/useBriefing";
+import { usePeekOptional } from "@/contexts/peek-context";
+import type { PeekEntityType } from "@/types/peek";
 
 export default function BriefingPage() {
   const { id } = useParams<{ id?: string }>();
@@ -372,6 +374,26 @@ function QueuesCard({ items }: { items: QueueSummarySection[] }) {
   );
 }
 
+// Follow-up 4 — map briefing link_type tokens to peek entity types.
+// link_type comes from Claude-rendered structured_sections + isn't
+// strictly typed; this defensive map is a known-set whitelist.
+// Unmapped link_types fall back to the plain "Open →" link.
+const _BRIEFING_LINK_TYPE_TO_PEEK: Record<string, PeekEntityType> = {
+  "fh-cases": "fh_case",
+  "fh/cases": "fh_case",
+  cases: "fh_case",
+  invoices: "invoice",
+  "ar/invoices": "invoice",
+  "sales-orders": "sales_order",
+  orders: "sales_order",
+  "order-station/orders": "sales_order",
+  tasks: "task",
+  contacts: "contact",
+  "vault/crm/contacts": "contact",
+  "saved-views": "saved_view",
+};
+
+
 function PendingDecisionsCard({
   title,
   items,
@@ -380,6 +402,7 @@ function PendingDecisionsCard({
   items: PendingDecisionSection[];
 }) {
   const [open, setOpen] = useState(true);
+  const peek = usePeekOptional();
   return (
     <CollapsibleCard
       title={title}
@@ -388,19 +411,50 @@ function PendingDecisionsCard({
       onToggle={() => setOpen((v) => !v)}
     >
       <ul className="space-y-2 text-sm">
-        {items.map((p, i) => (
-          <li key={`${p.title}-${i}`} className="flex items-center gap-2">
-            <span>{p.title}</span>
-            {p.link_id && p.link_type ? (
-              <Link
-                to={`/${p.link_type}/${p.link_id}`}
-                className="ml-auto text-xs text-primary hover:underline"
-              >
-                Open →
-              </Link>
-            ) : null}
-          </li>
-        ))}
+        {items.map((p, i) => {
+          // Resolve a peek entity type if the link_type is known.
+          const peekEntityType =
+            p.link_type && _BRIEFING_LINK_TYPE_TO_PEEK[p.link_type];
+          const peekable =
+            peek != null && peekEntityType && p.link_id;
+          return (
+            <li
+              key={`${p.title}-${i}`}
+              className="flex items-center gap-2"
+            >
+              {peekable ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    peek!.openPeek({
+                      entityType: peekEntityType as PeekEntityType,
+                      entityId: p.link_id!,
+                      triggerType: "click",
+                      anchorElement: e.currentTarget as HTMLElement,
+                    });
+                  }}
+                  className="text-left hover:underline"
+                  data-testid="briefing-decision-peek-trigger"
+                  data-peek-entity-type={peekEntityType}
+                  data-peek-entity-id={p.link_id}
+                >
+                  {p.title}
+                </button>
+              ) : (
+                <span>{p.title}</span>
+              )}
+              {p.link_id && p.link_type ? (
+                <Link
+                  to={`/${p.link_type}/${p.link_id}`}
+                  className="ml-auto text-xs text-primary hover:underline"
+                >
+                  Open →
+                </Link>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
     </CollapsibleCard>
   );

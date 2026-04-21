@@ -58,6 +58,13 @@ TRACKED_ENDPOINTS = (
     "nl_extract",
     "triage_next_item",
     "triage_apply_action",
+    # Follow-up 4 (arc finale) — peek endpoint backs hover + click
+    # peeks across 4 surfaces (command bar, briefing pending decisions,
+    # saved view rows, triage related entities). Own key because
+    # per-request characteristics differ from the five: smaller
+    # payloads, higher call frequency per user (hover spam), and a
+    # session cache shield on the client side.
+    "peek_fetch",
 )
 
 

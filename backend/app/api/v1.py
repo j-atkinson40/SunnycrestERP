@@ -16,6 +16,7 @@ from app.api.routes import (
     saved_views,
     spaces,
     nl_creation,
+    peek,
     tasks,
     triage,
     ai_settings,
@@ -202,6 +203,9 @@ v1_router.include_router(
 v1_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
 # Triage — Phase 5 of UI/UX Arc. Platform layer for queue-based decision work.
 v1_router.include_router(triage.router, prefix="/triage", tags=["Triage"])
+# Peek — Follow-up 4 of UI/UX Arc (arc finale). Slim per-entity
+# summaries for hover + click peek panels across 4 surfaces.
+v1_router.include_router(peek.router, prefix="/peek", tags=["Peek"])
 v1_router.include_router(ai_settings.router, prefix="/settings/ai", tags=["AI Settings"])
 v1_router.include_router(
     ancillary_orders.router, prefix="/extensions/funeral-kanban", tags=["Ancillary Orders"]

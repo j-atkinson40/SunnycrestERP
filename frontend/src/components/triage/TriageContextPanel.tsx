@@ -13,6 +13,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { AIQuestionPanel } from "@/components/triage/AIQuestionPanel";
+import { RelatedEntitiesPanel } from "@/components/triage/RelatedEntitiesPanel";
 import type { TriageContextPanelConfig, TriageItem } from "@/types/triage";
 
 interface Props {
@@ -99,13 +100,13 @@ function PanelBody({
       );
     }
     case "related_entities":
+      // Follow-up 4 (arc finale) — wired. Tiles render as
+      // click-to-peek triggers using the per-queue
+      // _RELATED_ENTITY_BUILDERS infrastructure from follow-up 2.
       return (
-        <EmptyState
-          hint={
-            panel.related_entity_type
-              ? `Related ${panel.related_entity_type} — wiring lands post-arc.`
-              : "Related entities — wiring lands post-arc."
-          }
+        <RelatedEntitiesPanel
+          sessionId={sessionId}
+          itemId={String(item.entity_id)}
         />
       );
     case "saved_view":

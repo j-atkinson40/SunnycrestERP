@@ -17,6 +17,18 @@
 
 import type { CommandAction } from "@/services/actions";
 
+// Peek-supported entity types from `backend/app/services/peek/builders.py`.
+// When the backend's `result_entity_type` matches one of these, the
+// command bar tile gets a peek-icon affordance (follow-up 4).
+const PEEK_SUPPORTED_TYPES = new Set([
+  "fh_case",
+  "invoice",
+  "sales_order",
+  "task",
+  "contact",
+  "saved_view",
+]);
+
 // Response shape from POST /api/v1/command-bar/query
 export interface CommandBarQueryResultItem {
   id: string;
@@ -79,6 +91,24 @@ export function adaptQueryResult(
   item: CommandBarQueryResultItem,
   vertical: string,
 ): CommandAction {
+  // Follow-up 4 — surface peek-eligible entity types so the tile
+  // can render the eye affordance. The backend's `id` for
+  // search-result items is the entity_id directly. saved_view
+  // result type also maps to a peekable entity_type.
+  let peekEntityType: string | undefined;
+  let peekEntityId: string | undefined;
+  if (
+    item.type === "search_result"
+    && item.entity_type
+    && PEEK_SUPPORTED_TYPES.has(item.entity_type)
+  ) {
+    peekEntityType = item.entity_type;
+    peekEntityId = item.id;
+  } else if (item.type === "saved_view") {
+    peekEntityType = "saved_view";
+    peekEntityId = item.id;
+  }
+
   return {
     id: item.id,
     // keywords aren't used for client-side ranking when the item
@@ -94,6 +124,8 @@ export function adaptQueryResult(
     roles: [],
     vertical,
     confidence: item.score,
+    peekEntityType,
+    peekEntityId,
   };
 }
 
