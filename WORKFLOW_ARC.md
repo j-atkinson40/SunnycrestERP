@@ -56,6 +56,16 @@ Latent bugs surfaced + flagged for separate sessions:
 - `wf_sys_ar_collections` `trigger_type="scheduled"` not dispatched by `workflow_scheduler` today (latent bug predating 8b).
 - Approval-gate email body is hardcoded HTML, predating D-7 delivery abstraction. Parity requires preserving verbatim.
 
+### Phase 8b.5 — Pre-8c Cleanup (Latent Bugs)
+
+**Shipped.** Narrow standalone session addressing both 8b-surfaced latent bugs before 8c migrations begin.
+
+- Workflow scheduler `check_time_based_workflows()` extended to dispatch `trigger_type="scheduled"` via APScheduler's `CronTrigger.from_crontab(cron, timezone=tenant_tz)`. Eight Tier-1 `wf_sys_*` workflows now fire correctly per tenant-local cron (`ar_collections`, `statement_run`, `compliance_sync`, `training_expiry`, `safety_program_gen`, `document_review_reminder`, `auto_delivery`, `catalog_fetch`).
+- Migration `r37_approval_gate_email_template` seeds `email.approval_gate_review` managed template. `ApprovalGateService.send_review_email()` now routes through `delivery_service.send_email_with_template`; `_build_review_email_html()` deleted. Single template serves all 12 agent job types.
+- Phase 8b cash receipts parity tests unchanged (email migration is a pure refactor — parity tests make no email assertions).
+- `time_of_day` TZ bug still latent — flagged in migration template §7.5 for follow-on cleanup.
+- 18 new tests (10 scheduler + 8 email migration). Migration head: `r37_approval_gate_email_template`.
+
 ### Phase 8c — Core Accounting Migrations (Batch 1)
 
 **Not started.** Migrate the next batch of accounting agents (month-end close, AR collections, expense categorization — the three with existing wf_sys_* stubs carrying `agent_registry_key`) into real workflow definitions. Per migrated agent, the stub row's `agent_registry_key` clears and the "Built-in implementation" badge disappears.

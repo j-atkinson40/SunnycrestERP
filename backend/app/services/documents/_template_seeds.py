@@ -1445,3 +1445,107 @@ def _d9_seeds() -> list[PlatformTemplateSeed]:
             "body_template": PDF_WILBERT_ENGRAVING_FORM,
         },
     ]
+
+
+# ── Approval Gate — Agent review email (Phase 8b.5) ──────────────────
+#
+# Replaces the hardcoded HTML previously inlined at
+# `ApprovalGateService._build_review_email_html()`. Semantic
+# equivalence — visual structure preserved but variables flow
+# through Jinja rather than f-string interpolation. Single template
+# serves all 12 agent job types; `job_type_label` is the
+# human-readable name resolved from `JOB_TYPE_LABELS` by the caller.
+
+
+EMAIL_APPROVAL_GATE_REVIEW_SUBJECT = (
+    "Agent Review: {{ job_type_label }}"
+    "{% if period_label %} — {{ period_label }}{% endif %}"
+)
+
+EMAIL_APPROVAL_GATE_REVIEW = """<!DOCTYPE html>
+<html>
+<head><style>
+    body { margin:0; padding:0; background:#f4f4f5; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+    .wrapper { max-width:600px; margin:32px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+    .header { background:#09090b; padding:24px 32px; }
+    .header-title { color:#fff; font-size:18px; font-weight:600; margin:0; }
+    .header-sub { color:#a1a1aa; font-size:13px; margin:4px 0 0; }
+    .body { padding:32px; }
+    .body p { margin:0 0 16px; line-height:1.6; font-size:15px; color:#3f3f46; }
+    .btn { display:inline-block; padding:14px 32px; border-radius:6px; font-size:15px; font-weight:600; text-decoration:none; margin-right:12px; }
+    .btn-approve { background:#16a34a; color:#fff !important; }
+    .btn-reject { background:#fff; color:#dc2626 !important; border:2px solid #dc2626; }
+    .footer { border-top:1px solid #e4e4e7; padding:20px 32px; background:#fafafa; }
+    .footer p { margin:0; font-size:12px; color:#71717a; }
+    .alert-warn { background:#fef3c7;border-radius:6px;padding:16px;margin:16px 0; }
+    .alert-warn-text { margin:0;font-weight:600;color:#92400e; }
+    .alert-ok { background:#dcfce7;border-radius:6px;padding:16px;margin:16px 0; }
+    .alert-ok-text { margin:0;font-weight:600;color:#166534; }
+    .dry-run { background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:12px;margin:16px 0; }
+    .dry-run-text { margin:0;font-size:13px;color:#854d0e; }
+    .review-link { font-size:13px;color:#71717a; }
+    .review-link a { color:#2563eb; }
+</style></head>
+<body>
+<div class="wrapper">
+    <div class="header">
+        <p class="header-title">Bridgeable</p>
+        <p class="header-sub">Agent Review Required — {{ tenant_name }}</p>
+    </div>
+    <div class="body">
+        <p><strong>{{ job_type_label }}</strong>{% if period_label %} for <strong>{{ period_label }}</strong>{% endif %} has completed and requires your review.</p>
+        {% if dry_run %}
+        <div class="dry-run">
+            <p class="dry-run-text">
+                <strong>Dry Run:</strong> No changes were committed. This is a read-only preview.
+            </p>
+        </div>
+        {% endif %}
+        {% if anomaly_count and anomaly_count > 0 %}
+        <div class="alert-warn">
+            <p class="alert-warn-text">
+                {{ anomaly_count }} anomal{% if anomaly_count == 1 %}y{% else %}ies{% endif %} found
+                {% if critical_count and critical_count > 0 %}({{ critical_count }} critical){% endif %}
+            </p>
+        </div>
+        {% else %}
+        <div class="alert-ok">
+            <p class="alert-ok-text">No anomalies found</p>
+        </div>
+        {% endif %}
+        <p style="margin:24px 0;">
+            <a href="{{ approve_url }}" class="btn btn-approve">Approve &amp; Lock Period</a>
+            <a href="{{ reject_url }}" class="btn btn-reject">Reject</a>
+        </p>
+        <p class="review-link">
+            <a href="{{ review_url }}">View full report in Bridgeable</a>
+        </p>
+    </div>
+    <div class="footer">
+        <p>This approval link expires in 72 hours. If you did not expect this email, contact {{ tenant_name }}.</p>
+    </div>
+</div>
+</body>
+</html>"""
+
+
+def _approval_gate_seeds() -> list[PlatformTemplateSeed]:
+    """Workflow Arc Phase 8b.5 — managed template for the agent
+    approval review email. Replaces the hardcoded HTML path at
+    `ApprovalGateService._build_review_email_html`. Single template
+    serves all 12 job types via `job_type_label` context variable."""
+    return [
+        {
+            "template_key": "email.approval_gate_review",
+            "document_type": "email",
+            "output_format": "html",
+            "description": (
+                "Agent approval review email — sent when a background "
+                "agent completes and awaits human review. Serves all "
+                "12 agent job types via the `job_type_label` variable."
+            ),
+            "supports_variants": False,
+            "body_template": EMAIL_APPROVAL_GATE_REVIEW,
+            "subject_template": EMAIL_APPROVAL_GATE_REVIEW_SUBJECT,
+        },
+    ]

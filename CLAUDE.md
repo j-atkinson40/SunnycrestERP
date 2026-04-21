@@ -459,6 +459,18 @@ Phase 8b is the reconnaissance migration — one accounting agent migrated end-t
 - `wf_sys_ar_collections` declares `trigger_type="scheduled"` but `workflow_scheduler.check_time_based_workflows()` dispatches only `time_of_day` and `time_after_event`. The workflow isn't actually firing on schedule today.
 - Approval-gate email body is hardcoded HTML in `ApprovalGateService._build_review_email_html()` — predates D-7's delivery abstraction. Parity for cash receipts requires preserving verbatim.
 
+### Pre-8c Cleanup (Workflow Arc Phase 8b.5)
+
+Both Phase 8b audit-surfaced latent bugs fixed in a narrow cleanup session between 8b and 8c:
+
+**Scheduler `scheduled` trigger dispatch.** `workflow_scheduler.check_time_based_workflows()` now dispatches `trigger_type="scheduled"` workflows alongside the existing `time_of_day` + `time_after_event`. Cron parsed via APScheduler's `CronTrigger.from_crontab(cron, timezone=tenant_tz)` — no new dep. Tenant TZ resolved via `Company.timezone` with `America/New_York` fallback (mirrors briefings precedent). Idempotency via new `_already_fired_scheduled` helper that queries `WorkflowRun.trigger_context.intended_fire` JSONB — audit-trail-based, self-healing across system restarts. Invalid cron logs + skips that workflow + continues. Eight Tier-1 `wf_sys_*` workflows now fire correctly per tenant-local cron: `ar_collections`, `statement_run`, `compliance_sync`, `training_expiry`, `safety_program_gen`, `document_review_reminder`, `auto_delivery`, `catalog_fetch`.
+
+**Approval gate email migrated to D-7 managed template.** Migration `r37_approval_gate_email_template` seeds `email.approval_gate_review` into `document_templates`. Single template serves all 12 agent job types via `job_type_label` context variable. `ApprovalGateService.send_review_email()` now dispatches through `delivery_service.send_email_with_template` with `caller_module="approval_gate.send_review_email"` — audit-queryable via `document_deliveries.template_key='email.approval_gate_review'`. `_build_review_email_html()` deleted — no fallback to hardcoded HTML. Phase 8b cash receipts parity test unchanged (audit confirmed it asserts no email properties — pure refactor).
+
+**Still-latent: `time_of_day` TZ bug.** Existing `time_of_day` dispatch fires at UTC wall-clock, not tenant-local. `wf_sys_cash_receipts` (23:30) and `wf_mfg_eod_delivery_reminder` are affected. Flagged in `WORKFLOW_MIGRATION_TEMPLATE.md` §7.5 for a follow-on session. 8c migrations needing tenant-local sub-daily timing should use `trigger_type="scheduled"` (correct) instead of `time_of_day` (UTC-only).
+
+**Migration head:** `r37_approval_gate_email_template`. **Tests shipped:** 10 scheduler + 8 email migration = 18 new. Phase 8b cash receipts parity remains 9/9 green.
+
 ## 5. Database
 
 - **~235 tables** (ORM models for all but the orphaned `tenant_settings` table)

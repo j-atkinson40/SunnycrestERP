@@ -312,11 +312,17 @@ If a migration's `apply_action` is hot-path-slow (>100ms p50), the adapter is pr
 
 ## 7. Scheduler transition pattern
 
+The workflow scheduler (`backend/app/services/workflow_scheduler.py::check_time_based_workflows`) polls every 15 minutes and dispatches active workflows by `trigger_type`. Three dispatched trigger types are supported:
+
+- **`time_of_day`** — config `{time: "HH:MM", days: ["mon","tue",...]}`. Fires when current UTC wall-clock falls in the 15-min window starting at `time`. **Known limitation:** UTC-only, does not respect tenant timezone (latent bug flagged for a follow-on cleanup session).
+- **`time_after_event`** — config `{record_type, field, offset_days}`. Fires for records where `record_field_date + offset_days == today`. Supports `funeral_case` per current mapping.
+- **`scheduled`** (Workflow Arc Phase 8b.5) — config `{cron: "* * * * *"}`. Five-field cron. Parsed by APScheduler's `CronTrigger.from_crontab` — no new dependency. Interpreted **in the tenant's timezone** (`Company.timezone` with `America/New_York` fallback). Cron precision is limited by the 15-minute sweep cadence — declare crons with **at-least-hourly precision** for reliability. Sub-hourly dispatch is a post-arc enhancement if operational need emerges.
+
 ### 7.1 From agent-invoked to workflow-invoked (the standard path)
 
 **Pre-migration:** agent fires via direct `AgentRunner.create_job` + `run_job` call, usually from an APScheduler entry in `backend/app/scheduler.py`.
 
-**Post-migration:** agent is still invokable directly (legacy coexistence — see §8), BUT:
+**Post-migration:** agent is still invokable directly (legacy coexistence — see §9), BUT:
 - Workflow row's `trigger_type="time_of_day"` or `"scheduled"`.
 - `workflow_scheduler.check_time_based_workflows()` sweep fires the workflow.
 - Workflow's `call_service_method` step calls the adapter's `run_match_pipeline`.
@@ -327,23 +333,39 @@ If a migration's `apply_action` is hot-path-slow (>100ms p50), the adapter is pr
 
 ### 7.2 Adding from scratch (cash receipts pattern)
 
-Cash receipts had no scheduler entry. We set `trigger_type="time_of_day"` + `trigger_config.time="23:30"`. The workflow scheduler sweep fires it at 11:30pm ET daily.
+Cash receipts had no scheduler entry. We set `trigger_type="time_of_day"` + `trigger_config.time="23:30"`. The workflow scheduler sweep fires it at 11:30pm (note: UTC wall-clock, not tenant-local — see §7 preamble).
 
-Slot collision check against `backend/app/scheduler.py` JOB_REGISTRY + existing `wf_sys_*` rows with `time_of_day` triggers. Leave 5-min gaps where possible.
+Slot collision check against `backend/app/scheduler.py` JOB_REGISTRY + existing `wf_sys_*` rows with `time_of_day` / `scheduled` triggers. Leave 5-min gaps where possible.
 
-### 7.3 Reusing existing scheduler entries
+### 7.3 Reusing existing scheduler entries (for 8c and beyond)
 
-If the agent already has an APScheduler cron entry that you DON'T want to remove (e.g., the job also records to `job_runs` for audit):
+After Phase 8b.5, the 8 pre-existing Tier-1 `wf_sys_*` rows declaring `trigger_type="scheduled"` + `trigger_config.cron` now fire correctly per tenant-local cron. For 8c migrations of `wf_sys_ar_collections` / `wf_sys_month_end_close` / `wf_sys_expense_categorization`:
+
+- Keep `trigger_type="scheduled"` + existing `trigger_config.cron` (they already fire correctly post-8b.5).
+- Replace the placeholder step(s) with real `call_service_method` step invoking the new parity adapter.
+- Clear `agent_registry_key` to flip to 8b-beta state.
+
+If an agent has a dedicated APScheduler entry in `backend/app/scheduler.py` that you DON'T want to remove (e.g., it records to `job_runs` for audit — month-end-close might qualify):
 
 - Leave the APScheduler entry in place.
 - Set workflow `trigger_type="manual"`.
 - Have the scheduler job call `workflow_engine.start_run(wf_id, company_id, trigger_source="schedule")` instead of `AgentRunner.run_job` directly.
 
-Neither 8b nor 8c exercises this pattern yet; document the choice when 8d or later needs it.
-
 ### 7.4 Idempotency
 
-The workflow_scheduler sweep runs every 15 min. `_already_ran_for_record` check prevents re-firing for the same (workflow_id, record_id) within a day. For tenant-wide workflows (cash receipts — no record), the same-day check uses `workflow_id` alone. Fine for once-nightly workflows; insufficient for more frequent cadences.
+The workflow_scheduler sweep runs every 15 min. Three guards against double-firing:
+
+- **`time_after_event`**: `_already_ran_for_record(db, workflow_id, record_id)` — per-(workflow, record) lookup.
+- **`scheduled`** (Phase 8b.5): `_already_fired_scheduled(db, workflow_id, company_id, intended_fire)` — per-(workflow, tenant, cron-tick) lookup by matching `trigger_context.intended_fire` ISO string. Self-healing across system restarts (audit-trail-based, not wall-clock-based).
+- **`time_of_day`**: relies implicitly on the 15-min sweep cadence + the 15-min `_matches_time_of_day` window; no explicit idempotency guard. Safe as long as sweep runs ≤once per window.
+
+### 7.5 Tenant timezone handling
+
+`scheduled` dispatch interprets the cron expression in the **tenant's timezone** (`Company.timezone` with `"America/New_York"` fallback). Mirrors the Phase 6 briefings precedent.
+
+`time_of_day` dispatch does NOT apply tenant TZ today — a latent bug for workflows like `wf_sys_cash_receipts` (fires at 23:30 UTC for all tenants rather than 23:30 tenant-local). Fix deferred to a follow-on cleanup session.
+
+8c migrations that need tenant-local timing + sub-hourly precision should use `trigger_type="scheduled"` + a specific cron (e.g., `"30 23 * * *"` for 11:30pm tenant-local), which already respects tenant TZ correctly.
 
 ---
 

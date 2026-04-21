@@ -47,9 +47,17 @@ class ApprovalGateService:
         tenant_id: str,
         db: Session,
     ) -> None:
-        """Send the accountant review email with approve/reject CTAs."""
+        """Send the accountant review email with approve/reject CTAs.
+
+        Workflow Arc Phase 8b.5: dispatches through the D-7
+        `delivery_service.send_email_with_template` path using the
+        managed `email.approval_gate_review` template. Previously
+        built HTML inline via `_build_review_email_html` (now
+        removed). Recipient logic is unchanged — triggerer + tenant
+        admins / accounting users.
+        """
         from app.models.company import Company
-        from app.services.email_service import email_service
+        from app.services.delivery import delivery_service
 
         company = db.query(Company).filter(Company.id == tenant_id).first()
         tenant_name = company.name if company else "Your Company"
@@ -81,8 +89,6 @@ class ApprovalGateService:
         if job.period_start and job.period_end:
             period_label = f"{job.period_start:%B %Y}"
 
-        subject = f"Agent Review: {label} — {period_label or 'Review Required'}"
-
         base_url = settings.FRONTEND_URL
         if settings.ENVIRONMENT == "production" and company and company.slug:
             base_url = f"https://{company.slug}.{settings.PLATFORM_DOMAIN}"
@@ -91,29 +97,53 @@ class ApprovalGateService:
         reject_url = f"{base_url}/agents/{job.id}/review?action=reject&token={token}"
         review_url = f"{base_url}/agents/{job.id}/review"
 
-        html = ApprovalGateService._build_review_email_html(
-            job=job,
-            label=label,
-            period_label=period_label,
-            tenant_name=tenant_name,
-            approve_url=approve_url,
-            reject_url=reject_url,
-            review_url=review_url,
+        anomaly_count = job.anomaly_count or 0
+        critical_count = sum(
+            1 for a in (job.report_payload or {}).get("anomalies", [])
+            if a.get("severity") == "critical"
         )
 
+        # Fallback subject matches the managed-template subject
+        # verbatim — used only if delivery_service falls back due to
+        # a missing subject on the template.
+        fallback_subject = (
+            f"Agent Review: {label} — {period_label}"
+            if period_label
+            else f"Agent Review: {label}"
+        )
+
+        template_context = {
+            "job_type_label": label,
+            "period_label": period_label,
+            "tenant_name": tenant_name,
+            "approve_url": approve_url,
+            "reject_url": reject_url,
+            "review_url": review_url,
+            "anomaly_count": anomaly_count,
+            "critical_count": critical_count,
+            "dry_run": bool(job.dry_run),
+        }
+
+        sent_count = 0
         for recipient in recipients:
-            email_service.send_email(
-                to=recipient,
-                subject=subject,
-                html_body=html,
-                from_name=f"Bridgeable ({tenant_name})",
+            delivery_service.send_email_with_template(
+                db,
                 company_id=tenant_id,
-                db=db,
+                to_email=recipient,
+                to_name=None,
+                template_key="email.approval_gate_review",
+                template_context=template_context,
+                subject_override=fallback_subject,
+                from_name=f"Bridgeable ({tenant_name})",
+                caller_module="approval_gate.send_review_email",
             )
+            sent_count += 1
 
         logger.info(
-            "Approval email sent for job %s to %d recipients",
-            job.id, len(recipients),
+            "Approval email sent for job %s to %d recipients via "
+            "managed template email.approval_gate_review",
+            job.id,
+            sent_count,
         )
 
     @staticmethod
@@ -484,86 +514,9 @@ class ApprovalGateService:
         </html>
         """
 
-    @staticmethod
-    def _build_review_email_html(
-        job: AgentJob,
-        label: str,
-        period_label: str,
-        tenant_name: str,
-        approve_url: str,
-        reject_url: str,
-        review_url: str,
-    ) -> str:
-        """Build the HTML email body for the approval review."""
-        anomaly_count = job.anomaly_count
-        critical_count = sum(
-            1 for a in (job.report_payload or {}).get("anomalies", [])
-            if a.get("severity") == "critical"
-        )
-
-        anomaly_summary = ""
-        if anomaly_count > 0:
-            anomaly_summary = f"""
-            <div style="background:#fef3c7;border-radius:6px;padding:16px;margin:16px 0;">
-                <p style="margin:0;font-weight:600;color:#92400e;">
-                    {anomaly_count} anomal{'y' if anomaly_count == 1 else 'ies'} found
-                    {f'({critical_count} critical)' if critical_count else ''}
-                </p>
-            </div>"""
-        else:
-            anomaly_summary = """
-            <div style="background:#dcfce7;border-radius:6px;padding:16px;margin:16px 0;">
-                <p style="margin:0;font-weight:600;color:#166534;">No anomalies found</p>
-            </div>"""
-
-        dry_run_note = ""
-        if job.dry_run:
-            dry_run_note = """
-            <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:12px;margin:16px 0;">
-                <p style="margin:0;font-size:13px;color:#854d0e;">
-                    <strong>Dry Run:</strong> No changes were committed. This is a read-only preview.
-                </p>
-            </div>"""
-
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head><style>
-            body {{ margin:0; padding:0; background:#f4f4f5; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }}
-            .wrapper {{ max-width:600px; margin:32px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.1); }}
-            .header {{ background:#09090b; padding:24px 32px; }}
-            .header-title {{ color:#fff; font-size:18px; font-weight:600; margin:0; }}
-            .header-sub {{ color:#a1a1aa; font-size:13px; margin:4px 0 0; }}
-            .body {{ padding:32px; }}
-            .body p {{ margin:0 0 16px; line-height:1.6; font-size:15px; color:#3f3f46; }}
-            .btn {{ display:inline-block; padding:14px 32px; border-radius:6px; font-size:15px; font-weight:600; text-decoration:none; margin-right:12px; }}
-            .btn-approve {{ background:#16a34a; color:#fff !important; }}
-            .btn-reject {{ background:#fff; color:#dc2626 !important; border:2px solid #dc2626; }}
-            .footer {{ border-top:1px solid #e4e4e7; padding:20px 32px; background:#fafafa; }}
-            .footer p {{ margin:0; font-size:12px; color:#71717a; }}
-        </style></head>
-        <body>
-        <div class="wrapper">
-            <div class="header">
-                <p class="header-title">Bridgeable</p>
-                <p class="header-sub">Agent Review Required — {tenant_name}</p>
-            </div>
-            <div class="body">
-                <p><strong>{label}</strong> for <strong>{period_label}</strong> has completed and requires your review.</p>
-                {dry_run_note}
-                {anomaly_summary}
-                <p style="margin:24px 0;">
-                    <a href="{approve_url}" class="btn btn-approve">Approve &amp; Lock Period</a>
-                    <a href="{reject_url}" class="btn btn-reject">Reject</a>
-                </p>
-                <p style="font-size:13px;color:#71717a;">
-                    <a href="{review_url}" style="color:#2563eb;">View full report in Bridgeable</a>
-                </p>
-            </div>
-            <div class="footer">
-                <p>This approval link expires in 72 hours. If you did not expect this email, contact {tenant_name}.</p>
-            </div>
-        </div>
-        </body>
-        </html>
-        """
+    # Workflow Arc Phase 8b.5 — the approval review email is now
+    # rendered via the managed `email.approval_gate_review` template
+    # (seeded by migration r37). The previous inline
+    # `_build_review_email_html` was removed; all callers go through
+    # `send_review_email` above, which dispatches via
+    # `delivery_service.send_email_with_template`.
