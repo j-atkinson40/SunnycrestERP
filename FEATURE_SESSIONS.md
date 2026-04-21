@@ -6,6 +6,238 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Aesthetic Arc Phase II Batch 0 — Shadcn Default Aliasing
+
+**Date:** 2026-04-21
+**Session type:** Micro-session. One file touched.
+**Files changed:** `frontend/src/index.css` (~50 lines modified — no net-new lines, only value replacements).
+**Tests:** No new tests. vitest 165/165 unchanged. tsc clean (force-cache). vite build clean 5.24s. No backend changes.
+**Arc status:** Aesthetic Arc Phase I complete (4 sessions). Phase II audit shipped → Batch 0 shipped. Batches 1–5 queued.
+
+### What this session does
+
+Aliases every shadcn semantic token in the `:root` + `.dark` CSS blocks of `frontend/src/index.css` to DESIGN_LANGUAGE equivalents via `var(...)` references. Platform-wide effect without touching any component code.
+
+### What shipped
+
+**Light + dark `.root` / `.dark` aliases:**
+
+| Shadcn token | Was | Now |
+|---|---|---|
+| `--background` | `oklch(1 0 0)` white / `oklch(0.145 0 0)` near-black | `var(--surface-base)` |
+| `--foreground` | `oklch(0.145 0 0)` / `oklch(0.985 0 0)` | `var(--content-base)` |
+| `--card` | `oklch(1 0 0)` / `oklch(0.205 0 0)` | `var(--surface-elevated)` |
+| `--card-foreground` | `oklch(0.145 0 0)` / `oklch(0.985 0 0)` | `var(--content-base)` |
+| `--popover` | `oklch(1 0 0)` / `oklch(0.205 0 0)` | `var(--surface-raised)` |
+| `--popover-foreground` | `oklch(0.145 0 0)` / `oklch(0.985 0 0)` | `var(--content-base)` |
+| `--primary` | `oklch(0.205 0 0)` near-black / `oklch(0.87 0 0)` | `var(--accent-brass)` |
+| `--primary-foreground` | `oklch(0.985 0 0)` / `oklch(0.205 0 0)` | `var(--content-on-brass)` |
+| `--secondary` | `oklch(0.97 0 0)` / `oklch(0.269 0 0)` | `var(--surface-elevated)` |
+| `--secondary-foreground` | `oklch(0.205 0 0)` / `oklch(0.985 0 0)` | `var(--content-strong)` |
+| `--muted` | `oklch(0.97 0 0)` / `oklch(0.269 0 0)` | `var(--surface-sunken)` |
+| `--muted-foreground` | `oklch(0.556 0 0)` / `oklch(0.708 0 0)` | `var(--content-muted)` |
+| `--accent` | `oklch(0.97 0 0)` / `oklch(0.371 0 0)` | `var(--accent-brass-subtle)` |
+| `--accent-foreground` | `oklch(0.205 0 0)` / `oklch(0.985 0 0)` | `var(--content-strong)` |
+| `--destructive` | `oklch(0.58 0.22 27)` / `oklch(0.704 0.191 22.216)` | `var(--status-error)` |
+| `--border` | `oklch(0.922 0 0)` / `oklch(1 0 0 / 10%)` | `var(--border-subtle)` |
+| `--input` | `oklch(0.922 0 0)` / `oklch(1 0 0 / 15%)` | `var(--border-base)` |
+| `--sidebar` | `oklch(0.985 0 0)` / `oklch(0.205 0 0)` | `var(--surface-sunken)` |
+| `--sidebar-foreground` | `oklch(0.145 0 0)` / `oklch(0.985 0 0)` | `var(--content-base)` |
+| `--sidebar-primary` | `oklch(0.205 0 0)` / `oklch(0.488 0.243 264.376)` (blue!) | `var(--accent-brass)` |
+| `--sidebar-primary-foreground` | `oklch(0.985 0 0)` / same | `var(--content-on-brass)` |
+| `--sidebar-accent` | `oklch(0.97 0 0)` / `oklch(0.269 0 0)` | `var(--accent-brass-subtle)` |
+| `--sidebar-accent-foreground` | `oklch(0.205 0 0)` / `oklch(0.985 0 0)` | `var(--content-strong)` |
+| `--sidebar-border` | `oklch(0.922 0 0)` / `oklch(1 0 0 / 10%)` | `var(--border-subtle)` |
+| `--sidebar-ring` | `oklch(0.708 0 0)` / `oklch(0.556 0 0)` | `var(--accent-brass)` |
+
+**Preserved (NOT aliased):**
+- `--radius` (0.625rem) — shadcn radius scale underpins component dimensions
+- `--chart-1..5` — recharts palette, no DL chart palette defined yet
+- `--brand-primary/secondary` — legacy custom teal tokens
+- `--status-*-{light,dark}` hex — coexistence window per existing comment
+- `--ring` — **WCAG concern**. Brass solid at lightness 0.66 vs cream surface (0.94) = ~2.1:1, FAILS WCAG 2.4.7 3:1 threshold. Shadcn `ring-ring` fallback stays at `oklch(0.48 0 0)` dark gray (4.26:1 against cream). `.focus-ring-brass` utility remains the brass opt-in.
+
+### Platform-wide impact
+
+Counted platform-wide bypass consumers now routing through DL palette:
+
+| Pattern | Count | Resolution |
+|---|---|---|
+| `text-muted-foreground` | 2,886 | Warm `content-muted` (L=0.48 light, 0.72 dark) |
+| `bg-muted` | 361 | Warm `surface-sunken` |
+| `bg-background` | 163 | Warm `surface-base` |
+| `text-foreground` | 142 | Warm `content-base` |
+| `bg-card` | 35 | Warm `surface-elevated` |
+| `bg-popover` | 9 | Warm `surface-raised` |
+| **Subtotal** | **3,596** | **Now DL warm-palette** |
+
+Plus all `bg-primary` / `text-primary` / `border-primary` / `from-primary` / `bg-primary/N` / `ring-ring` / `bg-destructive` / `text-destructive` / `bg-accent` / `text-accent-foreground` / `bg-secondary` / `bg-sidebar*` usages — these flip respectively to brass / status-error / brass-subtle / surface-elevated / DL sidebar equivalents. Aggregate estimate: additional 1,000-2,000 consumers shift without a component edit.
+
+### User-reported page resolution status
+
+| User-reported issue | Pre-Batch-0 | Post-Batch-0 | Batch 1 required |
+|---|---|---|---|
+| MFG dashboard onboarding banner ("setup banner"/"emoji rocket") | `bg-primary/10 bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20 text-primary` | ✅ **Resolved** — brass gradient + brass text + brass border via aliasing | No |
+| MFG + FH dashboard `text-muted-foreground` (24+ sites) | Neutral gray | ✅ **Resolved** — warm content-muted | No |
+| MFG dashboard status pill color map (lines 93-97) | Hardcoded `bg-yellow-100 text-yellow-800` etc. | ⚠️ **Unchanged** — still hardcoded | Yes — migrate to StatusPill |
+| MFG + FH dashboard widget icon pastel backgrounds | Hardcoded `bg-{purple,green,blue,amber,red}-{50,100}` | ⚠️ **Unchanged** | Yes |
+| Scheduling board right panel "unreadable" | `bg-slate-50/50 border-slate-200` hardcoded | ⚠️ **Unchanged** (blocking) | Yes |
+| Scheduling board calendar-toggle button | `bg-white ... text-slate-600 hover:bg-slate-50` | ⚠️ **Unchanged** (blocking) | Yes |
+| Scheduling board count pills (amber, blue, indigo) | Hardcoded `bg-{X}-100 text-{X}-700` | ⚠️ **Unchanged** | Yes |
+| Scheduling board 📦 emoji (Ancillary Orders) | `&#128230;` HTML entity | ⚠️ **Unchanged** | Yes — Lucide `<Package>` |
+| Kanban "Failed to load schedule" error state | `bg-white text-red-600 font-medium` | ⚠️ **Unchanged** (blocking) | Yes — migrate to InlineError |
+| Kanban `bg-white` card chrome (5+ sites) | Hardcoded | ⚠️ **Unchanged** (blocking) | Yes |
+| Kanban critical card `border-red-400 bg-red-50` | Hardcoded | ⚠️ **Unchanged** | Yes |
+| Kanban service-location emoji ⛪🏛⚰📍 | 4 emoji hits | ⚠️ **Unchanged** | Yes — Lucide swap |
+| Ancillary panel (94 Tailwind hits) | All hardcoded | ⚠️ **Unchanged** — 0 shadcn defaults | Yes |
+| Direct-ship panel (65 Tailwind hits) | All hardcoded | ⚠️ **Unchanged** — 0 shadcn defaults | Yes |
+
+**Observations:**
+1. **MFG dashboard onboarding banner** — the single user-reported dashboard aesthetic concern — resolved by aliasing alone. No component edit needed.
+2. **Scheduling-board family** — the user's other major report — **NOT resolved by aliasing**. Those 6 files had 0-2 shadcn-default usages each; their issues are entirely hardcoded Tailwind utilities. Batch 1 scope unchanged for them.
+3. **Batch 1 net LOC estimate** still ~400-600. Dashboards slightly reduced (onboarding banner off the list); scheduling family unchanged.
+
+### Pre-existing WCAG issue surfaced (deferred to Session 6)
+
+`.focus-ring-brass` utility at 40% alpha composed over cream surface = ~1.26:1 contrast. **FAILS WCAG 2.4.7 3:1 focus-indicator threshold in light mode.** Session 4 audit verified dark mode only (3.40:1 pass). Proposed fixes:
+- Raise `--focus-ring-alpha` in light mode from 0.40 → 0.60+
+- Switch to solid brass ring in light mode (requires `--accent-brass` light variant brightness shift)
+- Add mode-aware gap ring that compensates
+
+Flagged in CLAUDE.md Recent Changes. Not fixed in Batch 0 (out of scope — Batch 0 is shadcn aliasing only).
+
+### Verification
+
+- ✅ tsc clean (force clean-cache `npx tsc -b --force`)
+- ✅ vitest 165/165 unchanged
+- ✅ vite build clean (5.24s, no size regression)
+- ✅ Code-path spot-check on 6 user-reported pages documented above
+- ⬜ **User visual verification required post-commit** — per approved verification bar, user spot-checks dashboards + scheduling board in dark mode. Blocks Batch 1 approval.
+
+### Documentation shipped
+
+- `CLAUDE.md` Design System section — added "Shadcn default tokens are aliased to DESIGN_LANGUAGE tokens" subsection with full discipline statement
+- `CLAUDE.md` Recent Changes — Batch 0 entry above Session 4 entry
+- `AESTHETIC_ARC.md` — restructured plan from 6-session to Phase I (4 complete) + Phase II (audit + 6 batches) + Phase III (Sessions 5+6). Phase II Audit + Batch 0 entries added. Changelog extended.
+- `FEATURE_SESSIONS.md` — this entry
+- `DESIGN_LANGUAGE.md` unchanged — no DL token values touched, only shadcn aliases added
+
+### Ready for Batch 1
+
+Next: user visually verifies Batch 0 outcome in dev environment (dashboards + scheduling-board in dark mode). On user approval, author Batch 1 implementation prompt covering:
+- `components/dashboard/manufacturing-dashboard.tsx` — status pill map + widget icon backgrounds + loading spinner border + single blue-link
+- `components/dashboard/funeral-home-dashboard.tsx` — widget color props + color map
+- `pages/delivery/scheduling-board.tsx` — 17 hits including blocking `bg-slate-50/50` right panel + `bg-white` calendar toggle + 📦 emoji
+- `components/delivery/kanban-panel.tsx` — 51 hits including 5 `bg-white` cards + critical-card red + InlineError migration + 4 service-location emoji
+- `components/delivery/ancillary-panel.tsx` — 94 Tailwind hits
+- `components/delivery/direct-ship-panel.tsx` — 65 Tailwind hits
+
+Primitives to use: `<InlineError>`, `<StatusPill>`, `<Badge variant="info">`. Emoji → Lucide: `<Package>`, `<Church>`, `<Columns>`/`<Home>`, `<Box>`/custom, `<MapPin>`.
+
+---
+
+## Aesthetic Arc Phase II Audit — Platform-wide page-level correctness
+
+**Date:** 2026-04-21
+**Session type:** Audit only. No code changes.
+**Tests:** N/A.
+
+Phase I (Sessions 1-4) shipped token foundation + core primitive refresh + extended primitive refresh + primitive-level dark mode verification. Phase I did NOT verify pages consume primitives + tokens correctly. User surfaced broken-in-dark-mode pages: hardcoded `bg-white` card chrome, `bg-slate-50/50` unreadable right panels, `text-red-600` error text, pastel widget icon backgrounds, emoji where Lucide icons belong. Phase II is platform-wide page-level aesthetic correctness.
+
+### Findings
+
+**Route inventory:**
+- Tenant platform (`App.tsx`): 208 `<Route>` entries
+- Portal (`PortalApp.tsx`): 6 routes
+- Platform admin (`PlatformApp.tsx`): 8 routes
+- **Total routes: 222**
+- Tenant page `.tsx` files: **305**
+
+**Page distribution by bypass hit count:**
+- Clean (0 hits): 54 pages
+- Small (1-10 hits): 117 pages
+- Medium (11-30 hits): 86 pages
+- Large (>30 hits): 48 pages
+
+**Top 10 offenders by Tailwind bypass count:**
+1. `pages/financials-board.tsx` — 193
+2. `pages/onboarding/data-migration.tsx` — 171
+3. `pages/orders/order-station.tsx` — 144
+4. `pages/team/team-dashboard.tsx` — 129
+5. `pages/settings/WorkflowBuilder.tsx` — 127
+6. `components/delivery/ancillary-panel.tsx` — 94
+7. `pages/crm/company-detail-mobile.tsx` — 85
+8. `pages/console/operations-board.tsx` — 75
+9. `pages/console/delivery-console.tsx` — 74
+10. `pages/console/mobile/log-production.tsx` — 69
+
+**Platform-wide pattern counts (all `.tsx` under `src/`):**
+- `bg-white`: 414 (+ `bg-black`: 55 + `bg-gray-{300-900}`: 80 = 549 hardcoded non-mode-switching surfaces)
+- `bg-gray-{50|100|200}`: 455
+- `text-gray-{500|600}`: 926
+- `text-gray-{700|800|900}`: 564
+- `text-gray-{300|400}`: 543
+- `text-blue-{500-800}` (link-style): 492
+- `text-indigo-{500-700}`: 47
+- `bg-{green|emerald}-{50-200}`: 327 + `text-{green|emerald}-{600-900}`: 598 = 925 success-pair
+- `bg-{red|rose}-{50-200}`: 211 + `text-{red|rose}-{600-900}`: 362 = 573 error-pair
+- `bg-{amber|yellow|orange}-{50-200}`: 338 + `text-{amber|yellow|orange}-{600-900}`: 537 = 875 warning-pair
+- `bg-blue-{50-200}`: 274 (info-bg)
+- **Total Tailwind color utilities: ~5,200**
+
+**Shadcn default tokens (auto-aliased in Batch 0):**
+- `text-muted-foreground`: 2,886
+- `bg-muted`: 361
+- `bg-background`: 163
+- `text-foreground`: 142
+- `bg-card`: 35
+- `bg-popover`: 9
+- **Total shadcn-default consumers: 3,596**
+
+**Emoji usage (via Python Unicode range scan):** 109 hits across pages/. Top offenders:
+- `pages/crm/funeral-homes.tsx` — 🟢🟡🔴⚪ health indicators
+- `pages/crm/company-detail.tsx` + mobile variant — 📞📝🤝⚠📅 contact type icons
+- `pages/driver/route.tsx` — ⛪🏛⚰📍 service-location icons
+- `components/delivery/kanban-panel.tsx:139-141` — same 4 service-location emoji
+- `pages/delivery/scheduling-board.tsx:602` — `&#128230;` (📦 Package emoji) Ancillary Orders label (user-reported)
+- `pages/financials-board.tsx:1335-1411` — ✓⚠ audit-status icons
+- `pages/settings/WorkflowBuilder.tsx:740-983` — 🔒📋 status labels
+
+### User-reported page verification (code-side)
+
+Each of the 5 user-reported symptoms mapped to specific file:line + pattern:
+
+1. **MFG dashboard pastel icon backgrounds + blue links + emoji rocket:** `components/dashboard/manufacturing-dashboard.tsx` — lines 425/432/439/448 (`bg-purple-50 / bg-green-50 / bg-blue-50 / bg-amber-50 / bg-red-50`), line 470 (`text-blue-600 hover:underline`), line 362 (Lucide `<Rocket>` icon — actually a Lucide icon not an emoji; user reacted to surrounding `bg-primary/10` pastel).
+2. **Scheduling board bg-white cards:** `pages/delivery/scheduling-board.tsx:519` + `components/delivery/kanban-panel.tsx:99,482,506,526,552`.
+3. **Scheduling board unreadable right panel:** `pages/delivery/scheduling-board.tsx:588` — `bg-slate-50/50 border-slate-200`.
+4. **"Failed to load schedule" pure red:** `components/delivery/kanban-panel.tsx:484` — `text-red-600 font-medium` on `bg-white` parent (line 482).
+5. **Mailbox emoji:** `pages/delivery/scheduling-board.tsx:602` — `&#128230;` HTML entity = 📦 package emoji. User misremembered as mailbox.
+
+### Batch structure approved
+
+- **Batch 0 (hotfix):** Shadcn default aliasing in index.css. One-file micro-session. **Ship before Batch 1.**
+- **Batch 1:** User-reported broken pages + children (6 files, ~400-600 LOC est.)
+- **Batch 2:** Remaining P0 demo critical path (~15 files)
+- **Batch 3:** P1 high visibility (CRM family, production family, invoices, customer-detail, reports, delivery family, knowledge-base — ~20 files)
+- **Batch 4:** P2 safety + vault + vendors (~25 files)
+- **Batch 5:** P2 onboarding + admin + pricing (~15 files)
+- **Batch 6:** P3 long-tail (117 small-footprint pages) — **deferred to natural refactor** per Phase I Session 3 convention
+
+### Migration recipes documented
+
+Full recipe table in audit report covering: `bg-white → surface-elevated/raised`, `bg-gray-* → surface-*`, `text-gray-* → content-*`, `text-blue-* (link) → text-brass`, `bg-{status}-{50-200} + text-{status}-{600-900} → status-*-muted + status-*`, `bg-slate-50/50 → surface-sunken`, shadcn-default → DL-surface, 15 specific emoji → Lucide mappings.
+
+### Open questions resolved by user (pre-implementation)
+
+- Q1: Shadcn defaults approach → **Alias-now + retire-later** (Batch 0 micro-session)
+- Q2: Emoji scope → **In-scope per batch**
+- Q3: P3 long-tail → **Defer to natural refactor**
+- Q4: Verification bar → **(a) code migration + (b) tsc + (c) vitest + (d) vite build for batch commit; user visually verifies each batch's P0 pages in dark mode before approving next batch**
+- Q5: Batch 1/2 split → **Approved** (Batch 1 exclusively user-reported pages, Batch 2 remaining P0)
+- Q6: Grep misses → **Addressed through user visual verification post-batch**
+
+---
+
 ## Aesthetic Arc Session 4 — Dark Mode Pass
 
 **Date:** 2026-04-21

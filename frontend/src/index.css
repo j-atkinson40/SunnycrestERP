@@ -40,27 +40,52 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.58 0.22 27);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    /* Phase 7 — darkened from oklch(0.708 0 0) to pass WCAG 3:1
-     * focus-indicator contrast against white + all 6 space-accent-light
-     * chip backdrops. Verified programmatically at
-     * backend/tests/test_arc_focus_ring_contrast.py. */
+    /* ─── Aesthetic Arc Phase II Batch 0 — SHADCN-TO-DL ALIASES ───
+     * Every shadcn semantic token below is aliased to a DESIGN_LANGUAGE
+     * equivalent from frontend/src/styles/tokens.css. This flips every
+     * page using shadcn defaults (`bg-muted`, `bg-card`, `text-muted-
+     * foreground`, etc.) to the warm-family palette in both modes,
+     * without touching component code. Mode switching cascades through
+     * DL's `[data-mode="dark"]` mechanism — the dark values below the
+     * .dark block use the same `var(...)` expressions, which resolve
+     * to dark DL values when `[data-mode="dark"]` is on <html>.
+     *
+     * NEW WORK discipline: prefer DL tokens directly (`bg-surface-
+     * sunken` over `bg-muted`) for clarity. Shadcn defaults remain
+     * safe for legacy/third-party components. See CLAUDE.md Design
+     * System section.
+     *
+     * Preserved as-is (not aliased): --radius (underpins shadcn radius
+     * scale), --chart-* (no DL chart palette yet), --brand-* (legacy
+     * custom), --status-*-{light,dark} (coexistence window), --ring
+     * (see WCAG note below).
+     * ─── */
+    --background: var(--surface-base);
+    --foreground: var(--content-base);
+    --card: var(--surface-elevated);
+    --card-foreground: var(--content-base);
+    --popover: var(--surface-raised);
+    --popover-foreground: var(--content-base);
+    --primary: var(--accent-brass);
+    --primary-foreground: var(--content-on-brass);
+    --secondary: var(--surface-elevated);
+    --secondary-foreground: var(--content-strong);
+    --muted: var(--surface-sunken);
+    --muted-foreground: var(--content-muted);
+    --accent: var(--accent-brass-subtle);
+    --accent-foreground: var(--content-strong);
+    --destructive: var(--status-error);
+    --border: var(--border-subtle);
+    --input: var(--border-base);
+    /* --ring NOT aliased to brass. Brass solid (--accent-brass) at
+     * lightness 0.66 vs cream surface (0.94) is ~2.1:1 contrast,
+     * FAILS WCAG 2.4.7 3:1 for focus indicators. Shadcn's `ring-ring`
+     * utility uses solid color; our `.focus-ring-brass` utility uses
+     * 40% alpha (also fails light-mode 3:1 — separate known issue
+     * for Session 6). Keeping --ring as a neutral dark gray at
+     * oklch(0.48 0 0) — verified at 4.26:1 against cream. Components
+     * opting INTO the brass focus ring use the `.focus-ring-brass`
+     * utility class; shadcn fallback stays neutral. */
     --ring: oklch(0.48 0 0);
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
@@ -98,48 +123,62 @@
     --brand-primary-active: #115E59;
     --brand-secondary: #1E3A5F;
     --brand-secondary-light: #E1E8F0;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    /* Sidebar tokens aliased (Phase II Batch 0). Tenant Sidebar.tsx
+     * was migrated to bg-surface-sunken directly in Session 2; this
+     * catches admin-sidebar.tsx and any third-party consumer. */
+    --sidebar: var(--surface-sunken);
+    --sidebar-foreground: var(--content-base);
+    --sidebar-primary: var(--accent-brass);
+    --sidebar-primary-foreground: var(--content-on-brass);
+    --sidebar-accent: var(--accent-brass-subtle);
+    --sidebar-accent-foreground: var(--content-strong);
+    --sidebar-border: var(--border-subtle);
+    --sidebar-ring: var(--accent-brass);
 }
 
+/* The .dark class block is legacy shadcn convention. Runtime mode
+ * switching uses the `data-mode="dark"` attribute (see
+ * frontend/src/lib/theme-mode.ts). No code currently adds .dark to
+ * the document, but this block is kept for defensive symmetry:
+ * if a future test or third-party component adds .dark, the
+ * aliased shadcn tokens resolve through DESIGN_LANGUAGE tokens
+ * consistent with the :root block above. The DL tokens themselves
+ * (--surface-base, --content-base, --accent-brass, etc.) mode-switch
+ * via [data-mode="dark"] in tokens.css, so both .dark and
+ * [data-mode="dark"] paths converge on the dark DL values. */
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.87 0.00 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.371 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
+    --background: var(--surface-base);
+    --foreground: var(--content-base);
+    --card: var(--surface-elevated);
+    --card-foreground: var(--content-base);
+    --popover: var(--surface-raised);
+    --popover-foreground: var(--content-base);
+    --primary: var(--accent-brass);
+    --primary-foreground: var(--content-on-brass);
+    --secondary: var(--surface-elevated);
+    --secondary-foreground: var(--content-strong);
+    --muted: var(--surface-sunken);
+    --muted-foreground: var(--content-muted);
+    --accent: var(--accent-brass-subtle);
+    --accent-foreground: var(--content-strong);
+    --destructive: var(--status-error);
+    --border: var(--border-subtle);
+    --input: var(--border-base);
+    /* --ring preserved — see light-mode block rationale */
     --ring: oklch(0.556 0 0);
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
     --chart-4: oklch(0.488 0.243 264.376);
     --chart-5: oklch(0.424 0.199 265.638);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --sidebar: var(--surface-sunken);
+    --sidebar-foreground: var(--content-base);
+    --sidebar-primary: var(--accent-brass);
+    --sidebar-primary-foreground: var(--content-on-brass);
+    --sidebar-accent: var(--accent-brass-subtle);
+    --sidebar-accent-foreground: var(--content-strong);
+    --sidebar-border: var(--border-subtle);
+    --sidebar-ring: var(--accent-brass);
 }
 
 @theme inline {

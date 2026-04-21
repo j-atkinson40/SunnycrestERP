@@ -20,16 +20,38 @@ The Aesthetic Arc's job is to take DESIGN_LANGUAGE.md from document to shipped s
 
 ---
 
-## Six-session plan
+## Arc structure — Phase I → Phase II → Phase III
+
+Phase I shipped primitive-level aesthetic (4 sessions). Platform-wide page-level audit surfaced ~8,000 moderate issues concentrated in 200+ pages. Arc restructured into three phases.
+
+### Phase I — Primitive refresh (✅ Complete)
 
 | Session | Status | Scope |
 |---|---|---|
 | 1 — Token foundation | ✅ Shipped | CSS variables, Plex fonts, Tailwind v4 `@theme inline` extensions, mode-switching mechanism. Infrastructure only; no visual refresh. |
 | 2 — Core component refresh | ✅ Shipped | Buttons, inputs, cards, modals, dropdowns, navigation + `--font-sans` flip to Plex + Geist removal. First observable visual change; entire platform now renders in IBM Plex Sans. |
-| 3 — Extended component refresh + status treatment | ✅ Shipped | 6 net-new primitives (Alert, StatusPill, Tooltip, Popover, FormSection, FormSteps) + 11 primitive refreshes (Badge+status, Table, Tabs, Separator, Avatar, Switch, Radio, Skeleton, EmptyState, InlineError, Sonner) + 6 ad-hoc surface refreshes (accounting-reminder-banner, kb-coaching-banner, agent-alerts-card, peek StatusBadge, App ErrorBoundary, WidgetErrorBoundary). `next-themes` removed. 0 primitives remain in shadcn aesthetic. |
-| 4 — Dark mode verification | ✅ Shipped | Every refreshed component verified in dark mode + WCAG 2.2 AA verified. Surgical token adjustments (status-muted backgrounds, focus-ring alpha) + 3 component fixes (portal fg fallback, NotificationDropdown status icons, PortalLayout logout focus ring) + 1 new feature (branding editor Light/Dark preview toggle + WCAG readout). |
-| 5 — Motion pass | ⬜ Not started | Apply `ease-settle` / `ease-gentle` + named durations consistently. Hover, focus, modal/dropdown entrances, toast arrivals. |
-| 6 — Accessibility + QA across all surfaces | ⬜ Not started | Full WCAG 2.2 AA verification. Contrast automation. Keyboard navigation. Reduced-motion spot checks. Screen reader pass on refreshed components. |
+| 3 — Extended component refresh + status treatment | ✅ Shipped | 6 net-new primitives (Alert, StatusPill, Tooltip, Popover, FormSection, FormSteps) + 11 primitive refreshes (Badge+status, Table, Tabs, Separator, Avatar, Switch, Radio, Skeleton, EmptyState, InlineError, Sonner) + 6 ad-hoc surface refreshes. `next-themes` removed. 0 primitives remain in shadcn aesthetic. |
+| 4 — Dark mode verification | ✅ Shipped | Every refreshed component verified in dark mode + WCAG 2.2 AA verified. Surgical token adjustments (status-muted backgrounds, focus-ring alpha) + 3 component fixes + 1 new feature (branding editor Light/Dark preview toggle + WCAG readout). |
+
+### Phase II — Platform-wide page correctness (🟡 In progress)
+
+| Batch | Status | Scope |
+|---|---|---|
+| Audit | ✅ Shipped | Platform-wide page-level bypass pattern survey. 414 `bg-white` + 2,886 `text-muted-foreground` + ~5,000 Tailwind color utilities + 109 emoji found across 305 page files. P0/P1/P2/P3 categorized. Batch structure proposed. |
+| **0 — Shadcn default aliasing** | ✅ **Shipped** | One-file micro-session on `frontend/src/index.css`. All shadcn `:root` + `.dark` semantic tokens aliased to DESIGN_LANGUAGE equivalents via `var(...)` references. 3,596 shadcn-default consumers automatically shift to warm palette without touching component code. Resolves MFG dashboard onboarding banner (user-reported "setup banner"). |
+| 1 — User-reported broken pages | ⬜ Ready | MFG dashboard + FH dashboard + scheduling-board + 3 kanban/ancillary/direct-ship children. Remaining hardcoded Tailwind migrations + primitive substitutions (InlineError, StatusPill, Badge) + emoji → Lucide swaps. Scope reduced after Batch 0 eliminated shadcn-default work. |
+| 2 — Remaining P0 demo critical path | ⬜ Queued | `order-station`, `financials-board`, 4 hub pages, `urn-catalog` family, `case-detail` family, `AgentDashboard`, `BriefingPage`. |
+| 3 — P1 high visibility | ⬜ Queued | CRM family (+ emoji health indicators), production family, invoices, customer-detail, reports, delivery family, knowledge-base. |
+| 4 — P2 safety + vault + vendors | ⬜ Queued | Safety family, vault accounting tabs, vendor family. |
+| 5 — P2 onboarding + admin + pricing | ⬜ Queued | Onboarding flow, platform-admin, team-dashboard, pricing, announcements, legacy studio. |
+| 6 — P3 long-tail | ⬜ Deferred | 117 small-footprint pages (1-10 bypass hits). Deferred to natural refactor per Phase I Session 3 convention. |
+
+### Phase III — Motion + QA (⬜ Pending)
+
+| Session | Status | Scope |
+|---|---|---|
+| 5 — Motion pass | ⬜ Queued | Apply `ease-settle` / `ease-gentle` + named durations consistently. Hover, focus, modal/dropdown entrances, toast arrivals. |
+| 6 — Accessibility + QA across all surfaces | ⬜ Queued | Full WCAG 2.2 AA verification. Contrast automation. Keyboard navigation. Reduced-motion spot checks. Screen reader pass. Long-tail focus-ring-brass light-mode alpha fix. |
 
 ---
 
@@ -373,6 +395,52 @@ New `--focus-ring-alpha` token (light 0.40, dark 0.48 override). `.focus-ring-br
 
 Session 5 scope: verify every animation, transition, and micro-interaction against DESIGN_LANGUAGE §6 motion timing scale + easing curves. Likely focus areas: dropdown/dialog entry timing (`duration-arrive` vs `duration-settle` per overlay type), hover-to-click promotion on Peek panels, triage keyboard-driven transitions, briefing list reveals, command bar result-list animations. Reduced-motion compliance re-verified post-Session-4.
 
+**Arc restructure (Phase II split):** Phase II platform-wide page correctness runs between Session 4 and Session 5. Session 5 waits until Phase II Batches 1–5 complete. See Phase II Audit + Batch 0 sections above.
+
+---
+
+## Phase II Audit — Platform-wide page-level correctness (✅ Shipped)
+
+**Date:** 2026-04-21. Audit session only.
+
+Phase I shipped token + primitive refresh but didn't verify pages consume primitives + tokens correctly. User surfaced pages rendering broken in dark mode. Audit scoped Phase II into 6 batches (Batch 0 hotfix + 5 implementation batches + Batch 6 deferred long-tail). Full audit report in FEATURE_SESSIONS.md.
+
+**Headline numbers:** 208 tenant routes + 6 portal + 8 platform-admin = 222 routes audited. 305 `.tsx` page files: 54 clean / 117 small / 86 medium / 48 large. Platform-wide: 414 `bg-white`, 2,886 `text-muted-foreground`, ~5,000 Tailwind utilities total, 109 emoji.
+
+---
+
+## Phase II Batch 0 — Shadcn Default Aliasing (✅ Shipped)
+
+**Date:** 2026-04-21  
+**Type:** Micro-session. One file touched (`frontend/src/index.css`, ~50 lines).  
+**Tests:** No new tests. vitest 165/165 unchanged. tsc clean (force-cache). vite build clean 5.24s.
+
+Every shadcn semantic token in `:root` + `.dark` CSS blocks aliased to DL equivalents via `var(...)` references. **Platform-wide effect without touching any component code** — 3,596 shadcn-default consumers automatically route through DL warm-family palette.
+
+**Aliased:** `--background` → `surface-base`, `--foreground` → `content-base`, `--card` → `surface-elevated`, `--card-foreground` → `content-base`, `--popover` → `surface-raised`, `--popover-foreground` → `content-base`, `--primary` → `accent-brass`, `--primary-foreground` → `content-on-brass`, `--secondary` → `surface-elevated`, `--secondary-foreground` → `content-strong`, `--muted` → `surface-sunken`, `--muted-foreground` → `content-muted`, `--accent` → `accent-brass-subtle`, `--accent-foreground` → `content-strong`, `--destructive` → `status-error`, `--border` → `border-subtle`, `--input` → `border-base`, all `--sidebar*` → DL sidebar equivalents.
+
+**NOT aliased:** `--radius` (shadcn radius scale), `--chart-*` (no DL chart palette yet), `--brand-*` (legacy custom teal), `--status-*-{light,dark}` (coexistence window), `--ring` (brass solid would fail WCAG 2.4.7 3:1 in light mode; shadcn fallback stays neutral; `.focus-ring-brass` utility remains the brass opt-in).
+
+**User-reported page post-Batch-0 status:**
+- MFG dashboard onboarding banner: ✅ **RESOLVED** (shadcn-default-driven — `bg-primary/N`, `text-primary`, `border-primary/N` now all brass)
+- MFG + FH dashboards `text-muted-foreground` usages: ✅ **RESOLVED** (24+ warm-flip)
+- MFG + FH dashboard widget icon pastel backgrounds: ⚠️ **Still hardcoded** — Batch 1
+- MFG + FH dashboard status pill color maps: ⚠️ **Still hardcoded** — Batch 1
+- Scheduling board `bg-slate-50/50` right panel (blocking): ⚠️ **Still hardcoded** — Batch 1
+- Scheduling board `bg-white` calendar toggle (blocking): ⚠️ **Still hardcoded** — Batch 1
+- Scheduling board 📦 emoji: ⚠️ **Still hardcoded** — Batch 1
+- Kanban "Failed to load schedule" red error (blocking): ⚠️ **Still hardcoded** — Batch 1 (migrate to InlineError)
+- Kanban `bg-white` card chrome (5+ sites, blocking): ⚠️ **Still hardcoded** — Batch 1
+- Kanban service-location emoji ⛪🏛⚰📍: ⚠️ **Still hardcoded** — Batch 1
+- Ancillary panel (94 hits, all hardcoded): ⚠️ **Still hardcoded** — Batch 1
+- Direct-ship panel (65 hits, all hardcoded): ⚠️ **Still hardcoded** — Batch 1
+
+**Pre-existing WCAG issue surfaced (deferred to Session 6):** `.focus-ring-brass` utility in light mode computes ~1.26:1 contrast against cream surface (brass α 40% composed over surface-base). Fails WCAG 2.4.7 3:1. Session 4 verified dark mode only (3.40:1 pass). Fix: raise light-mode alpha, OR switch to solid brass ring in light mode (requires brightness adjustment of `--accent-brass` in light). Defer — out of Batch 0 scope.
+
+### Ready for Batch 1: User-reported broken pages
+
+After Batch 0, Batch 1 scope is largely unchanged for scheduling-board family (those files had 0-2 shadcn-default usages — their issues are hardcoded Tailwind utilities). Dashboards get moderate scope reduction (shadcn-default usages auto-resolved). Overall Batch 1 LOC estimate: ~400-600, unchanged from audit projection.
+
 ---
 
 ## Cross-arc integration with Workflow Arc
@@ -395,4 +463,6 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 - **2026-04-21 (Session 1 shipped):** Token foundation + Plex fonts + Tailwind v4 `@theme inline` extensions + `[data-mode="dark"]` mechanism + flash-prevention inline script + `theme-mode.ts` runtime API. No visual regression (status-color hex→oklch drift accepted).
 - **2026-04-21 (Session 2 shipped):** Core component refresh across 14 files (~480 LOC modified). 8 UI primitives (Button, Label, Input, Textarea, Select, Card, Dialog, DropdownMenu, SlideOver) + 6 navigation components (sidebar, DotNav, breadcrumbs, mobile tab bar, app-layout header, notification dropdown) on DESIGN_LANGUAGE tokens. `--font-sans` flipped from Geist to `var(--font-plex-sans)` in one line — entire platform renders in IBM Plex Sans. Geist `@fontsource-variable/geist` package uninstalled. Brass focus ring replaces gray everywhere. Tests: 165/165 vitest + 171/171 backend regression, tsc clean, build clean. Mixed-aesthetic pages expected during Session 2–3 window (213 pages still reference shadcn tokens; Session 3 closes extended-component gap).
 - **2026-04-21 (Session 3 shipped):** Extended components + status treatment across 23 files (~1,200 LOC touched). **6 net-new primitives** (Alert, StatusPill, Tooltip, Popover, FormSection + FormStack + FormFooter, FormSteps) — ~630 new LOC. **11 primitive refreshes** onto DESIGN_LANGUAGE tokens (Badge with 4 new status variants + destructive alias; Table + Tabs + Separator + Avatar + Switch + Radio + Skeleton + EmptyState + InlineError + Sonner) — ~400 LOC. **6 ad-hoc surface refreshes** (accounting-reminder-banner, kb-coaching-banner, agent-alerts-card with new status-key-keyed dict pattern, peek StatusBadge → StatusPill, App ErrorBoundary, WidgetErrorBoundary) — ~180 LOC. `next-themes` removed from package.json (single consumer; confirmed). **0 UI primitives remain in shadcn aesthetic.** ~213 pages still carry shadcn page-chrome (accepted per audit §9); migration recipe documented in CLAUDE.md for natural-refactor adoption. 5 flagged settings pages deferred to Phase 8e per audit §2. Tests: 165/165 vitest + 171/171 backend, tsc clean, build clean 4.94s.
-- **2026-04-21 (Session 4 shipped):** Dark mode verification pass. **Surgical token adjustments** (8 values + 1 new `--focus-ring-alpha` composable token) + **3 targeted component fixes** for Sessions 1-3 misses + **1 new tenant-facing feature** (branding-editor preview Light/Dark toggle + WCAG contrast readout). M1 status-muted L 0.28/0.30 → 0.22/0.24 (chroma eased) — clears WCAG AA 4.5:1 for status-text-on-muted-bg in dark mode (was 3.83–4.32:1 FAIL, now 5.0–5.4:1). m2 new `--focus-ring-alpha` token (light 0.40 default, dark 0.48 override) — lifts focus-ring contrast on `--surface-raised` from ~3.00:1 WCAG edge to ~3.5:1. M2 portal fg fallback (6 sites across PortalLayout/PortalLogin/PortalResetPassword) migrated from literal `white` to `var(--content-on-brass)` — mode-aware fallback matches DL §3 "brass button as glowing pill with dark text" in dark mode. M5 NotificationDropdown status icons (4 hardcoded Tailwind primaries) migrated to DESIGN_LANGUAGE warm status palette. m3 PortalLayout logout focus ring migrated from `focus:ring-white/50` hardcoded to brand-color-aware ring. M3 branding editor preview gains Light/Dark toggle (scoped `data-mode` on preview subtree only) + two WCAG contrast readouts (brand→fg with AA pass/fail, brand→page-surface visibility advisory). Proper WCAG sRGB-gamma luminance. Tenant brand color Option A confirmed (identical hex in both modes + preview helper). Mirror discipline canonicalized (tokens.css + DL §3 synchronized in same commit). BT.601 vs WCAG luminance divergence in PortalBrandProvider noted as minor known item; deferred. m1 focus-ring gap-color question deferred to Session 6. m4 OfflineBanner hardcoded amber deferred to natural refactor. **No new tests** — token value changes aren't testable via unit tests. Tests: 165/165 vitest, tsc clean (clean-cache verified), build clean. LOC: ~180. 4/6 sessions complete. Ready for Session 5: Motion pass.
+- **2026-04-21 (Session 4 shipped):** Dark mode verification pass. **Surgical token adjustments** (8 values + 1 new `--focus-ring-alpha` composable token) + **3 targeted component fixes** for Sessions 1-3 misses + **1 new tenant-facing feature** (branding-editor preview Light/Dark toggle + WCAG contrast readout). M1 status-muted L 0.28/0.30 → 0.22/0.24 (chroma eased) — clears WCAG AA 4.5:1 for status-text-on-muted-bg in dark mode (was 3.83–4.32:1 FAIL, now 5.0–5.4:1). m2 new `--focus-ring-alpha` token (light 0.40 default, dark 0.48 override) — lifts focus-ring contrast on `--surface-raised` from ~3.00:1 WCAG edge to ~3.5:1. M2 portal fg fallback (6 sites across PortalLayout/PortalLogin/PortalResetPassword) migrated from literal `white` to `var(--content-on-brass)` — mode-aware fallback matches DL §3 "brass button as glowing pill with dark text" in dark mode. M5 NotificationDropdown status icons (4 hardcoded Tailwind primaries) migrated to DESIGN_LANGUAGE warm status palette. m3 PortalLayout logout focus ring migrated from `focus:ring-white/50` hardcoded to brand-color-aware ring. M3 branding editor preview gains Light/Dark toggle (scoped `data-mode` on preview subtree only) + two WCAG contrast readouts (brand→fg with AA pass/fail, brand→page-surface visibility advisory). Proper WCAG sRGB-gamma luminance. Tenant brand color Option A confirmed (identical hex in both modes + preview helper). Mirror discipline canonicalized (tokens.css + DL §3 synchronized in same commit). BT.601 vs WCAG luminance divergence in PortalBrandProvider noted as minor known item; deferred. m1 focus-ring gap-color question deferred to Session 6. m4 OfflineBanner hardcoded amber deferred to natural refactor. **No new tests** — token value changes aren't testable via unit tests. Tests: 165/165 vitest, tsc clean (clean-cache verified), build clean. LOC: ~180. 4/6 Phase I sessions complete. Ready for Session 5: Motion pass.
+- **2026-04-21 (Phase II Audit shipped):** Platform-wide page-level aesthetic audit. Arc restructured: Phase I (4 sessions) complete → Phase II (audit + 6 batches) → Phase III (Sessions 5+6 Motion + QA). User-reported rendering bugs (bg-white cards, bg-slate-50/50 unreadable panels, hardcoded red error, emoji, pastel icon cards) verified code-side. 208 tenant + 6 portal + 8 admin routes audited via systematic grep analysis across 305 page files. Platform-wide pattern counts: 414 `bg-white`, 2,886 `text-muted-foreground`, 5,000+ Tailwind color utilities, 109 emoji, 3,596 shadcn-default consumers. Batches structured: Batch 0 hotfix (shadcn aliasing), Batch 1 user-reported broken pages, Batches 2-5 demo-critical + P1/P2 surfaces, Batch 6 deferred long-tail. Migration recipes documented. No code changes this session.
+- **2026-04-21 (Phase II Batch 0 shipped):** Shadcn default aliasing micro-session. One file touched (`frontend/src/index.css`), ~50 lines modified in `:root` + `.dark` blocks. Every shadcn semantic token aliased to DESIGN_LANGUAGE equivalents via `var(...)` references: `--background` → `surface-base`, `--foreground` → `content-base`, `--card` → `surface-elevated`, `--popover` → `surface-raised`, `--primary` → `accent-brass`, `--muted` → `surface-sunken`, `--muted-foreground` → `content-muted`, `--accent` → `accent-brass-subtle`, `--destructive` → `status-error`, `--border` → `border-subtle`, `--input` → `border-base`, all `--sidebar*` → DL sidebar equivalents. Platform-wide effect: 3,596 shadcn-default consumers now render in DL warm palette without touching component code. **User-reported MFG dashboard onboarding banner resolved via aliasing alone** (`bg-primary/10 text-primary border-primary/20` now brass). `text-muted-foreground` usages flip platform-wide (2,886 sites) to warm content-muted. Preserved as-is: `--radius` (shadcn radius scale), `--chart-*`, `--brand-*` (legacy), `--status-*-{light,dark}` hex, `--ring` (WCAG 2.4.7 concern — brass solid fails 3:1 in light mode on cream; `.focus-ring-brass` utility remains the opt-in). **Pre-existing WCAG issue surfaced** (deferred to Session 6): `.focus-ring-brass` 40% alpha composed over cream ≈ 1.26:1 in light mode (fails 3:1). Session 4 verified dark mode only. **Scheduling-board family NOT resolved by aliasing** (those files have 0-2 shadcn-default usages each; issues are entirely hardcoded Tailwind — Batch 1 scope unchanged for them). No new tests. vitest 165/165, tsc clean, vite build clean 5.24s. Ready for Phase II Batch 1 (user-reported broken pages + children).
