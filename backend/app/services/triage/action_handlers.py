@@ -341,6 +341,209 @@ def _handle_cash_receipts_request_review(ctx: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ── Month-End Close handlers (PARITY CRITICAL — Phase 8c) ──────────
+
+
+def _handle_month_end_close_approve(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Approve via the existing `ApprovalGateService._process_approve`
+    full-approval path. Triggers statement run + period lock +
+    auto-approval of unflagged statement items. **Zero logic
+    duplication.**"""
+    from app.services.workflows.month_end_close_adapter import approve_close
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    try:
+        result = approve_close(
+            db, user=user, agent_job_id=ctx["entity_id"]
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
+def _handle_month_end_close_reject(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Reject via `_process_reject`. No period lock, no statement
+    run."""
+    from app.services.workflows.month_end_close_adapter import reject_close
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code")
+    if not reason:
+        return {
+            "status": "errored",
+            "message": "Reject reason is required.",
+        }
+    try:
+        result = reject_close(
+            db, user=user, agent_job_id=ctx["entity_id"], reason=reason,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
+def _handle_month_end_close_request_review(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.workflows.month_end_close_adapter import (
+        request_review_close,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    note = ctx.get("note") or ctx.get("reason")
+    if not note:
+        return {
+            "status": "errored",
+            "message": "A note is required when requesting review.",
+        }
+    try:
+        result = request_review_close(
+            db, user=user, agent_job_id=ctx["entity_id"], note=note,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
+# ── AR Collections handlers (PARITY CRITICAL — Phase 8c) ───────────
+
+
+def _handle_ar_collections_send(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Send the drafted collection email for this customer via the
+    managed `email.collections` template. Closes the pre-existing
+    Phase 3b TODO — legacy approval was a no-op."""
+    from app.services.workflows.ar_collections_adapter import send_customer_email
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    try:
+        result = send_customer_email(
+            db, user=user, anomaly_id=ctx["entity_id"],
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
+def _handle_ar_collections_skip(ctx: dict[str, Any]) -> dict[str, Any]:
+    from app.services.workflows.ar_collections_adapter import skip_customer
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code")
+    if not reason:
+        return {
+            "status": "errored",
+            "message": "Reason is required to skip a collection.",
+        }
+    try:
+        result = skip_customer(
+            db, user=user, anomaly_id=ctx["entity_id"], reason=reason,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
+def _handle_ar_collections_request_review(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.workflows.ar_collections_adapter import (
+        request_review_customer,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    note = ctx.get("note") or ctx.get("reason")
+    if not note:
+        return {
+            "status": "errored",
+            "message": "A note is required when requesting review.",
+        }
+    try:
+        result = request_review_customer(
+            db, user=user, anomaly_id=ctx["entity_id"], note=note,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
+# ── Expense Categorization handlers (PARITY CRITICAL — Phase 8c) ───
+
+
+def _handle_expense_categorization_approve(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply the AI-suggested category (or user-supplied override) to
+    the VendorBillLine. Payload may include `category_override: str`
+    to replace the AI suggestion."""
+    from app.services.workflows.expense_categorization_adapter import approve_line
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    payload = ctx.get("payload") or {}
+    try:
+        result = approve_line(
+            db,
+            user=user,
+            anomaly_id=ctx["entity_id"],
+            category_override=payload.get("category_override"),
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
+def _handle_expense_categorization_reject(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.workflows.expense_categorization_adapter import reject_line
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    reason = ctx.get("reason") or ctx.get("reason_code")
+    if not reason:
+        return {
+            "status": "errored",
+            "message": "Reason is required to reject a line.",
+        }
+    try:
+        result = reject_line(
+            db, user=user, anomaly_id=ctx["entity_id"], reason=reason,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
+def _handle_expense_categorization_request_review(
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.workflows.expense_categorization_adapter import (
+        request_review_line,
+    )
+
+    db: Session = ctx["db"]
+    user: User = ctx["user"]
+    note = ctx.get("note") or ctx.get("reason")
+    if not note:
+        return {
+            "status": "errored",
+            "message": "A note is required when requesting review.",
+        }
+    try:
+        result = request_review_line(
+            db, user=user, anomaly_id=ctx["entity_id"], note=note,
+        )
+    except ValueError as exc:
+        return {"status": "errored", "message": str(exc)}
+    return result
+
+
 # ── Generic skip/escalate ────────────────────────────────────────────
 
 
@@ -385,6 +588,18 @@ HANDLERS: dict[str, HandlerFn] = {
     "cash_receipts.reject": _handle_cash_receipts_reject,
     "cash_receipts.override": _handle_cash_receipts_override,
     "cash_receipts.request_review": _handle_cash_receipts_request_review,
+    # Month-End Close (Workflow Arc Phase 8c — FULL approval parity)
+    "month_end_close.approve": _handle_month_end_close_approve,
+    "month_end_close.reject": _handle_month_end_close_reject,
+    "month_end_close.request_review": _handle_month_end_close_request_review,
+    # AR Collections (Workflow Arc Phase 8c — closes Phase 3b TODO)
+    "ar_collections.send": _handle_ar_collections_send,
+    "ar_collections.skip": _handle_ar_collections_skip,
+    "ar_collections.request_review": _handle_ar_collections_request_review,
+    # Expense Categorization (Workflow Arc Phase 8c — per-line review)
+    "expense_categorization.approve": _handle_expense_categorization_approve,
+    "expense_categorization.reject": _handle_expense_categorization_reject,
+    "expense_categorization.request_review": _handle_expense_categorization_request_review,
     # Generic
     "skip": _handle_skip,
     "escalate": _handle_escalate,

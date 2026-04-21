@@ -290,6 +290,75 @@ The CashReceiptsAgent sweeps ALL unmatched payments in a tenant. If you seed pai
 
 Mark the test file's module docstring "BLOCKING" — CI config should fail the build on red. Phase 8b's `test_cash_receipts_migration_parity.py` module docstring is the template.
 
+### 5.5 Extended patterns from Phase 8c (v2)
+
+Phase 8c's three migrations surfaced four parity patterns not exercised in cash receipts. Each is required where applicable.
+
+#### 5.5.1 Pre-approval zero-write assertion (deferred-write agents)
+
+When the agent's execution is read-only analysis and writes happen on approval (month_end_close, ar_collections, expense_categorization), the parity test MUST include a test class that runs the pipeline to `awaiting_approval` and asserts ZERO financial writes exist for the job. Example (from `test_month_end_close_migration_parity.py`):
+
+```python
+class TestPreApprovalZeroWrite:
+    def test_no_period_lock_pre_approval(self, db_session, tenant_ctx):
+        job_id = _seed_pipeline_ready_job(...)
+        assert _period_lock_count(db, company_id, job_id) == 0
+
+    def test_no_statement_run_pre_approval(self, db_session, tenant_ctx):
+        _seed_pipeline_ready_job(...)
+        assert _statement_run_count(db, company_id) == 0
+```
+
+Analogous patterns:
+- ar_collections: zero `document_deliveries` rows with `template_key="email.collections"` before any triage send.
+- expense_categorization: `VendorBillLine.expense_category` remains null before approve.
+
+#### 5.5.2 Positive PeriodLock assertion (full-approval agents)
+
+For full-approval agents that write period locks on approval (month_end_close today; year_end_close in 8f), the parity test MUST include a positive assertion: exactly one `PeriodLock` row is written with matching scope `(tenant_id, period_start, period_end, agent_job_id)` and `locked_by == user.id`.
+
+```python
+lock = db.query(PeriodLock).filter(
+    PeriodLock.tenant_id == company_id,
+    PeriodLock.agent_job_id == job_id,
+).one()
+assert lock.period_start == expected_ps
+assert lock.period_end == expected_pe
+assert lock.locked_by == user.id
+assert lock.is_active is True
+```
+
+Pair this with negative assertions in other categories (reject path writes NO lock; pre-approval has NO lock).
+
+#### 5.5.3 Fan-out fidelity (per-entity queues)
+
+For per-entity fan-out queues (ar_collections: per-customer), the parity test MUST exercise mixed actions across a fan-out set and assert each action produces the expected side effect for its item only. Example (from `test_ar_collections_migration_parity.py`):
+
+```python
+class TestFanOutFidelity:
+    def test_three_customers_three_actions(self, db_session, tenant_ctx):
+        seed customer A, B, C each with a draft
+        send_customer_email(A)       # → 1 delivery for A
+        skip_customer(B, reason=...) # → 0 deliveries, B's anomaly resolved
+        request_review_customer(C, note=...)  # → 0 deliveries, C's anomaly unresolved
+        assert total_deliveries == 1  # only A
+```
+
+#### 5.5.4 Override-action pattern (user replaces AI suggestion)
+
+For actions that accept a user-supplied override (expense_categorization's `category_override`), the parity test MUST include both the default-AI-suggestion path and the override path. Assert the override-written value + an audit trail in the resolution note mentioning "user-override":
+
+```python
+def test_override_replaces_ai_suggestion(self, ...):
+    approve_line(..., category_override="rent")
+    line = db.query(VendorBillLine).filter(...).one()
+    assert line.expense_category == "rent"  # NOT the AI suggestion
+    anomaly = db.query(AgentAnomaly).filter(...).one()
+    assert "user-override" in (anomaly.resolution_note or "")
+```
+
+Backend ships the override kwarg; frontend UI for operator entry may lag (Phase 8e).
+
 ---
 
 ## 6. Latency gate requirements
@@ -367,6 +436,20 @@ The workflow_scheduler sweep runs every 15 min. Three guards against double-firi
 
 8c migrations that need tenant-local timing + sub-hourly precision should use `trigger_type="scheduled"` + a specific cron (e.g., `"30 23 * * *"` for 11:30pm tenant-local), which already respects tenant TZ correctly.
 
+### 7.6 Event trigger NOT dispatched today — use scheduled fallback (Phase 8c finding)
+
+A migration's existing seed may declare `trigger_type="event"` + `trigger_config.event="…"` (expense_categorization's `"expense.created"` is the canonical example). **The workflow scheduler does NOT dispatch event-triggered workflows today.** No event subscription registry exists; no code publishes events matching the declared hook.
+
+Until the event infrastructure ships (future horizontal arc), migrations with event triggers switch to `trigger_type="scheduled"` with a frequent cron (`*/15 * * * *` for near-real-time, same cadence as the sweep). The agent's step 1 naturally picks up new records since the last run because it queries "uncategorized" or equivalent state.
+
+**Phase 8c pattern (expense_categorization):**
+- Seed was `trigger_type="event"` + `trigger_config.event="expense.created"` → silently never fired.
+- Changed to `trigger_type="scheduled"` + `trigger_config.cron="*/15 * * * *"`.
+- Latency: ~15 min vs. real-time. Acceptable for most accounting agents; may not be for human-facing event flows (TBD — future event arc addresses those).
+- Commit message, session log, and `LATENT BUG TRACKING` must explicitly flag the trigger-type change as a **workaround, not a fix for the event dispatch gap**.
+
+8d+ migrations declaring event triggers inherit this convention. Flag in the migration audit under question 3 (scheduler invocation).
+
 ---
 
 ## 8. Agent badge clearing (when + how)
@@ -428,7 +511,100 @@ Not in scope for 8c–8f. Revisit at 8h.
 
 ---
 
-## 10. Phase-post-migration verification checklist
+## 10. Queue cardinality matrix (v2 — Phase 8c addition)
+
+The triage queue's "item cardinality" — what a single queue item represents — drives the direct-query shape, the action grain, and the parity-test structure. Phase 8c's three migrations surfaced four distinct cardinalities:
+
+| Cardinality | What the item represents | Examples | When to use |
+|---|---|---|---|
+| **per-anomaly** | One unresolved `AgentAnomaly` row. Item ID == anomaly ID. | cash_receipts (Phase 8b), expense_categorization (Phase 8c) | When the agent emits granular findings that a user approves/rejects independently. Each anomaly has clear entity linkage. |
+| **per-entity** | One business entity (customer, vendor, project) with a pending decision. Item ID == anomaly ID; the entity is denormalized via `entity_id`. | ar_collections (Phase 8c) — one item per customer with an overdue balance + drafted email. | When the agent aggregates per-entity decisions. Operator makes one yes/no per entity, not per underlying record. |
+| **per-job** | One `AgentJob` row in `awaiting_approval`. Item ID == job ID. Anomalies surface as sub-context inside the panel, not as separate items. | month_end_close (Phase 8c) | When the entire run is the approval decision — approving partially doesn't make sense. Usually coincides with full-approval (period lock) agents. |
+| **per-record** | One business record (SalesOrder, InventoryItem, etc.) flagged by the agent. Item ID == record ID. | Future 8f: `unbilled_orders` likely fits here (one-per-SalesOrder). | When the agent produces a flat list of records needing human attention, rather than anomalies off a single job. |
+
+### Choosing a cardinality
+
+Ask: "What does a single approval decision cover?"
+- If the answer is "one finding" → **per-anomaly**.
+- If the answer is "one business counterparty across all their findings" → **per-entity**.
+- If the answer is "the whole run at once" → **per-job**.
+- If the answer is "one record at a time" → **per-record**.
+
+### Impact on the direct-query shape
+
+The `_DIRECT_QUERIES` builder returns rows whose `id` field is the `entity_id` the triage engine passes to `apply_action` as the item identifier. Choose `id` based on cardinality:
+
+```python
+# per-anomaly (cash_receipts, expense_categorization)
+{"id": anomaly.id, "anomaly_id": anomaly.id, "entity_id": anomaly.entity_id, ...}
+
+# per-entity (ar_collections)
+{"id": anomaly.id, "anomaly_id": anomaly.id, "customer_id": anomaly.entity_id, "draft_subject": ..., ...}
+
+# per-job (month_end_close)
+{"id": job.id, "agent_job_id": job.id, "period_label": ..., "anomaly_count": ..., ...}
+```
+
+### Impact on the adapter's action signature
+
+The adapter's action functions take an identifier matching the queue's cardinality:
+- per-anomaly / per-entity: `action(db, *, user, anomaly_id, ...)`
+- per-job: `action(db, *, user, agent_job_id, ...)`
+- per-record: `action(db, *, user, record_id, ...)`
+
+### Impact on parity-test fan-out
+
+Per-entity queues require a **fan-out fidelity** parity test (see §5.5.3) that exercises multiple items with different actions. Per-job queues don't need fan-out tests — there's only ever one decision per job.
+
+---
+
+## 11. Rollback-gap documentation convention (v2 — Phase 8c addition)
+
+Some accounting agents have pre-existing partial-failure behaviors that are not correctness-complete — the approval can commit some side effects and silently skip others when specific exceptions are raised mid-flight. These are **pre-existing correctness bugs** flagged separately from migrations. Migrations preserve them VERBATIM for parity.
+
+### When to flag a rollback gap
+
+During the migration audit, ask: "If an exception is raised mid-way through `_process_approve` (or the adapter's approve path), what DB state is left?"
+
+- If the transaction fully rolls back → no gap, no flag needed.
+- If partial writes are committed before the failure point → **rollback gap exists**. Flag in the session log + add an entry to the migration's parity test's module docstring listing the specific failure modes preserved.
+
+### Working example — month_end_close (Phase 8c)
+
+From `approval_gate.py`'s `_trigger_statement_run` (line 359):
+
+```python
+except Exception as e:
+    logger.error("Failed to trigger statement run for job %s: %s", job.id, e)
+    payload = dict(job.report_payload or {})
+    payload["statement_run_error"] = str(e)
+    job.report_payload = payload
+    db.flush()
+```
+
+The exception handler catches ALL exceptions, logs, writes `statement_run_error` into `report_payload`, and **returns silently** without raising. Execution proceeds to the period lock at line 251 — which still fires. If statement generation failed halfway through (say 50 of 100 customers got rows), those 50 rows are committed AND the period locks — inconsistent state with no visible signal beyond the error field.
+
+### What the Phase 8c migration did
+
+**Preserved verbatim via service reuse.** `month_end_close_adapter.approve_close` delegates to `_process_approve`, which carries the gap forward unchanged. This is correct migration discipline: the adapter's job is parity, not bug fixing.
+
+**Flagged in three places:**
+1. `test_month_end_close_migration_parity.py` module docstring documents the preserved gap.
+2. `WORKFLOW_MIGRATION_TEMPLATE.md` (this §11) catalogs it as the template example.
+3. CLAUDE.md latent-bug tracking lists it as a dedicated-cleanup-session target.
+
+### For 8f and beyond
+
+Each future migration's audit MUST include a "rollback-gap check" under the audit's approval-type-specific section. Document the answer:
+
+- No gap: transaction fully rolls back on any exception in the approval path. Parity test happy path is sufficient.
+- Gap present: preserve verbatim. Flag in session log. Parity test's module docstring lists the specific failure modes preserved.
+
+When multiple rollback gaps accumulate across migrations, a dedicated cleanup session addresses them together with proper transaction boundaries + Saga-style compensating actions where appropriate.
+
+---
+
+## 12. Phase-post-migration verification checklist
 
 Before closing a migration PR, verify each item:
 
@@ -448,7 +624,7 @@ Before closing a migration PR, verify each item:
 
 ---
 
-## 11. Open questions (tracked from Phase 8b, revisited as migrations progress)
+## 13. Open questions (tracked through Phase 8c, revisited as migrations progress)
 
 ### 11.1 ApprovalReview.tsx future
 
@@ -488,7 +664,7 @@ Alternatives:
 
 ---
 
-## 12. Appendix — Phase 8b artifacts as reference
+## 14. Appendix — Phase 8b + 8c artifacts as reference
 
 - **Parity adapter:** `backend/app/services/workflows/cash_receipts_adapter.py`
 - **Workflow engine dispatch:** `backend/app/services/workflow_engine.py::_handle_call_service_method` + `_SERVICE_METHOD_REGISTRY`
@@ -505,17 +681,29 @@ Alternatives:
 
 ---
 
-## 13. Latent bugs surfaced during Phase 8b (flagged for separate sessions)
+## 15. Latent bugs surfaced during Phases 8b/8b.5/8c (flagged for separate sessions)
 
 Not 8b's scope, but discovered during the audit:
 
 1. **`wf_sys_ar_collections` declares `trigger_type="scheduled"`** in `default_workflows.py`, but `workflow_scheduler.check_time_based_workflows()` only dispatches `time_of_day` and `time_after_event` triggers. **Consequence:** the AR collections workflow isn't actually firing on schedule today. Needs a separate cleanup session — either (a) extend the scheduler to honor `"scheduled"` + `trigger_config.cron`, or (b) change the seed to use `time_of_day` with an explicit wall-clock time (simpler, matches operational semantics). Flagged for Phase 8h or a standalone cleanup.
 2. **Hardcoded approval-gate email HTML** in `backend/app/services/agents/approval_gate.py::_build_review_email_html()`. Pre-dates D-7's delivery abstraction. Should migrate to a managed template per D-7. Not 8b's to fix — parity for cash receipts requires preserving the exact email body. Platform-wide cleanup in a future session.
-3. **Orphan migrations `r34_order_service_fields` → `r39_legacy_proof_fields`** (flagged in Phase 8a audit). Still unreconciled. Not affected by 8b. Still on the post-arc cleanup list.
+3. **Orphan migrations `r34_order_service_fields` → `r39_legacy_proof_fields`** (flagged in Phase 8a audit). Still unreconciled. Not affected by 8b/8c. Still on the post-arc cleanup list.
+
+**Added in Phase 8c:**
+
+4. **`time_of_day` dispatch fires at UTC wall-clock, not tenant-local** (flagged in Phase 8b.5). `wf_sys_cash_receipts` fires 23:30 UTC for all tenants rather than 23:30 tenant-local. Dedicated cleanup session will extend `_matches_time_of_day` to respect tenant TZ.
+5. **Event trigger type declared but not dispatched** (flagged in Phase 8c). Workflows declaring `trigger_type="event"` never fire — no event subscription registry exists. `expense_categorization` worked around this by switching to `trigger_type="scheduled"` + `*/15 * * * *` cron. Future horizontal arc builds proper event infrastructure.
+6. **Month-end-close statement-run rollback gap** (flagged in Phase 8c). `_trigger_statement_run` catches exceptions and still proceeds to the period lock, potentially leaving partial statement rows + locked period in inconsistent state. See §11 for the documentation pattern. Dedicated cleanup session with transaction-boundary refactor.
 
 ---
 
-## 14. Template changelog
+## 16. Template changelog
 
 - **2026-04-21 (Phase 8b complete):** Initial template, written alongside the cash receipts migration. Cash receipts is the working example throughout.
-- _Future updates land at the end of each phase (8c, 8d, etc.) as patterns evolve._
+- **2026-04-21 (Phase 8c complete) — v2:** Added three migrations (month_end_close, ar_collections, expense_categorization). Major additions:
+  - §5.5: extended parity test patterns (pre-approval zero-write, positive PeriodLock, fan-out fidelity, override action).
+  - §7.6: event trigger not dispatched — use scheduled fallback convention.
+  - **§10 (NEW):** Queue cardinality matrix (per-anomaly / per-entity / per-job / per-record).
+  - **§11 (NEW):** Rollback-gap documentation convention, with month_end_close as the working example.
+  - §15: three new latent bugs cataloged.
+- _Future updates land at the end of each phase (8d, 8e, 8f, ...) as patterns evolve._

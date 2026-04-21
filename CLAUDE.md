@@ -296,6 +296,29 @@ Whenever possible, build the automated path first, then add the human review gat
 ### Playwright + Claude API Testing Framework
 All features should be built with the existing **Playwright E2E + Claude API** testing framework in mind. Every new endpoint and UI flow should be testable against the staging environment (`sunnycresterp-staging.up.railway.app`). Tests authenticate via the staging API, exercise real backend logic, and verify end-to-end behavior.
 
+### Visual Design Language
+
+Two documents govern Bridgeable's visual and UX design. Read both when building any UI-touching feature.
+
+**`DESIGN_LANGUAGE.md`** — Visual treatment. The source of truth for how Bridgeable *looks and feels*: color tokens, typography, shadow system, spacing scale, motion/animation curves, dark and light mode anchors ("Mediterranean garden morning / cocktail lounge evening"), accessibility floor (contrast ratios, focus rings). Every CSS variable, every shadow spec, every token name derives from this document. If you are making a decision about a color, a shadow, a spacing value, or a transition duration — read this doc first.
+
+**`UI_UX_ARC.md`** — Interaction patterns and information architecture. The source of truth for how Bridgeable *works*: the seven platform primitives (Command Bar, Saved Views, Spaces, NL Creation, Triage Workspace, Briefings, Polish infrastructure), their architectural patterns, BLOCKING CI latency gates, registry/seed/executor composability contracts, and the September Wilbert demo scripts. If you are making a decision about how a surface behaves, which primitive to compose, or how a feature integrates with the platform layer — read this doc.
+
+**Division of labor at a glance:**
+
+| Question | Read |
+|---|---|
+| What color token do I use here? | `DESIGN_LANGUAGE.md` |
+| What spacing value or shadow level is correct? | `DESIGN_LANGUAGE.md` |
+| What easing curve should this animation use? | `DESIGN_LANGUAGE.md` |
+| Does this text meet contrast requirements? | `DESIGN_LANGUAGE.md` |
+| What pattern does this list / table / kanban surface use? | `UI_UX_ARC.md` |
+| How does this feature integrate with the command bar or triage? | `UI_UX_ARC.md` |
+| What empty-state or loading-skeleton pattern applies here? | `UI_UX_ARC.md` (Phase 7 primitives) |
+| Should this be a triage queue, a saved view, or a hub widget? | `UI_UX_ARC.md` |
+
+**For build prompts:** Any prompt that produces UI output must reference `DESIGN_LANGUAGE.md` and `UI_UX_ARC.md` alongside `CLAUDE.md`. Prompts that touch only backend logic, migrations, services, or tests should reference `CLAUDE.md` only — loading design docs into a backend-only context wastes context budget and invites misapplication.
+
 ## 4. Architecture
 
 ### Multi-Tenant SaaS

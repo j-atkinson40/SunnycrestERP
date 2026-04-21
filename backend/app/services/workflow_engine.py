@@ -710,6 +710,22 @@ _SERVICE_METHOD_REGISTRY: dict[str, tuple[str, tuple[str, ...]]] = {
         "app.services.workflows.cash_receipts_adapter:run_match_pipeline",
         ("dry_run", "trigger_source"),
     ),
+    # Month-End Close (Phase 8c) — FULL approval with period lock
+    "month_end_close.run_close_pipeline": (
+        "app.services.workflows.month_end_close_adapter:run_close_pipeline",
+        ("dry_run", "trigger_source", "period_start", "period_end"),
+    ),
+    # AR Collections (Phase 8c) — SIMPLE approval, per-customer fan-out
+    "ar_collections.run_collections_pipeline": (
+        "app.services.workflows.ar_collections_adapter:run_collections_pipeline",
+        ("dry_run", "trigger_source"),
+    ),
+    # Expense Categorization (Phase 8c) — SIMPLE approval, per-line
+    # review. Trigger migrated from "event" to "scheduled" cron.
+    "expense_categorization.run_categorization_pipeline": (
+        "app.services.workflows.expense_categorization_adapter:run_categorization_pipeline",
+        ("dry_run", "trigger_source"),
+    ),
 }
 
 

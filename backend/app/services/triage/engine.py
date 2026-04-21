@@ -836,12 +836,311 @@ def _dq_cash_receipts_matching_triage(
     return out
 
 
+def _dq_month_end_close_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8c — month_end_close triage items.
+
+    Unlike cash_receipts or ss_cert (one-per-anomaly), month-end close
+    is ONE-ITEM-PER-JOB: the whole AgentJob in awaiting_approval is
+    the decision. Anomalies are sub-items displayed via the context
+    panel, not individually triageable.
+
+    Ordering: oldest-awaiting-approval first — operators should close
+    older periods before newer ones.
+    """
+    from app.models.agent import AgentJob
+
+    rows = (
+        db.query(AgentJob)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == "month_end_close",
+            AgentJob.status == "awaiting_approval",
+        )
+        .order_by(AgentJob.created_at.asc().nulls_last())
+        .all()
+    )
+
+    out: list[dict[str, Any]] = []
+    for j in rows:
+        payload = j.report_payload or {}
+        exec_summary = (
+            payload.get("executive_summary", {})
+            if isinstance(payload, dict)
+            else {}
+        )
+        period_label = ""
+        if j.period_start and j.period_end:
+            period_label = f"{j.period_start:%B %Y}"
+        out.append(
+            {
+                "id": j.id,
+                "agent_job_id": j.id,
+                "period_label": period_label,
+                "period_start": (
+                    j.period_start.isoformat() if j.period_start else None
+                ),
+                "period_end": (
+                    j.period_end.isoformat() if j.period_end else None
+                ),
+                "dry_run": bool(j.dry_run),
+                "anomaly_count": j.anomaly_count or 0,
+                "critical_anomaly_count": exec_summary.get(
+                    "critical_anomaly_count", 0
+                ),
+                "warning_anomaly_count": exec_summary.get(
+                    "warning_anomaly_count", 0
+                ),
+                "total_revenue": exec_summary.get("total_revenue"),
+                "total_ar": exec_summary.get("total_ar"),
+                "created_at": (
+                    j.created_at.isoformat() if j.created_at else None
+                ),
+            }
+        )
+    return out
+
+
+def _dq_ar_collections_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8c — AR collections triage items.
+
+    ONE-ITEM-PER-CUSTOMER. Each unresolved `collections_*` anomaly
+    represents one customer + one drafted email ready for send
+    approval. Draft subject + body are denormalized from the
+    AgentJob's report_payload so the triage frontend can preview
+    them without an extra round trip.
+
+    Ordering: CRITICAL tier first (oldest-overdue bleeds the most AR
+    risk), then ESCALATE, then FOLLOW_UP. Within tier, higher amount
+    first.
+    """
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+    from app.models.customer import Customer
+
+    _severity_order = {"CRITICAL": 0, "WARNING": 1, "INFO": 2}
+
+    rows = (
+        db.query(AgentAnomaly, AgentJob)
+        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == "ar_collections",
+            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.anomaly_type.in_(
+                (
+                    "collections_follow_up",
+                    "collections_escalate",
+                    "collections_critical",
+                )
+            ),
+        )
+        .all()
+    )
+
+    out: list[dict[str, Any]] = []
+    customer_cache: dict[str, Customer | None] = {}
+
+    for anomaly, job in rows:
+        customer_id = anomaly.entity_id
+        # Pull the drafted email for this customer from the job's
+        # report_payload.
+        draft = None
+        if isinstance(job.report_payload, dict):
+            steps = job.report_payload.get("steps") or {}
+            dc = steps.get("draft_communications") or {}
+            for c in dc.get("communications") or []:
+                if c.get("customer_id") == customer_id:
+                    draft = c
+                    break
+
+        customer_name = None
+        billing_email = None
+        if customer_id and customer_id not in customer_cache:
+            customer_cache[customer_id] = (
+                db.query(Customer)
+                .filter(Customer.id == customer_id)
+                .first()
+            )
+        cust = customer_cache.get(customer_id) if customer_id else None
+        if cust is not None:
+            customer_name = cust.name
+            billing_email = cust.billing_email or cust.email
+
+        tier = "FOLLOW_UP"
+        if anomaly.anomaly_type == "collections_critical":
+            tier = "CRITICAL"
+        elif anomaly.anomaly_type == "collections_escalate":
+            tier = "ESCALATE"
+
+        out.append(
+            {
+                "id": anomaly.id,
+                "anomaly_id": anomaly.id,
+                "customer_id": customer_id,
+                "customer_name": customer_name or (draft or {}).get(
+                    "customer_name"
+                ),
+                "billing_email": billing_email,
+                "tier": tier,
+                "severity": anomaly.severity,
+                "total_outstanding": float(anomaly.amount)
+                if anomaly.amount is not None
+                else (draft or {}).get("total_outstanding"),
+                "draft_subject": (draft or {}).get("subject"),
+                "draft_body_preview": (
+                    ((draft or {}).get("body") or "")[:300]
+                ),
+                "agent_job_id": anomaly.agent_job_id,
+                "created_at": (
+                    anomaly.created_at.isoformat()
+                    if anomaly.created_at
+                    else None
+                ),
+            }
+        )
+
+    out.sort(
+        key=lambda r: (
+            _severity_order.get(r.get("severity") or "", 3),
+            -(r.get("total_outstanding") or 0),
+            r.get("created_at") or "",
+        )
+    )
+    return out
+
+
+def _dq_expense_categorization_triage(
+    db: Session, user: User
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8c — expense_categorization triage items.
+
+    ONE-ITEM-PER-VENDOR-BILL-LINE with an unresolved anomaly of type
+    `expense_low_confidence` or `expense_no_gl_mapping`. Denormalizes
+    VendorBill + Vendor + the AI-suggested proposed_category from
+    the job's report_payload.
+    """
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+    from app.models.vendor import Vendor
+    from app.models.vendor_bill import VendorBill
+    from app.models.vendor_bill_line import VendorBillLine
+
+    _severity_order = {"CRITICAL": 0, "WARNING": 1, "INFO": 2}
+
+    rows = (
+        db.query(AgentAnomaly, AgentJob)
+        .join(AgentJob, AgentJob.id == AgentAnomaly.agent_job_id)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == "expense_categorization",
+            AgentAnomaly.resolved.is_(False),
+            AgentAnomaly.anomaly_type.in_(
+                (
+                    "expense_low_confidence",
+                    "expense_no_gl_mapping",
+                    "expense_classification_failed",
+                )
+            ),
+        )
+        .all()
+    )
+
+    out: list[dict[str, Any]] = []
+    line_cache: dict[str, tuple[VendorBillLine, VendorBill, Vendor] | None] = {}
+
+    def _load_line(line_id: str):
+        if line_id in line_cache:
+            return line_cache[line_id]
+        q = (
+            db.query(VendorBillLine, VendorBill, Vendor)
+            .join(VendorBill, VendorBill.id == VendorBillLine.bill_id)
+            .outerjoin(Vendor, Vendor.id == VendorBill.vendor_id)
+            .filter(VendorBillLine.id == line_id)
+            .first()
+        )
+        line_cache[line_id] = q
+        return q
+
+    for anomaly, job in rows:
+        line_id = anomaly.entity_id
+        line_info = _load_line(line_id) if line_id else None
+
+        # Pull proposed_category from report_payload
+        proposed_category = None
+        if isinstance(job.report_payload, dict):
+            steps = job.report_payload.get("steps") or {}
+            gl_data = steps.get("map_to_gl_accounts") or {}
+            for m in gl_data.get("mappings") or []:
+                if m.get("line_id") == line_id:
+                    proposed_category = m.get("proposed_category")
+                    break
+            if proposed_category is None:
+                classify_data = steps.get("classify_expenses") or {}
+                for c in classify_data.get("classifications") or []:
+                    if c.get("line_id") == line_id:
+                        proposed_category = c.get("proposed_category")
+                        break
+
+        line = line_info[0] if line_info else None
+        bill = line_info[1] if line_info else None
+        vendor = line_info[2] if line_info else None
+
+        out.append(
+            {
+                "id": anomaly.id,
+                "anomaly_id": anomaly.id,
+                "line_id": line_id,
+                "vendor_name": vendor.name if vendor else None,
+                "vendor_bill_id": bill.id if bill else None,
+                "description": (
+                    line.description if line else anomaly.description
+                ),
+                "amount": float(line.amount)
+                if line is not None and line.amount is not None
+                else (
+                    float(anomaly.amount)
+                    if anomaly.amount is not None
+                    else None
+                ),
+                "proposed_category": proposed_category,
+                "current_category": (
+                    line.expense_category if line else None
+                ),
+                "anomaly_type": anomaly.anomaly_type,
+                "severity": anomaly.severity,
+                "agent_job_id": anomaly.agent_job_id,
+                "created_at": (
+                    anomaly.created_at.isoformat()
+                    if anomaly.created_at
+                    else None
+                ),
+            }
+        )
+
+    out.sort(
+        key=lambda r: (
+            _severity_order.get(r.get("severity") or "", 3),
+            -(r.get("amount") or 0),
+            r.get("created_at") or "",
+        )
+    )
+    return out
+
+
 _DIRECT_QUERIES: dict[
     str, "Callable[[Session, User], list[dict[str, Any]]]"
 ] = {
     "task_triage": _dq_task_triage,
     "ss_cert_triage": _dq_ss_cert_triage,
     "cash_receipts_matching_triage": _dq_cash_receipts_matching_triage,
+    # Phase 8c — core accounting migrations batch 1
+    "month_end_close_triage": _dq_month_end_close_triage,
+    "ar_collections_triage": _dq_ar_collections_triage,
+    "expense_categorization_triage": _dq_expense_categorization_triage,
 }
 
 

@@ -793,47 +793,143 @@ FUNERAL_HOME_WORKFLOWS = [
 # ─────────────────────────────────────────────────────────────────────────────
 TIER_1_WORKFLOWS = [
     {
+        # Workflow Arc Phase 8c migration — FULL approval with period
+        # lock + deferred statement-run writes. agent_registry_key
+        # cleared (8b-beta state). Trigger remains manual (operator
+        # runs via /agents hub or UI); workflow_scheduler doesn't
+        # auto-fire this one. The full execution path + approval
+        # delegates to the existing MonthEndCloseAgent + ApprovalGate
+        # via cash_receipts-style parity adapter.
         "id": "wf_sys_month_end_close",
         "name": "Month-End Close",
-        "description": "Multi-step pre-flight verification + statement run with human approval gate.",
-        "keywords": [],
+        "description": (
+            "Eight-step pre-flight verification (read-only analysis) "
+            "followed by human approval. Approval triggers statement "
+            "run generation, auto-approval of unflagged items, and "
+            "period lock. All writes are deferred to the approval "
+            "step — no financial state changes pre-approval."
+        ),
+        "keywords": ["month end", "close", "statement run", "period lock"],
         "tier": 1,
         "vertical": None,  # accounting — both verticals
         "trigger_type": "manual",
         "icon": "calendar-check",
         "command_bar_priority": 0,
         "is_system": True,
-        "source_service": "agents/month_end_close_agent.py",
+        "source_service": "workflows/month_end_close_adapter.py",
         "steps": [
-            {"step_order": 1, "step_key": "invoice_coverage", "step_type": "action", "config": {"description": "Verify all delivered orders are invoiced"}},
-            {"step_order": 2, "step_key": "payment_reconciliation", "step_type": "action", "config": {"description": "Reconcile customer payments"}},
-            {"step_order": 3, "step_key": "ar_aging_snapshot", "step_type": "action", "config": {"description": "Snapshot AR aging buckets"}},
-            {"step_order": 4, "step_key": "revenue_summary", "step_type": "action", "config": {"description": "Summarize revenue with outlier detection"}},
-            {"step_order": 5, "step_key": "statement_flags", "step_type": "action", "config": {"description": "Detect per-customer statement flags"}},
-            {"step_order": 6, "step_key": "anomaly_checks", "step_type": "action", "config": {"description": "Cross-step anomaly checks"}},
-            {"step_order": 7, "step_key": "prior_period_compare", "step_type": "action", "config": {"description": "Compare against prior period"}},
-            {"step_order": 8, "step_key": "approval_gate", "step_type": "input", "config": {"prompt": "Human approval before statement run"}},
-            {"step_order": 9, "step_key": "statement_run", "step_type": "action", "config": {"description": "Generate statement run, auto-approve unflagged, lock period"}},
+            # Two-step workflow: run the 8-step analysis agent, then
+            # pause at the triage-visible approval gate. The triage
+            # action calls `month_end_close.approve_close` /
+            # `reject_close` which delegate to
+            # `ApprovalGateService._process_approve` / `_process_reject`.
+            {
+                "step_order": 1,
+                "step_key": "run_analysis",
+                "step_type": "action",
+                "config": {
+                    "action_type": "call_service_method",
+                    "method_name": "month_end_close.run_close_pipeline",
+                    "kwargs": {
+                        "dry_run": False,
+                        "trigger_source": "workflow",
+                    },
+                },
+            },
+            {
+                "step_order": 2,
+                "step_key": "approval_gate",
+                "step_type": "input",
+                "config": {
+                    "prompt": (
+                        "Review the analysis report and approve to "
+                        "generate the statement run + lock the period."
+                    ),
+                },
+            },
+        ],
+        "params": [
+            {
+                "step_key": "run_analysis",
+                "param_key": "dry_run",
+                "label": "Dry-run mode",
+                "param_type": "boolean",
+                "default_value": False,
+                "is_configurable": True,
+                "description": (
+                    "Emit the report + anomalies without committing "
+                    "statement rows or locking the period on approval."
+                ),
+            },
         ],
     },
     {
+        # Workflow Arc Phase 8c migration — SIMPLE approval with
+        # per-customer fan-out. agent_registry_key cleared.
+        # trigger_type="scheduled" + cron preserved from 8b.5. Drafts
+        # are generated during the pipeline; triage operators dispatch
+        # them one customer at a time via `ar_collections.send` action
+        # (closes the pre-existing Phase 3b TODO).
         "id": "wf_sys_ar_collections",
         "name": "AR Collections",
-        "description": "Classify overdue AR, draft tiered collection emails via Claude.",
-        "keywords": [],
+        "description": (
+            "Classify overdue AR by age tier, draft tiered collection "
+            "emails via Claude, and stage them for triage review. "
+            "Operators dispatch emails one customer at a time through "
+            "the triage queue — using the managed `email.collections` "
+            "template via delivery_service.send_email_with_template."
+        ),
+        "keywords": ["ar collections", "overdue ar", "collections"],
         "tier": 1,
         "vertical": None,
         "trigger_type": "scheduled",
-        "trigger_config": {"cron": "0 23 * * *", "timezone": "America/New_York"},
+        "trigger_config": {
+            "cron": "0 23 * * *",
+            "timezone": "America/New_York",
+        },
         "icon": "dollar-sign",
         "command_bar_priority": 0,
         "is_system": True,
-        "source_service": "agents/ar_collections_agent.py",
+        "source_service": "workflows/ar_collections_adapter.py",
         "steps": [
-            {"step_order": 1, "step_key": "ar_snapshot", "step_type": "action", "config": {"description": "Snapshot overdue AR"}},
-            {"step_order": 2, "step_key": "tier_classification", "step_type": "action", "config": {"description": "Classify by age + balance tier"}},
-            {"step_order": 3, "step_key": "draft_emails", "step_type": "action", "config": {"description": "Claude-drafted emails with template fallback"}},
-            {"step_order": 4, "step_key": "approval_gate", "step_type": "input", "config": {"prompt": "Review + approve drafts"}},
+            {
+                "step_order": 1,
+                "step_key": "run_collections",
+                "step_type": "action",
+                "config": {
+                    "action_type": "call_service_method",
+                    "method_name": "ar_collections.run_collections_pipeline",
+                    "kwargs": {
+                        "dry_run": False,
+                        "trigger_source": "workflow",
+                    },
+                },
+            },
+            {
+                "step_order": 2,
+                "step_key": "approval_gate",
+                "step_type": "input",
+                "config": {
+                    "prompt": (
+                        "Review drafts and dispatch one customer's "
+                        "email at a time via the triage queue."
+                    ),
+                },
+            },
+        ],
+        "params": [
+            {
+                "step_key": "run_collections",
+                "param_key": "dry_run",
+                "label": "Dry-run mode",
+                "param_type": "boolean",
+                "default_value": False,
+                "is_configurable": True,
+                "description": (
+                    "Generate drafts + anomalies without enabling send "
+                    "actions in the triage queue."
+                ),
+            },
         ],
     },
     {
@@ -1114,21 +1210,86 @@ TIER_1_WORKFLOWS.extend([
         ],
     },
     {
+        # Workflow Arc Phase 8c migration — SIMPLE approval, per-line
+        # categorization review. agent_registry_key cleared.
+        #
+        # **Trigger-type change — explicit deviation, NOT a bug fix:**
+        # Seed previously declared trigger_type="event" +
+        # trigger_config.event="expense.created". NO event dispatch
+        # exists in production code today; the workflow never fired.
+        # Phase 8c switches to trigger_type="scheduled" + every-15-min
+        # cron as a workaround reusing the Phase 8b.5 scheduled
+        # dispatch. Latency is ~15 min vs. real-time. Real event
+        # infrastructure is future horizontal arc work — flagged in
+        # WORKFLOW_MIGRATION_TEMPLATE.md §7 + CLAUDE.md latent bug
+        # tracking.
         "id": "wf_sys_expense_categorization",
         "name": "Expense Categorization",
-        "description": "Automatically categorizes new expenses using Claude.",
-        "keywords": [],
+        "description": (
+            "Classify uncategorized vendor-bill lines via Claude "
+            "Haiku (0.85 confidence threshold for auto-apply), map to "
+            "tenant GL accounts, and stage low-confidence + no-mapping "
+            "anomalies for triage review. Fires every 15 minutes via "
+            "the scheduled sweep."
+        ),
+        "keywords": [
+            "expense categorization",
+            "gl mapping",
+            "auto-categorize",
+        ],
         "tier": 1,
         "vertical": None,
-        "trigger_type": "event",
-        "trigger_config": {"event": "expense.created"},
+        "trigger_type": "scheduled",
+        "trigger_config": {
+            "cron": "*/15 * * * *",
+            "timezone": "America/New_York",
+        },
         "icon": "receipt",
         "command_bar_priority": 0,
         "is_system": True,
-        "source_service": "agents/expense_categorization_agent.py",
+        "source_service": "workflows/expense_categorization_adapter.py",
         "steps": [
-            {"step_order": 1, "step_key": "categorize", "step_type": "action",
-             "config": {"action_type": "system_job", "job": "expense_categorization"}},
+            {
+                "step_order": 1,
+                "step_key": "run_categorization",
+                "step_type": "action",
+                "config": {
+                    "action_type": "call_service_method",
+                    "method_name": (
+                        "expense_categorization.run_categorization_pipeline"
+                    ),
+                    "kwargs": {
+                        "dry_run": False,
+                        "trigger_source": "workflow",
+                    },
+                },
+            },
+            {
+                "step_order": 2,
+                "step_key": "approval_gate",
+                "step_type": "input",
+                "config": {
+                    "prompt": (
+                        "Review low-confidence categorizations + "
+                        "unmapped categories. Approve, override, or "
+                        "reject per line via the triage queue."
+                    ),
+                },
+            },
+        ],
+        "params": [
+            {
+                "step_key": "run_categorization",
+                "param_key": "dry_run",
+                "label": "Dry-run mode",
+                "param_type": "boolean",
+                "default_value": False,
+                "is_configurable": True,
+                "description": (
+                    "Classify without writing expense_category on "
+                    "VendorBillLines when operators approve."
+                ),
+            },
         ],
     },
     {

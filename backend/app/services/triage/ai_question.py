@@ -468,6 +468,357 @@ def _build_cash_receipts_matching_related(
     return out
 
 
+def _build_month_end_close_related(
+    db: Session, user: User, item_row: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8c — month-end-close related entities.
+
+    The item is an AgentJob; the related context is:
+      - The AgentJob itself (executive summary fields)
+      - Flagged customers (anomalies with entity_type="customer")
+      - Uninvoiced deliveries (anomalies with entity_type="sales_order")
+      - The prior-period AgentJob (for comparison context)
+    """
+    from app.models.agent import AgentJob
+    from app.models.agent_anomaly import AgentAnomaly
+
+    out: list[dict[str, Any]] = []
+
+    agent_job_id = item_row.get("agent_job_id") or item_row.get("id")
+    if not agent_job_id:
+        return out
+    job = (
+        db.query(AgentJob)
+        .filter(AgentJob.id == agent_job_id)
+        .first()
+    )
+    if job is None:
+        return out
+
+    payload = job.report_payload or {}
+    exec_summary = (
+        payload.get("executive_summary", {})
+        if isinstance(payload, dict)
+        else {}
+    )
+    out.append(
+        {
+            "entity_type": "agent_job",
+            "entity_id": job.id,
+            "context": "close_run",
+            "display_label": (
+                f"Month-end close — "
+                f"{job.period_start:%B %Y}"
+                if job.period_start
+                else f"Agent job {job.id[:8]}"
+            ),
+            "period_start": (
+                job.period_start.isoformat() if job.period_start else None
+            ),
+            "period_end": (
+                job.period_end.isoformat() if job.period_end else None
+            ),
+            "total_revenue": exec_summary.get("total_revenue"),
+            "total_ar": exec_summary.get("total_ar"),
+            "collection_rate_pct": exec_summary.get(
+                "collection_rate_pct"
+            ),
+            "anomaly_count": job.anomaly_count or 0,
+        }
+    )
+
+    # Top flagged customers (up to 5 critical/warning by severity)
+    sev_order = {"critical": 0, "warning": 1, "info": 2}
+    customer_anomalies = (
+        db.query(AgentAnomaly)
+        .filter(
+            AgentAnomaly.agent_job_id == job.id,
+            AgentAnomaly.entity_type == "customer",
+        )
+        .all()
+    )
+    customer_anomalies.sort(
+        key=lambda a: (sev_order.get(a.severity or "", 3), a.created_at)
+    )
+    for a in customer_anomalies[:5]:
+        out.append(
+            {
+                "entity_type": "customer",
+                "entity_id": a.entity_id,
+                "context": "flagged_customer",
+                "display_label": (
+                    (a.description or "")[:80]
+                    if a.description
+                    else f"Customer {a.entity_id[:8] if a.entity_id else ''}"
+                ),
+                "severity": a.severity,
+                "anomaly_type": a.anomaly_type,
+            }
+        )
+
+    # Most recent prior month-end close for this tenant (comparison).
+    prior = (
+        db.query(AgentJob)
+        .filter(
+            AgentJob.tenant_id == user.company_id,
+            AgentJob.job_type == "month_end_close",
+            AgentJob.id != job.id,
+            AgentJob.status.in_(("complete", "approved")),
+        )
+        .order_by(AgentJob.completed_at.desc().nulls_last())
+        .first()
+    )
+    if prior is not None:
+        out.append(
+            {
+                "entity_type": "agent_job",
+                "entity_id": prior.id,
+                "context": "prior_month_close",
+                "display_label": (
+                    f"Prior close — {prior.period_start:%B %Y}"
+                    if prior.period_start
+                    else "Prior close"
+                ),
+                "completed_at": (
+                    prior.completed_at.isoformat()
+                    if prior.completed_at
+                    else None
+                ),
+            }
+        )
+    return out
+
+
+def _build_ar_collections_related(
+    db: Session, user: User, item_row: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8c — AR collections related entities.
+
+    Per-customer context: the Customer row, their open invoices, past
+    collection-email deliveries (via document_deliveries filtered by
+    caller linkage), past successful collections if any.
+    """
+    from app.models.customer import Customer
+    from app.models.invoice import Invoice
+
+    out: list[dict[str, Any]] = []
+
+    customer_id = item_row.get("customer_id")
+    if not customer_id:
+        return out
+
+    customer = (
+        db.query(Customer)
+        .filter(
+            Customer.id == customer_id,
+            Customer.company_id == user.company_id,
+        )
+        .first()
+    )
+    if customer is None:
+        return out
+
+    out.append(
+        {
+            "entity_type": "customer",
+            "entity_id": customer.id,
+            "context": "paying_customer",
+            "display_label": customer.name,
+            "billing_email": customer.billing_email or customer.email,
+            "account_status": getattr(customer, "account_status", None),
+        }
+    )
+
+    # Open invoices for this customer — top 5 by age
+    open_invoices = (
+        db.query(Invoice)
+        .filter(
+            Invoice.company_id == user.company_id,
+            Invoice.customer_id == customer.id,
+            Invoice.status.notin_(
+                ("paid", "void", "write_off", "draft")
+            ),
+        )
+        .order_by(Invoice.invoice_date.asc().nulls_last())
+        .limit(5)
+        .all()
+    )
+    for inv in open_invoices:
+        balance = float(
+            (inv.total or 0) - (inv.amount_paid or 0)
+        )
+        out.append(
+            {
+                "entity_type": "invoice",
+                "entity_id": inv.id,
+                "context": "open_invoice",
+                "display_label": (
+                    f"Invoice {inv.number} — ${balance:,.2f} due"
+                ),
+                "number": inv.number,
+                "balance_due": balance,
+                "total": float(inv.total or 0),
+                "status": inv.status,
+                "invoice_date": (
+                    inv.invoice_date.isoformat()
+                    if inv.invoice_date
+                    else None
+                ),
+            }
+        )
+
+    # Past collection emails for this customer via document_deliveries.
+    try:
+        from app.models.document_delivery import DocumentDelivery
+
+        past_sends = (
+            db.query(DocumentDelivery)
+            .filter(
+                DocumentDelivery.company_id == user.company_id,
+                DocumentDelivery.template_key == "email.collections",
+                DocumentDelivery.recipient_value
+                == (customer.billing_email or customer.email or ""),
+            )
+            .order_by(DocumentDelivery.created_at.desc())
+            .limit(3)
+            .all()
+        )
+        for d in past_sends:
+            out.append(
+                {
+                    "entity_type": "document_delivery",
+                    "entity_id": d.id,
+                    "context": "past_collection_email",
+                    "display_label": (
+                        f"Collection sent "
+                        f"{d.sent_at.isoformat() if d.sent_at else d.created_at.isoformat()}"
+                    ),
+                    "subject": d.subject,
+                    "status": d.status,
+                }
+            )
+    except Exception:
+        # If document_delivery query fails (model shape, etc), don't
+        # block the rest of the context.
+        logger.debug(
+            "past-collections lookup failed for customer %s",
+            customer.id,
+            exc_info=True,
+        )
+
+    return out
+
+
+def _build_expense_categorization_related(
+    db: Session, user: User, item_row: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Workflow Arc Phase 8c — expense_categorization related
+    entities. Per-line context: VendorBillLine + parent VendorBill +
+    Vendor + past categorized lines for the same vendor
+    (pattern-matching aid).
+    """
+    from app.models.vendor import Vendor
+    from app.models.vendor_bill import VendorBill
+    from app.models.vendor_bill_line import VendorBillLine
+
+    out: list[dict[str, Any]] = []
+
+    line_id = item_row.get("line_id")
+    if not line_id:
+        return out
+
+    joined = (
+        db.query(VendorBillLine, VendorBill, Vendor)
+        .join(VendorBill, VendorBill.id == VendorBillLine.bill_id)
+        .outerjoin(Vendor, Vendor.id == VendorBill.vendor_id)
+        .filter(
+            VendorBillLine.id == line_id,
+            VendorBill.company_id == user.company_id,
+        )
+        .first()
+    )
+    if joined is None:
+        return out
+    line, bill, vendor = joined
+
+    out.append(
+        {
+            "entity_type": "vendor_bill_line",
+            "entity_id": line.id,
+            "context": "expense_line",
+            "display_label": (
+                f"${float(line.amount or 0):,.2f} — "
+                f"{(line.description or 'no description')[:60]}"
+            ),
+            "amount": float(line.amount or 0),
+            "description": line.description,
+            "current_category": line.expense_category,
+        }
+    )
+    out.append(
+        {
+            "entity_type": "vendor_bill",
+            "entity_id": bill.id,
+            "context": "parent_bill",
+            "display_label": (
+                f"Bill {bill.number or bill.id[:8]}"
+            ),
+            "bill_date": (
+                bill.bill_date.isoformat() if bill.bill_date else None
+            ),
+            "total": float(bill.total or 0)
+            if getattr(bill, "total", None) is not None
+            else None,
+        }
+    )
+    if vendor is not None:
+        out.append(
+            {
+                "entity_type": "vendor",
+                "entity_id": vendor.id,
+                "context": "vendor",
+                "display_label": vendor.name,
+            }
+        )
+        # Past categorized lines for the same vendor — top 3 most
+        # recent pattern-matching aid.
+        past = (
+            db.query(VendorBillLine, VendorBill)
+            .join(
+                VendorBill, VendorBill.id == VendorBillLine.bill_id
+            )
+            .filter(
+                VendorBill.company_id == user.company_id,
+                VendorBill.vendor_id == vendor.id,
+                VendorBillLine.id != line.id,
+                VendorBillLine.expense_category.isnot(None),
+                VendorBillLine.expense_category != "",
+            )
+            .order_by(VendorBill.bill_date.desc().nulls_last())
+            .limit(3)
+            .all()
+        )
+        for past_line, past_bill in past:
+            out.append(
+                {
+                    "entity_type": "vendor_bill_line",
+                    "entity_id": past_line.id,
+                    "context": "past_line_same_vendor",
+                    "display_label": (
+                        f"${float(past_line.amount or 0):,.2f} → "
+                        f"{past_line.expense_category}"
+                    ),
+                    "category": past_line.expense_category,
+                    "bill_date": (
+                        past_bill.bill_date.isoformat()
+                        if past_bill.bill_date
+                        else None
+                    ),
+                }
+            )
+    return out
+
+
 # Builder type: (db, user, item_row_dict) → list[related_entity_dict]
 _RELATED_ENTITY_BUILDERS: dict[
     str,
@@ -476,6 +827,10 @@ _RELATED_ENTITY_BUILDERS: dict[
     "task_triage": _build_task_related,
     "ss_cert_triage": _build_ss_cert_related,
     "cash_receipts_matching_triage": _build_cash_receipts_matching_related,
+    # Phase 8c — core accounting migrations batch 1
+    "month_end_close_triage": _build_month_end_close_related,
+    "ar_collections_triage": _build_ar_collections_related,
+    "expense_categorization_triage": _build_expense_categorization_related,
 }
 
 

@@ -6460,8 +6460,19 @@ Owning SIP + email + SMS infrastructure is a later-stage investment. The interme
 
 ## 8.3 Build Prompt Standards
 
-The following three rules apply to all build prompts:
+The following rules apply to all build prompts:
 
-1. Always output as a code block in chat (one-click copy)
-2. Always start with: "Read CLAUDE.md fully before writing any code"
-3. Always end with: instructions to seed staging with relevant test data and run Playwright + Claude API end-to-end tests
+1. **Always output as a code block in chat** (one-click copy).
+
+2. **Start with the correct context instruction** — the set of docs Sonnet must read depends on whether the prompt touches the UI:
+
+   - **UI-touching prompts** (any feature with new or modified frontend components, pages, tokens, styles, animations, or interaction patterns):
+     > "Read `CLAUDE.md`, `DESIGN_LANGUAGE.md`, and `UI_UX_ARC.md` fully before writing any code."
+     - `DESIGN_LANGUAGE.md` — visual treatment (colors, tokens, shadows, spacing, motion, accessibility)
+     - `UI_UX_ARC.md` — interaction patterns and platform primitives (command bar, saved views, triage, spaces, NL creation, briefings, Phase 7 polish components)
+
+   - **Non-UI prompts** (backend logic, migrations, services, agents, scheduler jobs, API routes, tests — no new frontend output):
+     > "Read `CLAUDE.md` fully before writing any code."
+     Loading design docs into a backend-only prompt wastes context budget and risks misapplication of visual rules to non-visual problems.
+
+3. **Always end with:** instructions to seed staging with relevant test data and run Playwright + Claude API end-to-end tests.

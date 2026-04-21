@@ -374,8 +374,320 @@ _cash_receipts_triage = TriageQueueConfig(
 )
 
 
+# ── Queue: month_end_close_triage (Workflow Arc Phase 8c) ───────────
+
+
+_month_end_close_triage = TriageQueueConfig(
+    queue_id="month_end_close_triage",
+    queue_name="Month-End Close",
+    description=(
+        "Approve or reject month-end-close runs. Approval triggers "
+        "the statement run + auto-approves unflagged items + locks "
+        "the period. Side effects are identical to the legacy "
+        "`/agents/:id/review` page — both paths route through "
+        "ApprovalGateService._process_approve."
+    ),
+    icon="CalendarCheck",
+    source_direct_query_key="month_end_close_triage",
+    # Entity is the AgentJob itself (one-item-per-job cardinality).
+    item_entity_type="month_end_close_job",
+    item_display=ItemDisplayConfig(
+        title_field="period_label",
+        subtitle_field="anomaly_count",
+        body_fields=[
+            "critical_anomaly_count",
+            "warning_anomaly_count",
+            "total_revenue",
+            "total_ar",
+            "dry_run",
+        ],
+        display_component="generic",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="approve",
+            label="Approve & Lock Period",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="CheckCircle",
+            confirmation_required=True,
+            handler="month_end_close.approve",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="reject",
+            label="Reject",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="XCircle",
+            requires_reason=True,
+            confirmation_required=True,
+            handler="month_end_close.reject",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="request_review",
+            label="Request review",
+            action_type=ActionType.ESCALATE,
+            keyboard_shortcut="r",
+            icon="MessageCircle",
+            requires_reason=True,
+            handler="month_end_close.request_review",
+        ),
+    ],
+    context_panels=[
+        ContextPanelConfig(
+            panel_type=ContextPanelType.RELATED_ENTITIES,
+            title="Close summary + flagged customers",
+            display_order=1,
+            default_collapsed=False,
+            related_entity_type="agent_job",
+        ),
+        ContextPanelConfig(
+            panel_type=ContextPanelType.AI_QUESTION,
+            title="Ask about this close",
+            display_order=10,
+            default_collapsed=False,
+            ai_prompt_key="triage.month_end_close_context_question",
+            suggested_questions=[
+                "Why was this customer flagged?",
+                "What caused the revenue variance this period?",
+                "Are there uninvoiced deliveries I should resolve before closing?",
+                "Should I resolve this anomaly before approving, or after?",
+            ],
+            max_question_length=500,
+        ),
+    ],
+    flow_controls=FlowControlsConfig(
+        # Month-end close shouldn't be deferred lightly — operators
+        # should act. Snooze disabled.
+        snooze_enabled=False,
+        approval_chain=[],
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(
+        ai_questions_enabled=True,
+        prioritization_enabled=True,
+        prompt_key="triage.month_end_close_context_question",
+    ),
+    permissions=["invoice.approve"],
+    display_order=40,
+    enabled=True,
+)
+
+
+# ── Queue: ar_collections_triage (Workflow Arc Phase 8c) ────────────
+
+
+_ar_collections_triage = TriageQueueConfig(
+    queue_id="ar_collections_triage",
+    queue_name="AR Collections",
+    description=(
+        "Review drafted collection emails per customer and dispatch "
+        "them one at a time. Sending routes through the managed "
+        "`email.collections` template — identical delivery path to "
+        "the legacy email_service.send_collections_email. **Closes "
+        "the pre-existing Phase 3b TODO** — legacy approval was a "
+        "no-op; triage is the canonical daily-processing path."
+    ),
+    icon="DollarSign",
+    source_direct_query_key="ar_collections_triage",
+    # One-item-per-customer — the anomaly carries customer_id, the
+    # draft email lives in the job's report_payload.
+    item_entity_type="ar_collections_draft",
+    item_display=ItemDisplayConfig(
+        title_field="customer_name",
+        subtitle_field="draft_subject",
+        body_fields=[
+            "tier",
+            "total_outstanding",
+            "billing_email",
+            "draft_body_preview",
+        ],
+        display_component="generic",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="send",
+            label="Send email",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="Send",
+            confirmation_required=True,
+            handler="ar_collections.send",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="skip",
+            label="Skip",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="SkipForward",
+            requires_reason=True,
+            handler="ar_collections.skip",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="request_review",
+            label="Request review",
+            action_type=ActionType.ESCALATE,
+            keyboard_shortcut="r",
+            icon="MessageCircle",
+            requires_reason=True,
+            handler="ar_collections.request_review",
+        ),
+    ],
+    context_panels=[
+        ContextPanelConfig(
+            panel_type=ContextPanelType.RELATED_ENTITIES,
+            title="Customer + open invoices + past emails",
+            display_order=1,
+            default_collapsed=False,
+            related_entity_type="customer",
+        ),
+        ContextPanelConfig(
+            panel_type=ContextPanelType.AI_QUESTION,
+            title="Ask about this customer",
+            display_order=10,
+            default_collapsed=False,
+            ai_prompt_key="triage.ar_collections_context_question",
+            suggested_questions=[
+                "Why is this customer in the {{tier}} tier?",
+                "What's this customer's payment history?",
+                "Is the drafted email appropriate for their situation?",
+                "Have we sent a collection email to them recently?",
+            ],
+            max_question_length=500,
+        ),
+    ],
+    flow_controls=FlowControlsConfig(
+        # Nightly-queued drafts can wait a day if the operator is
+        # busy — tomorrow's run won't re-draft for unresolved
+        # anomalies but will surface the existing ones.
+        snooze_enabled=True,
+        snooze_presets=[
+            SnoozePreset(label="Tomorrow", offset_hours=24),
+        ],
+        approval_chain=[],
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(
+        ai_questions_enabled=True,
+        prioritization_enabled=True,
+        prompt_key="triage.ar_collections_context_question",
+    ),
+    permissions=["invoice.approve"],
+    display_order=50,
+    enabled=True,
+)
+
+
+# ── Queue: expense_categorization_triage (Workflow Arc Phase 8c) ───
+
+
+_expense_categorization_triage = TriageQueueConfig(
+    queue_id="expense_categorization_triage",
+    queue_name="Expense Categorization",
+    description=(
+        "Review low-confidence + no-mapping categorization anomalies "
+        "per vendor-bill line. Approve writes `expense_category` "
+        "using the AI suggestion (or a user-supplied override, "
+        "backend-ready for Phase 8e frontend)."
+    ),
+    icon="Receipt",
+    source_direct_query_key="expense_categorization_triage",
+    item_entity_type="expense_line_review",
+    item_display=ItemDisplayConfig(
+        title_field="vendor_name",
+        subtitle_field="description",
+        body_fields=[
+            "amount",
+            "proposed_category",
+            "current_category",
+            "anomaly_type",
+        ],
+        display_component="generic",
+    ),
+    action_palette=[
+        ActionConfig(
+            action_id="approve",
+            label="Apply category",
+            action_type=ActionType.APPROVE,
+            keyboard_shortcut="Enter",
+            icon="CheckCircle",
+            handler="expense_categorization.approve",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="reject",
+            label="Reject",
+            action_type=ActionType.REJECT,
+            keyboard_shortcut="shift+d",
+            icon="XCircle",
+            requires_reason=True,
+            handler="expense_categorization.reject",
+            required_permission="invoice.approve",
+        ),
+        ActionConfig(
+            action_id="request_review",
+            label="Request review",
+            action_type=ActionType.ESCALATE,
+            keyboard_shortcut="r",
+            icon="MessageCircle",
+            requires_reason=True,
+            handler="expense_categorization.request_review",
+        ),
+    ],
+    context_panels=[
+        ContextPanelConfig(
+            panel_type=ContextPanelType.RELATED_ENTITIES,
+            title="Line + bill + vendor history",
+            display_order=1,
+            default_collapsed=False,
+            related_entity_type="vendor_bill_line",
+        ),
+        ContextPanelConfig(
+            panel_type=ContextPanelType.AI_QUESTION,
+            title="Ask about this line",
+            display_order=10,
+            default_collapsed=False,
+            ai_prompt_key="triage.expense_categorization_context_question",
+            suggested_questions=[
+                "Why did the AI suggest this category?",
+                "Does this vendor usually fall in this category?",
+                "What GL account does this map to?",
+                "Should I override the suggestion and pick a different category?",
+            ],
+            max_question_length=500,
+        ),
+    ],
+    flow_controls=FlowControlsConfig(
+        snooze_enabled=True,
+        snooze_presets=[
+            SnoozePreset(label="Tomorrow", offset_hours=24),
+        ],
+        approval_chain=[],
+        bulk_actions_enabled=False,
+    ),
+    collaboration=CollaborationConfig(audit_replay_enabled=True),
+    intelligence=IntelligenceConfig(
+        ai_questions_enabled=True,
+        prioritization_enabled=True,
+        prompt_key="triage.expense_categorization_context_question",
+    ),
+    permissions=["invoice.approve"],
+    display_order=60,
+    enabled=True,
+)
+
+
 # Register at import time so the registry is populated the moment
 # the triage package loads.
 register_platform_config(_task_triage)
 register_platform_config(_ss_cert_triage)
 register_platform_config(_cash_receipts_triage)
+register_platform_config(_month_end_close_triage)
+register_platform_config(_ar_collections_triage)
+register_platform_config(_expense_categorization_triage)
