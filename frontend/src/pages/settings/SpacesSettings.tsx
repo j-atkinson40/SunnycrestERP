@@ -292,11 +292,18 @@ export default function SpacesSettings() {
             }}
             onMovePin={async (pin, targetSpaceId) => {
               // Move = remove from source + add to target.
+              // Phase 8e.1 API exposes ResolvedPin (no label_override —
+              // backend stores the raw override but only returns the
+              // resolved label). Preserving the user's custom
+              // label_override across a move requires a future
+              // backend enrichment. For 8e.1 we accept the rare
+              // edge-case: moved pins re-resolve their label from
+              // the pin target's default label table.
               try {
                 await addPin(targetSpaceId, {
                   pin_type: pin.pin_type,
                   target_id: pin.target_id,
-                  label_override: pin.label_override ?? null,
+                  label_override: null,
                 });
                 await removePin(selected.space_id, pin.pin_id);
               } catch (err) {
