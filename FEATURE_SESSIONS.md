@@ -6,6 +6,118 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Nav Bar Completion — micro-session (DotNav fix + visible ModeToggle)
+
+**Date:** 2026-04-21
+**Session type:** Bug fix + UI completion micro-session between Aesthetic Arc Phase II Batch 1a and Batch 1b.
+**Files touched:** 8 (5 source + 3 tests).
+**LOC:** ~280.
+**Tests:** 165 → 181 (+16). tsc clean. vite build clean 6.22s.
+
+### What this session does
+
+Closes two gaps surfaced during user visual verification post-Batch-0 and during Nav Bar audit:
+
+1. **DotNav was hiding entirely when `spaces.length === 0`** due to a comment-code mismatch from Phase 8a that survived 14 months.
+2. **No user-facing mode toggle** — Aesthetic Arc Session 1 shipped all mode-switching infrastructure (flash-mitigation script + `theme-mode.ts` runtime API + `[data-mode="dark"]` CSS cascade) but never wired the visible UI button. Users toggled via devtools.
+
+### DotNav root cause (documented discipline case)
+
+`DotNav.tsx:209-213` shipped in Phase 8a:
+
+```tsx
+if (spaces.length === 0) {
+  // No spaces yet (unauthenticated or pre-seed): render just the
+  // plus button so new tenants can still create one.
+  return null;
+}
+```
+
+The inline comment described intent accurately (render + button alone). The code returned `null`, hiding the whole DotNav including the + button. Classic comment-code drift.
+
+**Why it survived 14 months:** the Playwright test fixture `DotNav.test.tsx::renderWithCtx` always passed `spaces` > 0 before assertion. The zero-spaces branch had no test coverage. The `returns null when no spaces exist` test case LOCKED IN the bug as correct behavior — asserting what the code did, not what the comment promised.
+
+**Lesson added to CLAUDE.md Design System section:** "Tests that seed state should also test unseeded state. Components with conditional rendering based on data presence need coverage for each branch. When adding a branching render, add a test for each branch — especially the empty / loading / error path that your happy-path fixture skips over."
+
+### Mode toggle infrastructure pre-existed; gap was the button
+
+Discovery during audit: every part of the mode-switching system was already built during Aesthetic Arc Session 1. Only the user-facing control was missing.
+
+Pre-existing infrastructure:
+- `index.html:17-31` — synchronous inline flash-mitigation script reads `localStorage['bridgeable-mode']` + falls back to `prefers-color-scheme`, sets `data-mode="dark"` on `<html>` before React mounts
+- `src/lib/theme-mode.ts` — full runtime API: `getMode()`, `setMode()`, `toggleMode()`, `clearMode()`, `useThemeMode()` hook with CustomEvent sync + `prefers-color-scheme` change listener
+- `src/styles/tokens.css:135` — `[data-mode="dark"]` CSS block
+- `src/index.css:35` — `@custom-variant dark (&:is(.dark *, [data-mode="dark"] *))` Tailwind variant
+- Phase II Batch 0 shadcn aliasing means every shadcn-default consumer flips via the DL cascade automatically
+
+**Scope reduced significantly.** ModeToggle component is a thin wrapper. ~65 LOC new component + ~10 LOC `useMode()` alias + ~2 LOC mount.
+
+### Files shipped
+
+| File | Action | LOC delta |
+|---|---|---|
+| `components/layout/DotNav.tsx` | Early-return removed; `isLoading` destructured from `useSpaces`; loading skeleton + always-on + button render | +18 / −5 |
+| `components/layout/DotNav.test.tsx` | Added `isLoading` to mock context; replaced "returns null" test with 2 new cases (empty-state + loading-state) | +29 / −4 |
+| `components/layout/ModeToggle.tsx` | **New** Sun/Moon button. Destination-icon convention. aria-label + aria-pressed. focus-ring-brass. | +68 |
+| `components/layout/ModeToggle.test.tsx` | **New.** 4 test cases: light-icon, dark-icon, toggle-flips-attr, toggle-persists-storage | +70 |
+| `components/layout/app-layout.tsx` | Import + mount `<ModeToggle />` immediately before `<NotificationDropdown />` | +6 |
+| `lib/theme-mode.ts` | Added `useMode()` ergonomic alias returning `{mode, toggle}` — delegates to `useThemeMode` | +12 |
+| `lib/theme-mode.test.ts` | **New.** 11 test cases covering runtime API + both hooks | +132 |
+| `test/setup.ts` | jsdom polyfills: `window.matchMedia` stub + in-memory localStorage shim (conditional; only when missing) | +47 |
+
+### Design decisions (audit-approved)
+
+1. **localStorage key reused** — existing `bridgeable-mode` (hyphen-separated). Audit flagged that the prompt's proposed `bridgeable.mode` (dot-separated) would desync with the flash-mitigation script and regress persistence. Approved reusing existing key.
+2. **DotNav empty-state: skeleton variant** — renders loading skeleton dot during `isLoading && spaces === []`, then + button alone during `!isLoading && spaces === []`. 5 extra LOC vs. instant + button reveal; avoids "plus button flashes alone" during initial fetch.
+3. **`useMode()` as thin alias** — returns `{mode, toggle}` object shape (cleaner ergonomics than `[mode, setter]` tuple for the toggle call site), but delegates to `useThemeMode` for state. No duplication.
+4. **ModeToggle placement** — immediately before `<NotificationDropdown />`. Matches the "discoverable glance cluster" pattern + common SaaS conventions (GitHub sun/moon near profile avatar).
+5. **Destination-icon convention** — icon shows what clicking WILL DO, not current state. Moon in light mode ("click to go dark"); Sun in dark mode ("click to go light"). Matches user intuition + follows GitHub/Linear/Vercel convention.
+6. **ARIA discipline** — `aria-label` describes the action ("Switch to dark mode"), `aria-pressed` reflects current state (`true` when dark). WCAG toggle-button recommendation.
+
+### Test infrastructure polyfills
+
+Two jsdom gaps surfaced during test run:
+
+1. **`window.matchMedia` is undefined in jsdom by default.** `useThemeMode`'s `prefers-color-scheme` listener crashes without it. Added a no-op MediaQueryList stub.
+2. **`window.localStorage` is broken in vitest v4 when the `--localstorage-file` flag runs without a valid path.** `localStorage.getItem is not a function` error. Warning visible in console: `Warning: --localstorage-file was provided without a valid path`. Seems like vitest v4 opts into a persisted localStorage feature but the flag is malformed somewhere (config, env, or CLI). Rather than debug vitest internals, installed an in-memory Storage shim conditional on the methods being missing.
+
+Both polyfills applied in `src/test/setup.ts` so every test inherits. Baseline 165 tests unaffected (none of them used either API). Forward-compatible for future tests.
+
+### Pre-existing issue inherited (deferred to Session 6)
+
+`.focus-ring-brass` utility in light mode composes brass at 40% α over cream surface-base = ~1.26:1 contrast. Fails WCAG 2.4.7 3:1 focus-indicator threshold. Dark mode passes (~3.4:1). Surfaced Session 4 + Batch 1a. ModeToggle uses the utility per existing pattern and inherits the same gap until Session 6 fixes the utility. Not a per-component concern here.
+
+### Verification methodology update
+
+All Phase II batches from now on verified in **both light AND dark mode**. Pre-ModeToggle, batches defaulted to dark-mode verification (where Session 4 focused). Post-ModeToggle, the header toggle makes both-modes-verification ergonomic and catches light-mode-specific issues (like the focus-ring-brass gap) earlier.
+
+Applies to:
+- Batch 1a retrospective verification (user spot-checks Batch 1a pages in BOTH modes before approving Batch 1b)
+- Batch 1b / 1c-i / 1c-ii / 2 / 3 / 4 / 5 implementation + verification
+- Phase III Session 5 (motion) + Session 6 (final QA)
+
+### Visual verification checklist (for user)
+
+After pulling this commit, visually verify in dev environment:
+
+- [ ] DotNav visible at bottom of sidebar with dots + create button
+- [ ] Mode toggle visible in top header (Sun or Moon depending on current state), immediately before notification bell
+- [ ] Click ModeToggle immediately switches mode (background warms/cools across whole app)
+- [ ] Reload browser: mode preserved
+- [ ] Clear localStorage: mode defaults to system preference on next load
+- [ ] Hover tooltip on ModeToggle reads "Switch to dark mode" / "Switch to light mode" per current state
+- [ ] Keyboard-accessible (Tab to focus + Enter/Space activates + brass focus ring visible)
+- [ ] No flash of wrong mode on page load (flash-mitigation script working)
+- [ ] DotNav dot tooltips show space names on hover
+- [ ] DotNav + button opens NewSpaceDialog
+- [ ] Batch 1a pages (MFG dashboard, FH dashboard, Operations Board, Agents, Approval Review, Vault Overview) render correctly in BOTH light AND dark mode
+
+### Ready for Batch 1b
+
+Next: Batch 1b implementation on scheduling board family (4 files, ~550 LOC). Pages verified in BOTH modes before approval. User approves Batch 1b implementation prompt after visual verification of Batch 1a in both modes.
+
+---
+
 ## Aesthetic Arc Phase II Batch 1a — Infrastructure + user-reported + agents family
 
 **Date:** 2026-04-21

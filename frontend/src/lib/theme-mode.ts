@@ -93,9 +93,14 @@ export function clearMode(): void {
 }
 
 /** React hook: subscribes to mode changes. Returns the current
- * mode + a setter. Also listens for system `prefers-color-scheme`
- * changes when the user has no explicit preference (no
- * localStorage value set). */
+ * mode + a setter tuple `[mode, setMode]`. Also listens for system
+ * `prefers-color-scheme` changes when the user has no explicit
+ * preference (no localStorage value set).
+ *
+ * Ergonomic alias `useMode()` below returns `{mode, toggle}` which
+ * is the preferred shape for the visible header ModeToggle button.
+ * Both hooks share the same underlying state — `useMode` delegates
+ * to `useThemeMode` + adds a `toggle()` helper. */
 export function useThemeMode(): [ThemeMode, (mode: ThemeMode) => void] {
   const [mode, setModeState] = useState<ThemeMode>(() => getMode());
 
@@ -141,4 +146,16 @@ export function useThemeMode(): [ThemeMode, (mode: ThemeMode) => void] {
   }, []);
 
   return [mode, handleSet];
+}
+
+/** Nav Bar Completion (Apr 2026) — ergonomic alias returning
+ * `{mode, toggle}`. The visible ModeToggle button in the AppLayout
+ * top header consumes this shape directly. Delegates to
+ * `useThemeMode` above; no duplicate state. */
+export function useMode(): { mode: ThemeMode; toggle: () => void } {
+  const [mode, set] = useThemeMode();
+  const toggle = useCallback(() => {
+    set(mode === "dark" ? "light" : "dark");
+  }, [mode, set]);
+  return { mode, toggle };
 }

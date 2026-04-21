@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useLayout } from "@/contexts/layout-context";
 import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
+import { ModeToggle } from "./ModeToggle";
 import { NotificationDropdown } from "./notification-dropdown";
 // Workflow Arc Phase 8a — space switching moved to DotNav at the
 // bottom of the sidebar. The Phase 3 top-bar SpaceSwitcher is
@@ -35,6 +36,11 @@ export function AppLayout() {
             {/* Workflow Arc Phase 8a — SpaceSwitcher replaced by
                 DotNav at the bottom of the left sidebar. See
                 sidebar.tsx. */}
+            {/* Nav Bar Completion (Apr 2026) — visible mode toggle.
+                Wires existing `theme-mode.ts` runtime API + flash-
+                mitigation script to a user-facing Sun/Moon button.
+                See components/layout/ModeToggle.tsx. */}
+            <ModeToggle />
             <NotificationDropdown />
             <Separator orientation="vertical" className="h-6" />
             <Link

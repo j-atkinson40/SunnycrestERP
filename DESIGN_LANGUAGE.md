@@ -1505,6 +1505,40 @@ if (savedMode) {
 
 **Flash-of-wrong-mode prevention:** The mode attribute must be set before React hydration to prevent a flash of light mode when dark is the user's preference. Use a synchronous inline `<script>` in the document head that reads localStorage and sets `data-mode` before any CSS is applied.
 
+**User-facing mode toggle (Nav Bar Completion, April 2026):** The visible UI control is a Sun/Moon button rendered in the AppLayout top header (`components/layout/ModeToggle.tsx`), mounted immediately before the `NotificationDropdown`. The icon represents the *destination* state, not the current state — in light mode, the button shows `<Moon />` (click to go dark); in dark mode, `<Sun />` (click to go light). This matches the GitHub / Linear / Vercel convention and the common user intuition that a button icon signals what will happen, not what is already happening.
+
+Accessibility rules for the toggle:
+- `aria-label` describes the *action* ("Switch to dark mode"), not the state ("Dark mode: off"). Per WCAG recommendation for toggle buttons.
+- `aria-pressed` reflects the *current* toggle state (`true` when dark, `false` when light). Screen readers announce both the available action and the current state.
+- `focus-ring-brass` utility for keyboard focus (see Section 6 focus-state spec).
+
+Runtime wiring: the toggle consumes `useMode()` from `lib/theme-mode.ts`, which returns `{mode, toggle}` and delegates to `useThemeMode` (the underlying `[mode, setter]` tuple). Shared state — no duplication.
+
+```jsx
+// ModeToggle usage (simplified):
+import { useMode } from "@/lib/theme-mode";
+
+function ModeToggle() {
+  const { mode, toggle } = useMode();
+  const isDark = mode === "dark";
+  const Icon = isDark ? Sun : Moon;
+  const next = isDark ? "light" : "dark";
+  return (
+    <button
+      onClick={toggle}
+      aria-label={`Switch to ${next} mode`}
+      aria-pressed={isDark}
+      title={`Switch to ${next} mode`}
+      className="... focus-ring-brass"
+    >
+      <Icon aria-hidden="true" />
+    </button>
+  );
+}
+```
+
+Once the toggle ships, **all aesthetic verification for subsequent sessions must cover both modes**, not just the mode currently in focus. The toggle is the primary channel users have to experience both moods; bugs that only surface in one mode are disproportionately impactful.
+
 ### Full `tokens.css`
 
 The complete token definitions from Section 3, plus the tokens introduced in Sections 4–7:

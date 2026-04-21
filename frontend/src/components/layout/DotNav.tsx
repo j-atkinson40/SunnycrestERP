@@ -121,7 +121,7 @@ function DotIcon({
 
 
 export function DotNav() {
-  const { spaces, activeSpace, switchSpace } = useSpaces();
+  const { spaces, activeSpace, switchSpace, isLoading } = useSpaces();
   const [creatorOpen, setCreatorOpen] = useState(false);
   const [editorTarget, setEditorTarget] = useState<string | null>(null);
 
@@ -206,18 +206,21 @@ export function DotNav() {
     [switchSpace],
   );
 
-  if (spaces.length === 0) {
-    // No spaces yet (unauthenticated or pre-seed): render just the
-    // plus button so new tenants can still create one.
-    return null;
-  }
-
-  // Phase 8e — welcome touch only renders for users who have ≥2
-  // spaces (single-space users don't benefit from a "switch spaces"
-  // primer). Same gating rationale as Phase 7 SpaceSwitcher intro.
-  // This is the main "welcome" moment that explains the spaces
-  // concept on first login post-seed.
+  // Nav Bar Completion (Apr 2026) — the rail ALWAYS renders, so the
+  // + button is reachable at all times. Phase 8a shipped a
+  // `spaces.length === 0 → return null` early-return whose inline
+  // comment described "render just the plus button" but whose code
+  // returned null. Comment-code mismatch that survived 14 months
+  // because the Playwright test seeds spaces before assertion and
+  // never exercised the empty branch. Fix renders per-state:
+  //   isLoading + spaces=[] → skeleton dot next to + button
+  //   !isLoading + spaces=[] → + button alone (recovery path)
+  //   spaces.length > 0     → real dots + + button
+  //
+  // Welcome touch gate (≥2 spaces) unchanged — single-space tenants
+  // don't benefit from a "switch spaces" primer.
   const showWelcomeTouch = sortedSpaces.length >= 2;
+  const showSkeleton = isLoading && sortedSpaces.length === 0;
 
   return (
     <>
@@ -244,6 +247,16 @@ export function DotNav() {
             }
             position="top"
             className="left-3 right-3 w-auto"
+          />
+        ) : null}
+        {showSkeleton ? (
+          // Loading skeleton — avoids the "plus button appears alone
+          // for a flash" during initial fetchSpaces(). Matches the
+          // 7×7 dot footprint so layout doesn't shift on fetch-complete.
+          <span
+            className="inline-block h-7 w-7 rounded-full bg-surface-sunken animate-pulse motion-reduce:animate-none"
+            aria-hidden="true"
+            data-testid="dot-nav-skeleton"
           />
         ) : null}
         {sortedSpaces.map((space) => {

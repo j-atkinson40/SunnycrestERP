@@ -23,12 +23,14 @@ import type { Space } from "@/types/spaces";
 const switchSpaceMock = vi.fn();
 let _spaces: Space[] = [];
 let _active: Space | null = null;
+let _isLoading = false;
 
 vi.mock("@/contexts/space-context", () => ({
   useSpaces: () => ({
     spaces: _spaces,
     activeSpace: _active,
     switchSpace: switchSpaceMock,
+    isLoading: _isLoading,
   }),
 }));
 
@@ -41,9 +43,14 @@ vi.mock("@/components/spaces/SpaceEditorDialog", () => ({
 }));
 
 
-function renderWithCtx(spaces: Space[], active: Space | null = null) {
+function renderWithCtx(
+  spaces: Space[],
+  active: Space | null = null,
+  opts: { isLoading?: boolean } = {},
+) {
   _spaces = spaces;
   _active = active ?? spaces[0] ?? null;
+  _isLoading = opts.isLoading ?? false;
   switchSpaceMock.mockClear();
   return render(
     <MemoryRouter>
@@ -70,9 +77,29 @@ function makeSpace(overrides: Partial<Space> = {}): Space {
 
 
 describe("DotNav", () => {
-  it("returns null when no spaces exist", () => {
-    const { container } = renderWithCtx([]);
-    expect(container.firstChild).toBeNull();
+  // Nav Bar Completion (Apr 2026) — DotNav always renders the rail so
+  // the + button is reachable. Phase 8a shipped a comment-code
+  // mismatch (`return null` when spaces empty, despite comment
+  // saying "render just the plus button") that survived 14 months
+  // because the populated-spaces path was the only one tested.
+  // These tests lock in the correct empty-state behavior.
+
+  it("renders + button only when no spaces (post-fetch recovery path)", () => {
+    renderWithCtx([], null, { isLoading: false });
+    // Rail present, + button accessible, zero dots.
+    expect(screen.getByTestId("dot-nav")).toBeInTheDocument();
+    expect(screen.getByTestId("dot-nav-add")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("dot-nav-dot")).toHaveLength(0);
+    // No skeleton when not loading.
+    expect(screen.queryByTestId("dot-nav-skeleton")).toBeNull();
+  });
+
+  it("renders loading skeleton + button when isLoading and no spaces yet", () => {
+    renderWithCtx([], null, { isLoading: true });
+    expect(screen.getByTestId("dot-nav")).toBeInTheDocument();
+    expect(screen.getByTestId("dot-nav-skeleton")).toBeInTheDocument();
+    expect(screen.getByTestId("dot-nav-add")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("dot-nav-dot")).toHaveLength(0);
   });
 
   it("renders one dot per space + plus button", () => {
