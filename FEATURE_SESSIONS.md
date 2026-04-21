@@ -6,6 +6,149 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Workflow Arc Phase 8c — Core Accounting Migrations Batch 1
+
+**Date:** 2026-04-21
+**Migration head:** `r37_approval_gate_email_template` (unchanged — no schema changes in 8c).
+**Arc:** Workflow Arc — Phase 8c of 8a–8h. See `WORKFLOW_ARC.md`.
+**Tests passing:** 25 BLOCKING parity (8+8+9) + 6 BLOCKING latency gates + 20 unit + 9 Playwright scenarios = **60 new this phase**. Phase 1–8b.5 regression: green. Phase 8b cash receipts parity: 9/9 unchanged.
+
+### Primary deliverable: WORKFLOW_MIGRATION_TEMPLATE.md v2
+
+Phase 8c ships three migrations alongside a major template bump — because the 8c targets had meaningfully different shapes than cash receipts (Phase 8b) and exercised patterns the v1 template didn't yet cover. Template v2 adds:
+
+- **§5.5 — Extended parity test patterns** (four new patterns):
+  - 5.5.1 pre-approval zero-write assertion (all three 8c targets are deferred-write).
+  - 5.5.2 positive PeriodLock assertion (month_end_close — first full-approval migration).
+  - 5.5.3 fan-out fidelity (ar_collections — per-customer items).
+  - 5.5.4 override-action pattern (expense_categorization — `category_override` backend capability).
+- **§7.6 — Event trigger not dispatched today — use scheduled fallback.** Documents the workaround for any migration declaring `trigger_type="event"` until real event infrastructure ships.
+- **NEW §10 — Queue Cardinality Matrix.** Four shapes: per-anomaly (cash_receipts, expense_categorization) / per-entity (ar_collections) / per-job (month_end_close) / per-record (future 8f). Drives direct-query shape + adapter signature + parity test structure.
+- **NEW §11 — Rollback-Gap Documentation Convention.** When a pre-existing approval path has partial-failure modes that don't cleanly roll back, the migration preserves verbatim + flags in three places. Month-end close statement-run-failure is the working example.
+- **§1 deepening:** §1.3 (scheduler invocation) now lists 5 shapes including the event-fallback. §1.4 (approval type) now lists 4 SIMPLE/FULL variants with a rollback-gap sub-question. §1.5 (email template) updated to reflect Phase 8b.5's shared `email.approval_gate_review` managed template.
+- **§14 appendix + §15 latent bugs + §16 changelog:** all updated with Phase 8c artifacts.
+
+### Migrations shipped
+
+**1. `month_end_close`** — FULL approval with period lock + deferred statement-run writes.
+- Adapter (`backend/app/services/workflows/month_end_close_adapter.py`, ~290 lines): three public functions (`run_close_pipeline`, `approve_close`, `reject_close`) + `request_review_close` helper. 100% delegation to `AgentRunner.run_job` + `ApprovalGateService._process_approve`/`_process_reject`.
+- Triage queue `month_end_close_triage`: **per-job cardinality** (item_entity_type="month_end_close_job"). Actions: approve (confirmation_required, invoice.approve permission), reject (requires_reason), request_review.
+- Direct query + related-entities builder: return AgentJob + executive_summary + top-5 flagged customers + prior-month-close link for comparison context.
+- Parity test (`test_month_end_close_migration_parity.py`, 8 tests): pre-approval zero-write × 2, reject no-write × 1, approve-writes-PeriodLock × 1 (positive assertion), legacy-vs-triage identity × 1, triage engine dispatch × 2, cross-tenant isolation × 1.
+- **Rollback gap preserved verbatim** (statement-run-failure leaves partial rows + locked period). Template §11 documents. CLAUDE.md latent-bug tracking adds dedicated-cleanup-session target.
+- Trigger: `manual` (user-invoked via UI or API).
+
+**2. `ar_collections`** — SIMPLE approval with per-customer fan-out + new email-dispatch capability.
+- Adapter (`backend/app/services/workflows/ar_collections_adapter.py`, ~330 lines): `run_collections_pipeline`, `send_customer_email`, `skip_customer`, `request_review_customer`. **Closes pre-existing Phase 3b TODO** — legacy `approval_gate._process_approve` for `ar_collections` was a no-op; triage `send` action now actually dispatches the email via `email_service.send_collections_email` → `delivery_service.send_email_with_template("email.collections")`.
+- Triage queue `ar_collections_triage`: **per-customer cardinality** (item_entity_type="ar_collections_draft"). Actions: send (invoice.approve), skip (requires_reason), request_review.
+- Direct query denormalizes: customer_name, billing_email, tier, draft_subject, draft_body_preview (first 300 chars). Sorted CRITICAL→ESCALATE→FOLLOW_UP then by total_outstanding desc.
+- Related-entities builder: Customer + top-5 open invoices + past 3 collection emails via document_deliveries.
+- Parity test (`test_ar_collections_migration_parity.py`, 8 tests): pre-approval zero-email × 1, send creates DocumentDelivery × 2, skip no-delivery × 1, **fan-out fidelity × 1 (3 customers × 3 actions)**, missing-email error-guard × 1, triage engine dispatch × 2.
+- **Operational coexistence note:** tenants who've been "approving" drafts (which was a no-op) will see first real email sends from this deploy. Discontinue any manual email dispatching. Documented in release notes.
+- Trigger: `scheduled` cron `0 23 * * *` (preserved from 8b.5 fix).
+
+**3. `expense_categorization`** — SIMPLE approval with per-line review + AI-suggestion override.
+- Adapter (`backend/app/services/workflows/expense_categorization_adapter.py`, ~340 lines): `run_categorization_pipeline`, `approve_line` (with optional `category_override`), `reject_line`, `request_review_line`.
+- Triage queue `expense_categorization_triage`: **per-anomaly cardinality** (item_entity_type="expense_line_review"). Actions: approve (optional category_override payload), reject (requires_reason), request_review.
+- Direct query denormalizes: vendor_name, VendorBillLine.description, amount, proposed_category (from report_payload.map_to_gl_accounts.mappings), current_category.
+- Related-entities builder: VendorBillLine + parent VendorBill + Vendor + past 3 categorized lines for the same vendor (pattern-matching aid).
+- Parity test (`test_expense_categorization_migration_parity.py`, 9 tests): pre-approval null-category × 1, approve-writes-AI-suggestion × 1, **override-replaces-suggestion × 1**, reject-no-write × 1, legacy-vs-triage parity × 1, triage engine dispatch × 3 (including override payload), cross-tenant isolation × 1.
+- **Trigger-type change — explicit deviation, NOT a bug fix:** seed changed from `trigger_type="event"` + `trigger_config.event="expense.created"` to `trigger_type="scheduled"` + `cron="*/15 * * * *"`. Event dispatch doesn't exist today (no event subscription registry, no `expense.created` publish hook). Documented in `default_workflows.py` seed comment, commit message, session log (this entry), `WORKFLOW_MIGRATION_TEMPLATE.md` §7.6, and CLAUDE.md latent-bug tracking.
+- **Override UI deferred to Phase 8e:** backend ships `category_override` kwarg + handler-payload plumbing. Frontend category-dropdown UI for operators designed alongside Phase 8e triage work.
+
+### Shared infrastructure additions
+
+- `workflow_engine._SERVICE_METHOD_REGISTRY`: 3 new entries (one per adapter pipeline).
+- `triage.engine._DIRECT_QUERIES`: 3 new direct-query builders.
+- `triage.ai_question._RELATED_ENTITY_BUILDERS`: 3 new related-entity builders.
+- `triage.action_handlers.HANDLERS`: 9 new handlers (3 per migration).
+- `triage.platform_defaults`: 3 new queue configs.
+- `default_workflows.TIER_1_WORKFLOWS`: 3 migrated seeds (agent_registry_key cleared, real `call_service_method` steps).
+- `scripts/seed_triage_phase8c.py`: 3 AI prompts seeded via Option A idempotent pattern.
+
+### BLOCKING latency numbers (dev hardware)
+
+All 6 gates pass with substantial headroom. Consolidated in `test_phase8c_triage_latency.py`:
+
+| Gate | p50 | p99 | Budget (p50/p99) | Headroom |
+|---|---|---|---|---|
+| month-end-close next_item | 5.6 ms | 29.9 ms | 100 / 300 ms | 18× / 10× |
+| month-end-close apply_action | 14.1 ms | 24.6 ms | 200 / 500 ms | 14× / 20× |
+| ar-collections next_item | 14.0 ms | 19.8 ms | 100 / 300 ms | 7× / 15× |
+| ar-collections apply_action | 15.8 ms | 45.5 ms | 200 / 500 ms | 13× / 11× |
+| expense-categorization next_item | 48.0 ms | 80.3 ms | 100 / 300 ms | 2× / 4× |
+| expense-categorization apply_action | 32.9 ms | 91.2 ms | 200 / 500 ms | 6× / 5× |
+
+expense_categorization's next_item is the slowest due to per-anomaly joins into VendorBill + Vendor + proposed_category lookup from report_payload. Still well within budget. Future optimization: denormalize proposed_category onto AgentAnomaly row, or cache vendor lookups per sweep.
+
+### Audit answers to the 9 questions (per migration)
+
+**month_end_close:**
+1. Write timing: **deferred** (all writes on approval via `_trigger_statement_run` + `PeriodLockService.lock_period`).
+2. Anomaly types: 16 (across agent + statement_generation_service.detect_flags).
+3. Scheduler: **manual** (user-invoked; no cron).
+4. Approval type: **FULL** with period lock. POSITIVE PeriodLock assertion in parity test.
+5. Email: `email.approval_gate_review` (Phase 8b.5 shared managed template).
+6. Related entities: AgentJob exec summary + flagged customers + prior-month close.
+7. AI prompt: `triage.month_end_close_context_question` with 4 suggested questions.
+8. Permission: `invoice.approve`.
+9. Vertical scoping: cross-vertical (Core).
+
+**ar_collections:**
+1. Write timing: **deferred** — drafts during pipeline, email dispatch on approval (NEW capability).
+2. Anomaly types: 3 (collections_follow_up INFO, collections_escalate WARNING, collections_critical CRITICAL).
+3. Scheduler: **scheduled** cron `0 23 * * *` tenant-local (8b.5 fix).
+4. Approval type: **SIMPLE dispatch-on-approval** (closes Phase 3b TODO).
+5. Email: `email.approval_gate_review` for the approval email + `email.collections` for the drafted collection emails.
+6. Related entities: Customer + open invoices + past collection emails.
+7. AI prompt: `triage.ar_collections_context_question` with 4 suggested questions.
+8. Permission: `invoice.approve`.
+9. Vertical scoping: cross-vertical (Core).
+
+**expense_categorization:**
+1. Write timing: **deferred** (VendorBillLine.expense_category on approval only).
+2. Anomaly types: 3 (expense_low_confidence WARNING, expense_no_gl_mapping INFO, expense_classification_failed CRITICAL).
+3. Scheduler: **scheduled** cron `*/15 * * * *` (**WORKAROUND — event trigger declared but not dispatched**).
+4. Approval type: **SIMPLE writes-on-approval** (delegates to existing `_apply_expense_categories`).
+5. Email: `email.approval_gate_review` (shared managed template).
+6. Related entities: VendorBillLine + VendorBill + Vendor + past categorized lines for same vendor.
+7. AI prompt: `triage.expense_categorization_context_question` with 4 suggested questions.
+8. Permission: `invoice.approve`.
+9. Vertical scoping: cross-vertical (Core).
+
+### Legacy coexistence verified
+
+- `/agents` dashboard still lists all 3 job types as runnable.
+- `/agents/:id/review` page resolves for all 3 job types (ApprovalReview.tsx unchanged).
+- `POST /api/v1/agents/accounting` endpoint still accepts all 3 `job_type` values.
+- Email approval token flow still works for all 3 job types via the shared `email.approval_gate_review` template.
+
+### Latent bugs surfaced (or inherited) — tracked for future cleanup
+
+1. **Month-end close statement-run rollback gap** (surfaced in 8c audit). `_trigger_statement_run` catches exceptions but still proceeds to period lock, potentially leaving partial statement rows + locked period. Preserved verbatim for parity. Template §11 documents the pattern; dedicated cleanup session pending.
+2. **Event trigger type declared but not dispatched** (surfaced in 8c audit). `trigger_type="event"` workflows never fire; no event subscription registry exists. Expense_categorization uses scheduled fallback (§7.6). Real fix is future event-infrastructure arc.
+3. **Existing flags still open:** `time_of_day` UTC bug (8b.5); orphan migrations r34–r39 (8a); hardcoded legacy vault-print emails (pre-arc).
+
+### Phase 8c readiness for downstream phases
+
+- **Phase 8d** (vertical migrations): can proceed. Template v2 accommodates all observed shapes. Queue cardinality matrix guides vertical-workflow queue design.
+- **Phase 8e** (spaces + default views): can proceed. Triage queues registered as platform defaults; spaces integration comes later.
+- **Phase 8f** (remaining 8 accounting migrations): **unblocked.** Template v2 is the comparison checklist. Each of the 8 remaining agents answers the 9 questions from §1 + applies patterns from §5.5 / §10 / §11.
+
+### What Phase 8c did NOT ship (per approved scope)
+
+- Migration of remaining 8 accounting agents (Phase 8f).
+- Vertical workflow migrations (Phase 8d).
+- Dashboard surfaces showing accounting data as saved views (Phase 8g).
+- Deletion of legacy bespoke UI (deferred to Phase 8h or later).
+- Frontend override-dropdown UI for expense_categorization (Phase 8e).
+- Event infrastructure (future horizontal arc).
+- Rollback-gap correctness fixes (dedicated cleanup session).
+
+Next: **Phase 8d or Phase 8e** depending on sequencing preference. Both are independently achievable from 8c's foundation.
+
+---
+
 ## Workflow Arc Phase 8b.5 — Pre-8c Cleanup (Scheduler + Approval Emails)
 
 **Date:** 2026-04-21

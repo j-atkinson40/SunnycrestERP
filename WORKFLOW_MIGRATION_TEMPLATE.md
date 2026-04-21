@@ -43,30 +43,42 @@ Cash receipts example: `cash_receipts_adapter.approve_match()` → writes `Custo
 
 ### 1.3 Existing scheduler invocation
 
-- Already scheduled via APScheduler? (Cash receipts: **no** — we added it from scratch.)
-- Already scheduled as a workflow? (None of the Phase 8a agent-backed stubs are — their declared `trigger_type="scheduled"` is a latent bug — see `wf_sys_ar_collections` note at bottom.)
-- Not scheduled at all, manual only? (Cash receipts was in this bucket.)
+Five shapes observed across cash receipts + 8c:
 
-**Two sub-templates** for the migration shape:
+- **Manual only (cash receipts pre-8b, month_end_close 8c):** user-invoked via `POST /agents/accounting` or `POST /workflows/{id}/start`. No cron. Keep `trigger_type="manual"`.
+- **Scheduled via APScheduler's `time_of_day`:** cash receipts ships this way (23:30 daily). UTC wall-clock (latent TZ bug flagged in §15).
+- **Scheduled via APScheduler's `scheduled` cron (8b.5+):** ar_collections, expense_categorization (post-8c migration), all 8 pre-existing wf_sys_* workflows fixed in 8b.5. Tenant-TZ-correct. Cron precision limited to 15-min sweep cadence.
+- **Event-triggered — DECLARED BUT NOT DISPATCHED (§7.6):** seed has `trigger_type="event"` but no code publishes the event. Workaround: migrate to `trigger_type="scheduled"` with `*/15 * * * *` cron. expense_categorization in 8c uses this fallback.
+- **Post-8d (future): per-record time_after_event:** funeral_case aftercare. Workflow scheduler handles it today.
 
-- **"Add from scratch" (cash receipts):** pick a `trigger_type="time_of_day"` + `trigger_config.time` slot that doesn't collide with adjacent nightly jobs. Workflow scheduler sweep (every 15 min) fires it.
-- **"Reuse existing" (month-end close expected — triggered by user today, not scheduled; keeps manual trigger):** set `trigger_type="manual"`; workflow remains user-invoked via `POST /api/v1/workflows/{id}/start`.
+**Migration-shape sub-templates:**
 
-Neither path requires modifying `backend/app/scheduler.py` — the workflow engine's 15-min polling sweep dispatches `time_of_day` triggers automatically.
+- **"Add from scratch":** pick `trigger_type="time_of_day"` or `"scheduled"` + a collision-checked slot. Workflow scheduler sweep fires it.
+- **"Reuse existing scheduled trigger":** keep the seed's `trigger_type` + cron. Replace placeholder steps with real `call_service_method` step. Clear `agent_registry_key`.
+- **"Reuse existing manual trigger":** keep `trigger_type="manual"`. Same step replacement. User invokes via UI or API.
+- **"Event → scheduled workaround":** per §7.6.
+
+Neither path requires modifying `backend/app/scheduler.py` — the workflow scheduler's 15-min sweep dispatches all three supported types automatically.
 
 ### 1.4 Approval type (SIMPLE vs. full)
 
-- **SIMPLE (cash receipts):** approval flips `job.status` to `complete`. No period lock. No statement run. No deferred financial writes. `SIMPLE_APPROVAL_TYPES` contains the enum value.
-- **Full (month-end close):** approval triggers statement run + locks period. `approval_gate.py` has a dedicated `_finalize_month_end_close` callback.
+Four shapes observed across cash receipts + 8c migrations. Answer this precisely:
 
-**Why it matters:** The parity test's negative assertions differ. Cash receipts asserts **no** `PeriodLock` row written; month-end close asserts **one** `PeriodLock` row written with the right period.
+- **SIMPLE no-writes-on-approval (cash receipts):** approval flips `job.status` to `complete`. Writes happened inline during agent step 2. Negative assertion: NO PeriodLock row.
+- **SIMPLE writes-on-approval (expense_categorization):** approval calls a side-effect function (`_apply_expense_categories` for this agent). Writes `VendorBillLine.expense_category` for high-confidence mapped lines. Still NO period lock. Triage's approve action is a direct delegate.
+- **SIMPLE dispatch-on-approval (ar_collections):** approval is the dispatch trigger. Pre-8c, this was a no-op TODO. 8c closes it: triage send action dispatches emails via the managed template. Still NO period lock.
+- **FULL with period lock (month_end_close, year_end_close):** approval triggers deferred financial writes (statement run generation + auto-approval) AND inserts a PeriodLock row. POSITIVE PeriodLock assertion required in parity test (§5.5.2).
+
+**Rollback-gap sub-question (NEW in v2, §11):** "If an exception is raised mid-way through approval, what DB state is left?" Document the answer. Preserve any gap verbatim; flag for future cleanup.
 
 ### 1.5 Email template status
 
-- **Managed template (D-7 pattern, preferred):** approval email renders via `template_key` in delivery_service. Template lives in `document_templates` table.
-- **Hardcoded HTML (cash receipts, legacy):** approval email HTML is inline Python in `ApprovalGateService._build_review_email_html()`. **This is pre-existing tech debt** — don't fix it during a migration; preserve verbatim for parity. Flagged for future cleanup in Phase 8h or later.
+Phase 8b.5 migrated all approval-gate emails to the managed template `email.approval_gate_review`. All 12 agent job types share this single template via `job_type_label` context variable. Recent migrations (8c and beyond) can rely on it without reverting to hardcoded HTML.
 
-Cash receipts example: we did NOT migrate the approval email to a managed template. The parity test would fail if we did (hashes don't match). Future session migrates approval-gate emails to D-7 managed templates platform-wide.
+**Agent-specific emails (separate from approval):**
+- **Managed (preferred):** route through `delivery_service.send_email_with_template(template_key=...)`. AR collections' draft send uses `email.collections` this way. Parity tests can assert `template_key` + `caller_module` presence on `document_deliveries` rows.
+- **No agent-specific emails (most agents):** the approval review is the only send; nothing to migrate.
+- **Inline HTML (rare, legacy):** only if pre-existing and touching the code would break byte-identical parity tests. Preserve verbatim + flag for cleanup.
 
 ### 1.6 Related entities for AI question context
 
@@ -666,6 +678,8 @@ Alternatives:
 
 ## 14. Appendix — Phase 8b + 8c artifacts as reference
 
+### Phase 8b — Cash Receipts Matching (reconnaissance)
+
 - **Parity adapter:** `backend/app/services/workflows/cash_receipts_adapter.py`
 - **Workflow engine dispatch:** `backend/app/services/workflow_engine.py::_handle_call_service_method` + `_SERVICE_METHOD_REGISTRY`
 - **Workflow seed:** `backend/app/data/default_workflows.py::TIER_1_WORKFLOWS` (entry `wf_sys_cash_receipts`)
@@ -678,6 +692,48 @@ Alternatives:
 - **BLOCKING latency test:** `backend/tests/test_cash_receipts_triage_latency.py`
 - **Unit tests:** `backend/tests/test_cash_receipts_phase8b_unit.py`
 - **Playwright E2E:** `frontend/tests/e2e/workflow-arc-phase-8b.spec.ts`
+
+### Phase 8c — Month-End Close (full-approval with period lock — per-job cardinality)
+
+- **Parity adapter:** `backend/app/services/workflows/month_end_close_adapter.py`
+- **Workflow seed:** `TIER_1_WORKFLOWS` entry `wf_sys_month_end_close` (trigger_type="manual")
+- **Triage direct query:** `_dq_month_end_close_triage`
+- **Related entities builder:** `_build_month_end_close_related`
+- **Action handlers:** `month_end_close.approve` / `reject` / `request_review`
+- **Platform default config:** `_month_end_close_triage`
+- **AI prompt:** `triage.month_end_close_context_question` (seeded by `seed_triage_phase8c.py`)
+- **BLOCKING parity test:** `backend/tests/test_month_end_close_migration_parity.py` — **includes positive PeriodLock assertion (§5.5.2)**
+- **BLOCKING latency gates:** `backend/tests/test_phase8c_triage_latency.py::test_month_end_close_*`
+
+### Phase 8c — AR Collections (SIMPLE approval, per-customer fan-out)
+
+- **Parity adapter:** `backend/app/services/workflows/ar_collections_adapter.py` — closes pre-existing Phase 3b email-dispatch TODO
+- **Workflow seed:** `TIER_1_WORKFLOWS` entry `wf_sys_ar_collections` (trigger_type="scheduled", cron="0 23 * * *")
+- **Triage direct query:** `_dq_ar_collections_triage`
+- **Related entities builder:** `_build_ar_collections_related`
+- **Action handlers:** `ar_collections.send` / `skip` / `request_review`
+- **Platform default config:** `_ar_collections_triage`
+- **AI prompt:** `triage.ar_collections_context_question`
+- **BLOCKING parity test:** `backend/tests/test_ar_collections_migration_parity.py` — **includes fan-out fidelity test (§5.5.3)**
+- **Email dispatch:** routes through `email_service.send_collections_email` → `delivery_service.send_email_with_template(template_key="email.collections")`
+
+### Phase 8c — Expense Categorization (per-line review with override, event-trigger workaround)
+
+- **Parity adapter:** `backend/app/services/workflows/expense_categorization_adapter.py` — includes `category_override` kwarg (§5.5.4)
+- **Workflow seed:** `TIER_1_WORKFLOWS` entry `wf_sys_expense_categorization` — **trigger changed from "event" to "scheduled" (cron="*/15 * * * *") per §7.6 fallback convention**
+- **Triage direct query:** `_dq_expense_categorization_triage`
+- **Related entities builder:** `_build_expense_categorization_related`
+- **Action handlers:** `expense_categorization.approve` / `reject` / `request_review`
+- **Platform default config:** `_expense_categorization_triage`
+- **AI prompt:** `triage.expense_categorization_context_question`
+- **BLOCKING parity test:** `backend/tests/test_expense_categorization_migration_parity.py` — **includes override path test (§5.5.4)**
+
+### Phase 8c — shared infrastructure + docs
+
+- **Combined latency file:** `backend/tests/test_phase8c_triage_latency.py` (6 BLOCKING gates)
+- **Shared unit tests:** `backend/tests/test_phase8c_unit.py` (20 registration + shape tests)
+- **Seed script:** `backend/scripts/seed_triage_phase8c.py` (3 AI prompts, Option A idempotent)
+- **Playwright E2E:** `frontend/tests/e2e/workflow-arc-phase-8c.spec.ts`
 
 ---
 

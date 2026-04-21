@@ -494,6 +494,31 @@ Both Phase 8b audit-surfaced latent bugs fixed in a narrow cleanup session betwe
 
 **Migration head:** `r37_approval_gate_email_template`. **Tests shipped:** 10 scheduler + 8 email migration = 18 new. Phase 8b cash receipts parity remains 9/9 green.
 
+### Core Accounting Migrations Batch 1 (Workflow Arc Phase 8c)
+
+Three agents migrated into real workflows using the Phase 8b reconnaissance template. Each exercises a meaningfully different shape — proving the template generalizes across Tier-1 accounting agents. **Primary deliverable: `WORKFLOW_MIGRATION_TEMPLATE.md` v2** with four new parity patterns + a queue-cardinality matrix + rollback-gap convention. 8c establishes all remaining patterns Phase 8f needs for the final batch.
+
+**Migration 1: `month_end_close` — FULL approval with period lock + per-job cardinality.**
+Adapter: `backend/app/services/workflows/month_end_close_adapter.py`. Three public functions (`run_close_pipeline`, `approve_close`, `reject_close`) delegate 100% to existing `MonthEndCloseAgent` + `ApprovalGateService._process_approve`/`_process_reject`. Triage cardinality: **per-job** (the whole AgentJob in awaiting_approval is the decision; anomalies are sub-context in the panel). Parity test positively asserts `PeriodLock` row creation + matches legacy `_process_approve` side effects. Pre-existing statement-run-failure rollback gap preserved verbatim for parity — flagged in template §11 for dedicated cleanup. Trigger: `manual`. Permission: `invoice.approve`.
+
+**Migration 2: `ar_collections` — SIMPLE approval with per-customer fan-out + new email-dispatch capability.**
+Adapter: `backend/app/services/workflows/ar_collections_adapter.py`. Four functions (`run_collections_pipeline`, `send_customer_email`, `skip_customer`, `request_review_customer`). **Closes pre-existing Phase 3b TODO** — legacy approval was a no-op; triage `send` action dispatches the email via the managed `email.collections` template. Triage cardinality: **per-customer** (one item per anomaly, which represents one customer with a drafted email). Fan-out fidelity parity test covers 3 customers × 3 different actions. Trigger: `scheduled` cron `0 23 * * *` (preserved from 8b.5 fix). Permission: `invoice.approve`. **Deploy-day note:** tenants whose ops workflow relied on the legacy no-op will see real email dispatches for the first time — discontinue manual compensation runs.
+
+**Migration 3: `expense_categorization` — SIMPLE approval with per-line review + AI-suggestion-with-override.**
+Adapter: `backend/app/services/workflows/expense_categorization_adapter.py`. Four functions (`run_categorization_pipeline`, `approve_line`, `reject_line`, `request_review_line`). `approve_line` accepts optional `category_override` kwarg — backend ships the capability; frontend UI deferred to Phase 8e triage design. **Trigger-type change (not a bug fix — explicit workaround):** seed changed from `trigger_type="event"` + `trigger_config.event="expense.created"` to `trigger_type="scheduled"` + `cron="*/15 * * * *"`. The event dispatch system doesn't exist today (no event subscription registry, no publish-event hooks). Latency is ~15 min vs. real-time. Flagged in latent-bug tracking for future event-infrastructure arc. Template §7.6 documents this convention for 8d+ migrations declaring event triggers. Permission: `invoice.approve`.
+
+**New queue cardinality matrix** (template §10): **per-anomaly** (cash_receipts, expense_categorization) · **per-entity** (ar_collections: per-customer) · **per-job** (month_end_close) · **per-record** (future 8f: likely unbilled_orders). Chooses `id` in the direct-query shape + adapter's action signature + whether fan-out fidelity tests apply.
+
+**New rollback-gap convention** (template §11): when a migration's approval path has partial-failure modes that don't cleanly roll back, document in (a) the parity test's module docstring, (b) template §15 latent-bug catalog, (c) CLAUDE.md latent-bug tracking. Preserve verbatim for parity; fix in dedicated cleanup session. Month-end close's statement-run-failure gap is the working example.
+
+**Agent registry keys cleared** for all three migrated workflows in `default_workflows.py` (8b-beta state — the "Built-in implementation" badge disappears on the Platform workflows tab for these rows).
+
+**Operational coexistence contract unchanged** — legacy `/agents` dashboard + `/agents/:id/review` approval page + `POST /agents/accounting` endpoint all still work for ad-hoc forensic re-runs. Triage is the canonical path for routine daily processing.
+
+**Migration head:** `r37_approval_gate_email_template` (no new migrations in 8c — no schema changes). **Tests shipped Phase 8c:** 25 parity (8+8+9) + 6 BLOCKING latency gates + 20 unit + 9 Playwright scenarios = **60 new tests**. Phase 1–8b.5 regression: unchanged. Migration template v2 at project root.
+
+**Remaining migrations (Phase 8f):** unbilled_orders, estimated_tax_prep, inventory_reconciliation, budget_vs_actual, 1099_prep, year_end_close, tax_package, annual_budget. Each follows the 9-question audit from template §1 + applies patterns from §5.5 / §10 / §11 as applicable.
+
 ## 5. Database
 
 - **~235 tables** (ORM models for all but the orphaned `tenant_settings` table)

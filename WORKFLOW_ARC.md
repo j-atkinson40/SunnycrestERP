@@ -68,9 +68,21 @@ Latent bugs surfaced + flagged for separate sessions:
 
 ### Phase 8c — Core Accounting Migrations (Batch 1)
 
-**Not started.** Migrate the next batch of accounting agents (month-end close, AR collections, expense categorization — the three with existing wf_sys_* stubs carrying `agent_registry_key`) into real workflow definitions. Per migrated agent, the stub row's `agent_registry_key` clears and the "Built-in implementation" badge disappears.
+**Shipped.** Three migrations through the Phase 8b reconnaissance template. Each exercises a meaningfully different shape:
 
-This phase also includes the fork-vs-override UX polish deferred from 8a per finding G.
+- **`month_end_close`** — FULL approval with period lock + per-job cardinality. Adapter delegates 100% to existing ApprovalGateService. Parity test positively asserts PeriodLock row creation; pre-existing statement-run-failure rollback gap preserved verbatim. Trigger remains manual.
+- **`ar_collections`** — SIMPLE approval with per-customer fan-out. **Closes pre-existing Phase 3b TODO** — triage `send` action now actually dispatches the drafted email via the managed `email.collections` template. Fan-out fidelity parity test covers mixed actions. Trigger remains scheduled (cron `0 23 * * *`).
+- **`expense_categorization`** — SIMPLE approval with per-line review + optional `category_override` backend capability. **Trigger-type change** (explicit workaround, not a bug fix): `event` → `scheduled` with `*/15 * * * *` cron, since event dispatch infrastructure doesn't exist today. Flagged in latent-bug tracking for future event-infra arc.
+
+**Primary deliverable: `WORKFLOW_MIGRATION_TEMPLATE.md` v2** at project root. Additions: four new parity patterns (pre-approval zero-write, positive PeriodLock, fan-out fidelity, override action) in §5.5; event-trigger-not-dispatched fallback convention in §7.6; NEW §10 Queue Cardinality Matrix (per-anomaly / per-entity / per-job / per-record); NEW §11 Rollback-Gap Documentation Convention (month-end close as working example).
+
+Test counts: 25 parity (8+8+9) + 6 BLOCKING latency gates + 20 unit + 9 Playwright scenarios = **60 new tests** — all green. Phase 1–8b.5 regression unaffected.
+
+**Fork-vs-override UX polish (deferred from 8a)**: deferred further — no design conversation happened in 8c; candidate for post-arc backlog or a dedicated UX session.
+
+**Latent bugs added to tracking:**
+- Month-end close statement-run-failure rollback gap (preserved via service reuse, dedicated cleanup session pending).
+- Event trigger type declared but not dispatched (expense_categorization workaround uses scheduled cron; real fix is future event-infrastructure arc).
 
 ### Phase 8d — Vertical Workflow Migrations
 
