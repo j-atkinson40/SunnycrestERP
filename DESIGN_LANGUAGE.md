@@ -1643,6 +1643,16 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
 
 Tailwind is configured to consume the CSS variables. The config extends rather than replaces the default theme, keeping Tailwind's spacing scale (which matches the 4px base from Section 5) while adding semantic tokens.
 
+> **Implementation note — Tailwind v4 vs. v3:** Bridgeable uses **Tailwind v4** via `@tailwindcss/vite`, where theme configuration lives in an `@theme inline { ... }` block inside CSS, not in a separate `tailwind.config.js` file. The JS config example below is illustrative of the semantic tokens Tailwind should expose; the live implementation is in `frontend/src/index.css` (Aesthetic Arc Session 1). Translation rules:
+> - `colors.surface.base = 'var(--surface-base)'` → `--color-surface-base: var(--surface-base);`
+> - `fontSize['display-lg'] = [size, { lineHeight, fontWeight }]` → three lines: `--text-display-lg: ...;` + `--text-display-lg--line-height: ...;` + `--text-display-lg--font-weight: ...;`
+> - `boxShadow['level-1'] = '...'` → `--shadow-level-1: var(--shadow-level-1);`
+> - `transitionTimingFunction.settle` → `--ease-settle: var(--ease-settle);`
+> - `maxWidth.reading` → `--container-reading: var(--max-w-reading);` (v4's `--container-*` generates `max-w-*` + `@container`)
+> - `transitionDuration.quick` → `@utility duration-quick { transition-duration: var(--duration-quick); }` — Tailwind v4's `--duration-*` is NOT an auto-utility namespace, so explicit `@utility` declarations are required.
+>
+> The v3 JS config below is retained because it's the clearest semantic description of what Tailwind exposes; read it as intent, not as a file to author. See `frontend/src/index.css` + `frontend/src/styles/base.css` for the live mapping.
+
 ```js
 // tailwind.config.js
 import { fontFamily } from 'tailwindcss/defaultTheme';

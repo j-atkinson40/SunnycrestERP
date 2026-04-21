@@ -3,7 +3,33 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
+/* ============================================================
+ * Aesthetic Arc Session 1 — DESIGN_LANGUAGE.md token foundation.
+ * Loads Plex fonts + DESIGN_LANGUAGE tokens + brass focus utility.
+ * See frontend/src/styles/globals.css for the bundle entry point
+ * and DESIGN_LANGUAGE.md for the source of truth on values.
+ *
+ * NOTE on coexistence with shadcn tokens: the block below this
+ * import (:root {...}, .dark {...}, @theme inline {...}) remains
+ * the shadcn/ui source of truth for --background / --foreground /
+ * --primary / --card / --popover / --muted / --destructive /
+ * --border / --input / --ring / --sidebar* / --chart-*. Those
+ * stay alive untouched so existing shadcn components keep
+ * working. DESIGN_LANGUAGE tokens from globals.css (--surface-*,
+ * --content-*, --border-subtle/base/strong/brass, --accent-brass*,
+ * --shadow-color-*, --shadow-level-*, --accent-brass*, --radius-base,
+ * --radius-full, --duration-*, --ease-*, --max-w-*,
+ * --font-plex-*) live alongside them. Sessions 2-3 migrate
+ * components to DESIGN_LANGUAGE tokens; a final cleanup session
+ * retires the shadcn layer when no references remain.
+ * ============================================================ */
+@import "./styles/globals.css";
+
+/* Extended to match both the legacy `.dark` class (noop today,
+ * coexistence grace) AND the DESIGN_LANGUAGE `[data-mode="dark"]`
+ * attribute (the canonical mode switch going forward). Post-arc
+ * cleanup retires the `.dark` class branch. */
+@custom-variant dark (&:is(.dark *, [data-mode="dark"] *));
 
 @keyframes blink {
   0%, 100% { opacity: 1; }
@@ -40,17 +66,26 @@
     --chart-5: oklch(0.424 0.199 265.638);
     --radius: 0.625rem;
 
-    /* Semantic status colors */
-    --status-success: #16A34A;
+    /* Semantic status colors — Aesthetic Arc Session 1 migrated from
+     * hex (shadcn defaults) to DESIGN_LANGUAGE oklch (Section 3).
+     * Drift is the one accepted visual change in Session 1: current
+     * values are generic; DESIGN_LANGUAGE values derive from the
+     * warm-hue family and feel native. `--status-danger` is kept as
+     * an alias of `--status-error` during the coexistence window;
+     * Sessions 2-3 migrate refs to `--status-error`. The `-light`
+     * and `-dark` legacy variants stay with their hex values until
+     * Sessions 2-3 migrate consumers to `--status-*-muted` (which
+     * lives in styles/tokens.css). */
+    --status-success: oklch(0.58 0.12 135);
     --status-success-light: #DCFCE7;
     --status-success-dark: #14532D;
-    --status-warning: #D97706;
+    --status-warning: oklch(0.70 0.14 65);
     --status-warning-light: #FEF3C7;
     --status-warning-dark: #78350F;
-    --status-danger: #DC2626;
+    --status-danger: oklch(0.55 0.18 25);
     --status-danger-light: #FEE2E2;
     --status-danger-dark: #7F1D1D;
-    --status-info: #0891B2;
+    --status-info: oklch(0.55 0.08 225);
     --status-info-light: #CFFAFE;
     --status-info-dark: #164E63;
 
@@ -174,6 +209,133 @@
     --tracking-wide: 0.025em;
     --tracking-wider: 0.05em;
     --tracking-widest: 0.1em;
+
+    /* ============================================================
+     * Aesthetic Arc Session 1 — DESIGN_LANGUAGE.md Tailwind v4
+     * utility bindings. Every line below exposes a token from
+     * frontend/src/styles/tokens.css to Tailwind v4 utilities.
+     *
+     * Tailwind v4 namespace convention (what each prefix generates):
+     *   --color-*    → bg-*, text-*, border-*, ring-*, etc.
+     *   --font-*     → font-* utilities
+     *   --text-*     → text-* font-size utilities (can include
+     *                   line-height + font-weight as second value)
+     *   --radius-*   → rounded-* utilities
+     *   --shadow-*   → shadow-* utilities
+     *   --duration-* → duration-* transition-duration utilities
+     *   --ease-*     → ease-* transition-timing-function utilities
+     *   --container-*→ max-w-* AND @container utilities
+     *
+     * DESIGN_LANGUAGE.md Section 9 shows these as Tailwind v3 JS
+     * config; this is the Tailwind v4 @theme-inline equivalent.
+     * (DESIGN_LANGUAGE.md itself carries a v4-clarification note
+     * in Section 9 pointing at this file as the live mapping.)
+     * ============================================================ */
+
+    /* ─── Colors: surfaces ─── */
+    --color-surface-base: var(--surface-base);
+    --color-surface-elevated: var(--surface-elevated);
+    --color-surface-raised: var(--surface-raised);
+    --color-surface-sunken: var(--surface-sunken);
+
+    /* ─── Colors: content ─── */
+    --color-content-strong: var(--content-strong);
+    --color-content-base: var(--content-base);
+    --color-content-muted: var(--content-muted);
+    --color-content-subtle: var(--content-subtle);
+    --color-content-on-brass: var(--content-on-brass);
+
+    /* ─── Colors: borders (additive names; existing --color-border
+     * for shadcn stays intact) ─── */
+    --color-border-subtle: var(--border-subtle);
+    --color-border-base: var(--border-base);
+    --color-border-strong: var(--border-strong);
+    --color-border-brass: var(--border-brass);
+
+    /* ─── Colors: brass accent (DEFAULT enables bare `bg-brass`) ─── */
+    --color-brass: var(--accent-brass);
+    --color-brass-hover: var(--accent-brass-hover);
+    --color-brass-active: var(--accent-brass-active);
+    --color-brass-muted: var(--accent-brass-muted);
+    --color-brass-subtle: var(--accent-brass-subtle);
+
+    /* ─── Colors: status (DESIGN_LANGUAGE adds -error + -*-muted
+     * alongside the legacy -success/-warning/-info/-danger above) ─── */
+    --color-status-error: var(--status-error);
+    --color-status-error-muted: var(--status-error-muted);
+    --color-status-warning-muted: var(--status-warning-muted);
+    --color-status-success-muted: var(--status-success-muted);
+    --color-status-info-muted: var(--status-info-muted);
+
+    /* ─── Typography: Plex families (font-sans stays Geist) ─── */
+    --font-plex-sans: var(--font-plex-sans);
+    --font-plex-serif: var(--font-plex-serif);
+    --font-plex-mono: var(--font-plex-mono);
+
+    /* ─── Typography: size scale with paired line-heights (§4)
+     * First value = size; --text-*--line-height is v4's paired
+     * line-height convention. Second values come from Section 4. ─── */
+    --text-display-lg: var(--text-display-lg);
+    --text-display-lg--line-height: 1.1;
+    --text-display-lg--font-weight: 500;
+    --text-display: var(--text-display);
+    --text-display--line-height: 1.15;
+    --text-display--font-weight: 500;
+    --text-h1: var(--text-h1);
+    --text-h1--line-height: 1.2;
+    --text-h1--font-weight: 500;
+    --text-h2: var(--text-h2);
+    --text-h2--line-height: 1.25;
+    --text-h2--font-weight: 500;
+    --text-h3: var(--text-h3);
+    --text-h3--line-height: 1.3;
+    --text-h3--font-weight: 500;
+    --text-h4: var(--text-h4);
+    --text-h4--line-height: 1.35;
+    --text-h4--font-weight: 500;
+    --text-body: var(--text-body);
+    --text-body--line-height: 1.55;
+    --text-body-sm: var(--text-body-sm);
+    --text-body-sm--line-height: 1.5;
+    --text-caption: var(--text-caption);
+    --text-caption--line-height: 1.45;
+    --text-micro: var(--text-micro);
+    --text-micro--line-height: 1.4;
+    --text-micro--letter-spacing: 0.01em;
+
+    /* ─── Border radius: DESIGN_LANGUAGE additions. Existing
+     * --radius-sm/md/lg/xl/2xl/3xl/4xl above are preserved for
+     * shadcn; --radius-base is a new slot; --radius-full is
+     * pass-through. Note: --radius-xl stays at 14px (derived from
+     * --radius * 1.4) — DESIGN_LANGUAGE spec is 16px; the 2px drift
+     * is accepted for Session 1. Sessions 2-3 revisit. ─── */
+    --radius-base: var(--radius-base);
+    --radius-full: var(--radius-full);
+
+    /* ─── Motion: durations ─── */
+    --duration-instant: var(--duration-instant);
+    --duration-quick: var(--duration-quick);
+    --duration-settle: var(--duration-settle);
+    --duration-arrive: var(--duration-arrive);
+    --duration-considered: var(--duration-considered);
+
+    /* ─── Motion: easings ─── */
+    --ease-settle: var(--ease-settle);
+    --ease-gentle: var(--ease-gentle);
+
+    /* ─── Shadow compositions (level 1/2/3 dark-mode variant is
+     * redefined in [data-mode="dark"] automatically via tokens.css) ─── */
+    --shadow-level-1: var(--shadow-level-1);
+    --shadow-level-2: var(--shadow-level-2);
+    --shadow-level-3: var(--shadow-level-3);
+
+    /* ─── Layout: max-widths via Tailwind v4's --container-*
+     * namespace (generates max-w-* and @container utilities). ─── */
+    --container-reading: var(--max-w-reading);
+    --container-form: var(--max-w-form);
+    --container-content: var(--max-w-content);
+    --container-wide: var(--max-w-wide);
+    --container-dashboard: var(--max-w-dashboard);
 }
 
 @layer base {

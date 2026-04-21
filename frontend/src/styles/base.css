@@ -1,0 +1,93 @@
+/* ============================================================
+ * Aesthetic Arc Session 1 — Base styles (reduced-motion + brass
+ * focus-visible utility class).
+ *
+ * SCOPED NOT GLOBAL: per the audit-approved migration approach,
+ * this session does NOT replace the existing global
+ * `:focus-visible` treatment (`outline-ring/50` in index.css).
+ * Instead, the brass focus ring is exposed as a reusable
+ * utility class `.focus-ring-brass` that Sessions 2-3 apply to
+ * refreshed components. Non-refreshed components keep the
+ * existing gray ring during the transition.
+ *
+ * Dark-mode font smoothing (Section 4) is applied globally
+ * because it's subtle and safe: enables antialiasing in dark
+ * mode where light text on dark background otherwise reads
+ * too bold from the eye's halo response. Light mode uses
+ * browser-default subpixel antialiasing for small-size sharpness.
+ *
+ * Reduced-motion collapse is global per accessibility floor
+ * (Section 8): every transition and animation collapses to
+ * `--duration-instant` regardless of the token the component
+ * declared. This is the one place globals are appropriate —
+ * accessibility supersedes design-token discipline.
+ * ============================================================ */
+
+/* ─── DARK-MODE FONT SMOOTHING ─── */
+
+[data-mode="dark"] {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── REDUCED MOTION (Section 8 accessibility floor) ─── */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: var(--duration-instant) !important;
+    transition-duration: var(--duration-instant) !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─── BRASS FOCUS-VISIBLE UTILITY (opt-in class) ─── */
+
+/* Apply this class to interactive elements that should use the
+ * DESIGN_LANGUAGE brass focus ring. Composition per Section 6:
+ *   - 2px inner ring matching the surface (creates a gap)
+ *   - 3px outer brass ring at 40% opacity via color-mix
+ *   - matches element radius inherently
+ *   - fades in with `duration-quick` + `ease-settle`
+ *
+ * Sessions 2-3 apply this class to refreshed components. Global
+ * `* { outline-ring/50 }` from index.css keeps firing for
+ * non-refreshed components during the transition window.
+ */
+
+.focus-ring-brass:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--surface-base),
+    0 0 0 5px color-mix(in oklch, var(--accent-brass) 40%, transparent);
+  transition: box-shadow var(--duration-quick) var(--ease-settle);
+}
+
+/* ─── MOTION: NAMED DURATION UTILITIES ───
+ *
+ * Tailwind v4's `--duration-*` theme namespace is NOT one of the
+ * v4-recognized auto-utility namespaces (unlike `--color-*`,
+ * `--text-*`, `--radius-*`, `--shadow-*`, `--ease-*`, `--container-*`).
+ * So the `duration-instant`, `duration-quick`, etc. utilities need
+ * explicit `@utility` declarations to map to our CSS variables.
+ * Without these, `duration-quick` in JSX would be treated as an
+ * arbitrary-value form and fail to resolve.
+ *
+ * (The `ease-*` custom names work out of the box because
+ * `--ease-*` IS an auto-utility namespace in v4.)
+ */
+
+@utility duration-instant {
+  transition-duration: var(--duration-instant);
+}
+@utility duration-quick {
+  transition-duration: var(--duration-quick);
+}
+@utility duration-settle {
+  transition-duration: var(--duration-settle);
+}
+@utility duration-arrive {
+  transition-duration: var(--duration-arrive);
+}
+@utility duration-considered {
+  transition-duration: var(--duration-considered);
+}

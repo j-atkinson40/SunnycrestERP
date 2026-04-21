@@ -1,0 +1,171 @@
+/* ============================================================
+ * Aesthetic Arc Session 1 — DESIGN_LANGUAGE.md Section 9 tokens
+ *
+ * Every token value below is copied verbatim from
+ * DESIGN_LANGUAGE.md Section 9. Do NOT modify values here;
+ * the design language document is the source of truth. If a
+ * token needs to change, edit DESIGN_LANGUAGE.md first, then
+ * port the change here. Silent drift is a bug.
+ *
+ * Token families (copied from DESIGN_LANGUAGE §3 + §9):
+ *   --surface-{base,elevated,raised,sunken}
+ *   --content-{strong,base,muted,subtle,on-brass}
+ *   --border-{subtle,base,strong,brass}
+ *   --shadow-color-{subtle,base,strong} + --shadow-highlight-top (dark only)
+ *   --shadow-level-{1,2,3} (composed from color + highlight)
+ *   --accent-brass{,-hover,-active,-muted,-subtle}
+ *   --status-{error,warning,success,info}{,-muted}
+ *   --font-plex-{sans,serif,mono} (new names — Geist's --font-sans untouched)
+ *   --text-{display-lg,display,h1..h4,body,body-sm,caption,micro}
+ *   --radius-{none,sm,base,md,lg,xl,full} (§9 scale; adds -base + -full; -xl drifts +2px)
+ *   --duration-{instant,quick,settle,arrive,considered}
+ *   --ease-{settle,gentle}
+ *   --max-w-{reading,form,content,wide,dashboard}
+ *
+ * Mode switching: light mode is default at :root; dark mode
+ * activates via `[data-mode="dark"]` on the <html> element.
+ * See frontend/src/lib/theme-mode.ts for the runtime API.
+ * ============================================================ */
+
+:root {
+  /* ─── COLORS — SURFACES ─── */
+  --surface-base: oklch(0.94 0.018 82);
+  --surface-elevated: oklch(0.965 0.014 82);
+  --surface-raised: oklch(0.985 0.010 82);
+  --surface-sunken: oklch(0.91 0.020 82);
+
+  /* ─── COLORS — CONTENT (text + icons) ─── */
+  --content-strong: oklch(0.22 0.015 70);
+  --content-base: oklch(0.30 0.015 70);
+  --content-muted: oklch(0.48 0.014 70);
+  --content-subtle: oklch(0.62 0.012 70);
+  --content-on-brass: oklch(0.98 0.006 82);
+
+  /* ─── COLORS — BORDERS ─── */
+  --border-subtle: oklch(0.88 0.012 80 / 0.6);
+  --border-base: oklch(0.82 0.015 78 / 0.8);
+  --border-strong: oklch(0.70 0.020 76);
+  --border-brass: oklch(0.66 0.12 73 / 0.7);
+
+  /* ─── COLORS — SHADOWS ─── */
+  --shadow-color-subtle: oklch(0.35 0.03 75 / 0.06);
+  --shadow-color-base: oklch(0.35 0.03 75 / 0.10);
+  --shadow-color-strong: oklch(0.32 0.035 72 / 0.16);
+
+  /* ─── COLORS — ACCENTS (brass) ─── */
+  --accent-brass: oklch(0.66 0.12 73);
+  --accent-brass-hover: oklch(0.62 0.13 73);
+  --accent-brass-active: oklch(0.58 0.13 73);
+  --accent-brass-muted: oklch(0.85 0.05 73 / 0.8);
+  --accent-brass-subtle: oklch(0.92 0.025 73 / 0.6);
+
+  /* ─── COLORS — STATUS (replaces legacy hex values; drift accepted) ─── */
+  --status-error: oklch(0.55 0.18 25);
+  --status-error-muted: oklch(0.92 0.04 25);
+  --status-warning: oklch(0.70 0.14 65);
+  --status-warning-muted: oklch(0.94 0.04 65);
+  --status-success: oklch(0.58 0.12 135);
+  --status-success-muted: oklch(0.93 0.04 135);
+  --status-info: oklch(0.55 0.08 225);
+  --status-info-muted: oklch(0.93 0.03 225);
+
+  /* ─── ELEVATION SHADOW COMPOSITIONS ─── */
+  --shadow-level-1: 0 2px 8px var(--shadow-color-base);
+  --shadow-level-2: 0 8px 24px var(--shadow-color-base), 0 2px 6px var(--shadow-color-subtle);
+  --shadow-level-3: 0 16px 40px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base);
+
+  /* ─── TYPOGRAPHY — FAMILIES (Plex, additive to Geist --font-sans) ─── */
+  --font-plex-sans: "IBM Plex Sans Variable", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-plex-serif: "IBM Plex Serif", Georgia, serif;
+  --font-plex-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ─── TYPOGRAPHY — SIZE SCALE (1.25 ratio modular) ─── */
+  --text-display-lg: 3.052rem;
+  --text-display: 2.441rem;
+  --text-h1: 1.953rem;
+  --text-h2: 1.563rem;
+  --text-h3: 1.25rem;
+  --text-h4: 1.125rem;
+  --text-body: 1rem;
+  --text-body-sm: 0.875rem;
+  --text-caption: 0.75rem;
+  --text-micro: 0.6875rem;
+
+  /* ─── BORDER RADIUS (DESIGN_LANGUAGE scale; adds -base + -full; -xl drifts
+   *   +2px from existing 14px to DESIGN_LANGUAGE's 16px — accepted drift) ─── */
+  --radius-base: 6px;
+  --radius-full: 9999px;
+
+  /* ─── MOTION — DURATIONS ─── */
+  --duration-instant: 100ms;
+  --duration-quick: 200ms;
+  --duration-settle: 300ms;
+  --duration-arrive: 400ms;
+  --duration-considered: 600ms;
+
+  /* ─── MOTION — EASING ─── */
+  --ease-settle: cubic-bezier(0.2, 0, 0.1, 1);
+  --ease-gentle: cubic-bezier(0.4, 0, 0.4, 1);
+
+  /* ─── LAYOUT — MAX-WIDTHS ─── */
+  --max-w-reading: 34rem;
+  --max-w-form: 40rem;
+  --max-w-content: 56rem;
+  --max-w-wide: 72rem;
+  --max-w-dashboard: 96rem;
+}
+
+/* ============================================================
+ * Dark mode — activated by [data-mode="dark"] on <html>.
+ * Runtime API: frontend/src/lib/theme-mode.ts.
+ * ============================================================ */
+
+[data-mode="dark"] {
+  /* ─── COLORS — SURFACES ─── */
+  --surface-base: oklch(0.16 0.012 65);
+  --surface-elevated: oklch(0.20 0.014 65);
+  --surface-raised: oklch(0.24 0.016 65);
+  --surface-sunken: oklch(0.13 0.011 65);
+
+  /* ─── COLORS — CONTENT ─── */
+  --content-strong: oklch(0.96 0.012 80);
+  --content-base: oklch(0.90 0.014 75);
+  --content-muted: oklch(0.72 0.014 70);
+  --content-subtle: oklch(0.55 0.012 68);
+  --content-on-brass: oklch(0.18 0.015 60);
+
+  /* ─── COLORS — BORDERS ─── */
+  --border-subtle: oklch(0.35 0.015 65 / 0.5);
+  --border-base: oklch(0.42 0.018 68 / 0.7);
+  --border-strong: oklch(0.55 0.025 70);
+  --border-brass: oklch(0.70 0.13 73 / 0.7);
+
+  /* ─── COLORS — SHADOWS (persist in dark mode + top-edge highlight) ─── */
+  --shadow-color-subtle: oklch(0.08 0.010 60 / 0.35);
+  --shadow-color-base: oklch(0.06 0.010 60 / 0.45);
+  --shadow-color-strong: oklch(0.05 0.010 60 / 0.55);
+  --shadow-highlight-top: oklch(0.42 0.02 78 / 0.45);
+
+  /* ─── COLORS — ACCENTS (brass — hue locked at 73, lightness/chroma lift) ─── */
+  --accent-brass: oklch(0.70 0.13 73);
+  --accent-brass-hover: oklch(0.74 0.13 73);
+  --accent-brass-active: oklch(0.78 0.14 73);
+  --accent-brass-muted: oklch(0.35 0.06 73 / 0.8);
+  --accent-brass-subtle: oklch(0.26 0.04 73 / 0.6);
+
+  /* ─── COLORS — STATUS ─── */
+  --status-error: oklch(0.68 0.17 25);
+  --status-error-muted: oklch(0.28 0.08 25);
+  --status-warning: oklch(0.76 0.14 65);
+  --status-warning-muted: oklch(0.30 0.07 65);
+  --status-success: oklch(0.70 0.13 135);
+  --status-success-muted: oklch(0.28 0.06 135);
+  --status-info: oklch(0.70 0.09 225);
+  --status-info-muted: oklch(0.28 0.05 225);
+
+  /* ─── ELEVATION SHADOWS (dark mode adds inset top-edge highlight per
+   *   Section 2 "material, not paint" anchor) ─── */
+  --shadow-level-1: 0 4px 16px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
+  --shadow-level-2: 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
+  --shadow-level-3: 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 1px 0 var(--shadow-highlight-top);
+}

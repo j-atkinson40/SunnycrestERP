@@ -5,6 +5,30 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bridgeable</title>
+    <!--
+      Aesthetic Arc Session 1 — flash-of-wrong-mode prevention.
+      Synchronous inline script; MUST run before any CSS loads or
+      React hydrates so `data-mode="dark"` is present when the
+      browser parses :root + [data-mode="dark"] token blocks. Per
+      DESIGN_LANGUAGE.md Section 9's mode-switching mechanism.
+      Canonical runtime API is frontend/src/lib/theme-mode.ts;
+      this inline block only handles initial load.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('bridgeable-mode');
+          if (
+            saved === 'dark' ||
+            (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          ) {
+            document.documentElement.setAttribute('data-mode', 'dark');
+          }
+        } catch (e) {
+          /* localStorage access denied (e.g. privacy mode) — default to light. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,0 +1,24 @@
+/* ============================================================
+ * Aesthetic Arc Session 1 — Design Language entry point.
+ *
+ * This file bundles the DESIGN_LANGUAGE.md Session 1 surface:
+ * fonts + tokens + base styles. It is imported from
+ * `frontend/src/index.css` alongside the existing Tailwind +
+ * shadcn imports. Tailwind directives and shadcn tokens stay
+ * in `index.css` — only the Aesthetic Arc additions live here.
+ *
+ * Import order matters:
+ *   1. fonts.css — @font-face declarations must load first so
+ *      subsequent uses of the families resolve immediately.
+ *   2. tokens.css — CSS custom properties at :root and
+ *      [data-mode="dark"]. Safe to load after fonts since the
+ *      --font-plex-* variables reference font families already
+ *      declared.
+ *   3. base.css — reduced-motion + brass focus-visible utility.
+ *      Loads after tokens because it references --accent-brass
+ *      and --surface-base.
+ * ============================================================ */
+
+@import "./fonts.css";
+@import "./tokens.css";
+@import "./base.css";

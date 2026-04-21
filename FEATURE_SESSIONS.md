@@ -6,6 +6,104 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Aesthetic Arc Session 1 — Token Foundation
+
+**Date:** 2026-04-21
+**Migration head:** `r37_approval_gate_email_template` (unchanged — frontend-only).
+**Arc:** Aesthetic Arc — Session 1 of 6. See `AESTHETIC_ARC.md`.
+**Tests passing:** no new tests this session; existing 308 backend (Phase 1–8c) + 165 frontend vitest all green. `tsc -b` clean, `npm run build` clean.
+
+### What shipped — token foundation + mode switching + Plex fonts
+
+Aesthetic Arc Session 1 is pure infrastructure. It makes `DESIGN_LANGUAGE.md` tokens available throughout the platform without refreshing any existing component's appearance (except the one-off accepted status-color hex→oklch drift). Subsequent sessions (2–6) consume these tokens.
+
+**New files (5):**
+- `frontend/src/styles/tokens.css` — all DESIGN_LANGUAGE Section 9 tokens as CSS custom properties. `:root` for light mode defaults; `[data-mode="dark"]` for dark overrides. 57 color tokens (surfaces, content, borders, shadows, accent-brass variants, status variants), 3 elevation-shadow compositions (with automatic dark-mode top-edge highlight), 3 font-family tokens (Plex), 10-entry type scale, 2 radius additions (`--radius-base` + `--radius-full`), 5 durations, 2 easings, 5 max-widths.
+- `frontend/src/styles/fonts.css` — `@import "@fontsource-variable/ibm-plex-sans/standard.css"` (variable 100-700) + `standard-italic.css` + `@fontsource/ibm-plex-serif/500.css` + `@fontsource/ibm-plex-mono/400.css`. Self-hosted; no Google CDN.
+- `frontend/src/styles/base.css` — `prefers-reduced-motion: reduce` collapse, dark-mode font smoothing, `.focus-ring-brass` utility class, 5 `@utility duration-*` declarations (Tailwind v4 needs these explicit since `--duration-*` isn't an auto-utility namespace).
+- `frontend/src/styles/globals.css` — bundles the above three. Imported by `index.css`.
+- `frontend/src/lib/theme-mode.ts` — runtime API (`getMode`, `setMode`, `toggleMode`, `clearMode`) + `useThemeMode()` React hook with custom-event dispatch and system `prefers-color-scheme` subscription.
+
+**Modified files (2):**
+- `frontend/src/index.css` — imports `./styles/globals.css`, extends `@custom-variant dark` to match both `.dark` class (legacy noop) AND `[data-mode="dark"]` attribute (canonical), adds DESIGN_LANGUAGE utility bindings to the `@theme inline` block (every Section 9 token exposed to Tailwind utilities), migrates existing `--status-{success,warning,info,danger}` values from hex (shadcn defaults) to DESIGN_LANGUAGE oklch per approval decision 3.
+- `frontend/index.html` — adds synchronous inline `<script>` in `<head>` for flash-of-wrong-mode prevention (reads `localStorage['bridgeable-mode']` + `prefers-color-scheme` fallback; sets `data-mode="dark"` on `<html>` before any CSS parses).
+
+**Installed packages:** `@fontsource-variable/ibm-plex-sans@5.2.8`, `@fontsource/ibm-plex-serif@5.2.7`, `@fontsource/ibm-plex-mono@5.2.7`. Variable font variants don't exist for Plex Serif / Mono on npm (only Plex Sans has variable). Existing `@fontsource-variable/geist` stays as the platform default until Sessions 2-3 migrate per-component.
+
+### Approved deviations from DESIGN_LANGUAGE.md Section 9
+
+DESIGN_LANGUAGE.md Section 9 is written assuming a Tailwind v3-style `tailwind.config.js`. The Bridgeable frontend uses **Tailwind v4 via `@tailwindcss/vite`** where theme config lives inline in CSS via `@theme inline { ... }`. Session 1 translates each Section 9 JS config entry to `@theme inline` lines:
+
+| Section 9 (Tailwind v3 JS config) | Session 1 (Tailwind v4 `@theme inline` line) |
+|---|---|
+| `colors.surface.base = 'var(...)'` | `--color-surface-base: var(--surface-base);` |
+| `colors.brass.DEFAULT = 'var(...)'` | `--color-brass: var(--accent-brass);` |
+| `fontSize['display-lg'] = [size, { lineHeight, fontWeight }]` | `--text-display-lg: var(--text-display-lg);` + `--text-display-lg--line-height: 1.1;` + `--text-display-lg--font-weight: 500;` |
+| `boxShadow['level-1'] = 'var(...)'` | `--shadow-level-1: var(--shadow-level-1);` |
+| `transitionDuration.quick = 'var(...)'` | `@utility duration-quick { transition-duration: var(--duration-quick); }` (v4's `--duration-*` is not an auto-namespace; needs explicit `@utility`) |
+| `transitionTimingFunction.settle = 'var(...)'` | `--ease-settle: var(--ease-settle);` (v4 `--ease-*` IS an auto-namespace) |
+| `maxWidth.reading = 'var(...)'` | `--container-reading: var(--max-w-reading);` (v4's `--container-*` generates both `max-w-*` and `@container` utilities) |
+| `fontFamily.sans = ['IBM Plex Sans', ...]` | `--font-plex-sans: var(--font-plex-sans);` (new name; `--font-sans` stays Geist) |
+
+DESIGN_LANGUAGE.md Section 9 gets a v4-clarification note added alongside the JS config example pointing at `frontend/src/index.css` as the live mapping — per approval decision 7.
+
+### Other architectural decisions recorded
+
+1. **shadcn token coexistence** (approval decision 8): existing shadcn CSS variables (`--background`, `--foreground`, `--card`, `--popover`, `--primary`, `--muted`, `--destructive`, `--border`, `--input`, `--ring`, `--sidebar*`, `--chart-*`, `--radius`, `--accent`) untouched. DESIGN_LANGUAGE tokens live alongside. Sessions 2-3 migrate component references; final cleanup retires shadcn layer.
+2. **`--font-sans` untouched** (approval decision 1): Plex loaded under `--font-plex-{sans,serif,mono}`. Geist continues as platform default.
+3. **`--radius-xl` +2px drift** (approval decision 2): existing calc-based value stays at 14px; DESIGN_LANGUAGE would be 16px. Sub-perceptual. Added `--radius-base: 6px` + `--radius-full: 9999px` as new names.
+4. **Status-color hex→oklch drift** (approval decision 3 override): `--status-{success,warning,info,danger}` migrated from generic hex to DESIGN_LANGUAGE oklch. The one accepted one-time visual change in Session 1. Small surface area + correct colors > parallel-system mental overhead.
+5. **Dark-mode selector coexistence** (approval decision 4): `@custom-variant dark (&:is(.dark *, [data-mode="dark"] *))` matches both.
+6. **No visible mode toggle UI** (approval decision 5 + Session 2 scope): Session 1 ships runtime API only. Verification via devtools console.
+7. **Tailwind v4 `@theme inline` over JS config** (approval decision 6).
+8. **Plex Sans variable, Serif/Mono non-variable** (approval decision 10).
+9. **Phase 3 Spaces accent system orthogonal** (approval decision 9): `--space-accent*` and `--accent-brass*` coexist cleanly by name. Conceptual relationship is Phase 8e/9 scope.
+10. **Brass focus ring as opt-in utility** (not global replacement): `.focus-ring-brass` class scoped to refreshed components. Existing global `* { outline-ring/50 }` rule stays active so non-refreshed components retain their current focus treatment during the transition window.
+
+### Tailwind utilities now available
+
+Verified in the build output (checked compiled CSS for class-selector presence):
+
+- **Surfaces** — `bg-surface-{base,elevated,raised,sunken}`
+- **Content** — `text-content-{strong,base,muted,subtle,on-brass}`
+- **Borders** — `border-border-{subtle,base,strong,brass}`
+- **Brass** — `bg-brass`, `bg-brass-{hover,active,muted,subtle}` (+ `text-`, `border-`, `ring-` prefixes)
+- **Status** — `text-status-{error,warning,success,info}`, `bg-status-{error,warning,success,info}-muted`
+- **Fonts** — `font-plex-{sans,serif,mono}`
+- **Type scale** — `text-{display-lg,display,h1,h2,h3,h4,body,body-sm,caption,micro}` (each with paired line-height + font-weight)
+- **Radii** — `rounded-{base,full}` added; existing `rounded-{sm,md,lg,xl,2xl,3xl,4xl}` preserved
+- **Shadows** — `shadow-level-{1,2,3}` (dark-mode top-edge highlight automatic)
+- **Durations** — `duration-{instant,quick,settle,arrive,considered}` (100/200/300/400/600 ms)
+- **Easings** — `ease-{settle,gentle}`
+- **Max-widths** — `max-w-{reading,form,content,wide,dashboard}` (34/40/56/72/96 rem)
+- **Utility class** — `.focus-ring-brass`
+
+### Verification results (per the checklist)
+
+- ✅ **Build:** `npm run build` succeeds in ~5s. CSS bundle 200 kB (gzip 31 kB).
+- ✅ **TypeScript:** `tsc -b` clean.
+- ✅ **Frontend tests:** 11 test files, 165/165 vitest green.
+- ✅ **Backend tests:** 308/308 Phase 1-8c green (unchanged; frontend-only session).
+- ✅ **Token resolution:** production CSS contains 134 `[data-mode=dark]` selectors + both light + dark `--surface-base` values.
+- ✅ **Font loading:** 16 Plex `.woff2` files bundled alongside 1 Geist `.woff2`. No external CDN requests.
+- ✅ **Tailwind utility generation:** probe file temporarily added, verified every new class compiled into the CSS bundle, probe file removed before commit.
+- ✅ **Dev server:** starts clean; Vite HMR unaffected.
+- ✅ **Visual regression spot check:** existing pages look identical to pre-Session-1 except status colors (expected — the accepted drift).
+
+### Latent items deferred to future sessions
+
+- **No mode toggle UI yet.** Session 2's settings refresh adds a toggle component consuming `useThemeMode()`.
+- **Component visual refresh** — Sessions 2-3.
+- **Dark mode visual verification across refreshed components** — Session 4.
+- **Motion pass applying `ease-settle` / `duration-*` consistently** — Session 5.
+- **WCAG 2.2 AA audit** — Session 6.
+- **shadcn token retirement** — post-Session-6 cleanup.
+- **Phase 3 Spaces accent vs. brass accent conceptual question** — Phase 8e/9 design scope.
+
+Next: **Session 2 — Core component refresh** (buttons, inputs, cards, modals, dropdowns, navigation). First session that creates observable visual change.
+
+---
+
 ## Workflow Arc Phase 8c — Core Accounting Migrations Batch 1
 
 **Date:** 2026-04-21

@@ -519,6 +519,24 @@ Adapter: `backend/app/services/workflows/expense_categorization_adapter.py`. Fou
 
 **Remaining migrations (Phase 8f):** unbilled_orders, estimated_tax_prep, inventory_reconciliation, budget_vs_actual, 1099_prep, year_end_close, tax_package, annual_budget. Each follows the 9-question audit from template §1 + applies patterns from §5.5 / §10 / §11 as applicable.
 
+### Design System (Aesthetic Arc Session 1)
+
+`DESIGN_LANGUAGE.md` at project root is the canonical source of truth for Bridgeable's visual and sensory design language — Mediterranean garden morning (light mode), cocktail lounge evening (dark mode), aged brass as cross-mode material thread. Every token value in the platform derives from DESIGN_LANGUAGE.md Section 3 (color), Section 4 (typography), Section 5 (spacing), Section 6 (surface + behavior). See `AESTHETIC_ARC.md` for the six-session arc plan.
+
+**Token surface (`frontend/src/styles/`):**
+- `tokens.css` — all DESIGN_LANGUAGE Section 9 tokens as CSS custom properties at `:root` (light mode defaults) + `[data-mode="dark"]` (dark overrides). Token families: `--surface-{base,elevated,raised,sunken}`, `--content-{strong,base,muted,subtle,on-brass}`, `--border-{subtle,base,strong,brass}`, `--shadow-color-*` + `--shadow-level-{1,2,3}`, `--accent-brass{,-hover,-active,-muted,-subtle}`, `--status-{error,warning,success,info}{,-muted}`, `--font-plex-{sans,serif,mono}`, `--text-{display-lg,display,h1..h4,body,body-sm,caption,micro}`, `--radius-{base,full}` (supplements legacy shadcn `--radius-*`), `--duration-{instant,quick,settle,arrive,considered}`, `--ease-{settle,gentle}`, `--max-w-{reading,form,content,wide,dashboard}`.
+- `fonts.css` — self-hosted via `@fontsource-variable/ibm-plex-sans` (variable 100-700) + `@fontsource/ibm-plex-serif/500.css` + `@fontsource/ibm-plex-mono/400.css`. No Google Fonts CDN.
+- `base.css` — reduced-motion collapse (`prefers-reduced-motion: reduce`), dark-mode font smoothing, brass focus-visible utility class `.focus-ring-brass`, explicit `@utility duration-{instant,quick,settle,arrive,considered}` declarations (Tailwind v4 doesn't auto-generate `duration-*` utilities from `--duration-*` namespace).
+- `globals.css` — entry point imported by `frontend/src/index.css`.
+
+**Tailwind v4 via `@theme inline`:** DESIGN_LANGUAGE Section 9 shows tokens as a Tailwind v3-style `tailwind.config.js`; the actual implementation uses Tailwind v4's `@theme inline { ... }` block inside `frontend/src/index.css`. Each Section 9 config entry translates to an `@theme` line (`--color-surface-base: var(--surface-base)`, `--font-plex-sans: var(...)`, etc.). DESIGN_LANGUAGE.md Section 9 carries a v4-clarification note pointing at `frontend/src/index.css` as the live mapping.
+
+**Mode switching:** initial mode set by a synchronous inline script in `frontend/index.html` head (reads `localStorage['bridgeable-mode']` + `prefers-color-scheme` fallback; sets `data-mode="dark"` on `<html>` before any CSS loads — prevents flash-of-wrong-mode). Runtime API at `frontend/src/lib/theme-mode.ts`: `getMode()`, `setMode(mode)`, `toggleMode()`, `clearMode()` (revert to system preference), and `useThemeMode()` React hook that subscribes to custom-event dispatches and system `prefers-color-scheme` changes. **No mode toggle UI yet** — that's Session 2's settings-refresh concern. Setting `document.documentElement.setAttribute("data-mode", "dark")` in devtools console toggles mode for manual verification.
+
+**Coexistence with existing shadcn tokens:** all existing shadcn CSS variables (`--background`, `--foreground`, `--card`, `--popover`, `--primary`, `--muted`, `--destructive`, `--border`, `--input`, `--ring`, `--sidebar*`, `--chart-*`, `--radius`, `--accent`, etc.) remain untouched. Sessions 2-3 refactor platform components to consume DESIGN_LANGUAGE tokens (`bg-surface-base`, `text-content-strong`, `bg-brass`, `shadow-level-1`, etc.); a final cleanup session retires the shadcn layer when no references remain. `--font-sans` stays `Geist Variable`; Plex loaded under new names `--font-plex-{sans,serif,mono}` / Tailwind utilities `font-plex-{sans,serif,mono}`. `@custom-variant dark` extended to match both legacy `.dark` class (noop — never set today) and canonical `[data-mode="dark"]` attribute.
+
+**Session 1 shipped:** 4 new CSS files (`tokens.css`, `fonts.css`, `base.css`, `globals.css`), 1 new TS module (`theme-mode.ts`), `index.css` + `index.html` modifications. Status color values migrated from hex to oklch (accepted one-time drift). Existing 308 backend + 165 frontend vitest tests unchanged. Session 2 begins component refresh.
+
 ## 5. Database
 
 - **~235 tables** (ORM models for all but the orphaned `tenant_settings` table)

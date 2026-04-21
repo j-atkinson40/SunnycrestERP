@@ -1,0 +1,30 @@
+/* ============================================================
+ * Aesthetic Arc Session 1 — Plex font family imports
+ *
+ * Self-hosted via @fontsource(-variable). No Google Fonts CDN.
+ * Per DESIGN_LANGUAGE.md Section 4:
+ *   - IBM Plex Sans (variable 100-700) — primary UI typeface
+ *   - IBM Plex Serif 500 only — gravitas moments display face
+ *   - IBM Plex Mono 400 only — structured data (IDs, timestamps)
+ *
+ * Weight 400 italic for Plex Sans is included for inline semantic
+ * italics (titles of works, foreign-language terms) per Section 4.
+ *
+ * Plex is ADDITIVE this session — loaded alongside the existing
+ * Geist font. Platform continues using Geist via the existing
+ * `--font-sans` token; Plex becomes available under new tokens
+ * `--font-plex-sans`, `--font-plex-serif`, `--font-plex-mono` and
+ * the Tailwind `font-plex-sans` / `-serif` / `-mono` utilities.
+ * Sessions 2-3 migrate components to Plex.
+ * ============================================================ */
+
+/* IBM Plex Sans — variable font covering weights 100-700.
+   Used for any weight between 100-700 (we use 400, 500, 600). */
+@import "@fontsource-variable/ibm-plex-sans/standard.css";
+@import "@fontsource-variable/ibm-plex-sans/standard-italic.css";
+
+/* IBM Plex Serif — 500 (Medium) only, display use per Section 4. */
+@import "@fontsource/ibm-plex-serif/500.css";
+
+/* IBM Plex Mono — 400 (Regular) only, structured-data use. */
+@import "@fontsource/ibm-plex-mono/400.css";
