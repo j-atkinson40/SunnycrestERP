@@ -152,11 +152,29 @@
   --border-strong: oklch(0.55 0.025 70);
   --border-brass: oklch(0.70 0.13 73 / 0.7);
 
-  /* ─── COLORS — SHADOWS (persist in dark mode + top-edge highlight) ─── */
+  /* ─── COLORS — SHADOWS (persist in dark mode + top-edge highlight) ───
+   *   Tier-2 spec-reconciliation (April 2026): card chrome in dark
+   *   mode was reading less-distinct than the approved reference
+   *   mockup. Diagnostic identified three convergent adjustments per
+   *   DESIGN_LANGUAGE §1 dark-mode anchor 2 ("catches warm light
+   *   pools") and anchor 4 ("material, not paint"):
+   *     (1) --shadow-highlight-top strengthened — L 0.42 → 0.48
+   *         brighter, α 0.45 → 0.65 more opaque. Reads as focused
+   *         light caught on the card's top edge rather than a
+   *         whisper of reflection.
+   *     (2) --shadow-level-1/2/3 gain a tight grounding shadow
+   *         (1px/2px/3px offset × 3px/4px/6px blur) BEFORE the
+   *         existing soft halo. Grounds the card on the page
+   *         surface instead of floating in a gaseous halo.
+   *     (3) Cards gain `border border-border-subtle` — the
+   *         "warm hairline border that reads as metal edge" option
+   *         §1 anchor 4 canonically permits, promoted from optional
+   *         cue to canonical card treatment.
+   *   Mirror discipline: DL §3 + §6 updated in the same commit. */
   --shadow-color-subtle: oklch(0.08 0.010 60 / 0.35);
   --shadow-color-base: oklch(0.06 0.010 60 / 0.45);
   --shadow-color-strong: oklch(0.05 0.010 60 / 0.55);
-  --shadow-highlight-top: oklch(0.42 0.02 78 / 0.45);
+  --shadow-highlight-top: oklch(0.48 0.02 78 / 0.65);
 
   /* ─── COLORS — ACCENTS (brass — hue locked at 73, lightness/chroma lift) ─── */
   --accent-brass: oklch(0.70 0.13 73);
@@ -189,9 +207,15 @@
    *   edge). 0.40 → 0.48 lifts contrast to ~3.5:1. */
   --focus-ring-alpha: 0.48;
 
-  /* ─── ELEVATION SHADOWS (dark mode adds inset top-edge highlight per
-   *   Section 2 "material, not paint" anchor) ─── */
-  --shadow-level-1: 0 4px 16px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
-  --shadow-level-2: 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
-  --shadow-level-3: 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 1px 0 var(--shadow-highlight-top);
+  /* ─── ELEVATION SHADOWS (dark mode — three-layer composition per
+   *   Tier-2 spec-reconciliation: tight grounding shadow + soft halo
+   *   + inset top-edge highlight). The tight ground shadow grounds
+   *   the card on the page; the soft halo provides atmospheric
+   *   depth; the inset highlight catches implied lamplight on the
+   *   top edge. All three layers are necessary — dark-mode shadows
+   *   need more composition to carry elevation than light mode
+   *   because low-lightness deltas are perceptually compressed. ─── */
+  --shadow-level-1: 0 1px 3px var(--shadow-color-strong), 0 4px 16px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
+  --shadow-level-2: 0 2px 4px var(--shadow-color-strong), 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
+  --shadow-level-3: 0 3px 6px var(--shadow-color-strong), 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 1px 0 var(--shadow-highlight-top);
 }

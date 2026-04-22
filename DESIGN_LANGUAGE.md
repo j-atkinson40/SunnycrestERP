@@ -88,9 +88,9 @@ Five sensory anchors define dark mode. Same derivation principle as light mode.
 - **Implementation:** Same base brass hue as light mode, adjusted for lightness against the dark background to maintain legibility and mood. Active states shift hue slightly toward amber. Specific values locked in Section 3.
 
 **4. Material, not paint.**
-- **Rule:** Surfaces feel like material — leather, wood, brushed metal, stone in low light — rather than flat paint. The cue may be a subtle top-edge highlight, a barely-perceptible surface gradient on elevated elements, or a warm hairline border that reads as metal edge rather than line.
-- **Rationale:** Cocktail lounge surfaces are material. You can feel the wood of the bar, the leather of the seat, the brass of the rail. "Material, not paint" is the durable principle; the specific techniques (top-edge highlight, hairline brass edge) are ways to achieve it. This anchor replaces the earlier "polished reflection" framing, which risked tipping into skeuomorphic. The principle is material logic, not decoration.
-- **Implementation:** Elevation-bearing surfaces get material treatment. Flat surfaces do not. Specific treatments locked in Section 6.
+- **Rule:** Surfaces feel like material — leather, wood, brushed metal, stone in low light — rather than flat paint. Three convergent cues carry the material signal: (1) a top-edge highlight that reads as focused light caught on a metal edge, (2) a barely-perceptible surface gradient on elevated elements, and (3) a warm hairline border (`--border-subtle`) that reads as metal edge rather than line. All three are used together for cards; the top-edge highlight alone carries overlays.
+- **Rationale:** Cocktail lounge surfaces are material. You can feel the wood of the bar, the leather of the seat, the brass of the rail. "Material, not paint" is the durable principle. Dark mode requires more cues than light mode because low-lightness surface deltas are perceptually compressed — a single subtle cue (e.g., lightness lift alone) disappears visually. Three cues stacked produce the same "material presence" that a warm shadow alone produces in light mode.
+- **Implementation:** Cards (the canonical elevation-bearing surface) carry all three cues: inset top-edge highlight via `--shadow-highlight-top`, surface lightness lift via `--surface-elevated`, and a `border border-border-subtle` perimeter that reads as warm metal edge in dark mode (and as atmospheric-weight whisper in light mode — the same token renders consistently with mode). Overlays (dialogs, popovers) use the top-edge highlight + shadow alone; perimeter border is reserved for cards. Specific treatments locked in Section 6.
 
 **5. Deliberate, weighted motion.**
 - **Rule:** Motion character is the same as light mode — unhurried, ease-out, settles rather than snaps — but with a slightly more weighted feel. Evening tempo. Like settling into a chair rather than moving through a doorway.
@@ -395,7 +395,7 @@ Not every token has every variant. The table below lists all defined tokens.
 | `--shadow-color-subtle` | `oklch(0.35 0.03 75) / 0.06` | `oklch(0.08 0.010 60) / 0.35` |
 | `--shadow-color-base` | `oklch(0.35 0.03 75) / 0.10` | `oklch(0.06 0.010 60) / 0.45` |
 | `--shadow-color-strong` | `oklch(0.32 0.035 72) / 0.16` | `oklch(0.05 0.010 60) / 0.55` |
-| `--shadow-highlight-top` | *not used* | `oklch(0.42 0.02 78) / 0.45` |
+| `--shadow-highlight-top` | *not used* | `oklch(0.48 0.02 78) / 0.65` |
 
 *Notes:*
 - `shadow-highlight-top` is the top-edge highlight used on elevated surfaces in dark mode per Section 2's "material, not paint" anchor. It's a thin (1px) inset highlight that reads as reflected warm light. Not used in light mode.
@@ -522,11 +522,15 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --border-strong: oklch(0.55 0.025 70);
   --border-brass: oklch(0.70 0.13 73 / 0.7);
 
-  /* Shadows */
+  /* Shadows — Tier-2 spec-reconciliation (April 2026):
+     --shadow-highlight-top L 0.42 / α 0.45 → L 0.48 / α 0.65.
+     Reads as focused light caught on top edge rather than whisper
+     of reflection. Supports §1 dark-mode anchor 2 ("catches warm
+     light pools"). */
   --shadow-color-subtle: oklch(0.08 0.010 60 / 0.35);
   --shadow-color-base: oklch(0.06 0.010 60 / 0.45);
   --shadow-color-strong: oklch(0.05 0.010 60 / 0.55);
-  --shadow-highlight-top: oklch(0.42 0.02 78 / 0.45);
+  --shadow-highlight-top: oklch(0.48 0.02 78 / 0.65);
 
   /* Accents */
   --accent-brass: oklch(0.70 0.13 73);
@@ -906,21 +910,22 @@ Shadows are the primary mechanism for communicating elevation in light mode and 
 | 2 (raised) | `0 8px 24px var(--shadow-color-base), 0 2px 6px var(--shadow-color-subtle)` |
 | 3 (floating) | `0 16px 40px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base)` |
 
-**Dark mode shadows:**
+**Dark mode shadows (three-layer composition — Tier-2 spec-reconciliation, April 2026):**
 
 | Level | Shadow composition |
 |---|---|
 | 0 (base) | *no shadow* |
-| 1 (elevated) | `0 4px 16px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top)` |
-| 2 (raised) | `0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top)` |
-| 3 (floating) | `0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 1px 0 var(--shadow-highlight-top)` |
+| 1 (elevated) | `0 1px 3px var(--shadow-color-strong), 0 4px 16px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top)` |
+| 2 (raised) | `0 2px 4px var(--shadow-color-strong), 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top)` |
+| 3 (floating) | `0 3px 6px var(--shadow-color-strong), 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 1px 0 var(--shadow-highlight-top)` |
 
 **Notes on the composition:**
 
 - Dark-mode shadows are larger and softer than light-mode shadows — shadows in low light naturally diffuse more. The blur is roughly 2x the light-mode equivalent at each level.
-- Dark-mode shadows include an `inset 0 1px 0` top-edge highlight using `--shadow-highlight-top`. This is the "material, not paint" anchor expressed concretely: elevated surfaces catch implied lamplight on their top edge. The highlight is 1px, low-opacity, warm-tinted. It reads as light reflection, not as a border.
-- Light-mode shadows do not use the inset highlight. Material presence in light mode comes from the warm base color itself and from the shadow warmth, not from reflection.
-- The two-shadow composition (a larger, softer shadow plus a smaller, tighter shadow) is used for level 2 and 3 because single shadows at those distances start to look gaseous. The tighter shadow grounds the element; the larger shadow provides atmosphere.
+- **Dark mode uses a three-layer composition for every elevation level** (tight grounding shadow + soft atmospheric halo + inset top-edge highlight). The tight grounding shadow roots the element on the page surface. The soft halo provides atmospheric depth. The inset highlight catches implied lamplight on the top edge. Three layers are necessary because low-lightness surface deltas are perceptually compressed in dark mode — the warm base color alone doesn't carry enough elevation signal.
+- Light-mode shadows use a one-shadow composition at level 1 and a two-shadow composition at levels 2–3. Material presence in light mode comes from the warm base color itself and the shadow warmth, not from explicit reflection + grounding.
+- Dark-mode shadows include an `inset 0 1px 0` top-edge highlight using `--shadow-highlight-top` (`oklch(0.48 0.02 78 / 0.65)`). This is the "material, not paint" anchor (§1 dark-mode anchor 4) expressed concretely: elevated surfaces catch implied lamplight on their top edge. The highlight reads as focused light caught on a metal edge, not as a border outline.
+- Tier-2 reconciliation history (April 2026): pre-reconciliation, dark-mode shadows used a simpler two-layer composition (soft halo + inset highlight only) with L=0.42 α=0.45 highlight. Live rendering read less-distinct than the approved reference mockup. Audit traced to three convergent causes — weak highlight, gaseous halo with no grounding, no perimeter border. Addressed by (a) strengthening highlight-top to L=0.48 α=0.65, (b) adding tight grounding shadow to all three levels, (c) promoting the "warm hairline border" option from §1 anchor 4 to canonical card treatment (see Border treatment below).
 
 ### Border treatment
 
@@ -931,6 +936,21 @@ Borders in Bridgeable are subtle by default. Structural hierarchy comes from ele
 - Interactive elements (inputs, dropdowns) use `--border-base` for visible definition.
 - `--border-strong` is reserved for content that needs to hold its weight (table column rules, section dividers that carry real structural meaning).
 - `--border-brass` is used for focus states and selected states only. Not a general-purpose border.
+
+**Card perimeter border (canonical):**
+Cards carry a `border border-border-subtle` perimeter in both modes. This is the "warm hairline border that reads as metal edge" cue §1 dark-mode anchor 4 specifies as a canonical "material, not paint" technique.
+
+- **Light mode** (`--border-subtle` computes to `oklch(0.88 0.012 80 / 0.6)` — composited over `--surface-base` `oklch(0.94 0.018 82)`): reads as an atmospheric-weight whisper border. Present enough to crisp the card edge against the page, invisible-feeling on casual view. Consistent with the "deliberate restraint" meta-anchor.
+- **Dark mode** (`--border-subtle` computes to `oklch(0.35 0.015 65 / 0.5)` — composited over `--surface-base` `oklch(0.16 0.012 65)`): reads as a warm metal edge — the cue from §1 anchor 4. Combined with the inset top-edge highlight (`--shadow-highlight-top`) and the surface lightness lift (`--surface-elevated`), this produces the three-cue material treatment that carries card elevation in dark mode.
+
+**Overlay perimeter border:**
+Dialogs, popovers, dropdown menus, and slide-overs use the same `--border-subtle` perimeter. They do not add an additional `border-base` or `border-strong` — the shadow + surface composition carries the elevation signal; the border serves to crisp the overlay edge.
+
+**What NOT to add borders to:**
+- Page backgrounds (the page IS the surface, not an element on a surface).
+- Row items in lists — rely on row padding + horizontal divider `border-b border-border-subtle` where rules are needed.
+- Badge/pill primitives — they use `bg-*-muted` color fill; adding a border would conflict with the pill shape's visual weight.
+- Buttons — the button has its own chrome (background + text color + shadow on hover). A perimeter border on brass primary would be visually redundant.
 
 **Border radius scale:**
 
@@ -1673,11 +1693,12 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --border-strong: oklch(0.55 0.025 70);
   --border-brass: oklch(0.70 0.13 73 / 0.7);
 
-  /* Shadows */
+  /* Shadows — Tier-2 spec-reconciliation (April 2026):
+     --shadow-highlight-top L 0.42 / α 0.45 → L 0.48 / α 0.65. */
   --shadow-color-subtle: oklch(0.08 0.010 60 / 0.35);
   --shadow-color-base: oklch(0.06 0.010 60 / 0.45);
   --shadow-color-strong: oklch(0.05 0.010 60 / 0.55);
-  --shadow-highlight-top: oklch(0.42 0.02 78 / 0.45);
+  --shadow-highlight-top: oklch(0.48 0.02 78 / 0.65);
 
   /* Accents */
   --accent-brass: oklch(0.70 0.13 73);
@@ -1696,10 +1717,11 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --status-info: oklch(0.70 0.09 225);
   --status-info-muted: oklch(0.28 0.05 225);
 
-  /* Dark mode shadows include top-edge highlight */
-  --shadow-level-1: 0 4px 16px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
-  --shadow-level-2: 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
-  --shadow-level-3: 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 1px 0 var(--shadow-highlight-top);
+  /* Dark mode shadows — Tier-2 three-layer composition:
+     tight grounding shadow + soft halo + inset top-edge highlight. */
+  --shadow-level-1: 0 1px 3px var(--shadow-color-strong), 0 4px 16px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
+  --shadow-level-2: 0 2px 4px var(--shadow-color-strong), 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
+  --shadow-level-3: 0 3px 6px var(--shadow-color-strong), 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 1px 0 var(--shadow-highlight-top);
 }
 ```
 
