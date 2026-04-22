@@ -47,6 +47,12 @@ first. For the current platform state, see `CLAUDE.md`.
 - **Dialog primitive choice:** plan did not specify; chose base-ui Dialog after verification, documented in PA §5.15 for future sessions.
 - **Tests:** plan said `frontend/tests/focus/` — user overrode to colocated per existing convention.
 
+### Visual verification
+
+**Confirmed 2026-04-22:** all 10 manual test cases pass on `http://localhost:5173/dev/focus-test` against the `testco` seeded tenant. Backdrop blur + anchored-core render, backdrop-click dismiss, ESC dismiss, URL sync (`?focus=<id>` persists across refresh), return pill with correct label, pill click-to-reopen, pill X dismiss, Command Bar hidden during Focus (Cmd+K suppressed), focus trap keeps Tab cycling inside the core, all three test buttons propagate labels correctly. Foundation solid for Session 2.
+
+Pre-verification blockers resolved in-session: (a) stale Vite server on port 5173 killed + fresh dev server bound; (b) `seed_staging.py:890` KB-category key mismatch fixed (`cat_ids["Pricing"]` → `cat_ids["Product Pricing"]` — was rolling back the entire seed transaction); (c) April-8 orphan `admin@testco.com` user (attached to `default` company, audit_logs FK prevented hard delete) renamed + deactivated to free the email address for the seed's `_seed_users`; (d) `testco` tenant seeded from scratch against local `bridgeable_dev` (7 users, 25 products, 8 company entities, 3 invoices — all 4 seed-verification queries pass). Operational notes for future sessions added to CLAUDE.md §7 Local dev seeding.
+
 ### Next session (Phase A Session 2)
 
 Anchored core mode dispatcher: render different core types (Kanban, single-record, edit canvas, triage queue, matrix) based on the open Focus's configuration. Push-back scale revisit. Session 3 follows with free-form canvas + widget placement.
