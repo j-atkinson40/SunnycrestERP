@@ -1,6 +1,7 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { useLayout } from "@/contexts/layout-context";
+import { useFocus } from "@/contexts/focus-context";
 import { Sidebar } from "./sidebar";
 import { MobileTabBar } from "./mobile-tab-bar";
 import { ModeToggle } from "./ModeToggle";
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 export function AppLayout() {
   const { user, logout } = useAuth();
   const { hideTabBar } = useLayout();
+  const { isOpen: focusIsOpen } = useFocus();
   const navigate = useNavigate();
 
   function handleLogout() {
@@ -59,7 +61,19 @@ export function AppLayout() {
           </div>
         </header>
         <AccountingReminderBanner />
-        <main className={cn("flex-1 overflow-y-auto p-6 md:pb-6", hideTabBar ? "pb-6" : "pb-20")}>
+        {/* Phase A Session 2 — push-back scale (PA §5.2 signal).
+            Main content scales to 0.98 when a Focus is open. Sibling
+            <Sidebar> + <header> + <MobileTabBar> remain viewport-
+            anchored because they are NOT descendants of this element
+            — CSS transform's containing-block effect on fixed
+            descendants does not reach them. CSS rule lives in
+            base.css keyed on the data-focus-pushback attribute.
+            Reduced-motion users get an instant transition per the
+            global prefers-reduced-motion retrofit. */}
+        <main
+          data-focus-pushback={focusIsOpen ? "true" : "false"}
+          className={cn("flex-1 overflow-y-auto p-6 md:pb-6", hideTabBar ? "pb-6" : "pb-20")}
+        >
           <Outlet />
         </main>
       </div>

@@ -32,8 +32,12 @@ function OpenerButtons() {
   const { open } = useFocus();
   return (
     <div>
-      <button data-testid="open-a" onClick={() => open("focus-a")}>
-        open a
+      {/* Uses a registered Session-2 stub id so the dispatcher
+          resolves to KanbanCore instead of the unknown-focus
+          error state. Session 1 used an ad-hoc id; Session 2's
+          dispatcher requires registry presence. */}
+      <button data-testid="open-a" onClick={() => open("test-kanban")}>
+        open kanban
       </button>
     </div>
   );
@@ -52,27 +56,26 @@ describe("Focus component", () => {
   });
 
   it("renders backdrop + popup when a Focus is open", async () => {
-    render(<Harness openOnMount="focus-a" />);
+    render(<Harness openOnMount="test-kanban" />);
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveAttribute("aria-label", "Focus: focus-a");
+    expect(dialog).toHaveAttribute("aria-label", "Focus: test-kanban");
   });
 
-  it("opening a Focus renders the placeholder content with the id", async () => {
+  it("opening a Focus renders the dispatched core for its mode", async () => {
     render(<Harness openOnMount={null} />);
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("open-a"));
 
-    expect(await screen.findByText("focus-a")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Anchored core placeholder/i),
-    ).toBeInTheDocument();
+    // KanbanCore renders its displayName as title + "Core mode · kanban" eyebrow.
+    expect(await screen.findByText("Kanban stub")).toBeInTheDocument();
+    expect(screen.getByText(/Core mode.*kanban/i)).toBeInTheDocument();
   });
 
   it("pressing Escape closes the Focus", async () => {
-    render(<Harness openOnMount="focus-a" />);
+    render(<Harness openOnMount="test-kanban" />);
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
@@ -83,7 +86,7 @@ describe("Focus component", () => {
   });
 
   it("sets aria-modal via the base-ui dialog primitive", async () => {
-    render(<Harness openOnMount="focus-a" />);
+    render(<Harness openOnMount="test-kanban" />);
 
     const dialog = await screen.findByRole("dialog");
     // base-ui Dialog.Popup renders role="dialog" with aria-modal="true"

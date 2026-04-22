@@ -55,13 +55,23 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import type { LayoutState } from "./focus-registry";
+
 
 /** Active Focus session state. `params` reserved for later sessions
- *  (entity scope, preset overrides, etc.). */
+ *  (entity scope, preset overrides, etc.). `layoutState` holds the
+ *  session-ephemeral layout tier (Session 2 scaffolding); Session 4
+ *  adds the per-user + tenant-default tiers via `focus_sessions` +
+ *  `focus_layout_defaults` tables. */
 export interface FocusState {
   id: string;
   openedAt: Date;
   params: Record<string, unknown>;
+  /** Session-ephemeral layout — resets on Focus close. Null until
+   *  the consumer calls `updateSessionLayout(...)`. Session 4 seeds
+   *  this from `config.defaultLayout?.userOverride ?? tenantDefault`
+   *  on open. */
+  layoutState: LayoutState | null;
 }
 
 
@@ -90,6 +100,10 @@ export interface FocusContextValue {
   /** Dismiss the return pill without re-entering the Focus. Clears
    *  `lastClosedFocus`. */
   dismissReturnPill: () => void;
+  /** Patch the current Focus's session-ephemeral layout state. No-op
+   *  if no Focus is open. Session 2 persists only in memory; Session
+   *  4 wires `focus_sessions` for per-user persistence. */
+  updateSessionLayout: (patch: Partial<LayoutState>) => void;
 }
 
 
@@ -146,6 +160,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
           id: focusParam,
           openedAt: new Date(),
           params: pendingParamsRef.current ?? {},
+          layoutState: null,
         };
         pendingParamsRef.current = null;
         setCurrentFocus(newFocus);
@@ -192,6 +207,24 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     setLastClosedFocus(null);
   }, []);
 
+  const updateSessionLayout = useCallback(
+    (patch: Partial<LayoutState>) => {
+      setCurrentFocus((prev) => {
+        if (prev === null) return prev;
+        const base: LayoutState = prev.layoutState ?? { widgets: {} };
+        return {
+          ...prev,
+          layoutState: {
+            ...base,
+            ...patch,
+            widgets: { ...base.widgets, ...(patch.widgets ?? {}) },
+          },
+        };
+      });
+    },
+    [],
+  );
+
   const value = useMemo<FocusContextValue>(
     () => ({
       currentFocus,
@@ -200,8 +233,16 @@ export function FocusProvider({ children }: { children: ReactNode }) {
       open,
       close,
       dismissReturnPill,
+      updateSessionLayout,
     }),
-    [currentFocus, lastClosedFocus, open, close, dismissReturnPill],
+    [
+      currentFocus,
+      lastClosedFocus,
+      open,
+      close,
+      dismissReturnPill,
+      updateSessionLayout,
+    ],
   );
 
   return (

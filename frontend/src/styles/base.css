@@ -98,3 +98,28 @@
 @utility duration-considered {
   transition-duration: var(--duration-considered);
 }
+
+/* ─── FOCUS PRIMITIVE PUSH-BACK (Phase A Session 2) ───
+ *
+ * Main content area scales to 0.98 when a Focus is open, per PA §5.2
+ * "push-back" signal. Applied to <main> in AppLayout via the
+ * data-focus-pushback attribute — scoped intentionally to exclude
+ * <Sidebar>, <header>, and <MobileTabBar>, which are siblings of
+ * <main> inside AppLayout. CSS transform would create a containing
+ * block for fixed descendants on Safari + some Chromium builds, but
+ * there are no fixed descendants inside <main> (all fixed chrome
+ * lives outside), so the scope is safe.
+ *
+ * transform-origin center keeps the backdrop centered over the
+ * scaled content. Transition duration + easing match the Focus
+ * overlay's enter/exit so push-back and backdrop animate in sync.
+ * Reduced-motion users get instant scale per the global retrofit
+ * above. */
+main[data-focus-pushback="true"] {
+  transform: scale(0.98);
+  transform-origin: center center;
+}
+main[data-focus-pushback] {
+  transition: transform var(--duration-arrive) var(--ease-settle);
+  transform-origin: center center;
+}

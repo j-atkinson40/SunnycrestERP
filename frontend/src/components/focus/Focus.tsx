@@ -52,6 +52,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { useFocus } from "@/contexts/focus-context"
 import { cn } from "@/lib/utils"
+import { ModeDispatcher } from "./mode-dispatcher"
 
 
 export function Focus() {
@@ -104,45 +105,9 @@ export function Focus() {
           )}
           style={{ zIndex: "var(--z-focus)" }}
         >
-          {currentFocus && <FocusPlaceholder id={currentFocus.id} />}
+          {currentFocus && <ModeDispatcher focusId={currentFocus.id} />}
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
-  )
-}
-
-
-/**
- * Placeholder content for Session 1. Session 2 replaces this with
- * the anchored-core mode dispatcher (Kanban, single-record, edit
- * canvas, triage queue, matrix).
- */
-function FocusPlaceholder({ id }: { id: string }) {
-  return (
-    <div className="flex h-full flex-col gap-4">
-      <header className="flex flex-col gap-1">
-        <p className="text-micro uppercase tracking-wider text-content-muted">
-          Focus · scaffolding
-        </p>
-        <h2 className="text-h2 font-plex-serif text-content-strong">
-          {id}
-        </h2>
-      </header>
-      <div className="flex-1 rounded-md border border-dashed border-border-base bg-surface-sunken/40 p-6">
-        <p className="text-body-sm text-content-muted">
-          Anchored core placeholder. Session 2 adds core-mode dispatch
-          (Kanban, single-record, edit canvas, triage queue, matrix).
-          Session 3 adds the free-form canvas for pins. Session 5–6
-          wires saved + context-aware + system-suggested pins. This
-          page is intentionally bare in Session 1.
-        </p>
-      </div>
-      <footer className="flex items-center gap-2 text-body-sm text-content-muted">
-        <kbd className="rounded border border-border-subtle bg-surface-elevated px-2 py-0.5 font-plex-mono text-micro">
-          Esc
-        </kbd>
-        <span>or click outside to dismiss</span>
-      </footer>
-    </div>
   )
 }

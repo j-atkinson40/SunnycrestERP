@@ -16,8 +16,15 @@ import { FocusProvider, useFocus } from "./focus-context";
 
 
 function ConsumerProbe() {
-  const { currentFocus, lastClosedFocus, isOpen, open, close, dismissReturnPill } =
-    useFocus();
+  const {
+    currentFocus,
+    lastClosedFocus,
+    isOpen,
+    open,
+    close,
+    dismissReturnPill,
+    updateSessionLayout,
+  } = useFocus();
   const location = useLocation();
   return (
     <div>
@@ -25,6 +32,11 @@ function ConsumerProbe() {
       <span data-testid="current-id">{currentFocus?.id ?? ""}</span>
       <span data-testid="last-closed-id">{lastClosedFocus?.id ?? ""}</span>
       <span data-testid="url-search">{location.search}</span>
+      <span data-testid="layout-widget-count">
+        {currentFocus?.layoutState
+          ? String(Object.keys(currentFocus.layoutState.widgets).length)
+          : "none"}
+      </span>
       <button data-testid="open-a" onClick={() => open("focus-a")}>
         open a
       </button>
@@ -42,6 +54,22 @@ function ConsumerProbe() {
       </button>
       <button data-testid="dismiss-pill" onClick={dismissReturnPill}>
         dismiss
+      </button>
+      <button
+        data-testid="patch-layout"
+        onClick={() =>
+          updateSessionLayout({ widgets: { "widget-1": { row: 1, col: 1 } } })
+        }
+      >
+        patch
+      </button>
+      <button
+        data-testid="patch-layout-more"
+        onClick={() =>
+          updateSessionLayout({ widgets: { "widget-2": { row: 2, col: 3 } } })
+        }
+      >
+        patch more
       </button>
     </div>
   );
@@ -172,6 +200,63 @@ describe("FocusProvider — URL as source of truth", () => {
     renderProvider(["/?focus=from-mount"]);
     expect(await screen.findByTestId("is-open")).toHaveTextContent("true");
     expect(screen.getByTestId("current-id")).toHaveTextContent("from-mount");
+  });
+});
+
+
+describe("FocusProvider — layout state (Session 2 scaffold)", () => {
+  it("currentFocus.layoutState is null on open", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await user.click(screen.getByTestId("open-a"));
+
+    expect(screen.getByTestId("layout-widget-count")).toHaveTextContent("none");
+  });
+
+  it("updateSessionLayout() patches widgets into layoutState", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await user.click(screen.getByTestId("open-a"));
+    await user.click(screen.getByTestId("patch-layout"));
+
+    expect(screen.getByTestId("layout-widget-count")).toHaveTextContent("1");
+  });
+
+  it("subsequent patches merge (not replace) widgets", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await user.click(screen.getByTestId("open-a"));
+    await user.click(screen.getByTestId("patch-layout"));
+    await user.click(screen.getByTestId("patch-layout-more"));
+
+    expect(screen.getByTestId("layout-widget-count")).toHaveTextContent("2");
+  });
+
+  it("updateSessionLayout() is a no-op when no Focus is open", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await user.click(screen.getByTestId("patch-layout"));
+
+    expect(screen.getByTestId("is-open")).toHaveTextContent("false");
+    expect(screen.getByTestId("layout-widget-count")).toHaveTextContent("none");
+  });
+
+  it("closing and reopening resets layoutState to null (ephemeral)", async () => {
+    const user = userEvent.setup();
+    renderProvider();
+
+    await user.click(screen.getByTestId("open-a"));
+    await user.click(screen.getByTestId("patch-layout"));
+    expect(screen.getByTestId("layout-widget-count")).toHaveTextContent("1");
+
+    await user.click(screen.getByTestId("close"));
+    await user.click(screen.getByTestId("open-a"));
+
+    expect(screen.getByTestId("layout-widget-count")).toHaveTextContent("none");
   });
 });
 

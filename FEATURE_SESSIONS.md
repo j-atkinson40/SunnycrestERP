@@ -6,6 +6,65 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 2 — Anchored Core + Mode Dispatcher + Push-Back Scale
+
+**Date:** 2026-04-22
+**Session type:** Architectural layering. Second of Phase A per `ARCHITECTURE_MIGRATION.md`. Canvas + WidgetChrome deferred to Session 3; Session 2 stays focused on mode dispatch + registry + layout-state types + push-back.
+**Files touched:** 15 created / modified (`frontend/src/contexts/focus-registry.ts`, `focus-registry.test.ts`, `frontend/src/components/focus/mode-dispatcher.tsx`, `mode-dispatcher.test.tsx`, `cores/_shared.tsx`, `cores/KanbanCore.tsx`, `cores/SingleRecordCore.tsx`, `cores/EditCanvasCore.tsx`, `cores/TriageQueueCore.tsx`, `cores/MatrixCore.tsx`, `frontend/src/components/focus/Focus.tsx`, `Focus.test.tsx`, `ReturnPill.test.tsx`, `frontend/src/contexts/focus-context.tsx`, `focus-context.test.tsx`, `frontend/src/components/layout/app-layout.tsx`, `frontend/src/styles/base.css`, `frontend/src/pages/dev/focus-test.tsx`, `PLATFORM_ARCHITECTURE.md`, `CLAUDE.md`, `FEATURE_SESSIONS.md`).
+**LOC:** ~800 new / ~80 edits.
+**Tests:** 20 new Vitest (226 total, up from 206). tsc clean. vite build clean in 5.18s.
+
+### What shipped
+
+- **Focus registry** (`contexts/focus-registry.ts`) — Pattern B per user decision. Singleton `Map` + `registerFocus / getFocusConfig / listFocusConfigs` public API. `CoreMode` type union with 5 canonical modes (`kanban / singleRecord / editCanvas / triageQueue / matrix`) + `LayoutState<TCoreLayout>` + `LayoutConfig<TCoreLayout>` generic layout types + `FocusConfig` interface. Five stub Focuses registered at module load — one per mode. Exports `_resetRegistryForTests` for test isolation.
+- **Mode dispatcher** (`components/focus/mode-dispatcher.tsx`) — lookup-map pattern (not switch). `MODE_RENDERERS: Record<CoreMode, ComponentType<CoreProps>>` — TypeScript's exhaustive-record check fails compile if a mode lands in the union without a map entry. Unknown focus id renders an error state (brass-adjacent warm error panel + dismiss hint) rather than crashing.
+- **Five stub cores** under `components/focus/cores/`:
+  - `KanbanCore.tsx` — 3 columns with 2–3 placeholder cards each
+  - `SingleRecordCore.tsx` — form-style stack of 6 placeholder field rows with labels
+  - `EditCanvasCore.tsx` — faux toolbar (Bold/Italic/Underline/Image icons) above a centered ~600px canvas placeholder
+  - `TriageQueueCore.tsx` — vertical list of 5 placeholder rows with keyboard-shortcut badges (1-5) visible on the left
+  - `MatrixCore.tsx` — 4×4 table grid with row/column headers
+  - `_shared.tsx` — `CoreProps` contract + `CoreHeader` + `EscToDismissHint` shared primitives
+- **Focus.tsx** — placeholder replaced with `<ModeDispatcher focusId={currentFocus.id} />`. `FocusPlaceholder` function deleted (was explicitly marked Session 2 scope).
+- **Layout-state scaffold** — `FocusState` extended with `layoutState: LayoutState | null`. `FocusContextValue` gains `updateSessionLayout(patch: Partial<LayoutState>): void` that merges widget records across patches. Generic `LayoutState<TCoreLayout = unknown>` + `LayoutConfig<TCoreLayout = unknown>` types live in `focus-registry.ts`; modes opt in to specialized layouts (e.g. `LayoutState<KanbanColumnOrder>`) in later sessions. Session 2 stores only session-ephemeral tier in memory; Session 4 adds `focus_sessions` + `focus_layout_defaults` tables for tenant + per-user tiers.
+- **Push-back scale — SHIPPED.** `<main>` in AppLayout carries `data-focus-pushback={isOpen ? "true" : "false"}`. CSS rule in `base.css`: `main[data-focus-pushback="true"] { transform: scale(0.98); }` + transition via `--duration-arrive` + `--ease-settle`. Scope discipline verified: sidebar + header + mobile tab bar are siblings of `<main>`, not descendants, so CSS transform's containing-block effect on fixed descendants cannot reach them. Reduced-motion users inherit instant transition from the global retrofit.
+- **Dev test page** updated to 5 mode-labeled buttons (`Open Kanban Focus` / `Open Single-Record Focus` / etc.) + live state readout showing `currentFocus.id`, resolved mode, and `layoutState` widget count.
+- **`PLATFORM_ARCHITECTURE.md §5.15`** updated: push-back paragraph flipped from "deferred" to "ships in Session 2" with scope-safety explanation.
+
+### Architectural decisions (locked this session)
+
+1. **Mode lives in registry (Pattern B).** Consumers call `useFocus().open(id)` — they don't pass mode as a prop. Registry is the source of truth for "what mode does this Focus use." Adding a future focus = one `registerFocus()` call.
+2. **Open-closed mode dispatch.** Adding a new mode requires: (a) append to `CoreMode` type union, (b) add one entry to `MODE_RENDERERS` map, (c) create the new core component, (d) register a focus that uses it. No existing mode's code changes. TypeScript's `Record<CoreMode, ...>` catches forgotten map entries at compile time.
+3. **Naming = camelCase for core modes.** `kanban / singleRecord / editCanvas / triageQueue / matrix`. Verified no backend precedent for these specific names before choosing. The backend `triage_queue` pin_type literal (snake_case) lives in a distinct namespace (pinnable-target-kinds), not core modes (rendering patterns). Documented the distinction in `TriageQueueCore.tsx` header comment.
+4. **Canvas + WidgetChrome deferred to Session 3** per user decision. Session 2 stays focused on mode dispatch; Session 3 ships canvas + widget chrome + drag/resize as a coherent unit.
+5. **Generic LayoutState** — `LayoutState<TCoreLayout = unknown>` chosen over plain `unknown`. Slightly cleaner; modes can specialize (`LayoutState<KanbanColumnOrder>`) while preserving the base contract. Layer-defaults = `unknown` so modes that haven't specialized yet Just Work.
+6. **Push-back ships — Chromium verified.** Scope is safe by construction: `<main>` has no fixed-positioned descendants. Scale applies cleanly; sidebar + header confirmed untouched. Safari verification is on the user (Safari's fixed-containing-block behavior differs from Chromium but the scope boundary holds either way).
+
+### Verification
+
+- **Vitest:** 226 tests passing (206 baseline + 20 new across 2 new files and 2 extended files). Breakdown: `focus-registry.test.ts` × 8, `mode-dispatcher.test.tsx` × 7, `focus-context.test.tsx` +5 layout-state tests.
+- **tsc:** clean.
+- **vite build:** clean, 5.18s.
+- **Preview verification (Chromium via preview_eval):**
+  - Focus opens with correct `aria-label="Focus: test-kanban"` ✓
+  - Dispatcher routes Kanban id → `KanbanCore` (title "Kanban stub", eyebrow "kanban") ✓
+  - Dispatcher routes Triage-Queue id → `TriageQueueCore` (title "Triage-queue stub", 5 keyboard-shortcut badges 1-5 visible) ✓
+  - Push-back: `<main>` transform on open = `matrix(0.98, 0, 0, 0.98, 0, 0)`; `<header>` transform = `none`; sidebar transform = `none` ✓
+  - URL sync: `?focus=test-kanban` on open, removed on close ✓
+  - ESC dismiss: dialog closes, `data-focus-pushback="false"`, main transform resets to `none`, return pill appears ✓
+
+### Deviations from session plan
+
+- **Canvas + WidgetChrome deferred** per user decision to Session 3 (9 deliverables instead of 10).
+- **Push-back scale: SHIPPED** (user decision was "ship if Chromium + Safari render cleanly; drop otherwise"). Chromium verified; Safari verification is user-side.
+- **Orphan blocker resolved mid-session:** user's browser had `platform_mode="true"` in localStorage left over from an earlier session, which routed the app to the BridgeableAdminApp regardless of path. Cleared; flagged for user visibility in verification report. Not a Session 2 code issue.
+
+### Next session (Phase A Session 3)
+
+Canvas + WidgetChrome + drag/resize as a coherent unit. Canvas wraps the anchored core with an 8px grid (PA §5.1); WidgetChrome primitive provides drag handle + resize corner + dismiss X (ghosted by default, hover-reveal). Session 4 follows with return-pill countdown + `focus_sessions` database persistence.
+
+---
+
 ## Phase A Session 1 — Focus Primitive Scaffolding
 
 **Date:** 2026-04-22

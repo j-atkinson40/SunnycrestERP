@@ -32,7 +32,7 @@ function Controls() {
   const { open, close } = useFocus();
   return (
     <div>
-      <button data-testid="open-a" onClick={() => open("focus-a")}>
+      <button data-testid="open-a" onClick={() => open("test-kanban")}>
         open a
       </button>
       <button data-testid="close" onClick={close}>
@@ -59,7 +59,7 @@ describe("ReturnPill", () => {
     await user.click(screen.getByTestId("close"));
 
     const returnBtn = await screen.findByRole("button", {
-      name: /return to focus-a/i,
+      name: /return to test-kanban/i,
     });
     expect(returnBtn).toBeInTheDocument();
   });
@@ -72,7 +72,7 @@ describe("ReturnPill", () => {
     await user.click(screen.getByTestId("close"));
 
     const returnBtn = await screen.findByRole("button", {
-      name: /return to focus-a/i,
+      name: /return to test-kanban/i,
     });
     await user.click(returnBtn);
 
@@ -108,7 +108,7 @@ describe("ReturnPill", () => {
 
     await user.click(screen.getByTestId("open-a"));
     await user.click(screen.getByTestId("close"));
-    await screen.findByRole("button", { name: /return to focus-a/i });
+    await screen.findByRole("button", { name: /return to test-kanban/i });
 
     // Simulate user clicking a different entry point to open a new
     // Focus (via the same test control, since it's the same id —
