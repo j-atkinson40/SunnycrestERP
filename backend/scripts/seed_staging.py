@@ -887,7 +887,7 @@ def _seed_kb(db: Session, admin_id: str, product_map: dict):
             :raw, :parsed, 'complete', 1,
             :admin, true, :now, :now)
     """), {
-        "id": doc_id, "tid": CFG["company_id"], "catid": cat_ids["Pricing"],
+        "id": doc_id, "tid": CFG["company_id"], "catid": cat_ids["Product Pricing"],
         "title": "Standard Vault Pricing 2026",
         "desc": "Complete pricing for all burial vaults and services",
         "raw": pricing_content, "parsed": pricing_content,
