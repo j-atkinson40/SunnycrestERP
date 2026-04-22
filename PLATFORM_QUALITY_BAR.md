@@ -151,6 +151,7 @@ Specific comparisons:
 (Populated as we ship — examples become institutional memory.)
 
 - **Phase A Session 3.5 (2026-04-22)** — zone-relative positioning chosen over absolute pixels for resize-feel and viewport-resilience reasons. 8-zone resize with cursor-only affordance (no visible icon) matches Freeform resize feel. Drag-from-anywhere matches native canvas app expectations.
+- **Phase A Session 3.6 (2026-04-22)** — chrome elements (grip + dismiss X) hidden during active drag/resize. Cursor change is the only affordance needed during interaction — same reasoning that removed the static resize icon in 3.5. In-widget visual indicators during a gesture are noise; the cursor is already telling the user what's happening.
 
 ---
 

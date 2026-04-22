@@ -6,6 +6,47 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 3.6 — Chrome restraint during active drag/resize
+
+**Date:** 2026-04-22
+**Session type:** Small polish fix — one-issue scope. Discovered during Session 3.5 user verification.
+**Files touched:** 4 (`frontend/src/components/focus/canvas/WidgetChrome.tsx`, `WidgetChrome.test.tsx`, `PLATFORM_QUALITY_BAR.md`, `FEATURE_SESSIONS.md`, `CLAUDE.md`).
+**LOC:** ~15 changed (2 CSS-class flips in WidgetChrome + 2 new test cases + docs).
+**Tests:** 288 passing (286 + 2 new). tsc clean. vite build clean in 4.78s.
+
+### What shipped
+
+Chrome affordances (grip icon + dismiss X) now **hide during active drag/resize** instead of forcing visible. The `data-chrome-active="true"` selector flipped from `opacity-100` to `opacity-0`:
+
+| Element | Idle | Hover (not interacting) | Active drag/resize |
+|---|---|---|---|
+| Grip icon | opacity-0 | opacity-100 | **opacity-0** (was 100 pre-3.6) |
+| Dismiss X | opacity-0 | opacity-100 | **opacity-0 + pointer-events-none** |
+| Resize zones | invisible (always) | invisible (always) | invisible (always) |
+
+Dismiss also gets `pointer-events-none` during active interaction so it can't accidentally intercept an in-flight gesture.
+
+### Rationale
+
+Per PLATFORM_QUALITY_BAR.md §4 visual restraint and §6 affordance-through-interaction: during an active drag or resize, the cursor already tells the user what's happening (`grab` → `grabbing` during drag, `nwse-resize`/etc during resize). Additional visual indicators inside the widget are noise — same reasoning that removed the static resize-corner icon in Session 3.5.
+
+### Architectural decision
+
+CSS class order matters: the `group-data-[chrome-active=true]:opacity-0` must come AFTER `group-hover:opacity-100` in the Tailwind class list so source-order specificity resolves correctly during concurrent conditions (cursor IS over widget during drag ∧ drag IS active → hide wins).
+
+### Verification
+
+- Vitest: 288 tests passing (286 + 2 new — grip + dismiss restraint assertions in `WidgetChrome.test.tsx`).
+- tsc: clean.
+- vite build: clean, 4.78s.
+- Preview verification (Chromium via preview_eval): grip className has `group-data-[chrome-active=true]:opacity-0`, dismiss className has both `opacity-0` and `pointer-events-none` during active; pre-3.6 forced opacity-100 is removed.
+
+### Next session (Phase A Session 3.7)
+
+iOS Smart Stack pattern for narrow-viewport widget rendering. Replaces the original Session 3.6 "hide widgets + indicator" plan after user noted the Smart Stack pattern is the canonical iOS responsive approach. Stack mode when viewport < ~1000px wide or ~700px tall; widgets collapse into right-rail vertical stack with scroll-to-cycle + dots indicator + tap-to-expand. Extreme narrow (<700px) collapses to floating button. Auto-restore to anchor positions when viewport widens. Pre-build investigation needed for scroll physics + anchor-preservation mechanics.
+
+---
+
 ## Phase A Session 3.5 — Canvas refactor: zone-relative + 8-zone resize + drag-from-anywhere
 
 **Date:** 2026-04-22

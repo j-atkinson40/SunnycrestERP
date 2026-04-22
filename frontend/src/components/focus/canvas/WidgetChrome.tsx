@@ -184,7 +184,13 @@ export function WidgetChrome({
     >
       {/* Decorative grip — visual affordance only, not a drag
           handle. pointer-events-none so it doesn't intercept drag
-          listeners on the wrapper. */}
+          listeners on the wrapper.
+          Session 3.6 restraint: hidden during active drag/resize —
+          cursor change IS the affordance during interaction, per
+          PLATFORM_QUALITY_BAR.md §4. Order matters here: the
+          active-state selector MUST come after group-hover so it
+          wins specificity when both conditions are true during a
+          drag (cursor is over the widget ∧ drag is active). */}
       <div
         data-slot="focus-widget-grip"
         aria-hidden
@@ -192,7 +198,7 @@ export function WidgetChrome({
           "pointer-events-none absolute left-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded",
           "bg-surface-raised/80 text-content-muted",
           "opacity-0 group-hover:opacity-100 transition-opacity duration-arrive ease-settle",
-          "group-data-[chrome-active=true]:opacity-100",
+          "group-data-[chrome-active=true]:opacity-0",
         )}
       >
         <GripVertical className="h-3.5 w-3.5" />
@@ -200,7 +206,8 @@ export function WidgetChrome({
 
       {/* Dismiss X — top-right. stopPropagation on pointerdown so the
           wrapper's drag listeners don't initiate drag when clicking
-          X. Stays as a real button for accessibility + keyboard. */}
+          X. Stays as a real button for accessibility + keyboard.
+          Session 3.6: also hidden during active interaction. */}
       {onDismiss && (
         <button
           type="button"
@@ -215,7 +222,8 @@ export function WidgetChrome({
             "absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded",
             "bg-surface-raised/80 text-content-muted",
             "opacity-0 group-hover:opacity-100 transition-opacity duration-arrive ease-settle",
-            "group-data-[chrome-active=true]:opacity-100",
+            "group-data-[chrome-active=true]:opacity-0",
+            "group-data-[chrome-active=true]:pointer-events-none",
             "hover:bg-status-error-muted hover:text-status-error",
             "focus-ring-brass",
             "cursor-pointer",

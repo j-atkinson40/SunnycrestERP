@@ -182,3 +182,32 @@ describe("WidgetChrome — chrome visibility state", () => {
     expect(dismiss.className).toMatch(/group-hover:opacity-100/)
   })
 })
+
+
+describe("WidgetChrome — Session 3.6 chrome restraint during interaction", () => {
+  it("grip has group-data-[chrome-active=true]:opacity-0 (hides during interaction)", () => {
+    render(<Harness />)
+    const grip = document.querySelector('[data-slot="focus-widget-grip"]')
+    // Post-3.6 the selector is flipped: chrome-active forces OPACITY-0
+    // (hides during drag/resize), not opacity-100 (shows). Cursor is
+    // the only affordance during interaction per PLATFORM_QUALITY_BAR
+    // §4 restraint.
+    expect(grip?.className).toMatch(/group-data-\[chrome-active=true\]:opacity-0/)
+    expect(grip?.className).not.toMatch(
+      /group-data-\[chrome-active=true\]:opacity-100/,
+    )
+  })
+
+  it("dismiss X has group-data-[chrome-active=true]:opacity-0 + pointer-events-none", () => {
+    render(<Harness onDismiss={() => {}} />)
+    const dismiss = screen.getByRole("button", { name: /dismiss widget/i })
+    expect(dismiss.className).toMatch(
+      /group-data-\[chrome-active=true\]:opacity-0/,
+    )
+    // Also disable hit-testing during interaction so it can't
+    // intercept the ongoing gesture.
+    expect(dismiss.className).toMatch(
+      /group-data-\[chrome-active=true\]:pointer-events-none/,
+    )
+  })
+})
