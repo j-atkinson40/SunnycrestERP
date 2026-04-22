@@ -134,29 +134,39 @@
 
 [data-mode="dark"] {
   /* ─── COLORS — SURFACES ───
-   *   Tier-3 spec-reconciliation (April 2026): surface-elevated and
-   *   surface-raised lightness values bumped to match the approved
-   *   canonical reference mockup (John Michael Smith case card —
-   *   saved to docs/design-references/). Low-lightness surface
-   *   deltas are perceptually compressed in dark mode; the original
-   *   0.04 base→elevated step was at spec floor but rendered less-
-   *   distinct than the reference. Tier 3 lifts to 0.06 (elevated)
-   *   and 0.11 (raised vs base) to match reference.
+   *   Tier-4 measurement-based correction (April 2026). Tier 2 and
+   *   Tier 3 were inference-based adjustments from §1 anchor prose
+   *   that didn't close the gap to the approved canonical reference
+   *   (docs/design-references/IMG_6085.jpg). Tier 4 samples the
+   *   reference directly via PIL and calibrates tokens to measured
+   *   OKLCH values.
    *
-   *   Pre-Tier-3:  elevated L=0.20, raised L=0.24
-   *   Post-Tier-3: elevated L=0.22, raised L=0.27
+   *   Measured reference values:
+   *     Page        RGB(16,12,9)   → oklch(0.158 0.009 59)
+   *     Card body   RGB(25,22,17)  → oklch(0.202 0.011 81)
    *
-   *   Chroma eased proportionally (per §3 "chroma increases slightly
-   *   as lightness increases in dark mode — elevated surfaces carry
-   *   more warmth, catching more of the implied warm lamplight").
+   *   Key finding: DARK-MODE HUE PROGRESSION missing from prior
+   *   tokens. Reference shifts hue warmer as surfaces elevate —
+   *   page h=59 (cool-amber foundation), elevated h=81 (warmer
+   *   amber, "catches more lamplight"), raised h=85 (continues
+   *   progression), sunken h=55 (cooler when recessed). Prior
+   *   tokens used a static h=65 across the elevation stack.
    *
-   *   Top-highlight composite on elevated: L=0.48 α=0.65 over L=0.22
-   *   → composite L≈0.389 (Tier 2 was 0.382; negligible shift).
-   *   Highlight alpha stays 0.65. See §6 Shadow specifications. */
-  --surface-base: oklch(0.16 0.012 65);
-  --surface-elevated: oklch(0.22 0.015 65);
-  --surface-raised: oklch(0.27 0.017 65);
-  --surface-sunken: oklch(0.13 0.011 65);
+   *   Tier-3's L=0.22 / L=0.27 lightness bumps REVERTED — reference
+   *   shows L=0.20 / L=0.24. Pre-Tier-3 lightness values were
+   *   correct; the residual gap users perceived was the missing
+   *   hue progression + over-spec'd Card perimeter border + too-
+   *   thin top-edge highlight, not lightness.
+   *
+   *   Methodology note: when canonical reference images exist in
+   *   docs/design-references/, sample pixel values directly via
+   *   PIL before inferring tuning values from prose. Images win
+   *   over prose (§1) applies to diagnosis as well as design
+   *   authority. Canonicalized in CLAUDE.md. */
+  --surface-base: oklch(0.16 0.010 59);
+  --surface-elevated: oklch(0.20 0.011 81);
+  --surface-raised: oklch(0.24 0.013 85);
+  --surface-sunken: oklch(0.13 0.010 55);
 
   /* ─── COLORS — CONTENT ─── */
   --content-strong: oklch(0.96 0.012 80);
@@ -172,28 +182,24 @@
   --border-brass: oklch(0.70 0.13 73 / 0.7);
 
   /* ─── COLORS — SHADOWS (persist in dark mode + top-edge highlight) ───
-   *   Tier-2 spec-reconciliation (April 2026): card chrome in dark
-   *   mode was reading less-distinct than the approved reference
-   *   mockup. Diagnostic identified three convergent adjustments per
-   *   DESIGN_LANGUAGE §1 dark-mode anchor 2 ("catches warm light
-   *   pools") and anchor 4 ("material, not paint"):
-   *     (1) --shadow-highlight-top strengthened — L 0.42 → 0.48
-   *         brighter, α 0.45 → 0.65 more opaque. Reads as focused
-   *         light caught on the card's top edge rather than a
-   *         whisper of reflection.
-   *     (2) --shadow-level-1/2/3 gain a tight grounding shadow
-   *         (1px/2px/3px offset × 3px/4px/6px blur) BEFORE the
-   *         existing soft halo. Grounds the card on the page
-   *         surface instead of floating in a gaseous halo.
-   *     (3) Cards gain `border border-border-subtle` — the
-   *         "warm hairline border that reads as metal edge" option
-   *         §1 anchor 4 canonically permits, promoted from optional
-   *         cue to canonical card treatment.
-   *   Mirror discipline: DL §3 + §6 updated in the same commit. */
+   *   Tier-2 added tight grounding shadows to shadow-level-1/2/3
+   *   (three-layer composition: tight ground + soft halo + inset
+   *   top-edge highlight). That architectural change is RETAINED
+   *   after Tier-4 measurement verification — the shadow halo +
+   *   grounding layer match the reference when blur falloff is
+   *   accounted for.
+   *
+   *   Tier-4 correction: --shadow-highlight-top was over-specified
+   *   per Tier-2's inference (L=0.48 α=0.65). Reference measurement
+   *   shows the top-edge highlight as a 3-PIXEL BAND at L=0.30
+   *   rather than a 1-pixel inset at high brightness. Calibrated
+   *   value below matches the reference's dimmer-per-pixel-but-
+   *   wider band (see --shadow-level-1/2/3 composition below for
+   *   the 3px inset width). */
   --shadow-color-subtle: oklch(0.08 0.010 60 / 0.35);
   --shadow-color-base: oklch(0.06 0.010 60 / 0.45);
   --shadow-color-strong: oklch(0.05 0.010 60 / 0.55);
-  --shadow-highlight-top: oklch(0.48 0.02 78 / 0.65);
+  --shadow-highlight-top: oklch(0.32 0.010 61 / 0.9);
 
   /* ─── COLORS — ACCENTS (brass — hue locked at 73, lightness/chroma lift) ─── */
   --accent-brass: oklch(0.70 0.13 73);
@@ -226,15 +232,21 @@
    *   edge). 0.40 → 0.48 lifts contrast to ~3.5:1. */
   --focus-ring-alpha: 0.48;
 
-  /* ─── ELEVATION SHADOWS (dark mode — three-layer composition per
-   *   Tier-2 spec-reconciliation: tight grounding shadow + soft halo
-   *   + inset top-edge highlight). The tight ground shadow grounds
-   *   the card on the page; the soft halo provides atmospheric
-   *   depth; the inset highlight catches implied lamplight on the
-   *   top edge. All three layers are necessary — dark-mode shadows
-   *   need more composition to carry elevation than light mode
-   *   because low-lightness deltas are perceptually compressed. ─── */
-  --shadow-level-1: 0 1px 3px var(--shadow-color-strong), 0 4px 16px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
-  --shadow-level-2: 0 2px 4px var(--shadow-color-strong), 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 1px 0 var(--shadow-highlight-top);
-  --shadow-level-3: 0 3px 6px var(--shadow-color-strong), 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 1px 0 var(--shadow-highlight-top);
+  /* ─── ELEVATION SHADOWS (dark mode — three-layer composition:
+   *   tight grounding shadow + soft halo + 3px inset top-edge
+   *   highlight).
+   *
+   *   Tier-4 correction: inset width 1px → 3px per reference
+   *   measurement. The reference shows a 3-pixel-thick highlight
+   *   band at L=0.30; a 1-pixel inset is too thin to read as a
+   *   focused light pool catching the top edge (§1 anchor 2).
+   *   3px × L=0.30 provides ~2.3× the visible-light integral of
+   *   1px × L=0.389 (prior Tier-2 composite).
+   *
+   *   Tight ground shadow + soft halo layers retained from Tier 2
+   *   — they match the reference when blur falloff is accounted
+   *   for in the halo gradient. ─── */
+  --shadow-level-1: 0 1px 3px var(--shadow-color-strong), 0 4px 16px var(--shadow-color-base), inset 0 3px 0 var(--shadow-highlight-top);
+  --shadow-level-2: 0 2px 4px var(--shadow-color-strong), 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 3px 0 var(--shadow-highlight-top);
+  --shadow-level-3: 0 3px 6px var(--shadow-color-strong), 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 3px 0 var(--shadow-highlight-top);
 }

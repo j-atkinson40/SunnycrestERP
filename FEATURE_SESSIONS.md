@@ -6,6 +6,118 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Tier-4 Measurement-Based Correction — Dark-mode card chrome calibrated
+
+**Date:** 2026-04-22
+**Session type:** Documentation-evolution fix. Supersedes Tier 2 + Tier 3 (both inference-based) with a single measurement-based correction.
+**Files touched:** 6 (`tokens.css`, `DESIGN_LANGUAGE.md`, `CLAUDE.md`, `FEATURE_SESSIONS.md`, `frontend/src/components/ui/card.tsx`, `frontend/src/components/widgets/WidgetWrapper.tsx`).
+**LOC:** ~120 touched (token edits + primitive reverts + prose rewrites).
+**Tests:** No new tests. tsc clean, vitest 185/185 unchanged, vite build clean.
+
+### The problem
+
+Three consecutive reconciliation sessions (investigation + Tier 2 + Tier 3) hadn't closed the visual gap between live rendering and the canonical approved reference (`docs/design-references/IMG_6085.jpg`, the John Michael Smith case card dark mode). User reported Tier-3 still didn't match.
+
+Each prior session had inferred tuning direction from §1 anchor prose:
+- Investigation: "the spec produces quiet cards on purpose; maybe the reference is aspirational"
+- Tier 2: "strengthen the shadow + add a perimeter border" (based on anchor-4's list of three cue options)
+- Tier 3: "lift the surface lightness further" (based on "dark mode needs a larger step")
+
+Each adjustment moved tokens but not toward the reference. User invoked a methodology pivot: instead of continuing Tier-N inference, **sample the reference pixel values directly and calibrate to measured OKLCH**.
+
+### Measurement
+
+PIL-based pixel scan of both reference images:
+- `Image.open(path).convert('RGB')` + `getpixel((x, y))` at strategic coordinates
+- Page backgrounds at outer strips (multiple samples, confirmed stable)
+- Card body at flat mid-card regions (dozens of samples, confirmed stable RGB)
+- Left-edge horizontal probe at y=1074 (1-pixel resolution): showed page → shadow halo → card body transition with NO distinct border pixel
+- Top-edge vertical probe at x=500 (1-pixel resolution): revealed a 3-pixel-thick highlight band at RGB(50, 45, 41)
+- Bottom-edge vertical probe: confirmed shadow halo extends ~20px below card
+- sRGB → linear sRGB → OKLab → OKLCH conversion via Ottosson 2020 formulas
+
+Method validation: light-mode samples (IMG_6084.jpg) matched existing tokens within 0.005 OKLCH lightness, confirming the measurement method is accurate — the dark-mode discrepancies we measured are real drift, not method artifact.
+
+### Measured values (dark mode)
+
+| Region | RGB | OKLCH measured | Prior token | Gap |
+|---|---|---|---|---|
+| Page | (16, 12, 9) | `oklch(0.158 0.009 59)` | `oklch(0.16 0.012 65)` | L match, C over +0.003, **h off by −6°** |
+| Card body | (25, 22, 17) | `oklch(0.202 0.011 81)` | `oklch(0.22 0.015 65)` (Tier-3) | L over by +0.018 (Tier-3 shot high), C over +0.004, **h off by −16°** (reference is WARMER) |
+| Shadow halo | (13-15, 9-11, 5-8) | `oklch(0.144-0.154 0.010 55-63)` | matches via blur composite | Effective match |
+| **Top-edge highlight band (3px!)** | (50, 45, 41) | `oklch(0.301 0.010 61)` | `oklch(0.48 0.02 78 / 0.65)` at 1px inset | **Reference is wider (3px) + dimmer (L=0.30) than current (1px at composite L=0.389)** |
+| Perimeter border | no discrete pixel | — | `border border-border-subtle` (Tier-2 added) | **Not present in reference** |
+
+### Fixes (five coordinated changes in single commit)
+
+**1. Dark-mode hue progression added** (G1 — the root cause):
+- `--surface-base` h: 65 → **59** (cool-amber foundation)
+- `--surface-elevated` h: 65 → **81** (warmer amber, catches-more-lamplight)
+- `--surface-raised` h: 65 → **85** (continues progression)
+- `--surface-sunken` h: 65 → **55** (cooler when recessed)
+
+This was the root cause of the visual gap. Prior tokens used a static h=65 across the entire elevation stack. Reference demonstrates a +22° warming between base and elevated — a second material dimension ("catches more warm light when lifted toward the source") that neither Tier 2 (shadow) nor Tier 3 (lightness) touched.
+
+**2. Tier-3 lightness bumps reverted** (M1):
+- `--surface-elevated` L: 0.22 → **0.20** (pre-Tier-3 value, matches reference L=0.202)
+- `--surface-raised` L: 0.27 → **0.24** (pre-Tier-3 value)
+- Chroma slightly reduced across all surfaces to match reference measurement
+
+**3. Perimeter border removed from Card + WidgetWrapper** (G2):
+- Card primitive: `border border-border-subtle` removed. Card class: `rounded-md bg-surface-elevated font-plex-sans text-body-sm text-content-base shadow-level-1 ...`
+- CardFooter: `border-t border-border-subtle` restored (was removed in Tier-2 when parent carried perimeter; now the parent doesn't carry a border, so footer needs its own separator back)
+- WidgetWrapper: inline `border border-border-subtle` removed for parity with Card. Both primitives now render with identical chrome discipline (lift + shadow + dark-mode-only top-edge highlight).
+
+**4. Top-edge highlight calibrated** (G3):
+- `--shadow-highlight-top`: `oklch(0.48 0.02 78 / 0.65)` → `oklch(0.32 0.010 61 / 0.9)` (dimmer-per-pixel, but wider below)
+- `--shadow-level-1/2/3` dark inset: `inset 0 1px 0` → `inset 0 3px 0` (3px band matches reference measurement)
+- Tight grounding shadow + soft halo + inset highlight three-layer composition RETAINED from Tier 2 — that architecture was correct; only the inset parameters changed.
+
+**5. DL prose rewrites** (mirror discipline, same commit):
+- **§1 dark-mode anchor 4** rewritten from three-cue system to **two-cue system** (surface lift + top-edge highlight). Explicit statement that cards use NO perimeter border. Light-vs-dark asymmetry explained: morning light is ambient-and-diffuse (lift alone carries elevation); evening light is directional (lift + highlight both needed). Tier-history note added.
+- **§3 Surface tokens rationale** gains **hue-progression paragraph** explaining the second material dimension. "0.05–0.06 dark-mode step" language reverted to "0.04" (measurement-accurate). Reconciliation history note updated.
+- **§3 Full CSS block + §9 CSS block** synchronized with new dark-mode values.
+- **§6 Shadow specifications** dark-mode table updated to 3px inset. Tier-history notes rewritten to document the full arc (Tier 2 → Tier 3 → Tier 4). **Measurement-first learning note canonicalized.**
+- **§6 Border treatment** "Card perimeter border (canonical)" subsection **REMOVED** and replaced with "Card perimeter: no border" canonical statement + "Overlay perimeter: no border" + "Where borders DO apply" + updated "What NOT to add borders to."
+
+### Methodology canonicalized
+
+Added to CLAUDE.md Design System section immediately after the "Tokens.css is a mirror" paragraph:
+
+> **Reference images win over prose — for diagnosis, not just authority.** When canonical reference images exist in `docs/design-references/`, sample them directly via PIL (`from PIL import Image; Image.open(path).convert('RGB')`) before inferring tuning values from prose anchors. This discipline is canonicalized after Tier 4 (April 2026) — three consecutive sessions of inferring-from-anchors produced three misses, while one session of direct pixel sampling produced an immediate correct calibration.
+
+### The learning
+
+**Anchor prose is ambiguous by design; reference images are deterministic.** When both exist, prose is a generalization derived from the images; inference from prose alone is a lossy decoding. The lossy step is where three sessions of drift accumulated. Measurement reverses the lossy step.
+
+Example from this arc:
+- §1 anchor 4 prose: "the cue MAY be a top-edge highlight, a surface gradient, OR a warm hairline border"
+- Inference reading (Tier 2): "apply all three for cards"
+- Reference reading (Tier 4): "only two — lift + highlight. Border was listed as an option because it applies selectively to OTHER components (inputs, table rules), not to cards."
+
+The prose doesn't capture "cards use only two of the three options." Reference does, unambiguously — no discrete border pixel.
+
+### Verification & status
+
+- tsc clean
+- vitest 185/185 unchanged (no vitest-level tests for these token changes)
+- vite build clean
+
+User visually verifies dark mode + light mode cards against both reference images. If Tier-4 matches: **spec-reconciliation arc complete**; Phase II Batch 1c-i (order-station) ready. If residual gap: by elimination it would be composition-level (corner radius or typography cadence), not token-level — flagged for Phase III Final QA, not further Tier-N work.
+
+### Deferred to Phase III Final QA
+
+- Card corner radius: reference shows ~16px (`rounded-lg`), Card default is 8px (`rounded-md`). Future consideration for card-size variant or default radius change.
+- SignatureCard composition primitive: reference shows micro-caps eyebrow → serif display → mono metadata → body sans → brass CTA. Future composition bundling.
+
+Neither fits further token-level reconciliation scope. Both are component/composition questions best addressed during Phase III's comprehensive Final QA pass.
+
+### Arc summary
+
+Three sessions of inference (Tier 2 shadow+border, Tier 3 surface-lift, Tier 2.5 investigation) produced accumulating drift. One session of measurement produced correct calibration. The learning has been canonicalized so future Claude instances default to measurement when references exist.
+
+---
+
 ## Tier-3 Spec Reconciliation — Dark-mode surface-lift
 
 **Date:** 2026-04-22

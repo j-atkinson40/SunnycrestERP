@@ -62,7 +62,14 @@ export default function WidgetWrapper({
   }, [menuOpen])
 
   return (
-    <div className="flex flex-col rounded-md border border-border-subtle bg-surface-elevated shadow-level-1 h-full overflow-hidden">
+    // Tier-4 (April 2026): perimeter `border border-border-subtle`
+    // removed for parity with Card primitive. Reference measurement
+    // showed cards carry no discrete perimeter border — edge emerges
+    // from surface-lift + shadow-halo + top-edge highlight. The inner
+    // header border-b is kept — it's a structural separator between
+    // the widget header strip and the widget content, not a perimeter
+    // outline, so §6 Border treatment still permits it.
+    <div className="flex flex-col rounded-md bg-surface-elevated shadow-level-1 h-full overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 min-h-[40px]">
         {editMode && (
