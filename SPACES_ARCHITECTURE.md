@@ -626,11 +626,19 @@ But the missing opinionated overlay IS a UX regression against the Phase 3 promi
 
 ### 12.1 The invariant
 
-> **For every active user in the dev and production databases, `preferences.spaces` SHALL be non-empty once the user has completed at least one authentication round-trip.**
+**Phase 8e.2.3 widened the invariant after visual verification showed Phase 8e.2.2's shape was too narrow.** The original "has ≥1 space after login" check was insufficient: users who manually created spaces before any seed hook existed (the "James-shape" cohort) passed the check but never received template defaults for their role.
 
-Mechanically: at least one of `preferences.spaces_seeded_for_roles` OR `preferences.system_spaces_seeded` is populated AND `preferences.spaces` has ≥1 entry.
+> **Phase 8e.2.3 invariant: for every active user in the dev and production databases, `preferences.spaces_seeded_for_roles` SHALL contain the slug of each of the user's current roles once they've completed at least one authentication round-trip.**
 
-Violations are a bug in exactly one of three places: a user-creation path bypassing the seed hook, the seed function erroring silently in production, or a user who manually deleted all their Spaces after seeding (legal per Phase 8e — not a violation, only the stricter "never-seeded" sub-invariant catches regressions).
+Mechanically: the seed marker is the truth-carrying field. "Seeded" means the user went through the canonical seed flow for their current role(s). A non-empty `spaces` array alone is insufficient (manually-created spaces produce that without ever going through seed).
+
+Sub-invariants that must also hold post-seed:
+- `preferences.spaces` is non-empty (the user has at least one usable Space)
+- `preferences.system_spaces_seeded` reflects the user's current admin-permission status (Settings system space seeded if admin)
+
+Violations are bugs in one of four places: a user-creation path bypassing the seed hook, the seed function erroring silently, a user who was never retrofitted by r46/r47 and hasn't logged in since, or a user who manually deleted all their Spaces after seeding (the `spaces` sub-invariant fails here but the marker stays populated — legal per Phase 8e; they can re-pin via `/settings/spaces`).
+
+**Future "is this user seeded?" checks should read `spaces_seeded_for_roles`, not `len(spaces) > 0`.** The two diverge by intent.
 
 ### 12.2 Gaps Phase 8e.2.2 closed
 
@@ -685,4 +693,104 @@ Vertical `__unknown__` covers tenants without `Company.vertical` set — these f
 - `TestPlatformSpaceInvariant` × 1 — scans `users` table, fails if any active user has NEITHER `spaces` populated NOR `spaces_seeded_for_roles` populated (≤5 race-condition tolerance)
 
 **Migration head advances** `r45_portal_invite_email_template` → `r46_users_spaces_backfill`.
+
+---
+
+## 13. Phase 8e.2.3 — Invariant Widening + DotNav Fixes
+
+Follow-up micro-phase to 8e.2.2 addressing two classes of issues surfaced by user visual verification:
+
+1. **Invariant scope too narrow.** 8e.2.2's `preferences.spaces` empty check skipped users who manually created spaces pre-hook. This "James-shape" cohort (2,196 active dev-DB users, 738 admins) got no template defaults. Fix: widen to `spaces_seeded_for_roles` as the truth-carrying field.
+2. **DotNav bugs.** Tooltip said "Switch to Operations" when Operations was already active. Active-state ring was 1px and invisible when both spaces shared the `layers` Lucide icon (backend default for user-created). User-created spaces rendered as icons despite the "DotNav" component name implying dots.
+
+### 13.1 Six-item bundle
+
+**Migration `r47_users_template_defaults_retrofit`** — retrofit cohort = active users with empty seed marker regardless of whether `spaces` is populated. Per-user try/except, idempotent via `seed_for_user`'s existing marker check, batch commit every 100, structured WARNING per failure, end-of-migration INFO summary line with per-vertical breakdown AND james_shape vs empty_shape split. Same operational template as r46.
+
+**Cap-breach guard in `_apply_templates` + `_apply_system_spaces`** — checks `len(spaces) >= MAX_SPACES_PER_USER` (= 7) before each template append. If breach, skip with structured WARNING (`user_id, company_id, role_slug, template_name, current_spaces, max`). Partial-seed INFO summary at end of pass (`added=N/M skipped_names=[...]`). Manual spaces + earlier-iteration templates win; later-iteration templates drop. System-space variant mirrors.
+
+**Login defensive re-seed gate widened** in `auth_service.login_user`:
+
+```python
+_prefs = user.preferences or {}
+if not _prefs.get("spaces") or not _prefs.get("spaces_seeded_for_roles"):
+    seed_spaces_best_effort(db, user, call_site="login_user")
+```
+
+Self-heals any user retrofit missed (mid-deploy race, migration skipped, etc.) on their next login. O(1) cost.
+
+**DotNav tooltip state-aware** — `DotNav.tsx` builds `label`:
+
+```tsx
+const systemSuffix = space.is_system ? " (system)" : "";
+const label = active
+  ? `Active: ${space.name}${systemSuffix}`
+  : `Switch to ${space.name}${systemSuffix}`;
+```
+
+See `DESIGN_LANGUAGE.md` Tooltip patterns for the general convention: "describe state, not action, when state matters."
+
+**DotNav active-state visual strengthening** — ring `1px → 2px`, `ring-offset-1` with `ring-offset-surface-sunken`, inactive `opacity-60 → hover:opacity-100`. Active/inactive delta is now readable even when both dots share the fallback colored-dot rendering.
+
+**Backend user-created-space icon default flipped** — `crud.create_space` + API `_CreateRequest`: `icon="layers" → icon=""`. DotNav's ICON_MAP doesn't contain `""` → colored-dot fallback. NOT retroactive (approved spec: "only flip the default for new creates. User can edit manually"). Template spaces (with explicit `factory`, `store`, `trending-up`, etc. icons) unaffected.
+
+### 13.2 Lenient loader — defensive deserializer
+
+New `_load_spaces_lenient(prefs, user_id=...)` in `app/services/spaces/seed.py`. Pre-Phase-8e test fixtures + some legacy migrations wrote minimal `{id, name, accent}` shapes that fail `SpaceConfig.from_dict` (missing `space_id`, `icon`, `display_order`, `density`, etc.). Without lenient loading, a single malformed entry in a user's `preferences.spaces` aborted their entire seed call and the whole pass rolled back. r47's first run surfaced 120 such failures from dev DB residue.
+
+The lenient loader:
+- Iterates `prefs["spaces"]`
+- Tries `SpaceConfig.from_dict(raw)` per entry
+- On exception: logs a WARNING with `user_id, index, exc_type, exc_msg, keys` and drops the entry
+- Returns only successfully-loaded entries
+
+Prod data is always canonical (written via crud/seed) so this is primarily a dev-DB safety net. Also provides forward-compat: future schema additions to `SpaceConfig` can roll out with lenient fallback rather than breaking in-flight seeds.
+
+### 13.3 Partial-seed observability
+
+Operators can grep for partial-seed events in logs:
+
+```
+spaces.seed cap-breach skip user_id=... company_id=... role_slug=admin template_name='Ownership' current_spaces=7 max=7
+```
+
+End-of-pass summary:
+
+```
+spaces.seed partial-seed user_id=... role_slug=admin added=1/3 skipped_names=['Sales', 'Ownership']
+```
+
+Consistent pattern for manual detection of users who need attention (e.g. if many users hit cap, that's signal to raise `MAX_SPACES_PER_USER`).
+
+### 13.4 Dev DB retrofit result (second clean run)
+
+After downgrade `-1` then `upgrade head` (initial run produced 120 legacy-shape failures; post-lenient-loader run was clean):
+
+```
+r47_users_template_defaults_retrofit: complete. candidates=491 retrofitted=491
+  (james_shape=491, empty_shape=0) noop=0 failed=0
+  vertical_breakdown=funeral_home=369, manufacturing=122
+```
+
+Post-r47 platform check: **0 active users have empty `spaces_seeded_for_roles`** (filtering out test-fixture domains). Widened invariant holds.
+
+### 13.5 Test coverage
+
+`backend/tests/test_spaces_phase8e23.py` — 10 new tests across 5 classes:
+
+- `TestCapBreachGuard` × 2 — 6-manual + 3-template user gets exactly 1 template appended with ≥2 cap-breach WARNINGs + partial-seed INFO; happy path 0-manual + 3-template user has no cap-breach log lines.
+- `TestJamesShapeRetrofit` × 2 — manual spaces preserved + templates appended + marker populated; second seed call returns 0 (idempotent).
+- `TestDefensiveReseedWidenedGate` × 2 — login on James-shape user fires retrofit; login on fully-seeded user is no-op.
+- `TestIconDefaultFlip` × 3 — crud default is `""`; API schema default is `""`; explicit icon arg preserved through.
+- `TestWidenedInvariant` × 1 — platform-wide 0 users with empty seed marker (filters test-fixture domains).
+
+Frontend `DotNav.test.tsx` — 4 new:
+- Tooltip "Active: X" on active dot, "Switch to X" on inactive.
+- "(system)" suffix preserved in both active + inactive branches.
+- User-created space with `icon=""` renders as `<span>` dot (no SVG).
+- Template space with `icon="factory"` renders as Lucide SVG icon.
+
+**Full regression**: 170 backend spaces tests passing (151 baseline + 19 new across 8e.2.2 + 8e.2.3). 185 frontend vitest passing (181 baseline + 4 new). tsc clean. vite build clean 4.95s.
+
+**Migration head advances** `r46_users_spaces_backfill` → `r47_users_template_defaults_retrofit`.
 

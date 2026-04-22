@@ -159,6 +159,75 @@ describe("DotNav", () => {
     });
   });
 
+  // Phase 8e.2.3 — state-aware tooltip.
+
+  it("tooltip says 'Active: X' on the active dot and 'Switch to X' on inactive dots", () => {
+    const a = makeSpace({ space_id: "sp_a", name: "Production" });
+    const b = makeSpace({ space_id: "sp_b", name: "Ownership" });
+    renderWithCtx([a, b], a);
+    const dots = screen.getAllByTestId("dot-nav-dot");
+    const aDot = dots.find((d) => d.getAttribute("data-space-id") === "sp_a")!;
+    const bDot = dots.find((d) => d.getAttribute("data-space-id") === "sp_b")!;
+    expect(aDot.getAttribute("aria-label")).toBe("Active: Production");
+    expect(aDot.getAttribute("title")).toBe("Active: Production");
+    expect(bDot.getAttribute("aria-label")).toBe("Switch to Ownership");
+    expect(bDot.getAttribute("title")).toBe("Switch to Ownership");
+  });
+
+  it("tooltip preserves '(system)' suffix in both active and inactive states", () => {
+    const settings = makeSpace({
+      space_id: "sys_settings",
+      name: "Settings",
+      is_system: true,
+    });
+    const ops = makeSpace({ space_id: "sp_ops", name: "Operations" });
+    renderWithCtx([settings, ops], settings);
+    const dots = screen.getAllByTestId("dot-nav-dot");
+    const settingsDot = dots.find(
+      (d) => d.getAttribute("data-space-id") === "sys_settings",
+    )!;
+    const opsDot = dots.find(
+      (d) => d.getAttribute("data-space-id") === "sp_ops",
+    )!;
+    // Active + system → "Active: Settings (system)"
+    expect(settingsDot.getAttribute("aria-label")).toBe(
+      "Active: Settings (system)",
+    );
+    // Inactive + non-system → plain "Switch to X" with no suffix.
+    expect(opsDot.getAttribute("aria-label")).toBe("Switch to Operations");
+  });
+
+  it("user-created space with icon='' falls through to colored-dot fallback", () => {
+    // Phase 8e.2.3 — backend default flipped layers → "". DotNav's
+    // ICON_MAP doesn't match "" so DotIcon renders the <span> dot
+    // rather than a Lucide icon. Verified by asserting the button
+    // has no SVG descendant (every Lucide icon renders as <svg>).
+    const userSpace = makeSpace({
+      space_id: "sp_custom",
+      name: "My Custom Space",
+      icon: "",
+    });
+    renderWithCtx([userSpace]);
+    const dot = screen
+      .getAllByTestId("dot-nav-dot")
+      .find((d) => d.getAttribute("data-space-id") === "sp_custom")!;
+    expect(dot.querySelector("svg")).toBeNull();
+    expect(dot.querySelector("span.rounded-full")).not.toBeNull();
+  });
+
+  it("template space with icon='factory' renders Lucide icon (svg) not colored dot", () => {
+    const templateSpace = makeSpace({
+      space_id: "sp_prod",
+      name: "Production",
+      icon: "factory",
+    });
+    renderWithCtx([templateSpace]);
+    const dot = screen
+      .getAllByTestId("dot-nav-dot")
+      .find((d) => d.getAttribute("data-space-id") === "sp_prod")!;
+    expect(dot.querySelector("svg")).not.toBeNull();
+  });
+
   it("contains the expected icon entries for seeded spaces", () => {
     // Known icons used by SEED_TEMPLATES + SYSTEM_SPACE_TEMPLATES.
     for (const icon of [

@@ -94,7 +94,13 @@ class _SpacesListResponse(BaseModel):
 
 class _CreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=60)
-    icon: str = "layers"
+    # Phase 8e.2.3 — default icon="" (was "layers"). DotNav's
+    # ICON_MAP doesn't contain "", so user-created spaces fall
+    # through to the colored-dot fallback. Aligns rendering with
+    # the component name semantics: DotNav = dots for user spaces,
+    # icons for template + system spaces. See crud.create_space
+    # docstring for the full rationale.
+    icon: str = ""
     accent: str = "neutral"
     is_default: bool = False
     density: str = "comfortable"

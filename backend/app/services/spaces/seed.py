@@ -27,6 +27,7 @@ from app.models.role import Role
 from app.models.user import User
 from app.services.spaces import registry as reg
 from app.services.spaces.types import (
+    MAX_SPACES_PER_USER,
     PinConfig,
     SpaceConfig,
     now_iso,
@@ -179,8 +180,8 @@ def _apply_system_spaces(
     preferences.system_spaces_seeded list[str] of template_ids."""
     system_templates = reg.get_system_space_templates_for_user(db, user)
     already_seeded = set(prefs.get("system_spaces_seeded", []))
-    spaces_raw = prefs.get("spaces") or []
-    spaces: list[SpaceConfig] = [SpaceConfig.from_dict(s) for s in spaces_raw]
+    # Phase 8e.2.3 — lenient load mirrors _apply_templates.
+    spaces = _load_spaces_lenient(prefs, user_id=user.id)
     existing_names = {s.name.lower() for s in spaces}
     existing_system_ids = {
         s.space_id.replace("sys_", "", 1)
@@ -200,6 +201,28 @@ def _apply_system_spaces(
             continue
         if tpl.name.lower() in existing_names:
             already_seeded.add(tpl.template_id)
+            continue
+
+        # Phase 8e.2.3 — cap-breach guard parallel to _apply_templates.
+        # User manual spaces + role templates already consumed the
+        # allotment → system space (Settings) skipped with WARNING.
+        # Rare in practice because system templates count is small (1
+        # today), but matches the invariant: manual + templates
+        # prioritized over system additions, user agency wins.
+        # Template_id stays OUT of system_spaces_seeded when skipped
+        # so next login (after user deletes something) will retry.
+        if len(spaces) >= MAX_SPACES_PER_USER:
+            logger.warning(
+                "spaces.seed cap-breach skip (system) "
+                "user_id=%s company_id=%s template_id=%r template_name=%r "
+                "current_spaces=%d max=%d",
+                user.id,
+                user.company_id,
+                tpl.template_id,
+                tpl.name,
+                len(spaces),
+                MAX_SPACES_PER_USER,
+            )
             continue
 
         new_space = SpaceConfig(
@@ -232,6 +255,44 @@ def _apply_system_spaces(
 # ── Internal helpers ─────────────────────────────────────────────────
 
 
+def _load_spaces_lenient(
+    prefs: dict[str, Any], *, user_id: str | None = None
+) -> list[SpaceConfig]:
+    """Load `prefs['spaces']` into SpaceConfig, skipping malformed
+    entries with a WARNING instead of raising.
+
+    Canonical shape requires `space_id`, `name`, `icon`, `accent`,
+    `display_order`, etc. Pre-Phase-8e test fixtures and some legacy
+    migrations wrote minimal shapes like `{id, name, accent}` that
+    fail `SpaceConfig.from_dict`. Without this lenient loader, a
+    single malformed entry aborts seed for the whole user — which
+    means retrofit migrations skip any user whose preferences
+    carries fixture junk.
+
+    Production data is always canonical (written via crud/seed),
+    so this is primarily a safety net against dev DB residue. It
+    also means a future schema addition to SpaceConfig can roll out
+    with backward-compat: old entries are silently dropped instead
+    of breaking the seed path.
+    """
+    spaces_raw = prefs.get("spaces") or []
+    out: list[SpaceConfig] = []
+    for i, raw in enumerate(spaces_raw):
+        try:
+            out.append(SpaceConfig.from_dict(raw))
+        except Exception as exc:
+            logger.warning(
+                "spaces.seed malformed space entry skipped "
+                "user_id=%s index=%d exc_type=%s exc_msg=%s keys=%r",
+                user_id,
+                i,
+                type(exc).__name__,
+                str(exc),
+                sorted(raw.keys()) if isinstance(raw, dict) else "<non-dict>",
+            )
+    return out
+
+
 def _apply_templates(
     db: Session,
     user: User,
@@ -252,10 +313,27 @@ def _apply_templates(
     `spaces_seeded_for_roles` array; this pass is belt-and-
     suspenders against a scenario where the array is missing but
     the space somehow was seeded (e.g. manual DB edit).
+
+    Phase 8e.2.3 — cap-breach guard: if appending the next template
+    would exceed `MAX_SPACES_PER_USER`, skip the template with a
+    structured warning rather than breach silently. User agency
+    wins: manual spaces + earlier-in-iteration templates stay;
+    later-in-iteration templates are dropped. Matches the umbrella
+    principle (configurable thereafter — user's existing content is
+    sacrosanct). Retrofit migrations (r47) hit this for users who
+    have ~5+ manual spaces and a role template producing 3 more.
     """
-    spaces_raw = prefs.get("spaces") or []
-    spaces: list[SpaceConfig] = [SpaceConfig.from_dict(s) for s in spaces_raw]
+    # Phase 8e.2.3 — lenient load so malformed legacy entries don't
+    # crash the seed. Real prod data always canonical; this is
+    # safety net for dev DB residue + future schema additions.
+    spaces = _load_spaces_lenient(prefs, user_id=user.id)
     existing_names = {s.name.lower() for s in spaces}
+
+    # Phase 8e.2.3 — partial-seed accounting for the end-of-run
+    # summary line. Separate bucket from `added` so operators see
+    # both "how many made it" and "how many dropped to cap."
+    skipped_due_to_cap: list[str] = []
+    total_templates = len(templates)
 
     added = 0
     for template in templates:
@@ -263,6 +341,24 @@ def _apply_templates(
             logger.info(
                 "Skipping seed of space %r for user %s (already present)",
                 template.name, user.id,
+            )
+            continue
+
+        # Phase 8e.2.3 — cap-breach guard. System spaces go through a
+        # separate path (_apply_system_spaces) and aren't counted here;
+        # that pass gets its own headroom check.
+        if len(spaces) >= MAX_SPACES_PER_USER:
+            skipped_due_to_cap.append(template.name)
+            logger.warning(
+                "spaces.seed cap-breach skip "
+                "user_id=%s company_id=%s role_slug=%s template_name=%r "
+                "current_spaces=%d max=%d",
+                user.id,
+                user.company_id,
+                role_slug,
+                template.name,
+                len(spaces),
+                MAX_SPACES_PER_USER,
             )
             continue
 
@@ -305,6 +401,21 @@ def _apply_templates(
                 break
 
     prefs["spaces"] = [s.to_dict() for s in spaces]
+
+    # Phase 8e.2.3 — end-of-pass summary line. Emitted at INFO when
+    # any cap-breach skipping occurred so operators see partial-seed
+    # events without the WARN per-template lines dominating the log.
+    # Only logged when total > 0 AND partial to keep log volume low.
+    if skipped_due_to_cap and total_templates > 0:
+        logger.info(
+            "spaces.seed partial-seed "
+            "user_id=%s role_slug=%s added=%d/%d skipped_names=%r",
+            user.id,
+            role_slug,
+            added,
+            total_templates,
+            skipped_due_to_cap,
+        )
     return added
 
 

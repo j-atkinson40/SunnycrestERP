@@ -1090,6 +1090,23 @@ border: 1px solid var(--border-brass); /* Brass edge signals primary interaction
 padding: var(--space-4);
 ```
 
+### Tooltip patterns
+
+Tooltips are labels on hover and accessible names for assistive tech (`aria-label`). They are not secondary text, not tutorials, and not replacements for visible labels. Keep them short — under 10 words is ideal.
+
+**Describe state, not action, when state matters.** Toggle-like elements with a meaningful active state should carry state-aware labels:
+
+- Active: `"Active: {name}"` or `"Currently viewing {name}"` — describes what the user sees
+- Inactive: `"Switch to {name}"` or `"Open {name}"` — describes the action a click would take
+
+The anti-pattern: a toggle with the same tooltip on every state. Example: a DotNav dot labeled `"Switch to Operations"` when Operations is already the active space. The label is a misdirection — it promises an action that either doesn't fire (user is already there) or does nothing visible.
+
+This pattern applies to: space switchers, tab selectors, sidebar navigation items, toggle buttons, mode toggles. It does NOT need to apply to links that navigate to new contexts (a "Customers" nav link can say "Customers" in every state — navigating to a page you're already on is a well-understood no-op).
+
+**Hover vs. click vs. focus.** Tooltips appear on hover AND focus (WCAG 2.2 requires focus visibility). They must not require hover to read — screen readers already have `aria-label`. The visible tooltip is a bonus for pointer users.
+
+**Don't duplicate visible labels.** A button with visible "Save" text and a tooltip that says "Save" is noise. Tooltips augment labels that are icons, truncated, or elided for density.
+
 ### Anti-patterns
 
 - **Hard drop shadows** (`box-shadow: 2px 2px 0 black`). These read as "brutalist web design" or "MS Paint." Bridgeable shadows are soft, warm, atmospheric.

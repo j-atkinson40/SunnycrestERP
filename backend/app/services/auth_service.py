@@ -214,21 +214,25 @@ def login_user(db: Session, data: LoginRequest, company: Company) -> TokenRespon
         )
 
     # Phase 8e.2.2 Space Invariant Enforcement — defensive re-seed.
-    # Three user-creation paths predating this phase never ran the
-    # Phase-3 Spaces seed (register_company first-admin, create_user
-    # admin-provisioned, create_users_bulk). The r46 backfill
-    # migration closes the data gap on deploy, but a login-time
-    # check is the self-healing layer: any user whose preferences.
-    # spaces is STILL empty at login (e.g. migration skipped them,
-    # or they were created mid-deploy between migration run and the
-    # hook landing) gets seeded here. O(1) cost when spaces are
-    # populated — we just read a dict key.
+    # Phase 8e.2.3 — gate widened: fires when EITHER spaces is empty
+    # OR spaces_seeded_for_roles is empty. Stronger invariant: a
+    # user is "seeded" only when they've been through the seed flow
+    # for their current role(s), not merely when they have some
+    # spaces. This catches "James-shape" users who created spaces
+    # manually before any seed hook existed — their spaces array
+    # is non-empty but the seed marker is NULL/empty, so template
+    # defaults were never applied. r47 handles this at deploy; this
+    # login check is the self-healing safety net for any user the
+    # migration skipped or who was created between migration run
+    # and full hook rollout. O(1) cost when populated (two dict-key
+    # reads).
     #
     # Production-track users (username + PIN) intentionally go
     # through this path too; the PIN login branch above already
     # writes user.last_console_login_at in the same commit, so
     # adding a seed here keeps that single-commit discipline.
-    if not (user.preferences or {}).get("spaces"):
+    _prefs = user.preferences or {}
+    if not _prefs.get("spaces") or not _prefs.get("spaces_seeded_for_roles"):
         from app.services.spaces.seed import seed_spaces_best_effort
 
         seed_spaces_best_effort(db, user, call_site="login_user")

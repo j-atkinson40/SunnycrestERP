@@ -261,7 +261,17 @@ export function DotNav() {
         ) : null}
         {sortedSpaces.map((space) => {
           const active = space.space_id === activeSpace?.space_id;
-          const label = `Switch to ${space.name}${space.is_system ? " (system)" : ""}`;
+          // Phase 8e.2.3 — state-aware tooltip. See
+          // DESIGN_LANGUAGE.md § Tooltip patterns for the
+          // "describe state when state matters" convention. An
+          // active dot labeled "Switch to Operations" when the user
+          // IS in Operations is misleading. "Active: Operations"
+          // describes what the user sees; "Switch to Operations"
+          // describes an action.
+          const systemSuffix = space.is_system ? " (system)" : "";
+          const label = active
+            ? `Active: ${space.name}${systemSuffix}`
+            : `Switch to ${space.name}${systemSuffix}`;
           return (
             <button
               key={space.space_id}
@@ -271,10 +281,17 @@ export function DotNav() {
               aria-label={label}
               aria-pressed={active}
               className={cn(
+                // Phase 8e.2.3 — active-state visual feedback
+                // strengthened: ring bumped 1px → 2px with offset-1
+                // for a clear "raised chip" effect; inactive opacity
+                // tightened from text-content-muted-default to an
+                // explicit 0.6 so the active/inactive delta is
+                // readable even when both dots share the fallback
+                // colored-dot rendering (user-created spaces).
                 "inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors duration-quick ease-settle focus-ring-brass",
                 active
-                  ? "border-[color:var(--space-accent,var(--preset-accent))] bg-[color:var(--space-accent-light,transparent)] ring-1 ring-[color:var(--space-accent,var(--preset-accent))]"
-                  : "border-transparent text-content-muted hover:bg-brass-subtle hover:text-content-strong",
+                  ? "border-[color:var(--space-accent,var(--preset-accent))] bg-[color:var(--space-accent-light,transparent)] ring-2 ring-offset-1 ring-offset-surface-sunken ring-[color:var(--space-accent,var(--preset-accent))]"
+                  : "border-transparent text-content-muted opacity-60 hover:opacity-100 hover:bg-brass-subtle hover:text-content-strong",
               )}
               data-testid="dot-nav-dot"
               data-space-id={space.space_id}

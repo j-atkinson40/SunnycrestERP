@@ -390,13 +390,29 @@ def create_space(
     *,
     user: User,
     name: str,
-    icon: str = "layers",
+    icon: str = "",
     accent: str = "neutral",
     is_default: bool = False,
     density: str = "comfortable",
     default_home_route: str | None = None,
 ) -> ResolvedSpace:
-    """Create a new space. Enforces the per-user cap."""
+    """Create a new space. Enforces the per-user cap.
+
+    Phase 8e.2.3 — default `icon=""` (was `"layers"`). DotNav's
+    ICON_MAP doesn't match the empty string, so user-created spaces
+    fall through to the colored-dot fallback. Template spaces (from
+    SEED_TEMPLATES) already carry explicit Lucide icon names so
+    they continue rendering as icons. This aligns rendering with the
+    component name (DotNav = dots for user spaces, icons for
+    platform-owned template + system spaces).
+
+    NOT retroactive: existing spaces in the DB with `icon="layers"`
+    keep their value. Only NEW user-created spaces get the flipped
+    default. Users can still edit via `/settings/spaces` to pick an
+    icon. Per approved spec item #4 (2026-04-22): "only flip the
+    default for new creates. User can edit manually if they want to
+    change."
+    """
     if not name or not name.strip():
         raise SpaceError("Space name is required")
 

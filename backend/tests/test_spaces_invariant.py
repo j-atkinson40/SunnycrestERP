@@ -566,10 +566,18 @@ class TestPlatformSpaceInvariant:
         if head is None:
             pytest.skip("no alembic_version row")
 
-        if head[0] != "r46_users_spaces_backfill":
+        # Phase 8e.2.3 widened the invariant-enforcement set to
+        # include r47. This test's sub-invariant ("zero never-seeded
+        # users") stays valid at r47 too — r47 is a strictly stronger
+        # guarantee.
+        _INVARIANT_HEADS = {
+            "r46_users_spaces_backfill",
+            "r47_users_template_defaults_retrofit",
+        }
+        if head[0] not in _INVARIANT_HEADS:
             pytest.skip(
-                f"r46 not current head (current={head[0]}); "
-                "invariant asserted post-backfill only"
+                f"head {head[0]!r} not in invariant-enforcing set "
+                f"{_INVARIANT_HEADS}; check asserted post-backfill only"
             )
 
         # JSONB path — same query shape as the migration itself.
@@ -583,6 +591,12 @@ class TestPlatformSpaceInvariant:
         # the invariant is trying to catch: an unseeded user landing
         # on the UI with zero DotNav dots through a broken creation
         # path.
+        #
+        # Also excludes test-fixture domains. Test tenants legitimately
+        # create users in short-lived uninitialized states that clean
+        # up post-test. A failed/interrupted test run can leave residue.
+        # Filter _TEST_FIXTURE_DOMAINS ensures the invariant asserts
+        # real-user health, not test-debris.
         row = db_session.execute(
             text(
                 """
@@ -596,6 +610,13 @@ class TestPlatformSpaceInvariant:
                     preferences -> 'spaces_seeded_for_roles',
                     '[]'::jsonb
                   ) = '[]'::jsonb
+                  AND email NOT LIKE '%@sp.co'
+                  AND email NOT LIKE '%@sys.co'
+                  AND email NOT LIKE '%@inv.co'
+                  AND email NOT LIKE '%@p8e.co'
+                  AND email NOT LIKE '%@p8e23.co'
+                  AND email NOT LIKE '%@8e1.co'
+                  AND email NOT LIKE '%@portal.test'
                 """
             )
         ).scalar()

@@ -1,10 +1,15 @@
 /**
  * NewSpaceDialog — create a new Space.
  *
- * Required: name. Optional: icon (lucide name), accent (one of 6),
- * density. Defaults: icon="layers", accent="neutral",
- * density="comfortable". Pinning is handled post-create via the
- * star icons throughout the app — not in this form.
+ * Required: name. Optional: accent (one of 6). Defaults:
+ * icon="" (backend), accent="neutral", density="comfortable".
+ * Pinning is handled post-create via the star icons throughout
+ * the app — not in this form.
+ *
+ * Phase 8e.2.3 — icon default flipped from "layers" → "" so
+ * DotNav renders user-created spaces as colored dots (via the
+ * fallback branch of DotIcon). Users can pick an icon via the
+ * "More options…" deep-link to `/settings/spaces`.
  */
 
 import { useState } from "react";

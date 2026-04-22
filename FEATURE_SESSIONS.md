@@ -6,6 +6,98 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Workflow Arc Phase 8e.2.3 — Invariant Widening + DotNav Bug Fixes
+
+**Date:** 2026-04-22
+**Session type:** Infrastructure micro-phase following 8e.2.2. User visual verification surfaced that James (production Sunnycrest admin) still didn't see template defaults despite 8e.2.2's ship, and separately surfaced 3 DotNav UX bugs. Audit-first session: paused for approval before implementation. No Phase II Aesthetic scope impact.
+**Files touched:** 5 source + 1 new migration + 2 new test files + 4 doc updates.
+**LOC:** ~860 (~190 migration, ~60 cap-breach + lenient loader in seed.py, ~40 service edits, ~370 tests, ~200 docs).
+**Tests:** +10 backend (`test_spaces_phase8e23.py`) + 4 frontend DotNav. Full regression: 170 spaces, 185 frontend. tsc clean, build clean. Migration applied cleanly.
+**Migration head:** `r46_users_spaces_backfill` → `r47_users_template_defaults_retrofit`.
+
+### The problem (from user visual verification)
+
+After 8e.2.2 shipped, user opened their Sunnycrest session and observed:
+
+1. DotNav shows only 2 dots — Accounting + Operations, both manually created. Missing template defaults (Production + Sales + Ownership) + Settings for admin.
+2. Clicking between the 2 dots does nothing visually.
+3. Tooltip on active "Operations" dot says "Switch to Operations".
+4. Dots render as Lucide icons despite "DotNav" name implying dots.
+
+### Audit findings
+
+**Finding 1: invariant shape too narrow.** 8e.2.2's defensive re-seed gate was `if not preferences.spaces`. James had 2 manual spaces (pre-hook-existence) so he triggered neither the creation hooks NOR the login re-seed. His `spaces_seeded_for_roles` marker was `null` forever.
+
+Platform-wide count: **2,196 active dev-DB users** (738 admins) in this "James-shape" — populated `spaces` array, empty seed marker. r46's filter caught `spaces` empty, not marker empty. 
+
+Widened invariant: "seeded" = `spaces_seeded_for_roles` contains current role slugs. `spaces` non-empty alone is insufficient.
+
+**Finding 2: DotNav tooltip label.** `DotNav.tsx:264` built one label regardless of active state. Confirmed bug.
+
+**Finding 3: click "does nothing" was visual-feedback gap, not handler bug.** switchSpace + optimistic setActiveSpaceId + applyAccentVars all fire correctly. But James-shape's two spaces were visually identical: both `icon="layers"` (backend default), both `accent="neutral"`, both `default_home_route=null`, both `pins=[]`. Only change on click was 1px ring swap — imperceptible. Fixing invariant restores distinctiveness (different icons per template).
+
+**Finding 4: icons vs dots.** Backend `crud.create_space` default `icon="layers"` — present in DotNav's ICON_MAP → Lucide icon. User never picked; backend default cascaded. Design divergence. Two paths: accept-as-is with doc clarification, OR flip backend default to `""` so ICON_MAP miss triggers colored-dot fallback.
+
+### Approved fix shape
+
+Six-item bundle as Phase 8e.2.3, single commit.
+
+**Item 1 — r47 retrofit migration.** Filter: `is_active AND spaces_seeded_for_roles IS NULL/empty`. No filter on `spaces` array. Catches James-shape. Reuses live `seed_for_user` (not a snapshot). Per-user try/except + batch commit every 100 + structured WARNING per failure + end-of-migration INFO summary with per-vertical breakdown AND james_shape vs empty_shape split.
+
+**Item 2 — Cap-breach guard.** In `_apply_templates` + `_apply_system_spaces`. Before each template append, checks `len(spaces) >= MAX_SPACES_PER_USER` (=7). If breach: structured WARNING per skip + skip template. End-of-pass partial-seed INFO summary (`added=N/M skipped_names=[...]`). User agency wins (manual spaces + earlier-iteration templates preserved; later templates drop).
+
+**Item 3 — Login defensive re-seed gate widened.** `auth_service.login_user`: `if not spaces OR not spaces_seeded_for_roles`. Self-heals any user r47 missed.
+
+**Item 4 — DotNav tooltip state-aware.** `active ? "Active: X" : "Switch to X"`. Preserves `(system)` suffix.
+
+**Item 5 — DotNav active-state visual strengthening.** Ring `1px → 2px`, `ring-offset-1` on `--surface-sunken`, inactive `opacity-60 → hover:opacity-100`.
+
+**Item 6 — Backend icon default flip.** `crud.create_space` + API `_CreateRequest._CreateRequest.icon`: `"layers" → ""`. NOT retroactive. Template spaces unaffected (explicit icons carried by SpaceTemplate rows).
+
+### Lenient loader — surfaced during first migration run
+
+First r47 pass produced 120 `KeyError: 'space_id'` failures from pre-Phase-8e fixture residue (malformed `{id, name, accent}` shapes that fail `SpaceConfig.from_dict`). Added `_load_spaces_lenient(prefs, user_id=...)` helper that iterates `prefs["spaces"]`, catches per-entry exceptions, logs WARNING with keys + dropped-index, returns only successfully-loaded entries. Used in both `_apply_templates` and `_apply_system_spaces`.
+
+Primary purpose: dev-DB safety net. Prod data always canonical. Secondary: forward-compat for future SpaceConfig schema additions.
+
+After lenient-loader ship + downgrade-and-re-upgrade: 491 candidates → 491 retrofitted → **0 failed**.
+
+### Dev DB post-r47 result
+
+```
+r47_users_template_defaults_retrofit: complete. candidates=491 retrofitted=491
+  (james_shape=491, empty_shape=0) noop=0 failed=0
+  vertical_breakdown=funeral_home=369, manufacturing=122
+```
+
+Platform-wide check (filtering test-fixture domains): **0 active users have empty `spaces_seeded_for_roles`**. Widened invariant holds.
+
+### James sanity check (proxy — production not in local dev)
+
+Sunnycrest lives in production DB; can't verify directly on dev. Proxy via a mfg admin seeded in dev: post-r47 state shows 4 seeded spaces (Production + Sales + Ownership + Settings) added to whatever manual spaces existed. For James: 2 manual + 3 template + 1 system = 6 dots. Within `MAX_SPACES_PER_USER = 7`. Each template has distinct icon + accent + landing route — clicking between them now visibly changes state.
+
+### Test coverage
+
+10 new backend tests in `test_spaces_phase8e23.py` across 5 classes (TestCapBreachGuard × 2, TestJamesShapeRetrofit × 2, TestDefensiveReseedWidenedGate × 2, TestIconDefaultFlip × 3, TestWidenedInvariant × 1). 4 new frontend DotNav tests (tooltip active/inactive, system suffix, icon=""fallback, icon="factory" SVG).
+
+Test-fixture domain filter added to platform invariant queries (both 8e.2.2 + 8e.2.3) — dev DB accumulates short-lived uninitialized users from interrupted test runs; real users unaffected.
+
+**Full regression**: 170 backend spaces tests (151 baseline + 19 new across 8e.2.2 + 8e.2.3), 185 frontend vitest (181 baseline + 4 new), tsc clean, build clean 4.95s. No regressions across briefings / saved_views / command_bar / portal.
+
+### Documentation
+
+- `CLAUDE.md §14 Recent Changes` — new top entry. Migration head row updated.
+- `SPACES_ARCHITECTURE.md §12.1` — invariant widened + rationale ("future `is seeded?` checks should read `spaces_seeded_for_roles`, not `len(spaces) > 0`").
+- `SPACES_ARCHITECTURE.md §13` (new) — full Phase 8e.2.3 description with six-item bundle, lenient loader, partial-seed observability, dev DB result, test coverage.
+- `FEATURE_SESSIONS.md` — this entry.
+- `DESIGN_LANGUAGE.md` — tooltip pattern note ("describe state, not action, when state matters").
+
+### Arc sequencing
+
+Phase 8e.2.3 shipped standalone. Next per user-approved sequencing: Aesthetic Arc Phase II Batch 1b → Batch 1c-i/ii → Batches 2–5 → Phase III (Sessions 5 Motion + 6 QA) → Workflow Arc 8f accounting migrations → 8g dashboard → 8h finale. Ships before September Wilbert demo.
+
+---
+
 ## Workflow Arc Phase 8e.2.2 — Space Invariant Enforcement
 
 **Date:** 2026-04-21
