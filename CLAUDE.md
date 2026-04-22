@@ -919,6 +919,15 @@ uvicorn app.main:app --reload --port 8000
 cd frontend && npm install && npm run dev
 ```
 
+### Local dev seeding
+
+The local `bridgeable_dev` database ships empty after `alembic upgrade head`. Two seed scripts populate usable tenants:
+
+- **Default test tenant (most sessions):** `DATABASE_URL=postgresql://localhost:5432/bridgeable_dev python backend/scripts/seed_staging.py` → creates the `testco` manufacturing tenant ("Test Vault Co", id `staging-test-001`) with 7 users, 8 company entities, 25 products, 10 orders, 3 invoices, 1 price list, 5 KB categories. Idempotent via slug-adoption (re-running cleans + re-seeds).
+- **Default admin credentials:** `admin@testco.com` / `TestAdmin123!` (admin role, all permissions). Full roster in `backend/scripts/seed_staging.py:350-356` (accountant, office, driver, production roles seeded alongside).
+- **FH demo tenant (Phase B onward + September demo):** `python -m scripts.seed_fh_demo --apply` (from `backend/`) → creates `hopkins-fh` funeral-home tenant + `st-marys` cemetery + pre-seeded Hopkins↔Sunnycrest cross-tenant connection + demo case FC-2026-0001 (John Michael Smith, veteran). Admin: `admin@hopkinsfh.test` / `DemoAdmin123!`. Director: `director1@hopkinsfh.test` / `DemoDirector123!`.
+- **Browser tenant bootstrap:** on `localhost`, `getCompanySlug()` reads from `localStorage.company_slug`. Visit `http://localhost:5173/?slug=testco` on first load — the module at `lib/tenant.ts` persists the slug and strips the query param. Subsequent visits resolve the tenant from localStorage.
+
 ### Backend Environment Variables
 All defined in `backend/app/config.py` via pydantic-settings. Copy `backend/.env.example` to `backend/.env`.
 
