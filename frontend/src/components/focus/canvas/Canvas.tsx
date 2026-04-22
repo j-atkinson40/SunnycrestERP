@@ -53,9 +53,12 @@ import type { WidgetId, WidgetPosition } from "@/contexts/focus-registry"
 import { cn } from "@/lib/utils"
 
 import {
-  clampToCanvas,
+  clampPositionOffsets,
   computeCoreRect,
+  computeOffsetsForAnchor,
+  determineAnchorFromDrop,
   rectsOverlap,
+  resolvePosition,
   snapTo8px,
 } from "./geometry"
 import { MockSavedViewWidget } from "./MockSavedViewWidget"
@@ -106,27 +109,64 @@ export function Canvas() {
     const current = widgets[widgetId]
     if (!current) return
 
-    // Proposed new position — snap to 8px, clamp to canvas bounds.
-    const proposed: WidgetPosition = {
-      ...current.position,
-      x: snapTo8px(current.position.x + delta.x),
-      y: snapTo8px(current.position.y + delta.y),
+    // Compute the drop rect in absolute-viewport space: resolve
+    // current anchor position, apply drag delta, snap to 8px.
+    const startRect = resolvePosition(
+      current.position,
+      viewport.width,
+      viewport.height,
+    )
+    const dropRect = {
+      x: snapTo8px(startRect.x + delta.x),
+      y: snapTo8px(startRect.y + delta.y),
+      width: startRect.width,
+      height: startRect.height,
     }
-    const clamped = clampToCanvas(proposed, viewport.width, viewport.height)
 
-    // Core-overlap guard: if the clamped position overlaps the core,
-    // snap back to the pre-drag position. Session 3 keeps this
-    // simple — a smarter slide-to-nearest-edge heuristic is
-    // reasonable polish for Session 5 once pins are real.
-    if (rectsOverlap(clamped, coreRect)) {
-      // Reject drop silently. UX nit: could add a shake animation;
-      // deferred.
-      return
+    // Core-overlap guard: if the drop rect overlaps the anchored
+    // core, silently reject the drop. Widget state never updated →
+    // visually snaps back. Smarter slide-to-nearest-edge heuristic
+    // is reasonable polish for Session 5.
+    if (rectsOverlap(dropRect, coreRect)) return
+
+    // Determine the new anchor from the drop point. The drop point
+    // for anchor picking is the widget's CENTER — "which zone does
+    // the user think they dropped into" — not the top-left corner.
+    const dropCenterX = dropRect.x + dropRect.width / 2
+    const dropCenterY = dropRect.y + dropRect.height / 2
+    const newAnchor = determineAnchorFromDrop(
+      dropCenterX,
+      dropCenterY,
+      viewport.width,
+      viewport.height,
+    )
+
+    // Re-project drop rect to the new anchor's offsets. Snap offsets
+    // to 8px (widget position is always on the grid).
+    const rawOffsets = computeOffsetsForAnchor(
+      newAnchor,
+      dropRect,
+      viewport.width,
+      viewport.height,
+    )
+    const nextPosition: WidgetPosition = {
+      anchor: newAnchor,
+      offsetX: Math.max(0, snapTo8px(rawOffsets.offsetX)),
+      offsetY: Math.max(0, snapTo8px(rawOffsets.offsetY)),
+      width: dropRect.width,
+      height: dropRect.height,
     }
+
+    // Clamp offsets so the widget stays within the viewport.
+    const clampedPosition = clampPositionOffsets(
+      nextPosition,
+      viewport.width,
+      viewport.height,
+    )
 
     updateSessionLayout({
       widgets: {
-        [widgetId]: { position: clamped },
+        [widgetId]: { position: clampedPosition },
       },
     })
   }

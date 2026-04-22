@@ -114,17 +114,19 @@ export default function FocusTestPage() {
 
       <section className="space-y-2 text-body-sm text-content-muted">
         <p>
-          <strong className="text-content-base">Try (Session 3):</strong>{" "}
+          <strong className="text-content-base">Try (Session 3.5):</strong>{" "}
           Open the Kanban Focus — a "Recent Cases" mock widget
-          appears in the canvas around the core. Hover the widget to
-          reveal chrome (drag handle top-left, dismiss X top-right,
-          resize corner bottom-right). Drag by the handle to
-          reposition (snaps to 8px). Drag the corner to resize
-          (respects min 200×100). Click X to dismiss. Append{" "}
+          appears in the canvas. Drag from anywhere on the widget body
+          (not just the grip icon — that's decorative). Hover any
+          edge or corner to see cursor change; drag to resize from
+          that edge. Click X to dismiss. Drag the widget near a
+          viewport edge — it snaps to that zone's anchor (left-rail /
+          right-rail / top-* / bottom-*). Resize the browser window:
+          a right-rail widget stays in the right rail. Append{" "}
           <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-plex-mono text-micro">
             &amp;dev-canvas=1
           </code>{" "}
-          to the URL after opening a Focus to see the 8px grid.
+          for the 8px grid.
         </p>
         <p>
           <strong className="text-content-base">Regression checks:</strong>{" "}

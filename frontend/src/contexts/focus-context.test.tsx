@@ -61,7 +61,13 @@ function ConsumerProbe() {
           updateSessionLayout({
             widgets: {
               "widget-1": {
-                position: { x: 8, y: 8, width: 200, height: 100 },
+                position: {
+                  anchor: "top-left",
+                  offsetX: 8,
+                  offsetY: 8,
+                  width: 200,
+                  height: 100,
+                },
               },
             },
           })
@@ -75,7 +81,13 @@ function ConsumerProbe() {
           updateSessionLayout({
             widgets: {
               "widget-2": {
-                position: { x: 320, y: 8, width: 200, height: 100 },
+                position: {
+                  anchor: "top-right",
+                  offsetX: 8,
+                  offsetY: 8,
+                  width: 200,
+                  height: 100,
+                },
               },
             },
           })

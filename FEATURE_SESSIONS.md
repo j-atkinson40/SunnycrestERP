@@ -6,6 +6,66 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 3.5 — Canvas refactor: zone-relative + 8-zone resize + drag-from-anywhere
+
+**Date:** 2026-04-22
+**Session type:** Architectural refactor. Three improvements surfaced during Session 3 user verification. Quality > session ceremony — the foundational canvas primitives warrant doing this right before Session 4 adds persistence. Treat as Session 3.5 with full ceremony.
+**Files touched:** 10 (`frontend/src/components/focus/canvas/geometry.ts`, `geometry.test.ts`, `useResize.ts`, `WidgetChrome.tsx`, `WidgetChrome.test.tsx`, `Canvas.tsx`, `frontend/src/contexts/focus-registry.ts`, `frontend/src/contexts/focus-context.test.tsx`, `frontend/src/pages/dev/focus-test.tsx`, `FEATURE_SESSIONS.md`, `CLAUDE.md`).
+**LOC:** ~900 touched (mix of rewrites + additions).
+**Tests:** 27 new / rewritten Vitest (286 total, up from 259). tsc clean. vite build clean in 4.87s.
+
+### Three refactors
+
+**1. Zone-relative positioning (architectural).** Replaced `WidgetPosition = { x, y, width, height }` with `{ anchor: WidgetAnchor, offsetX, offsetY, width, height }`. Eight anchors: `top-left / top-center / top-right / left-rail / right-rail / bottom-left / bottom-center / bottom-right`. Widget positioning is now viewport-independent — a right-rail widget stays in the right rail when the browser resizes. Render-time resolution via `resolvePosition(pos, vw, vh): Rect`. Drag-end determines new anchor via `determineAnchorFromDrop(dropX, dropY, vw, vh)` (100px rail threshold from viewport edges; top/bottom halves divided into left/center/right thirds), then re-projects absolute drop rect to anchor-relative offsets via `computeOffsetsForAnchor(anchor, rect, vw, vh)`. Inverse-of-resolve unit-tested across all 8 anchors. Previous Session 3 absolute-pixel bug (widget disappearing off-screen on narrow viewports) now resolved architecturally: `clampPositionOffsets` pulls widget back into viewport while preserving anchor.
+
+**2. Resize from any edge or corner.** Replaced the single visible bottom-right resize icon with 8 invisible zones: 4 corners (8×8 px squares with `nwse-resize` / `nesw-resize` cursors) + 4 edges (8-px strips with `ew-resize` / `ns-resize` cursors). Discoverability via cursor change on hover per DESIGN_LANGUAGE §6 restraint principle. `useResize` hook refactored to accept a `zone` parameter + pure `applyResizeDelta(zone, startRect, dx, dy)` function — N/NW/NE move top edge; S/SW/SE move bottom; W/NW/SW move left; E/NE/SE move right. Resolves to rect in absolute space, enforces min size + canvas clamp, re-projects to the ORIGINAL anchor. The anchor doesn't change when resized (resize preserves zone; drag changes zone).
+
+**3. Drag from anywhere on widget body.** `useDraggable` listeners moved from the grip button to the wrapper element. Grip icon becomes decorative (`pointer-events: none`, `aria-hidden="true"`) — visual affordance only, per user's stated scope. Dismiss X + all 8 resize zones use `onPointerDown={e => e.stopPropagation()}` so they don't initiate drag when clicked. Wrapper has `cursor-grab` + `role="button"` semantics from @dnd-kit's spread attributes.
+
+### Verification
+
+- **Vitest:** 286 passing (259 baseline + 27 new/rewritten). Geometry file grew from 5 test groups to 9 groups covering the new anchor-system functions.
+- **tsc:** clean.
+- **vite build:** clean, 4.87s.
+- **Preview verification (Chromium):**
+  - Widget renders at correct resolved position from anchor-based seed ({anchor:top-left, offsetX:32, offsetY:96, w:320, h:240} → screen rect (32, 96, 320, 240)) ✓
+  - All 8 resize zones present with correct cursor mappings (nw/se: nwse-resize; ne/sw: nesw-resize; n/s: ns-resize; w/e: ew-resize) ✓
+  - Wrapper has `role="button"` + `cursor-grab` class (drag-from-anywhere) ✓
+  - Grip icon `aria-hidden="true"` + `pointer-events-none` className (decorative only) ✓
+  - Zone-relative math verified via direct module eval: right-rail widget resolves to x=1568 at vw=1920, x=848 at vw=1200, x=448 at vw=800 — always `vw - width - offsetX` ✓
+
+- **Not preview-testable (user verifies manually):**
+  - Drag from middle of widget body → drag initiates, widget follows cursor with subtle lift
+  - Hover each edge/corner → cursor changes to the right resize cursor
+  - Resize from each zone → correct dimensions change (N edge: height up-from-bottom; W edge: width with left movement; SE corner: both grow)
+  - Drag widget to left edge → snaps to left-rail anchor
+  - Resize browser window → anchor-positioned widgets track their zones
+  - Resize widget wider than viewport → clamps to viewport width, respects min
+
+### Architectural decisions (locked)
+
+1. **Anchor is a first-class primitive, not a derived property.** Stored explicitly in WidgetPosition. Drag-end explicitly picks the new anchor from drop point; resize preserves original anchor.
+2. **Rails span vertically; top-*/bottom-* span horizontally.** The 8-anchor set has no center-center anchor — widgets cannot occlude the core by design. Top-center and bottom-center provide above/below-core placement.
+3. **offsetX/offsetY are distances from the anchor's edge(s), always ≥ 0 after clamping.** Grid-snapped to 8px. The anchor's semantics define which edges (left for top-left, right for top-right, bottom-right for bottom-right, etc.).
+4. **Resize is zone-pure; drag is anchor-reassigning.** Resizing a widget never changes its anchor; dragging a widget can change its anchor (based on drop point). Clear cognitive separation.
+5. **Chrome affordances are cursor-only on resize, icon+cursor on dismiss.** The resize icon is removed entirely (Session 3 had a visible one); cursor change on hover provides discoverability. Dismiss keeps the X icon because keyboard+a11y users need a visible button; cursor change alone wouldn't meet WCAG target-size + label requirements.
+6. **Drag listeners on wrapper; conflict guards via stopPropagation.** No redundant "drag handle" element. Grip is a visual decoration.
+
+### Deviations from user prompt
+
+- User wrote "TWO meaningful refactors" in the session-header line but body enumerated THREE. Flagged before building; proceeded with all three per body. Commit message reflects all three.
+- User's prompt draft for the commit message included specific wording; commit message below matches intent, with slight reflow to fit conventional-commit line limits.
+
+### Freeform-quality-bar follow-up
+
+User flagged mid-session: Apple Freeform is the comparison standard for future canvas interactions (Sessions 5+, Phase B). Spring physics on drop, 60fps drag performance, snap-to-widget alignment guides, multi-select, undo/redo, etc. — all post-Session-3.5 polish. Immediately after this commit lands, create `CANVAS_QUALITY_BAR.md` at project root documenting the standard + reference it from `PLATFORM_ARCHITECTURE.md §5` + add to `CLAUDE.md` Canonical Platform Specs registry. Deliberately NOT in Session 3.5 scope (finish the refactor first).
+
+### Next session (Phase A Session 4)
+
+Return pill 15-second countdown + hover-pause + re-arm-on-state-change (PA §5.4). `focus_sessions` + `focus_layout_defaults` Alembic tables for 3-tier layout-state cascade (tenant default → per-user → session-ephemeral). First Phase-A backend work.
+
+---
+
 ## Phase A Session 3 — Canvas + WidgetChrome + Drag/Resize
 
 **Date:** 2026-04-22

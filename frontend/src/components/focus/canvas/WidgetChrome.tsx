@@ -1,37 +1,38 @@
 /**
- * WidgetChrome — drag/resize/dismiss chrome primitive for canvas
- * widgets.
+ * WidgetChrome — drag/resize/dismiss chrome for canvas widgets.
  *
- * Phase A Session 3. Wraps a widget's content and renders three
- * chrome affordances that are ghosted by default and appear on hover:
- *   - Drag handle (top-left) — grip icon; drag-initiates only from
- *     here, not from the widget body
- *   - Dismiss X (top-right) — calls onDismiss when clicked
- *   - Resize corner (bottom-right) — pointer-event-driven resize
+ * Phase A Session 3.5 refactor:
  *
- * Chrome stays visible during active drag or resize (state-driven
- * `data-chrome-active="true"` — chrome elements use a group CSS
- * selector so hover reveals them during idle + force-reveals during
- * active operations).
+ * 1. Drag from anywhere on widget body. @dnd-kit listeners attach
+ *    to the wrapper instead of a drag-handle button. The grip icon
+ *    remains as a visual affordance (ghosted top-left, purely
+ *    decorative — it doesn't intercept pointer events, it just hints
+ *    that the widget is draggable).
  *
- * Drag is provided by @dnd-kit/core via `useDraggable`. The consumer
- * wraps this WidgetChrome in a positioned container; WidgetChrome
- * forwards `style.transform` from @dnd-kit so the widget visually
- * tracks the cursor during drag (position update persists on drop,
- * per PA Session 3 decision: "update on drop, not during drag").
+ * 2. Resize from any of 8 zones: 4 corners + 4 edges. Each zone is
+ *    an invisible element with an appropriate cursor (nwse-resize /
+ *    nesw-resize / ew-resize / ns-resize). Cursor-based affordance
+ *    replaces the visible resize-corner icon — discoverability comes
+ *    from the cursor change on hover. Per DESIGN_LANGUAGE §6
+ *    restraint principle: affordances visible when needed, invisible
+ *    when not. Dismiss X + resize zones use stopPropagation so they
+ *    don't initiate drag.
  *
- * Per DESIGN_LANGUAGE §6 restraint principle — affordances visible
- * when needed, invisible when not.
+ * 3. Zone-relative position. Resolved at render time via
+ *    resolvePosition(pos, vw, vh). Widget stays in its anchor zone
+ *    regardless of viewport changes. Live resize feedback uses the
+ *    absolute rect from useResize's liveRect.
  */
 
 import { useDraggable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, X, ArrowDownRight } from "lucide-react"
+import { GripVertical, X } from "lucide-react"
 
 import { useFocus } from "@/contexts/focus-context"
 import type { WidgetId, WidgetPosition } from "@/contexts/focus-registry"
 import { cn } from "@/lib/utils"
 
+import { resolvePosition, type ResizeZone } from "./geometry"
 import { useResize } from "./useResize"
 
 
@@ -47,11 +48,69 @@ export interface WidgetChromeProps {
 }
 
 
-/** Default min size for widgets — 200×100 px. Per PA §5.1 "soft
- *  maximum on visible widgets" — we enforce mins to prevent widgets
- *  shrinking below usefully-readable. */
 const DEFAULT_MIN_WIDTH = 200
 const DEFAULT_MIN_HEIGHT = 100
+
+
+/** Edge/corner resize zone metadata. Thickness = 8px; corners are
+ *  square 8×8 regions. */
+const RESIZE_ZONES: Array<{
+  zone: ResizeZone
+  className: string
+  cursor: string
+  ariaLabel: string
+}> = [
+  // Corners — 8×8 squares
+  {
+    zone: "nw",
+    className: "left-0 top-0 h-2 w-2",
+    cursor: "nwse-resize",
+    ariaLabel: "Resize from top-left corner",
+  },
+  {
+    zone: "ne",
+    className: "right-0 top-0 h-2 w-2",
+    cursor: "nesw-resize",
+    ariaLabel: "Resize from top-right corner",
+  },
+  {
+    zone: "sw",
+    className: "bottom-0 left-0 h-2 w-2",
+    cursor: "nesw-resize",
+    ariaLabel: "Resize from bottom-left corner",
+  },
+  {
+    zone: "se",
+    className: "bottom-0 right-0 h-2 w-2",
+    cursor: "nwse-resize",
+    ariaLabel: "Resize from bottom-right corner",
+  },
+  // Edges — 8px strips between corners
+  {
+    zone: "n",
+    className: "left-2 right-2 top-0 h-2",
+    cursor: "ns-resize",
+    ariaLabel: "Resize from top edge",
+  },
+  {
+    zone: "s",
+    className: "left-2 right-2 bottom-0 h-2",
+    cursor: "ns-resize",
+    ariaLabel: "Resize from bottom edge",
+  },
+  {
+    zone: "w",
+    className: "left-0 top-2 bottom-2 w-2",
+    cursor: "ew-resize",
+    ariaLabel: "Resize from left edge",
+  },
+  {
+    zone: "e",
+    className: "right-0 top-2 bottom-2 w-2",
+    cursor: "ew-resize",
+    ariaLabel: "Resize from right edge",
+  },
+]
 
 
 export function WidgetChrome({
@@ -66,20 +125,11 @@ export function WidgetChrome({
 }: WidgetChromeProps) {
   const { updateSessionLayout } = useFocus()
 
-  // @dnd-kit drag — we apply the translate transform to the widget
-  // container so the widget tracks the cursor during drag. Drop
-  // position is persisted by the parent Canvas's onDragEnd handler
-  // (see Canvas.tsx) — not here, so WidgetChrome can stay stateless
-  // about drag bookkeeping.
   const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: widgetId,
-    })
+    useDraggable({ id: widgetId })
 
-  // Resize — local in-progress size drives visual feedback; on
-  // pointer-up, the snapped+clamped final size is persisted via
-  // updateSessionLayout.
   const resize = useResize({
+    anchor: position.anchor,
     position,
     minWidth,
     minHeight,
@@ -94,8 +144,11 @@ export function WidgetChrome({
     },
   })
 
-  const activeWidth = resize.liveSize?.width ?? position.width
-  const activeHeight = resize.liveSize?.height ?? position.height
+  // Resolve anchor-based position to viewport-absolute rect at
+  // render time. During resize, the liveRect from useResize drives
+  // visual feedback so the widget tracks the cursor in real time.
+  const resolved = resolvePosition(position, canvasWidth, canvasHeight)
+  const displayRect = resize.liveRect ?? resolved
   const chromeActive = isDragging || resize.isResizing
 
   return (
@@ -105,97 +158,103 @@ export function WidgetChrome({
       data-widget-id={widgetId}
       data-chrome-active={chromeActive ? "true" : "false"}
       className={cn(
-        // Positioned absolutely within the Canvas — position.x/y are
-        // viewport pixels because Canvas is a fixed-inset overlay.
+        // `group` drives chrome opacity via group-hover on children.
         "group absolute",
         "rounded-md border border-border-subtle bg-surface-elevated shadow-level-1",
-        // During drag/resize, lift subtly + raise z within the
-        // canvas stack.
         "transition-shadow duration-quick ease-settle",
         chromeActive && "shadow-level-2",
+        // Drag cursor on wrapper — widget body is draggable. The
+        // chrome sub-elements (dismiss, resize zones) override this
+        // via their own cursor styles + stopPropagation.
+        !isDragging && "cursor-grab",
+        isDragging && "cursor-grabbing",
       )}
       style={{
-        left: position.x,
-        top: position.y,
-        width: activeWidth,
-        height: activeHeight,
-        transform: CSS.Translate.toString(transform),
-        // During drag, a tiny scale lift per PA §5.1 "subtle lift
-        // effect". Kept CSS-only so the drop-snap feels instant
-        // rather than an animated transform ending.
-        ...(isDragging && {
-          transform: `${CSS.Translate.toString(transform) ?? ""} scale(1.02)`,
-        }),
+        left: displayRect.x,
+        top: displayRect.y,
+        width: displayRect.width,
+        height: displayRect.height,
+        transform: isDragging
+          ? `${CSS.Translate.toString(transform) ?? ""} scale(1.02)`
+          : CSS.Translate.toString(transform),
         zIndex: chromeActive ? 2 : 1,
       }}
+      {...listeners}
+      {...attributes}
     >
-      {/* Drag handle — top-left corner. Only this element initiates
-          drag; the widget body is not a drag handle. */}
-      <button
-        type="button"
-        data-slot="focus-widget-drag-handle"
-        aria-label="Drag widget"
+      {/* Decorative grip — visual affordance only, not a drag
+          handle. pointer-events-none so it doesn't intercept drag
+          listeners on the wrapper. */}
+      <div
+        data-slot="focus-widget-grip"
+        aria-hidden
         className={cn(
-          "absolute left-1 top-1 z-10 flex h-6 w-6 cursor-grab items-center justify-center rounded",
+          "pointer-events-none absolute left-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded",
           "bg-surface-raised/80 text-content-muted",
           "opacity-0 group-hover:opacity-100 transition-opacity duration-arrive ease-settle",
           "group-data-[chrome-active=true]:opacity-100",
-          "hover:bg-brass-subtle hover:text-content-strong",
-          "focus-ring-brass",
-          "active:cursor-grabbing",
         )}
-        {...listeners}
-        {...attributes}
       >
         <GripVertical className="h-3.5 w-3.5" />
-      </button>
+      </div>
 
-      {/* Dismiss X — top-right corner. Clicking removes the widget
-          from the canvas via FocusContext.removeWidget (wired by
-          onDismiss prop). */}
+      {/* Dismiss X — top-right. stopPropagation on pointerdown so the
+          wrapper's drag listeners don't initiate drag when clicking
+          X. Stays as a real button for accessibility + keyboard. */}
       {onDismiss && (
         <button
           type="button"
           data-slot="focus-widget-dismiss"
           aria-label="Dismiss widget"
-          onClick={onDismiss}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDismiss()
+          }}
           className={cn(
-            "absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded",
+            "absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded",
             "bg-surface-raised/80 text-content-muted",
             "opacity-0 group-hover:opacity-100 transition-opacity duration-arrive ease-settle",
             "group-data-[chrome-active=true]:opacity-100",
             "hover:bg-status-error-muted hover:text-status-error",
             "focus-ring-brass",
+            "cursor-pointer",
           )}
         >
           <X className="h-3.5 w-3.5" />
         </button>
       )}
 
-      {/* Widget content fills the full chrome bounds. */}
+      {/* Widget content — fills the chrome bounds. Children inherit
+          drag listeners from the wrapper (drag-from-anywhere), but
+          interactive content (buttons, links) within the widget body
+          should use stopPropagation on pointerdown if they need to
+          be clickable without initiating drag. Session 3.5 mock
+          widget is non-interactive so no conflict. */}
       <div className="h-full w-full overflow-hidden rounded-md">
         {children}
       </div>
 
-      {/* Resize corner — bottom-right. Pointer events handled by
-          useResize; real-time size propagates via liveSize so the
-          widget visibly grows during resize. */}
-      <button
-        type="button"
-        data-slot="focus-widget-resize"
-        aria-label="Resize widget"
-        onPointerDown={resize.onPointerDown}
-        className={cn(
-          "absolute bottom-1 right-1 z-10 flex h-5 w-5 cursor-nwse-resize items-center justify-center rounded",
-          "bg-surface-raised/80 text-content-muted",
-          "opacity-0 group-hover:opacity-100 transition-opacity duration-arrive ease-settle",
-          "group-data-[chrome-active=true]:opacity-100",
-          "hover:bg-brass-subtle hover:text-content-strong",
-          "focus-ring-brass",
-        )}
-      >
-        <ArrowDownRight className="h-3 w-3" />
-      </button>
+      {/* 8 invisible resize zones — 4 corners + 4 edges. Each has a
+          distinct cursor style (CSS handles cursor on hover) + its
+          own onPointerDown. stopPropagation prevents drag
+          initiation. */}
+      {RESIZE_ZONES.map(({ zone, className, cursor, ariaLabel }) => (
+        <div
+          key={zone}
+          data-slot="focus-widget-resize-zone"
+          data-zone={zone}
+          role="button"
+          aria-label={ariaLabel}
+          tabIndex={-1}
+          className={cn(
+            "absolute z-20",
+            className,
+          )}
+          style={{ cursor }}
+          onPointerDown={resize.bind(zone)}
+        />
+      ))}
     </div>
   )
 }

@@ -50,12 +50,50 @@ export type CoreMode =
  *  while preserving the base contract. Defaults to `unknown` — modes
  *  opt in to specialized types when they need them. */
 
-/** Viewport-coordinate position + size for a canvas widget. All
- *  values are pixels, snapped to 8px increments. Origin (0, 0) is
- *  viewport top-left. */
+/** Zone anchors for a canvas widget (Phase A Session 3.5).
+ *
+ *  Replaces Session 3's absolute-pixel positioning. Anchors keep
+ *  widget positioning stable across viewport changes (window snap,
+ *  browser resize, multi-device): a widget anchored to `right-rail`
+ *  with offsetX=32 always renders in the right rail regardless of
+ *  viewport width.
+ *
+ *  Eight anchors — no `center-center` by design. Widgets must never
+ *  occlude the anchored core; the top-center and bottom-center
+ *  anchors provide above/below-core placement without invading the
+ *  core zone.
+ */
+export type WidgetAnchor =
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "left-rail"
+  | "right-rail"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right"
+
+
+/** Zone-relative widget position. offsetX/offsetY are distances in
+ *  pixels from the anchor edge(s) — all values 8px multiples.
+ *
+ *  Resolution semantics per anchor (viewport dims = vw, vh):
+ *    top-left      → screen.x = offsetX                 y = offsetY
+ *    top-center    → screen.x = (vw-width)/2 + offsetX  y = offsetY
+ *    top-right     → screen.x = vw-width-offsetX        y = offsetY
+ *    left-rail     → screen.x = offsetX                 y = offsetY
+ *    right-rail    → screen.x = vw-width-offsetX        y = offsetY
+ *    bottom-left   → screen.x = offsetX                 y = vh-height-offsetY
+ *    bottom-center → screen.x = (vw-width)/2+offsetX    y = vh-height-offsetY
+ *    bottom-right  → screen.x = vw-width-offsetX        y = vh-height-offsetY
+ *
+ *  left-rail and right-rail use offsetY from the TOP of the viewport
+ *  (same as top-* anchors) — rails span vertically by definition;
+ *  offsetY picks the vertical position within the rail. */
 export interface WidgetPosition {
-  x: number
-  y: number
+  anchor: WidgetAnchor
+  offsetX: number
+  offsetY: number
   width: number
   height: number
 }
@@ -155,7 +193,13 @@ registerFocus({
     tenantDefault: {
       widgets: {
         "mock-saved-view-1": {
-          position: { x: 32, y: 96, width: 320, height: 240 },
+          position: {
+            anchor: "top-left",
+            offsetX: 32,
+            offsetY: 96,
+            width: 320,
+            height: 240,
+          },
         },
       },
     },
