@@ -38,25 +38,40 @@ export type CoreMode =
 
 
 /** Layout-state scaffold for per-session / per-user / tenant-default
- *  persistence. Session 2 stores only the session-ephemeral tier in
- *  memory on FocusContext; Session 4 adds the `focus_sessions` +
- *  `focus_layout_defaults` tables for the other two tiers.
+ *  persistence. Session 2 stored only the session-ephemeral tier in
+ *  memory on FocusContext. Session 3 ships free-form canvas coordinates
+ *  (x / y / width / height in pixels, 8px-snapped) replacing Session
+ *  2's earlier placeholder grid shape. Session 4 adds the
+ *  `focus_sessions` + `focus_layout_defaults` tables for the other
+ *  two tiers.
  *
  *  Generic parameter `TCoreLayout` allows mode-specific layout shapes
  *  (e.g. `LayoutState<KanbanColumnOrder>` or `LayoutState<TriageCursor>`)
  *  while preserving the base contract. Defaults to `unknown` — modes
  *  opt in to specialized types when they need them. */
+
+/** Viewport-coordinate position + size for a canvas widget. All
+ *  values are pixels, snapped to 8px increments. Origin (0, 0) is
+ *  viewport top-left. */
 export interface WidgetPosition {
-  row: number
-  col: number
-  rowSpan?: number
-  colSpan?: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Full per-widget state. Session 3 ships with just `position`;
+ *  future sessions may add `isMinimized`, `zIndex`, custom props per
+ *  widget type, etc. Nested shape future-proofs without reshaping
+ *  consumers. */
+export interface WidgetState {
+  position: WidgetPosition
 }
 
 export type WidgetId = string
 
 export interface LayoutState<TCoreLayout = unknown> {
-  widgets: Record<WidgetId, WidgetPosition>
+  widgets: Record<WidgetId, WidgetState>
   coreLayout?: TCoreLayout
 }
 
@@ -132,6 +147,19 @@ registerFocus({
   id: "test-kanban",
   mode: "kanban",
   displayName: "Kanban stub",
+  // Session 3 — seed one mock saved-view widget on Kanban so the
+  // canvas contract is exercised as soon as the Focus opens. The
+  // other stubs open without widgets; smart-positioning shows its
+  // value when a user pins something mid-session.
+  defaultLayout: {
+    tenantDefault: {
+      widgets: {
+        "mock-saved-view-1": {
+          position: { x: 32, y: 96, width: 320, height: 240 },
+        },
+      },
+    },
+  },
 })
 
 registerFocus({

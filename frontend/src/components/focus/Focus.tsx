@@ -52,6 +52,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { useFocus } from "@/contexts/focus-context"
 import { cn } from "@/lib/utils"
+import { Canvas } from "./canvas/Canvas"
 import { ModeDispatcher } from "./mode-dispatcher"
 
 
@@ -80,6 +81,15 @@ export function Focus() {
           )}
           style={{ zIndex: "var(--z-focus)" }}
         />
+        {/* Phase A Session 3 — Canvas hosts widgets around the
+            anchored core. Canvas has pointer-events: none on its
+            wrapper so backdrop clicks still reach the Backdrop;
+            widgets re-enable pointer events via WidgetChrome. Canvas
+            is a SIBLING of Dialog.Popup (not parent) — Popup needs
+            its own pointer-events to remain interactive, and
+            @dnd-kit's DndContext reaches useDraggable consumers via
+            React context regardless of DOM position. */}
+        <Canvas />
         <DialogPrimitive.Popup
           data-slot="focus-core"
           aria-modal="true"

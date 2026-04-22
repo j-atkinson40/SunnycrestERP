@@ -114,12 +114,22 @@ export default function FocusTestPage() {
 
       <section className="space-y-2 text-body-sm text-content-muted">
         <p>
-          <strong className="text-content-base">Try:</strong> refresh
-          the page while a Focus is open — it should reopen from the
-          URL. Press the browser back button to dismiss. Press Cmd+K
-          while a Focus is open — it should NOT open the command bar.
-          Watch the main content scale to 0.98 while a Focus is open
-          (push-back signal); sidebar and top header remain anchored.
+          <strong className="text-content-base">Try (Session 3):</strong>{" "}
+          Open the Kanban Focus — a "Recent Cases" mock widget
+          appears in the canvas around the core. Hover the widget to
+          reveal chrome (drag handle top-left, dismiss X top-right,
+          resize corner bottom-right). Drag by the handle to
+          reposition (snaps to 8px). Drag the corner to resize
+          (respects min 200×100). Click X to dismiss. Append{" "}
+          <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-plex-mono text-micro">
+            &amp;dev-canvas=1
+          </code>{" "}
+          to the URL after opening a Focus to see the 8px grid.
+        </p>
+        <p>
+          <strong className="text-content-base">Regression checks:</strong>{" "}
+          refresh reopens Focus from URL, browser back dismisses,
+          Cmd+K still suppressed, main content still scales to 0.98.
         </p>
       </section>
     </div>

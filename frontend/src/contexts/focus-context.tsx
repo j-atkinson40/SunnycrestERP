@@ -55,7 +55,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import type { LayoutState } from "./focus-registry";
+import { getFocusConfig, type LayoutState, type WidgetId } from "./focus-registry";
 
 
 /** Active Focus session state. `params` reserved for later sessions
@@ -102,8 +102,17 @@ export interface FocusContextValue {
   dismissReturnPill: () => void;
   /** Patch the current Focus's session-ephemeral layout state. No-op
    *  if no Focus is open. Session 2 persists only in memory; Session
-   *  4 wires `focus_sessions` for per-user persistence. */
+   *  4 wires `focus_sessions` for per-user persistence.
+   *
+   *  Widget merge semantics: keys in `patch.widgets` override keys in
+   *  existing widgets; keys NOT in the patch are preserved. Use
+   *  `removeWidget` below to delete a widget (cannot express deletion
+   *  via the patch API because missing keys mean "unchanged"). */
   updateSessionLayout: (patch: Partial<LayoutState>) => void;
+  /** Remove a widget from the current Focus's layout state. No-op if
+   *  no Focus is open or the widget id is absent. Widget-dismiss (X
+   *  chrome) calls this. */
+  removeWidget: (widgetId: WidgetId) => void;
 }
 
 
@@ -156,11 +165,17 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         prevFocusRef.current === null ||
         prevFocusRef.current.id !== focusParam
       ) {
+        // Seed layoutState from the registered Focus's
+        // defaultLayout if present. Session 4 will resolve the
+        // 3-tier cascade (userOverride → tenantDefault → null); for
+        // Session 3 we only have tenantDefault as a seed source.
+        const seededLayout =
+          getFocusConfig(focusParam)?.defaultLayout?.tenantDefault ?? null;
         const newFocus: FocusState = {
           id: focusParam,
           openedAt: new Date(),
           params: pendingParamsRef.current ?? {},
-          layoutState: null,
+          layoutState: seededLayout,
         };
         pendingParamsRef.current = null;
         setCurrentFocus(newFocus);
@@ -225,6 +240,22 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const removeWidget = useCallback((widgetId: WidgetId) => {
+    setCurrentFocus((prev) => {
+      if (prev === null || prev.layoutState === null) return prev;
+      if (!(widgetId in prev.layoutState.widgets)) return prev;
+      const { [widgetId]: _removed, ...remaining } = prev.layoutState.widgets;
+      void _removed;
+      return {
+        ...prev,
+        layoutState: {
+          ...prev.layoutState,
+          widgets: remaining,
+        },
+      };
+    });
+  }, []);
+
   const value = useMemo<FocusContextValue>(
     () => ({
       currentFocus,
@@ -234,6 +265,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
       close,
       dismissReturnPill,
       updateSessionLayout,
+      removeWidget,
     }),
     [
       currentFocus,
@@ -242,6 +274,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
       close,
       dismissReturnPill,
       updateSessionLayout,
+      removeWidget,
     ],
   );
 

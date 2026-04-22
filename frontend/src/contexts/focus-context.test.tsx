@@ -58,7 +58,13 @@ function ConsumerProbe() {
       <button
         data-testid="patch-layout"
         onClick={() =>
-          updateSessionLayout({ widgets: { "widget-1": { row: 1, col: 1 } } })
+          updateSessionLayout({
+            widgets: {
+              "widget-1": {
+                position: { x: 8, y: 8, width: 200, height: 100 },
+              },
+            },
+          })
         }
       >
         patch
@@ -66,7 +72,13 @@ function ConsumerProbe() {
       <button
         data-testid="patch-layout-more"
         onClick={() =>
-          updateSessionLayout({ widgets: { "widget-2": { row: 2, col: 3 } } })
+          updateSessionLayout({
+            widgets: {
+              "widget-2": {
+                position: { x: 320, y: 8, width: 200, height: 100 },
+              },
+            },
+          })
         }
       >
         patch more

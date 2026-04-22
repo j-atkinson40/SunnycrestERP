@@ -6,6 +6,64 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 3 — Canvas + WidgetChrome + Drag/Resize
+
+**Date:** 2026-04-22
+**Session type:** Architectural layering. Third of Phase A per `ARCHITECTURE_MIGRATION.md`. Ships the free-form canvas surrounding the anchored core, the WidgetChrome primitive (drag handle + resize corner + dismiss X), full drag wiring via `@dnd-kit/core`, and custom pointer-event-based resize. Layout-state widget persistence wired end-to-end (session-ephemeral tier; database tiers come in Session 4).
+**Files touched:** 17 created / modified (`frontend/src/components/focus/canvas/geometry.ts`, `geometry.test.ts`, `useResize.ts`, `MockSavedViewWidget.tsx`, `WidgetChrome.tsx`, `WidgetChrome.test.tsx`, `Canvas.tsx`, `Canvas.test.tsx`, `frontend/src/components/focus/Focus.tsx`, `frontend/src/contexts/focus-registry.ts`, `frontend/src/contexts/focus-context.tsx`, `focus-context.test.tsx`, `frontend/src/pages/dev/focus-test.tsx`, `PLATFORM_ARCHITECTURE.md`, `CLAUDE.md`, `FEATURE_SESSIONS.md`).
+**LOC:** ~1,100 new / ~80 edits.
+**Tests:** 33 new Vitest (259 total, up from 226). tsc clean. vite build clean in 4.86s.
+
+### What shipped
+
+- **Geometry utilities** (`canvas/geometry.ts`) — pure functions: `snapTo8px` (normalizes negative zero), `rectsOverlap` (exclusive boundaries — edge-touching is not overlap), `clampToCanvas`, `enforceMinSize`, `computeCoreRect` (matches Focus.tsx Popup dimensions), `findOpenZone` (smart positioning engine — prefers top → left → right → bottom rails, scans 8px-increment candidate positions per zone, rejects overlap with core or existing widgets). All covered by 22 unit tests.
+- **`Canvas` component** (`canvas/Canvas.tsx`) — fixed-inset wrapper around widgets. `pointer-events: none` on wrapper so backdrop clicks still dismiss Focus; widgets re-enable pointer events via WidgetChrome. `DndContext` wraps widgets (PointerSensor with 8px activation distance, matches existing WidgetGrid precedent). `onDragEnd` handler snaps delta to 8px, clamps to viewport bounds, rejects core-overlap with early-return (silent no-op rollback). Dev-mode `?dev-canvas=1` URL param renders a faint 8px grid overlay. Canvas is a SIBLING of Dialog.Popup in the Portal (not a parent) — avoids blocking Popup's pointer events while keeping DndContext accessible via React context.
+- **`WidgetChrome` component** (`canvas/WidgetChrome.tsx`) — primitive wrapper that renders drag handle (top-left, Lucide `grip-vertical`), dismiss X (top-right), and resize corner (bottom-right, Lucide `arrow-down-right`). Chrome elements are `opacity-0` by default + `group-hover:opacity-100` to reveal on widget hover. State-driven `data-chrome-active="true"` keeps chrome visible during active drag or resize via `group-data-[chrome-active=true]:opacity-100`. Drag only initiates from the handle — widget body is non-dragable. `@dnd-kit`'s transform applied inline on the wrapper with a subtle `scale(1.02)` during drag (PA §5.1 "subtle lift effect"). Resize corner wired to `useResize` hook.
+- **`useResize` hook** (`canvas/useResize.ts`) — custom PointerEvent-based resize handler. @dnd-kit doesn't handle resize natively, so this is bespoke. Uses a ref to keep latest props accessible from the window pointermove/pointerup listeners without re-registering. Real-time `liveSize` during drag enables visual feedback; on pointer-up, final size is `snapTo8px` → `enforceMinSize` (default 200×100) → `clampToCanvas` → persisted via `updateSessionLayout`.
+- **`MockSavedViewWidget`** (`canvas/MockSavedViewWidget.tsx`) — realistic placeholder used ONLY in Session 3 for canvas contract verification. Title "Recent Cases" + 5 rows (name + status pill + date). Status tones use `--status-info-muted` / `--status-warning-muted` / `--status-success-muted` per DESIGN_LANGUAGE §3. Deleted when Session 5 ships the real pin system.
+- **Focus integration** — `Focus.tsx` mounts `<Canvas />` as a sibling of `<Dialog.Popup>` inside `Dialog.Portal`. Canvas reads `currentFocus.layoutState?.widgets` and renders one `<WidgetChrome>` per widget. The anchored core (Dialog.Popup) is unaffected structurally — still centered, still animated via data-open/data-closed classes.
+- **Layout state reshape** — `WidgetPosition` changed from Session 2's placeholder grid shape (`row/col/span`) to viewport-pixel shape (`x/y/width/height`). New `WidgetState` wrapper (`{ position: WidgetPosition }`) future-proofs for per-widget fields beyond position (visibility, z-index, etc.). Focus-context seeds layout state from `config.defaultLayout?.tenantDefault` on open (Session 4 resolves the full 3-tier cascade). New `removeWidget(widgetId)` method on `FocusContextValue` — widget-dismiss X calls it. `updateSessionLayout` merge semantics preserved (patches merge, don't replace).
+- **Kanban stub seeded** with a mock saved-view widget — opens at `{x: 32, y: 96, width: 320, height: 240}` on Focus open. Other 4 mode stubs open without widgets (smart positioning engine kicks in when real pins land in Session 5).
+- **Dev test page** (`pages/dev/focus-test.tsx`) — instructions updated for Session 3 verification: hover to reveal chrome, drag by handle, drag corner to resize, click X to dismiss, append `&dev-canvas=1` for 8px grid. Regression checks preserved.
+
+### Architectural decisions (locked this session)
+
+1. **Canvas is a sibling of Dialog.Popup, not a parent.** A `pointer-events: none` parent would block Popup's pointer events even with the child's `pointer-events: auto` override on paper — base-ui Dialog's internals may rely on the Popup receiving events directly from the Portal. Sibling relationship sidesteps this risk. DndContext reaches useDraggable consumers via React context regardless of DOM position, so drag still works with Canvas's widgets.
+2. **Drop-only layout-state updates.** During drag, @dnd-kit's inline `transform` handles visual movement; state only updates on drag end (PA Session 3 user decision 5). Smoother UX during drag; fewer re-renders; consistent with "update on decision-committed" pattern.
+3. **Core-overlap guard rejects drop silently (early return).** No animation/shake feedback for Session 3 — the widget snaps back to its pre-drag position because state never updated. Session 5 can add a shake-on-reject if usability testing signals need.
+4. **`findOpenZone` is Session 3 best-effort.** Preference order (top → left → right → bottom rails) matches PA §5.1 "prefers edges." Scanning is top-to-bottom, left-to-right within each zone — good enough for stub widgets. Session 5 refines once real pins + data-relationship context exist.
+5. **`WidgetState` wrapper instead of flat `WidgetPosition`.** `widgets[id] = { position: {...} }` costs one nesting level but future-proofs for visibility, z-index, per-widget props without reshaping the layout-state schema. Session 2's flat shape was placeholder only.
+6. **Resize via custom pointer-event hook, not dragging.** @dnd-kit/core has no resize primitive. Rolling our own via PointerEvent API (cross-device: mouse + touch + pen in one API) is 80 lines and avoids pulling in a separate resize library. Min-size defaults to 200×100 (readable threshold); overridable per widget.
+
+### Verification
+
+- **Vitest:** 259 tests passing (226 baseline + 33 new across 3 new test files — `geometry.test.ts` × 22, `WidgetChrome.test.tsx` × 7, `Canvas.test.tsx` × 5; one existing `focus-context.test.tsx` test updated for the new `WidgetState` shape, all 5 Session 2 layout-state tests remain green).
+- **tsc:** clean.
+- **vite build:** clean, 4.86s.
+- **Preview verification (Chromium via preview_eval):**
+  - Kanban Focus opens → canvas present (`data-slot="focus-canvas"`) with `pointer-events: none` ✓
+  - Mock widget renders at seeded (32, 96, 320×240) ✓
+  - All three chrome affordances present in DOM — drag handle, dismiss X, resize corner (with correct aria-labels) ✓
+  - Mock widget content ("Recent Cases" title) visible ✓
+  - Dismiss X click → widget removed from DOM after React commit; Focus stays open ✓
+  - ESC dismiss → dialog closes, push-back transform reverts to `none`, return pill appears, URL cleared — full Session 1 + 2 regression green ✓
+- **Not preview-testable (manual user verification needed):** drag-by-handle reposition with 8px snap; resize with real-time feedback + 8px snap on release; boundary enforcement on drag near canvas edges; core-overlap rejection (silent snap-back); `?dev-canvas=1` grid overlay.
+
+### Deviations from session plan
+
+- **Test hiccups during first run** — 6 initial failures resolved in-session:
+  - `findOpenZone` tests used 1920×1080 viewport where top/bottom rails are only 74px tall (after 16px margins), too small for 80px test widgets. Switched test viewport to 2400×1400 (rails 250px tall / 500px wide) and adjusted widget dimensions to exercise the preference-order logic.
+  - `computeCoreRect` test expected `height=918` but the function correctly caps at `min(900, 918) = 900`. Test expectation corrected.
+  - `snapTo8px(-3)` returned `-0` (negative zero) failing Object.is against `+0`. Normalized in the helper via `+ 0`.
+  - Canvas dev-mode test used MemoryRouter which doesn't touch `window.location`; Canvas now uses `useSearchParams` from react-router-dom so dev mode follows the router correctly (tests pass + real URLs still work).
+- **Structural refactor mid-session** — original plan had Canvas wrap Dialog.Popup (children prop). Discovered `pointer-events: none` parent would likely break Popup interactivity; refactored Canvas to be a sibling of Popup inside the Portal. DndContext still reaches widgets via React context. Cleaner + safer.
+
+### Next session (Phase A Session 4)
+
+Return pill 15-second countdown + hover-pause + re-arm-on-state-change (PA §5.4). Database persistence for layout state via `focus_sessions` + `focus_layout_defaults` tables (3-tier cascade: tenant default → per-user override → session ephemeral). First Phase-A Alembic migration.
+
+---
+
 ## Phase A Session 2 — Anchored Core + Mode Dispatcher + Push-Back Scale
 
 **Date:** 2026-04-22
