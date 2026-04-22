@@ -9,6 +9,7 @@ import {
 import { CommandBar } from "@/components/core/CommandBar";
 import type { CommandAction } from "@/services/actions";
 import { setCmdShortcutState } from "@/lib/cmd-digit-shortcuts";
+import { useFocus } from "@/contexts/focus-context";
 
 interface CommandBarContextValue {
   open: () => void;
@@ -39,6 +40,16 @@ export function CommandBarProvider({ children }: { children: React.ReactNode }) 
   const [isOpen, setIsOpen] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const prevFocusRef = useRef<Element | null>(null);
+
+  // Phase A Session 1 — Focus primitive hides the Command Bar while
+  // a Focus is open. Bounded-decision discipline per
+  // PLATFORM_ARCHITECTURE.md §5.X: Command Bar is the universal Act
+  // surface; Focus is the bounded Decide surface. Mixing the two
+  // breaks the primitive boundary. Information lookup inside a
+  // Focus is answered by Focus Chat (Session 7), not by invoking
+  // the bar.
+  const focus = useFocus();
+  const focusIsOpen = focus.isOpen;
 
   // Refs the inner CommandBar component populates — so the outer listener
   // always sees current values without re-registering on every render.
@@ -85,11 +96,18 @@ export function CommandBarProvider({ children }: { children: React.ReactNode }) 
 
   // ─────────────────────────────────────────────────────────────────
   // Cmd+K open/close + Escape — bubble phase is fine
+  //
+  // Skips the Cmd+K handler entirely while a Focus is open so the
+  // command bar cannot be invoked inside a Focus. ESC still closes
+  // an already-open command bar (defensive: command bar was already
+  // open when Focus opened — see the close-on-focus-open effect
+  // below).
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey;
       if (meta && e.key === "k") {
+        if (focusIsOpen) return;
         e.preventDefault();
         if (e.shiftKey) {
           openVoice();
@@ -105,7 +123,13 @@ export function CommandBarProvider({ children }: { children: React.ReactNode }) 
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, open, openVoice, close]);
+  }, [isOpen, open, openVoice, close, focusIsOpen]);
+
+  // If a Focus opens while the command bar is already open, close
+  // the command bar. Keeps the two surfaces mutually exclusive.
+  useEffect(() => {
+    if (focusIsOpen && isOpen) close();
+  }, [focusIsOpen, isOpen, close]);
 
   // Cmd+1..5 is handled by the listener installed in main.tsx
   // (see @/lib/cmd-digit-shortcuts). Provider just keeps its state
@@ -114,7 +138,12 @@ export function CommandBarProvider({ children }: { children: React.ReactNode }) 
   return (
     <CommandBarContext.Provider value={{ open, openVoice, close, isOpen, setShortcutRefs }}>
       {children}
-      <CommandBar isOpen={isOpen} onClose={close} voiceMode={voiceMode} />
+      {/* Hide the command bar render while a Focus is open. Cmd+K
+          is also suppressed above, so the bar can neither render
+          nor be invoked inside a Focus. */}
+      {!focusIsOpen && (
+        <CommandBar isOpen={isOpen} onClose={close} voiceMode={voiceMode} />
+      )}
     </CommandBarContext.Provider>
   );
 }

@@ -6,6 +6,53 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 1 — Focus Primitive Scaffolding
+
+**Date:** 2026-04-22
+**Session type:** Architectural foundation. First session of Phase A per `ARCHITECTURE_MIGRATION.md`. Ships scaffolding only — later sessions build core-mode dispatch, canvas, pins, chat, and database persistence on top.
+**Files touched:** 14 created / modified (`frontend/src/contexts/focus-context.tsx`, `focus-context.test.tsx`, `frontend/src/components/focus/Focus.tsx`, `Focus.test.tsx`, `ReturnPill.tsx`, `ReturnPill.test.tsx`, `frontend/src/pages/dev/focus-test.tsx`, `frontend/src/App.tsx`, `frontend/src/core/CommandBarProvider.tsx`, `frontend/src/styles/tokens.css`, `DESIGN_LANGUAGE.md`, `PLATFORM_ARCHITECTURE.md`, `CLAUDE.md`, `FEATURE_SESSIONS.md`).
+**LOC:** ~600 new / ~30 edits to existing files.
+**Tests:** 21 new Vitest (206 total, up from 185). tsc clean, vite build clean in 4.88s.
+
+### What shipped
+
+- **`FocusContext`** (`contexts/focus-context.tsx`) — React context with state + URL-as-source-of-truth discipline. `?focus=<id>` param drives state via `useSearchParams`. `open()` / `close()` / `dismissReturnPill()` are the public API. State shape: `currentFocus: FocusState | null` + `lastClosedFocus: FocusState | null` + derived `isOpen`. Opening a new Focus while another is open replaces (only one Focus active at a time, per PA §5.1 primitive discipline). Closing moves the just-closed state into `lastClosedFocus` for the return pill.
+- **`Focus` component** (`components/focus/Focus.tsx`) — renders the full-screen overlay atop `@base-ui/react/dialog`. Backdrop is `bg-black/40 supports-backdrop-filter:backdrop-blur-md` (matches overlay-family scrim; heavier blur than Dialog's `backdrop-blur-sm` for push-back signal per PA §5.2). Anchored core is `bg-surface-raised rounded-lg shadow-level-3 p-6` centered at `w-[90vw] max-w-[1400px] h-[85vh] max-h-[900px]`. Animations via `data-open:animate-in` / `data-closed:animate-out` classes using `duration-arrive` + `ease-settle` on enter and `duration-settle` + `ease-gentle` on exit — identical pattern to Dialog. `aria-modal="true"` set explicitly on Popup (base-ui doesn't emit it automatically). Placeholder content renders the focus id + descriptive copy — Session 2 replaces with core-mode dispatcher.
+- **`ReturnPill` component** (`components/focus/ReturnPill.tsx`) — UI-only scaffolding. Fixed at bottom-center, rounded-full chrome on `bg-surface-raised` with `shadow-level-2`. Renders iff `lastClosedFocus !== null && currentFocus === null`. Click the pill body → reopen the just-closed Focus. Click the X → dismiss the pill without reopening. No 15s countdown yet — that's Session 4 along with hover-to-pause and re-arm-on-state-change.
+- **Layering tokens** — `--z-base` / `--z-elevated` / `--z-dropdown` / `--z-modal` / `--z-focus` / `--z-command-bar` / `--z-toast` added to `DESIGN_LANGUAGE.md §9` (new "Layering tokens" subsection) and `frontend/src/styles/tokens.css` in the same commit per the `tokens.css` header discipline ("edit DESIGN_LANGUAGE.md first, then port the change here. Silent drift is a bug"). New overlay code consumes via `style={{ zIndex: "var(--z-focus)" }}` inline. Existing `z-50` literals in the overlay family (Dialog, Popover, DropdownMenu, Tooltip) are NOT retrofit — natural-touch refactor as those files change.
+- **Command Bar integration** — `core/CommandBarProvider.tsx` consumes `useFocus()` (since `FocusProvider` mounts above `CommandBarProvider` in App.tsx). When a Focus is open: (a) Cmd+K handler short-circuits before preventing default or opening the bar, (b) `<CommandBar>` is not rendered, (c) a defensive `useEffect` closes the bar if it was already open when a Focus opened. Escape still closes an already-open bar (defensive — shouldn't happen in practice given b + c). Bounded-decision discipline in implementation: Act and Decide are distinct primitives; mixing them inside one screen breaks the boundary.
+- **Dev test page** at `/dev/focus-test` — three Open-Focus buttons, live state readout, copy explaining manual tests (refresh for URL restoration, browser back, Cmd+K suppression). Not in nav. Any authenticated tenant user can access.
+- **PLATFORM_ARCHITECTURE.md** gains `§5.15 Implementation Foundation` documenting the base-ui Dialog choice + the push-back-scale deferral + the Command-Bar-Focus mutual exclusion. Prevents future sessions from rebuilding primitive Dialog functionality.
+
+### Architectural decisions (locked this session)
+
+1. **State pattern: React Context + URL as source of truth.** `?focus=<id>` param drives context state. Browser back/forward naturally closes/reopens a Focus. Database persistence (via `focus_sessions` table) deferred to Session 4.
+2. **Animation infrastructure: `@base-ui/react/dialog` + `tw-animate-css`.** No new dependencies. Overrides the original session plan's "framer-motion (existing dependency)" — verified against `package.json` + `grep src/`: framer-motion was never installed. The overlay family already uses base-ui Dialog + `data-open:animate-*` Tailwind classes with the `--duration-*` / `--ease-*` tokens, and Focus adopts that pattern for consistency.
+3. **Push-back scale on underlying app: DEFERRED.** CSS `transform: scale` creates a containing block for `position: fixed` descendants on Safari and some Chromium builds. Scaling the app shell would break DotNav + ModeToggle (both fixed-positioned). Backdrop blur alone provides the push-back feeling for Session 1. Session 2 revisits with a scoped wrapper element.
+4. **Command Bar is hidden while a Focus is open.** Not a UX choice — a primitive-boundary choice. Information lookup inside a Focus is answered by Focus Chat (Session 7), not by escaping to the Command Bar.
+5. **Tests colocated** (`Focus.tsx` + `Focus.test.tsx` in the same directory) per existing codebase convention. No `frontend/tests/focus/` subdirectory created.
+6. **`aria-modal="true"` explicitly set on Popup.** base-ui's `Dialog.Popup` does not emit `aria-modal` automatically even when `Dialog.Root` is modal. Setting it explicitly ensures accessibility assertions pass and screen readers treat the Focus correctly.
+
+### Verification
+
+- **Vitest:** 206 tests passing (185 baseline + 21 new). Test files created: 3.
+- **tsc:** clean.
+- **vite build:** clean, 4.88s.
+- **Manual test surface:** `/dev/focus-test` exercises open / close / ESC / backdrop-click / URL-sync / return-pill / Cmd+K-suppression paths.
+
+### Deviations from session plan
+
+- **Animation library:** plan said "framer-motion (existing dependency)". Verified it is NOT a dependency. Switched to base-ui Dialog + tw-animate-css per user decision after flag.
+- **Push-back scale:** plan said "verify no breakage... if scale interferes with fixed positioning, FALLBACK." Took the fallback. Session 2 revisits.
+- **Dialog primitive choice:** plan did not specify; chose base-ui Dialog after verification, documented in PA §5.15 for future sessions.
+- **Tests:** plan said `frontend/tests/focus/` — user overrode to colocated per existing convention.
+
+### Next session (Phase A Session 2)
+
+Anchored core mode dispatcher: render different core types (Kanban, single-record, edit canvas, triage queue, matrix) based on the open Focus's configuration. Push-back scale revisit. Session 3 follows with free-form canvas + widget placement.
+
+---
+
 ## Tier-4 Measurement-Based Correction — Dark-mode card chrome calibrated
 
 **Date:** 2026-04-22

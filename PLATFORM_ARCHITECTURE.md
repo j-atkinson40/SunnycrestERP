@@ -798,6 +798,18 @@ Why this matters: without this discipline, Focuses drift into being persistent d
 
 Test in context: cross-tenant personalization. A first attempt at this designed a “persistent shared triage between FH and manufacturer” — which was actually a dashboard, not a Focus. The corrected decomposition (Section 7.3) puts persistent collaboration in a shared Space with shared dashboards, and reserves Focuses for specific decisions (proof review, proof revision, timing conflict resolution). 
 
+## 5.15 Implementation Foundation 
+
+Phase A Session 1 (April 2026). Documented here to prevent future sessions from rebuilding primitive Dialog functionality. 
+
+The Focus primitive is implemented atop `@base-ui/react/dialog` (`Dialog.Root` / `Dialog.Portal` / `Dialog.Backdrop` / `Dialog.Popup`). Focus IS an opinionated, scoped use of Dialog — full-screen, decision-bounded, with an anchored core and a free-form canvas for pins. The Dialog primitive provides: focus trap, ESC handling, `role="dialog"`, portal rendering, controlled-open/onOpenChange state plumbing, backdrop-click dismiss. Custom chrome layered on top: heavier backdrop blur (12px vs Dialog's 4px) to signal push-back per §5.2; larger anchored core with `shadow-level-3`; free-form canvas and pin system (Sessions 3 + 5–6); return pill (Session 4 adds the 15s countdown); Focus Chat (Session 7). 
+
+This choice was made after verifying that `framer-motion` is not a dependency of the codebase (the Aesthetic Arc's overlay family — Dialog, Popover, DropdownMenu, Tooltip, SlideOver, Select, PeekHost — all use base-ui primitives with `data-open:animate-in` / `data-closed:animate-out` Tailwind utility classes driven by `--duration-arrive` / `--duration-settle` / `--ease-settle` / `--ease-gentle` tokens). Adopting `framer-motion` for Focus only would have introduced a parallel animation pipeline. Building on Dialog keeps Focus inside the overlay family aesthetically and inherits every accessibility affordance the family already ships. 
+
+Push-back scale on the underlying app (§5.2 signal) is deferred from Session 1. CSS `transform: scale` creates a containing block for `position: fixed` descendants on Safari and some Chromium builds; applying it to the app shell would break DotNav and the mode toggle (both fixed-positioned in the sidebar/header). Session 2 revisits with a scoped wrapper element that does not contain those fixed elements. Backdrop blur alone provides the push-back signal in Session 1. 
+
+Command Bar and Focus are mutually exclusive surfaces. Command Bar is hidden while a Focus is open (both its render and its `Cmd+K` keyboard shortcut are gated on `useFocus().isOpen`). This is bounded-decision discipline in implementation: Act and Decide are distinct primitives with distinct shapes, and mixing them inside one screen breaks the boundary. Information-lookup needs inside a Focus are answered by Focus Chat (Session 7), a scoped Q&A surface specific to the active Focus — not by escaping to the Command Bar. 
+
 ## 6. Cross-Cutting Principles 
 
 ## 6.1 Observe-and-Offer (the truest “opinionated but configurable”) 

@@ -136,6 +136,21 @@
   --max-w-content: 56rem;
   --max-w-wide: 72rem;
   --max-w-dashboard: 96rem;
+
+  /* ─── LAYERING (Phase A Session 1) ───
+   *   Overlay tier tokens. Consumed via inline
+   *   `style={{ zIndex: "var(--z-focus)" }}` rather than Tailwind
+   *   `z-*` utilities — see DESIGN_LANGUAGE.md §9 Layering tokens
+   *   for rationale. Existing `z-50` literals in the overlay-family
+   *   components (Dialog, Popover, DropdownMenu, Tooltip) are NOT
+   *   retrofit — natural-touch refactor as those files change. */
+  --z-base: 0;
+  --z-elevated: 10;
+  --z-dropdown: 50;
+  --z-modal: 80;
+  --z-focus: 100;
+  --z-command-bar: 110;
+  --z-toast: 120;
 }
 
 /* ============================================================

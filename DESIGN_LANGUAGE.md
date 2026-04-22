@@ -2267,6 +2267,24 @@ Recommended tooling to enforce the design language mechanically:
 
 These are recommendations, not currently enforced. They become increasingly valuable as the codebase grows past the single-developer stage.
 
+### Layering tokens
+
+Overlay-family components previously used literal `z-50` values inline (see `components/ui/dialog.tsx`, `popover.tsx`, `dropdown-menu.tsx`, `tooltip.tsx`). The literal-index approach works fine for a small overlay set but does not scale to a platform with three overlay tiers (dropdowns, modals, Focus) and a Command Bar that intentionally sits above everything except toasts.
+
+Phase A Session 1 introduces a layering-token system. New overlay code uses these tokens via `style={{ zIndex: "var(--z-focus)" }}` rather than Tailwind `z-*` utilities (Tailwind v4 does not ship arbitrary `z-[var(--x)]` utilities by default, and adding them as `@theme` keys would overload the theme namespace for a small set of values). Existing `z-50` literals in the overlay family are not retrofit — refactor on natural-touch basis in a later cleanup session.
+
+| Token | Value | Intended use |
+|---|---|---|
+| `--z-base` | `0` | Default content flow |
+| `--z-elevated` | `10` | Cards, elevated surfaces, return pill |
+| `--z-dropdown` | `50` | Dropdowns, tooltips, peek panels |
+| `--z-modal` | `80` | Dialogs, sheets, slide-overs |
+| `--z-focus` | `100` | Focus primitive overlay (Phase A) |
+| `--z-command-bar` | `110` | Command bar — intentionally above Focus per architecture, though it is hidden while a Focus is open per Phase A Session 1 decision |
+| `--z-toast` | `120` | Toast notifications — always on top |
+
+Definition in `styles/tokens.css` mirrors the above verbatim per the tokens.css header discipline ("edit DESIGN_LANGUAGE.md first, then port the change here"). If you are adding a new overlay tier, add it in this table first with a clear rationale, then port to `tokens.css` in the same commit.
+
 ## Section 10 — Anti-Patterns
 
 This section consolidates anti-patterns from every prior section into one reference. It is the document's diagnostic layer: when shipped UI feels wrong, this is where to look for what specifically broke.

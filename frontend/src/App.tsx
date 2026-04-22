@@ -11,6 +11,9 @@ import { LayoutProvider } from "@/contexts/layout-context";
 import { PresetThemeProvider } from "@/contexts/preset-theme-context";
 import { SpaceProvider } from "@/contexts/space-context";
 import { PeekProvider } from "@/contexts/peek-context";
+import { FocusProvider } from "@/contexts/focus-context";
+import { Focus } from "@/components/focus/Focus";
+import { ReturnPill } from "@/components/focus/ReturnPill";
 import { AffinityVisitWatcher } from "@/components/spaces/AffinityVisitWatcher";
 import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -24,6 +27,7 @@ import PlatformApp from "@/PlatformApp";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
+import FocusTestPage from "@/pages/dev/focus-test";
 import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
 import CompanyMigrationReviewPage from "@/pages/admin/company-migration-review";
@@ -431,12 +435,20 @@ export default function App() {
       <LocationProvider>
       <LayoutProvider>
       <AuthDeviceProvider>
+      <FocusProvider>
       <CommandBarProvider>
       <CallContextProvider>
         <ImpersonationBanner />
         <OfflineBanner />
         <KeyboardHelpOverlay />
         <CallOverlay />
+        {/* Phase A Session 1 — Focus primitive scaffolding. Focus
+            renders the overlay when a Focus is open; ReturnPill
+            renders just-closed-Focus re-entry affordance. Both
+            consume FocusContext (mounted above CommandBarProvider
+            so the bar can hide while a Focus is open). */}
+        <Focus />
+        <ReturnPill />
         <Routes>
           {slug ? (
             <>
@@ -472,6 +484,15 @@ export default function App() {
                   >
                     <Route path="/dashboard" element={<Dashboard />} />
                   </Route>
+
+                  {/* Phase A Session 1 — dev-only test page for the
+                      Focus primitive. Not in nav. Any authenticated
+                      tenant user can access it. Delete when Phase A
+                      ships its first real Focus consumer. */}
+                  <Route
+                    path="/dev/focus-test"
+                    element={<FocusTestPage />}
+                  />
 
                   {/* User management — requires users.view permission */}
                   <Route
@@ -1647,6 +1668,7 @@ export default function App() {
         </div>
       </CallContextProvider>
       </CommandBarProvider>
+      </FocusProvider>
       </AuthDeviceProvider>
       </LayoutProvider>
       </LocationProvider>
