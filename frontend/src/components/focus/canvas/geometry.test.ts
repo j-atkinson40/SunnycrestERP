@@ -14,6 +14,7 @@ import {
   computeCoreRect,
   computeOffsetsForAnchor,
   determineAnchorFromDrop,
+  determineTier,
   enforceMinRect,
   findOpenZone,
   rectsOverlap,
@@ -335,13 +336,62 @@ describe("clampRectToCanvas + enforceMinRect", () => {
 })
 
 
-describe("computeCoreRect", () => {
-  it("caps at 1400x900 on a 1920x1080 viewport", () => {
-    const r = computeCoreRect(1920, 1080)
+describe("computeCoreRect — Session 3.7 tier-aware", () => {
+  it("canvas tier caps at CORE_MAX on wide viewport", () => {
+    // 1920-200=1720, capped at 1400. 1080-200=880, under 900 cap.
+    const r = computeCoreRect("canvas", 1920, 1080)
     expect(r.width).toBe(1400)
-    expect(r.height).toBe(900)
-    expect(r.x).toBe((1920 - 1400) / 2)
-    expect(r.y).toBe((1080 - 900) / 2)
+    expect(r.height).toBe(880)
+  })
+
+  it("canvas tier floors at CORE_MIN on narrow viewport", () => {
+    // 700-200=500, floored at 600. 700-200=500, floored at 400? No -
+    // 500 > 400, so no floor needed. min(900, 500) = 500.
+    const r = computeCoreRect("canvas", 700, 700)
+    expect(r.width).toBe(600)
+    expect(r.height).toBe(500)
+  })
+
+  it("stack tier reserves right-rail", () => {
+    // vw=900, rail=280, gap=16, left margin=16 → core width = 900-296-16 = 588
+    // Floors at CORE_MIN_WIDTH=600 (588 < 600 triggers floor).
+    const r = computeCoreRect("stack", 900, 800)
+    expect(r.width).toBeGreaterThanOrEqual(600)
+    expect(r.x).toBe(16)
+    // Core height = vh - 32 = 768; under 900 cap.
+    expect(r.height).toBe(768)
+  })
+
+  it("icon tier fills viewport minus small padding", () => {
+    const r = computeCoreRect("icon", 390, 844)
+    expect(r.width).toBe(390 - 16)
+    expect(r.height).toBe(844 - 16)
+    expect(r.x).toBe(8)
+    expect(r.y).toBe(8)
+  })
+})
+
+
+describe("determineTier — Session 3.7 viewport thresholds", () => {
+  it("picks icon for narrow viewport", () => {
+    expect(determineTier(699, 844)).toBe("icon")
+    expect(determineTier(390, 844)).toBe("icon")
+    expect(determineTier(300, 1200)).toBe("icon")
+  })
+  it("picks stack for medium-narrow width", () => {
+    expect(determineTier(700, 844)).toBe("stack")
+    expect(determineTier(999, 844)).toBe("stack")
+    expect(determineTier(800, 800)).toBe("stack")
+  })
+  it("picks stack when height forces it (short+wide)", () => {
+    expect(determineTier(1920, 699)).toBe("stack")
+    expect(determineTier(2000, 400)).toBe("stack")
+    expect(determineTier(844, 390)).toBe("stack")
+  })
+  it("picks canvas for wide + tall", () => {
+    expect(determineTier(1000, 700)).toBe("canvas")
+    expect(determineTier(1920, 1080)).toBe("canvas")
+    expect(determineTier(1440, 900)).toBe("canvas")
   })
 })
 
@@ -350,7 +400,7 @@ describe("findOpenZone — anchor-aware smart positioning", () => {
   const big = {
     canvasWidth: 2400,
     canvasHeight: 1400,
-    coreRect: computeCoreRect(2400, 1400),
+    coreRect: computeCoreRect("canvas", 2400, 1400),
     existing: [] as Rect[],
   }
 

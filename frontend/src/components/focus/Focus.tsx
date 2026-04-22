@@ -53,12 +53,26 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { useFocus } from "@/contexts/focus-context"
 import { cn } from "@/lib/utils"
 import { Canvas } from "./canvas/Canvas"
+import { computeCoreRect } from "./canvas/geometry"
+import { useViewportTier } from "./canvas/useViewportTier"
 import { ModeDispatcher } from "./mode-dispatcher"
 
 
 export function Focus() {
   const { currentFocus, close } = useFocus()
   const isOpen = currentFocus !== null
+
+  // Session 3.7 — tier-aware core sizing. Must match geometry.ts
+  // `computeCoreRect` exactly, since findOpenZone + drag-end use it
+  // to determine forbidden zones. Canvas tier reserves 100px on each
+  // side for widgets; stack tier reserves right-rail; icon tier
+  // fills viewport minus small padding.
+  const viewport = useViewportTier()
+  const coreRect = computeCoreRect(
+    viewport.tier,
+    viewport.width,
+    viewport.height,
+  )
 
   return (
     <DialogPrimitive.Root
@@ -92,15 +106,14 @@ export function Focus() {
         <Canvas />
         <DialogPrimitive.Popup
           data-slot="focus-core"
+          data-focus-tier={viewport.tier}
           aria-modal="true"
           aria-label={
             currentFocus ? `Focus: ${currentFocus.id}` : "Focus"
           }
           className={cn(
-            // Positioning — centered in viewport
-            "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
-            // Size — soft maximum on both axes per PA §5.1
-            "w-[90vw] max-w-[1400px] h-[85vh] max-h-[900px]",
+            // Positioning — anchored from coreRect (tier-aware).
+            "fixed",
             // Chrome — anchored core above backdrop
             "bg-surface-raised rounded-lg shadow-level-3",
             // Content — inner padding generous per DESIGN_LANGUAGE §5
@@ -112,8 +125,17 @@ export function Focus() {
             "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
             "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             "data-closed:duration-settle data-closed:ease-gentle",
+            // Smooth tier transition — width/height animate when
+            // tier changes.
+            "transition-[width,height,left,top] duration-settle ease-settle",
           )}
-          style={{ zIndex: "var(--z-focus)" }}
+          style={{
+            zIndex: "var(--z-focus)",
+            left: coreRect.x,
+            top: coreRect.y,
+            width: coreRect.width,
+            height: coreRect.height,
+          }}
         >
           {currentFocus && <ModeDispatcher focusId={currentFocus.id} />}
         </DialogPrimitive.Popup>

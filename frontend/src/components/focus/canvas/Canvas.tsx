@@ -1,41 +1,22 @@
 /**
- * Canvas — free-form widget region surrounding the anchored Focus
- * core. Phase A Session 3.
+ * Canvas — tier-dispatching widget region surrounding the anchored
+ * Focus core. Phase A Session 3.7.
  *
- * Visual structure (inside Dialog.Portal):
- *   ┌───────────────────────── viewport ─────────────────────────┐
- *   │                                                             │
- *   │   ┌── Canvas (fixed inset-0, pointer-events: none) ──┐      │
- *   │   │   Widgets absolutely positioned (pointer-events   │      │
- *   │   │   auto via WidgetChrome) — can live top, left,    │      │
- *   │   │   right, or below the anchored core.              │      │
- *   │   │                                                    │      │
- *   │   │           ┌── Anchored core (Dialog.Popup) ──┐    │      │
- *   │   │           │   ModeDispatcher renders here.   │    │      │
- *   │   │           └──────────────────────────────────┘    │      │
- *   │   │                                                    │      │
- *   │   └────────────────────────────────────────────────────┘     │
- *   │                                                             │
- *   └─────────────────────────────────────────────────────────────┘
+ * Three responsive tiers:
+ *   - canvas: free-form placement (drag/resize, anchor positioning)
+ *   - stack: right-rail Smart Stack (scroll-snap, tap-to-expand)
+ *   - icon: floating button → bottom-sheet overlay (mobile-ready)
  *
- * Pointer-events discipline:
+ * Widget state (anchor, offset, size) is canonical across all tiers.
+ * Tier is a pure render-time override — no state mutation when
+ * transitioning between tiers. `useViewportTier` hook detects tier
+ * and re-renders appropriately on window resize.
+ *
+ * Pointer-events discipline (inherited from Session 3):
  *   - Canvas wrapper has `pointer-events: none` so backdrop clicks
- *     pass through to Dialog.Backdrop's dismiss handler.
- *   - Widgets (via WidgetChrome) set `pointer-events: auto` on
- *     themselves so drag / resize / dismiss remain interactive.
- *
- * Coordinate space:
- *   - Viewport pixels. Origin (0, 0) at viewport top-left.
- *   - All widget positions snapped to 8px (see geometry.ts).
- *
- * Drag wiring:
- *   - DndContext wraps the widget set.
- *   - Each WidgetChrome uses useDraggable.
- *   - On drag end, Canvas's onDragEnd computes the new absolute
- *     position by adding the drag delta to the widget's previous
- *     position, snapping to 8px, and clamping to canvas bounds minus
- *     the forbidden core zone (widget can't land on top of the
- *     core). Persists via updateSessionLayout.
+ *     still reach Dialog.Backdrop for dismiss
+ *   - Interactive sub-components set `pointer-events: auto` on
+ *     themselves
  */
 
 import {
@@ -45,13 +26,14 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 
 import { useFocus } from "@/contexts/focus-context"
 import type { WidgetId, WidgetPosition } from "@/contexts/focus-registry"
 import { cn } from "@/lib/utils"
 
+import { BottomSheet } from "./BottomSheet"
 import {
   clampPositionOffsets,
   computeCoreRect,
@@ -61,56 +43,45 @@ import {
   resolvePosition,
   snapTo8px,
 } from "./geometry"
+import { IconButton } from "./IconButton"
 import { MockSavedViewWidget } from "./MockSavedViewWidget"
+import { StackExpandedOverlay } from "./StackExpandedOverlay"
+import { StackRail } from "./StackRail"
+import { useViewportTier } from "./useViewportTier"
 import { WidgetChrome } from "./WidgetChrome"
-
-
-/** Read the current viewport dimensions reactively — updates on
- *  window resize so geometry stays correct. */
-function useViewportSize() {
-  const [size, setSize] = useState(() => ({
-    width: typeof window !== "undefined" ? window.innerWidth : 1440,
-    height: typeof window !== "undefined" ? window.innerHeight : 900,
-  }))
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    const handler = () =>
-      setSize({ width: window.innerWidth, height: window.innerHeight })
-    window.addEventListener("resize", handler)
-    return () => window.removeEventListener("resize", handler)
-  }, [])
-  return size
-}
 
 
 export function Canvas() {
   const { currentFocus, updateSessionLayout, removeWidget } = useFocus()
-  const viewport = useViewportSize()
+  const viewport = useViewportTier()
 
-  // dev mode grid visualization — URL ?dev-canvas=1 only. Reads
-  // via react-router's useSearchParams so tests using MemoryRouter
-  // can exercise the dev-grid path (MemoryRouter doesn't update
-  // window.location).
   const [searchParams] = useSearchParams()
   const devMode = searchParams.get("dev-canvas") === "1"
 
-  // @dnd-kit sensors — 8px activation threshold prevents accidental
-  // drag on click (matches WidgetGrid precedent).
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   )
 
   const widgets = currentFocus?.layoutState?.widgets ?? {}
-  const coreRect = computeCoreRect(viewport.width, viewport.height)
+  const tier = viewport.tier
+
+  // Stack-mode expand-overlay state + icon-mode sheet-open state.
+  // Both local to Canvas; transitioning tiers resets naturally on
+  // re-render.
+  const [expandedWidgetId, setExpandedWidgetId] = useState<WidgetId | null>(
+    null,
+  )
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   function handleDragEnd(event: DragEndEvent) {
+    // Drag only applies in canvas tier. Stack + icon tiers don't
+    // mount WidgetChrome, so useDraggable never fires there.
     const { active, delta } = event
     const widgetId = String(active.id) as WidgetId
     const current = widgets[widgetId]
     if (!current) return
 
-    // Compute the drop rect in absolute-viewport space: resolve
-    // current anchor position, apply drag delta, snap to 8px.
+    const coreRect = computeCoreRect("canvas", viewport.width, viewport.height)
     const startRect = resolvePosition(
       current.position,
       viewport.width,
@@ -123,15 +94,8 @@ export function Canvas() {
       height: startRect.height,
     }
 
-    // Core-overlap guard: if the drop rect overlaps the anchored
-    // core, silently reject the drop. Widget state never updated →
-    // visually snaps back. Smarter slide-to-nearest-edge heuristic
-    // is reasonable polish for Session 5.
     if (rectsOverlap(dropRect, coreRect)) return
 
-    // Determine the new anchor from the drop point. The drop point
-    // for anchor picking is the widget's CENTER — "which zone does
-    // the user think they dropped into" — not the top-left corner.
     const dropCenterX = dropRect.x + dropRect.width / 2
     const dropCenterY = dropRect.y + dropRect.height / 2
     const newAnchor = determineAnchorFromDrop(
@@ -140,9 +104,6 @@ export function Canvas() {
       viewport.width,
       viewport.height,
     )
-
-    // Re-project drop rect to the new anchor's offsets. Snap offsets
-    // to 8px (widget position is always on the grid).
     const rawOffsets = computeOffsetsForAnchor(
       newAnchor,
       dropRect,
@@ -156,14 +117,11 @@ export function Canvas() {
       width: dropRect.width,
       height: dropRect.height,
     }
-
-    // Clamp offsets so the widget stays within the viewport.
     const clampedPosition = clampPositionOffsets(
       nextPosition,
       viewport.width,
       viewport.height,
     )
-
     updateSessionLayout({
       widgets: {
         [widgetId]: { position: clampedPosition },
@@ -175,17 +133,16 @@ export function Canvas() {
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <div
         data-slot="focus-canvas"
+        data-focus-tier={tier}
         className={cn(
           "fixed inset-0",
-          // pointer-events none on the wrapper so backdrop clicks
-          // reach the Dialog.Backdrop beneath us. Widgets re-enable
-          // pointer events on themselves via WidgetChrome.
+          // Wrapper pointer-events none; children re-enable.
           "pointer-events-none",
         )}
         style={{ zIndex: "var(--z-focus)" }}
       >
-        {/* Dev-only grid lines — only visible with ?dev-canvas=1 */}
-        {devMode && (
+        {/* Dev grid overlay — canvas tier only. */}
+        {devMode && tier === "canvas" && (
           <div
             aria-hidden
             data-slot="focus-canvas-dev-grid"
@@ -198,24 +155,54 @@ export function Canvas() {
           />
         )}
 
-        {/* Widgets — each positioned absolutely via WidgetChrome
-            using their layout-state position. The widget rendering
-            itself is Session 3 stub (MockSavedViewWidget); Session 5
-            replaces with the real pin system. */}
-        {Object.entries(widgets).map(([id, state]) => (
-          <div key={id} className="pointer-events-auto">
-            <WidgetChrome
-              widgetId={id as WidgetId}
-              position={state.position}
-              canvasWidth={viewport.width}
-              canvasHeight={viewport.height}
-              onDismiss={() => removeWidget(id as WidgetId)}
-            >
-              <MockSavedViewWidget />
-            </WidgetChrome>
-          </div>
-        ))}
+        {/* CANVAS TIER — free-form widgets at anchor positions. */}
+        {tier === "canvas" &&
+          Object.entries(widgets).map(([id, state]) => (
+            <div key={id} className="pointer-events-auto">
+              <WidgetChrome
+                widgetId={id as WidgetId}
+                position={state.position}
+                canvasWidth={viewport.width}
+                canvasHeight={viewport.height}
+                onDismiss={() => removeWidget(id as WidgetId)}
+              >
+                <MockSavedViewWidget />
+              </WidgetChrome>
+            </div>
+          ))}
 
+        {/* STACK TIER — right-rail Smart Stack. */}
+        {tier === "stack" && (
+          <StackRail
+            widgets={widgets}
+            onExpandWidget={(id) => setExpandedWidgetId(id)}
+          />
+        )}
+
+        {/* STACK TIER expanded overlay — rendered above stack when
+            user taps a widget. */}
+        {tier === "stack" && expandedWidgetId && widgets[expandedWidgetId] && (
+          <StackExpandedOverlay
+            widgetId={expandedWidgetId}
+            state={widgets[expandedWidgetId]}
+            onDismiss={() => setExpandedWidgetId(null)}
+          />
+        )}
+
+        {/* ICON TIER — floating button (when closed) or bottom sheet
+            (when open). Mutually exclusive. */}
+        {tier === "icon" && !sheetOpen && (
+          <IconButton
+            widgetCount={Object.keys(widgets).length}
+            onOpen={() => setSheetOpen(true)}
+          />
+        )}
+        {tier === "icon" && sheetOpen && (
+          <BottomSheet
+            widgets={widgets}
+            onDismiss={() => setSheetOpen(false)}
+          />
+        )}
       </div>
     </DndContext>
   )

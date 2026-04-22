@@ -26,11 +26,13 @@
 import { useFocus } from "@/contexts/focus-context"
 import { listFocusConfigs } from "@/contexts/focus-registry"
 import { Button } from "@/components/ui/button"
+import { useViewportTier } from "@/components/focus/canvas/useViewportTier"
 
 
 export default function FocusTestPage() {
   const { currentFocus, lastClosedFocus, open, isOpen } = useFocus()
   const configs = listFocusConfigs()
+  const viewport = useViewportTier()
 
   const resolvedMode = currentFocus
     ? (configs.find((c) => c.id === currentFocus.id)?.mode ?? "(unknown id)")
@@ -85,6 +87,21 @@ export default function FocusTestPage() {
           Current state
         </h2>
         <dl className="grid grid-cols-2 gap-y-1 text-body-sm">
+          <dt className="text-content-muted">viewport</dt>
+          <dd className="font-plex-mono text-content-base">
+            {viewport.width}×{viewport.height} · tier{" "}
+            <span
+              className={
+                viewport.tier === "canvas"
+                  ? "text-status-success"
+                  : viewport.tier === "stack"
+                    ? "text-status-info"
+                    : "text-status-warning"
+              }
+            >
+              {viewport.tier}
+            </span>
+          </dd>
           <dt className="text-content-muted">isOpen</dt>
           <dd className="font-plex-mono text-content-base">
             {String(isOpen)}

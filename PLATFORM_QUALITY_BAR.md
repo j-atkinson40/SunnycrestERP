@@ -152,6 +152,7 @@ Specific comparisons:
 
 - **Phase A Session 3.5 (2026-04-22)** — zone-relative positioning chosen over absolute pixels for resize-feel and viewport-resilience reasons. 8-zone resize with cursor-only affordance (no visible icon) matches Freeform resize feel. Drag-from-anywhere matches native canvas app expectations.
 - **Phase A Session 3.6 (2026-04-22)** — chrome elements (grip + dismiss X) hidden during active drag/resize. Cursor change is the only affordance needed during interaction — same reasoning that removed the static resize icon in 3.5. In-widget visual indicators during a gesture are noise; the cursor is already telling the user what's happening.
+- **Phase A Session 3.7 (2026-04-22)** — three-tier responsive cascade (canvas → stack → icon). Widget state is canonical and tier-independent; tier change flips the render path without mutating positions. User drags a widget in canvas mode, narrows browser to stack tier, widens back to canvas — widget is exactly where they left it. Matches Apple's behavior where Today View widgets and Smart Stack are different presentations of the same underlying content. One primitive, architecturally mobile-ready. Native CSS `scroll-snap-type: y mandatory` + momentum scrolling delivers close-to-Smart-Stack feel on iOS/Safari without a physics library — pragmatic pick that preserves Apple-grade feel at the 80% mark while deferring the final 20% to the mobile polish session rather than blocking Focus persistence work.
 
 ---
 
@@ -160,6 +161,7 @@ Specific comparisons:
 (Populated as we discover — these become learning material.)
 
 - **Phase A Session 3 initial** — drag from grip handle only. Felt restrictive vs Apple's "drag from anywhere" pattern. Refactored in 3.5. **Lesson:** pattern choices that feel "safer" architecturally can cost feel. Evaluate against the bar before shipping.
+- **Phase A Session 3.7 — stack scroll physics (deferred, not regression).** Stack tier ships with native CSS `scroll-snap-type: y mandatory` rather than a spring-physics library. Native scroll-snap is close to Smart Stack feel — momentum on iOS/Safari; snap-to-tile on scroll release — but doesn't match the subtle spring overshoot + rubber-band behavior Apple uses on Today View widgets. Bottom-sheet swipe-dismiss uses a linear 150px threshold; Apple's sheet uses velocity-weighted dismissal. **Tracked for mobile polish session** (post-Phase-A), not a Session 3.7 regression — shipping a physics library (`react-spring` or `framer-motion`) for one primitive when the rest of the overlay family uses CSS-based `data-open:animate-*` would fork the animation pipeline. Spring physics lands when we do the full iOS behavior pass + device verification. **Lesson:** the bar has tiers. Native CSS delivers 80% of Apple-grade feel at 0% architectural cost; the final 20% is worth a separate session, not a parallel pipeline shipped mid-phase.
 
 ---
 

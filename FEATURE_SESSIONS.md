@@ -6,6 +6,90 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 3.7 — Three-tier responsive cascade (canvas → stack → icon)
+
+**Date:** 2026-04-22
+**Session type:** Architectural — Focus primitive becomes responsive. Replaces the original Session 3.6 "hide widgets + indicator" plan with iOS Smart Stack pattern; scope expanded to three tiers per user direction to make Focus architecturally mobile-ready in one pass.
+**Files touched:** 14 (`frontend/src/components/focus/canvas/geometry.ts`, `geometry.test.ts`, `useViewportTier.ts` (new), `useSwipeDismiss.ts` (new), `StackRail.tsx` (new) + test, `StackExpandedOverlay.tsx` (new), `IconButton.tsx` (new) + test, `BottomSheet.tsx` (new) + test, `Canvas.tsx` (rewrite), `Canvas.test.tsx`, `frontend/src/components/focus/Focus.tsx`, `frontend/src/contexts/focus-registry.ts`, `frontend/src/pages/dev/focus-test.tsx`).
+**LOC:** ~1,400 added across new components + tests; ~200 modified in Canvas + Focus + geometry.
+**Tests:** 318 passing (286 baseline + 32 new). tsc clean. vite build clean in 5.00s.
+
+### What shipped
+
+Widgets now collapse through three tiers as viewport shrinks. Focus primitive is architecturally mobile-ready — same canonical widget state, three render paths.
+
+| Tier | Trigger | Render path |
+|---|---|---|
+| **Canvas** | vw ≥ 1000 AND vh ≥ 700 | Free-form placement, drag/resize, 8 anchors, WidgetChrome map (Session 3.5 behavior preserved) |
+| **Stack** | 700 ≤ vw < 1000 OR vh < 700 (with vw ≥ 700) | Right-rail iOS Smart Stack — scroll-snap column, dots indicator, tap-to-expand overlay |
+| **Icon** | vw < 700 | Floating brass button bottom-right, tap opens bottom-sheet with widget tile grid |
+
+**Canvas tier** (unchanged from Session 3.5 except constants): core rect reserves 100px margin around viewport edges. Widgets positioned via 8-anchor zone-relative system from Session 3.5.
+
+**Stack tier** (new — `StackRail.tsx`): 280px-wide right-rail `70vh` scroll-snap container. Native CSS `scroll-snap-type: y mandatory` + `scroll-snap-align: start` per widget; native momentum handles feel on iOS/Safari. Dots-indicator column to the left of the rail tracks active widget via IntersectionObserver (threshold 0.55, jsdom-guarded). Tap widget → floating `StackExpandedOverlay` (bespoke, not nested Dialog) for full-view. Chrome affordances disabled (no drag/resize/dismiss) — widgets scroll in place, not drag.
+
+**Icon tier** (new — `IconButton.tsx` + `BottomSheet.tsx`): 56×56 floating brass button with widget-count badge (bottom-right, `env(safe-area-inset-bottom)` with `max(1rem, ...)` fallback for iOS). Tap → slide-up `BottomSheet` with 2-column tile grid + drag-handle. Swipe-down gesture via new `useSwipeDismiss` hook (PointerEvent-based, 150px threshold, `touchAction: none` on handle to prevent scroll hijack). Tap tile → full-screen expanded view; Esc cascade (expanded closes first, then sheet). Backdrop click dismisses sheet.
+
+### New primitives
+
+- **`useViewportTier` hook** — subscribes to window resize, returns `{width, height, tier}`. Re-renders components listening for tier changes. No state is ever mutated across tiers — widget positions remain canonical; tier change flips the render path.
+- **`useSwipeDismiss` hook** — PointerEvent-based swipe-down detector with configurable threshold. `{offsetY, isDragging, onPointerDown}`. Uses window-level pointer listeners + `latestRef` pattern from `useResize`.
+- **`StackRail`** — iOS Smart Stack analog, scroll-snap column. Dots indicator + IntersectionObserver for active tracking. Chrome disabled.
+- **`StackExpandedOverlay`** — bespoke floating overlay (not a nested base-ui Dialog, which would compete with the parent Focus Dialog's focus trap). Outside-click + Esc + tap-widget dismiss.
+- **`IconButton`** — floating 56×56 brass button with count badge. Zero render when `widgetCount === 0` — no empty affordance.
+- **`BottomSheet`** — slide-up sheet with drag handle. Two-level modality (sheet + expanded widget view). Esc cascade. Backdrop `bg-black/60`.
+- **`determineTier(vw, vh)`** — pure function in `geometry.ts`. Single source of tier truth.
+- **`computeCoreRect(tier, vw, vh)`** — tier-aware sizing. Canvas: `vw - CANVAS_RESERVED_MARGIN × 2`. Stack: subtracts right-rail width + margins. Icon: fills viewport minus 16px padding (no floor; narrow viewports define icon mode).
+
+### Architectural decisions
+
+**(1) Three tiers, not two.** Original Session 3.7 plan was canvas + stack only. User direction expanded to three tiers (canvas + stack + icon) in one session so Focus is mobile-ready in a single coherent pass, not two separate "mobile polish" sessions later.
+
+**(2) Pure render-time override, no state mutation.** Widget position state (`{anchor, offsetX, offsetY, width, height}`) is canonical and tier-independent. Tier change re-renders different components reading the same state. User drags a widget in canvas mode, narrows the browser to stack tier, widens back to canvas — widget is exactly where they left it. No tier-specific position storage.
+
+**(3) Bespoke `StackExpandedOverlay`, not nested Dialog.** A base-ui Dialog inside a base-ui Dialog (Focus holding stack-expanded) would compete for focus trap + create tricky dismiss layering. Chose a plain floating div with manual Esc + outside-click handling. Keeps the overlay family clean: Focus owns the modal container; everything inside is bespoke.
+
+**(4) Native CSS scroll-snap, not spring physics.** Per PLATFORM_QUALITY_BAR.md §2, spring physics is the ideal for iOS-grade feel. Session 3.7 ships native `scroll-snap-type: y mandatory` + momentum scrolling — close-to-Smart-Stack feel on iOS/Safari without a physics library. Spring deferred to mobile polish session (see Almost But Not Quite entry in PLATFORM_QUALITY_BAR.md).
+
+**(5) IntersectionObserver jsdom guard.** `typeof IntersectionObserver === "undefined" → return` in the StackRail effect. jsdom doesn't polyfill it; active-index stays at 0 in test environment. No behavioral cost in real browsers.
+
+**(6) `env(safe-area-inset-bottom)` with `max()` fallback.** Icon-tier button and BottomSheet handle use `bottom-[max(1rem,env(safe-area-inset-bottom))]` so iOS devices with home-indicator get proper clearance; desktop browsers fall through to `1rem`. Safe-area respected without conditional rendering.
+
+**(7) Kanban stub seeded with 3 widgets.** `focus-registry.ts`'s Kanban stub now registers three mock widgets at different anchors (top-left, right-rail, bottom-right) so stack mode has enough content to exercise scroll-snap + dots indicator, and icon-tier BottomSheet has a populated tile grid. Canvas tier still renders three WidgetChrome instances.
+
+### Verification
+
+- **Vitest:** 318 passing (286 baseline + 32 new). New test files:
+  - `Canvas.test.tsx` — 4 tier-dispatch tests (canvas at 1920×1080 renders WidgetChrome map + sets `data-focus-tier="canvas"`; stack at 900×800 renders StackRail + no chrome; icon at 390×844 renders IconButton + no stack/chrome; tier transition preserves widget state across cycles).
+  - `StackRail.test.tsx` — 6 tests (empty state null-renders, one tile per widget with scroll-snap-align, dots indicator count, dots hidden for single widget, tap-to-expand fires callback, scroll-snap-type inline style).
+  - `IconButton.test.tsx` — 6 tests (null-renders at count 0, aria-label includes count, badge shown when count > 1, badge omitted at count 1, onOpen click fires, safe-area-inset-bottom className present).
+  - `BottomSheet.test.tsx` — 7 tests (sheet + backdrop + handle render, one tile per widget, backdrop click dismisses, tap tile opens expanded, Esc on expanded collapses to sheet not dismiss, Esc on bare sheet dismisses, handle has `touch-action: none`).
+  - `geometry.test.ts` — tier/determineTier + computeCoreRect tier-aware tests added.
+- **tsc:** clean.
+- **vite build:** clean, 5.00s.
+- **Preview verification (Chromium via preview_eval):**
+  - At 483×1298 narrow viewport: `{tier: "icon", chromeCount: 0, stackRail: false, iconBtn: true}` ✓
+
+### Not preview-testable (user verifies manually)
+
+- Stack tier at medium viewport (~900×800): verify right-rail scroll-snap feel, dots indicator tracks active widget on scroll, tap-to-expand overlay renders correctly, outside-click dismisses expanded.
+- Canvas tier at wide viewport (~1920×1080): verify all three seeded widgets render with drag + resize + dismiss affordances intact (Session 3.5 behavior preserved).
+- Live tier transition: drag browser window from wide → medium → narrow and back, confirm widgets snap between render paths without state loss.
+- iOS Safari: home-indicator clearance on icon button + bottom-sheet handle; momentum scroll feel in stack rail; swipe-dismiss on bottom-sheet handle.
+
+### Next session (Phase A Session 4)
+
+Persistence tier: `focus_sessions` table + per-user layout preferences + 15-second return-pill countdown with hover-pause + re-arm on state change. Per Session 1's deferred scope. Layout state is currently session-ephemeral; Session 4 makes it per-user durable and per-tenant defaulted.
+
+### Deferred to mobile polish session (documented in PLATFORM_QUALITY_BAR.md)
+
+- Spring physics on stack scroll + bottom-sheet swipe (native CSS snap ships now as "close enough").
+- Pinned-widget mode in stack (user can lock a widget to top of rail).
+- Gesture-based tier switching (pull-down from header to collapse to icon tier even when viewport permits stack).
+- Full iOS Safari behavior verification across iPhone SE to iPhone 16 Pro Max.
+
+---
+
 ## Phase A Session 3.6 — Chrome restraint during active drag/resize
 
 **Date:** 2026-04-22

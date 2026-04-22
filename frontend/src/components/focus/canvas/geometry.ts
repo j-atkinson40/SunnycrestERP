@@ -427,18 +427,135 @@ export function findOpenZone(
 }
 
 
-/** Compute the anchored core's viewport rect from CSS constants —
- *  matches the Focus.tsx Popup dimensions. */
+// ── Tier system (Session 3.7) ───────────────────────────────────
+
+/** Tier identifier for the responsive cascade. Widget rendering
+ *  mode + core sizing derive from the current tier.
+ *
+ *  - `canvas`: full free-form placement (wide viewports)
+ *  - `stack`: right-rail Smart Stack (medium-narrow)
+ *  - `icon`: floating button with bottom-sheet overlay (phone-narrow) */
+export type FocusTier = "canvas" | "stack" | "icon"
+
+
+/** Tier thresholds — fixed per Session 3.7 locked decisions.
+ *  Changing these requires updating PLATFORM_QUALITY_BAR.md test
+ *  expectations + regression tests. */
+export const TIER_ICON_MAX_WIDTH = 700
+export const TIER_STACK_MIN_WIDTH = 700
+export const TIER_STACK_MAX_WIDTH = 1000
+export const TIER_CANVAS_MIN_HEIGHT = 700
+
+/** Right-rail stack width in stack mode. Reserved on the right side
+ *  of the viewport; core takes the rest (minus margin). */
+export const STACK_RAIL_WIDTH = 280
+
+/** Core min/max dimensions. Core floors at 600×400 (below this
+ *  Kanban + other core modes become unusable) and caps at 1400×900. */
+export const CORE_MIN_WIDTH = 600
+export const CORE_MIN_HEIGHT = 400
+export const CORE_MAX_WIDTH = 1400
+export const CORE_MAX_HEIGHT = 900
+
+/** Reserved canvas margin around the core in canvas mode — each
+ *  side reserves this much for widgets. */
+export const CANVAS_RESERVED_MARGIN = 100
+
+
+/** Pick the tier for the current viewport.
+ *
+ *  Order matters: icon wins when viewport < 700 wide (even if
+ *  height is ample). Stack wins when viewport is medium-width OR
+ *  height forces it. Canvas is the default for generous viewports. */
+export function determineTier(
+  viewportWidth: number,
+  viewportHeight: number,
+): FocusTier {
+  if (viewportWidth < TIER_ICON_MAX_WIDTH) return "icon"
+  if (
+    viewportWidth < TIER_STACK_MAX_WIDTH ||
+    viewportHeight < TIER_CANVAS_MIN_HEIGHT
+  ) {
+    return "stack"
+  }
+  return "canvas"
+}
+
+
+/** Compute the anchored core's viewport rect per tier.
+ *
+ *  - canvas: min(MAX, max(MIN, viewport - 2*margin)) — reserves
+ *    100px on each side for canvas widgets
+ *  - stack: viewport-width minus right-rail; height minus standard
+ *    margins. Core expands to take main viewport area
+ *  - icon: fills viewport (minus modest padding) — widgets live in
+ *    bottom-sheet overlay, not around core
+ *
+ *  MUST stay in sync with Focus.tsx's Popup inline styling or
+ *  findOpenZone's core-forbidden-zone math drifts from the actual
+ *  rendered core. */
 export function computeCoreRect(
+  tier: FocusTier,
   viewportWidth: number,
   viewportHeight: number,
 ): Rect {
-  const width = Math.min(1400, viewportWidth * 0.9)
-  const height = Math.min(900, viewportHeight * 0.85)
+  if (tier === "canvas") {
+    const width = Math.min(
+      CORE_MAX_WIDTH,
+      Math.max(CORE_MIN_WIDTH, viewportWidth - CANVAS_RESERVED_MARGIN * 2),
+    )
+    const height = Math.min(
+      CORE_MAX_HEIGHT,
+      Math.max(CORE_MIN_HEIGHT, viewportHeight - CANVAS_RESERVED_MARGIN * 2),
+    )
+    return {
+      x: (viewportWidth - width) / 2,
+      y: (viewportHeight - height) / 2,
+      width,
+      height,
+    }
+  }
+  if (tier === "stack") {
+    // Core occupies viewport minus right-rail minus margins.
+    const rightReserved = STACK_RAIL_WIDTH + 16 // gap between core + rail
+    const width = Math.max(
+      CORE_MIN_WIDTH,
+      viewportWidth - rightReserved - 16 /* left margin */,
+    )
+    const height = Math.max(
+      CORE_MIN_HEIGHT,
+      viewportHeight - 32 /* top/bottom margin */,
+    )
+    return {
+      x: 16,
+      y: (viewportHeight - height) / 2,
+      width,
+      height,
+    }
+  }
+  // icon: fills viewport (minus small safe padding). No min clamp
+  // here because icon mode is for narrow viewports by definition —
+  // core floors would overflow the viewport visibly.
   return {
-    x: (viewportWidth - width) / 2,
-    y: (viewportHeight - height) / 2,
-    width,
-    height,
+    x: 8,
+    y: 8,
+    width: Math.max(0, viewportWidth - 16),
+    height: Math.max(0, viewportHeight - 16),
+  }
+}
+
+
+/** Compute the right-rail stack region in stack mode. Returns the
+ *  rect where StackRail renders. */
+export function computeStackRailRect(
+  viewportWidth: number,
+  viewportHeight: number,
+): Rect {
+  const core = computeCoreRect("stack", viewportWidth, viewportHeight)
+  return {
+    x: core.x + core.width + 16,
+    y: core.y,
+    width: STACK_RAIL_WIDTH,
+    height: core.height,
   }
 }

@@ -189,6 +189,10 @@ registerFocus({
   // canvas contract is exercised as soon as the Focus opens. The
   // other stubs open without widgets; smart-positioning shows its
   // value when a user pins something mid-session.
+  // Session 3.7 — seed THREE widgets so stack mode has something to
+  // cycle through and icon-mode sheet has a meaningful widget list.
+  // Anchors differ so canvas-mode placement is visually distinct
+  // (top-left, right-rail, bottom-right).
   defaultLayout: {
     tenantDefault: {
       widgets: {
@@ -199,6 +203,24 @@ registerFocus({
             offsetY: 96,
             width: 320,
             height: 240,
+          },
+        },
+        "mock-saved-view-2": {
+          position: {
+            anchor: "right-rail",
+            offsetX: 16,
+            offsetY: 96,
+            width: 280,
+            height: 320,
+          },
+        },
+        "mock-saved-view-3": {
+          position: {
+            anchor: "bottom-right",
+            offsetX: 32,
+            offsetY: 32,
+            width: 280,
+            height: 200,
           },
         },
       },
