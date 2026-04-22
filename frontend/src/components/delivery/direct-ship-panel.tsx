@@ -7,9 +7,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, Mailbox, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import api from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
@@ -62,17 +64,22 @@ export interface DirectShipPanelProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Phase II Batch 1b — helper internals migrated to DESIGN_LANGUAGE
+// status tokens. Overdue is error-family (fatal-urgent); within 2
+// days is warning-family (attention-urgent); within 5 days is
+// warning-family (soft attention); otherwise muted. Approved per
+// session spec item #4 — keep helper structure, migrate internals.
 function getUrgencyClass(neededBy: string | null): string {
-  if (!neededBy) return "text-slate-500";
+  if (!neededBy) return "text-content-muted";
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const target = new Date(neededBy + "T00:00:00");
   const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-  if (diffDays <= 0) return "text-red-600 font-bold";
-  if (diffDays <= 2) return "text-amber-600 font-bold";
-  if (diffDays <= 5) return "text-amber-600";
-  return "text-slate-500";
+  if (diffDays <= 0) return "text-status-error font-bold";
+  if (diffDays <= 2) return "text-status-warning font-bold";
+  if (diffDays <= 5) return "text-status-warning";
+  return "text-content-muted";
 }
 
 function formatNeededBy(neededBy: string | null): string {
@@ -139,21 +146,21 @@ function NeedsOrderingCard({
   const [notes, setNotes] = useState("");
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+    <div className="rounded-lg border border-border-subtle bg-surface-elevated p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-slate-900 leading-tight">
+        <span className="text-sm font-semibold text-content-strong leading-tight">
           {card.funeral_home_name || "Unknown"}
         </span>
-        <Badge variant="outline" className="shrink-0 text-[10px] border-slate-300 text-slate-600">
+        <Badge variant="outline" className="shrink-0 text-[10px]">
           {card.delivery_type === "merchandise" ? "Merchandise" :
             card.delivery_type === "memorial_item" ? "Memorial Item" : "Direct Ship"}
         </Badge>
       </div>
       {card.product_summary && (
-        <p className="text-xs text-slate-600">{card.product_summary}</p>
+        <p className="text-xs text-content-base">{card.product_summary}</p>
       )}
       {card.deceased_name && (
-        <p className="text-xs text-slate-500">{card.deceased_name}</p>
+        <p className="text-xs text-content-muted">{card.deceased_name}</p>
       )}
       {card.needed_by && (
         <p className={cn("text-xs", getUrgencyClass(card.needed_by))}>
@@ -163,51 +170,55 @@ function NeedsOrderingCard({
       )}
 
       {!showForm ? (
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => setShowForm(true)}
-          className="mt-1 rounded border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+          className="mt-1 gap-1"
         >
-          &#10003; Mark as Ordered from Wilbert
-        </button>
+          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          Mark as Ordered from Wilbert
+        </Button>
       ) : (
-        <div className="mt-1 rounded border border-blue-200 bg-blue-50 p-2.5 space-y-2">
-          <p className="text-xs font-medium text-blue-700">Order placed with Wilbert</p>
+        <div className="mt-1 rounded border border-status-info bg-status-info-muted p-2.5 space-y-2">
+          <p className="text-xs font-medium text-status-info">Order placed with Wilbert</p>
           <div className="space-y-1.5">
-            <label className="text-[10px] text-slate-500">Wilbert order/reference number:</label>
+            <label className="text-[10px] text-content-muted">Wilbert order/reference number:</label>
             <input
               type="text"
               value={orderNumber}
               onChange={(e) => setOrderNumber(e.target.value)}
-              className="block w-full rounded border px-2 py-1 text-xs"
+              className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
               placeholder="Optional"
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[10px] text-slate-500">Notes:</label>
+            <label className="text-[10px] text-content-muted">Notes:</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="block w-full rounded border px-2 py-1 text-xs"
+              className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
               placeholder="Optional"
             />
           </div>
           <div className="flex gap-2 pt-1">
-            <button
+            <Button
+              size="sm"
               onClick={() => {
                 onMarkOrdered(card.delivery_id, orderNumber, notes);
                 setShowForm(false);
               }}
-              className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
             >
               Confirm — Mark as Ordered
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowForm(false)}
-              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -229,24 +240,24 @@ function OrderedCard({
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+    <div className="rounded-lg border border-border-subtle bg-surface-elevated p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-slate-900 leading-tight">
+        <span className="text-sm font-semibold text-content-strong leading-tight">
           {card.funeral_home_name || "Unknown"}
         </span>
-        <Badge variant="outline" className="shrink-0 text-[10px] border-slate-300 text-slate-600">
+        <Badge variant="outline" className="shrink-0 text-[10px]">
           {card.delivery_type === "merchandise" ? "Merchandise" :
             card.delivery_type === "memorial_item" ? "Memorial Item" : "Direct Ship"}
         </Badge>
       </div>
       {card.product_summary && (
-        <p className="text-xs text-slate-600">{card.product_summary}</p>
+        <p className="text-xs text-content-base">{card.product_summary}</p>
       )}
       {card.deceased_name && (
-        <p className="text-xs text-slate-500">{card.deceased_name}</p>
+        <p className="text-xs text-content-muted">{card.deceased_name}</p>
       )}
       {card.wilbert_order_number && (
-        <p className="text-[11px] text-slate-400">Order #: {card.wilbert_order_number}</p>
+        <p className="text-[11px] text-content-subtle">Order #: {card.wilbert_order_number}</p>
       )}
       {card.needed_by && (
         <p className={cn("text-xs", getUrgencyClass(card.needed_by))}>
@@ -256,36 +267,40 @@ function OrderedCard({
       )}
 
       {!confirming ? (
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => setConfirming(true)}
-          className="mt-1 rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+          className="mt-1 gap-1"
         >
-          &#10003; Mark as Shipped
-        </button>
+          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          Mark as Shipped
+        </Button>
       ) : (
-        <div className="mt-1 rounded border border-emerald-200 bg-emerald-50 p-2 space-y-2">
-          <p className="text-xs text-emerald-700">
+        <div className="mt-1 rounded border border-status-success bg-status-success-muted p-2 space-y-2">
+          <p className="text-xs text-status-success">
             Mark as shipped to {card.funeral_home_name}?
           </p>
-          <p className="text-[10px] text-slate-500">
+          <p className="text-[10px] text-content-muted">
             Wilbert will handle delivery from here.
           </p>
           <div className="flex gap-2">
-            <button
+            <Button
+              size="sm"
               onClick={() => {
                 onMarkShipped(card.delivery_id);
                 setConfirming(false);
               }}
-              className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700"
             >
               Yes — Mark Shipped
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setConfirming(false)}
-              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -309,58 +324,62 @@ function ShippedCard({
   const suggestDone = daysShipped >= 5;
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+    <div className="rounded-lg border border-border-subtle bg-surface-sunken p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-slate-700 leading-tight">
+        <span className="text-sm font-semibold text-content-base leading-tight">
           {card.funeral_home_name || "Unknown"}
         </span>
-        <Badge variant="outline" className="shrink-0 text-[10px] border-slate-300 text-slate-500">
+        <Badge variant="outline" className="shrink-0 text-[10px]">
           {card.delivery_type === "merchandise" ? "Merchandise" :
             card.delivery_type === "memorial_item" ? "Memorial Item" : "Direct Ship"}
         </Badge>
       </div>
       {card.product_summary && (
-        <p className="text-xs text-slate-500">{card.product_summary}</p>
+        <p className="text-xs text-content-muted">{card.product_summary}</p>
       )}
       {card.deceased_name && (
-        <p className="text-xs text-slate-400">{card.deceased_name}</p>
+        <p className="text-xs text-content-subtle">{card.deceased_name}</p>
       )}
-      <p className="text-[11px] text-slate-400">
+      <p className="text-[11px] text-content-subtle">
         Shipped {formatShippedTime(card.marked_shipped_at)}
       </p>
 
       {suggestDone && !confirming && (
-        <p className="text-[11px] text-amber-600">
+        <p className="text-[11px] text-status-warning">
           Shipped {daysShipped} days ago — likely delivered
         </p>
       )}
 
       {!confirming ? (
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => setConfirming(true)}
-          className="mt-1 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+          className="mt-1 gap-1"
         >
-          &#10003; Done
-        </button>
+          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          Done
+        </Button>
       ) : (
-        <div className="mt-1 rounded border border-slate-200 bg-white p-2 space-y-2">
-          <p className="text-xs text-slate-700">Mark as complete?</p>
+        <div className="mt-1 rounded border border-border-subtle bg-surface-elevated p-2 space-y-2">
+          <p className="text-xs text-content-base">Mark as complete?</p>
           <div className="flex gap-2">
-            <button
+            <Button
+              size="sm"
               onClick={() => {
                 onMarkDone(card.delivery_id);
                 setConfirming(false);
               }}
-              className="rounded bg-slate-700 px-3 py-1 text-xs font-medium text-white hover:bg-slate-800"
             >
               Yes — Done
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setConfirming(false)}
-              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -444,21 +463,19 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
   }
 
   return (
-    <div className="flex flex-col border-t border-slate-200">
+    <div className="flex flex-col border-t border-border-subtle">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-900">Direct Ship</h3>
-          <p className="text-[11px] text-slate-500">Orders due within 7 days</p>
+          <h3 className="text-sm font-bold text-content-strong">Direct Ship</h3>
+          <p className="text-[11px] text-content-muted">Orders due within 7 days</p>
         </div>
         <button
           onClick={onToggleCollapse}
-          className="rounded p-1 hover:bg-slate-200 transition-colors"
+          className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
           aria-label="Collapse direct ship panel"
         >
-          <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="m18 15-6-6-6 6" />
-          </svg>
+          <ChevronDown className="h-4 w-4 text-content-muted -rotate-180" aria-hidden="true" />
         </button>
       </div>
 
@@ -466,12 +483,12 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
         {loading && !data ? (
           <div className="flex items-center justify-center py-6">
-            <p className="text-xs text-slate-400">Loading...</p>
+            <p className="text-xs text-content-subtle">Loading...</p>
           </div>
         ) : !data || data.stats.total === 0 ? (
           <div className="flex flex-col items-center justify-center py-6 text-center">
-            <div className="text-2xl mb-2">&#128236;</div>
-            <p className="text-xs text-slate-400">No direct ship orders</p>
+            <Mailbox className="h-6 w-6 mb-2 text-content-subtle" aria-hidden="true" />
+            <p className="text-xs text-content-subtle">No direct ship orders</p>
           </div>
         ) : (
           <>
@@ -479,10 +496,10 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
             {data.needs_ordering.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-content-muted">
                     Needs to be Ordered
                   </h4>
-                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                  <Badge variant="error" className="text-[10px] px-1.5 py-0">
                     {data.needs_ordering.length}
                   </Badge>
                 </div>
@@ -500,10 +517,10 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
             {data.ordered.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-content-muted">
                     Ordered from Wilbert
                   </h4>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-600">
+                  <Badge variant="info" className="text-[10px] px-1.5 py-0">
                     {data.ordered.length}
                   </Badge>
                 </div>
@@ -521,10 +538,10 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
             {data.shipped.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-content-muted">
                     Shipped
                   </h4>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-300 text-emerald-600">
+                  <Badge variant="success" className="text-[10px] px-1.5 py-0">
                     {data.shipped.length}
                   </Badge>
                 </div>
@@ -543,7 +560,7 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
               <div className="space-y-1">
                 <button
                   onClick={() => setShowCompleted(!showCompleted)}
-                  className="flex w-full items-center justify-between rounded-lg bg-slate-100 px-3 py-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-200 transition-colors"
+                  className="flex w-full items-center justify-between rounded-lg bg-surface-sunken px-3 py-1.5 text-[11px] font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
                 >
                   <span>Show completed ({data.completed.length})</span>
                   <span>{showCompleted ? "\u25B4" : "\u25BE"}</span>
@@ -551,8 +568,8 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
                 {showCompleted && (
                   <div className="space-y-0.5 pt-1">
                     {data.completed.map((card) => (
-                      <div key={card.delivery_id} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-slate-400">
-                        <span className="text-emerald-500">&#10003;</span>
+                      <div key={card.delivery_id} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-content-subtle">
+                        <Check className="h-3 w-3 text-status-success shrink-0" aria-hidden="true" />
                         <span className="flex-1 truncate">{formatCompletedLine(card)}</span>
                       </div>
                     ))}
@@ -581,12 +598,12 @@ export function DirectShipMobilePill({
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-white border border-slate-300 px-4 py-2 shadow-lg hover:bg-slate-50 transition-colors"
+      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-surface-raised border border-border-base px-4 py-2 shadow-level-2 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
     >
-      <span className="text-sm">&#128236;</span>
-      <span className="text-xs font-medium text-slate-700">Direct Ship</span>
+      <Mailbox className="h-4 w-4 text-content-muted" aria-hidden="true" />
+      <span className="text-xs font-medium text-content-base">Direct Ship</span>
       {unresolvedCount > 0 && (
-        <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+        <span className="rounded-full bg-status-info-muted px-1.5 py-0.5 text-[10px] font-semibold text-status-info">
           {unresolvedCount}
         </span>
       )}
@@ -605,14 +622,16 @@ export function DirectShipDrawer({
 
   return (
     <div className="fixed inset-0 z-40">
-      <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-white shadow-2xl animate-in slide-in-from-bottom duration-200">
-        <div className="sticky top-0 flex items-center justify-between border-b bg-white px-4 py-3">
-          <h3 className="text-sm font-bold text-slate-900">Direct Ship Orders</h3>
-          <button onClick={onClose} className="rounded p-1 hover:bg-slate-100">
-            <svg className="h-5 w-5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-surface-raised shadow-level-3 animate-in slide-in-from-bottom duration-200">
+        <div className="sticky top-0 flex items-center justify-between border-b border-border-subtle bg-surface-raised px-4 py-3">
+          <h3 className="text-sm font-bold text-content-strong">Direct Ship Orders</h3>
+          <button
+            onClick={onClose}
+            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+            aria-label="Close drawer"
+          >
+            <X className="h-5 w-5 text-content-muted" aria-hidden="true" />
           </button>
         </div>
         <div className="px-1 pb-8">

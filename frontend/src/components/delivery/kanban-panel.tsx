@@ -12,10 +12,17 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd";
+import {
+  Box,
+  ChevronRight,
+  Church,
+  Landmark,
+  MapPin,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { InlineError } from "@/components/ui/inline-error";
 import { deliveryService } from "@/services/delivery-service";
 import type {
   KanbanCard,
@@ -96,31 +103,31 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           className={cn(
-            "rounded-lg border bg-white p-3 shadow-sm transition-shadow",
-            snapshot.isDragging && "shadow-lg ring-2 ring-indigo-400",
-            card.is_critical && "border-red-400 bg-red-50",
+            "rounded-lg border bg-surface-elevated p-3 shadow-sm transition-shadow",
+            snapshot.isDragging && "shadow-lg ring-2 ring-brass",
+            card.is_critical && "border-status-error bg-status-error-muted",
             card.is_warning &&
               !card.is_critical &&
-              "border-amber-400 bg-amber-50",
+              "border-status-warning bg-status-warning-muted",
           )}
         >
           {/* Funeral home name */}
           {config.card_show_funeral_home && card.funeral_home_name && (
-            <div className="text-sm font-semibold text-slate-900 leading-tight">
+            <div className="text-sm font-semibold text-content-strong leading-tight">
               {card.funeral_home_name}
             </div>
           )}
 
           {/* Deceased name */}
           {card.deceased_name && (
-            <div className="text-xs text-slate-500 mt-0.5">
+            <div className="text-xs text-content-muted mt-0.5">
               RE: {card.deceased_name}
             </div>
           )}
 
           {/* Vault · Equipment */}
           {(card.vault_type || card.equipment_summary) && (
-            <div className="mt-1.5 text-xs text-slate-700">
+            <div className="mt-1.5 text-xs text-content-base">
               {[card.vault_type, card.equipment_summary].filter(Boolean).join(" · ")}
               {card.vault_personalization && (
                 <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
@@ -130,15 +137,37 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
             </div>
           )}
 
-          {/* Service location → Cemetery + times */}
-          <div className="mt-1.5 text-xs text-slate-600 space-y-0.5">
+          {/* Service location → Cemetery + times
+              Phase II Batch 1b — 4 raw unicode emoji replaced with
+              Lucide icons: ⛪→Church, 🏛→Landmark, ⚰→Box (with
+              aria-label for graveside semantics; no direct Lucide
+              coffin/casket match), 📍→MapPin. Icon text color cascades
+              from the parent `text-content-muted` line. */}
+          <div className="mt-1.5 text-xs text-content-muted space-y-0.5">
             {/* Location line */}
             {(card.service_location || card.cemetery_name) && (
               <div className="flex items-center gap-1">
-                <span className="text-slate-400 text-[11px]">
-                  {card.service_location === "church" ? "⛪" :
-                   card.service_location === "funeral_home" ? "🏛" :
-                   card.service_location === "graveside" ? "⚰" : "📍"}
+                <span
+                  className="text-content-subtle"
+                  aria-label={
+                    card.service_location === "church"
+                      ? "Church"
+                      : card.service_location === "funeral_home"
+                        ? "Funeral home"
+                        : card.service_location === "graveside"
+                          ? "Graveside"
+                          : "Location"
+                  }
+                >
+                  {card.service_location === "church" ? (
+                    <Church className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : card.service_location === "funeral_home" ? (
+                    <Landmark className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : card.service_location === "graveside" ? (
+                    <Box className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
                 </span>
                 {card.service_location === "graveside" ? (
                   <span>Graveside · {cemeteryWithLocation(card)}</span>
@@ -161,7 +190,7 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
               card.service_time_display ? (
                 <div className="font-medium">{card.service_time_display}</div>
               ) : (
-                <div className="text-amber-600">Time TBD</div>
+                <div className="text-status-warning">Time TBD</div>
               )
             ) : card.service_time_display ? (
               <div>
@@ -169,15 +198,16 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
                 {card.eta_display ? (
                   <span className="font-medium ml-2">ETA: {card.eta_display}</span>
                 ) : (
-                  <span className="text-amber-600 ml-2">ETA: TBD</span>
+                  <span className="text-status-warning ml-2">ETA: TBD</span>
                 )}
               </div>
             ) : (
-              <div className="text-amber-600">Time TBD</div>
+              <div className="text-status-warning">Time TBD</div>
             )}
           </div>
 
-          {/* Hours countdown */}
+          {/* Hours countdown — critical pulses with error-family,
+              warning is warning-family, otherwise subtle outline. */}
           {card.hours_until_service !== null &&
             card.hours_until_service > 0 && (
               <div className="mt-1.5">
@@ -186,10 +216,10 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
                   className={cn(
                     "text-[10px]",
                     card.is_critical
-                      ? "border-red-400 text-red-700 animate-pulse"
+                      ? "border-status-error text-status-error animate-pulse"
                       : card.is_warning
-                        ? "border-amber-400 text-amber-700"
-                        : "border-slate-200 text-slate-500",
+                        ? "border-status-warning text-status-warning"
+                        : "border-border-subtle text-content-muted",
                   )}
                 >
                   {card.hours_until_service < 1
@@ -200,7 +230,7 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
             )}
 
           {card.notes && (
-            <div className="mt-1.5 truncate text-[11px] italic text-slate-400">
+            <div className="mt-1.5 truncate text-[11px] italic text-content-subtle">
               {card.notes}
             </div>
           )}
@@ -369,10 +399,10 @@ export function KanbanPanel({
       className={cn(
         "flex items-center justify-between rounded-t-xl border px-5 py-3",
         isToday
-          ? "border-slate-300 bg-slate-100"
+          ? "border-border-base bg-surface-sunken"
           : isOptionalDay && isEmpty
-            ? "border-slate-200 bg-slate-50/60"
-            : "border-slate-200 bg-slate-50",
+            ? "border-border-subtle bg-surface-sunken/60"
+            : "border-border-subtle bg-surface-sunken",
         collapsed && "rounded-b-xl",
       )}
     >
@@ -380,23 +410,16 @@ export function KanbanPanel({
         {collapsible && (
           <button
             onClick={onToggleCollapse}
-            className="rounded p-0.5 hover:bg-slate-200 transition-colors"
+            className="rounded p-0.5 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
             aria-label={collapsed ? "Expand panel" : "Collapse panel"}
           >
-            <svg
+            <ChevronRight
               className={cn(
-                "h-4 w-4 text-slate-500 transition-transform duration-200",
+                "h-4 w-4 text-content-muted transition-transform duration-200",
                 !collapsed && "rotate-90",
               )}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m9 18 6-6-6-6" />
-            </svg>
+              aria-hidden="true"
+            />
           </button>
         )}
         <div>
@@ -405,58 +428,55 @@ export function KanbanPanel({
               className={cn(
                 "text-sm font-bold",
                 isOptionalDay && isEmpty
-                  ? "text-slate-500"
-                  : "text-slate-900",
+                  ? "text-content-muted"
+                  : "text-content-strong",
               )}
             >
               {formatDisplayDate(dateStr)}
             </h2>
-            <span className="text-sm text-slate-500">·</span>
+            <span className="text-sm text-content-muted">·</span>
             <span
               className={cn(
                 "text-sm font-medium",
                 isToday
-                  ? "text-blue-700"
+                  ? "text-brass"
                   : isOptionalDay && isEmpty
-                    ? "text-slate-400"
-                    : "text-slate-600",
+                    ? "text-content-subtle"
+                    : "text-content-base",
               )}
             >
               {label}
             </span>
             {showPlanAheadBadge && (
-              <Badge
-                variant="outline"
-                className="border-indigo-200 bg-indigo-50 text-indigo-600 text-[10px] font-medium"
-              >
+              <Badge variant="info" className="text-[10px] font-medium">
                 Plan ahead
               </Badge>
             )}
           </div>
           {subtitle && (
-            <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
+            <p className="text-xs text-content-subtle mt-0.5">{subtitle}</p>
           )}
         </div>
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-slate-600">
+      <div className="flex items-center gap-3 text-xs text-content-muted">
         {!loading && (
           <>
             {isOptionalDay && isEmpty ? (
-              <span className="text-slate-400">
+              <span className="text-content-subtle">
                 No deliveries scheduled
               </span>
             ) : (
               <>
                 <span>{stats.total} deliveries</span>
-                <span className="text-slate-300">·</span>
+                <span className="text-content-subtle">·</span>
                 <span>{stats.drivers} drivers</span>
-                <span className="text-slate-300">·</span>
+                <span className="text-content-subtle">·</span>
                 <span
                   className={cn(
                     stats.unassigned > 0
-                      ? "font-semibold text-amber-600"
-                      : "text-slate-500",
+                      ? "font-semibold text-status-warning"
+                      : "text-content-muted",
                   )}
                 >
                   {stats.unassigned} unassigned
@@ -475,24 +495,21 @@ export function KanbanPanel({
   }
 
   // ── Error state ──
+  // Phase II Batch 1b — migrated to shared InlineError primitive.
+  // Prior ad-hoc bg-white panel with hardcoded text-red-600 + Retry
+  // Button is the exact "failed to load + retry" pattern the Phase 7
+  // InlineError primitive was designed for.
   if (error) {
     return (
-      <div className="rounded-xl border">
+      <div className="rounded-xl border border-border-subtle">
         {panelHeader}
-        <div className="flex h-48 items-center justify-center rounded-b-xl border-t bg-white">
-          <div className="text-center">
-            <p className="text-sm text-red-600 font-medium">
-              Failed to load schedule
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={() => fetchSchedule()}
-            >
-              Retry
-            </Button>
-          </div>
+        <div className="flex h-48 items-center justify-center rounded-b-xl border-t border-border-subtle bg-surface-elevated p-4">
+          <InlineError
+            message="Couldn't load the delivery schedule."
+            hint="Check your connection, then retry."
+            onRetry={() => fetchSchedule()}
+            className="max-w-md"
+          />
         </div>
       </div>
     );
@@ -501,10 +518,10 @@ export function KanbanPanel({
   // ── Loading state ──
   if (loading) {
     return (
-      <div className="rounded-xl border">
+      <div className="rounded-xl border border-border-subtle">
         {panelHeader}
-        <div className="flex h-48 items-center justify-center rounded-b-xl border-t bg-white">
-          <p className="text-sm text-muted-foreground">Loading schedule...</p>
+        <div className="flex h-48 items-center justify-center rounded-b-xl border-t border-border-subtle bg-surface-elevated">
+          <p className="text-sm text-content-muted">Loading schedule...</p>
         </div>
       </div>
     );
@@ -515,22 +532,22 @@ export function KanbanPanel({
     return (
       <div
         className={cn(
-          "rounded-xl border",
+          "rounded-xl border border-border-subtle",
           isOptionalDay && "opacity-75",
         )}
       >
         {panelHeader}
         <div
           className={cn(
-            "flex h-28 items-center justify-center rounded-b-xl border-t",
-            isOptionalDay ? "bg-slate-50/50" : "bg-white",
+            "flex h-28 items-center justify-center rounded-b-xl border-t border-border-subtle",
+            isOptionalDay ? "bg-surface-sunken/50" : "bg-surface-elevated",
           )}
         >
           <div className="text-center">
             <p
               className={cn(
                 "text-sm",
-                isOptionalDay ? "text-slate-400" : "text-slate-500",
+                isOptionalDay ? "text-content-subtle" : "text-content-muted",
               )}
             >
               {isToday
@@ -546,21 +563,25 @@ export function KanbanPanel({
   }
 
   // ── Full Kanban board ──
+  // Phase II Batch 1b — droppable-over indigo → brass-subtle per
+  // approved platform interaction language. Brass is the consistent
+  // "active surface" signal across focus rings, hover states, and
+  // now DnD drop zones.
   return (
-    <div className="rounded-xl border">
+    <div className="rounded-xl border border-border-subtle">
       {panelHeader}
-      <div className="rounded-b-xl border-t bg-white">
+      <div className="rounded-b-xl border-t border-border-subtle bg-surface-elevated">
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex min-h-[200px] gap-4 overflow-x-auto p-4">
             {/* Unscheduled pool */}
             <div className="flex w-64 shrink-0 flex-col">
-              <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-slate-200 bg-slate-100 px-3 py-2">
-                <span className="text-sm font-semibold text-slate-800">
+              <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-border-subtle bg-surface-sunken px-3 py-2">
+                <span className="text-sm font-semibold text-content-strong">
                   Unscheduled
                 </span>
                 <Badge
                   variant={
-                    data.unscheduled.length > 0 ? "destructive" : "secondary"
+                    data.unscheduled.length > 0 ? "error" : "secondary"
                   }
                   className="text-xs"
                 >
@@ -578,8 +599,8 @@ export function KanbanPanel({
                     className={cn(
                       "flex min-h-[120px] flex-1 flex-col gap-2 rounded-b-lg border border-t-0 p-2 transition-colors",
                       snapshot.isDraggingOver
-                        ? "border-indigo-300 bg-indigo-50/50"
-                        : "border-slate-200 bg-white",
+                        ? "border-brass bg-brass-subtle"
+                        : "border-border-subtle bg-surface-elevated",
                     )}
                   >
                     {data.unscheduled.map((card, idx) => (
@@ -594,7 +615,7 @@ export function KanbanPanel({
                     {provided.placeholder}
                     {data.unscheduled.length === 0 &&
                       !snapshot.isDraggingOver && (
-                        <div className="flex flex-1 items-center justify-center text-xs text-slate-400">
+                        <div className="flex flex-1 items-center justify-center text-xs text-content-subtle">
                           All orders scheduled
                         </div>
                       )}
@@ -618,16 +639,16 @@ export function KanbanPanel({
                     className={cn(
                       "flex items-center justify-between rounded-t-lg border border-b-0 px-3 py-2",
                       overWarning
-                        ? "border-amber-300 bg-amber-50"
-                        : "border-slate-200 bg-slate-100",
+                        ? "border-status-warning bg-status-warning-muted"
+                        : "border-border-subtle bg-surface-sunken",
                     )}
                   >
-                    <span className="text-sm font-semibold text-slate-800 truncate">
+                    <span className="text-sm font-semibold text-content-strong truncate">
                       {lane.name}
                     </span>
                     {config.show_driver_count_badge && (
                       <Badge
-                        variant={overWarning ? "destructive" : "secondary"}
+                        variant={overWarning ? "warning" : "secondary"}
                         className="ml-2 text-xs"
                       >
                         {lane.delivery_count}
@@ -645,8 +666,8 @@ export function KanbanPanel({
                         className={cn(
                           "flex min-h-[120px] flex-1 flex-col gap-2 rounded-b-lg border border-t-0 p-2 transition-colors",
                           snapshot.isDraggingOver
-                            ? "border-indigo-300 bg-indigo-50/50"
-                            : "border-slate-200 bg-white",
+                            ? "border-brass bg-brass-subtle"
+                            : "border-border-subtle bg-surface-elevated",
                         )}
                       >
                         {lane.deliveries.map((card, idx) => (
@@ -661,7 +682,7 @@ export function KanbanPanel({
                         {provided.placeholder}
                         {lane.deliveries.length === 0 &&
                           !snapshot.isDraggingOver && (
-                            <div className="flex flex-1 items-center justify-center text-xs text-slate-400">
+                            <div className="flex flex-1 items-center justify-center text-xs text-content-subtle">
                               Drop orders here
                             </div>
                           )}

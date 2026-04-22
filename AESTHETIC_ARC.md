@@ -492,6 +492,60 @@ After Batch 0, Batch 1 scope is largely unchanged for scheduling-board family (t
 
 ---
 
+## Phase II Batch 1b — Scheduling Board Family (✅ Shipped)
+
+**Date:** 2026-04-22
+**Type:** File-family batch. 4 files touched (~590 LOC touched across ~3,100 file LOC).
+**Tests:** No new tests. vitest 185/185 unchanged. tsc clean. vite build clean 5.13s.
+
+Closes user-reported scheduling board bugs surfaced post-Batch-1a visual verification. Right panel wrapper `bg-slate-50/50` was specifically user-reported as unreadable in dark mode — slate-50 at 50% alpha over a dark page reads as a "lighter dim wash" inverting the intended recessed meaning. Fixed via `bg-surface-sunken` mode-aware token (cream-tinted recess in light, charcoal-tinted recess in dark).
+
+**Files shipped:**
+
+| File | Primary changes |
+|---|---|
+| `pages/delivery/scheduling-board.tsx` | Right-panel wrapper → surface-sunken; calendar toggle + nav buttons → border-border-base + surface-raised; Weekend Planning + count pills → Badge variants; 6 HTML-entity icons → Lucide (Undo2, ChevronLeft x2, ChevronRight, Package, Mailbox) |
+| `components/delivery/kanban-panel.tsx` | Failed-to-load → `<InlineError>` primitive (blocking fix); OrderCard critical/warning → status-error-muted/status-warning-muted; droppable-over `border-indigo-300 bg-indigo-50/50` → `border-brass bg-brass-subtle` per Q2; 4 raw unicode emoji → Church/Landmark/Box(aria-label graveside)/MapPin; hours-countdown Badge class map → status tokens; inline SVG chevron → ChevronRight |
+| `components/delivery/ancillary-panel.tsx` | Largest file (1,131 LOC). 5 card chromes → surface-elevated; ALL emerald/violet/blue action buttons → brass `<Button>` primary (Q1/Q5 approved); 3 dropdowns → surface-raised (Q4 raw-div retention); mobile FAB + drawer → surface-raised + shadow-level-2/3; `<Package>` + `<Check>` + `<ChevronDown>` + `<X>` Lucide migrations |
+| `components/delivery/direct-ship-panel.tsx` | 4 card chromes → surface-elevated; `getUrgencyClass()` helper internals → status tokens per Q8; ALL action buttons (blue/emerald/slate-700 tracks) → brass `<Button>` primary; info/success/error Badge variants for state groups; `<Mailbox>` + `<Check>` + `<ChevronDown>` + `<X>` Lucide migrations |
+
+**Primitive adoption:**
+- `<InlineError>` — 1 site (kanban Failed-to-load) — the exact "failed to load + retry" pattern the Phase-7 primitive was designed for
+- `<Badge variant="info|warning|success|error">` — 10+ sites replacing hardcoded `bg-{color}-100 text-{color}-700` pill patterns + `border-{color}-300 text-{color}-600` outline-style overrides
+- `<Button>` — ~12 sites unifying 4 different action-color tracks (emerald/violet/blue/slate-700) on brass primary per Q1/Q5 platform-consistency ruling
+- **Card** intent without primitive wrapper: card chromes migrated inline via surface tokens because full `<Card>` + subcomponent wrapping would restructure DnD hit targets (`provided.dragHandleProps` spread onto card divs); surface tokens applied directly preserve hit-target fidelity while getting mode-aware treatment. Documented deviation from audit's primitive plan.
+
+**16 icon migrations** (raw unicode + HTML entities → Lucide):
+- `⛪` → `<Church>`, `🏛` → `<Landmark>`, `⚰` → `<Box aria-label="Graveside">` (no direct Lucide casket match — documented semantic fallback), `📍` → `<MapPin>`
+- `&#128230;` (📦) → `<Package>` (3 sites: scheduling board collapsed pill + ancillary empty-state + ancillary FAB)
+- `&#128236;` (📬) → `<Mailbox>` (3 sites: scheduling board + direct-ship empty-state + direct-ship FAB)
+- `&#10003;` (✓) → `<Check>` (10+ sites — kept per spec item #2 as scan-path affordance in dense card UI despite text-button redundancy)
+- `&#9662;` (▾) → `<ChevronDown>`
+- `&#8617;` (↩) → `<Undo2>`
+- `&#8592;/&#8594;` (←/→) → `<ChevronLeft>`/`<ChevronRight>`
+- `&#9664;` (◀) → `<ChevronLeft>`
+
+**4 inline SVG migrations**: kanban panel-header chevron path → `<ChevronRight>` with rotation; ancillary + direct-ship collapse chevrons → `<ChevronDown>` with rotation; ancillary + direct-ship close-drawer X → `<X>` Lucide.
+
+**Droppable-over state migration (Q2 approved)**: `border-indigo-300 bg-indigo-50/50` → `border-brass bg-brass-subtle` for drag-drop active zones. Platform interaction language (brass for focus/active/hover) beats DnD library indigo convention. Visual "drop here" signal preserved via shape + subtle bg shift — color family now consistent with focus rings + all other active-surface affordances across the platform.
+
+**Helper function discipline (Q8 approved)**: `getUrgencyClass()` in direct-ship-panel retained its helper structure (reused across 3 card types); internals migrated `text-red-600 font-bold` → `text-status-error font-bold`, `text-amber-600 font-bold` → `text-status-warning font-bold`. Other helpers returning raw Tailwind: none found across the 4 files (post-Batch-1a pattern hold).
+
+**Deferred to post-arc natural refactor:**
+- BottomSheet primitive (Q3 approved deferral — only 2 usages today; 3+ threshold to justify new primitive)
+- DropdownMenu primitive migration (Q4 approved deferral — 3 raw `absolute`-positioned dropdowns in ancillary retained as raw divs with surface-raised tokens; full primitive adoption is its own slot when these are next touched)
+- `<Card>` subcomponent wrapping around DnD cards — accepted deviation; surface tokens inline preserve DnD hit-target fidelity
+
+**0 hardcoded Tailwind bypass patterns remain** across all 4 files (excluding migration-history comments + canonical `bg-black/40` backdrop scrim per DESIGN_LANGUAGE §9 which Dialog also uses as its canonical modal dimming overlay).
+
+**User verifies Batch 1b in both light AND dark mode** (newly ergonomic via Nav Bar Completion's ModeToggle) before approving Batch 1c-i.
+
+### Ready for Batch 1c-i
+
+Order Station (`pages/orders/order-station.tsx`) standalone — large file with both dark-mode rendering issues + emoji. Split into its own sub-batch since order-station has different concerns than the scheduling-family (no DnD, different data shape). LOC estimate: ~300-400.
+
+---
+
 ## Cross-arc integration with Workflow Arc
 
 Aesthetic Arc and Workflow Arc run in parallel. The integration rule: **every Workflow Arc session ships with design-language-consistent styling** — using DESIGN_LANGUAGE tokens where components are refactored or created fresh, and carrying forward shadcn-token styling where components are simply extended.

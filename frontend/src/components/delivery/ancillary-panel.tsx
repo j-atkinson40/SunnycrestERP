@@ -8,9 +8,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, Package, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import api from "@/lib/api-client";
 import type {
   AncillaryCard,
@@ -84,11 +86,11 @@ function formatHeaderDateRange(windowDates: string[]): string {
 function DaySectionHeader({ dateStr }: { dateStr: string }) {
   return (
     <div className="flex items-center gap-2 pt-1 pb-0.5">
-      <div className="h-px flex-1 bg-slate-200" />
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <div className="h-px flex-1 bg-border-subtle" />
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-content-subtle">
         {formatDayLabel(dateStr)}
       </span>
-      <div className="h-px flex-1 bg-slate-200" />
+      <div className="h-px flex-1 bg-border-subtle" />
     </div>
   );
 }
@@ -115,12 +117,12 @@ function MoveDropdown({
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+        className="text-[10px] text-content-subtle hover:text-content-base underline focus-ring-brass"
       >
         Move
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border bg-white shadow-lg">
+        <div className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-border-subtle bg-surface-raised shadow-level-2">
           {otherDates.map((d) => (
             <button
               key={d}
@@ -128,7 +130,7 @@ function MoveDropdown({
                 onMove(d);
                 setOpen(false);
               }}
-              className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+              className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-brass-subtle focus-ring-brass"
             >
               {formatDayLabel(d)} ({formatShortDate(d)})
             </button>
@@ -161,34 +163,35 @@ function NeedsActionCard({
   const [showDriverDropdown, setShowDriverDropdown] = useState(false);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+    <div className="rounded-lg border border-border-subtle bg-surface-elevated p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-slate-900 leading-tight">
+        <span className="text-sm font-semibold text-content-strong leading-tight">
           {card.funeral_home_name || "Unknown"}
         </span>
-        <Badge variant="outline" className="shrink-0 text-[10px] border-slate-300 text-slate-600">
+        <Badge variant="outline" className="shrink-0 text-[10px]">
           {card.order_type_label}
         </Badge>
       </div>
       {card.product_summary && (
-        <p className="text-xs text-slate-600">{card.product_summary}</p>
+        <p className="text-xs text-content-base">{card.product_summary}</p>
       )}
       {card.deceased_name && (
-        <p className="text-xs text-slate-500">{card.deceased_name}</p>
+        <p className="text-xs text-content-muted">{card.deceased_name}</p>
       )}
 
       <div className="flex items-center gap-2 pt-1">
         <div className="relative">
           <button
             onClick={() => setShowDriverDropdown(!showDriverDropdown)}
-            className="rounded border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+            className="flex items-center gap-1 rounded border border-border-base bg-surface-sunken px-2.5 py-1 text-xs font-medium text-content-base transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
           >
-            Assign to Driver &#9662;
+            Assign to Driver
+            <ChevronDown className="h-3 w-3" aria-hidden="true" />
           </button>
           {showDriverDropdown && (
-            <div className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border bg-white shadow-lg">
+            <div className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border border-border-subtle bg-surface-raised shadow-level-2">
               {drivers.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-slate-400">No drivers available</div>
+                <div className="px-3 py-2 text-xs text-content-subtle">No drivers available</div>
               ) : (
                 drivers.map((d) => (
                   <button
@@ -197,7 +200,7 @@ function NeedsActionCard({
                       onAssign(card.delivery_id, d.driver_id);
                       setShowDriverDropdown(false);
                     }}
-                    className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                    className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-brass-subtle focus-ring-brass"
                   >
                     {d.name}
                   </button>
@@ -208,7 +211,7 @@ function NeedsActionCard({
         </div>
         <button
           onClick={() => onMarkPickup(card.delivery_id)}
-          className="rounded border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+          className="rounded border border-border-base bg-surface-sunken px-2.5 py-1 text-xs font-medium text-content-base transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
         >
           Mark as Pickup
         </button>
@@ -241,25 +244,28 @@ function AwaitingPickupCard({
   const overdue = isOverdue(card.pickup_expected_by);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+    <div className="rounded-lg border border-border-subtle bg-surface-elevated p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-slate-900 leading-tight">
+        <span className="text-sm font-semibold text-content-strong leading-tight">
           {card.funeral_home_name || "Unknown"}
         </span>
-        <Badge variant="outline" className="shrink-0 text-[10px] border-violet-300 text-violet-600">
+        {/* Phase II Batch 1b — "Pickup" badge migrated from violet to
+            info. Violet was ad-hoc (not in DL §3 palette); info
+            semantic matches "awaiting / in progress" meaning. */}
+        <Badge variant="info" className="shrink-0 text-[10px]">
           Pickup
         </Badge>
       </div>
       {card.product_summary && (
-        <p className="text-xs text-slate-600">{card.product_summary}</p>
+        <p className="text-xs text-content-base">{card.product_summary}</p>
       )}
       {card.deceased_name && (
-        <p className="text-xs text-slate-500">{card.deceased_name}</p>
+        <p className="text-xs text-content-muted">{card.deceased_name}</p>
       )}
       {card.pickup_expected_by && (
         <p className={cn(
           "text-xs",
-          overdue ? "text-amber-600 font-medium" : "text-slate-500",
+          overdue ? "text-status-warning font-medium" : "text-content-muted",
         )}>
           Expected: {formatTime(card.pickup_expected_by)}
           {overdue && " (overdue)"}
@@ -268,29 +274,33 @@ function AwaitingPickupCard({
 
       <div className="flex items-center justify-between pt-1">
         {!confirming ? (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setConfirming(true)}
-            className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+            className="gap-1"
           >
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
             Picked Up
-          </button>
+          </Button>
         ) : (
           <div className="flex gap-2">
-            <button
+            <Button
+              size="sm"
               onClick={() => {
                 onConfirmPickup(card.delivery_id);
                 setConfirming(false);
               }}
-              className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700"
             >
               Confirm
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setConfirming(false)}
-              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         )}
         <MoveDropdown
@@ -326,47 +336,51 @@ function AssignedCard({
   const [showReassign, setShowReassign] = useState(false);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+    <div className="rounded-lg border border-border-subtle bg-surface-elevated p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-slate-900 leading-tight">
+        <span className="text-sm font-semibold text-content-strong leading-tight">
           {card.funeral_home_name || "Unknown"}
         </span>
-        <Badge variant="outline" className="shrink-0 text-[10px] border-slate-300 text-slate-600">
+        <Badge variant="outline" className="shrink-0 text-[10px]">
           {card.order_type_label}
         </Badge>
       </div>
       {card.product_summary && (
-        <p className="text-xs text-slate-600">{card.product_summary}</p>
+        <p className="text-xs text-content-base">{card.product_summary}</p>
       )}
       {card.deceased_name && (
-        <p className="text-xs text-slate-500">{card.deceased_name}</p>
+        <p className="text-xs text-content-muted">{card.deceased_name}</p>
       )}
 
       <div className="flex items-center justify-between pt-1">
         {!confirming ? (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setConfirming(true)}
-            className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+            className="gap-1"
           >
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
             Delivered
-          </button>
+          </Button>
         ) : (
           <div className="flex gap-2">
-            <button
+            <Button
+              size="sm"
               onClick={() => {
                 onConfirmDelivered(card.delivery_id);
                 setConfirming(false);
               }}
-              className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700"
             >
               Confirm
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setConfirming(false)}
-              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         )}
 
@@ -374,12 +388,12 @@ function AssignedCard({
           <div className="relative">
             <button
               onClick={() => setShowReassign(!showReassign)}
-              className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+              className="text-[10px] text-content-subtle hover:text-content-base underline focus-ring-brass"
             >
               Reassign
             </button>
             {showReassign && (
-              <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border bg-white shadow-lg">
+              <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-border-subtle bg-surface-raised shadow-level-2">
                 {drivers.map((d) => (
                   <button
                     key={d.driver_id}
@@ -387,7 +401,7 @@ function AssignedCard({
                       onReassign(card.delivery_id, d.driver_id);
                       setShowReassign(false);
                     }}
-                    className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                    className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-brass-subtle focus-ring-brass"
                   >
                     {d.name}
                   </button>
@@ -423,28 +437,29 @@ function MarkPickupInline({
   const [contact, setContact] = useState("");
 
   return (
-    <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-2">
-      <p className="text-xs font-medium text-violet-700">Funeral home pickup</p>
+    <div className="rounded-lg border border-status-info bg-status-info-muted p-3 space-y-2">
+      <p className="text-xs font-medium text-status-info">Funeral home pickup</p>
       <div className="space-y-1.5">
-        <label className="text-[10px] text-slate-500">Expected by:</label>
+        <label className="text-[10px] text-content-muted">Expected by:</label>
         <input
           type="time"
           value={time}
           onChange={(e) => setTime(e.target.value)}
-          className="block w-full rounded border px-2 py-1 text-xs"
+          className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
         />
       </div>
       <div className="space-y-1.5">
-        <label className="text-[10px] text-slate-500">Contact:</label>
+        <label className="text-[10px] text-content-muted">Contact:</label>
         <input
           type="text"
           value={contact}
           onChange={(e) => setContact(e.target.value)}
-          className="block w-full rounded border px-2 py-1 text-xs"
+          className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
         />
       </div>
       <div className="flex gap-2 pt-1">
-        <button
+        <Button
+          size="sm"
           onClick={() => {
             let expectedBy: string | null = null;
             if (time) {
@@ -455,16 +470,12 @@ function MarkPickupInline({
             }
             onConfirm(deliveryId, expectedBy, contact);
           }}
-          className="rounded bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-700"
         >
           Confirm as Pickup
-        </button>
-        <button
-          onClick={onCancel}
-          className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
-        >
+        </Button>
+        <Button variant="outline" size="sm" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -494,28 +505,28 @@ function FloatingCard({
   const [pickupDate, setPickupDate] = useState(windowDates[0] || "");
 
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3 space-y-2">
+    <div className="rounded-lg border border-dashed border-border-base bg-surface-sunken/80 p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-slate-900 leading-tight">
+        <span className="text-sm font-semibold text-content-strong leading-tight">
           {card.funeral_home_name || "Unknown"}
         </span>
         <div className="flex items-center gap-1">
-          <Badge variant="outline" className="shrink-0 text-[10px] border-slate-300 text-slate-500">
+          <Badge variant="outline" className="shrink-0 text-[10px]">
             {card.order_type_label}
           </Badge>
-          <Badge variant="outline" className="shrink-0 text-[10px] border-amber-300 text-amber-600 bg-amber-50">
+          <Badge variant="warning" className="shrink-0 text-[10px]">
             Floating
           </Badge>
         </div>
       </div>
       {card.product_summary && (
-        <p className="text-xs text-slate-600">{card.product_summary}</p>
+        <p className="text-xs text-content-base">{card.product_summary}</p>
       )}
       {card.deceased_name && (
-        <p className="text-xs text-slate-500">{card.deceased_name}</p>
+        <p className="text-xs text-content-muted">{card.deceased_name}</p>
       )}
       {card.ancillary_soft_target_date && (
-        <p className="text-[10px] text-slate-400">
+        <p className="text-[10px] text-content-subtle">
           Soft target: {formatShortDate(card.ancillary_soft_target_date)}
         </p>
       )}
@@ -523,28 +534,30 @@ function FloatingCard({
       {/* Combined driver + date picker for assign */}
       {!showAssign && !showPickupDate && (
         <div className="flex items-center gap-2 pt-1">
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setShowAssign(true)}
-            className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
           >
             Assign
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setShowPickupDate(true)}
-            className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
           >
             Mark as Pickup
-          </button>
+          </Button>
         </div>
       )}
 
       {showAssign && (
-        <div className="rounded border border-blue-200 bg-blue-50 p-2 space-y-2">
-          <p className="text-[10px] font-medium text-blue-700">Assign to driver + date</p>
+        <div className="rounded border border-status-info bg-status-info-muted p-2 space-y-2">
+          <p className="text-[10px] font-medium text-status-info">Assign to driver + date</p>
           <select
             value={selectedDriver}
             onChange={(e) => setSelectedDriver(e.target.value)}
-            className="block w-full rounded border px-2 py-1 text-xs"
+            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
           >
             <option value="">Select driver...</option>
             {drivers.map((d) => (
@@ -556,7 +569,7 @@ function FloatingCard({
           <select
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="block w-full rounded border px-2 py-1 text-xs"
+            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
           >
             {windowDates.map((d) => (
               <option key={d} value={d}>
@@ -565,7 +578,8 @@ function FloatingCard({
             ))}
           </select>
           <div className="flex gap-2">
-            <button
+            <Button
+              size="sm"
               onClick={() => {
                 if (!selectedDriver) {
                   toast.error("Select a driver");
@@ -574,27 +588,27 @@ function FloatingCard({
                 onAssignFloating(card.delivery_id, selectedDriver, selectedDate);
                 setShowAssign(false);
               }}
-              className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
             >
               Assign
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowAssign(false)}
-              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {showPickupDate && (
-        <div className="rounded border border-violet-200 bg-violet-50 p-2 space-y-2">
-          <p className="text-[10px] font-medium text-violet-700">Choose pickup date</p>
+        <div className="rounded border border-status-info bg-status-info-muted p-2 space-y-2">
+          <p className="text-[10px] font-medium text-status-info">Choose pickup date</p>
           <select
             value={pickupDate}
             onChange={(e) => setPickupDate(e.target.value)}
-            className="block w-full rounded border px-2 py-1 text-xs"
+            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
           >
             {windowDates.map((d) => (
               <option key={d} value={d}>
@@ -603,21 +617,22 @@ function FloatingCard({
             ))}
           </select>
           <div className="flex gap-2">
-            <button
+            <Button
+              size="sm"
               onClick={() => {
                 onFloatingMarkPickup(card.delivery_id, pickupDate);
                 setShowPickupDate(false);
               }}
-              className="rounded bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-700"
             >
               Confirm
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowPickupDate(false)}
-              className="rounded border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -830,13 +845,13 @@ export function AncillaryPanel({
   return (
     <div className="flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-900">Ancillary Orders</h3>
-          <p className="text-[11px] text-slate-500">
+          <h3 className="text-sm font-bold text-content-strong">Ancillary Orders</h3>
+          <p className="text-[11px] text-content-muted">
             {dateRange}
             {floatingCount > 0 && (
-              <span className="ml-1 text-amber-600">
+              <span className="ml-1 text-status-warning">
                 + {floatingCount} floating
               </span>
             )}
@@ -844,18 +859,16 @@ export function AncillaryPanel({
         </div>
         <div className="flex items-center gap-2">
           {unresolvedCount > 0 && (
-            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+            <span className="rounded-full bg-status-warning-muted px-1.5 py-0.5 text-[10px] font-semibold text-status-warning">
               {unresolvedCount}
             </span>
           )}
           <button
             onClick={onToggleCollapse}
-            className="rounded p-1 hover:bg-slate-200 transition-colors"
+            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
             aria-label="Collapse ancillary panel"
           >
-            <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="m15 18-6-6 6-6" />
-            </svg>
+            <ChevronDown className="h-4 w-4 text-content-muted rotate-90" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -864,12 +877,12 @@ export function AncillaryPanel({
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
         {loading && !data ? (
           <div className="flex items-center justify-center py-8">
-            <p className="text-xs text-slate-400">Loading...</p>
+            <p className="text-xs text-content-subtle">Loading...</p>
           </div>
         ) : !hasAnyData ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="text-2xl mb-2">&#128230;</div>
-            <p className="text-xs text-slate-400">No ancillary orders</p>
+            <Package className="h-6 w-6 mb-2 text-content-subtle" aria-hidden="true" />
+            <p className="text-xs text-content-subtle">No ancillary orders</p>
           </div>
         ) : (
           <>
@@ -879,10 +892,10 @@ export function AncillaryPanel({
             {data!.needs_action.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-content-muted">
                     Needs Action
                   </h4>
-                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                  <Badge variant="error" className="text-[10px] px-1.5 py-0">
                     {data!.needs_action.length}
                   </Badge>
                 </div>
@@ -914,10 +927,10 @@ export function AncillaryPanel({
             {data!.awaiting_pickup.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-content-muted">
                     Awaiting Pickup
                   </h4>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-300 text-violet-600">
+                  <Badge variant="info" className="text-[10px] px-1.5 py-0">
                     {data!.awaiting_pickup.length}
                   </Badge>
                 </div>
@@ -939,18 +952,18 @@ export function AncillaryPanel({
             {data!.assigned_groups.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-content-muted">
                     With Drivers
                   </h4>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-600">
+                  <Badge variant="info" className="text-[10px] px-1.5 py-0">
                     {data!.stats.assigned}
                   </Badge>
                 </div>
                 {data!.assigned_groups.map((group) => (
                   <div key={group.driver_id} className="space-y-1.5">
-                    <p className="text-xs font-semibold text-slate-700">
+                    <p className="text-xs font-semibold text-content-base">
                       {group.driver_name}{" "}
-                      <span className="font-normal text-slate-400">
+                      <span className="font-normal text-content-subtle">
                         ({group.item_count} item{group.item_count !== 1 ? "s" : ""})
                       </span>
                     </p>
@@ -977,7 +990,7 @@ export function AncillaryPanel({
               <div className="space-y-1">
                 <button
                   onClick={() => setShowCompleted(!showCompleted)}
-                  className="flex w-full items-center justify-between rounded-lg bg-slate-100 px-3 py-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-200 transition-colors"
+                  className="flex w-full items-center justify-between rounded-lg bg-surface-sunken px-3 py-1.5 text-[11px] font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
                 >
                   <span>Show completed ({data!.completed.length})</span>
                   <span>{showCompleted ? "\u25B4" : "\u25BE"}</span>
@@ -985,8 +998,8 @@ export function AncillaryPanel({
                 {showCompleted && (
                   <div className="space-y-0.5 pt-1">
                     {data!.completed.map((card) => (
-                      <div key={card.delivery_id} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-slate-400">
-                        <span className="text-emerald-500">&#10003;</span>
+                      <div key={card.delivery_id} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-content-subtle">
+                        <Check className="h-3 w-3 text-status-success shrink-0" aria-hidden="true" />
                         <span className="flex-1 truncate">
                           {card.funeral_home_name} — {card.product_summary || card.order_type_label}
                         </span>
@@ -1000,18 +1013,18 @@ export function AncillaryPanel({
 
             {/* ── FLOATING SECTION ── */}
             {(data!.floating.length > 0 || data!.floating_completed.length > 0) && (
-              <div className="space-y-2 border-t border-amber-200 pt-3">
+              <div className="space-y-2 border-t border-status-warning/30 pt-3">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-status-warning">
                     Floating Orders
                   </h4>
                   {data!.floating.length > 0 && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600 bg-amber-50">
+                    <Badge variant="warning" className="text-[10px] px-1.5 py-0">
                       {data!.floating.length}
                     </Badge>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-content-subtle">
                   No hard delivery date — assign to schedule
                 </p>
 
@@ -1030,7 +1043,7 @@ export function AncillaryPanel({
                   <div className="space-y-1">
                     <button
                       onClick={() => setShowFloatingCompleted(!showFloatingCompleted)}
-                      className="flex w-full items-center justify-between rounded-lg bg-amber-50 px-3 py-1.5 text-[11px] font-medium text-amber-600 hover:bg-amber-100 transition-colors"
+                      className="flex w-full items-center justify-between rounded-lg bg-status-warning-muted px-3 py-1.5 text-[11px] font-medium text-status-warning transition-colors duration-quick ease-settle hover:brightness-95 focus-ring-brass"
                     >
                       <span>Completed floating ({data!.floating_completed.length})</span>
                       <span>{showFloatingCompleted ? "\u25B4" : "\u25BE"}</span>
@@ -1038,8 +1051,8 @@ export function AncillaryPanel({
                     {showFloatingCompleted && (
                       <div className="space-y-0.5 pt-1">
                         {data!.floating_completed.map((card) => (
-                          <div key={card.delivery_id} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-slate-400">
-                            <span className="text-emerald-500">&#10003;</span>
+                          <div key={card.delivery_id} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] text-content-subtle">
+                            <Check className="h-3 w-3 text-status-success shrink-0" aria-hidden="true" />
                             <span className="flex-1 truncate">
                               {card.funeral_home_name} — {card.product_summary || card.order_type_label}
                             </span>
@@ -1074,17 +1087,17 @@ export function AncillaryMobilePill({
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-white border border-slate-300 px-4 py-2 shadow-lg hover:bg-slate-50 transition-colors"
+      className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-surface-raised border border-border-base px-4 py-2 shadow-level-2 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
     >
-      <span className="text-sm">&#128230;</span>
-      <span className="text-xs font-medium text-slate-700">Ancillary</span>
+      <Package className="h-4 w-4 text-content-muted" aria-hidden="true" />
+      <span className="text-xs font-medium text-content-base">Ancillary</span>
       {unresolvedCount > 0 && (
-        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+        <span className="rounded-full bg-status-warning-muted px-1.5 py-0.5 text-[10px] font-semibold text-status-warning">
           {unresolvedCount}
         </span>
       )}
       {floatingCount > 0 && (
-        <span className="text-[10px] text-amber-600">
+        <span className="text-[10px] text-status-warning">
           {floatingCount} floating
         </span>
       )}
@@ -1107,14 +1120,16 @@ export function AncillaryDrawer({
 
   return (
     <div className="fixed inset-0 z-40">
-      <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-white shadow-2xl animate-in slide-in-from-bottom duration-200">
-        <div className="sticky top-0 flex items-center justify-between border-b bg-white px-4 py-3">
-          <h3 className="text-sm font-bold text-slate-900">Ancillary Orders</h3>
-          <button onClick={onClose} className="rounded p-1 hover:bg-slate-100">
-            <svg className="h-5 w-5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-surface-raised shadow-level-3 animate-in slide-in-from-bottom duration-200">
+        <div className="sticky top-0 flex items-center justify-between border-b border-border-subtle bg-surface-raised px-4 py-3">
+          <h3 className="text-sm font-bold text-content-strong">Ancillary Orders</h3>
+          <button
+            onClick={onClose}
+            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+            aria-label="Close drawer"
+          >
+            <X className="h-5 w-5 text-content-muted" aria-hidden="true" />
           </button>
         </div>
         <div className="px-1 pb-8">

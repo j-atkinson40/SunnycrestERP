@@ -6,6 +6,123 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Aesthetic Arc Phase II Batch 1b — Scheduling Board Family
+
+**Date:** 2026-04-22
+**Session type:** File-family refresh. 4 files in `pages/delivery/` + `components/delivery/`. Closes user-reported scheduling-board bugs surfaced post-Batch-1a visual verification.
+**Files touched:** 4 (no new files; no test files).
+**LOC:** ~3,107 file LOC, ~590 LOC touched.
+**Tests:** No new tests. vitest 185/185 unchanged, tsc clean, vite build clean 5.13s.
+
+### The problem
+
+Three user-reported blocking issues post-Batch-1a visual verification:
+
+1. **Right panel unreadable in dark mode.** `scheduling-board.tsx:588` wrapped the right column in `bg-slate-50/50` — slate-50 (near-white) at 50% alpha over a dark page reads as a "lighter dim wash" rather than the intended recessed meaning. Blinding contrast against dark cards.
+2. **"Failed to load schedule" hardcoded red error.** `kanban-panel.tsx:482–498` shipped ad-hoc `bg-white` panel with `text-red-600` + manual `<Button variant="outline">` retry. Exactly the "failed load + retry" pattern the Phase-7 `<InlineError>` primitive was designed for.
+3. **Dark-mode blinding throughout ancillary + direct-ship panels.** 5 + 4 card chromes respectively, all `rounded-lg border border-slate-200 bg-white` — blow out in dark mode.
+
+Plus three ad-hoc issues surfaced during audit:
+
+4. **16 emoji/HTML-entity icons** (raw unicode ⛪🏛⚰📍 + entities `&#128230;` `&#128236;` `&#10003;` `&#9662;` `&#8617;` `&#8592;` `&#8594;` `&#9664;`) — inconsistent with Batch 1a's Lucide-everywhere pattern.
+5. **4 different "primary action" color tracks** (emerald-600/violet-600/blue-600/slate-700) — no semantic mapping; just color-rotation across actions.
+6. **Indigo droppable-over state** from DnD library convention — doesn't match platform's brass "active surface" interaction language.
+
+### Audit findings + scope approval
+
+- 361 total hardcoded bypass grep hits across 4 files
+- 227 unique bypass lines (matches re-audit estimate)
+- 16 icon replacements (4 raw unicode + 12 HTML entities)
+- 4 inline SVG replacements (custom chevron paths + close X)
+- ~12 sites expected to consume brass `<Button>` primary
+- ~10 sites expected to consume Badge variant info/warning/success/error
+- 1 InlineError adoption site
+- No primitive gaps — existing Session 2-3 primitives cover every pattern
+
+Audit surfaced 8 open questions; all approved with recommended answers:
+
+- Q1/Q5: All emerald/violet/blue/slate action buttons → brass primary (platform consistency with Batch 1a AgentDashboard)
+- Q2: Droppable-over → brass-subtle (platform interaction language over DnD convention)
+- Q3: Bottom-sheets stay raw with surface-raised tokens (3+ usage threshold not met)
+- Q4: Dropdown menus stay raw with surface-raised tokens (DropdownMenu primitive migration deferred)
+- Q6: Single commit file-family coherent
+- Q7: Drop hardcoded Badge className overrides, use default variant styling
+- Q8: Keep `dueDateColor` helper structure, migrate internals to status tokens
+
+### Implementation
+
+Followed audit's approved order-of-operations:
+
+**1. `pages/delivery/scheduling-board.tsx`** (~40 LOC touched, 13 bypass lines → 0). Right panel wrapper → `bg-surface-sunken` (mode-aware). Calendar + nav buttons → brass focus rings + surface-raised + border-border-base. Weekend Planning badge → `<Badge variant="info">`. New-driver banner → status-warning family. Count pills (amber unresolved, blue direct-ship) → status-warning-muted/status-info-muted. Collapsed panel toggles for Ancillary + Direct Ship re-shaped with leading Lucide icons + status-muted count pills. 6 HTML-entity icons → Lucide (`Undo2`, `ChevronLeft` × 2, `ChevronRight`, `Package`, `Mailbox`).
+
+**2. `components/delivery/kanban-panel.tsx`** (~120 LOC touched, 70 bypass lines → 0). **InlineError primitive adoption** — the blocking fix. Replaced ad-hoc error panel with `<InlineError message="Couldn't load the delivery schedule." hint="Check your connection, then retry." onRetry={fetchSchedule}>`. OrderCard chrome `bg-white` → `bg-surface-elevated`; critical `border-red-400 bg-red-50` → `border-status-error bg-status-error-muted`; warning `border-amber-400 bg-amber-50` → `border-status-warning bg-status-warning-muted`; DnD `ring-indigo-400` during drag → `ring-brass`; **droppable-over `border-indigo-300 bg-indigo-50/50` → `border-brass bg-brass-subtle`** per Q2. 4 raw unicode emoji → Lucide conditional chain (`Church`/`Landmark`/`Box` with `aria-label="Graveside"` since Lucide has no direct coffin match/`MapPin`). Panel-header chrome migrated to surface-sunken family. Inline SVG chevron → `<ChevronRight>` with rotation transform. Hours-countdown Badge class map migrated from border/text-colored-hardcoded to status tokens with animate-pulse preserved for critical urgency.
+
+**3. `components/delivery/ancillary-panel.tsx`** (largest file — 1,131 LOC; ~260 LOC touched, 155 bypass lines → 0). 5 card chromes → surface-elevated. ALL action buttons (emerald-600 Picked-Up/Delivered, violet-600 Confirm-as-Pickup, blue-600 Assign, slate Cancel) unified on brass `<Button>` primary + `<Button variant="outline">` secondary per Q1/Q5. Checkmark-labeled buttons gain leading `<Check>` Lucide per spec item #2. 3 dropdowns (Move/Assign/Reassign) migrated to `bg-surface-raised shadow-level-2` per Q4 (raw div retention). "Funeral home pickup" inline form border-violet-200/bg-violet-50 → status-info family. "Assign to driver + date" blue banner → status-info family. Floating-orders section border/color shifted from amber-200/amber-600 to status-warning/30 + status-warning text. Completed-list checkmarks → `<Check className="h-3 w-3 text-status-success">`. Mobile FAB + drawer migrated to surface-raised + shadow-level-2/3 with `bg-black/40` canonical Dialog backdrop convention. Hand-rolled SVGs → `<X>` + `<ChevronDown>` Lucide.
+
+**4. `components/delivery/direct-ship-panel.tsx`** (~170 LOC touched, 99 bypass lines → 0). 4 card chromes → surface-elevated. ShippedCard soft-recency wrapper `bg-slate-50/50` → `bg-surface-sunken`. Nested state wrappers: "Order placed with Wilbert" blue-50 → status-info-muted; "Mark as shipped?" emerald-50 → status-success-muted; "Mark as complete?" white → surface-elevated. All 3 action-color tracks (blue-600 Mark-as-Ordered, emerald-600 Mark-as-Shipped, slate-700 Done) unified on brass primary. Leading `<Check>` Lucide on all three. **`getUrgencyClass()` helper internals migrated** per Q8: `text-red-600 font-bold` → `text-status-error font-bold`, `text-amber-600 font-bold` → `text-status-warning font-bold`, structure preserved. "Shipped N days ago" amber suggestion text → text-status-warning. Status-group count Badges: Needs-to-be-Ordered → error, Ordered → info, Shipped → success. Collapsed panel + mobile FAB + drawer migrated to surface-raised family.
+
+### Lenient loader pattern NOT invoked
+
+Unlike Phase 8e.2.3's seed-path lenient loader helper, Batch 1b had no legacy-data shape to tolerate — just Tailwind migrations. Clean mechanical refactor.
+
+### Primitive adoption counts
+
+- `<InlineError>`: 1 (kanban Failed-to-load)
+- `<Badge variant="info|warning|success|error">`: ~15 sites (driver lane counts, section counts, plan-ahead, weekend planning, floating, state groups)
+- `<Button>`: ~12 sites (action buttons across ancillary + direct-ship, unifying 4 color tracks on brass primary)
+- **Card** intent: inline surface-token migrations on card chromes — full `<Card>` + subcomponent wrapping would restructure DnD hit targets (`provided.dragHandleProps` spread onto card divs); surface tokens applied directly preserve hit-target fidelity. Documented deviation from audit's primitive plan.
+
+### Lucide icon migrations (16 total)
+
+| Source | Target | Sites |
+|---|---|---|
+| `⛪` | `<Church>` | kanban-panel service location |
+| `🏛` | `<Landmark>` | kanban-panel service location |
+| `⚰` | `<Box aria-label="Graveside">` | kanban-panel service location (no direct Lucide casket) |
+| `📍` | `<MapPin>` | kanban-panel service location |
+| `&#128230;` (📦) | `<Package>` | scheduling board + ancillary empty-state + ancillary FAB |
+| `&#128236;` (📬) | `<Mailbox>` | scheduling board + direct-ship empty-state + direct-ship FAB |
+| `&#10003;` (✓) | `<Check>` | 10+ sites — button leading icons + completed-list entries |
+| `&#9662;` (▾) | `<ChevronDown>` | Assign to Driver dropdown |
+| `&#8617;` (↩) | `<Undo2>` | Back to today pill |
+| `&#8592;/&#8594;` (←/→) | `<ChevronLeft>/<ChevronRight>` | Nav arrows |
+| `&#9664;` (◀) | `<ChevronLeft>` | Panel expand toggle |
+
+### 4 inline SVG migrations
+
+- kanban panel-header chevron path → `<ChevronRight>` with rotation
+- ancillary collapse button chevron path → `<ChevronDown>` with rotation
+- ancillary drawer close X path → `<X>`
+- direct-ship collapse button chevron path → `<ChevronDown>` with rotation
+- direct-ship drawer close X path → `<X>`
+
+### Documentation
+
+- `CLAUDE.md §14 Recent Changes` — new top entry with full six-item breakdown + primitive adoption counts.
+- `AESTHETIC_ARC.md` — new Phase II Batch 1b section with file-by-file breakdown + Lucide migration table + deferred items.
+- `FEATURE_SESSIONS.md` — this entry.
+
+### Verification checklist for user (post-commit)
+
+All 4 pages, both light AND dark mode via the newly-ergonomic ModeToggle in the header:
+
+- `/scheduling` main page (date view + week view if Saturday)
+- Kanban panel — normal, critical, warning order cards
+- Ancillary Orders right panel — needs-action, awaiting-pickup, assigned, completed, floating
+- Direct Ship right panel — needs-ordering, ordered, shipped, completed
+- Failed-to-load state (trigger via network throttle or temporary backend disable)
+- Critical delivery card (if data available)
+- Drag-and-drop interactions — verify brass-subtle droppable-over visible
+- Mobile bottom-sheet (if testable on mobile viewport)
+- All action buttons render as brass primary (emerald/violet/blue/slate tracks gone)
+- `dueDateColor` helper rendering — overdue as status-error, near-due as status-warning
+
+### Arc sequencing
+
+Batch 1b complete → **Batch 1c-i queued** (order-station standalone, ~300-400 LOC estimate) → Batch 1c-ii (financials-board + team-dashboard) → Batches 2–5 → Phase III (Sessions 5 Motion + 6 QA).
+
+---
+
 ## Workflow Arc Phase 8e.2.3 — Invariant Widening + DotNav Bug Fixes
 
 **Date:** 2026-04-22

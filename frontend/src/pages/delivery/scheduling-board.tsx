@@ -14,6 +14,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Mailbox,
+  Package,
+  Undo2,
+} from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/auth-context";
 import { KanbanPanel } from "@/components/delivery/kanban-panel";
@@ -461,7 +469,7 @@ export default function SchedulingBoardPage() {
                 Scheduling Board
               </h1>
               {isSaturdayView && isDefaultView && (
-                <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 text-xs font-medium">
+                <Badge variant="info" className="text-xs font-medium">
                   Weekend Planning View
                 </Badge>
               )}
@@ -476,13 +484,13 @@ export default function SchedulingBoardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Back to today pill */}
+            {/* Back to today pill — info-family (returns to default view) */}
             {!isDefaultView && (
               <button
                 onClick={goToday}
-                className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                className="flex items-center gap-1.5 rounded-full border border-status-info bg-status-info-muted px-3 py-1.5 text-xs font-medium text-status-info transition-colors duration-quick ease-settle hover:brightness-95 focus-ring-brass"
               >
-                <span>&#8617;</span>
+                <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
                 Back to today
               </button>
             )}
@@ -490,23 +498,23 @@ export default function SchedulingBoardPage() {
             {/* Navigation arrows + date picker */}
             <button
               onClick={goPrev}
-              className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-slate-100 transition-colors"
+              className="rounded-md border border-border-base px-2.5 py-1.5 text-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
               aria-label="Previous delivery day"
             >
-              &#8592;
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </button>
             <input
               type="date"
               value={primaryDate}
               onChange={handleDateChange}
-              className="rounded-md border px-3 py-1.5 text-sm"
+              className="rounded-md border border-border-base bg-surface-raised px-3 py-1.5 text-sm text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
             />
             <button
               onClick={goNext}
-              className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-slate-100 transition-colors"
+              className="rounded-md border border-border-base px-2.5 py-1.5 text-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
               aria-label="Next delivery day"
             >
-              &#8594;
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </button>
 
             {/* Side panel toggle button (desktop only) — shows when both collapsed */}
@@ -516,20 +524,20 @@ export default function SchedulingBoardPage() {
                   toggleCollapse("ancillary");
                   if (directShipCollapsed) toggleCollapse("direct_ship");
                 }}
-                className="flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-md border border-border-base bg-surface-raised px-3 py-1.5 text-xs font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
               >
-                &#9664;
+                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Ancillary</span>
                 {ancillaryUnresolved > 0 && (
-                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                  <span className="rounded-full bg-status-warning-muted px-1.5 py-0.5 text-[10px] font-semibold text-status-warning">
                     {ancillaryUnresolved}
                     {ancillaryFloating > 0 && ` \u00b7 ${ancillaryFloating} floating`}
                   </span>
                 )}
-                <span className="text-slate-300">&middot;</span>
+                <span className="text-content-subtle">&middot;</span>
                 <span>Direct Ship</span>
                 {directShipUnresolved > 0 && (
-                  <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                  <span className="rounded-full bg-status-info-muted px-1.5 py-0.5 text-[10px] font-semibold text-status-info">
                     {directShipUnresolved}
                   </span>
                 )}
@@ -540,8 +548,8 @@ export default function SchedulingBoardPage() {
 
         {/* ── New driver banner ── */}
         {newDriverNames.length > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
-            <span className="text-amber-700">
+          <div className="flex items-center gap-2 rounded-lg border border-status-warning bg-status-warning-muted px-4 py-2.5 text-sm">
+            <span className="text-status-warning">
               <strong>{newDriverNames.join(", ")}</strong>{" "}
               {newDriverNames.length === 1 ? "was" : "were"} added to your team
               but {newDriverNames.length === 1 ? "doesn't" : "don't"} have a
@@ -549,7 +557,7 @@ export default function SchedulingBoardPage() {
             </span>
             <Link
               to="/settings/scheduling"
-              className="shrink-0 font-medium text-amber-800 underline hover:text-amber-900"
+              className="shrink-0 font-medium text-status-warning underline hover:brightness-95"
             >
               Add {newDriverNames.length === 1 ? "them" : "them"} to the board &rarr;
             </Link>
@@ -583,9 +591,15 @@ export default function SchedulingBoardPage() {
         })}
       </div>
 
-      {/* ── Right Column: Ancillary + Direct Ship (desktop) ── */}
+      {/* ── Right Column: Ancillary + Direct Ship (desktop) ──
+          Phase II Batch 1b — wrapper migrated from bg-slate-50/50 to
+          bg-surface-sunken. Was user-reported unreadable in dark mode
+          because slate-50 (near-white) at 50% alpha reads as "lighter
+          dim wash" over a dark page, inverting the intended recessed
+          meaning. surface-sunken is mode-aware: cream-tinted recess in
+          light, charcoal-tinted recess in dark. */}
       {!isMobile && !bothSidePanelsCollapsed && (
-        <div className="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-slate-50/50 overflow-y-auto">
+        <div className="flex w-80 shrink-0 flex-col border-l border-border-subtle bg-surface-sunken overflow-y-auto">
           {/* Ancillary Panel */}
           {!ancillaryCollapsed ? (
             <AncillaryPanel
@@ -597,17 +611,20 @@ export default function SchedulingBoardPage() {
           ) : (
             <button
               onClick={() => toggleCollapse("ancillary")}
-              className="flex items-center justify-between border-b px-4 py-2 text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+              className="flex items-center justify-between border-b border-border-subtle px-4 py-2 text-xs text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
             >
-              <span className="font-medium">&#128230; Ancillary Orders</span>
+              <span className="flex items-center gap-1.5 font-medium">
+                <Package className="h-3.5 w-3.5" aria-hidden="true" />
+                Ancillary Orders
+              </span>
               <span className="flex items-center gap-1">
                 {ancillaryUnresolved > 0 && (
-                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                  <span className="rounded-full bg-status-warning-muted px-1.5 py-0.5 text-[10px] font-semibold text-status-warning">
                     {ancillaryUnresolved}
                   </span>
                 )}
                 {ancillaryFloating > 0 && (
-                  <span className="text-[10px] text-amber-600">
+                  <span className="text-[10px] text-status-warning">
                     {ancillaryFloating} floating
                   </span>
                 )}
@@ -624,11 +641,14 @@ export default function SchedulingBoardPage() {
           ) : (
             <button
               onClick={() => toggleCollapse("direct_ship")}
-              className="flex items-center justify-between border-b px-4 py-2 text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+              className="flex items-center justify-between border-b border-border-subtle px-4 py-2 text-xs text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
             >
-              <span className="font-medium">&#128236; Direct Ship</span>
+              <span className="flex items-center gap-1.5 font-medium">
+                <Mailbox className="h-3.5 w-3.5" aria-hidden="true" />
+                Direct Ship
+              </span>
               {directShipUnresolved > 0 && (
-                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                <span className="rounded-full bg-status-info-muted px-1.5 py-0.5 text-[10px] font-semibold text-status-info">
                   {directShipUnresolved}
                 </span>
               )}
