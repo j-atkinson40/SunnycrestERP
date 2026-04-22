@@ -31,8 +31,13 @@
  * ============================================================ */
 
 :root {
-  /* ─── COLORS — SURFACES ─── */
-  --surface-base: oklch(0.94 0.018 82);
+  /* ─── COLORS — SURFACES ───
+   *   Tier-5 (April 2026): --surface-base chroma 0.018 → 0.030.
+   *   Mood-anchor measurement of the linen tablecloth in design-ref-
+   *   light.png showed C=0.037; backed off to 0.030 because token→
+   *   UI-at-scale tends to amplify perceived warmth. Lightness +
+   *   hue unchanged. See DL §1 Tier-5 reconciliation note. */
+  --surface-base: oklch(0.94 0.030 82);
   --surface-elevated: oklch(0.965 0.014 82);
   --surface-raised: oklch(0.985 0.010 82);
   --surface-sunken: oklch(0.91 0.020 82);
@@ -50,10 +55,16 @@
   --border-strong: oklch(0.70 0.020 76);
   --border-brass: oklch(0.66 0.12 73 / 0.7);
 
-  /* ─── COLORS — SHADOWS ─── */
-  --shadow-color-subtle: oklch(0.35 0.03 75 / 0.06);
-  --shadow-color-base: oklch(0.35 0.03 75 / 0.10);
-  --shadow-color-strong: oklch(0.32 0.035 72 / 0.16);
+  /* ─── COLORS — SHADOWS ───
+   *   Tier-5 (April 2026): shadows calibrated against design-ref-
+   *   light.png under-pergola and under-table shadows. Photo showed
+   *   warmer, softer, more chromatic shadows than prior tokens
+   *   composited. Values lifted in L + C + hue shifted 3° warmer.
+   *   Alphas unchanged (alpha is a composition parameter, not a
+   *   color parameter). See DL §1 Tier-5 reconciliation note. */
+  --shadow-color-subtle: oklch(0.40 0.045 78 / 0.06);
+  --shadow-color-base: oklch(0.40 0.045 78 / 0.10);
+  --shadow-color-strong: oklch(0.37 0.050 75 / 0.16);
 
   /* ─── COLORS — ACCENTS (brass) ─── */
   --accent-brass: oklch(0.66 0.12 73);
@@ -134,38 +145,37 @@
 
 [data-mode="dark"] {
   /* ─── COLORS — SURFACES ───
-   *   Tier-4 measurement-based correction (April 2026). Tier 2 and
-   *   Tier 3 were inference-based adjustments from §1 anchor prose
-   *   that didn't close the gap to the approved canonical reference
-   *   (docs/design-references/IMG_6085.jpg). Tier 4 samples the
-   *   reference directly via PIL and calibrates tokens to measured
-   *   OKLCH values.
+   *   Tier-5 (April 2026) — measurement-based correction against
+   *   design-ref-dark.png (cocktail lounge photograph). Supersedes
+   *   Tier-4 on --surface-elevated and --surface-raised; Tier-4
+   *   hue progression (59→81→85) retained because hue directional
+   *   calibration was correct, only lightness needed correction.
    *
-   *   Measured reference values:
-   *     Page        RGB(16,12,9)   → oklch(0.158 0.009 59)
-   *     Card body   RGB(25,22,17)  → oklch(0.202 0.011 81)
+   *   --surface-elevated lifted L 0.20 → 0.28. Rationale: Tier-4's
+   *   L=0.20 sat in the walnut-grain-dark range of the mood anchor;
+   *   walnut-bulk-under-pendant-light measures L=0.40-0.52; target
+   *   L=0.28 is below bulk (avoids over-bright cards at UI scale)
+   *   but above grain (actually reads as "catching light" per
+   *   §1 dark-anchor-2). Chroma +0.003 to carry material presence.
    *
-   *   Key finding: DARK-MODE HUE PROGRESSION missing from prior
-   *   tokens. Reference shifts hue warmer as surfaces elevate —
-   *   page h=59 (cool-amber foundation), elevated h=81 (warmer
-   *   amber, "catches more lamplight"), raised h=85 (continues
-   *   progression), sunken h=55 (cooler when recessed). Prior
-   *   tokens used a static h=65 across the elevation stack.
+   *   --surface-raised lifted proportionally L 0.24 → 0.32 (+0.08
+   *   matching elevated). Derived per §3 progression.
    *
-   *   Tier-3's L=0.22 / L=0.27 lightness bumps REVERTED — reference
-   *   shows L=0.20 / L=0.24. Pre-Tier-3 lightness values were
-   *   correct; the residual gap users perceived was the missing
-   *   hue progression + over-spec'd Card perimeter border + too-
-   *   thin top-edge highlight, not lightness.
+   *   --surface-base (L=0.16) and --surface-sunken (L=0.13)
+   *   UNCHANGED — the "pulled cozier than reference" correction
+   *   in §1 directs these tokens to stay darker than the measured
+   *   charcoal wall (L=0.214). Held per Tier-5 explicit-non-
+   *   correction decision.
    *
-   *   Methodology note: when canonical reference images exist in
-   *   docs/design-references/, sample pixel values directly via
-   *   PIL before inferring tuning values from prose. Images win
-   *   over prose (§1) applies to diagnosis as well as design
-   *   authority. Canonicalized in CLAUDE.md. */
+   *   Post-Tier-5 dark-mode step is NON-UNIFORM: base→elevated
+   *   is 0.12 OKLCH (was 0.04 pre-Tier-5); elevated→raised is
+   *   0.04. This asymmetry is deliberate — the big step from
+   *   base to elevated is where "catching warm light" signals;
+   *   the smaller step to raised is just "one level more lifted
+   *   for overlays." */
   --surface-base: oklch(0.16 0.010 59);
-  --surface-elevated: oklch(0.20 0.011 81);
-  --surface-raised: oklch(0.24 0.013 85);
+  --surface-elevated: oklch(0.28 0.014 81);
+  --surface-raised: oklch(0.32 0.016 85);
   --surface-sunken: oklch(0.13 0.010 55);
 
   /* ─── COLORS — CONTENT ─── */
@@ -182,23 +192,22 @@
   --border-brass: oklch(0.70 0.13 73 / 0.7);
 
   /* ─── COLORS — SHADOWS (persist in dark mode + top-edge highlight) ───
-   *   Tier-2 added tight grounding shadows to shadow-level-1/2/3
-   *   (three-layer composition: tight ground + soft halo + inset
-   *   top-edge highlight). That architectural change is RETAINED
-   *   after Tier-4 measurement verification — the shadow halo +
-   *   grounding layer match the reference when blur falloff is
-   *   accounted for.
+   *   Tier-2 three-layer shadow architecture RETAINED (tight ground +
+   *   soft halo + 3px inset top-edge highlight). Tier-4 --shadow-
+   *   highlight-top value RETAINED.
    *
-   *   Tier-4 correction: --shadow-highlight-top was over-specified
-   *   per Tier-2's inference (L=0.48 α=0.65). Reference measurement
-   *   shows the top-edge highlight as a 3-PIXEL BAND at L=0.30
-   *   rather than a 1-pixel inset at high brightness. Calibrated
-   *   value below matches the reference's dimmer-per-pixel-but-
-   *   wider band (see --shadow-level-1/2/3 composition below for
-   *   the 3px inset width). */
-  --shadow-color-subtle: oklch(0.08 0.010 60 / 0.35);
-  --shadow-color-base: oklch(0.06 0.010 60 / 0.45);
-  --shadow-color-strong: oklch(0.05 0.010 60 / 0.55);
+   *   Tier-5 (April 2026): --shadow-color-{subtle,base,strong}
+   *   calibrated against design-ref-dark.png shadow regions (under
+   *   bar, corners, behind leather chairs). Photo measures these
+   *   shadows at L~0.19 H~79 vs prior tokens at L~0.06 H~60 — prior
+   *   tokens composited darker AND cooler than the anchor showed.
+   *   Values lifted L +0.03 (6→9, 8→11, 5→8), chroma doubled
+   *   (0.010→0.020), hue warmed +5° (60→65). Alpha unchanged —
+   *   alpha is composition parameter, not color parameter; shadow
+   *   attenuation behavior preserved. */
+  --shadow-color-subtle: oklch(0.11 0.020 65 / 0.35);
+  --shadow-color-base: oklch(0.09 0.020 65 / 0.45);
+  --shadow-color-strong: oklch(0.08 0.020 65 / 0.55);
   --shadow-highlight-top: oklch(0.32 0.010 61 / 0.9);
 
   /* ─── COLORS — ACCENTS (brass — hue locked at 73, lightness/chroma lift) ─── */

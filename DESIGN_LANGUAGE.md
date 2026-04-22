@@ -206,6 +206,26 @@ This matters because pattern references feel tempting when mood anchors seem "no
 - When in doubt about layout, structure, or composition, the **pattern references** win over ad-hoc design.
 - When both are silent, derive from §2 translation principles. Do not reach for an internal artifact that appears to answer the question; that path is where the circular calibration anti-pattern (§10) enters.
 
+### Calibration history
+
+**Tier 5 (April 2026)** — first calibration of tokens against the external mood photographs per the calibration chain above. PIL-sampled `design-ref-dark.png` (cocktail lounge) and `design-ref-light.png` (Mediterranean garden) at the material analogs named in the "specific anchor points" sections above (charcoal wall / walnut bar top / pendant interiors / under-pergola shadows / linen tablecloth / lantern), converted to OKLCH, compared to then-current tokens, and corrected three sets:
+
+- **`--surface-elevated` (dark)** L=0.20 → L=0.28. Prior value sat in the walnut-grain-dark range; corrected to the "catching pendant light" range per §1 dark anchor 2.
+- **`--surface-base` (light)** chroma 0.018 → 0.030. Photo measured linen at C=0.037; backed off slightly because token→UI-at-scale amplifies perceived warmth.
+- **`--shadow-color-{subtle, base, strong}`** (both modes) — lifted L, doubled C, hue shifted 3–5° warmer. Prior tokens composited darker + cooler than the anchors' photographed shadows.
+- **`--surface-raised` (dark)** L=0.24 → L=0.32 derived proportionally from the elevated lift.
+
+Prior tiers 2–4 attempted calibration against an approved UI mockup (`IMG_6085.jpg`, now in `archive/`) which was itself downstream of the then-current tokens — a circular calibration loop (§10). Tier 5 anchors to the external mood photographs per §1's calibration chain; the circular-calibration anti-pattern and this calibration-chain requirement were formalized in the same arc.
+
+Explicit non-corrections (values held against photo deltas with specific rationale):
+
+- **`--surface-base` (dark)** L=0.16 held. Photo measured charcoal wall at L=0.21 (bright), but §1 prose specifies "pulled slightly warmer and browner for the cozy target" — cozier = darker + more absorbed. Token sits at the dark "cozy" end of the wall's variance.
+- **`--surface-base` (dark)** hue 59 held. Photo measured h=114 (olive-tinted charcoal), token at h=59 (warmer amber). Direction-correct per §1 "warmer and browner" correction.
+- **Dark brass** (L=0.70) held. Photo's pendant-interior measurement (L=0.80) was of the directly-illuminated bright interior — closer to an active/hover brass state than a base state.
+- **Light brass** held. Measurement unreliable (sampling hit aged-wood frame rather than polished metal).
+
+Future calibrations should cite this history when making further adjustments.
+
 ---
 
 ## Section 2 — Translation Principles
@@ -400,21 +420,22 @@ Not every token has every variant. The table below lists all defined tokens.
 
 ### Surface tokens
 
-**Rationale:** Elevation in this platform is communicated by **two coordinated dimensions of color change**: lightness and hue. An elevated surface is slightly lighter AND slightly warmer-hued than the base. Each step of elevation lifts lightness by approximately **0.025 in light mode** and **0.04 in dark mode**. Dark mode additionally shifts hue warmer at each elevation step — this is the second material dimension. Light mode uses a hue-stable treatment because morning light is ambient-and-diffuse; dark mode shifts hue because evening light is directional and concentrated (pendants, lamps) — material catches more of the warm light when it's elevated toward the light source.
+**Rationale:** Elevation in this platform is communicated by **two coordinated dimensions of color change**: lightness and hue. An elevated surface is lighter AND warmer-hued than the base. Light mode uses a uniform ~0.025 lightness step per elevation level — morning light is ambient-and-diffuse, so the delta stays small. Dark mode uses a **non-uniform step**: base→elevated is ~0.12 OKLCH (the big leap where surfaces begin "catching warm light"), elevated→raised is ~0.04 (overlays are one level more lifted than their containing context). Dark mode also shifts hue warmer at each elevation step — this is the second material dimension. The non-uniform dark-mode step and the hue progression together encode DL §1 dark-mode anchor 2 ("concentrated warm light pools"): flat base surfaces fade into the dark; elevated surfaces are where directional warm light lands.
 
 | Token | Light mode | Dark mode |
 |---|---|---|
-| `--surface-base` | `oklch(0.94 0.018 82)` | `oklch(0.16 0.010 59)` |
-| `--surface-elevated` | `oklch(0.965 0.014 82)` | `oklch(0.20 0.011 81)` |
-| `--surface-raised` | `oklch(0.985 0.010 82)` | `oklch(0.24 0.013 85)` |
+| `--surface-base` | `oklch(0.94 0.030 82)` | `oklch(0.16 0.010 59)` |
+| `--surface-elevated` | `oklch(0.965 0.014 82)` | `oklch(0.28 0.014 81)` |
+| `--surface-raised` | `oklch(0.985 0.010 82)` | `oklch(0.32 0.016 85)` |
 | `--surface-sunken` | `oklch(0.91 0.020 82)` | `oklch(0.13 0.010 55)` |
 
 *Notes:*
-- Chroma decreases slightly as lightness increases in light mode — the lightest surfaces approach near-white and carry less warmth. This is intentional: the raised surface feels like "paper catching more light" rather than "saturated pale."
+- Chroma decreases slightly as lightness increases in light mode — the lightest surfaces approach near-white and carry less warmth. This is intentional: the raised surface feels like "paper catching more light" rather than "saturated pale." Tier-5 calibration (April 2026) against design-ref-light.png linen tablecloth raised `--surface-base` chroma 0.018 → 0.030; photo measured C=0.037, token backed off to 0.030 because token→UI-at-scale amplifies perceived warmth.
 - Chroma increases slightly as lightness increases in dark mode — elevated surfaces carry *more* warmth, because they're catching more of the implied warm lamplight. This is the cocktail lounge material logic.
 - **Dark-mode hue progression** is the second material-not-paint dimension: `base` sits at h=59 (the cool-amber foundation), `elevated` shifts to h=81 (the warmer-amber "catches more lamplight" treatment), `raised` continues to h=85 (most-elevated, most-directly-lit). `sunken` drops to h=55 (cooler, recessed-from-light). The hue shift IS what makes a dark elevated surface feel like "warm metal catching pendant light" rather than just "a lighter shade of the same surface." Without the hue shift, lightness-lift alone reads as monotone grading and doesn't deliver the "material, not paint" anchor.
+- **Dark-mode non-uniform step (Tier-5):** base→elevated L=0.12 is deliberately larger than elevated→raised L=0.04. The mood-anchor scenario (walnut bar top catching pendant light) shows a dramatic luminance difference between the charcoal wall (base, ~L=0.21 measured, pulled darker to L=0.16 per §1 "cozier than reference" correction) and the walnut surface directly under the pendant (elevated, measured L=0.40-0.52 at bulk, L=0.91 at highlight). Token L=0.28 sits deliberately below the bulk-walnut value because a UI card at pixel-coverage scale reads brighter than a textured material sample in a photo; L=0.28 preserves the catching-light signal without over-brightening the card. Elevated→raised then uses the smaller 0.04 step because "raised" is overlay-level hierarchy, not material-level hierarchy — one step more lifted, not "catching fundamentally different light."
 - `surface-sunken` is used for deep-recessed areas (inset panels, code blocks, sidebar backgrounds that sit below the page level). Not commonly used; defined for consistency.
-- **Reconciliation history (April 2026):** pre-Tier-4, dark-mode tokens used a static h=65 across the elevation stack. Tier-2 (inferred) and Tier-3 (inferred, 0.05–0.06 lightness step) adjustments attempted to close the visual gap to the approved reference via chroma + lightness tuning alone. Tier-4 sampled `docs/design-references/IMG_6085.jpg` directly via PIL and measured the reference's ACTUAL OKLCH values — which showed the gap was primarily hue (reference shifts h=59→81 with elevation) and primarily over-spec on the lightness + perimeter-border axes, not under-spec. Tokens calibrated to measured values above. Tier-2's three-layer shadow composition (tight ground + soft halo + inset highlight) was architecturally correct and is retained; only the inset highlight width and color changed in Tier 4 (see §6 Shadow specifications).
+- **Reconciliation history (April 2026):** pre-Tier-4, dark-mode tokens used a static h=65 across the elevation stack. Tiers 2–4 attempted progressive calibration against an approved UI mockup (IMG_6085.jpg, now archived). Tier-5 sampled the external mood anchors directly (`design-ref-dark.png` cocktail lounge + `design-ref-light.png` Mediterranean garden) per the §1 calibration chain and corrected `--surface-elevated` (dark) L=0.20→0.28, `--surface-raised` (dark) L=0.24→0.32, `--surface-base` (light) C=0.018→0.030, and the three shadow-color tokens in both modes. Tier-4 hue progression (59→81→85) retained — directionally correct. Tier-2 three-layer shadow composition (tight ground + soft halo + 3px inset highlight) retained — architecturally correct.
 
 ### Content tokens (text and icons)
 
@@ -455,9 +476,9 @@ Not every token has every variant. The table below lists all defined tokens.
 
 | Token | Light mode | Dark mode |
 |---|---|---|
-| `--shadow-color-subtle` | `oklch(0.35 0.03 75) / 0.06` | `oklch(0.08 0.010 60) / 0.35` |
-| `--shadow-color-base` | `oklch(0.35 0.03 75) / 0.10` | `oklch(0.06 0.010 60) / 0.45` |
-| `--shadow-color-strong` | `oklch(0.32 0.035 72) / 0.16` | `oklch(0.05 0.010 60) / 0.55` |
+| `--shadow-color-subtle` | `oklch(0.40 0.045 78) / 0.06` | `oklch(0.11 0.020 65) / 0.35` |
+| `--shadow-color-base` | `oklch(0.40 0.045 78) / 0.10` | `oklch(0.09 0.020 65) / 0.45` |
+| `--shadow-color-strong` | `oklch(0.37 0.050 75) / 0.16` | `oklch(0.08 0.020 65) / 0.55` |
 | `--shadow-highlight-top` | *not used* | `oklch(0.32 0.010 61) / 0.9` |
 
 *Notes:*
@@ -519,7 +540,7 @@ The final CSS variables for implementation. Sonnet uses these exact names.
 ```css
 :root {
   /* Surfaces */
-  --surface-base: oklch(0.94 0.018 82);
+  --surface-base: oklch(0.94 0.030 82);
   --surface-elevated: oklch(0.965 0.014 82);
   --surface-raised: oklch(0.985 0.010 82);
   --surface-sunken: oklch(0.91 0.020 82);
@@ -538,9 +559,9 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --border-brass: oklch(0.66 0.12 73 / 0.7);
 
   /* Shadows */
-  --shadow-color-subtle: oklch(0.35 0.03 75 / 0.06);
-  --shadow-color-base: oklch(0.35 0.03 75 / 0.10);
-  --shadow-color-strong: oklch(0.32 0.035 72 / 0.16);
+  --shadow-color-subtle: oklch(0.40 0.045 78 / 0.06);
+  --shadow-color-base: oklch(0.40 0.045 78 / 0.10);
+  --shadow-color-strong: oklch(0.37 0.050 75 / 0.16);
 
   /* Accents */
   --accent-brass: oklch(0.66 0.12 73);
@@ -573,8 +594,8 @@ The final CSS variables for implementation. Sonnet uses these exact names.
      Tier-3's lightness bumps (L=0.22 / L=0.27) reverted to pre-
      Tier-3 values (L=0.20 / L=0.24) which match reference. */
   --surface-base: oklch(0.16 0.010 59);
-  --surface-elevated: oklch(0.20 0.011 81);
-  --surface-raised: oklch(0.24 0.013 85);
+  --surface-elevated: oklch(0.28 0.014 81);
+  --surface-raised: oklch(0.32 0.016 85);
   --surface-sunken: oklch(0.13 0.010 55);
 
   /* Content */
@@ -595,9 +616,9 @@ The final CSS variables for implementation. Sonnet uses these exact names.
      Reference shows 3-pixel top-edge band at L≈0.30; value below
      matches the dimmer-per-pixel, wider band (see §6 Shadow
      specifications for the 3px inset width). */
-  --shadow-color-subtle: oklch(0.08 0.010 60 / 0.35);
-  --shadow-color-base: oklch(0.06 0.010 60 / 0.45);
-  --shadow-color-strong: oklch(0.05 0.010 60 / 0.55);
+  --shadow-color-subtle: oklch(0.11 0.020 65 / 0.35);
+  --shadow-color-base: oklch(0.09 0.020 65 / 0.45);
+  --shadow-color-strong: oklch(0.08 0.020 65 / 0.55);
   --shadow-highlight-top: oklch(0.32 0.010 61 / 0.9);
 
   /* Accents */
@@ -993,13 +1014,13 @@ Shadows are the primary mechanism for communicating elevation in light mode and 
 - **Dark mode uses a three-layer composition for every elevation level** (tight grounding shadow + soft atmospheric halo + 3px inset top-edge highlight). The tight grounding shadow roots the element on the page surface. The soft halo provides atmospheric depth. The inset highlight catches implied lamplight on the top edge. Three layers are necessary because low-lightness surface deltas are perceptually compressed in dark mode — the warm base color alone doesn't carry enough elevation signal.
 - Light-mode shadows use a one-shadow composition at level 1 and a two-shadow composition at levels 2–3. Material presence in light mode comes from the warm base color itself and the shadow warmth, not from explicit reflection + grounding.
 - Dark-mode shadows include a **3px** `inset 0 3px 0` top-edge highlight using `--shadow-highlight-top` (`oklch(0.32 0.010 61 / 0.9)`). The 3px width is measurement-calibrated (reference IMG_6085.jpg shows a 3-pixel highlight band at L≈0.30 — a wider dimmer band reads as a focused light pool catching the top edge, a 1-pixel hairline does not). This is the "material, not paint" anchor (§1 dark-mode anchor 4) expressed concretely: elevated surfaces catch implied lamplight on their top edge. The highlight reads as focused light caught on a warm surface, not as a border outline.
-- **Reconciliation history (April 2026):** pre-Tier-2, dark-mode shadows used a simpler two-layer composition (soft halo + inset highlight only) with L=0.42 α=0.45 highlight. Live rendering read less-distinct than the approved reference. Tier 2 added tight grounding shadows + strengthened the highlight to L=0.48 α=0.65, AND inferred from §1 anchor 4 prose that a canonical perimeter border on the Card primitive would help. Tier 3 further bumped dark-mode surface lightness. User visual verification after Tier 3 still didn't match the reference. Tier 4 sampled the reference directly via PIL (`docs/design-references/IMG_6085.jpg`) and measured the ACTUAL OKLCH values. Findings:
-    - The gap was primarily **hue** — dark surfaces should shift from h=59 (page) to h=81 (elevated) to h=85 (raised), a dimension prior tokens missed entirely.
-    - Tier-2's perimeter border on Card was OVER-SPECIFIED — reference shows no discrete border pixel at card edges.
-    - Top-highlight should be 3px at L=0.30, not 1px at L=0.48 (wider-dimmer, not thinner-brighter).
-    - Tier-3 lightness bumps were the WRONG axis — pre-Tier-3 L=0.20 / L=0.24 values were already correct.
-  Tier 4 calibrated all token values to measured reference, removed the perimeter border, updated the highlight to 3px at L=0.32, added the hue progression to §3 Surface tokens. Tier-2's architectural three-layer shadow composition was correct and retained; only the inset-highlight parameters changed.
-- **Learning (canonicalized in CLAUDE.md):** when a canonical reference exists in `docs/design-references/`, sample it directly via PIL before inferring tuning values from prose anchors. §1 "images win over prose" applies to diagnosis as well as design authority. Inferring from anchor prose produced three sessions of misses (investigation + Tier 2 + Tier 3); measurement produced a single targeted correction (Tier 4).
+- **Reconciliation history (April 2026):** pre-Tier-2, dark-mode shadows used a simpler two-layer composition (soft halo + inset highlight only) with L=0.42 α=0.45 highlight. Live rendering read less-distinct than the approved reference. Tier 2 added tight grounding shadows + strengthened the highlight to L=0.48 α=0.65, AND inferred from §1 anchor 4 prose that a canonical perimeter border on the Card primitive would help. Tier 3 further bumped dark-mode surface lightness. User visual verification after Tier 3 still didn't match the reference. Tier 4 sampled the reference directly via PIL (`docs/design-references/IMG_6085.jpg`) — a UI mockup, not the mood anchor — and calibrated tokens to it. **Tier 5** then sampled the external mood anchors (`design-ref-dark.png` cocktail lounge + `design-ref-light.png` Mediterranean garden) per the §1 calibration chain, and corrected three axes Tier 4 had left wrong:
+    - **Dark elevated surface lightness** lifted L=0.20 → 0.28 (Tier 4 sat in walnut grain-dark; Tier 5 moved to walnut catching-light range).
+    - **Dark raised surface lightness** lifted L=0.24 → 0.32 proportionally.
+    - **Light base chroma** increased 0.018 → 0.030 (photo-calibrated linen tablecloth warmth).
+    - **Shadow-color tokens** (all three, both modes) lifted L + doubled C + hue-shifted 3-5° warmer — photo shadows are warmer and softer than prior tokens composited.
+  Tier-4 hue progression (dark mode h=59→81→85) was directionally correct and retained. Tier-2 three-layer shadow composition (tight ground + soft halo + 3px inset highlight) was architecturally correct and retained; only the shadow-color and highlight parameters changed.
+- **Learning (canonicalized in CLAUDE.md + §10 anti-pattern):** when a canonical reference exists in `docs/design-references/`, sample it directly via PIL before inferring tuning values from prose anchors. §1 "images win over prose" applies to diagnosis as well as design authority. **The reference must be EXTERNAL** to the implementation chain (a photograph, not a UI mockup that was itself generated against the current tokens) — sampling a downstream artifact creates a circular calibration loop (§10). Tiers 2–3 inferred from prose alone and accumulated drift. Tier 4 measured against a UI mockup and closed a circular loop. Tier 5 measured against the external mood photograph and corrected to the actual anchor.
 
 ### Border treatment
 
@@ -1595,7 +1616,7 @@ Light mode is the default. Dark mode is activated by setting `data-mode="dark"` 
 ```css
 :root {
   /* Light mode tokens (defaults) */
-  --surface-base: oklch(0.94 0.018 82);
+  --surface-base: oklch(0.94 0.030 82);
   /* ... all light tokens ... */
 }
 
@@ -1669,7 +1690,7 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   /* ============ COLOR TOKENS ============ */
 
   /* Surfaces */
-  --surface-base: oklch(0.94 0.018 82);
+  --surface-base: oklch(0.94 0.030 82);
   --surface-elevated: oklch(0.965 0.014 82);
   --surface-raised: oklch(0.985 0.010 82);
   --surface-sunken: oklch(0.91 0.020 82);
@@ -1688,9 +1709,9 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --border-brass: oklch(0.66 0.12 73 / 0.7);
 
   /* Shadows */
-  --shadow-color-subtle: oklch(0.35 0.03 75 / 0.06);
-  --shadow-color-base: oklch(0.35 0.03 75 / 0.10);
-  --shadow-color-strong: oklch(0.32 0.035 72 / 0.16);
+  --shadow-color-subtle: oklch(0.40 0.045 78 / 0.06);
+  --shadow-color-base: oklch(0.40 0.045 78 / 0.10);
+  --shadow-color-strong: oklch(0.37 0.050 75 / 0.16);
 
   /* Accents */
   --accent-brass: oklch(0.66 0.12 73);
@@ -1765,8 +1786,8 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
      Tier-3's lightness bumps (L=0.22 / L=0.27) reverted to pre-
      Tier-3 values (L=0.20 / L=0.24) which match reference. */
   --surface-base: oklch(0.16 0.010 59);
-  --surface-elevated: oklch(0.20 0.011 81);
-  --surface-raised: oklch(0.24 0.013 85);
+  --surface-elevated: oklch(0.28 0.014 81);
+  --surface-raised: oklch(0.32 0.016 85);
   --surface-sunken: oklch(0.13 0.010 55);
 
   /* Content */
@@ -1784,9 +1805,9 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
 
   /* Shadows — Tier-4 correction (April 2026):
      --shadow-highlight-top calibrated to reference measurement. */
-  --shadow-color-subtle: oklch(0.08 0.010 60 / 0.35);
-  --shadow-color-base: oklch(0.06 0.010 60 / 0.45);
-  --shadow-color-strong: oklch(0.05 0.010 60 / 0.55);
+  --shadow-color-subtle: oklch(0.11 0.020 65 / 0.35);
+  --shadow-color-base: oklch(0.09 0.020 65 / 0.45);
+  --shadow-color-strong: oklch(0.08 0.020 65 / 0.55);
   --shadow-highlight-top: oklch(0.32 0.010 61 / 0.9);
 
   /* Accents */
