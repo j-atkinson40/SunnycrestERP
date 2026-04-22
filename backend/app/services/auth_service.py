@@ -78,6 +78,20 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> dict:
     db.refresh(company)
     db.refresh(user)
 
+    # Phase 8e.2.2 Space Invariant Enforcement — seed role-based
+    # default spaces for the first admin of the new tenant. The other
+    # Phase-2 / Phase-6 seeds (saved views, briefing prefs) aren't
+    # plumbed through this path deliberately — `register_company` is
+    # a greenfield-tenant path and the user lands on a dashboard
+    # where those seeds aren't yet load-bearing. Spaces are the one
+    # opinionated default that shows up immediately in the DotNav, so
+    # this is the call site where absence of seeding is user-visible.
+    # Best-effort — failures log structured warning but don't break
+    # tenant registration.
+    from app.services.spaces.seed import seed_spaces_best_effort
+
+    seed_spaces_best_effort(db, user, call_site="register_company")
+
     return {"company": company, "user": user}
 
 
@@ -198,6 +212,26 @@ def login_user(db: Session, data: LoginRequest, company: Company) -> TokenRespon
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is deactivated",
         )
+
+    # Phase 8e.2.2 Space Invariant Enforcement — defensive re-seed.
+    # Three user-creation paths predating this phase never ran the
+    # Phase-3 Spaces seed (register_company first-admin, create_user
+    # admin-provisioned, create_users_bulk). The r46 backfill
+    # migration closes the data gap on deploy, but a login-time
+    # check is the self-healing layer: any user whose preferences.
+    # spaces is STILL empty at login (e.g. migration skipped them,
+    # or they were created mid-deploy between migration run and the
+    # hook landing) gets seeded here. O(1) cost when spaces are
+    # populated — we just read a dict key.
+    #
+    # Production-track users (username + PIN) intentionally go
+    # through this path too; the PIN login branch above already
+    # writes user.last_console_login_at in the same commit, so
+    # adding a seed here keeps that single-commit discipline.
+    if not (user.preferences or {}).get("spaces"):
+        from app.services.spaces.seed import seed_spaces_best_effort
+
+        seed_spaces_best_effort(db, user, call_site="login_user")
 
     token_data = {"sub": user.id, "company_id": company.id}
 

@@ -38,6 +38,67 @@ logger = logging.getLogger(__name__)
 # ── Public API ───────────────────────────────────────────────────────
 
 
+def seed_spaces_best_effort(
+    db: Session,
+    user: User,
+    *,
+    call_site: str,
+) -> int:
+    """Phase 8e.2.2 Space Invariant Enforcement helper.
+
+    Single wrapper for every best-effort `seed_for_user` call site
+    (auth_service.register_company, user_service.create_user,
+    user_service.create_users_bulk, auth_service.login_user defensive
+    re-seed). Catches any seeding exception so the caller's user-
+    creation / login flow never fails on a Spaces issue, and emits a
+    single structured log line (user_id, company_id, vertical,
+    role_slug, exception type + message) per failure — the minimum
+    signal an operator needs to trace which call site failed and why.
+
+    Returns the number of newly-seeded spaces, or 0 on exception.
+    """
+    try:
+        return seed_for_user(db, user=user)
+    except Exception as exc:
+        # Resolve vertical + role_slug for the diagnostic line without
+        # raising — if these lookups themselves fail we still emit the
+        # original seeding failure with best-effort context.
+        vertical: str | None = None
+        role_slug: str | None = None
+        try:
+            vertical = _resolve_tenant_vertical(db, user.company_id)
+        except Exception:
+            pass
+        try:
+            slugs = _current_role_slugs(db, user)
+            role_slug = slugs[0] if slugs else None
+        except Exception:
+            pass
+
+        logger.warning(
+            "spaces.seed_for_user failed "
+            "call_site=%s user_id=%s company_id=%s vertical=%s "
+            "role_slug=%s exc_type=%s exc_msg=%s",
+            call_site,
+            user.id,
+            user.company_id,
+            vertical,
+            role_slug,
+            type(exc).__name__,
+            str(exc),
+        )
+        # Defensive rollback — seed_for_user commits internally but a
+        # partial write before the exception may have left the session
+        # in a mixed state. Callers (e.g. login_user) shouldn't care
+        # about this side effect; we clean up so their subsequent
+        # commit doesn't trip on orphaned dirty attributes.
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return 0
+
+
 def seed_for_user(
     db: Session,
     *,
@@ -326,4 +387,4 @@ def _save_prefs(db: Session, user: User, prefs: dict[str, Any]) -> None:
     db.refresh(user)
 
 
-__all__ = ["seed_for_user"]
+__all__ = ["seed_for_user", "seed_spaces_best_effort"]

@@ -263,6 +263,16 @@ def create_user(
 
     db.commit()
     db.refresh(user)
+
+    # Phase 8e.2.2 Space Invariant Enforcement — seed role-based
+    # default spaces for the admin-provisioned user. Mirrors the
+    # existing seed call in `auth_service.register_user`. Best-effort
+    # — a seed failure logs structured warning but doesn't break
+    # the admin's user-creation flow.
+    from app.services.spaces.seed import seed_spaces_best_effort
+
+    seed_spaces_best_effort(db, user, call_site="user_service.create_user")
+
     return user
 
 
@@ -440,7 +450,13 @@ def deactivate_user(
 def create_users_bulk(
     db: Session, users: list[UserCreate], company_id: str, actor_id: str | None = None
 ) -> dict:
-    """Create multiple users at once. Returns partial success — errors don't block others."""
+    """Create multiple users at once. Returns partial success — errors don't block others.
+
+    Note (Phase 8e.2.2 Space Invariant Enforcement): each iteration
+    delegates to `create_user`, which now runs the Phase-3 Spaces seed
+    per user. Don't add a second seed call here — it would be
+    idempotent but pure write I/O for no benefit.
+    """
     created: list[UserResponse] = []
     errors: list[dict] = []
 

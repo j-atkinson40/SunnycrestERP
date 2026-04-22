@@ -6,6 +6,147 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Workflow Arc Phase 8e.2.2 — Space Invariant Enforcement
+
+**Date:** 2026-04-21
+**Session type:** Infrastructure micro-phase. No new primitives, no new UX — closes a silent regression against the Phase 3 opinionated-default promise by enforcing the invariant "every active user has seeded Spaces" across every creation path, a login-time defensive re-seed, and a one-shot backfill migration.
+**Files touched:** 5 source + 1 new migration + 1 new test file + 3 doc updates.
+**LOC:** ~470 (~120 migration, ~70 service hooks, ~40 helper, ~240 tests, ~100 docs).
+**Tests:** +9 backend (`test_spaces_invariant.py`). Full regression: 151 spaces passing, 181 frontend vitest passing. tsc clean. Migration applied cleanly.
+**Migration head:** `r45_portal_invite_email_template` → `r46_users_spaces_backfill`.
+
+### The problem
+
+User reported that DotNav renders with only the plus button (no space dots) for some existing users, despite the sidebar rendering the full manufacturing-admin navigation correctly.
+
+Audit surfaced that this is systemic, not isolated:
+
+- The sidebar nav renders because of a DIFFERENT rendering path: `frontend/src/services/navigation-service.ts::getNavigation(vertical, modules, permissions, …)` — driven by `Company.vertical` + `user.permissions` + enabled modules. Always renders regardless of Spaces state.
+- DotNav + PinnedSection render from `User.preferences.spaces` JSONB via `SpaceContext`. When empty → just the plus button.
+
+**71% of active dev-DB users (7,874 of 11,084) had empty `preferences.spaces`.** Three user-creation paths predate the Phase 3 seed hook and never received one:
+
+| Call site | Who lands here |
+|---|---|
+| `auth_service.register_company` | First admin of a brand-new tenant |
+| `user_service.create_user` | Admin-provisioned user (invited from `/admin/users`) |
+| `user_service.create_users_bulk` | Bulk import (CSV upload, seeding scripts) |
+
+Phase 3 wired only `auth_service.register_user` (self-signup to existing tenant) + `user_service.update_user` (role change).
+
+### Audit-surfaced framing correction
+
+The user's initial framing was "everything is a space — the implicit sidebar path shouldn't exist." Audit determined this is imprecise. Phase 3 ships a deliberate two-layer navigation:
+
+1. **Base navigation (Layer 1)** — always renders via `navigation-service.ts`. Independent of Spaces. A user with zero Spaces has a FULLY NAVIGABLE platform.
+2. **Spaces overlay (Layer 2)** — adds PinnedSection + DotNav + per-Space accent on top. Powered by `User.preferences.spaces` JSONB.
+
+"Missing Spaces" is NOT a navigation regression — user can still reach everything via base nav + Cmd+K. It IS a UX regression against Phase 3's opinionated-default promise (every seeded user should land with role-appropriate workspace contexts preconfigured). The fix is the invariant-enforcement layer, not removing the implicit path.
+
+User approved NARROW scope after audit. Layer 1 preserved. Three-layers-of-defense fix across creation + login + backfill.
+
+### Fix shape
+
+**1. Single structured-logging helper** — `app.services.spaces.seed.seed_spaces_best_effort(db, user, *, call_site: str) → int`
+
+Responsibilities:
+
+- Delegate to `seed_for_user`
+- Swallow any exception (caller MUST NOT fail on Spaces issues)
+- Emit structured WARNING log line: `call_site`, `user_id`, `company_id`, `vertical`, `role_slug`, `exc_type`, `exc_msg`
+- Defensive `db.rollback()` after exceptions — cleans partial commit state so caller's next commit doesn't trip on orphaned dirty attributes
+- Return 0 on failure, otherwise the count
+
+Single source of truth means structured-logging discipline can't drift across the 4 call sites.
+
+**2. Creation-path hooks** — wired at the 3 gap sites:
+
+- `auth_service.register_company` — after `db.refresh(user)`, call `seed_spaces_best_effort(db, user, call_site="register_company")`
+- `user_service.create_user` — after `db.commit() + db.refresh(user)`, call `seed_spaces_best_effort(db, user, call_site="user_service.create_user")`
+- `user_service.create_users_bulk` — inherits transitively via `create_user`. Added explicit anti-redundancy comment: "Don't add a second seed call here — it would be idempotent but pure write I/O for no benefit."
+
+Existing Phase 3 seed calls in `register_user` + `update_user` left untouched — working code.
+
+**3. Login-time defensive re-seed** — `auth_service.login_user`
+
+After authentication passes (`verify_password` / `verify_pin` + `is_active` check), before token issue:
+
+```python
+if not (user.preferences or {}).get("spaces"):
+    from app.services.spaces.seed import seed_spaces_best_effort
+    seed_spaces_best_effort(db, user, call_site="login_user")
+```
+
+O(1) cost when populated (dict-key check). Self-heals any user missed by a creation hook OR created mid-deploy between migration rollout and hook landing. Covers production-track users too (username + PIN) via the same path.
+
+**4. Backfill migration `r46_users_spaces_backfill`** — one-shot data migration:
+
+- JSONB query: `WHERE is_active = TRUE AND (preferences IS NULL OR preferences = '{}' OR COALESCE(preferences -> 'spaces', '[]'::jsonb) = '[]'::jsonb)` — handles all three empty shapes idiomatically.
+- Per-user try/except — one failure never blocks the rest.
+- Imports live `seed_for_user` service function (NOT a snapshot) so any future template/system-space changes automatically apply.
+- Batch commit every 100 users — keeps memory bounded, makes partial progress durable.
+- Structured WARNING per failure with all required fields.
+- End-of-migration INFO summary line: `candidates=X backfilled=Y noop=Z failed=W vertical_breakdown=<grep-friendly>`.
+- Non-destructive downgrade (no-op) — rolling back shouldn't strip seeded Spaces.
+- SQLite fallback for tests: catches JSONB `Exception` and falls back to Python-layer filter over ORM load.
+
+### Dev DB backfill result
+
+```
+r46_users_spaces_backfill: complete. candidates=7874 backfilled=7850 noop=24 failed=0 vertical_breakdown=__unknown__=2108, cemetery=7, crematory=7, funeral_home=936, manufacturing=4785, telecom=7
+```
+
+`__unknown__`: tenants without `Company.vertical` set — fall through to `FALLBACK_TEMPLATE` ("General") which still satisfies the invariant. `noop=24`: Phase 8e.1-affinity-test fixtures that explicitly replaced default spaces with custom ones — their `spaces_seeded_for_roles` marker is set, backfill correctly skips.
+
+**Platform invariant verified post-backfill**: 0 active users have both `spaces` AND `spaces_seeded_for_roles` empty. Every user has been seeded at least once.
+
+### James sanity check (proxy)
+
+Production tenant `sunnycrest` doesn't live in local dev DB (production database is isolated). Did equivalent check on dev: a fresh manufacturing-admin user (seeded by the post-fix `create_user`) receives exactly 4 spaces:
+
+```
+names=['Production', 'Sales', 'Ownership', 'Settings']
+prod=True sales=True own=True settings=True
+```
+
+Matches Phase 3 `SEED_TEMPLATES[("manufacturing", "admin")]` (Production + Sales + Ownership) + Phase 8a Settings system space (admin permission gate satisfied). When this ships to production and James logs in, his `preferences.spaces` empty → login defensive re-seed → 4 DotNav dots.
+
+### Test coverage
+
+9 new tests in `backend/tests/test_spaces_invariant.py` across 6 classes:
+
+- `TestRegisterCompanySeed` × 1 — `register_company` seeds first admin with ≥1 Space (Company created without vertical → falls through to FALLBACK_TEMPLATE, which still satisfies the invariant)
+- `TestCreateUserSeed` × 1 — admin-provisioned mfg-admin gets Production + Sales + Ownership (assertion robust against whether Settings system space also seeds in the test env)
+- `TestBulkUserSeed` × 1 — 3-element batch, each user seeds full template, zero errors
+- `TestDefensiveReseedOnLogin` × 2 — user with explicit `preferences={}` seeded on login; user with pre-populated spaces logs in without duplicate seeding
+- `TestSeedBestEffortHelper` × 2 — happy path returns creation count; exception path swallowed (monkeypatched `seed_for_user` → `RuntimeError`) + structured WARNING with all required fields + returns 0
+- `TestBackfillIdempotency` × 1 — second `seed_for_user` call after first returns 0, space count identical
+- `TestPlatformSpaceInvariant` × 1 — scans `users` table post-r46 via same JSONB query the migration uses + the `spaces_seeded_for_roles` gate; tolerates ≤5 race-condition users (created mid-test, teardown-incomplete fixtures)
+
+Full Phase 1–8e.2.2 regression: **151 spaces tests passing** (no regressions across Phase 3 CRUD + Phase 8e templates + Phase 8e.1 affinity + Phase 8a system spaces), **181 frontend vitest passing** (no frontend touchpoint), tsc clean, migration applies cleanly.
+
+### Documentation
+
+- `CLAUDE.md §14 Recent Changes` — new top entry describing the phase.
+- `CLAUDE.md §11 Current Build Status` — migration head bumped `r33_company_entity_trigram_indexes` → `r46_users_spaces_backfill` (the row was long-stale).
+- `SPACES_ARCHITECTURE.md §11` (new) — Phase 3 two-layer rationale as canonical answer to "everything is a Space" framing.
+- `SPACES_ARCHITECTURE.md §12` (new) — Phase 8e.2.2 invariant + gaps closed + fix shape + seed helper + backfill log format + test coverage.
+
+### Why this is purely infrastructural
+
+- No new database tables, no new models, no new API endpoints, no new frontend routes, no new primitives.
+- Only one net-new public function (`seed_spaces_best_effort`) which is a wrapper over existing `seed_for_user`.
+- One new migration, data-only (no DDL).
+- No UI changes — the fix is invisible to users EXCEPT that users who previously had empty DotNav now see their seeded Spaces.
+- Zero Phase 1–8e.2.1 code paths modified beyond the 4 seed-hook additions.
+
+### Post-session status
+
+- **Arc status:** Phase 8a/b/c/d/d.1/e/e.1/e.2/e.2.1 complete. Phase 8e.2.2 micro-session closes a pre-existing regression. Next per user-approved sequencing: Aesthetic Arc Phase II Batch 1b → Batch 1c-i → Batch 1c-ii → Batches 2–5 → Phase III (Sessions 5 Motion + 6 QA) → Workflow Arc 8f remaining accounting migrations → 8g dashboard → 8h finale.
+- **Ships before September Wilbert demo.**
+
+---
+
 ## Nav Bar Completion — micro-session (DotNav fix + visible ModeToggle)
 
 **Date:** 2026-04-21

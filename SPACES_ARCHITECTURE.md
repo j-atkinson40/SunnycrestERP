@@ -572,3 +572,117 @@ Plus **7 Playwright mobile scenarios** at `frontend/tests/e2e/portal-phase-8e21.
 - Vehicle inspection page (mentioned in §10.11 but not shipped this phase — not blocking James dogfood, surfaces when the pre-trip-inspection workflow lands)
 - Tenant-logo SVG support with server-side sanitization
 
+---
+
+## 11. Phase 3 two-layer navigation — canonical rationale
+
+This section exists because the phrase "everything is a Space" surfaces often enough in discussion that it deserves a definitive answer. **It is imprecise.** Spaces are a view overlay on top of the existing vertical navigation, not a replacement.
+
+### 11.1 The two layers
+
+Bridgeable's left sidebar renders two independent layers:
+
+**Layer 1 — Base navigation (always renders).** Driven by `frontend/src/services/navigation-service.ts` via `getNavigation(vertical, modules, permissions, settings, functional_areas, is_admin, extensions)`. Returns a tree of sections and items derived from:
+
+- the tenant's `Company.vertical` (funeral_home / manufacturing / cemetery / crematory)
+- enabled modules (`company_modules` table + `Company.settings_json.enabled_modules`)
+- the user's permissions (`permission_service.user_has_permission`)
+- active extensions (`tenant_extensions`)
+
+Everything routable is reachable through this layer regardless of Spaces state. **A user with zero Spaces has a fully navigable platform.**
+
+**Layer 2 — Spaces overlay (pins + visual accent).** Adds a `PinnedSection` above the base-nav sections, plus a DotNav rail at the bottom of the sidebar for switching between Spaces, plus a per-Space accent color (`--space-accent` CSS var). Powered by `User.preferences.spaces` JSONB + `SpaceContext`.
+
+When `preferences.spaces` is empty, Layer 2 renders a plus button (create a Space) and nothing else. Layer 1 is unaffected.
+
+### 11.2 Why both layers exist
+
+The two layers answer different questions:
+
+| Layer | Answers |
+|---|---|
+| Base navigation | "What is this tenant entitled to access? What does my role permit?" |
+| Spaces overlay | "Which of those capabilities am I using today? What's in scope for this context?" |
+
+Dropping Layer 1 would force every user into a Space-first mental model on day one, with no escape hatch when a Space's pinned items don't cover an ad-hoc task. Dropping Layer 2 would lose the context-switching affordance that makes cross-feature work tolerable for power operators.
+
+Phase 3 shipped both layers deliberately. The umbrella CLAUDE.md §1a-pre principle ("Opinionated but Configurable") applies: **Layer 1 is the configurable floor** (the platform always surfaces every capability the tenant owns) and **Layer 2 is the opinionated overlay** (seeded defaults nudge users toward role-appropriate contexts).
+
+### 11.3 Consequence: "missing Space" is not a navigation regression
+
+A user whose DotNav renders only the plus button is NOT stranded. They can:
+
+- use the base sidebar nav (Layer 1) to reach every page the tenant + their role permits
+- use Cmd+K to jump anywhere via the command bar
+- create a Space from the plus button
+
+But the missing opinionated overlay IS a UX regression against the Phase 3 promise that every seeded user lands with role-appropriate workspace contexts preconfigured. Phase 8e.2.2 closes that regression.
+
+---
+
+## 12. Phase 8e.2.2 — Space Invariant Enforcement
+
+**Phase 8e.2.2 ships the closing bracket on the Phase 3 promise: every active user has seeded Spaces, enforced at every creation path and self-healed on login.** Purely infrastructural; no new primitives, no new UX.
+
+### 12.1 The invariant
+
+> **For every active user in the dev and production databases, `preferences.spaces` SHALL be non-empty once the user has completed at least one authentication round-trip.**
+
+Mechanically: at least one of `preferences.spaces_seeded_for_roles` OR `preferences.system_spaces_seeded` is populated AND `preferences.spaces` has ≥1 entry.
+
+Violations are a bug in exactly one of three places: a user-creation path bypassing the seed hook, the seed function erroring silently in production, or a user who manually deleted all their Spaces after seeding (legal per Phase 8e — not a violation, only the stricter "never-seeded" sub-invariant catches regressions).
+
+### 12.2 Gaps Phase 8e.2.2 closed
+
+Phase 3 wired the Spaces seed at one creation path (`auth_service.register_user` — self-signup to existing tenant) and the role-change branch of `user_service.update_user`. Three additional creation paths predate the Phase 3 hook and never received one:
+
+| Call site | Who lands here |
+|---|---|
+| `auth_service.register_company` | First admin of a brand-new tenant |
+| `user_service.create_user` | Admin-provisioned users (invited from `/admin/users`) |
+| `user_service.create_users_bulk` | Bulk imports (CSV upload, seeding scripts) |
+
+Result as of pre-8e.2.2: ~71% of active dev-DB users (7,874 of 11,084) carried an empty `preferences.spaces` array. Their sidebar nav rendered fine (Layer 1 independent of Spaces per §11) but DotNav showed only the plus button — a silent regression from the Phase 3 opinionated-default promise.
+
+### 12.3 Fix shape — three layers of defense
+
+1. **Creation-path hooks.** `register_company`, `create_user`, and (transitively via `create_user`) `create_users_bulk` now invoke `seed_spaces_best_effort(db, user, call_site=...)` immediately after the user row commits. Best-effort: a seed failure logs a structured warning (user_id, company_id, vertical, role_slug, exception type + message) but never blocks the underlying user-creation flow.
+
+2. **Login-time defensive re-seed.** `auth_service.login_user` checks `preferences.spaces` after authentication passes. If empty — any user missed by a creation hook OR created before the hook landed OR created mid-deploy between migration + hook rollout — the seed runs at login. O(1) cost when Spaces are populated (dict-key read).
+
+3. **Backfill migration `r46_users_spaces_backfill`.** One-shot data migration that queries every active user whose `preferences.spaces` is empty, calls `seed_for_user` per user with structured per-failure logging, and logs an end-of-migration summary showing total candidates, backfilled count, no-op count, failure count, and per-vertical breakdown. Idempotent by construction (seed_for_user's own `spaces_seeded_for_roles` idempotency key). Per-user try/except + batch commit every 100 users.
+
+### 12.4 Seed helper — single source of structured logging
+
+`app.services.spaces.seed.seed_spaces_best_effort(db, user, *, call_site: str) → int` is the single wrapper every creation hook + the defensive login re-seed go through. Responsibilities:
+
+- Delegate to `seed_for_user`
+- Swallow any exception (caller MUST NOT fail on Spaces issues)
+- Emit a structured `WARNING` log line carrying `call_site`, `user_id`, `company_id`, `vertical`, `role_slug`, `exc_type`, `exc_msg`
+- Defensive `db.rollback()` after exceptions to clean partial commit state
+- Return 0 on failure, otherwise the count seed_for_user returns
+
+### 12.5 Backfill log output
+
+The migration logs a final summary line shaped for grep-friendly operator debugging:
+
+```
+r46_users_spaces_backfill: complete. candidates=7874 backfilled=7850 noop=24 failed=0 vertical_breakdown=__unknown__=2108, cemetery=7, crematory=7, funeral_home=936, manufacturing=4785, telecom=7
+```
+
+Vertical `__unknown__` covers tenants without `Company.vertical` set — these fall through to `FALLBACK_TEMPLATE` ("General") which still produces ≥1 Space per the invariant.
+
+### 12.6 Test coverage
+
+`backend/tests/test_spaces_invariant.py` — 9 tests across 6 classes:
+
+- `TestRegisterCompanySeed` × 1 — register_company first admin seeds ≥1 Space
+- `TestCreateUserSeed` × 1 — admin-provisioned user gets mfg-admin template (Production + Sales + Ownership)
+- `TestBulkUserSeed` × 1 — every user in a 3-element batch seeds the full template
+- `TestDefensiveReseedOnLogin` × 2 — empty → seeded on login; populated → no-op on login
+- `TestSeedBestEffortHelper` × 2 — happy path returns count; exception returns 0 + structured warning with required fields
+- `TestBackfillIdempotency` × 1 — second seed_for_user call is a no-op
+- `TestPlatformSpaceInvariant` × 1 — scans `users` table, fails if any active user has NEITHER `spaces` populated NOR `spaces_seeded_for_roles` populated (≤5 race-condition tolerance)
+
+**Migration head advances** `r45_portal_invite_email_template` → `r46_users_spaces_backfill`.
+
