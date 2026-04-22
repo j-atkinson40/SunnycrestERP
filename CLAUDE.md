@@ -229,6 +229,32 @@ An overlay appears beneath the input with checkmarks for Deceased name, Date of 
 
 **Demo data seeding:** `backend/scripts/seed_nl_demo_data.py --tenant-slug testco` seeds Hopkins Funeral Home + other demo CompanyEntity rows + 3 prior FH cases so the resolver has real pg_trgm candidates. Idempotent; safe to re-run before demos.
 
+## 1b. Canonical Platform Specs
+
+Eight markdown documents at repo root are the authoritative specs for Bridgeable. In-tree markdown is the source of truth. Project-knowledge PDFs uploaded to chat interfaces may lag the repo; when they disagree, the repo wins.
+
+| File | Scope | Read when |
+|---|---|---|
+| [CLAUDE.md](CLAUDE.md) | Build standards, conventions, tech stack, arc logs, Recent Changes | Every session |
+| [BRIDGEABLE_MASTER.md](BRIDGEABLE_MASTER.md) | Master planning reference — vision, strategy, primitives (Spaces / Saved Views / Pins), Command Bar capabilities, Bridgeable Assist, Vision, Knowledge Ingestion, cross-tenant architecture, verticals roadmap. April 19, 2026 state. | Strategy, roadmap, or anything cross-vertical |
+| [PLATFORM_ARCHITECTURE.md](PLATFORM_ARCHITECTURE.md) | Three-primitive architecture (Monitor / Act / Decide), Focus primitive, Pulse surface, entity portal, chip conversation, pause sensor, observe-and-offer, bounded-decision discipline, cross-cutting principles. April 22, 2026. | Any architectural decision touching the new primitives |
+| [FUNERAL_HOME_VERTICAL.md](FUNERAL_HOME_VERTICAL.md) | FH vertical design — AI Arrangement Scribe, Legacy Personalization Compositor, AI Compliance + Audit Intelligence, cross-tenant network, case data model (14 tables), arrangement conference intake (3 methods), casket selection, tenant website builder, onboarding migration | FH vertical build work |
+| [SPACES_ARCHITECTURE.md](SPACES_ARCHITECTURE.md) | Spaces primitive — templates, system vs user spaces, access modes, portal architecture, affinity signal, purpose-limitation clause | Anything touching Spaces, portals, or space-scoped UX |
+| [DESIGN_LANGUAGE.md](DESIGN_LANGUAGE.md) | Visual treatment — color tokens, typography, shadow system, spacing, motion curves, light/dark anchors, accessibility floor | Every UI-touching decision |
+| [FEATURE_SESSIONS.md](FEATURE_SESSIONS.md) | Append-only session log — one entry per build session, with deliverables + tests + migration head | When context on a specific past session is needed |
+| [AESTHETIC_ARC.md](AESTHETIC_ARC.md) | Aesthetic arc plan — Phase I, II, III sessions + scope + deliverables | Aesthetic / visual polish work |
+
+**Scope relationship — BRIDGEABLE_MASTER vs PLATFORM_ARCHITECTURE.** Both are authoritative for their coverage areas, but they represent two layers of architectural thinking. `BRIDGEABLE_MASTER.md` captures the April 19, 2026 consolidation — three primitives of **Spaces / Saved Views / Pins**, the Command Bar with 18 unified capabilities, Bridgeable Assist, Vision, Knowledge Ingestion, Personalization Studio, N-way cross-tenant. `PLATFORM_ARCHITECTURE.md` (April 22, 2026) introduces a later architectural layer: the three primitives reframe as **Monitor (Spaces with composed Pulse) / Act (Command Bar) / Decide (Focus)**, formalizes Focus as the bounded-decision primitive, introduces Pulse as the per-Space composed surface, entity portal as the Command Bar organizing pattern, chip conversation + pause sensor as the multi-step input pattern, and observe-and-offer as the cross-cutting configuration principle.
+
+**Where the two docs disagree, PLATFORM_ARCHITECTURE.md wins** per its own header ("Where this doc and the existing docs disagree, this doc reflects the more recent thinking and supersedes"). Future work will merge the PLATFORM_ARCHITECTURE content back into BRIDGEABLE_MASTER to unify; deferred to post-architecture-migration.
+
+**Per-prompt reading list:**
+- **Scope/planning sessions:** CLAUDE.md + PLATFORM_ARCHITECTURE.md + BRIDGEABLE_MASTER.md + the vertical doc if vertical-specific.
+- **UI-touching prompts:** CLAUDE.md + DESIGN_LANGUAGE.md + PLATFORM_ARCHITECTURE.md (for new primitives) or UI_UX_ARC.md (for shipped primitives from the UI/UX arc).
+- **Backend-only prompts:** CLAUDE.md only. Loading design docs wastes context.
+
+**Note:** `UI_UX_ARC.md` documents the seven primitives shipped during Phases 1–7 (Command Bar v1, Saved Views, Spaces, NL Creation, Triage, Briefings, Polish). It is NOT in the canonical-specs registry above because it is an arc log, not an architectural spec. `PLATFORM_ARCHITECTURE.md` supersedes its architectural framing (Command Bar v1 becomes the Act primitive; Spaces host the Pulse surface; Focus is the newly-introduced third primitive not in UI_UX_ARC).
+
 ## 2. Technical Stack
 
 ### Backend
