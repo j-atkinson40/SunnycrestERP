@@ -67,7 +67,13 @@ export function Focus() {
   // to determine forbidden zones. Canvas tier reserves 100px on each
   // side for widgets; stack tier reserves right-rail; icon tier
   // fills viewport minus small padding.
-  const viewport = useViewportTier()
+  //
+  // Session 3.7 post-verification fix: pass widgets to useViewportTier
+  // so content-aware tier detection runs here too. Canvas + Focus
+  // must agree on tier — otherwise Popup would size as canvas while
+  // Canvas renders StackRail (mismatched chrome vs content).
+  const widgets = currentFocus?.layoutState?.widgets ?? {}
+  const viewport = useViewportTier(widgets)
   const coreRect = computeCoreRect(
     viewport.tier,
     viewport.width,

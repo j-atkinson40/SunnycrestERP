@@ -53,7 +53,6 @@ import { WidgetChrome } from "./WidgetChrome"
 
 export function Canvas() {
   const { currentFocus, updateSessionLayout, removeWidget } = useFocus()
-  const viewport = useViewportTier()
 
   const [searchParams] = useSearchParams()
   const devMode = searchParams.get("dev-canvas") === "1"
@@ -63,6 +62,11 @@ export function Canvas() {
   )
 
   const widgets = currentFocus?.layoutState?.widgets ?? {}
+  // Session 3.7 fix — pass widgets so tier detection is content-aware.
+  // If canvas reserved space can't hold the widgets at their canonical
+  // sizes, tier transitions to stack. Focus.tsx must pass the same
+  // widget set so Popup sizing stays in sync with Canvas rendering.
+  const viewport = useViewportTier(widgets)
   const tier = viewport.tier
 
   // Stack-mode expand-overlay state + icon-mode sheet-open state.

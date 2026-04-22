@@ -6,6 +6,79 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 3.7.1 — Content-aware tier detection (canvas vs. stack)
+
+**Date:** 2026-04-22
+**Session type:** Same-day bug fix on Session 3.7. Surfaced during user visual verification: widgets rendered clipped at viewport edges in canvas mode because tier threshold was viewport-only, not content-aware.
+**Files touched:** 6 (`frontend/src/components/focus/canvas/geometry.ts`, `geometry.test.ts`, `useViewportTier.ts`, `Canvas.tsx`, `Canvas.test.tsx`, `Focus.tsx`, `frontend/src/pages/dev/focus-test.tsx`, `PLATFORM_QUALITY_BAR.md`, `FEATURE_SESSIONS.md`, `CLAUDE.md`).
+**LOC:** ~130 changed (60 in geometry.ts adding `widgetsFitInCanvas` + rewritten `determineTier`; 12 in useViewportTier.ts; 10 across Canvas.tsx / Focus.tsx / focus-test.tsx threading widgets; 60 in geometry.test.ts rewriting tier tests + adding 14 fit-check tests; 30 in Canvas.test.tsx adjusting tier-dispatch + regression test).
+**Tests:** 335 passing (318 baseline + 17 net). tsc clean. vite build clean in 5.19s.
+
+### What shipped
+
+Tier detection is now **content-aware**. `determineTier(vw, vh, widgets)` calls new pure `widgetsFitInCanvas(widgets, vw, vh)` helper — per-anchor fit check — and transitions to stack when any widget exceeds its reserved-space band at the current viewport.
+
+**Old logic (viewport-only, clipped widgets):**
+```ts
+if (vw < 700) return "icon"
+if (vw < 1000 || vh < 700) return "stack"
+return "canvas"
+```
+
+**New logic (content-aware):**
+```ts
+if (vw < TIER_ICON_MAX_WIDTH) return "icon"
+if (!widgetsFitInCanvas(widgets, vw, vh)) return "stack"
+return "canvas"
+```
+
+`widgetsFitInCanvas` inspects each widget's anchor + size against the canvas reserved-space bands:
+
+- `*-left` (top-left, bottom-left, left-rail) → width + 16px buffer must fit in `reservedLeft = coreRect.x`
+- `*-right` (top-right, bottom-right, right-rail) → width + 16 must fit in `reservedRight = vw - (coreRect.x + coreRect.width)`
+- `top-*` → height + 16 must fit in `reservedTop = coreRect.y`
+- `bottom-*` → height + 16 must fit in `reservedBottom = vh - (coreRect.y + coreRect.height)`
+
+Corner anchors (top-left/right, bottom-left/right) check BOTH dimensions — stricter than edge anchors because the anchor reserves the corner overlap region. Rail anchors fall through the `includes("left")` / `includes("right")` branch (no separate code path needed). Empty widget lists fit vacuously — an empty canvas renders fine at any viewport ≥ 700px wide.
+
+### Why this was wrong in Session 3.7 initial ship
+
+At vw=1400 in canvas mode: `coreRect.width = min(1400, max(600, 1200)) = 1200`. `reservedLeft = (1400-1200)/2 = 100px`. The three seeded Kanban widgets (320×240, 280×320, 280×200) need 296-336px of reserved space to avoid clipping. 336 > 100 → widgets extend past viewport edges when tier=canvas was picked. User verification caught exactly this — "widgets clipped at viewport edges in canvas mode."
+
+Session 3.7 initial used a fixed viewport threshold (`vw < 1000 OR vh < 700 → stack`) under the assumption that "viewport width is a reliable proxy for whether widgets fit." It's not: reserved margins shrink linearly with viewport, widget sizes stay fixed, so the proxy breaks down at every intermediate viewport. Content-aware detection is the right architectural shape; the initial ship missed it.
+
+### What changed
+
+1. **`geometry.ts`** — removed `TIER_STACK_MAX_WIDTH` + `TIER_STACK_MIN_WIDTH` + `TIER_CANVAS_MIN_HEIGHT` constants; kept `TIER_ICON_MAX_WIDTH`. Added `WIDGET_FIT_BUFFER = 16` (breathing-room between widget edge and reserved-space edge). Added `widgetsFitInCanvas(widgets, vw, vh, buffer?)` accepting either `Record<WidgetId, WidgetState>` or `WidgetState[]`. Rewrote `determineTier(vw, vh, widgets?)` with content-aware branch.
+2. **`useViewportTier.ts`** — hook now accepts optional `widgets` param (default `[]`). Tier derives fresh on every render from current dims + current widgets; viewport dims still update only via resize listener. Avoids useEffect dependency churn.
+3. **`Canvas.tsx`** — passes `widgets = currentFocus?.layoutState?.widgets ?? {}` to `useViewportTier(widgets)`.
+4. **`Focus.tsx`** — same widget-threading, so Popup sizing stays in sync with Canvas rendering. Critical: if Canvas picked stack but Focus sized Popup as canvas, the Popup would cover the stack rail with mismatched chrome.
+5. **`focus-test.tsx` dev page** — passes `currentFocus?.layoutState?.widgets ?? {}` so the dev tier indicator reflects what Canvas + Focus will actually pick when opened.
+
+### Test updates
+
+**Rewritten** (in `geometry.test.ts`):
+- `describe("determineTier — Session 3.7 viewport thresholds")` → `describe("determineTier — Session 3.7 content-aware")` with 6 tests covering icon-tier dominance, empty-widgets-fit-vacuously, seeded-widgets-force-stack, ultra-wide-canvas-passes, small-widgets-fit-at-1920, oversized-widget-forces-stack.
+
+**New** (in `geometry.test.ts`):
+- `describe("widgetsFitInCanvas")` — 14 tests covering empty-fits-vacuously, array-or-record shape, small-widget-fits, seeded-320-doesn't-fit-at-1920, seeded-320-fits-at-2560, right-rail-uses-reservedRight, top-center-only-vertical, bottom-center-reservedBottom, corner-checks-both-dims, rail-anchors-branch, any-widget-failing-blocks-set, seeded-Kanban-fixture-fails-at-1920, seeded-Kanban-fits-at-4K, buffer-param-adjusts-strictness.
+
+**Updated** (in `Canvas.test.tsx`):
+- `renders canvas tier widgets at wide viewport (1920×1080)` → `renders canvas tier widgets at ultra-wide viewport (3840×2160)` — seeded widgets fit at 4K viewport (reservedLeft/Right=1220).
+- Added `seeded widgets force stack at 1920×1080 (content-aware transition)` regression guard.
+- Adjusted `tier transition preserves widget state` test — now cycles ultra-wide → stack → icon → 1920×1080 → ultra-wide (not wide → stack → icon → wide); 1920×1080 is now stack with seeded widgets.
+- Adjusted `dev-mode grid renders only when ?dev-canvas=1` to use `test-single-record` focus (no seeded widgets) so canvas tier resolves at jsdom's default viewport (the dev-grid is canvas-tier-only).
+
+### Preview verification pending
+
+User-side: visual verify at 1920×1080 that Focus now renders in stack tier with StackRail + dots indicator (not clipped widgets); resize to 2560×1440+ to verify canvas tier takes over; narrow to <700px to verify icon tier; live transitions smooth without flicker.
+
+### Next
+
+Session 4 — persistence tier (`focus_sessions` + per-user layouts + 15s return-pill countdown). Per Session 1's deferred scope. Unchanged by 3.7.1.
+
+---
+
 ## Phase A Session 3.7 — Three-tier responsive cascade (canvas → stack → icon)
 
 **Date:** 2026-04-22

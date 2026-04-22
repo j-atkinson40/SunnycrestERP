@@ -33,7 +33,9 @@
 
 import type {
   WidgetAnchor,
+  WidgetId,
   WidgetPosition,
+  WidgetState,
 } from "@/contexts/focus-registry"
 
 
@@ -438,13 +440,20 @@ export function findOpenZone(
 export type FocusTier = "canvas" | "stack" | "icon"
 
 
-/** Tier thresholds — fixed per Session 3.7 locked decisions.
- *  Changing these requires updating PLATFORM_QUALITY_BAR.md test
- *  expectations + regression tests. */
+/** Tier thresholds.
+ *
+ *  Icon tier is pure viewport-based: below 700px wide, a usable
+ *  canvas + core layout isn't possible regardless of widget content.
+ *
+ *  Canvas vs. stack is **content-aware** (Session 3.7 post-verification
+ *  fix — see `widgetsFitInCanvas` + `determineTier` below). The old
+ *  TIER_STACK_MAX_WIDTH / TIER_CANVAS_MIN_HEIGHT viewport-only
+ *  thresholds were insufficient — widgets at their canonical size
+ *  could extend past reserved canvas margin at "wide enough" viewports
+ *  and render clipped. The new contract: if any widget's anchor can't
+ *  accommodate its size in canvas reserved space, the whole Focus
+ *  transitions to stack where widgets DO fit cleanly. */
 export const TIER_ICON_MAX_WIDTH = 700
-export const TIER_STACK_MIN_WIDTH = 700
-export const TIER_STACK_MAX_WIDTH = 1000
-export const TIER_CANVAS_MIN_HEIGHT = 700
 
 /** Right-rail stack width in stack mode. Reserved on the right side
  *  of the viewport; core takes the rest (minus margin). */
@@ -461,21 +470,90 @@ export const CORE_MAX_HEIGHT = 900
  *  side reserves this much for widgets. */
 export const CANVAS_RESERVED_MARGIN = 100
 
+/** Breathing-room buffer between widget edge and reserved-space edge
+ *  used by `widgetsFitInCanvas`. A widget exactly the size of reserved
+ *  space would touch both the viewport edge and the core edge, which
+ *  reads as cramped; `+ buffer` keeps a visible gap on each side. */
+export const WIDGET_FIT_BUFFER = 16
 
-/** Pick the tier for the current viewport.
+
+/** Does each widget's anchor have enough reserved canvas space to
+ *  render the widget at its canonical size without clipping?
  *
- *  Order matters: icon wins when viewport < 700 wide (even if
- *  height is ample). Stack wins when viewport is medium-width OR
- *  height forces it. Canvas is the default for generous viewports. */
+ *  Content-aware tier-detection primitive (Session 3.7 fix). Per
+ *  anchor, the widget must fit in the band it anchors to:
+ *
+ *  - `*-left`   → width must fit in reservedLeft  (vw[0..coreRect.x])
+ *  - `*-right`  → width must fit in reservedRight (vw[coreRect.x+w..vw])
+ *  - `top-*`    → height must fit in reservedTop  (vh[0..coreRect.y])
+ *  - `bottom-*` → height must fit in reservedBottom (vh[core.y+h..vh])
+ *
+ *  Corner anchors (top-left, top-right, bottom-left, bottom-right)
+ *  check BOTH dimensions — the anchor reserves the corner's overlap
+ *  region, so the widget must fit in both bands. Rail anchors
+ *  (`left-rail`, `right-rail`) are caught by the `includes("left")` /
+ *  `includes("right")` branch; `top-center` + `bottom-center` only
+ *  check vertical fit since they span horizontally across the core.
+ *
+ *  Returns true if ALL widgets fit. Returns true vacuously for empty
+ *  widget lists (empty canvas renders fine regardless of viewport).
+ *
+ *  Accepts either a `Record<WidgetId, WidgetState>` (how focus-context
+ *  stores widgets) or a `WidgetState[]` (test-fixture ergonomic). */
+export function widgetsFitInCanvas(
+  widgets: Record<WidgetId, WidgetState> | WidgetState[],
+  viewportWidth: number,
+  viewportHeight: number,
+  buffer: number = WIDGET_FIT_BUFFER,
+): boolean {
+  const list = Array.isArray(widgets) ? widgets : Object.values(widgets)
+  if (list.length === 0) return true
+
+  const coreRect = computeCoreRect("canvas", viewportWidth, viewportHeight)
+  const reservedLeft = coreRect.x
+  const reservedRight = viewportWidth - (coreRect.x + coreRect.width)
+  const reservedTop = coreRect.y
+  const reservedBottom = viewportHeight - (coreRect.y + coreRect.height)
+
+  for (const widget of list) {
+    const { anchor, width, height } = widget.position
+
+    if (anchor.includes("left") && width + buffer > reservedLeft) return false
+    if (anchor.includes("right") && width + buffer > reservedRight) return false
+    if (anchor.startsWith("top") && height + buffer > reservedTop) return false
+    if (anchor.startsWith("bottom") && height + buffer > reservedBottom) {
+      return false
+    }
+  }
+
+  return true
+}
+
+
+/** Pick the tier for the current viewport + widget set.
+ *
+ *  Content-aware (Session 3.7 post-verification fix):
+ *    1. vw < 700 → icon (pure viewport — canvas unusable at that width)
+ *    2. Else, if any widget doesn't fit canvas reserved space → stack
+ *    3. Else → canvas
+ *
+ *  The old viewport-only heuristic (`vw < 1000 OR vh < 700 → stack`)
+ *  under-detected clipping because reserved margins shrink linearly
+ *  with viewport but widget sizes stay fixed. Three 320×240 widgets
+ *  at 1400×900 get 100px reserved space per side — clipping. New
+ *  logic catches that at the fit-check step and transitions to stack
+ *  where widgets DO fit.
+ *
+ *  Empty widget list is vacuously-fits → canvas at any viewport ≥ 700.
+ *  Session 4+ may add an empty-state viewport floor if empty canvas
+ *  at cramped viewports proves awkward. */
 export function determineTier(
   viewportWidth: number,
   viewportHeight: number,
+  widgets: Record<WidgetId, WidgetState> | WidgetState[] = [],
 ): FocusTier {
   if (viewportWidth < TIER_ICON_MAX_WIDTH) return "icon"
-  if (
-    viewportWidth < TIER_STACK_MAX_WIDTH ||
-    viewportHeight < TIER_CANVAS_MIN_HEIGHT
-  ) {
+  if (!widgetsFitInCanvas(widgets, viewportWidth, viewportHeight)) {
     return "stack"
   }
   return "canvas"

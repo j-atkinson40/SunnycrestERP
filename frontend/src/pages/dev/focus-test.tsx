@@ -32,7 +32,11 @@ import { useViewportTier } from "@/components/focus/canvas/useViewportTier"
 export default function FocusTestPage() {
   const { currentFocus, lastClosedFocus, open, isOpen } = useFocus()
   const configs = listFocusConfigs()
-  const viewport = useViewportTier()
+  // Session 3.7 post-verification — thread current focus widgets so
+  // the dev indicator reflects the tier Canvas + Focus will actually
+  // pick (content-aware). Empty widgets = vacuously-fits → canvas.
+  const focusWidgets = currentFocus?.layoutState?.widgets ?? {}
+  const viewport = useViewportTier(focusWidgets)
 
   const resolvedMode = currentFocus
     ? (configs.find((c) => c.id === currentFocus.id)?.mode ?? "(unknown id)")

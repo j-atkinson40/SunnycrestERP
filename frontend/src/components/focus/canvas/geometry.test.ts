@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest"
 
-import type { WidgetAnchor } from "@/contexts/focus-registry"
+import type { WidgetAnchor, WidgetState } from "@/contexts/focus-registry"
 
 import {
   GRID_STEP,
@@ -20,8 +20,21 @@ import {
   rectsOverlap,
   resolvePosition,
   snapTo8px,
+  widgetsFitInCanvas,
   type Rect,
 } from "./geometry"
+
+
+/** Helper to build a WidgetState for fit-check tests. */
+function widget(
+  anchor: WidgetAnchor,
+  width: number,
+  height: number,
+): WidgetState {
+  return {
+    position: { anchor, offsetX: 0, offsetY: 0, width, height },
+  }
+}
 
 
 describe("snapTo8px", () => {
@@ -372,26 +385,191 @@ describe("computeCoreRect — Session 3.7 tier-aware", () => {
 })
 
 
-describe("determineTier — Session 3.7 viewport thresholds", () => {
-  it("picks icon for narrow viewport", () => {
+describe("widgetsFitInCanvas — Session 3.7 post-verification content check", () => {
+  it("empty widget list fits vacuously", () => {
+    expect(widgetsFitInCanvas([], 1920, 1080)).toBe(true)
+    expect(widgetsFitInCanvas({}, 1920, 1080)).toBe(true)
+  })
+
+  it("accepts WidgetState[] or Record<WidgetId, WidgetState>", () => {
+    const w = widget("top-left", 80, 80)
+    // Array form.
+    expect(widgetsFitInCanvas([w], 1920, 1080)).toBe(true)
+    // Record form.
+    expect(widgetsFitInCanvas({ "w1": w }, 1920, 1080)).toBe(true)
+  })
+
+  it("small top-left widget fits in typical canvas reserved space", () => {
+    // 1920x1080 canvas mode: coreRect width=1400, x=260. reservedLeft=260.
+    // Widget 80+16=96 ≤ 260 horizontally ✓. reservedTop=(1080-880)/2=100.
+    // Widget 80+16=96 ≤ 100 vertically ✓.
+    expect(widgetsFitInCanvas([widget("top-left", 80, 80)], 1920, 1080)).toBe(
+      true,
+    )
+  })
+
+  it("seeded 320×240 top-left widget DOES NOT fit at 1920×1080", () => {
+    // reservedLeft=260, width+16=336 > 260 → fails horizontal.
+    // This is the exact clipping case from the Session 3.7 verification.
+    expect(
+      widgetsFitInCanvas([widget("top-left", 320, 240)], 1920, 1080),
+    ).toBe(false)
+  })
+
+  it("seeded 320×240 top-left widget DOES fit at ultra-wide 2560×1440", () => {
+    // reservedLeft = (2560-1400)/2 = 580. width+16=336 ≤ 580 ✓.
+    // reservedTop = (1440-900)/2 = 270. height+16=256 ≤ 270 ✓.
+    expect(
+      widgetsFitInCanvas([widget("top-left", 320, 240)], 2560, 1440),
+    ).toBe(true)
+  })
+
+  it("right-rail widget fit check uses reservedRight (not left)", () => {
+    // 1920x1080: reservedRight=260. width+16=296 > 260 → fails.
+    expect(
+      widgetsFitInCanvas([widget("right-rail", 280, 300)], 1920, 1080),
+    ).toBe(false)
+    // 2560x1440: reservedRight=580. 296 ≤ 580 ✓.
+    expect(
+      widgetsFitInCanvas([widget("right-rail", 280, 300)], 2560, 1440),
+    ).toBe(true)
+  })
+
+  it("top-center widget only checks vertical fit (spans horizontally)", () => {
+    // top-center anchor: no "left"/"right" branch, only "top" branch.
+    // At 1920x1080 reservedTop=100. Large width doesn't matter here.
+    expect(
+      widgetsFitInCanvas([widget("top-center", 800, 80)], 1920, 1080),
+    ).toBe(true) // 80+16=96 ≤ 100
+    expect(
+      widgetsFitInCanvas([widget("top-center", 200, 200)], 1920, 1080),
+    ).toBe(false) // 200+16=216 > 100
+  })
+
+  it("bottom-center widget checks reservedBottom", () => {
+    // At 1920x1080: reservedBottom=(1080-880)/2=100.
+    expect(
+      widgetsFitInCanvas([widget("bottom-center", 400, 80)], 1920, 1080),
+    ).toBe(true) // 96 ≤ 100
+    expect(
+      widgetsFitInCanvas([widget("bottom-center", 400, 200)], 1920, 1080),
+    ).toBe(false)
+  })
+
+  it("corner anchor checks BOTH dimensions (stricter than edge)", () => {
+    // top-right at 2560x1440: reservedRight=580, reservedTop=270.
+    // Width 320 fits horizontally (336 ≤ 580) AND height 240 fits
+    // vertically (256 ≤ 270) → passes.
+    expect(
+      widgetsFitInCanvas([widget("top-right", 320, 240)], 2560, 1440),
+    ).toBe(true)
+    // At 2560x900: reservedTop=(900-700)/2? wait: core height = min(900, max(400, 900-200))=700, y=(900-700)/2=100. reservedTop=100.
+    // Width 320 fits horizontally (reservedRight=580, 336 ≤ 580) ✓
+    // Height 240 + 16 = 256 > 100 reservedTop → fails vertical
+    expect(
+      widgetsFitInCanvas([widget("top-right", 320, 240)], 2560, 900),
+    ).toBe(false)
+  })
+
+  it("rail anchors trigger the includes('left')/includes('right') branch", () => {
+    // left-rail = includes("left"), so horizontal fit checked.
+    expect(
+      widgetsFitInCanvas([widget("left-rail", 80, 200)], 1920, 1080),
+    ).toBe(true) // 96 ≤ 260 reservedLeft
+    expect(
+      widgetsFitInCanvas([widget("left-rail", 320, 200)], 1920, 1080),
+    ).toBe(false) // 336 > 260 reservedLeft
+  })
+
+  it("any widget failing blocks the whole set from fitting", () => {
+    const good = widget("top-left", 80, 80)
+    const bad = widget("top-left", 500, 400)
+    expect(widgetsFitInCanvas([good, bad], 1920, 1080)).toBe(false)
+    expect(widgetsFitInCanvas([good], 1920, 1080)).toBe(true)
+  })
+
+  it("seeded Kanban fixture (3 widgets) fails at wide 1920×1080", () => {
+    // Fixture values from focus-registry.ts Kanban stub.
+    const seeded: WidgetState[] = [
+      widget("top-left", 320, 240),
+      widget("right-rail", 280, 320),
+      widget("bottom-right", 280, 200),
+    ]
+    expect(widgetsFitInCanvas(seeded, 1920, 1080)).toBe(false)
+  })
+
+  it("seeded Kanban fixture fits at 3840×2160 (4K)", () => {
+    const seeded: WidgetState[] = [
+      widget("top-left", 320, 240),
+      widget("right-rail", 280, 320),
+      widget("bottom-right", 280, 200),
+    ]
+    // reservedLeft=1220, reservedRight=1220, reservedTop=630, reservedBottom=630.
+    // All fits comfortably.
+    expect(widgetsFitInCanvas(seeded, 3840, 2160)).toBe(true)
+  })
+
+  it("buffer parameter adjusts strictness", () => {
+    // With buffer=0, a 260×100 widget exactly fills reservedLeft=260 at 1920x1080 → OK.
+    // With buffer=16 (default), it fails (276 > 260).
+    expect(
+      widgetsFitInCanvas([widget("left-rail", 260, 100)], 1920, 1080, 0),
+    ).toBe(true)
+    expect(
+      widgetsFitInCanvas([widget("left-rail", 260, 100)], 1920, 1080),
+    ).toBe(false)
+  })
+})
+
+
+describe("determineTier — Session 3.7 content-aware", () => {
+  it("picks icon for narrow viewport regardless of widgets", () => {
     expect(determineTier(699, 844)).toBe("icon")
     expect(determineTier(390, 844)).toBe("icon")
     expect(determineTier(300, 1200)).toBe("icon")
+    // Even with big widgets, icon tier dominates under 700 wide.
+    expect(determineTier(690, 1200, [widget("top-left", 500, 500)])).toBe("icon")
   })
-  it("picks stack for medium-narrow width", () => {
-    expect(determineTier(700, 844)).toBe("stack")
-    expect(determineTier(999, 844)).toBe("stack")
-    expect(determineTier(800, 800)).toBe("stack")
-  })
-  it("picks stack when height forces it (short+wide)", () => {
-    expect(determineTier(1920, 699)).toBe("stack")
-    expect(determineTier(2000, 400)).toBe("stack")
-    expect(determineTier(844, 390)).toBe("stack")
-  })
-  it("picks canvas for wide + tall", () => {
-    expect(determineTier(1000, 700)).toBe("canvas")
-    expect(determineTier(1920, 1080)).toBe("canvas")
+
+  it("empty widgets + any viewport ≥ 700 → canvas (vacuously fits)", () => {
+    expect(determineTier(700, 700)).toBe("canvas")
+    expect(determineTier(900, 800)).toBe("canvas")
     expect(determineTier(1440, 900)).toBe("canvas")
+    expect(determineTier(1920, 1080)).toBe("canvas")
+  })
+
+  it("widgets that don't fit → stack (content-aware transition)", () => {
+    // Exact seeded Kanban fixture; fails canvas fit at "wide" viewports.
+    const seeded: WidgetState[] = [
+      widget("top-left", 320, 240),
+      widget("right-rail", 280, 320),
+      widget("bottom-right", 280, 200),
+    ]
+    expect(determineTier(1920, 1080, seeded)).toBe("stack")
+    expect(determineTier(1440, 900, seeded)).toBe("stack")
+    expect(determineTier(1100, 800, seeded)).toBe("stack")
+  })
+
+  it("widgets that fit → canvas (at ultra-wide viewport)", () => {
+    const seeded: WidgetState[] = [
+      widget("top-left", 320, 240),
+      widget("right-rail", 280, 320),
+      widget("bottom-right", 280, 200),
+    ]
+    expect(determineTier(3840, 2160, seeded)).toBe("canvas")
+  })
+
+  it("small widgets fit at 1920×1080 → canvas", () => {
+    // Future-phase saved-view summary widgets might be ~200×150.
+    const small = widget("top-left", 80, 80)
+    expect(determineTier(1920, 1080, [small])).toBe("canvas")
+  })
+
+  it("single oversized widget forces stack regardless of viewport", () => {
+    const huge = widget("top-left", 5000, 3000)
+    expect(determineTier(1920, 1080, [huge])).toBe("stack")
+    // Even at 4K.
+    expect(determineTier(3840, 2160, [huge])).toBe("stack")
   })
 })
 
