@@ -339,19 +339,20 @@ Not every token has every variant. The table below lists all defined tokens.
 
 ### Surface tokens
 
-**Rationale:** Elevation in this platform is communicated by color lightness, not by borders or shadows alone. An elevated surface is *slightly lighter in light mode* and *slightly lifted in dark mode*. Each step of elevation lifts lightness by approximately 0.025 in light mode and 0.035 in dark mode (dark mode needs a larger step because low-lightness differences are less perceptually distinct).
+**Rationale:** Elevation in this platform is communicated by color lightness, not by borders or shadows alone. An elevated surface is *slightly lighter in light mode* and *visibly lifted in dark mode*. Each step of elevation lifts lightness by approximately 0.025 in light mode and **0.05–0.06** in dark mode. Dark mode needs a larger step because low-lightness differences are perceptually compressed — the approved canonical reference (`docs/design-references/design-ref-dark-card.jpg`) demonstrates cards lifting visibly from the page via a 0.06 OKLCH lightness lift, supplemented by top-edge highlight, shadow composition, and hairline border (see §6 Card perimeter border + §6 Shadow specifications). The three-cue composition (surface lift + top-edge highlight + perimeter border) is what §1 dark-mode anchor 4 "Material, not paint" prescribes; the 0.06 lift is the surface-lift component.
 
 | Token | Light mode | Dark mode |
 |---|---|---|
 | `--surface-base` | `oklch(0.94 0.018 82)` | `oklch(0.16 0.012 65)` |
-| `--surface-elevated` | `oklch(0.965 0.014 82)` | `oklch(0.20 0.014 65)` |
-| `--surface-raised` | `oklch(0.985 0.010 82)` | `oklch(0.24 0.016 65)` |
+| `--surface-elevated` | `oklch(0.965 0.014 82)` | `oklch(0.22 0.015 65)` |
+| `--surface-raised` | `oklch(0.985 0.010 82)` | `oklch(0.27 0.017 65)` |
 | `--surface-sunken` | `oklch(0.91 0.020 82)` | `oklch(0.13 0.011 65)` |
 
 *Notes:*
 - Chroma decreases slightly as lightness increases in light mode — the lightest surfaces approach near-white and carry less warmth. This is intentional: the raised surface feels like "paper catching more light" rather than "saturated pale."
 - Chroma increases slightly as lightness increases in dark mode — the elevated surfaces carry *more* warmth, because they're catching more of the implied warm lamplight. This is the cocktail lounge material logic.
 - `surface-sunken` is used for deep-recessed areas (inset panels, code blocks, sidebar backgrounds that sit below the page level). Not commonly used; defined for consistency.
+- **Tier-3 reconciliation history (April 2026):** pre-Tier-3, dark-mode elevated=0.20 + raised=0.24. Rendered less-distinct than the approved reference. Diagnostic confirmed mirror discipline intact; drift was spec-to-reference (values transcribed too conservatively vs. what the reference demonstrated). Per §1 canonical-mood-references clause ("images win over prose"), values lifted to 0.22 / 0.27. Tier 2 (shadow composition + perimeter border) had already landed; Tier 3 completes the three-cue composition by giving surface-lift the visual weight the reference shows.
 
 ### Content tokens (text and icons)
 
@@ -503,10 +504,11 @@ The final CSS variables for implementation. Sonnet uses these exact names.
 }
 
 [data-mode="dark"] {
-  /* Surfaces */
+  /* Surfaces — Tier-3 spec-reconciliation (April 2026):
+     elevated L 0.20 → 0.22, raised L 0.24 → 0.27. */
   --surface-base: oklch(0.16 0.012 65);
-  --surface-elevated: oklch(0.20 0.014 65);
-  --surface-raised: oklch(0.24 0.016 65);
+  --surface-elevated: oklch(0.22 0.015 65);
+  --surface-raised: oklch(0.27 0.017 65);
   --surface-sunken: oklch(0.13 0.011 65);
 
   /* Content */
@@ -1674,10 +1676,11 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
 }
 
 [data-mode="dark"] {
-  /* Surfaces */
+  /* Surfaces — Tier-3 spec-reconciliation (April 2026):
+     elevated L 0.20 → 0.22, raised L 0.24 → 0.27. */
   --surface-base: oklch(0.16 0.012 65);
-  --surface-elevated: oklch(0.20 0.014 65);
-  --surface-raised: oklch(0.24 0.016 65);
+  --surface-elevated: oklch(0.22 0.015 65);
+  --surface-raised: oklch(0.27 0.017 65);
   --surface-sunken: oklch(0.13 0.011 65);
 
   /* Content */

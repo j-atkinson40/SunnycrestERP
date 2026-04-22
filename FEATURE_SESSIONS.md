@@ -6,6 +6,137 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Tier-3 Spec Reconciliation — Dark-mode surface-lift
+
+**Date:** 2026-04-22
+**Session type:** Documentation-evolution fix. Follow-up to Tier-2 after user provided canonical approved reference images. Third session in the reconciliation arc: (Tier-1 deferred/not-needed) → **Tier-2 shadow strengthening + perimeter border** → **Tier-3 surface-lightness bump**.
+**Files touched:** 4 (`tokens.css`, `DESIGN_LANGUAGE.md`, `CLAUDE.md`, `FEATURE_SESSIONS.md`) + 1 new (`docs/design-references/README.md`).
+**LOC:** ~90 touched + ~110 new (manifest README).
+**Tests:** No new tests. tsc clean, vitest 185/185 unchanged, vite build clean 5.06s.
+
+### The problem (Tier-2 follow-up)
+
+User visually verified Tier-2 (shadow composition strengthened + Card perimeter border added). Card chrome meaningfully improved — clearly more lifted than pre-reconciliation — but user noted a remaining residual gap vs. the approved reference. Pre-Tier-3 card body lightness (dark mode L=0.20) still read slightly less distinct than the reference demonstrated.
+
+User provided the canonical reference images, saved to `docs/design-references/`:
+- `IMG_6084.jpg` — John Michael Smith case card, **light mode**
+- `IMG_6085.jpg` — same card, **dark mode**
+
+Both are ground truth from the design-language creation session and now serve as canonical visuals for card chrome. Per DL §1 canonical-mood-references clause, "images win over prose" — the fix direction when implementation diverges is to update spec + tokens to match what the reference shows.
+
+### The change
+
+Surface-lightness bump in dark mode only (Tier-3 escalation previously held in reserve):
+
+| Token | Pre-Tier-3 | Post-Tier-3 | Δ from base |
+|---|---|---|---|
+| `--surface-base` (dark) | `oklch(0.16 0.012 65)` | unchanged | 0 |
+| `--surface-elevated` (dark) | `oklch(0.20 0.014 65)` | `oklch(0.22 0.015 65)` | 0.04 → **0.06** |
+| `--surface-raised` (dark) | `oklch(0.24 0.016 65)` | `oklch(0.27 0.017 65)` | 0.08 → **0.11** |
+| `--surface-sunken` (dark) | unchanged | unchanged | — |
+
+Chroma eased proportionally (0.014→0.015 and 0.016→0.017) per the DL §3 rule that elevated surfaces carry slightly more warmth in dark mode (they "catch more of the implied warm lamplight").
+
+**DL §3 Surface tokens rationale prose updated**: previous text specified "approximately 0.025 in light mode and 0.035 in dark mode" — updated to "approximately 0.025 in light mode and 0.05–0.06 in dark mode" with expanded rationale explaining that the approved reference demonstrates the larger dark-mode step and citing the three-cue composition (surface lift + top-edge highlight + perimeter border) from §1 anchor 4.
+
+**Tier-3 reconciliation history note** added to §3 Surface tokens documenting pre/post values + reference-driven driver.
+
+### Composite verification
+
+Pre-commit math confirmed no highlight alpha tune-down required:
+
+- Top-highlight composite on surface-elevated:
+  - Tier-2 (L=0.20): composite L ≈ **0.382**
+  - Tier-3 (L=0.22): composite L ≈ **0.389**
+  - Shift: +0.007 OKLCH L — imperceptible
+- Overlay (surface-raised) vs page:
+  - Tier-2: Δ = 0.08 OKLCH
+  - Tier-3: Δ = 0.11 OKLCH — distinct-not-harsh range. Strengthened Tier-2 shadow composition (atmospheric halos at level-2/3) mediates any hard-edge perception on overlays.
+
+No token rollback or alpha tuning needed. Clean Tier-3 landing.
+
+### Blast radius audit
+
+**`bg-surface-elevated`** consumers — hundreds of sites across:
+- Card primitive body (every `<Card>` usage)
+- WidgetWrapper (dashboard + Vault overview widgets — was already rendering with `bg-surface-elevated` inline)
+- Many ad-hoc page chrome consumers across Phase-II-Batch-1a/1b refactored files
+- Dialog / SlideOver content areas (via shadcn semantic alias `--card`)
+
+**`bg-surface-raised`** consumers — 25 sites (grep-counted):
+- Dialog, Popover, DropdownMenu, Tooltip, SlideOver, Sonner
+- Tabs, Switch, Radio active states
+- Select / Input / Textarea backgrounds (input family shell)
+- Phase-II Batch-1b bottom-sheets (ancillary + direct-ship mobile drawers) + FABs
+
+**Risk check**: overlay family's surface-raised bump 0.24→0.27 is a meaningful step. Dark-mode overlay vs page delta now 0.11. Strengthened Tier-2 shadow composition + the overlay's generous padding + centered positioning (modals) or corner positioning (popovers) keep hard-edge harshness at bay. Verified visually in post-Tier-3 live rendering via shadow-level-2/3 atmosphere wrapping.
+
+### Reference image canonicalization
+
+`docs/design-references/` now contains:
+- `IMG_6084.jpg` — canonical light-mode card reference
+- `IMG_6085.jpg` — canonical dark-mode card reference (the Tier-2 + Tier-3 driver)
+- `README.md` — manifest explaining what each image represents, how future Claude instances should use them (inspect via Read tool — JPG content renders visually in the session), per-image observation notes for quick-context scanning, reconciliation history, and process for adding new references
+
+Future aesthetic work inspects these images BEFORE tuning tokens. The spec is a transcription of what the references demonstrate; if live rendering diverges, the correct fix direction is usually "update spec + tokens to match" not "defend the spec as written."
+
+### Incidental observations (flagged, not in Tier-3 scope)
+
+Reading the reference images directly, I observed two minor additional drift points beyond Tier-3 scope:
+
+1. **Corner radius generosity**: the reference cards show approximately 16px corner radius (the `rounded-lg` scale). The Card primitive's default is `rounded-md` (8px). The current default is the dense-card variant; signature detail cards should opt up via className override. Not a spec error — the primitive exposes both radii — but worth considering whether to make `rounded-lg` the default for large cards or introduce a card-size variant that switches radius.
+
+2. **Typography cadence**: the reference cards show a very specific typographic rhythm (micro-caps eyebrow → serif display → mono metadata grid → body sans → brass CTA). This is already supported by existing primitives (CardTitle uses serif via `text-h3 font-plex-serif` convention) but isn't bundled as a "signature card" pattern. A future slot might introduce `SignatureCard` as a composition primitive.
+
+Both observations noted for future consideration. Neither fits Tier-3's surface-lightness scope.
+
+### Spec-reconciliation arc status after Tier 3
+
+- **Tier 1** (originally: strengthen shadow composition) — folded into Tier 2.
+- **Tier 2** (April 2026, prior session) — shadow composition three-layer + `--shadow-highlight-top` strengthened + Card perimeter `border-border-subtle` added + CardFooter `border-t` removed.
+- **Tier 3** (this session) — dark-mode surface-elevated + surface-raised lightness bumped to match reference.
+
+Spec evolves to match the three-cue material treatment §1 dark-mode anchor 4 prescribes:
+1. **Surface lift** — carried by `--surface-elevated` and friends; Tier 3 calibrates the lift.
+2. **Top-edge highlight** — carried by `--shadow-highlight-top` inset 1px; Tier 2 calibrates the light-catch weight.
+3. **Perimeter border** — carried by `border border-border-subtle` on Card primitive; Tier 2 promoted the hairline border option to canonical card treatment.
+
+Together the three cues deliver the "material, not paint" card treatment the reference shows.
+
+### Documentation
+
+- `tokens.css` — dark-mode surface-elevated + surface-raised updated + inline comment noting Tier-3 reconciliation
+- `DESIGN_LANGUAGE.md §3 Surface tokens table` — dark-mode values updated
+- `DESIGN_LANGUAGE.md §3 Surface tokens rationale prose` — updated per target text (0.05–0.06 step)
+- `DESIGN_LANGUAGE.md §3 Full CSS variable list (dark block)` — values updated with inline Tier-3 comment
+- `DESIGN_LANGUAGE.md §9 CSS block (dark)` — values updated (synchronized with §3)
+- `docs/design-references/README.md` — new manifest describing canonical reference images
+- `CLAUDE.md §14 Recent Changes` — Tier-3 entry
+- `FEATURE_SESSIONS.md` — this entry
+
+### Verification checklist for user
+
+1. Open live site in dark mode
+2. Dashboard cards (StatCard instances on home dashboard) — compare to IMG_6085.jpg
+3. Case detail cards — compare to IMG_6085.jpg
+4. Widget cards (Vault Overview, Operations Board) — compare to IMG_6085.jpg
+5. Overlay family — Dialog, DropdownMenu, Popover, SlideOver — verify not uncomfortably bright against page; shadow atmosphere still reads correctly
+6. Mobile bottom sheets (ancillary + direct-ship drawers on scheduling board) — verify surface-raised lift is proportional
+7. Light mode quick-check — should be unchanged (Tier 3 is dark-mode-only)
+
+### Outcomes
+
+- If Tier-3 matches IMG_6085.jpg: spec-reconciliation arc **complete**. Proceed to Phase II Batch 1c-i (order-station standalone) next.
+- If residual gap remains: identify specific remaining delta — could be radius, typography cadence, or a fourth convergent cue not yet documented. Targeted follow-up.
+
+### Arc sequencing after Tier-3
+
+- Reconciliation arc complete → Phase II Batch 1c-i (order-station) ready
+- Post-September: reconsider `SignatureCard` primitive (incidental observation #2)
+- Post-arc polish: card-size variant with `rounded-lg` default for detail cards (incidental observation #1)
+
+---
+
 ## Aesthetic Arc Phase II Batch 1b — Scheduling Board Family
 
 **Date:** 2026-04-22

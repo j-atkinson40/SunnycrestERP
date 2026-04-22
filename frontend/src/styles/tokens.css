@@ -133,10 +133,29 @@
  * ============================================================ */
 
 [data-mode="dark"] {
-  /* ─── COLORS — SURFACES ─── */
+  /* ─── COLORS — SURFACES ───
+   *   Tier-3 spec-reconciliation (April 2026): surface-elevated and
+   *   surface-raised lightness values bumped to match the approved
+   *   canonical reference mockup (John Michael Smith case card —
+   *   saved to docs/design-references/). Low-lightness surface
+   *   deltas are perceptually compressed in dark mode; the original
+   *   0.04 base→elevated step was at spec floor but rendered less-
+   *   distinct than the reference. Tier 3 lifts to 0.06 (elevated)
+   *   and 0.11 (raised vs base) to match reference.
+   *
+   *   Pre-Tier-3:  elevated L=0.20, raised L=0.24
+   *   Post-Tier-3: elevated L=0.22, raised L=0.27
+   *
+   *   Chroma eased proportionally (per §3 "chroma increases slightly
+   *   as lightness increases in dark mode — elevated surfaces carry
+   *   more warmth, catching more of the implied warm lamplight").
+   *
+   *   Top-highlight composite on elevated: L=0.48 α=0.65 over L=0.22
+   *   → composite L≈0.389 (Tier 2 was 0.382; negligible shift).
+   *   Highlight alpha stays 0.65. See §6 Shadow specifications. */
   --surface-base: oklch(0.16 0.012 65);
-  --surface-elevated: oklch(0.20 0.014 65);
-  --surface-raised: oklch(0.24 0.016 65);
+  --surface-elevated: oklch(0.22 0.015 65);
+  --surface-raised: oklch(0.27 0.017 65);
   --surface-sunken: oklch(0.13 0.011 65);
 
   /* ─── COLORS — CONTENT ─── */
