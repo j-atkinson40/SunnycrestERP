@@ -141,10 +141,70 @@ Specific anchor points in the reference:
 - The wood of the bar top and the leather of the chairs are examples of the "material, not paint" principle applied at full intensity. UI surfaces should echo this in restraint — they should feel like material without mimicking specific textures.
 - The pools of light from the pendants are the elevation logic: light where attention belongs, warm dark elsewhere.
 
-**How to use the references:**
-- When writing a new component, compare it to these images before shipping. Does the morning version feel like it could exist on that terrace? Does the evening version feel like it could exist in that lounge (but cozier)?
-- When specifying a new color, verify it against the image's palette. If the new color does not appear as a natural extension of the reference's colors, reconsider.
-- When in doubt about warmth, density, or material character, the images win over prose.
+### Canonical scope — what counts as a reference, what doesn't
+
+`docs/design-references/` contains **exactly two canonical mood-anchor files:**
+
+- `design-ref-light.png` — the Mediterranean garden terrace photograph
+- `design-ref-dark.png` — the cocktail lounge photograph
+
+These are the platform's external mood anchors. They are **photographs of real spaces**, not UI renders, and that is load-bearing: their value comes from being grounded in physical material reality that the design language is translating into pixels. Their warmth, their shadow character, their brass patina — these are observed from reality, not specified.
+
+Other files in `docs/design-references/` fall into two non-canonical categories:
+
+**Pattern references** (e.g., `card-pattern-reference-*.png`) — renderings of UI compositions approved during design work. Used for structural decisions: card shape, spacing, radius, typography hierarchy, component composition. **Never measured for color values** — doing so closes a circular calibration loop because the rendering was produced from the tokens being calibrated. Pattern references answer "what should this look like structurally"; mood anchors answer "what should this feel like materially."
+
+**Archive** (in the `archive/` subfolder) — historical mockups, superseded designs, work-in-progress captures. Kept for history; not authoritative for anything current.
+
+**Conflict resolution:** when mood anchor and pattern reference disagree, **mood anchor wins** for color, material character, atmosphere, elevation feel, shadow character, and brass hue. **Pattern reference wins** for layout, composition, spacing, radius, and typography hierarchy. This split is non-negotiable: reversing it re-introduces the circular calibration problem.
+
+### The calibration chain
+
+When the design language requires token calibration — because a prose rule is ambiguous, or a perceived drift needs measurement — the calibration chain must be:
+
+```
+External mood anchor (design-ref-*.png)
+    ↓ sample directly (e.g. PIL)
+    ↓ identify the photographed material that maps to the UI surface
+    ↓ (per prose analogies above: "the charcoal wall is the direction
+    ↓  for the base surface"; "the walnut bar top is the direction for
+    ↓  elevated surfaces catching warm light")
+    ↓
+Token values (tokens.css + DL §3, mirror-synchronized)
+    ↓
+UI rendering (primitives + pages)
+    ↓
+Pattern reference (card-pattern-reference-*.png)
+    — captures approved UI composition at a point in time
+    — feeds back into structural decisions (spacing, layout, radius)
+    — NEVER feeds back into color calibration
+```
+
+Never this:
+
+```
+UI mockup / pattern reference (derivation — already downstream of tokens)
+    ↓ sample the mockup
+    ↓
+Token values ← CIRCULAR — calibrates tokens against their own output
+```
+
+### When the mood anchors don't cover a UI concern
+
+The mood photographs depict physical spaces, not UI. They don't show stat cards, tables, form controls, modals, or any other software composition. When a UI decision must be made that the mood anchors don't demonstrate, the correct method is **derivation via §2 translation principles**, not approximation via pattern references.
+
+Example: the mood anchor shows a walnut bar top catching pendant light — that's the elevation principle in its natural form. A stat card doesn't exist in the photo, but the principle applies: a card surface catches implied warm light relative to the ambient dark. Derive the card treatment from the principle, not from an existing mockup of what a card "should" look like. Pattern references may confirm the composition *after* the principle-derived treatment is applied, but they don't originate color or material decisions.
+
+This matters because pattern references feel tempting when mood anchors seem "not specific enough" to answer a UI question. That temptation is exactly where circular calibration enters. The correct response to "the mood anchor doesn't show this exact UI element" is to derive from §2 principles, not to reach for an internal artifact that does show the element.
+
+### How to use the references
+
+- When writing a new component, compare it to the mood anchors first. Does the light-mode version feel like it could exist on that terrace? Does the dark-mode version feel like it could exist in that lounge (but cozier)?
+- When specifying a new color, verify via PIL sampling against the mood anchor, then adjust per §2 translation principles.
+- When specifying a new layout, structure, or composition, verify against pattern references (if one exists for that component) and §5 spacing principles.
+- When in doubt about warmth, density, or material character, the **mood anchors** win over prose.
+- When in doubt about layout, structure, or composition, the **pattern references** win over ad-hoc design.
+- When both are silent, derive from §2 translation principles. Do not reach for an internal artifact that appears to answer the question; that path is where the circular calibration anti-pattern (§10) enters.
 
 ---
 
@@ -2317,6 +2377,20 @@ Anti-patterns are organized by what they break. Each entry names the violation, 
 **Hardcoded transition durations.** Violates Section 9. Named durations (`duration-quick`, `duration-settle`, etc.) only.
 
 **Flash of wrong mode.** Violates Section 9's mode-switching requirements. Dark mode users seeing light mode flash on page load is a mode-switching implementation bug. The synchronous inline script in document head is required.
+
+**Circular calibration — measuring rendered output against itself.**
+
+Violates §1's reference-images-win-over-prose discipline. When calibrating tokens to a reference, the reference must be external to the implementation chain. Sampling a rendered UI artifact to calibrate the tokens that produced it creates a self-consistent measurement loop: the tokens will match the artifact, but that only proves consistency with the artifact, not fidelity to the mood anchor upstream. The artifact is already downstream of the tokens; reaching back to it for calibration closes the loop against itself.
+
+**Rule:** When sampling for token calibration, the reference must be external to the platform's implementation chain — a photograph of a real space, a physical material swatch, a printed color card, an object the design language was originally derived from. Never a UI render, a Figma mockup generated against the current tokens, or a screenshot of the live platform.
+
+**Detection questions (must answer all three before measuring):**
+
+1. *Where did this image come from?* If it was generated in a chat session, rendered by the platform, or exported from a design tool configured against the current palette — it's inside the loop.
+2. *Could this image have been produced without the current tokens existing?* If no, it's downstream of the tokens and unsuitable for calibration.
+3. *Does this image depict physical material reality (a photograph of a real space/object) or does it depict a UI rendering?* Only the former is valid as a mood anchor.
+
+If any answer puts the image inside the implementation chain, it cannot be used for color calibration. It may still be valid as a pattern reference (see §1) — but color decisions must come from external mood anchors only.
 
 ---
 
