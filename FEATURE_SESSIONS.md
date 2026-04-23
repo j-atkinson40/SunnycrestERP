@@ -6,6 +6,66 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## PLATFORM_PRODUCT_PRINCIPLES.md — restructure + expansion
+
+**Date:** 2026-04-23
+**Session type:** Documentation — canonical spec restructure. No code. User-supplied expanded spec for the canonical product-principles doc; doc rewritten to match. User voice preserved verbatim in section bodies.
+
+### What shipped
+
+Doc rewritten end-to-end from the user's expanded spec. Sequence restructured; one net-new section; one renaming.
+
+**New section ordering:**
+
+1. The Bridgeable Thesis: One Surface, Three Verbs
+2. Opinionated but Configurable
+3. Data Density Over Decoration
+4. Business Function Triage: Universal vs Vertical
+5. Onboarding as First Calibration
+6. Permission Requests as Admin Triage
+7. User Configuration Templates
+8. The Learning Loop
+9. The Platform Is Honest *(moved from §3 to §9 — sits after Learning Loop because it's the fast conversational-correction mechanism that composes with the slow observation-based learning)*
+10. **Software as New-Employee Coaching** *(NEW)* — user model as new/distracted/partial-expert; three verbs as coaching patterns; "would a good coach do this?" test
+11. Domain-Specific Operational Semantics *(renamed from "Scheduling-Related Operational Semantics"; content expanded to include ancillary orders alongside ETA / draft-finalized / hole-dug)*
+12. Fort Miller Scaling Principle
+
+**Section-body expansions from the user's spec:**
+
+- Business Function Triage — explicitly names Check for payroll + accounting-system integrations as "heavy lifting" on the universal side
+- Onboarding — example NL description verbatim ("I schedule funerals, approve personalization, send invoices and statements, and give safety meetings once a month"); explicit note that per-user personalization stores as an override layer on `(vertical, role)` `HOME_PULSE_COMPOSITIONS` defaults
+- Permission Requests — worked "refine and approve" example ("AR only, no AP, no GL access, no bank reconciliation")
+- User Configuration Templates — two explicit use cases (exact duplicate / template starter) with worked examples (Dave replacing Sarah; three-dispatcher template)
+- Domain-Specific Operational Semantics — ancillary-orders paragraph added (waiting-for-pairing pool, Scheduling Focus, badge+icon on Monitor card)
+
+### Cross-reference updates
+
+**CLAUDE.md §1b** — PLATFORM_PRODUCT_PRINCIPLES row updated: scope description now lists the full 12-section set including the two new entries ("the platform is honest," "software as new-employee coaching") and the domain-specific terminology shift (ETA, draft/finalized, hole-dug, ancillary).
+
+**PLATFORM_ARCHITECTURE.md header** unchanged — the existing cross-reference paragraph still applies (it names the thesis statements; those are unchanged).
+
+### Why the restructure
+
+Phase B planning surfaced additional principles after the initial canonical capture. Rather than append scattered amendments, user provided an expanded spec with the full set reorganized. Restructured in one shot so the doc reads as a coherent product-philosophy statement rather than a growing patchwork.
+
+Notable reorderings:
+
+- **"The Platform Is Honest" moved from §3 to §9.** Original placement (between Opinionated but Configurable and Data Density) emphasized its sibling relationship to §2 Opinionated but Configurable. New placement (after §8 Learning Loop) emphasizes its complementary timescale to the learning loop: Learning Loop = slow observation-based; Platform Is Honest = fast conversational correction. Both are calibration mechanisms; placing them adjacent makes the composition legible.
+
+- **"Software as New-Employee Coaching" is net-new.** User model statement — Bridgeable assumes users are new/distracted/partial-expert, not memorized-the-platform operators. Maps each of the three verbs to a coaching pattern. Includes the "would a good coach do this?" design test. Differentiates from competitors that treat users as competent operators who should know the system.
+
+- **"Scheduling-Related Operational Semantics" → "Domain-Specific Operational Semantics".** Rename reflects that the semantics extend beyond scheduling (ancillary orders added; future semantics across other verticals will accrete here). The scheduling content (ETA, draft/finalized, hole-dug) stays; ancillary orders join them.
+
+### User voice preserved
+
+User explicitly flagged: *"Let user review and edit document after creation — this is load-bearing for all future design decisions and should reflect user's voice precisely."* Section bodies use the user's prose verbatim. Only scaffolding (header block, version history table, maintenance appendix) added by Claude; those are labeled clearly and don't inject opinion into the section content.
+
+### Source material
+
+User-supplied expanded spec, delivered April 23, 2026 alongside Phase B Session 1 Phase 3.2.1 work. No code changed; no migrations; no tests.
+
+---
+
 ## Canonical doc — PLATFORM_PRODUCT_PRINCIPLES.md
 
 **Date:** 2026-04-23
