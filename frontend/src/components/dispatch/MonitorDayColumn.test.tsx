@@ -192,7 +192,7 @@ describe("MonitorDayColumn — header rendering", () => {
 })
 
 
-describe("MonitorDayColumn — driver lanes (horizontal kanban)", () => {
+describe("MonitorDayColumn — driver lanes (Phase 3.3: all drivers always render)", () => {
   it("groups deliveries by assigned_driver_id with counts", () => {
     const deliveries = [
       makeDelivery({ assigned_driver_id: "driver-1" }),
@@ -211,6 +211,9 @@ describe("MonitorDayColumn — driver lanes (horizontal kanban)", () => {
     const lanes = document.querySelectorAll(
       '[data-slot="dispatch-driver-lane"]',
     )
+    // Phase 3.3: both drivers render even if only one had deliveries
+    // (every active driver always gets a column). Here both have
+    // deliveries so lane count is 2.
     expect(lanes.length).toBe(2)
     expect(screen.getByText("Dave Miller")).toBeInTheDocument()
     expect(screen.getByText("Tom Henderson")).toBeInTheDocument()
@@ -251,11 +254,17 @@ describe("MonitorDayColumn — driver lanes (horizontal kanban)", () => {
     const lanes = document.querySelectorAll(
       '[data-slot="dispatch-driver-lane"]',
     )
-    expect(lanes.length).toBe(2)
+    // Phase 3.3: unassigned + driver-1 + driver-2 (empty) = 3
+    // lanes. Unassigned shows because there's an unassigned card;
+    // driver-2 shows because Phase 3.3 always renders every driver.
+    expect(lanes.length).toBe(3)
     expect(screen.getByText(/unassigned/i)).toBeInTheDocument()
   })
 
-  it("skips driver lanes with zero deliveries", () => {
+  it("empty driver columns render (Phase 3.3 — consistency across days)", () => {
+    // Only driver-1 has a delivery; driver-2 is active but has 0.
+    // Phase 3.2 skipped empty columns; Phase 3.3 renders them so the
+    // driver-row baseline stays consistent across days.
     const deliveries = [
       makeDelivery({ assigned_driver_id: "driver-1" }),
     ]
@@ -268,14 +277,32 @@ describe("MonitorDayColumn — driver lanes (horizontal kanban)", () => {
         />
       </Harness>,
     )
-    expect(screen.queryByText("Tom Henderson")).toBeNull()
+    const lanes = document.querySelectorAll(
+      '[data-slot="dispatch-driver-lane"]',
+    )
+    expect(lanes.length).toBe(2)
+    expect(screen.getByText("Dave Miller")).toBeInTheDocument()
+    expect(screen.getByText("Tom Henderson")).toBeInTheDocument()
+
+    // Tom Henderson's lane is present but marked empty.
+    const tomLane = document.querySelector(
+      '[data-lane$=":driver-2"]',
+    ) as HTMLElement
+    expect(tomLane).toBeInTheDocument()
+    expect(tomLane.getAttribute("data-empty")).toBe("true")
+    expect(
+      tomLane.querySelector('[data-slot="dispatch-driver-lane-empty"]'),
+    ).toBeInTheDocument()
   })
 
-  it("renders empty state when deliveries array is empty + schedule is draft", () => {
+  it("renders empty state when no drivers AND no unassigned cards", () => {
+    // Rare: no drivers in roster + no unassigned. Keeps
+    // defense-in-depth empty state.
     render(
       <Harness>
         <MonitorDayColumn
           {...defaultProps}
+          drivers={[]}
           schedule={makeSchedule({ state: "draft" })}
           deliveries={[]}
         />
@@ -285,6 +312,51 @@ describe("MonitorDayColumn — driver lanes (horizontal kanban)", () => {
       document.querySelector('[data-slot="dispatch-day-empty"]'),
     ).toBeInTheDocument()
     expect(screen.getByText(/no deliveries scheduled/i)).toBeInTheDocument()
+  })
+})
+
+
+describe("MonitorDayColumn — Phase 3.3 surface polish regression guards", () => {
+  it("day section has no outer container chrome (no bg-surface-sunken, no border)", () => {
+    const { container } = render(
+      <Harness>
+        <MonitorDayColumn
+          {...defaultProps}
+          schedule={makeSchedule({ state: "draft" })}
+          deliveries={[makeDelivery()]}
+        />
+      </Harness>,
+    )
+    const section = container.querySelector(
+      '[data-slot="dispatch-day-column"]',
+    ) as HTMLElement
+    expect(section).toBeInTheDocument()
+    // Phase 3.3 removal: the day section no longer wraps itself in
+    // a container. Cards + typography carry the composition.
+    expect(section.className).not.toMatch(/bg-surface-sunken/)
+    expect(section.className).not.toMatch(/shadow-level-/)
+    expect(section.className).not.toMatch(/\bborder\b(?!-)/)
+  })
+
+  it("driver lane has no background container (Phase 3.3)", () => {
+    render(
+      <Harness>
+        <MonitorDayColumn
+          {...defaultProps}
+          schedule={makeSchedule()}
+          deliveries={[makeDelivery({ assigned_driver_id: "driver-1" })]}
+        />
+      </Harness>,
+    )
+    const lane = document.querySelector(
+      '[data-slot="dispatch-driver-lane"]',
+    ) as HTMLElement
+    expect(lane).toBeInTheDocument()
+    // Lane is typography + space; no box chrome in resting state.
+    expect(lane.className).not.toMatch(/bg-surface-elevated/)
+    expect(lane.className).not.toMatch(/bg-surface-sunken/)
+    expect(lane.className).not.toMatch(/\brounded\b(?!-)/)
+    expect(lane.className).not.toMatch(/\bborder\b(?!-)/)
   })
 })
 

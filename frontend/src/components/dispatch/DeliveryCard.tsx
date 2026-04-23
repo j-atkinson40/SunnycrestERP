@@ -175,16 +175,27 @@ export function DeliveryCard({
       {...attributes}
       {...listeners}
       className={cn(
-        // Card chrome — DESIGN_LANGUAGE §6 shadow-level-1 baseline,
-        // lifts on hover + drag. Neutral surface; no service-type tint
-        // (removed in Phase 3.1).
-        "relative rounded-md border bg-surface-elevated shadow-level-1",
-        "transition-shadow duration-quick ease-settle hover:shadow-level-2",
-        isDragging && "shadow-level-2 opacity-90",
-        // Border treatment — dashed for draft, solid for finalized.
-        scheduleFinalized
-          ? "border-border-subtle"
-          : "border-border-base border-dashed",
+        // Card chrome per DESIGN_LANGUAGE §6 canonical "Card (level 1)"
+        // — elevated surface + rounded-md + shadow-level-1. **No
+        // perimeter border**: DL §6 "Card perimeter: no border" —
+        // edges emerge from surface lift + shadow halo + (in dark
+        // mode) top-edge highlight. A drawn outline would re-intro
+        // the "shape on a surface" read instead of "material object."
+        //
+        // Phase 3.3 removal of the dashed/solid draft-vs-finalized
+        // border: per-card state signal moved entirely to the
+        // day-header badge ("Draft" pill). Whole-day state is
+        // singular; per-card repetition was noise.
+        "relative rounded-md bg-surface-elevated shadow-level-1",
+        // Hover lifts to shadow-level-2 — matches Apple Reminders
+        // "card catches a bit more light on hover." Pure shadow
+        // transition, GPU-composited, no layout cost.
+        "transition-shadow duration-settle ease-settle hover:shadow-level-2",
+        // Drag lift: subtle scale 1.02 + shadow intensify per
+        // PLATFORM_QUALITY_BAR.md §2 ("subtle scale on grab —
+        // 1.02 to 1.04 typical lift; shadow intensification during
+        // interaction — level-1 → level-2").
+        isDragging && "shadow-level-2 opacity-95 scale-[1.02]",
         "cursor-grab active:cursor-grabbing",
         "focus-ring-brass outline-none",
       )}

@@ -285,27 +285,47 @@ describe("DeliveryCard — no service-type tint (Phase 3.1 removal)", () => {
 })
 
 
-describe("DeliveryCard — border state", () => {
-  it("draft schedule → dashed border", () => {
+describe("DeliveryCard — schedule state (Phase 3.3: no perimeter border)", () => {
+  it("draft schedule → data-schedule-state='draft', no border class", () => {
+    // Phase 3.3 per DL §6 canonical "Card perimeter: no border" —
+    // cards never carry a drawn perimeter border regardless of
+    // schedule state. State signal moved entirely to the day-header
+    // "Draft" pill.
     const { container } = render(
       <Harness>
         <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
       </Harness>,
     )
     const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
-    expect(card?.className).toMatch(/border-dashed/)
     expect(card?.getAttribute("data-schedule-state")).toBe("draft")
+    expect(card?.className).not.toMatch(/border-dashed/)
+    // Regression guard — `border ` token (standalone, pre-hyphen-variant)
+    // would indicate a restored perimeter border.
+    expect(card?.className).not.toMatch(/\bborder\b(?!-)/)
   })
 
-  it("finalized schedule → solid border (no dashed)", () => {
+  it("finalized schedule → data-schedule-state='finalized', still no border", () => {
     const { container } = render(
       <Harness>
         <DeliveryCard delivery={makeDelivery()} scheduleFinalized={true} />
       </Harness>,
     )
     const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
-    expect(card?.className).not.toMatch(/border-dashed/)
     expect(card?.getAttribute("data-schedule-state")).toBe("finalized")
+    expect(card?.className).not.toMatch(/border-dashed/)
+    expect(card?.className).not.toMatch(/\bborder\b(?!-)/)
+  })
+
+  it("card carries canonical elevated + shadow + rounded-md chrome", () => {
+    const { container } = render(
+      <Harness>
+        <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
+      </Harness>,
+    )
+    const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
+    expect(card?.className).toMatch(/bg-surface-elevated/)
+    expect(card?.className).toMatch(/shadow-level-1/)
+    expect(card?.className).toMatch(/rounded-md/)
   })
 })
 
