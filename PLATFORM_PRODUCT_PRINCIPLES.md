@@ -7,6 +7,13 @@ architecture — see `PLATFORM_ARCHITECTURE.md` for that. Not visual
 treatment — see `DESIGN_LANGUAGE.md` for that. Not quality-floor
 criteria — see `PLATFORM_QUALITY_BAR.md` for that.
 
+**Version history:**
+
+| Date       | Change                                                          |
+|------------|-----------------------------------------------------------------|
+| 2026-04-23 | Initial canonical capture from Phase B planning. Sections 1–11. |
+| 2026-04-23 | Added §3 (The Platform Is Honest). Renumbered §3–§10 → §4–§11. |
+
 **Relationship to siblings:**
 
 - `PLATFORM_ARCHITECTURE.md` answers: *how is Bridgeable built?*
@@ -109,7 +116,7 @@ A $200M operation (20x scale) runs the same way.**
 At scale, traditional dashboards fail — no one scans 300 line items.
 Pulse's filtering matters more, not less. The three-verb model is
 universal across operational complexity. Sunnycrest is the proof-
-of-concept; Fort Miller (§10) is the scale test.
+of-concept; Fort Miller (§11) is the scale test.
 
 ---
 
@@ -151,11 +158,173 @@ hatch lets the opinion be strong without being coercive.
 
 See `CLAUDE.md §1a-pre` for the umbrella statement of this principle.
 See `SPACES_ARCHITECTURE.md` for the Spaces-layer expression
-(seeded defaults + user customization coexist).
+(seeded defaults + user customization coexist). See §3 (The Platform
+Is Honest) for the conversational-correction mechanism — the
+companion principle by which opinions stay earning trust.
 
 ---
 
-## 3. Data Density Over Decoration
+## 3. The Platform Is Honest
+
+**Bridgeable acknowledges its own imperfection.** When the system
+composes something on behalf of the user — a Pulse layout, an
+Intelligence suggestion, a search result, an auto-decision — the
+user has a graceful first-class path to correct it.
+
+Most software pretends to be correct; users silently work around
+its wrongness. A "composed" feature that's wrong teaches the user
+to ignore it, then to ignore the next composition, then to ignore
+the platform. Bridgeable takes a different stance: **every composed
+surface carries a visible invitation to correct it**, and the
+correction routes through a conversational path that actually
+changes behavior.
+
+This is different from a feedback form. Feedback forms say *"we'll
+consider this eventually."* Bridgeable says *"tell me what you need
+right now, I'll act on it."* Immediate, conversational, structured
+as a request with security gates.
+
+### 3.1 The affordance
+
+A subtle icon sits on every composed surface. Hover reveals the
+invitation:
+
+> *"Should you be seeing something here that you aren't?"*
+
+Click opens a natural language input field. The user describes
+what's missing or wrong. Intelligence parses the intent, proposes
+a change, routes through permission gates, applies the change
+(immediately if in-scope; after admin approval if sensitive).
+
+The affordance is **visible but unobtrusive** — small, consistently
+placed, discoverable on hover. It earns trust by being *always
+there* and *always functional*. A "correct me" icon that sometimes
+works and sometimes doesn't is worse than none at all.
+
+### 3.2 Worked example
+
+**Dispatcher Pulse, missing a widget:**
+
+1. Dispatcher notices their Pulse doesn't show approved legacies
+   awaiting print-shop pickup — they coordinate those but the
+   composition doesn't surface them.
+2. Clicks the "correct me" icon on their Pulse.
+3. Types: *"I need to see all legacies approved here even if
+   someone else approved them, because I coordinate with the
+   print shop on pickups."*
+4. Intelligence extracts:
+   - **Intent:** cross-user legacy approvals widget
+   - **Scope:** tenant-wide approvals, not just the dispatcher's
+   - **Context:** coordination workflow (print-shop handoff)
+5. Intelligence proposes: *"Add a 'Legacies ready for pickup'
+   widget to your Pulse. Scope: all tenant approvals. This
+   requires admin approval since it crosses your user scope."*
+6. Dispatcher confirms the proposal.
+7. Permission request generated for admin. Admin triages (§7 —
+   Permission Requests as Admin Triage). Admin approves.
+8. Widget appears on dispatcher's Pulse at next load.
+
+**User experience:** conversational, structured, respectful of
+security. No form to fill out; no "we'll get back to you" black
+hole; no silent denial.
+
+### 3.3 Universality
+
+The principle extends beyond Pulse to any composed surface:
+
+- **Command bar results.** *"Should Command bar find something
+  you aren't seeing?"*
+- **Focus pin layout.** *"Should this Focus have a widget it
+  doesn't?"*
+- **Notification surfacing.** *"Should you be getting notified
+  about things you aren't?"*
+- **Search results.** *"Should search be finding something you
+  aren't seeing?"*
+- **Intelligence suggestions.** *"Did this suggestion miss the
+  point?"*
+- **Auto-decisions (auto-finalize, auto-categorize, auto-match).**
+  *"Should this have been decided differently?"*
+
+**Anywhere the platform makes a decision, it invites correction.**
+Not "anywhere the user might want to provide feedback" — *anywhere
+the platform composes on behalf of the user*. The distinction
+matters: feedback is optional volunteer activity; correction is
+a first-class user action with an expected outcome.
+
+### 3.4 Design rationale
+
+- **Most software pretends to be correct.** Users work around
+  its wrongness — private spreadsheets, shadow workflows,
+  one-off macros. The software never improves because it never
+  learns it's wrong.
+- **Bridgeable admits uncertainty as a design stance.** Genuine
+  humility, visible to the user. The platform says: "I made
+  a guess; tell me if I'm wrong."
+- **Calibration happens through conversation, not complaint
+  forms.** Users describe their reality; Intelligence translates
+  to structured changes; the system applies them. No product
+  manager in the loop.
+- **User trust compounds when the system visibly improves based
+  on user input.** Week 2 trust is higher than week 1 because
+  the user's week-1 correction visibly landed.
+- **Cold-start problem softens.** Users correct wrong defaults
+  immediately rather than waiting 6 weeks for observation-based
+  learning (§9) to notice the mismatch.
+
+### 3.5 Relationship to other principles
+
+- **§2 (Opinionated but Configurable)** establishes that
+  Bridgeable ships opinions, not blank slates. §3 is the
+  mechanism by which those opinions **earn ongoing trust** —
+  the opinion's authority depends on its correctability. An
+  opinion that can't be corrected is a mandate; Bridgeable
+  ships opinions, not mandates.
+- **§7 (Permission Requests as Admin Triage)** handles the
+  security-gate portion of §3 corrections. When a user's
+  correction implies sensitive scope, the admin triage queue
+  catches it. Same pattern, reused.
+- **§9 (The Learning Loop)** is observation-based and slow
+  (weeks-to-months timescale). §3 is conversation-based and
+  fast (minutes). Both are calibration mechanisms; they work
+  together. Observation-based learning inherits from
+  conversation-based corrections (explicit user corrections
+  are strong signal, not decaying).
+
+### 3.6 Boundaries — what §3 is NOT
+
+- **Not a feature request form.** Feature requests go through
+  product. Corrections are *"make THIS composed surface right
+  for me"* — scoped to existing primitives and existing data.
+- **Not a permission bypass.** Sensitive-scope corrections
+  route through admin triage (§7). Non-sensitive corrections
+  apply freely. The security boundary is preserved.
+- **Not a substitute for good defaults.** If corrections flood
+  in for the same issue, the default is broken. Fix the default;
+  don't rely on per-user corrections to paper over it.
+- **Not always conversational.** Obvious corrections (dismiss
+  a widget, pin a new one, rename a Space) don't need NL
+  parsing — they're direct manipulation. §3 is the *path for
+  the corrections direct manipulation can't express*.
+
+### 3.7 Implementation note
+
+A universal "correct me" primitive attachable to any composed
+surface. Pairs with the admin approval Focus (§7) for scope
+changes requiring permission review. Intelligence pipeline:
+capture NL → parse intent → map to platform primitive change →
+scope-check → propose to user → route to admin if sensitive →
+apply. Telemetry: correction-accept rate, time-to-apply,
+admin-approval rate. High-volume corrections for the same
+composition target flag the underlying default as a likely
+miss.
+
+Part of Phase D infrastructure (per `PLATFORM_ARCHITECTURE.md`
+Phase D scope). Post-arc polish will bring the primitive to
+parity across every composed surface.
+
+---
+
+## 4. Data Density Over Decoration
 
 **Professional operational users scan-and-act at speed across many
 items.** Information density compounds over volume. A dispatcher
@@ -163,7 +332,7 @@ scanning 20 deliveries benefits from icon patterns over text
 labels; an AR clerk scanning 50 invoices benefits from column
 alignment over visual flourish.
 
-### 3.1 Principles
+### 4.1 Principles
 
 - **Primary text carries the fields the user acts on for the
   current decision.** Funeral home name, cemetery + city, service
@@ -183,7 +352,7 @@ alignment over visual flourish.
   px vertical for dense-scan surfaces; 150+ px for review
   surfaces where absolute readability outranks density.
 
-### 3.2 The anti-pattern
+### 4.2 The anti-pattern
 
 Generic kanban and SaaS tools optimize for "looks clean" at the
 cost of density. Generous padding, centered single-field cards,
@@ -196,7 +365,7 @@ target user isn't a knowledge worker reviewing 8 Jira tickets;
 it's a dispatcher processing 40 deliveries, an AR clerk working
 75 invoices, a plant manager scanning 150 production records.
 
-### 3.3 Universality
+### 4.3 Universality
 
 This principle applies broadly: any surface where the user scans
 many items at speed. Phase B Session 1 applied it to Dispatch
@@ -210,7 +379,7 @@ Monitor. Future surfaces that inherit it:
 - Inventory reconciliation
 - Anomaly-triage queues platform-wide
 
-### 3.4 The comparison standard
+### 4.4 The comparison standard
 
 James' Airtable setup at Sunnycrest is the dispatch-density
 benchmark. It's the only prior tool that got it right. When
@@ -220,14 +389,14 @@ at low volume. Airtable optimizes for density at scale.
 
 ---
 
-## 4. Business Function Triage: Universal vs Vertical
+## 5. Business Function Triage: Universal vs Vertical
 
 **Not all business functions require equal design investment.**
 Some are universal — well-defined patterns across every vertical.
 Others are vertical-specific — the design shape is different for
 a vault manufacturer than for a funeral home than for a cemetery.
 
-### 4.1 Universal functions
+### 5.1 Universal functions
 
 Strong defaults. Patterns known. Pulse ships with decent day-1
 composition; learning refines individual preferences within the
@@ -248,7 +417,7 @@ pattern.
   talks, training certifications. Per-industry hazard specifics
   differ; program structure is universal.
 
-### 4.2 Vertical-specific functions
+### 5.2 Vertical-specific functions
 
 Hand-designed per vertical. Pulse composition is vertical-specific.
 Learning refines per-company operational patterns within the
@@ -270,7 +439,7 @@ vertical's shape.
   + cemetery), plot reservation (cemetery), disinterment
   authorization (FH + cemetery + manufacturer cross-tenant).
 
-### 4.3 Design implication
+### 5.3 Design implication
 
 **Don't treat every business function as requiring novel design
 thinking.** Universal patterns are known — apply them. Vertical
@@ -288,7 +457,7 @@ Triage new work against this table:
 | Start with                            | Known pattern     | Observational research       |
 | Pulse composition                     | Role-shared       | (vertical, role)-specific    |
 
-### 4.4 Cross-reference
+### 5.4 Cross-reference
 
 The HOME_PULSE_COMPOSITIONS dict (Phase B Session 1 backend) already
 encodes this triage — compositions are keyed on `(vertical,
@@ -298,7 +467,7 @@ components layer on top.
 
 ---
 
-## 5. Onboarding as First Calibration
+## 6. Onboarding as First Calibration
 
 **The Pulse engine needs decent day-1 composition for every new
 user.** Pure observation-based learning has a cold-start problem —
@@ -306,14 +475,14 @@ first weeks feel generic while Pulse calibrates. A dispatcher
 on day 1 shouldn't wait 6 weeks for Pulse to figure out they care
 about tomorrow's schedule.
 
-### 5.1 The solution
+### 6.1 The solution
 
 **Onboarding IS the first calibration.** When a user is first
 assigned a role (or during first login), they describe their
 responsibilities through two surfaces:
 
 **(1) Selectable cards for universal business functions.** Multi-
-select against the Universal list from §4.1 — Accounting,
+select against the Universal list from §5.1 — Accounting,
 Compliance, Ownership, HR, Sales, Safety, etc. Each card maps to
 Pulse composition components. The user picks what applies; Pulse
 composes accordingly.
@@ -330,7 +499,7 @@ maps them to Pulse composition components. The user reviews the
 proposed composition *before* confirming. Nothing is applied
 silently.
 
-### 5.2 Day 1 vs Month 3 vs Year 1
+### 6.2 Day 1 vs Month 3 vs Year 1
 
 **Day 1:** Pulse is calibrated to stated intent, not generic
 defaults. Feels like someone read the user's job description.
@@ -347,41 +516,42 @@ profiles, specific seasonal rhythms. Feels bespoke to the company.
 shipping cold Pulse can't catch up to a Bridgeable instance with
 a year of calibration.
 
-### 5.3 Scaling property
+### 6.3 Scaling property
 
 **Fort Miller's 200 employees each calibrate themselves via
 onboarding.** Bridgeable doesn't need to understand Fort Miller's
 org chart. Users describe their own jobs; the system composes
-accordingly. Admin approves permission requests (§6) but doesn't
+accordingly. Admin approves permission requests (§7) but doesn't
 manually configure each employee's workspace.
 
 This is the scaling claim in one line: *per-user self-calibration
 is the only org-chart-scaling onboarding model that works at 200+
 employees.*
 
-### 5.4 What onboarding does NOT do
+### 6.4 What onboarding does NOT do
 
 - **Does not replace admin approval for sensitive permissions.**
-  See §6.
-- **Does not lock the user in.** Observation-based learning
-  continues to refine; users can update onboarding intent at any
-  time.
+  See §7.
+- **Does not lock the user in.** Observation-based learning (§9)
+  continues to refine; explicit corrections (§3) let the user
+  speak up any time; users can update onboarding intent whenever
+  their role shifts.
 - **Does not treat the NL description as authoritative.** It's
   input to an opinionated composition engine that applies it,
   not a direct specification the engine parrots back.
 
 ---
 
-## 6. Permission Requests as Admin Triage
+## 7. Permission Requests as Admin Triage
 
 **Sensitive areas require admin approval.** Accounting, HR,
 financial data, cross-tenant access — user-described
 responsibilities generate *permission requests*, not automatic
 grants.
 
-### 6.1 The flow
+### 7.1 The flow
 
-1. User onboarding (§5) lists responsibilities including
+1. User onboarding (§6) lists responsibilities including
    "review accounts receivable weekly."
 2. Intelligence extracts "invoice.approve + customer.view" as the
    permission scope implied.
@@ -395,7 +565,7 @@ grants.
    **Refine and approve** (adjust before granting), **Deny**
    (reject, optionally with reason).
 
-### 6.2 Admin affordances
+### 7.2 Admin affordances
 
 - **Batch operations for common patterns.** Five new hires in the
   same role → approve all with the standard scope in one gesture.
@@ -406,14 +576,14 @@ grants.
   closes the loop respectfully; the user sees the rejection and
   can adjust intent.
 
-### 6.3 Security boundary preserved
+### 7.3 Security boundary preserved
 
 Admin scrutiny is not bypassed by onboarding. The user's stated
 intent *speeds the admin's triage* — it doesn't replace the
 decision. Auto-approval is never the path for sensitive
 permissions.
 
-### 6.4 What flows freely
+### 7.4 What flows freely
 
 Non-sensitive configuration applies without admin triage:
 
@@ -423,25 +593,38 @@ Non-sensitive configuration applies without admin triage:
 - Space pins and preferences
 - Command bar customizations
 - Onboarding NL description itself
+- Conversational corrections (§3) that stay within the user's
+  existing scope
 
 Only permission-implicating requests route to the admin queue.
 
-### 6.5 Cross-reference
+### 7.5 Reuse across the platform
 
-Builds on `CLAUDE.md §3 Agent Actions with Human Review` — the
-same approve/refine/deny pattern used for accounting agent jobs
-and collections drafts applies here. Admin triage is a reusable
-Bridgeable primitive, not a permission-specific feature.
+This is a **reusable admin-triage primitive**, not a permission-
+specific feature. Three surfaces route through the same
+approve/refine/deny pattern:
+
+- Permission requests generated from onboarding (§6) and
+  templates (§8).
+- Scope-expanding corrections from §3 (Platform Is Honest) —
+  when a user's correction implies cross-user or cross-tenant
+  data, the admin queue catches it.
+- Accounting agent jobs — per `CLAUDE.md §3 Agent Actions with
+  Human Review`, the same approve/refine/deny shape governs
+  month-end close, collections, and other accounting agents.
+
+A future surface generating admin-gated requests inherits the
+pattern without re-designing it.
 
 ---
 
-## 7. User Configuration Templates
+## 8. User Configuration Templates
 
 **User configurations are serializable and composable.** Admins
 can snapshot, distribute, and re-apply the shape of a user's
 workspace.
 
-### 7.1 Admin capabilities
+### 8.1 Admin capabilities
 
 - **Snapshot any user's configuration as a template.** Captures:
   Pulse composition, permission set, preferences, saved views,
@@ -453,34 +636,35 @@ workspace.
 - **Use cases:** hiring, promotion, cross-training, backup
   coverage, disaster-recovery staffing.
 
-### 7.2 Composition model
+### 8.2 Composition model
 
 **Role defaults + template layer + per-user personalization.** All
 three merge at render time.
 
 - Role defaults give every user in a role a baseline.
 - The template layer applies shared shape on top.
-- Per-user personalization from §5 onboarding and observation-
-  based learning refines further.
+- Per-user personalization from §6 onboarding, §9 observation-
+  based learning, and §3 conversational corrections refines
+  further.
 
 Templates don't lock the user in. Personalization continues to
 refine from the template starting point.
 
-### 7.3 Security boundary
+### 8.3 Security boundary
 
 **Permission grants always route through admin approval even when
 applying templates.** Applying a senior-accountant template to a
 new hire doesn't auto-grant the senior's permissions. The
 template's *permission requests* surface on the admin's queue;
-the admin approves/refines/denies as usual.
+the admin approves/refines/denies as usual (§7).
 
 Non-sensitive configuration (Pulse composition, preferences,
 views, command customizations) applies freely as part of the
 template.
 
-### 7.4 The competitive onboarding claim
+### 8.4 The competitive onboarding claim
 
-**New hire self-describes (§5). Relevant template applied.
+**New hire self-describes (§6). Relevant template applied.
 Permission requests generated. Admin triages daily → new hires
 productive from day 1.**
 
@@ -494,20 +678,22 @@ onboard 50 hires/month without the admin becoming a bottleneck."
 
 ---
 
-## 8. The Learning Loop
+## 9. The Learning Loop
 
 **Pulse starts with defaults, improves with use.** The learning
-loop is the mechanism by which decent day-1 becomes bespoke-
-feeling over months.
+loop is the slow, observation-based mechanism by which decent
+day-1 becomes bespoke-feeling over months. It works alongside §3
+(Platform Is Honest), which is the fast, conversation-based
+correction mechanism — the two compose.
 
-### 8.1 Loop shape
+### 9.1 Loop shape
 
 1. **Observe behavior.** What surfaces does the user engage with?
    What do they ignore? What do they search for frequently via
    command bar? What do they dismiss from Pulse without acting
    on?
 2. **Infer intent.** When observation diverges from stated role
-   (§5) or current composition, flag for possible update.
+   (§6) or current composition, flag for possible update.
    Observation is authoritative over stated intent — users know
    what they do, not always what they *say* they do.
 3. **Propose adjustments.** "I notice you check overdue invoices
@@ -522,7 +708,7 @@ feeling over months.
 6. **Never impose.** Always offer. Always respect dismissal. The
    user is in charge; Pulse suggests.
 
-### 8.2 Discipline
+### 9.2 Discipline
 
 - **Pulse that nags loses trust.** Too-frequent proposals, over-
   confident suggestions, surprise reshuffles — each erodes the
@@ -534,24 +720,28 @@ feeling over months.
   Observe always. Offer rarely. Explain the reasoning when
   offering.
 
-### 8.3 What NOT to learn from
+### 9.3 What NOT to learn from
 
 - **Single-instance behavior.** One skipped widget doesn't mean
   the widget is wrong; could be a one-off day.
 - **Explicit user customization.** If the user pinned something,
   they want it there. Don't unlearn pinning.
+- **Explicit §3 corrections.** Conversational corrections from
+  §3 are strong signal, not decaying — they reflect stated user
+  intent. Observation should *reinforce* the correction, not
+  override it.
 - **Behavior during onboarding period.** First two weeks are
   too noisy; user is still figuring things out.
 - **Data the user flagged as private or sensitive.** Respect the
   boundary.
 
-### 8.4 Time horizon
+### 9.4 Time horizon
 
 | Tenure    | Pulse character                                           |
 | --------- | --------------------------------------------------------- |
-| Day 1     | Decent defaults + onboarding calibration (§5)             |
-| Week 1    | Confidence builds on onboarding intent                    |
-| Month 1   | First calibration proposals arrive                        |
+| Day 1     | Decent defaults + onboarding calibration (§6)             |
+| Week 1    | Confidence builds on onboarding intent + §3 corrections   |
+| Month 1   | First observation-based calibration proposals arrive      |
 | Month 3   | Calibrated to specific user                               |
 | Month 6   | Per-tenant anomaly profiles emerge                        |
 | Year 1    | Feels bespoke to the company                              |
@@ -561,12 +751,12 @@ feeling over months.
 
 ---
 
-## 9. Scheduling-Related Operational Semantics
+## 10. Scheduling-Related Operational Semantics
 
 Product-layer definitions that resolve ambiguity in scheduling
 contexts. These are domain-semantics, not UI choices.
 
-### 9.1 ETA — delivery scheduling context
+### 10.1 ETA — delivery scheduling context
 
 **ETA is the funeral director's estimated family-arrival time at
 the cemetery after the church service.** It's the downstream
@@ -590,7 +780,7 @@ service starts). ETA second (when driver free for next dispatch).
 Matches the dispatcher mental model: *"church at 11, graveside
 by 12, driver free at 12 for the next job."*
 
-### 9.2 Draft vs Finalized schedule states
+### 10.2 Draft vs Finalized schedule states
 
 **Dispatcher plans schedule throughout the day.** Manual
 finalization or auto-finalization at 1pm tenant-local locks the
@@ -615,7 +805,7 @@ was dropped — every delivery has a hole-dug state; the question
 is whether confirmation happened. Migration `r50_dispatch_hole_
 dug_default` backfilled.
 
-### 9.3 Why this lives here
+### 10.3 Why this lives here
 
 These aren't UI decisions — they're operational semantics that
 every surface touching dispatch must respect. Dispatch Monitor,
@@ -625,7 +815,7 @@ consistently. Documenting here prevents drift across surfaces.
 
 ---
 
-## 10. The Fort Miller Scaling Principle
+## 11. The Fort Miller Scaling Principle
 
 **Sunnycrest ($10M revenue) is the proof-of-concept.** Single
 facility, ~20 employees, one dispatcher, one admin. The platform
@@ -636,7 +826,7 @@ scale test.** Multiple facilities, multiple dispatchers, multiple
 admins, hierarchical reporting, HR onboarding at volume, payroll
 cycles, compliance across jurisdictions, cross-facility inventory.
 
-### 10.1 The scale claim
+### 11.1 The scale claim
 
 **The three-verb model (§1) is universal across operational
 complexity.** What makes Bridgeable work for Sunnycrest makes it
@@ -655,12 +845,17 @@ at a 50-driver facility across 4 facilities cannot. The Pulse
 opinion — "here is what you need to act on right now" — becomes
 load-bearing as volume grows.
 
-### 10.2 Scaling advantages of the architecture
+### 11.2 Scaling advantages of the architecture
 
-- **Per-user onboarding (§5) calibrates each employee.** No
+- **Per-user onboarding (§6) calibrates each employee.** No
   company-wide configuration burden on the admin. 200 employees
   each self-describe; the system composes.
-- **Templates (§7) handle hiring velocity.** 50 hires/month is
+- **§3 corrections let each employee fine-tune their own
+  surface.** 200 employees × per-user corrections doesn't break
+  anything — each correction is scoped to that user's Pulse
+  (with admin triage for sensitive scope). The admin doesn't
+  field 200 help tickets; the platform fields them.
+- **Templates (§8) handle hiring velocity.** 50 hires/month is
   not a breaking event; it's a daily triage workflow for the
   admin.
 - **Intelligence-driven Pulse surfaces anomalies without manual
@@ -675,10 +870,10 @@ load-bearing as volume grows.
   rhythms, anomaly profiles. A competitor shipping cold Pulse
   can't catch up inside a year.
 
-### 10.3 Why Fort Miller is specifically the right test
+### 11.3 Why Fort Miller is specifically the right test
 
 Fort Miller shares a vertical with Sunnycrest (precast concrete,
-vault-adjacent) — so the vertical-specific design from §4.2
+vault-adjacent) — so the vertical-specific design from §5.2
 transfers. What doesn't transfer is scale. Fort Miller therefore
 tests *the scale claim in isolation* — same vertical, same
 workflows, 20x size.
@@ -688,7 +883,7 @@ model scales. If it works for Sunnycrest but not Fort Miller,
 the architecture needs a different shape for scale, and that's
 a deep lesson.
 
-### 10.4 Demo strategy
+### 11.4 Demo strategy
 
 **Sunnycrest demonstrates intimate scale.** The full Pulse →
 Focus → done loop, dispatcher personally known to the platform,
@@ -706,7 +901,7 @@ licensee attending the September meeting is picking between
 "horizontal ERP that almost fits" and "Bridgeable that fits at
 scale." Fort Miller framing is load-bearing.
 
-### 10.5 Post-September
+### 11.5 Post-September
 
 Fort Miller isn't just a demo device — it's the next deployment
 target. Post-September rollout plan uses Fort Miller as the
@@ -730,7 +925,8 @@ silently drift. Amendments should:
 
 New principles added post-April-2026 go at the end of the section
 they logically belong in, with a date stamp. New top-level
-sections get a version-history note in the header.
+sections get a version-history note in the header table at the
+top of this document.
 
 When in doubt: **read here first. Reference `PLATFORM_ARCHITECTURE
 .md` for how; reference `PLATFORM_QUALITY_BAR.md` for how-good;
