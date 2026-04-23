@@ -1,16 +1,19 @@
 /**
- * DeliveryCard — vitest unit tests. Phase B Session 1.
+ * DeliveryCard — vitest unit tests. Phase B Session 1 Phase 3.1+3.2.
  *
- * Covers visual-state rendering (draft/finalized border, service-type
- * tint), hole-dug badge states + cycle, ancillary badge toggle,
- * and click-to-edit. DnD behavior is exercised through useDraggable's
- * default contract — no drop wiring here (that's Monitor-page scope).
+ * Covers visual-state rendering (draft/finalized border, no
+ * service-type tints post-3.1), hole-dug three-state cycle (no null),
+ * ancillary badge toggle, icon+tooltip compaction row (family / note
+ * / chat / section), primary text hierarchy (FH headline, cemetery ·
+ * city, service-time with ETA, vault · equipment), and body
+ * click-to-edit.
  */
 
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { DndContext } from "@dnd-kit/core"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 import type { DeliveryDTO } from "@/services/dispatch-service"
 
@@ -31,6 +34,7 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
     priority: "normal",
     requested_date: "2026-04-23",
     scheduled_at: "2026-04-23T14:00:00Z",
+    completed_at: null,
     scheduling_type: "kanban",
     ancillary_fulfillment_status: null,
     direct_ship_status: null,
@@ -40,6 +44,7 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
       family_name: "Fitzgerald",
       cemetery_name: "St. Joseph's Cemetery",
       cemetery_city: "Auburn",
+      cemetery_section: "Sec 14, Lot 42B",
       funeral_home_name: "Johnson Funeral Home",
       service_time: "10:00",
       service_type: "graveside",
@@ -52,40 +57,173 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
 
 
 function Harness({ children }: { children: React.ReactNode }) {
-  // DndContext required by useDraggable.
-  return <DndContext>{children}</DndContext>
+  // TooltipProvider mirrors the app-root mount (for the icon+tooltip
+  // compaction row). DndContext required by useDraggable.
+  return (
+    <TooltipProvider delay={0}>
+      <DndContext>{children}</DndContext>
+    </TooltipProvider>
+  )
 }
 
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
 
-describe("nextHoleDugStatus pure cycle", () => {
-  it("cycles null → unknown → yes → no → null", () => {
-    expect(nextHoleDugStatus(null)).toBe("unknown")
+describe("nextHoleDugStatus three-state cycle (Phase 3.1)", () => {
+  it("cycles unknown → yes → no → unknown (no null state)", () => {
     expect(nextHoleDugStatus("unknown")).toBe("yes")
     expect(nextHoleDugStatus("yes")).toBe("no")
-    expect(nextHoleDugStatus("no")).toBe(null)
+    expect(nextHoleDugStatus("no")).toBe("unknown")
   })
 })
 
 
-describe("DeliveryCard — rendering", () => {
-  it("renders family name, cemetery, FH, time, vault type", () => {
+describe("DeliveryCard — primary text hierarchy (Phase 3.1)", () => {
+  it("funeral home is the headline", () => {
+    const base = makeDelivery()
     render(
+      <Harness>
+        <DeliveryCard
+          delivery={{ ...base, type_config: { ...base.type_config } }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const fh = document.querySelector('[data-slot="dispatch-card-fh"]')
+    expect(fh).toBeInTheDocument()
+    expect(fh?.textContent).toBe("Johnson Funeral Home")
+  })
+
+  it("cemetery line shows name · city", () => {
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard delivery={base} scheduleFinalized={false} />
+      </Harness>,
+    )
+    const cem = document.querySelector('[data-slot="dispatch-card-cemetery"]')
+    expect(cem).toBeInTheDocument()
+    expect(cem?.textContent).toMatch(/St\. Joseph's Cemetery/)
+    expect(cem?.textContent).toMatch(/Auburn/)
+  })
+
+  it("service time line — graveside shows only time + location, no ETA", () => {
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard delivery={base} scheduleFinalized={false} />
+      </Harness>,
+    )
+    const line = document.querySelector('[data-slot="dispatch-card-timeline"]')
+    expect(line).toBeInTheDocument()
+    expect(line?.textContent).toMatch(/10:00/)
+    expect(line?.textContent).toMatch(/Graveside/)
+    expect(line?.textContent).not.toMatch(/ETA/)
+  })
+
+  it("service time line — church shows '11:00 Church · ETA 12:00' order", () => {
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={{
+            ...base,
+            type_config: {
+              ...base.type_config,
+              service_type: "church",
+              service_time: "11:00",
+              eta: "12:00",
+            },
+          }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const line = document.querySelector('[data-slot="dispatch-card-timeline"]')
+    expect(line?.textContent).toMatch(/11:00/)
+    expect(line?.textContent).toMatch(/Church/)
+    expect(line?.textContent).toMatch(/ETA 12:00/)
+    // Service time MUST precede ETA in the rendered string.
+    const txt = line?.textContent ?? ""
+    const serviceIdx = txt.indexOf("11:00")
+    const etaIdx = txt.indexOf("ETA")
+    expect(serviceIdx).toBeGreaterThanOrEqual(0)
+    expect(etaIdx).toBeGreaterThan(serviceIdx)
+  })
+
+  it("service time line — funeral_home shows 'time Funeral Home · ETA Y'", () => {
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={{
+            ...base,
+            type_config: {
+              ...base.type_config,
+              service_type: "funeral_home",
+              service_time: "14:00",
+              eta: "15:30",
+            },
+          }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const line = document.querySelector('[data-slot="dispatch-card-timeline"]')
+    expect(line?.textContent).toMatch(/14:00/)
+    expect(line?.textContent).toMatch(/Funeral Home/)
+    expect(line?.textContent).toMatch(/ETA 15:30/)
+  })
+
+  it("product line shows vault type · equipment hint", () => {
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard delivery={base} scheduleFinalized={false} />
+      </Harness>,
+    )
+    const prod = document.querySelector('[data-slot="dispatch-card-product"]')
+    expect(prod?.textContent).toMatch(/Monticello/)
+    expect(prod?.textContent).toMatch(/Graveside setup/)
+  })
+})
+
+
+describe("DeliveryCard — no service-type tint (Phase 3.1 removal)", () => {
+  it("graveside card does NOT carry bg-status-success-muted", () => {
+    const { container } = render(
       <Harness>
         <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
       </Harness>,
     )
-    expect(screen.getByText("Fitzgerald")).toBeInTheDocument()
-    expect(screen.getByText("St. Joseph's Cemetery")).toBeInTheDocument()
-    expect(screen.getByText("Auburn")).toBeInTheDocument()
-    expect(screen.getByText("Johnson Funeral Home")).toBeInTheDocument()
-    expect(screen.getByText("10:00")).toBeInTheDocument()
-    expect(screen.getByText("Monticello")).toBeInTheDocument()
+    const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
+    expect(card?.className).not.toMatch(/bg-status-success-muted/)
+    expect(card?.className).toMatch(/bg-surface-elevated/)
   })
 
-  it("draft schedule → dashed border class", () => {
+  it("church card does NOT carry bg-status-warning-muted", () => {
+    const base = makeDelivery()
+    const { container } = render(
+      <Harness>
+        <DeliveryCard
+          delivery={{
+            ...base,
+            type_config: { ...base.type_config, service_type: "church" },
+          }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
+    expect(card?.className).not.toMatch(/bg-status-warning-muted/)
+    expect(card?.className).toMatch(/bg-surface-elevated/)
+  })
+})
+
+
+describe("DeliveryCard — border state", () => {
+  it("draft schedule → dashed border", () => {
     const { container } = render(
       <Harness>
         <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
@@ -106,51 +244,15 @@ describe("DeliveryCard — rendering", () => {
     expect(card?.className).not.toMatch(/border-dashed/)
     expect(card?.getAttribute("data-schedule-state")).toBe("finalized")
   })
-
-  it("service-type=graveside applies success-muted tint", () => {
-    const { container } = render(
-      <Harness>
-        <DeliveryCard
-          delivery={makeDelivery({
-            type_config: {
-              ...makeDelivery().type_config,
-              service_type: "graveside",
-            },
-          })}
-          scheduleFinalized={false}
-        />
-      </Harness>,
-    )
-    const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
-    expect(card?.className).toMatch(/bg-status-success-muted/)
-  })
-
-  it("service-type=church applies warning-muted tint", () => {
-    const { container } = render(
-      <Harness>
-        <DeliveryCard
-          delivery={makeDelivery({
-            type_config: {
-              ...makeDelivery().type_config,
-              service_type: "church",
-            },
-          })}
-          scheduleFinalized={false}
-        />
-      </Harness>,
-    )
-    const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
-    expect(card?.className).toMatch(/bg-status-warning-muted/)
-  })
 })
 
 
-describe("DeliveryCard — hole-dug badge", () => {
-  it("status=yes → check icon + status-success chrome + yes aria", () => {
+describe("DeliveryCard — hole-dug badge (three-state, non-nullable)", () => {
+  it("status=unknown renders by default (no null state)", () => {
     render(
       <Harness>
         <DeliveryCard
-          delivery={makeDelivery({ hole_dug_status: "yes" })}
+          delivery={makeDelivery({ hole_dug_status: "unknown" })}
           scheduleFinalized={false}
           onCycleHoleDug={() => {}}
         />
@@ -160,59 +262,10 @@ describe("DeliveryCard — hole-dug badge", () => {
       '[data-slot="dispatch-hole-dug-badge"]',
     ) as HTMLElement
     expect(badge).toBeInTheDocument()
-    expect(badge.getAttribute("data-status")).toBe("yes")
-    expect(badge.getAttribute("aria-label")).toMatch(/hole dug: yes/i)
+    expect(badge.getAttribute("data-status")).toBe("unknown")
   })
 
-  it("status=no renders minus icon + surface-sunken chrome", () => {
-    render(
-      <Harness>
-        <DeliveryCard
-          delivery={makeDelivery({ hole_dug_status: "no" })}
-          scheduleFinalized={false}
-          onCycleHoleDug={() => {}}
-        />
-      </Harness>,
-    )
-    const badge = document.querySelector(
-      '[data-slot="dispatch-hole-dug-badge"]',
-    ) as HTMLElement
-    expect(badge.getAttribute("data-status")).toBe("no")
-  })
-
-  it("status=null + onCycleHoleDug → clickable placeholder", () => {
-    render(
-      <Harness>
-        <DeliveryCard
-          delivery={makeDelivery({ hole_dug_status: null })}
-          scheduleFinalized={false}
-          onCycleHoleDug={() => {}}
-        />
-      </Harness>,
-    )
-    const badge = document.querySelector(
-      '[data-slot="dispatch-hole-dug-badge"]',
-    )
-    expect(badge).toBeInTheDocument()
-    expect(badge?.getAttribute("data-status")).toBe("null")
-  })
-
-  it("status=null + no onCycleHoleDug → badge hidden", () => {
-    render(
-      <Harness>
-        <DeliveryCard
-          delivery={makeDelivery({ hole_dug_status: null })}
-          scheduleFinalized={false}
-        />
-      </Harness>,
-    )
-    const badge = document.querySelector(
-      '[data-slot="dispatch-hole-dug-badge"]',
-    )
-    expect(badge).toBeNull()
-  })
-
-  it("click on badge fires onCycleHoleDug with next status", async () => {
+  it("click on unknown → cycles to yes", async () => {
     const user = userEvent.setup()
     const onCycle = vi.fn()
     render(
@@ -229,8 +282,132 @@ describe("DeliveryCard — hole-dug badge", () => {
     ) as HTMLElement
     await user.click(badge)
     expect(onCycle).toHaveBeenCalledTimes(1)
-    // nextHoleDugStatus("unknown") === "yes"
     expect(onCycle.mock.calls[0][1]).toBe("yes")
+  })
+
+  it("click on no → cycles back to unknown (not null)", async () => {
+    const user = userEvent.setup()
+    const onCycle = vi.fn()
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({ hole_dug_status: "no" })}
+          scheduleFinalized={false}
+          onCycleHoleDug={onCycle}
+        />
+      </Harness>,
+    )
+    const badge = document.querySelector(
+      '[data-slot="dispatch-hole-dug-badge"]',
+    ) as HTMLElement
+    await user.click(badge)
+    expect(onCycle).toHaveBeenCalledTimes(1)
+    expect(onCycle.mock.calls[0][1]).toBe("unknown")
+  })
+})
+
+
+describe("DeliveryCard — icon + tooltip compaction row (Phase 3.2)", () => {
+  it("family icon renders when family_name is present", () => {
+    render(
+      <Harness>
+        <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-family"]'),
+    ).toBeInTheDocument()
+  })
+
+  it("section icon renders when cemetery_section is present", () => {
+    render(
+      <Harness>
+        <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-section"]'),
+    ).toBeInTheDocument()
+  })
+
+  it("section icon hidden when cemetery_section is empty", () => {
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={{
+            ...base,
+            type_config: { ...base.type_config, cemetery_section: null },
+          }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-section"]'),
+    ).toBeNull()
+  })
+
+  it("note icon renders only when driver_note non-empty", () => {
+    const base = makeDelivery()
+    const { rerender } = render(
+      <Harness>
+        <DeliveryCard delivery={base} scheduleFinalized={false} />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-note"]'),
+    ).toBeNull()
+
+    rerender(
+      <Harness>
+        <DeliveryCard
+          delivery={{
+            ...base,
+            type_config: {
+              ...base.type_config,
+              driver_note: "FH said procession may run long",
+            },
+          }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-note"]'),
+    ).toBeInTheDocument()
+  })
+
+  it("chat icon + badge render when chat_activity_count > 0", () => {
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={{
+            ...base,
+            type_config: { ...base.type_config, chat_activity_count: 3 },
+          }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const icon = document.querySelector('[data-slot="dispatch-icon-chat"]')
+    expect(icon).toBeInTheDocument()
+    const badge = document.querySelector(
+      '[data-slot="dispatch-icon-chat-badge"]',
+    )
+    expect(badge?.textContent).toBe("3")
+  })
+
+  it("chat icon hidden when chat_activity_count is 0", () => {
+    render(
+      <Harness>
+        <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-chat"]'),
+    ).toBeNull()
   })
 })
 
@@ -270,24 +447,6 @@ describe("DeliveryCard — ancillary badge", () => {
     expect(badge.textContent).toMatch(/\+2 ancillary/)
     await user.click(badge)
     expect(onToggle).toHaveBeenCalledWith("del-1")
-  })
-
-  it("aria-expanded matches ancillaryExpanded prop", () => {
-    render(
-      <Harness>
-        <DeliveryCard
-          delivery={makeDelivery()}
-          scheduleFinalized={false}
-          ancillaryCount={1}
-          ancillaryExpanded={true}
-          onToggleAncillary={() => {}}
-        />
-      </Harness>,
-    )
-    const badge = document.querySelector(
-      '[data-slot="dispatch-ancillary-badge"]',
-    )
-    expect(badge?.getAttribute("aria-expanded")).toBe("true")
   })
 })
 

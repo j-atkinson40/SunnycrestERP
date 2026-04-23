@@ -1,32 +1,35 @@
 /**
- * MonitorDayColumn — one day's column in the three-day Dispatch
- * Monitor. Carries:
+ * MonitorDayColumn — one day's pane in the Dispatch Monitor.
  *
- *   - Day header: weekday label + date + schedule-state badge
- *     (DRAFT / Finalized) + affordance (Finalize / Open Scheduling)
- *   - Driver-lane kanban body: one lane per driver + one
- *     "Unassigned" lane on top
- *   - Within-day drag: cards drop onto driver lanes via @dnd-kit
- *     `useDroppable`. Drop inside a different lane fires the
- *     onReassignDriver callback; no-op if the drop is on the same
- *     lane.
- *   - Empty-state: when no rows exist for this day, a "No schedule
- *     yet" placeholder with an Open Scheduling affordance.
+ * Phase 3.1 + 3.2 rebuild (2026-04-23). Major structural changes from
+ * Phase 3:
  *
- * Schedule state surfaces visually:
- *   - Draft   → amber "DRAFT" badge + Finalize button in header
- *   - Finalized → "Finalized by {name} at {time}" attribution + no
- *                 Finalize button (still editable; any save triggers
- *                 revert-confirmation per QuickEditDialog)
- *   - not_created → "No schedule yet" with Open Scheduling button
+ *   - LAYOUT: the day pane is now a vertical container with a
+ *     HORIZONTAL driver-lane kanban inside it (Airtable visual
+ *     pattern). Lanes stack horizontally; each lane is a vertical
+ *     column of cards. When drivers exceed viewport width, the
+ *     inner region scrolls horizontally (no vertical page scroll
+ *     needed to see another driver). Matches the only prior solution
+ *     James found that got dispatch density right.
  *
- * Cards render via <DeliveryCard>. Ancillary badge + expand state
- * live in this component (so expansion is per-day scoped).
+ *   - FINALIZE BUTTON STYLE: the draft-state "Finalize this schedule"
+ *     now sits in the same header slot + same typography as the
+ *     finalized attribution. Only the color changes semantic —
+ *     finalized renders text-status-success; draft renders text-brass
+ *     (clickable action color). Visual consistency across both
+ *     states; the dispatcher's eye lands on the same location for
+ *     "what's going on with this day".
+ *
+ *   - Empty states still show "No schedule yet" / "No deliveries
+ *     scheduled" with an Open Scheduling affordance.
+ *
+ *   - Ancillary badge + inline expand unchanged from Phase 3; lives
+ *     in this component (per-day scope).
  */
 
 import { useMemo, useState } from "react"
 import { useDroppable } from "@dnd-kit/core"
-import { ClockIcon, CalendarIcon, CheckCircle2Icon } from "lucide-react"
+import { CheckCircle2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -126,11 +129,13 @@ export function MonitorDayColumn({
     }
   }
 
-  // ── Header ─────────────────────────────────────────────────────────
   const dateDisplay = formatDateDisplay(dateStr)
+  const driversWithDeliveries = drivers.filter(
+    (d) => (kanbanByDriver.get(d.id) ?? []).length > 0,
+  )
 
   return (
-    <div
+    <section
       data-slot="dispatch-day-column"
       data-date={dateStr}
       data-schedule-state={schedule.state}
@@ -139,73 +144,104 @@ export function MonitorDayColumn({
         "bg-surface-sunken shadow-level-1",
       )}
     >
-      {/* Day header */}
-      <div
+      {/* ── Day header ──────────────────────────────────────────────── */}
+      <header
         data-slot="dispatch-day-header"
-        className="flex items-start justify-between gap-3 border-b border-border-subtle px-3 py-3"
+        className="border-b border-border-subtle px-4 py-3"
       >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-h4 font-medium text-content-strong">
-              {dayLabel}
-            </h3>
-            {schedule.state === "draft" && (
-              <span
-                data-slot="dispatch-day-draft-badge"
-                className={cn(
-                  "inline-flex items-center rounded-sm px-1.5 py-0.5",
-                  "text-micro font-medium uppercase tracking-wider",
-                  "bg-status-warning-muted text-status-warning",
-                )}
-              >
-                Draft
-              </span>
+        <div className="flex items-baseline gap-3">
+          <h3
+            className={cn(
+              "text-h3 font-medium leading-none text-content-strong",
+              "font-plex-serif",
             )}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1 text-caption text-content-muted">
-            <CalendarIcon className="h-3 w-3" aria-hidden />
+          >
+            {dayLabel}
+          </h3>
+          <span className="text-body-sm text-content-muted">
             {dateDisplay}
-          </div>
+          </span>
+          {schedule.state === "draft" && (
+            <span
+              data-slot="dispatch-day-draft-badge"
+              className={cn(
+                "inline-flex items-center rounded-sm px-1.5 py-0.5",
+                "text-micro font-medium uppercase tracking-wider",
+                "bg-status-warning-muted text-status-warning",
+              )}
+            >
+              Draft
+            </span>
+          )}
+        </div>
+
+        {/* Action/attribution row — same slot, same typography, color
+            differentiates semantic. Finalized → muted success; draft
+            → clickable brass button; not_created → Open Scheduling. */}
+        <div className="mt-1.5 min-h-[1.5rem] text-caption leading-normal">
           {finalized && schedule.finalized_at && (
             <div
               data-slot="dispatch-day-finalized-attribution"
-              className="mt-1 flex items-center gap-1 text-caption text-status-success"
+              className="flex items-center gap-1 text-status-success"
             >
-              <CheckCircle2Icon className="h-3 w-3" aria-hidden />
-              {finalizedByLabel ??
-                `Finalized ${formatTime(schedule.finalized_at)}`}
+              <CheckCircle2Icon className="h-3.5 w-3.5" aria-hidden />
+              <span>
+                {finalizedByLabel ??
+                  `Finalized ${formatTime(schedule.finalized_at)}`}
+              </span>
             </div>
           )}
-        </div>
-        <div className="flex flex-none gap-2">
           {schedule.state === "draft" && (
-            <Button
-              size="sm"
+            <button
+              type="button"
               onClick={handleFinalizeClick}
               disabled={finalizing}
               data-slot="dispatch-day-finalize-btn"
+              className={cn(
+                "inline-flex items-center gap-1 rounded-sm",
+                "text-caption text-brass hover:text-brass-hover",
+                "transition-colors duration-quick",
+                "focus-ring-brass outline-none",
+                "disabled:opacity-60 disabled:cursor-not-allowed",
+                // Underlined-on-hover reinforces "action" without
+                // turning into a full button visual (keeps the slot
+                // matched with finalized-attribution below it).
+                "hover:underline decoration-brass/40 underline-offset-2",
+              )}
+              aria-label={`Finalize schedule for ${dayLabel}`}
             >
-              {finalizing ? "Finalizing…" : `Finalize ${dayLabel}`}
-            </Button>
+              {finalizing
+                ? `Finalizing ${dayLabel}…`
+                : `Finalize ${dayLabel} ▸`}
+            </button>
           )}
           {notCreated && (
-            <Button
-              size="sm"
-              variant="outline"
+            <button
+              type="button"
               onClick={() => onOpenScheduling(dateStr)}
               data-slot="dispatch-day-open-scheduling-btn"
+              className={cn(
+                "inline-flex items-center gap-1 rounded-sm",
+                "text-caption text-brass hover:text-brass-hover",
+                "transition-colors duration-quick",
+                "focus-ring-brass outline-none",
+                "hover:underline decoration-brass/40 underline-offset-2",
+              )}
             >
-              Open scheduling
-            </Button>
+              No schedule yet — open scheduling ▸
+            </button>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* Body — driver lanes + unassigned lane */}
-      {notCreated || (deliveries.length === 0 && !notCreated) ? (
+      {/* ── Body — horizontal driver kanban ──────────────────────────── */}
+      {notCreated || deliveries.length === 0 ? (
         <div
           data-slot="dispatch-day-empty"
-          className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-8 text-center"
+          className={cn(
+            "flex flex-1 flex-col items-center justify-center gap-3",
+            "px-4 py-12 text-center",
+          )}
         >
           <div className="text-body-sm text-content-muted">
             {notCreated ? "No schedule yet." : "No deliveries scheduled."}
@@ -219,8 +255,19 @@ export function MonitorDayColumn({
           </Button>
         </div>
       ) : (
-        <div className="flex-1 space-y-3 p-3">
-          {/* Unassigned lane (only if any kanban cards are unassigned) */}
+        <div
+          data-slot="dispatch-day-kanban"
+          className={cn(
+            "flex flex-row gap-3 overflow-x-auto overflow-y-hidden",
+            "p-3",
+            // Scroll-shadow hint via light inset so users see there's
+            // more when lanes exceed viewport width.
+            "scroll-smooth",
+          )}
+        >
+          {/* Unassigned lane first — only if any kanban cards are
+              unassigned. Dispatchers want the "needs attention" pile
+              at the left edge where their eye lands first. */}
           {unassignedKanban.length > 0 && (
             <DriverLane
               laneKey={`${dateStr}:${UNASSIGNED_LANE_ID}`}
@@ -237,10 +284,11 @@ export function MonitorDayColumn({
             />
           )}
 
-          {/* Driver lanes */}
-          {drivers.map((driver) => {
+          {/* Driver lanes — horizontal stack. Empty drivers skipped
+              (there's no "show all drivers" checkbox in the spec; the
+              dispatcher picks a driver when assigning via QuickEdit). */}
+          {driversWithDeliveries.map((driver) => {
             const laneDeliveries = kanbanByDriver.get(driver.id) ?? []
-            if (laneDeliveries.length === 0) return null
             return (
               <DriverLane
                 key={driver.id}
@@ -261,19 +309,17 @@ export function MonitorDayColumn({
             )
           })}
 
-          {/* When all drivers are empty we still want the column to
-              remain useful visually — show a hint. */}
-          {Array.from(kanbanByDriver.entries()).every(
-            ([, list]) => list.length === 0,
-          ) &&
+          {/* Empty-lane pile — all drivers empty + no unassigned.
+              Rare, but possible mid-setup. */}
+          {driversWithDeliveries.length === 0 &&
             unassignedKanban.length === 0 && (
-              <div className="py-8 text-center text-body-sm text-content-muted">
+              <div className="flex-1 py-8 text-center text-body-sm text-content-muted">
                 No kanban deliveries for this day.
               </div>
             )}
         </div>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -321,6 +367,7 @@ function DriverLane({
       data-lane={laneKey}
       data-drop-over={isOver ? "true" : "false"}
       className={cn(
+        "flex-none w-[280px] flex flex-col",
         "rounded border border-border-subtle bg-surface-elevated",
         "transition-colors duration-quick ease-settle",
         isOver && "ring-2 ring-brass ring-offset-1 ring-offset-surface-sunken",
@@ -328,19 +375,19 @@ function DriverLane({
       )}
     >
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
-        <ClockIcon
-          className="h-3.5 w-3.5 text-content-muted flex-none"
-          aria-hidden
-        />
-        <span className="text-body-sm font-medium text-content-strong">
+        <span
+          className={cn(
+            "text-body-sm font-medium text-content-strong truncate",
+          )}
+          title={laneLabel}
+        >
           {laneLabel}
         </span>
-        <span className="ml-auto text-caption text-content-muted">
-          {deliveries.length}{" "}
-          {deliveries.length === 1 ? "delivery" : "deliveries"}
+        <span className="ml-auto flex-none text-caption text-content-muted font-plex-mono tabular-nums">
+          {deliveries.length}
         </span>
       </div>
-      <div className="space-y-2 p-2">
+      <div className="flex-1 space-y-2 p-2 overflow-y-auto">
         {deliveries.map((d) => {
           const ancCount = ancillaryCounts.get(d.id) ?? 0
           const expanded = expandedParents.has(d.id)

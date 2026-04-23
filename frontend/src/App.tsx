@@ -20,6 +20,7 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { RootRedirect } from "@/components/root-redirect";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ImpersonationBanner } from "@/components/platform/impersonation-banner";
 import { getCompanySlug } from "@/lib/tenant";
 import { isPlatformAdmin } from "@/lib/platform";
@@ -439,6 +440,13 @@ export default function App() {
       <FocusProvider>
       <CommandBarProvider>
       <CallContextProvider>
+      {/* Aesthetic Arc Session 3 — TooltipProvider mounted once at
+          the tenant-route root. Sets the 150 ms delay from
+          DESIGN_LANGUAGE §6 (prevents drive-by tooltips on cursor
+          transit). Phase B Session 1 Phase 3.1+3.2 is the first
+          dense consumer (Monitor card icon+tooltip compaction row);
+          delivery-focused platform surfaces inherit the provider. */}
+      <TooltipProvider>
         <ImpersonationBanner />
         <OfflineBanner />
         <KeyboardHelpOverlay />
@@ -1684,6 +1692,7 @@ export default function App() {
         <div className="fixed bottom-6 right-6 z-40 sm:hidden">
           <VoiceMemoButton compact />
         </div>
+      </TooltipProvider>
       </CallContextProvider>
       </CommandBarProvider>
       </FocusProvider>

@@ -634,7 +634,7 @@ export const manufacturingActions: ActionRegistryEntry[] = [
   {
     id: "nav_dispatch_monitor",
     title: "Dispatch monitor",
-    subtitle: "Three-day schedule view",
+    subtitle: "Focused single-day schedule",
     icon: "calendar-clock",
     kind: "navigate",
     keywords: [
@@ -646,13 +646,38 @@ export const manufacturingActions: ActionRegistryEntry[] = [
       "show schedule",
       "tomorrows schedule",
       "tomorrow schedule",
-      "two days out",
       "schedule monitor",
-      "week view",
+      "single day",
+      "show single day",
     ],
     roles: ["admin", "dispatcher", "office"],
     vertical: "manufacturing",
     permission: "delivery.view",
     route: "/dispatch/monitor",
+  },
+  {
+    // Phase 3.2 — dedicated multi-day entry point. Hits the same route
+    // as nav_dispatch_monitor but with ?view=all for the stacked-days
+    // mode. Discovery: dispatchers who want the whole-week view type
+    // "show all days" or "week view" at the command bar.
+    id: "nav_dispatch_monitor_all_days",
+    title: "Dispatch monitor — all days",
+    subtitle: "All days stacked (multi-day view)",
+    icon: "calendar-clock",
+    kind: "navigate",
+    keywords: [
+      "show all days",
+      "all days",
+      "week view",
+      "multi day",
+      "multiday",
+      "all dispatch",
+      "show all schedules",
+      "stacked days",
+    ],
+    roles: ["admin", "dispatcher", "office"],
+    vertical: "manufacturing",
+    permission: "delivery.view",
+    route: "/dispatch/monitor?view=all",
   },
 ];

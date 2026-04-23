@@ -428,6 +428,10 @@ class TestRevertOnDeliveryEdit:
 
 class TestHoleDug:
     def test_set_valid_values(self, ctx):
+        """Phase 3.1 — three-state non-nullable cycle. Null is NO
+        LONGER a valid value; any caller passing None gets a
+        ValueError (prevents silent NULL inserts against the NOT
+        NULL column added in r50)."""
         from app.database import SessionLocal
         from app.services import delivery_schedule_service as svc
         from app.models.delivery import Delivery
@@ -436,10 +440,26 @@ class TestHoleDug:
         db = SessionLocal()
         try:
             d = db.query(Delivery).filter(Delivery.id == delivery_id).first()
-            for value in ("unknown", "yes", "no", None):
+            for value in ("unknown", "yes", "no"):
                 svc.set_hole_dug_status(db, d, value)
                 db.refresh(d)
                 assert d.hole_dug_status == value
+        finally:
+            db.close()
+
+    def test_null_rejected_post_phase_3_1(self, ctx):
+        """Phase 3.1 invariant — None is not a valid hole_dug value.
+        Callers clearing back to "not confirmed" pass 'unknown'."""
+        from app.database import SessionLocal
+        from app.services import delivery_schedule_service as svc
+        from app.models.delivery import Delivery
+
+        delivery_id = _make_delivery(ctx["company_id"], requested_date=date.today())
+        db = SessionLocal()
+        try:
+            d = db.query(Delivery).filter(Delivery.id == delivery_id).first()
+            with pytest.raises(ValueError):
+                svc.set_hole_dug_status(db, d, None)  # type: ignore[arg-type]
         finally:
             db.close()
 
@@ -836,3 +856,50 @@ class TestAPI:
             headers=_hdr(ctx["readonly_token"], ctx["slug"]),
         )
         assert r.status_code == 403
+
+    def test_hole_dug_null_rejected_phase_3_1(self, client, ctx):
+        """Phase 3.1 — PATCH with `status: null` returns 422.
+        Pre-3.1 clients that still send null get a validation error,
+        not a silent NULL insert. The Pydantic schema enforces the
+        three-state union."""
+        delivery_id = _make_delivery(ctx["company_id"], requested_date=date.today())
+        r = client.patch(
+            f"/api/v1/dispatch/delivery/{delivery_id}/hole-dug",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+            json={"status": None},
+        )
+        assert r.status_code == 422
+
+    def test_hole_dug_default_is_unknown_post_r50(self, client, ctx):
+        """r50 invariant — a freshly created Delivery has
+        hole_dug_status = 'unknown' by DB default (NOT NULL default
+        'unknown' on the column). Verifies the backfill + default
+        are consistent."""
+        delivery_id = _make_delivery(ctx["company_id"], requested_date=date.today())
+        r = client.get(
+            f"/api/v1/dispatch/deliveries?start={date.today().isoformat()}&end={date.today().isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        rows = r.json()
+        match = [d for d in rows if d["id"] == delivery_id]
+        assert len(match) == 1
+        assert match[0]["hole_dug_status"] == "unknown"
+
+    def test_tenant_time_endpoint_shape(self, client, ctx):
+        """Phase 3.2 — /dispatch/tenant-time returns tenant-local wall
+        clock. Shape contract drives the Monitor's Smart Stack
+        time-based default-day picker."""
+        r = client.get(
+            "/api/v1/dispatch/tenant-time",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert isinstance(body["tenant_timezone"], str)
+        assert isinstance(body["local_iso"], str)
+        assert isinstance(body["local_date"], str)
+        assert isinstance(body["local_hour"], int)
+        assert 0 <= body["local_hour"] <= 23
+        assert isinstance(body["local_minute"], int)
+        assert 0 <= body["local_minute"] <= 59

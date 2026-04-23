@@ -1,15 +1,18 @@
 /**
- * MonitorDayColumn — vitest unit tests. Phase B Session 1.
+ * MonitorDayColumn — vitest unit tests. Phase B Session 1 Phase 3.1+3.2.
  *
  * Covers: header state rendering (draft/finalized/not_created),
- * driver lane grouping by assigned_driver_id, unassigned-lane
- * surface, empty-state placeholder, ancillary inline expand.
+ * Finalize button style-parity with finalized attribution (same
+ * typography, color differentiates), horizontal driver-lane kanban
+ * layout, unassigned-lane surfacing, empty-state placeholder,
+ * ancillary inline expand.
  */
 
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { DndContext } from "@dnd-kit/core"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 import type {
   DeliveryDTO,
@@ -31,11 +34,12 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
     priority: "normal",
     requested_date: "2026-04-24",
     scheduled_at: null,
+    completed_at: null,
     scheduling_type: "kanban",
     ancillary_fulfillment_status: null,
     direct_ship_status: null,
     assigned_driver_id: null,
-    hole_dug_status: null,
+    hole_dug_status: "unknown",
     type_config: { family_name: "Smith", service_type: "graveside" },
     special_instructions: null,
     ...overrides,
@@ -81,12 +85,16 @@ const defaultProps = {
 
 
 function Harness({ children }: { children: React.ReactNode }) {
-  return <DndContext>{children}</DndContext>
+  return (
+    <TooltipProvider delay={0}>
+      <DndContext>{children}</DndContext>
+    </TooltipProvider>
+  )
 }
 
 
 describe("MonitorDayColumn — header rendering", () => {
-  it("draft schedule shows DRAFT badge + Finalize button", () => {
+  it("draft schedule shows DRAFT badge + Finalize affordance in attribution slot", () => {
     render(
       <Harness>
         <MonitorDayColumn
@@ -102,6 +110,36 @@ describe("MonitorDayColumn — header rendering", () => {
     expect(
       document.querySelector('[data-slot="dispatch-day-finalize-btn"]'),
     ).toBeInTheDocument()
+  })
+
+  it("Finalize control sits in the same slot as finalized attribution (Phase 3.1 style parity)", () => {
+    // Draft state: the finalize control is a text-link-style button in
+    // the attribution slot, not a right-aligned primary Button.
+    // The attribution slot (parent div) carries text-caption; the
+    // button's ONLY distinguishing class from the finalized
+    // attribution span is color — text-brass (draft, action) vs
+    // text-status-success (finalized, muted). Color differentiates;
+    // slot + typography are shared.
+    const { container } = render(
+      <Harness>
+        <MonitorDayColumn
+          {...defaultProps}
+          schedule={makeSchedule({ state: "draft" })}
+          deliveries={[makeDelivery()]}
+        />
+      </Harness>,
+    )
+    const btn = container.querySelector(
+      '[data-slot="dispatch-day-finalize-btn"]',
+    ) as HTMLElement
+    expect(btn).toBeInTheDocument()
+    // Action color — brass (draft = clickable).
+    expect(btn.className).toMatch(/text-brass/)
+    // Typography inherits from parent slot (text-caption). Assert the
+    // parent carries it — the button shares the same visual weight as
+    // the finalized attribution rendered in the same slot.
+    const slot = btn.closest(".text-caption")
+    expect(slot).not.toBeNull()
   })
 
   it("finalized schedule shows attribution + no Finalize button", () => {
@@ -132,27 +170,29 @@ describe("MonitorDayColumn — header rendering", () => {
     ).toBeNull()
   })
 
-  it("not_created schedule shows 'No schedule yet' + Open Scheduling button", () => {
-    const onOpenScheduling = vi.fn()
+  it("not_created schedule shows 'No schedule yet' affordance", () => {
     render(
       <Harness>
         <MonitorDayColumn
           {...defaultProps}
           schedule={makeSchedule({ state: "not_created" })}
           deliveries={[]}
-          onOpenScheduling={onOpenScheduling}
         />
       </Harness>,
     )
     expect(
       document.querySelector('[data-slot="dispatch-day-empty"]'),
     ).toBeInTheDocument()
-    expect(screen.getByText(/no schedule yet/i)).toBeInTheDocument()
+    expect(
+      document.querySelector(
+        '[data-slot="dispatch-day-open-scheduling-btn"]',
+      ),
+    ).toBeInTheDocument()
   })
 })
 
 
-describe("MonitorDayColumn — driver lanes", () => {
+describe("MonitorDayColumn — driver lanes (horizontal kanban)", () => {
   it("groups deliveries by assigned_driver_id with counts", () => {
     const deliveries = [
       makeDelivery({ assigned_driver_id: "driver-1" }),
@@ -171,11 +211,27 @@ describe("MonitorDayColumn — driver lanes", () => {
     const lanes = document.querySelectorAll(
       '[data-slot="dispatch-driver-lane"]',
     )
-    // 2 driver lanes (driver-1 and driver-2); no unassigned lane because
-    // all deliveries are assigned.
     expect(lanes.length).toBe(2)
     expect(screen.getByText("Dave Miller")).toBeInTheDocument()
     expect(screen.getByText("Tom Henderson")).toBeInTheDocument()
+  })
+
+  it("driver lanes are horizontal — kanban container uses flex-row overflow-x-auto", () => {
+    render(
+      <Harness>
+        <MonitorDayColumn
+          {...defaultProps}
+          schedule={makeSchedule()}
+          deliveries={[makeDelivery({ assigned_driver_id: "driver-1" })]}
+        />
+      </Harness>,
+    )
+    const kanban = document.querySelector(
+      '[data-slot="dispatch-day-kanban"]',
+    ) as HTMLElement
+    expect(kanban).toBeInTheDocument()
+    expect(kanban.className).toMatch(/flex-row/)
+    expect(kanban.className).toMatch(/overflow-x-auto/)
   })
 
   it("surfaces unassigned lane when deliveries lack a driver", () => {
@@ -195,7 +251,6 @@ describe("MonitorDayColumn — driver lanes", () => {
     const lanes = document.querySelectorAll(
       '[data-slot="dispatch-driver-lane"]',
     )
-    // 1 unassigned + 1 driver-1 lane (driver-2 has zero so doesn't render)
     expect(lanes.length).toBe(2)
     expect(screen.getByText(/unassigned/i)).toBeInTheDocument()
   })
@@ -262,18 +317,15 @@ describe("MonitorDayColumn — ancillary expansion", () => {
         />
       </Harness>,
     )
-    // Initially collapsed
     expect(
       document.querySelector('[data-slot="dispatch-ancillary-expanded"]'),
     ).toBeNull()
 
-    // Click the +N badge
     const badge = document.querySelector(
       '[data-slot="dispatch-ancillary-badge"]',
     ) as HTMLElement
     await user.click(badge)
 
-    // Expanded
     expect(
       document.querySelector('[data-slot="dispatch-ancillary-expanded"]'),
     ).toBeInTheDocument()
@@ -297,7 +349,7 @@ describe("MonitorDayColumn — finalize button", () => {
       </Harness>,
     )
     await user.click(
-      screen.getByRole("button", { name: /finalize tomorrow/i }),
+      screen.getByRole("button", { name: /finalize schedule for tomorrow/i }),
     )
     expect(onFinalize).toHaveBeenCalledWith("2026-04-24")
   })

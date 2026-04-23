@@ -21,7 +21,13 @@ import apiClient from "@/lib/api-client"
 
 export type ScheduleState = "draft" | "finalized" | "not_created"
 
-export type HoleDugStatus = "unknown" | "yes" | "no" | null
+/**
+ * Three-state hole-dug, NOT nullable as of migration r50.
+ * - unknown: default; dispatcher hasn't confirmed yet
+ * - yes:     hole is dug
+ * - no:      hole is NOT dug (follow-up flag)
+ */
+export type HoleDugStatus = "unknown" | "yes" | "no"
 
 
 export interface ScheduleStateDTO {
@@ -78,17 +84,44 @@ export interface DeliveryDTO {
 /**
  * Display-field bag rendered on the Monitor card. Populated by the
  * seed / scheduling board's serializer; null-safe everywhere.
+ *
+ * Phase 3.1+3.2 additions for icon+tooltip compaction:
+ *   - cemetery_section: MapPin icon tooltip (e.g., "Sec 14, Lot 42B")
+ *   - driver_note: StickyNote icon tooltip (distinct from
+ *     Delivery.special_instructions which is order-level)
+ *   - chat_activity_count: MessageCircle icon with unread-count badge
+ *   - eta: inline "ETA 12:00" in the primary service-time line for
+ *     church/funeral_home services (see DeliveryCard primary text).
  */
 export interface DeliveryTypeConfig {
   family_name?: string | null
   cemetery_name?: string | null
   cemetery_city?: string | null
+  cemetery_section?: string | null
   funeral_home_name?: string | null
   service_time?: string | null
   service_type?: string | null        // 'graveside' | 'church' | 'funeral_home' | 'ancillary_pickup' | ...
   vault_type?: string | null
   eta?: string | null
+  driver_note?: string | null
+  chat_activity_count?: number | null
   [k: string]: unknown
+}
+
+
+// ── Tenant time (for Smart Stack single-day default) ─────────────────
+
+
+/** Tenant-local wall clock — server authoritative (dispatchers on
+ *  skewed laptops don't need their personal clock dictating the default
+ *  day). The Monitor polls once on page-open + on window-focus to set
+ *  the single-day Smart Stack primary (before/after 1pm local). */
+export interface TenantTimeDTO {
+  tenant_timezone: string             // IANA TZ name (e.g. "America/New_York")
+  local_iso: string                   // ISO-8601 with tenant-local offset
+  local_date: string                  // YYYY-MM-DD in tenant-local calendar
+  local_hour: number                  // 0–23
+  local_minute: number                // 0–59
 }
 
 
@@ -198,6 +231,15 @@ export async function fetchDrivers(): Promise<DriverDTO[]> {
     `/dispatch/drivers`,
     { params: { active_only: true } },
   )
+  return r.data
+}
+
+
+/** Read tenant-local wall clock. Used by the Monitor's Smart Stack to
+ *  pick the single-day default (before 1pm tenant-local → Today
+ *  primary; after 1pm → Tomorrow primary). */
+export async function fetchTenantTime(): Promise<TenantTimeDTO> {
+  const r = await apiClient.get<TenantTimeDTO>(`/dispatch/tenant-time`)
   return r.data
 }
 

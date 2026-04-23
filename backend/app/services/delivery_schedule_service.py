@@ -69,7 +69,11 @@ AUTO_FINALIZE_HOUR = 13  # 1 pm tenant-local
 AUTO_FINALIZE_DEFERRED_HARD_CUTOFF_MINUTE = 15  # 1:15 pm hard-stop
 
 VALID_STATES = ("draft", "finalized")
-VALID_HOLE_DUG = (None, "unknown", "yes", "no")
+VALID_HOLE_DUG = ("unknown", "yes", "no")
+# Phase 3.1 change: hole_dug_status is NOT NULL as of migration r50.
+# The null state was dropped per operational feedback — every delivery
+# has a hole-dug state; the question is whether the dispatcher has
+# confirmed it. NULL writes were backfilled to 'unknown'.
 
 
 # ── Errors ─────────────────────────────────────────────────────────────
@@ -287,7 +291,7 @@ def maybe_revert_on_delivery_edit(
 def set_hole_dug_status(
     db: Session,
     delivery: Delivery,
-    status: str | None,
+    status: str,
     *,
     revert_schedule: bool = True,
     commit: bool = True,
@@ -296,8 +300,10 @@ def set_hole_dug_status(
     schedule revert if the delivery's requested_date is on a finalized
     schedule.
 
-    `status` values: `None` (clear — back to initial state), or one
-    of `"unknown"`, `"yes"`, `"no"`.
+    Phase 3.1: `status` must be one of `"unknown" | "yes" | "no"`.
+    Null writes are rejected — the column is NOT NULL as of r50.
+    Callers clearing back to "haven't confirmed yet" should pass
+    `"unknown"` explicitly.
     """
     if status not in VALID_HOLE_DUG:
         raise ValueError(f"Invalid hole_dug_status: {status!r}. Valid: {VALID_HOLE_DUG}")

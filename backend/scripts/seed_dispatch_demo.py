@@ -124,6 +124,7 @@ DEMO_DELIVERIES = [
         "cemetery_match": "St. Joseph's",  # expected but may fallback
         "vault_type": "Monticello", "service_type": "graveside",
         "hole_dug": "yes", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 14, Lot 42B",
     },
     {
         "day_offset": 0, "time": "11:00", "driver_idx": 1,
@@ -131,6 +132,9 @@ DEMO_DELIVERIES = [
         "cemetery_match": "Fort Hill",
         "vault_type": "Cameo Rose", "service_type": "church",
         "hole_dug": "yes", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 7, Lot 108",
+        "eta": "12:15",
+        "driver_note": "FH said procession may run long",
     },
     {
         "day_offset": 0, "time": "13:00", "driver_idx": 2,
@@ -138,6 +142,8 @@ DEMO_DELIVERIES = [
         "cemetery_match": "Oakwood",
         "vault_type": "Continental Bronze", "service_type": "graveside",
         "hole_dug": "yes", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 3, Lot 12",
+        "chat_activity_count": 2,
     },
     {
         "day_offset": 0, "time": "14:00", "driver_idx": 0,
@@ -145,6 +151,8 @@ DEMO_DELIVERIES = [
         "cemetery_match": "Skaneateles",
         "vault_type": "Standard", "service_type": "funeral_home",
         "hole_dug": "yes", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 22, Lot 5",
+        "eta": "15:30",
     },
     {
         "day_offset": 0, "time": "11:00", "driver_idx": 3,
@@ -152,6 +160,8 @@ DEMO_DELIVERIES = [
         "cemetery_match": "Oakwood",
         "vault_type": "Triune Copper", "service_type": "church",
         "hole_dug": "yes", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 3, Lot 77",
+        "eta": "12:10",
     },
 
     # ── TOMORROW — 6 deliveries, 1 unassigned, schedule draft ──
@@ -161,6 +171,7 @@ DEMO_DELIVERIES = [
         "cemetery_match": "St. Joseph's",
         "vault_type": "Monticello", "service_type": "graveside",
         "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 14, Lot 51",
     },
     {
         "day_offset": 1, "time": "11:00", "driver_idx": 1,
@@ -168,6 +179,9 @@ DEMO_DELIVERIES = [
         "cemetery_match": "Fort Hill",
         "vault_type": "Cameo Rose", "service_type": "church",
         "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 7, Lot 211",
+        "eta": "12:00",
+        "chat_activity_count": 1,
     },
     {
         "day_offset": 1, "time": "13:00", "driver_idx": 2,
@@ -175,6 +189,8 @@ DEMO_DELIVERIES = [
         "cemetery_match": "Fort Hill",
         "vault_type": "Standard", "service_type": "graveside",
         "hole_dug": "no", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 9, Lot 33",
+        "driver_note": "Call before arrival — gate closes 2pm",
     },
     {
         "day_offset": 1, "time": "14:00", "driver_idx": 3,
@@ -182,13 +198,16 @@ DEMO_DELIVERIES = [
         "cemetery_match": "Oakwood",
         "vault_type": "Continental Bronze", "service_type": "graveside",
         "hole_dug": "yes", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 3, Lot 88",
     },
     {
         "day_offset": 1, "time": "15:00", "driver_idx": None,  # unassigned
         "family": "Reynolds", "fh_name_match": "Green Valley Memorial",
         "cemetery_match": "Skaneateles",
         "vault_type": "Triune Copper", "service_type": "funeral_home",
-        "hole_dug": None, "scheduling_type": "kanban",
+        "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 22, Lot 14",
+        "eta": "16:15",
     },
     {
         "day_offset": 1, "time": "16:00", "driver_idx": 0,
@@ -196,6 +215,8 @@ DEMO_DELIVERIES = [
         "cemetery_match": "St. Mary's",
         "vault_type": "Standard", "service_type": "church",
         "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 2, Lot 119",
+        "eta": "17:00",
     },
 
     # ── TWO DAYS OUT — 4 deliveries, some unassigned ──
@@ -204,28 +225,33 @@ DEMO_DELIVERIES = [
         "family": "Flanagan", "fh_name_match": "Smith & Sons Funeral Home",
         "cemetery_match": "Fort Hill",
         "vault_type": "Cameo Rose", "service_type": "graveside",
-        "hole_dug": None, "scheduling_type": "kanban",
+        "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 7, Lot 309",
     },
     {
         "day_offset": 2, "time": "11:00", "driver_idx": None,
         "family": "Vasquez", "fh_name_match": "Memorial Chapel",
         "cemetery_match": "Oakwood",
         "vault_type": "Standard", "service_type": "graveside",
-        "hole_dug": None, "scheduling_type": "kanban",
+        "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 3, Lot 141",
     },
     {
         "day_offset": 2, "time": "13:00", "driver_idx": 2,
         "family": "Weber", "fh_name_match": "Johnson Funeral Home",
         "cemetery_match": "Lakeview",
         "vault_type": "Monticello", "service_type": "church",
-        "hole_dug": None, "scheduling_type": "kanban",
+        "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 11, Lot 67",
+        "eta": "14:15",
     },
     {
         "day_offset": 2, "time": "14:00", "driver_idx": None,
         "family": "McKinney", "fh_name_match": "Riverside Funeral Home",
         "cemetery_match": "Oakwood",
         "vault_type": "Standard", "service_type": "graveside",
-        "hole_dug": None, "scheduling_type": "kanban",
+        "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 3, Lot 202",
     },
 
     # ── THREE DAYS OUT — 2 deliveries, all unassigned ──
@@ -234,14 +260,16 @@ DEMO_DELIVERIES = [
         "family": "Hoffman", "fh_name_match": "Green Valley Memorial",
         "cemetery_match": "Skaneateles",
         "vault_type": "Standard", "service_type": "graveside",
-        "hole_dug": None, "scheduling_type": "kanban",
+        "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 22, Lot 71",
     },
     {
         "day_offset": 3, "time": "13:00", "driver_idx": None,
         "family": "Rossi", "fh_name_match": "Memorial Chapel",
         "cemetery_match": "St. Mary's",
         "vault_type": "Cameo Rose", "service_type": "graveside",
-        "hole_dug": None, "scheduling_type": "kanban",
+        "hole_dug": "unknown", "scheduling_type": "kanban",
+        "cemetery_section": "Sec 2, Lot 40",
     },
 
     # ── ANCILLARY — 3 pickups/drops across window ──
@@ -250,7 +278,7 @@ DEMO_DELIVERIES = [
         "family": "Patel", "fh_name_match": "Smith & Sons Funeral Home",
         "cemetery_match": None,
         "vault_type": "Urn vault (extra)", "service_type": "ancillary_pickup",
-        "hole_dug": None, "scheduling_type": "ancillary",
+        "hole_dug": "unknown", "scheduling_type": "ancillary",
         "ancillary_status": "assigned_to_driver",
     },
     {
@@ -258,7 +286,7 @@ DEMO_DELIVERIES = [
         "family": "Chen", "fh_name_match": "Johnson Funeral Home",
         "cemetery_match": None,
         "vault_type": "Marker base", "service_type": "ancillary_drop",
-        "hole_dug": None, "scheduling_type": "ancillary",
+        "hole_dug": "unknown", "scheduling_type": "ancillary",
         "ancillary_status": "awaiting_pickup",
     },
     {
@@ -266,7 +294,7 @@ DEMO_DELIVERIES = [
         "family": "Lombardi", "fh_name_match": "Memorial Chapel",
         "cemetery_match": None,
         "vault_type": "Proof approval pickup", "service_type": "ancillary_pickup",
-        "hole_dug": None, "scheduling_type": "ancillary",
+        "hole_dug": "unknown", "scheduling_type": "ancillary",
         "ancillary_status": "unassigned",
     },
 
@@ -276,7 +304,7 @@ DEMO_DELIVERIES = [
         "family": "Anderson", "fh_name_match": "Riverside Funeral Home",
         "cemetery_match": None,
         "vault_type": "Memorial jewelry (drop-ship)", "service_type": "direct_ship",
-        "hole_dug": None, "scheduling_type": "direct_ship",
+        "hole_dug": "unknown", "scheduling_type": "direct_ship",
         "direct_ship_status": "ordered_from_wilbert",
     },
     {
@@ -284,7 +312,7 @@ DEMO_DELIVERIES = [
         "family": "Torres", "fh_name_match": "Green Valley Memorial",
         "cemetery_match": None,
         "vault_type": "Keepsake urn (drop-ship)", "service_type": "direct_ship",
-        "hole_dug": None, "scheduling_type": "direct_ship",
+        "hole_dug": "unknown", "scheduling_type": "direct_ship",
         "direct_ship_status": "shipped",
     },
 ]
@@ -540,15 +568,24 @@ def _create_delivery(
     if cfg["driver_idx"] is not None and cfg["driver_idx"] < len(drivers):
         assigned_driver_id = drivers[cfg["driver_idx"]].id
 
-    # type_config JSONB — powers the Monitor card display
+    # type_config JSONB — powers the Monitor card display. Phase 3.1+3.2
+    # compaction fields: cemetery_section (→ MapPin icon tooltip),
+    # driver_note (→ StickyNote icon tooltip), chat_activity_count
+    # (→ MessageCircle icon tooltip with unread-pill badge), eta
+    # (→ inline "ETA 12:00" in the primary service-time line for
+    # church/funeral_home services).
     type_config = {
         "family_name": cfg["family"],
         "cemetery_name": cem.name if cem else None,
         "cemetery_city": cem.city if cem else None,
+        "cemetery_section": cfg.get("cemetery_section"),
         "funeral_home_name": fh.name if fh else None,
         "service_time": service_time_display,
         "service_type": cfg["service_type"],
         "vault_type": cfg["vault_type"],
+        "eta": cfg.get("eta"),
+        "driver_note": cfg.get("driver_note"),
+        "chat_activity_count": cfg.get("chat_activity_count", 0),
     }
 
     # Delivery row

@@ -109,14 +109,13 @@ class Delivery(Base):
         String(36), ForeignKey("locations.id"), nullable=True
     )
 
-    # Dispatch quick-edit field (Phase B Session 1).
-    # Three states: 'unknown' | 'yes' | 'no'. NULL is the initial
-    # state for all deliveries — semantically "nobody touched this
-    # yet." The dispatcher quick-toggles from the Monitor card; a null
-    # read is distinct from 'unknown' (which means "dispatcher looked
-    # and doesn't know yet").
-    hole_dug_status: Mapped[str | None] = mapped_column(
-        String(16), nullable=True
+    # Dispatch quick-edit field (Phase B Session 1 / 3.1).
+    # Three states: 'unknown' | 'yes' | 'no'. NOT NULL default 'unknown'
+    # per Phase 3.1 operational feedback — every delivery has a hole-dug
+    # state; the question is whether the dispatcher has confirmed it.
+    # Migration r50_dispatch_hole_dug_default backfilled NULLs → 'unknown'.
+    hole_dug_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="unknown"
     )
 
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)

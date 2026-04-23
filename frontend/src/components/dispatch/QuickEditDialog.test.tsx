@@ -1,9 +1,10 @@
 /**
- * QuickEditDialog — vitest unit tests. Phase B Session 1.
+ * QuickEditDialog — vitest unit tests. Phase B Session 1 Phase 3.1.
  *
  * Covers: field hydration from delivery, save on draft schedule
  * (no confirmation), save on finalized schedule (confirmation
- * dialog), cancel preserves state. Hole-dug radio selection.
+ * dialog), cancel preserves state, hole-dug three-state radio
+ * selection (no "not_set" option post-3.1).
  */
 
 import { render, screen } from "@testing-library/react"

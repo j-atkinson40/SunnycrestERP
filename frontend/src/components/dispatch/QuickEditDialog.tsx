@@ -90,7 +90,7 @@ export function QuickEditDialog({
   const open = delivery !== null
   const [serviceTime, setServiceTime] = useState("")
   const [assignedDriverId, setAssignedDriverId] = useState<string | null>(null)
-  const [holeDug, setHoleDug] = useState<HoleDugStatus>(null)
+  const [holeDug, setHoleDug] = useState<HoleDugStatus>("unknown")
   const [note, setNote] = useState("")
   const [saving, setSaving] = useState(false)
   const [confirmRevertOpen, setConfirmRevertOpen] = useState(false)
@@ -103,7 +103,10 @@ export function QuickEditDialog({
     const tc = delivery.type_config ?? {}
     setServiceTime((tc.service_time as string | undefined) ?? "")
     setAssignedDriverId(delivery.assigned_driver_id ?? null)
-    setHoleDug(delivery.hole_dug_status ?? null)
+    // Phase 3.1: hole_dug is three-state non-nullable. If a legacy
+    // DTO still surfaces null (pre-r50 migration), coerce to
+    // 'unknown' — matches the backfill semantic.
+    setHoleDug(delivery.hole_dug_status ?? "unknown")
     setNote(delivery.special_instructions ?? "")
     setSaving(false)
     setConfirmRevertOpen(false)
@@ -218,7 +221,7 @@ export function QuickEditDialog({
               </select>
             </div>
 
-            {/* Hole dug */}
+            {/* Hole dug — three-state non-nullable (Phase 3.1). */}
             <div className="space-y-1.5">
               <Label>Hole dug</Label>
               <div
@@ -226,12 +229,11 @@ export function QuickEditDialog({
                 aria-label="Hole-dug status"
                 className="flex items-center gap-1 rounded border border-border-base bg-surface-raised p-1"
               >
-                {(["not_set", "unknown", "yes", "no"] as const).map((v) => {
-                  const stored: HoleDugStatus = v === "not_set" ? null : v
+                {(["unknown", "yes", "no"] as const).map((v) => {
+                  const stored: HoleDugStatus = v
                   const selected = holeDug === stored
                   const label =
-                    v === "not_set" ? "Not set"
-                    : v === "unknown" ? "Unknown"
+                    v === "unknown" ? "Unknown"
                     : v === "yes" ? "Yes"
                     : "No"
                   return (

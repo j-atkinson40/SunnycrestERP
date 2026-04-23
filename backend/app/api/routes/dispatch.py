@@ -1,8 +1,9 @@
 """Dispatch schedule API — Phase B Session 1.
 
 Routes under `/api/v1/dispatch/*` covering the scheduling state
-machine (draft/finalized), the three-day Monitor range query, and
-hole-dug quick-edits.
+machine (draft/finalized), the three-day Monitor range query,
+hole-dug quick-edits, and the tenant-local time read the Monitor
+uses to pick its single-day default (before/after 1pm).
 
 Permission model: all endpoints require `delivery.view` at minimum.
 Finalize / revert require `delivery.finalize_schedule`. Hole-dug
@@ -12,16 +13,17 @@ granted via the per-role permissions UI.
 
 Endpoints:
   GET    /api/v1/dispatch/schedule/{date}              — read state
-  GET    /api/v1/dispatch/schedule/range               — Monitor 3-day
+  GET    /api/v1/dispatch/schedule/range               — Monitor N-day
   POST   /api/v1/dispatch/schedule/{date}/ensure       — lazy create
   POST   /api/v1/dispatch/schedule/{date}/finalize     — explicit
   POST   /api/v1/dispatch/schedule/{date}/revert       — explicit
   PATCH  /api/v1/dispatch/delivery/{id}/hole-dug       — quick-edit
+  GET    /api/v1/dispatch/tenant-time                  — local now
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -30,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_permission
 from app.database import get_db
+from app.models.company import Company
 from app.models.delivery import Delivery
 from app.models.driver import Driver
 from app.models.user import User
@@ -77,12 +80,15 @@ class RevertRequest(BaseModel):
 
 
 class HoleDugRequest(BaseModel):
-    status: Literal["unknown", "yes", "no"] | None
+    # Phase 3.1: three-state non-nullable. Callers clearing back to
+    # "not confirmed" pass "unknown" (not null). Pre-3.1 clients that
+    # send null get a 422 — by design; the frontend has been migrated.
+    status: Literal["unknown", "yes", "no"]
 
 
 class HoleDugResponse(BaseModel):
     delivery_id: str
-    hole_dug_status: str | None
+    hole_dug_status: str
     schedule_reverted: bool
     schedule_date: str | None
 
@@ -468,3 +474,53 @@ def list_monitor_drivers(
         ))
 
     return out
+
+
+# ── Tenant time ────────────────────────────────────────────────────────
+#
+# The Monitor's single-day Smart Stack picks its default based on
+# tenant-local wall clock: before 1pm → Today primary, after 1pm →
+# Tomorrow primary (drivers plan morning runs; ops "ships for
+# tomorrow" after the 1pm lock). The frontend could naively use the
+# browser clock, but dispatchers on the road (or on a laptop lid-
+# sleep airport trip) have skewed clocks — tenant TZ is the source
+# of truth. Reuses `_get_tenant_timezone` from schedule_service (the
+# same Company.timezone → zoneinfo resolver the auto-finalize job
+# uses), so there's one place to fix if TZ resolution evolves.
+
+
+class TenantTimeResponse(BaseModel):
+    tenant_timezone: str
+    local_iso: str          # ISO-8601 with tenant-local offset, e.g.
+                            # "2026-04-23T14:30:00-04:00"
+    local_date: str         # YYYY-MM-DD in tenant-local calendar
+    local_hour: int         # 0–23 in tenant-local wall clock
+    local_minute: int       # 0–59
+
+
+@router.get(
+    "/tenant-time",
+    response_model=TenantTimeResponse,
+    dependencies=[Depends(require_permission("delivery.view"))],
+)
+def get_tenant_time(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TenantTimeResponse:
+    """Return tenant-local wall clock. Stateless — computed per call,
+    not cached. Cost is one Company lookup + one datetime arithmetic;
+    the Monitor polls this at page open + on window-focus, not every
+    render."""
+    company = (
+        db.query(Company).filter(Company.id == current_user.company_id).first()
+    )
+    tz = schedule_service._get_tenant_timezone(company)
+    now_utc = datetime.now(timezone.utc)
+    local = now_utc.astimezone(tz)
+    return TenantTimeResponse(
+        tenant_timezone=str(tz),
+        local_iso=local.isoformat(),
+        local_date=local.date().isoformat(),
+        local_hour=local.hour,
+        local_minute=local.minute,
+    )
