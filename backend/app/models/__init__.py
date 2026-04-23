@@ -83,6 +83,7 @@ from app.models.signature import (
 )
 from app.models.employee_briefing import EmployeeBriefing
 from app.models.employee_profile import EmployeeProfile
+from app.models.focus_session import FocusLayoutDefault, FocusSession
 from app.models.equipment import Equipment
 from app.models.extension_activity_log import ExtensionActivityLog
 from app.models.extension_customer_onboarding import ExtensionCustomerOnboarding

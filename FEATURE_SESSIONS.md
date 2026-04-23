@@ -6,6 +6,100 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 4 — Persistence + return pill countdown
+
+**Date:** 2026-04-22
+**Session type:** Feature build, completes Phase A (Focus primitive foundation). First backend work of the arc — patterns mirror Saved Views / Spaces / Briefings persistence from earlier UI/UX arc phases.
+**Files touched:** 16 new/modified. Backend: migration `r48_focus_sessions_and_layout_defaults.py`, model `focus_session.py`, service package `app/services/focus/` (2 files), route `app/api/routes/focus.py`, route registration in `api/v1.py`, models `__init__.py`. Frontend: `services/focus-service.ts`, `contexts/focus-context.tsx` (integration), `components/focus/ReturnPill.tsx` (countdown bar), `components/focus/useReturnPillCountdown.ts` (new hook). Tests: `tests/test_focus_session.py` (backend, 23 tests), `components/focus/useReturnPillCountdown.test.ts` (7 tests), `services/focus-service.test.ts` (5 tests), plus mocks added to existing `ReturnPill.test.tsx` + `focus-context.test.tsx`. Docs: CLAUDE.md Recent Changes, PLATFORM_ARCHITECTURE.md §5.15 persistence subsection, PLATFORM_QUALITY_BAR.md Done Right entry.
+**LOC:** ~1,400 total (~650 backend, ~550 frontend, ~200 docs).
+**Tests:** 366 frontend passing (352 + 14 new — 7 `useReturnPillCountdown` + 5 `focus-service` + 2 `ReturnPill` countdown). Backend: 23 focus tests + 51 spaces regression — 74 passing. tsc clean. vite build clean 4.76s.
+**Migration head:** `r47_users_template_defaults_retrofit` → `r48_focus_sessions_and_layout_defaults`.
+
+### What shipped
+
+**Two new tables** via migration `r48`:
+
+- `focus_sessions` — per-user, per-focus session state. Columns: `id`, `company_id` (FK companies, ON DELETE CASCADE — matches platform tenant-scoping convention), `user_id` (FK users), `focus_type` (varchar 64, e.g. `"kanban"`, `"test-kanban"`), `layout_state` (JSONB), `is_active` (bool, soft-delete flag), `opened_at`, `closed_at`, `last_interacted_at`, timestamps. Three indexes: partial `ix_focus_sessions_user_active` (WHERE `is_active = true`) for the hot-path active-session lookup; partial `ix_focus_sessions_user_closed` (WHERE `closed_at IS NOT NULL`) for the recent-closed fallback query; `ix_focus_sessions_company` for tenant-scoping audits. Soft-delete via `is_active=False` + `closed_at` timestamp — closed rows remain queryable for the 24h resume window.
+- `focus_layout_defaults` — per-tenant admin-configured baseline per `focus_type`. Unique on `(company_id, focus_type)` (the UNIQUE doubles as a lookup index).
+
+**Service layer** at `app/services/focus/`:
+
+- `focus_session_service.py` — 8 public functions. `get_active_session` returns the user's current active row. `create_or_resume_session` is idempotent: resumes an active row (bumping `last_interacted_at`) or creates a new one seeded from tenant default. `update_layout_state` writes layout JSONB + bumps `last_interacted_at`; no-ops on closed sessions (reopening is an explicit path, not a side-effect of PATCH). `close_session` marks `is_active=False` + stamps `closed_at`; idempotent. `get_recent_closed_session` returns most-recently-closed session within a configurable window (default 86400s = 24h). `list_recent_closed_sessions` lists across all focus_types for Cmd+K history. `get_layout_default` / `set_layout_default` — tenant admin baseline read + upsert. `resolve_layout_state` is the 3-tier cascade: active → recent → tenant default → None. Frontend calls this via the API and doesn't know about the tiers.
+
+**5 new API endpoints** at `/api/v1/focus/*`:
+
+- `GET /{focus_type}/layout` — resolve layout via 3-tier, returns `{layout_state, source}` where source is `"active"|"recent"|"default"|null`.
+- `POST /{focus_type}/open` — create-or-resume active session, returns `{session, layout_state, source}` in one round-trip so the frontend can seed state without a follow-up call.
+- `PATCH /sessions/{session_id}/layout` — write layout. Ownership enforced via `_get_owned_session` which 404s on cross-user access (404 not 403, so session existence doesn't leak).
+- `POST /sessions/{session_id}/close` — close session. Idempotent.
+- `GET /recent` — list recently-closed sessions (limit param, default 10, capped 50).
+
+All endpoints require `get_current_user`; tenant isolation comes from filtering on `user.id` and `user.company_id` in every query.
+
+**Frontend API client** `services/focus-service.ts` — plain axios via `apiClient`, matching saved-views / spaces / briefings convention (no TanStack Query — this codebase doesn't use a query library, per CLAUDE.md §2). Five functions mirror the endpoints. DTO types capture the server response shapes; `LayoutSource` literal union documents the 3-tier source values.
+
+**Optimistic loading in FocusContext** (session 4 integration):
+
+1. On Focus open: seed `layoutState` immediately from registry `defaultLayout.tenantDefault`. First paint instant — matches Quality Bar §1 performance requirement (<100ms perceived latency for Focus entry).
+2. In parallel: fire `POST /focus/{focus_type}/open` which creates/resumes the server session and returns the resolved layout via 3-tier.
+3. When fetch resolves: swap in the persisted layout if the server returned one; keep the optimistic registry default otherwise. Store the returned `sessionId` on `FocusState` — subsequent layout writes gate on this.
+4. On fetch failure: log, continue with registry default. Persistence never blocks UX.
+
+Layout writes are debounced 500ms via `scheduleLayoutWrite` (matches saved-view debounce convention). Most recent pending layout wins — earlier timers cancel. On Focus close, pending write flushes before `POST /close` fires. All persistence errors are console.warn'd, never thrown.
+
+### Return pill countdown
+
+`useReturnPillCountdown` hook — full re-arm semantics per Session 4 user decision:
+
+- 15-second countdown (tunable `totalMs` prop). Ticks every 100ms.
+- `resetKey` prop: when it changes, countdown re-arms to full. Consumer passes `${lastClosedFocus.id}:${closedAt}` so any new pill event resets.
+- Hover: `onHoverStart` / `onHoverEnd` toggle `isHovered`; while hovered, countdown pauses.
+- Tab visibility: `visibilitychange` listener. Tab hidden → pause. Tab restore → RE-ARM to full 15s (per spec — not resume-from-paused, which would be "finishing something the user wasn't watching"; re-arm is "welcome back, here's 15 more seconds").
+- Expiry: fires `onExpire` once (latched via `expiredRef` so repeated ticks at remainingMs=0 don't fire again).
+- `resetKey=null` halts the countdown entirely — used when no pill is active.
+
+`ReturnPill.tsx` updated: pill gets a 2px-tall countdown bar at the bottom, brass-colored, with `overflow-hidden` on the pill root so the bar rounds with the pill's corners. Bar width is `(remainingMs / totalMs) * 100%`. CSS transition: `width 100ms cubic-bezier(0.32, 0.72, 0, 1)` — the cubic-bezier approximates spring-physics decay (slow in, fast out) without a physics library dependency. `resetKey` derived from the closed Focus's id + openedAt timestamp.
+
+Re-arm triggers shipped this session: different Focus opened/closed while pill visible (resetKey changes when `lastClosedFocus` swaps to a different Focus), tab visibility return, hover pause/resume, server layout-update response carries fresh state (the `source` field on PATCH response could future-feed resetKey but not wired yet — low-priority since the pill is only visible when no Focus is open, so server-side layout updates during pill visibility are rare).
+
+**Deferred re-arm trigger — real-time data subscriptions.** The Session 4 prompt specified "Focus data subscription fires (via Intelligence backbone subscription to focus_type state changes)" as a re-arm trigger. Intelligence is the Claude-API abstraction — it has no reactive state-subscription infrastructure (no WebSocket, SSE, event bus). Implementing this requires a dedicated design pass for platform-wide real-time data. Deferred pending real-time infrastructure architectural decision — possibly added in a future session alongside cross-tenant personalization Focus (Phase E) which would benefit from similar infrastructure.
+
+### 3-tier resolution examples (verified in preview)
+
+- **First open, no prior state:** GET `/focus/kanban/layout` → `{layout_state: null, source: null}`. Frontend continues with registry default.
+- **Open → move widget → close → reopen:** sequence produces active session (empty on reopen) + closed session (with moved widget). Resolver returns the closed session's layout with `source: "recent"`. Verified in preview: patched widget position (offsetX/Y=100) was recovered on reopen.
+- **Admin-set tenant default:** `set_layout_default(company_id, focus_type, layout)` (admin path, API endpoint for admin management deferred post-arc). Resolver falls through to default when active + recent are empty.
+- **Registry fallback:** resolver returns None, frontend uses `getFocusConfig(id).defaultLayout?.tenantDefault ?? null` — the in-code baseline.
+
+### Architecture invariants documented
+
+PLATFORM_ARCHITECTURE.md §5.15 "Implementation Foundation" extended with a persistence subsection covering:
+
+- 3-tier cascade order with rationale (user state wins over tenant, tenant wins over registry, each tier is optional).
+- Optimistic loading pattern — first paint from registry, swap to server on resolve, no loading state visible. Pattern candidate for other Focus-adjacent primitives (hub dashboards, Space templates).
+- Debounce contract — 500ms on layout writes, most-recent-wins cancellation. Matches saved-view conventions.
+- Ownership enforcement — API layer gates writes on `user_id` match; 404s on cross-user access (existence-hiding).
+
+### What this completes
+
+Phase A Sessions 1 → 4 shipped the Focus primitive foundation:
+
+- **Session 1:** scaffolding + URL sync + placeholder core
+- **Session 2:** mode dispatcher + 5 stub cores + push-back scale
+- **Session 3 → 3.8.2:** anchored core + free-form canvas + three-tier responsive cascade + continuous geometric transitions + layering + viewport-synchronous layout
+- **Session 4:** per-user + per-tenant layout persistence + return pill countdown with full re-arm
+
+Focus is functionally complete as a platform primitive. Next (Sessions 5–6) ships the pin system — saved-view pins, context-aware pins (via Phase 1 command-bar resolver), system-suggested pins (via Intelligence). Session 7 ships Focus Chat — the scoped Q&A surface that replaces command bar inside a Focus.
+
+### Verification
+
+- Alembic migration: `alembic upgrade head` applied clean; both tables created with all indexes (verified via SQLAlchemy inspector).
+- Backend regression: 74 tests pass across test_focus_session.py (23 new) + test_spaces_api.py + test_spaces_phase8e.py.
+- Frontend regression: 366 tests pass (352 + 14 new). tsc clean. vite build clean in 4.76s.
+- Preview verification: Kanban Focus opens at 2560×1440 → canvas tier → 3 widgets render → POST /open creates session in DB → PATCH /layout persists widget positions (verified with deep-equality check on returned layout_state) → GET /layout returns persisted state with `source: "active"` → close focus → DB shows `is_active=false` + `closed_at` stamped + layout_state preserved → reopen → GET returns previous layout with `source: "recent"` (3-tier fallback to closed-within-24h). Return pill renders with countdown bar at 100% initial width + `cubic-bezier(0.32, 0.72, 0, 1)` CSS transition. Countdown pause-on-tab-hidden verified via `document.visibilityState` check (preview tab is backgrounded, isPaused=true confirmed in hook output — exact spec-match for the pause trigger).
+
+---
+
 ## Phase A Session 3.8 — Continuous geometric layout cascade
 
 **Date:** 2026-04-22

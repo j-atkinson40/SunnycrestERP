@@ -9,10 +9,51 @@
 
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 
 import { FocusProvider, useFocus } from "./focus-context";
+
+// Session 4 — focus-context now fires HTTP on open/close/layout update.
+// Mock the service layer so state-machinery tests don't need a backend.
+vi.mock("@/services/focus-service", () => ({
+  openFocusSession: vi.fn(async (focusType: string) => ({
+    session: {
+      id: `sess-${focusType}`,
+      focus_type: focusType,
+      layout_state: {},
+      is_active: true,
+      opened_at: new Date().toISOString(),
+      closed_at: null,
+      last_interacted_at: new Date().toISOString(),
+    },
+    layout_state: null,
+    source: null,
+  })),
+  closeFocusSession: vi.fn(async () => ({
+    id: "s",
+    focus_type: "",
+    layout_state: {},
+    is_active: false,
+    opened_at: "",
+    closed_at: "",
+    last_interacted_at: "",
+  })),
+  updateFocusLayout: vi.fn(async () => ({
+    id: "s",
+    focus_type: "",
+    layout_state: {},
+    is_active: true,
+    opened_at: "",
+    closed_at: null,
+    last_interacted_at: "",
+  })),
+  fetchFocusLayout: vi.fn(async () => ({
+    layout_state: null,
+    source: null,
+  })),
+  listRecentFocusSessions: vi.fn(async () => []),
+}));
 
 
 function ConsumerProbe() {

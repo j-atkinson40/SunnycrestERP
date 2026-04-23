@@ -55,6 +55,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     bom,
     briefings,
     bundles,
+    focus as focus_routes,
     onboarding_touches,
     company_entities,
     carrier_portal,
@@ -256,6 +257,9 @@ v1_router.include_router(
 )
 v1_router.include_router(
     briefings.router, prefix="/briefings", tags=["Morning Briefings"]
+)
+v1_router.include_router(
+    focus_routes.router, prefix="/focus", tags=["Focus Primitive"]
 )
 v1_router.include_router(
     onboarding_touches.router,
