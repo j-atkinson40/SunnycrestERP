@@ -27,6 +27,7 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
     priority: "normal",
     requested_date: "2026-04-24",
     scheduled_at: null,
+    completed_at: null,
     scheduling_type: "kanban",
     ancillary_fulfillment_status: null,
     direct_ship_status: null,
