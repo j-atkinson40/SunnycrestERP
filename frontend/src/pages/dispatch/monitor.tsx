@@ -1,21 +1,35 @@
 /**
- * Dispatch Monitor — Phase B Session 1 (Phase 3.2 rebuild).
+ * Dispatch Monitor — Phase B Session 1 (Phase 3.2.1 rotation rebuild).
  *
- * Single-day default with Smart Stack navigation. Multi-day "show
- * all days" opt-in via URL param + Cmd+K.
+ * Single-day default with iOS-style Smart Stack rotation. Multi-day
+ * "show all days" opt-in via URL param + Cmd+K.
  *
- *   - Default: ONE day visible at a time, full horizontal driver
- *     kanban per day. Vertical scroll-snap cycles between days
- *     (iOS-Smart-Stack pattern reused from Focus primitive).
- *   - Time-based initial day: before 1pm tenant-local → Today is
+ * **Phase 3.2.1 change (2026-04-23)**: Phase 3.2 shipped Smart Stack
+ * as vertically-stacked scroll-snap panes. User feedback: behavior
+ * doesn't match iOS Smart Stack — content should rotate in place
+ * rather than the page scrolling. Rebuilt with a single fixed-position
+ * "day stage" containing all days as absolute-positioned layers;
+ * transform translateY slides the active day into view while the
+ * previous day slides out. Page does NOT scroll during day rotation.
+ * Horizontal scroll within a day (driver lanes) preserved for that
+ * dimension. Vertical scroll within a lane (when lane content exceeds
+ * stage height) preserved via boundary-escalation wheel handling —
+ * lane scrolls first; when at boundary, stage rotates.
+ *
+ *   - **Default:** ONE day visible at a time, full horizontal driver
+ *     kanban per day. Scroll wheel / swipe / arrow keys / dot clicks
+ *     rotate content within a fixed stage; page does not scroll.
+ *   - **Time-based initial day:** before 1pm tenant-local → Today is
  *     primary; after 1pm → Tomorrow is primary ("ops has shifted to
  *     tomorrow's planning by afternoon"). Tenant-local time comes
  *     from `/dispatch/tenant-time` — server authoritative, no
  *     reliance on browser clock.
- *   - Multi-day: toggle in the header OR Cmd+K action "show all days".
- *     Stacks every day vertically without scroll-snap. Good for "let
- *     me see the whole week at once" moments.
- *   - URL state: `?view=all` = multi; default (no param) = single.
+ *   - **Multi-day:** toggle in the header OR Cmd+K action "show all
+ *     days". Stacks every day vertically as normal page scroll (NOT
+ *     Smart Stack — intentional; the multi-day mode is for "let me
+ *     see the whole week at once" which requires all content visible
+ *     simultaneously).
+ *   - **URL state:** `?view=all` = multi; default (no param) = single.
  *     `?day=YYYY-MM-DD` deep-links to a specific day in single mode.
  *     No localStorage persistence — reload of `/dispatch/monitor`
  *     with no params reverts to the time-based default (per user
@@ -274,19 +288,29 @@ export default function DispatchMonitorPage() {
       }
     }, [deliveries])
 
-  // ── Single-day Smart Stack primary day index ──────────────────────
+  // ── Single-day Smart Stack rotation state ─────────────────────────
   //
-  // In single-day mode, track which day is "active" (the one in the
-  // viewport). Driven by IntersectionObserver on the per-day panes.
-  // Initial selection derives from URL ?day=... if present, else the
-  // time-based default.
+  // Phase 3.2.1: rotation-in-place. `activeDayIndex` is the single
+  // source of truth for which day is on the stage. Changing it
+  // animates the transform translateY on all day layers — the prior
+  // active day slides out, the new one slides in. No scroll-snap, no
+  // IntersectionObserver — the index IS the state.
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0)
-  const dayPaneRefs = useRef<Array<HTMLDivElement | null>>([])
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
 
-  // Resolve initial single-day primary once both `days` + `tenantTime`
-  // are available. Runs once per tenant-time/days change (no ongoing
-  // observer fighting).
+  // Wheel/touch gesture state — used by the gesture-capture handlers
+  // below to trigger rotation without scrolling the page.
+  const wheelAccumRef = useRef(0)
+  const wheelEndTimerRef = useRef<number | null>(null)
+  const lastRotationAtRef = useRef(0)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const WHEEL_THRESHOLD = 50              // pixels of accumulated deltaY
+  const SWIPE_THRESHOLD = 40              // pixels of vertical pointer delta
+  const ROTATION_COOLDOWN_MS = 350        // matches CSS transition duration
+
+  // Resolve initial day from URL or time-based default. Runs once per
+  // tenant-time/days resolution.
   const [initialAlignDone, setInitialAlignDone] = useState(false)
   useEffect(() => {
     if (viewMode !== "single") return
@@ -300,47 +324,147 @@ export default function DispatchMonitorPage() {
       targetIdx = pickDefaultDayIndex(tenantTime.local_hour)
     }
     setActiveDayIndex(targetIdx)
-    // Scroll the target day into view on initial mount. requestAnimation-
-    // Frame so the pane refs are populated.
-    requestAnimationFrame(() => {
-      const el = dayPaneRefs.current[targetIdx]
-      if (el) el.scrollIntoView({ block: "start", behavior: "instant" as ScrollBehavior })
-      setInitialAlignDone(true)
-    })
+    setInitialAlignDone(true)
   }, [viewMode, tenantTime, days, urlDay, initialAlignDone])
 
-  // IntersectionObserver tracks which single-day pane is active.
-  // Updates URL ?day= so refresh preserves the view and Cmd+K "go to
-  // tomorrow" can navigate via the URL. Skipped in multi-day mode.
+  // Rotation helper — single entry point that every input path (wheel,
+  // touch, keyboard, dot click, prev/next button, Cmd+K) funnels
+  // through. Handles bounds, URL sync, cooldown stamping. Changing
+  // activeDayIndex drives the CSS transition via transform recompute.
+  const advanceTo = useCallback(
+    (idx: number) => {
+      if (idx < 0 || idx >= days.length) return
+      if (idx === activeDayIndex) return
+      lastRotationAtRef.current = Date.now()
+      setActiveDayIndex(idx)
+      const dateStr = days[idx]
+      if (dateStr && dateStr !== searchParams.get("day")) {
+        const sp = new URLSearchParams(searchParams)
+        sp.set("day", dateStr)
+        setSearchParams(sp, { replace: true })
+      }
+    },
+    [activeDayIndex, days, searchParams, setSearchParams],
+  )
+
+  // Wheel gesture → day rotation. Non-passive listener (React onWheel
+  // is passive by default; preventDefault would be a no-op). Only
+  // consumes vertical wheel; horizontal wheel propagates to driver-
+  // lane native overflow-x. Boundary-escalation: if the wheel target
+  // is inside a scrollable child that can still scroll in the wheel
+  // direction, let it scroll and skip rotation — only rotate when
+  // the child is at its boundary (or there's no scrollable child).
   useEffect(() => {
     if (viewMode !== "single") return
-    if (!scrollContainerRef.current) return
-    if (typeof IntersectionObserver === "undefined") return
-    if (days.length === 0) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting && e.intersectionRatio > 0.55) {
-            const idx = Number(
-              (e.target as HTMLElement).dataset.dayIndex ?? -1,
-            )
-            if (idx >= 0) {
-              setActiveDayIndex(idx)
-              const dateStr = days[idx]
-              if (dateStr && dateStr !== searchParams.get("day")) {
-                const sp = new URLSearchParams(searchParams)
-                sp.set("day", dateStr)
-                setSearchParams(sp, { replace: true })
-              }
-            }
-          }
+    const stage = stageRef.current
+    if (!stage) return
+
+    const onWheel = (e: WheelEvent) => {
+      const absY = Math.abs(e.deltaY)
+      const absX = Math.abs(e.deltaX)
+      // Horizontal-dominant wheel — let the driver-lane overflow-x
+      // handle it. Don't preventDefault, don't rotate.
+      if (absX > absY) return
+
+      // Boundary-escalation — if a vertically scrollable ancestor of
+      // the event target can still scroll in the wheel direction,
+      // yield to it (lane scrolls before stage rotates).
+      let el = e.target as Element | null
+      while (el && el !== stage) {
+        const style = window.getComputedStyle(el)
+        const overflowY = style.overflowY
+        if (
+          (overflowY === "auto" || overflowY === "scroll") &&
+          el.scrollHeight > el.clientHeight
+        ) {
+          const atTop = el.scrollTop <= 0
+          const atBottom =
+            el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+          if (e.deltaY < 0 && !atTop) return
+          if (e.deltaY > 0 && !atBottom) return
+          break
         }
-      },
-      { root: scrollContainerRef.current, threshold: [0.55] },
-    )
-    dayPaneRefs.current.forEach((el) => el && observer.observe(el))
-    return () => observer.disconnect()
-  }, [viewMode, days, searchParams, setSearchParams])
+        el = el.parentElement
+      }
+
+      // Vertical wheel on stage with no consuming child — rotate.
+      e.preventDefault()
+
+      // Cooldown — don't rotate again while an animation is in
+      // progress. Absorbs the remainder of a continuous trackpad
+      // gesture so one swipe = one rotation (not 5).
+      const sinceLast = Date.now() - lastRotationAtRef.current
+      if (sinceLast < ROTATION_COOLDOWN_MS) return
+
+      wheelAccumRef.current += e.deltaY
+      if (Math.abs(wheelAccumRef.current) >= WHEEL_THRESHOLD) {
+        const next =
+          wheelAccumRef.current > 0
+            ? activeDayIndex + 1
+            : activeDayIndex - 1
+        advanceTo(next)
+        wheelAccumRef.current = 0
+      }
+
+      // End-of-gesture detector — if wheel stops for 200ms, reset the
+      // accumulator so a later gesture starts fresh.
+      if (wheelEndTimerRef.current !== null) {
+        clearTimeout(wheelEndTimerRef.current)
+      }
+      wheelEndTimerRef.current = window.setTimeout(() => {
+        wheelAccumRef.current = 0
+      }, 200)
+    }
+
+    stage.addEventListener("wheel", onWheel, { passive: false })
+    return () => {
+      stage.removeEventListener("wheel", onWheel)
+      if (wheelEndTimerRef.current !== null) {
+        clearTimeout(wheelEndTimerRef.current)
+      }
+    }
+  }, [viewMode, activeDayIndex, advanceTo])
+
+  // Touch gesture → day rotation. Captures start on pointerdown,
+  // resolves on pointerup: vertical-dominant swipe above threshold
+  // rotates; horizontal-dominant swipe is ignored (driver-lane native
+  // touch scroll handles it).
+  useEffect(() => {
+    if (viewMode !== "single") return
+    const stage = stageRef.current
+    if (!stage) return
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return
+      touchStartRef.current = { x: e.clientX, y: e.clientY }
+    }
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return
+      const start = touchStartRef.current
+      touchStartRef.current = null
+      if (!start) return
+
+      const deltaY = start.y - e.clientY  // positive = swipe up
+      const deltaX = e.clientX - start.x
+
+      if (Math.abs(deltaX) > Math.abs(deltaY)) return
+      if (Math.abs(deltaY) < SWIPE_THRESHOLD) return
+
+      const sinceLast = Date.now() - lastRotationAtRef.current
+      if (sinceLast < ROTATION_COOLDOWN_MS) return
+
+      if (deltaY > 0) advanceTo(activeDayIndex + 1)
+      else advanceTo(activeDayIndex - 1)
+    }
+
+    stage.addEventListener("pointerdown", onPointerDown)
+    window.addEventListener("pointerup", onPointerUp)
+    return () => {
+      stage.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("pointerup", onPointerUp)
+    }
+  }, [viewMode, activeDayIndex, advanceTo])
 
   // ── Actions ──
   const reload = useCallback(() => setRefreshCount((n) => n + 1), [])
@@ -465,18 +589,9 @@ export default function DispatchMonitorPage() {
     [searchParams, setSearchParams],
   )
 
-  // Prev / next day helpers for single mode.
-  const goToDay = useCallback(
-    (idx: number) => {
-      if (idx < 0 || idx >= days.length) return
-      const el = dayPaneRefs.current[idx]
-      if (el) el.scrollIntoView({ block: "start", behavior: "smooth" })
-    },
-    [days.length],
-  )
-
   // Keyboard navigation in single mode — arrow keys + j/k for
-  // dispatchers on keyboards.
+  // dispatchers on keyboards. Funnels through `advanceTo` (same entry
+  // point as wheel/touch/dot clicks).
   useEffect(() => {
     if (viewMode !== "single") return
     const onKey = (e: KeyboardEvent) => {
@@ -492,15 +607,15 @@ export default function DispatchMonitorPage() {
         return
       if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault()
-        goToDay(Math.min(activeDayIndex + 1, days.length - 1))
+        advanceTo(activeDayIndex + 1)
       } else if (e.key === "ArrowUp" || e.key === "k") {
         e.preventDefault()
-        goToDay(Math.max(activeDayIndex - 1, 0))
+        advanceTo(activeDayIndex - 1)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [viewMode, activeDayIndex, days.length, goToDay])
+  }, [viewMode, activeDayIndex, advanceTo])
 
   // ── Render ──────────────────────────────────────────────────────────
   const dispatcherNameById = useMemo(
@@ -622,7 +737,9 @@ export default function DispatchMonitorPage() {
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
           {viewMode === "single" ? (
             <div className="flex items-stretch gap-3">
-              {/* Dots indicator column — left rail, one per day */}
+              {/* Dots indicator column — left rail, one per day.
+                  Clicks route through advanceTo (same entry point as
+                  wheel/touch/keyboard). */}
               <nav
                 aria-label="Day navigation"
                 data-slot="dispatch-monitor-dots"
@@ -630,7 +747,7 @@ export default function DispatchMonitorPage() {
               >
                 <button
                   type="button"
-                  onClick={() => goToDay(activeDayIndex - 1)}
+                  onClick={() => advanceTo(activeDayIndex - 1)}
                   disabled={activeDayIndex === 0}
                   aria-label="Previous day"
                   className={cn(
@@ -649,7 +766,7 @@ export default function DispatchMonitorPage() {
                     role="tab"
                     aria-selected={idx === activeDayIndex}
                     aria-label={`Go to ${labelForOffset(idx)}`}
-                    onClick={() => goToDay(idx)}
+                    onClick={() => advanceTo(idx)}
                     data-slot="dispatch-monitor-day-dot"
                     data-day-index={idx}
                     className={cn(
@@ -663,7 +780,7 @@ export default function DispatchMonitorPage() {
                 ))}
                 <button
                   type="button"
-                  onClick={() => goToDay(activeDayIndex + 1)}
+                  onClick={() => advanceTo(activeDayIndex + 1)}
                   disabled={activeDayIndex >= days.length - 1}
                   aria-label="Next day"
                   className={cn(
@@ -677,22 +794,30 @@ export default function DispatchMonitorPage() {
                 </button>
               </nav>
 
-              {/* Scroll container — each day pane fills the viewport
-                  height so scroll-snap settles on one day at a time
-                  (same CSS technique as Focus StackRail). */}
+              {/* Rotation stage — fixed height, relative-positioned
+                  container holding every day as an absolute-positioned
+                  layer. Active day sits at translateY(0); siblings
+                  sit at translateY(±100%) with opacity 0. Changing
+                  `activeDayIndex` triggers the CSS transition on
+                  every layer simultaneously: prior active slides out,
+                  new active slides in. iOS Smart Stack pattern —
+                  content rotates, page does not scroll.
+
+                  `overflow-hidden` clips the offscreen layers.
+                  Horizontal scroll within a day (driver lanes) works
+                  because each lane container carries its own
+                  `overflow-x-auto`; the stage's overflow clip doesn't
+                  interfere with child scroll regions. */}
               <div
-                ref={scrollContainerRef}
+                ref={stageRef}
                 data-slot="dispatch-monitor-stack"
-                className={cn(
-                  "flex-1 overflow-y-auto",
-                  "scroll-smooth",
-                )}
+                data-active-day-index={activeDayIndex}
+                className="relative flex-1 overflow-hidden touch-pan-x"
                 style={{
-                  // Slightly less than 100vh so the header stays above
-                  // the scroll region. The value matches the p-4/p-6/p-8
-                  // container padding + header height roughly.
+                  // Stage height: tall enough to hold a day's
+                  // full-viewport kanban. Calc leaves room for the
+                  // page header + padding above.
                   height: "calc(100vh - 12rem)",
-                  scrollSnapType: "y mandatory",
                 }}
               >
                 {days.map((dateStr, idx) => {
@@ -706,21 +831,30 @@ export default function DispatchMonitorPage() {
                       : schedule.auto_finalized
                       ? "Auto-finalized"
                       : null
+                  const offset = idx - activeDayIndex
+                  const isActive = offset === 0
                   return (
                     <div
                       key={dateStr}
-                      ref={(el) => {
-                        dayPaneRefs.current[idx] = el
-                      }}
                       data-slot="dispatch-monitor-day-pane"
                       data-day-index={idx}
                       data-day-date={dateStr}
-                      className="mb-4 snap-start"
+                      data-active={isActive ? "true" : "false"}
+                      className={cn(
+                        "absolute inset-0 transition-[transform,opacity]",
+                        "duration-settle ease-settle",
+                      )}
                       style={{
-                        // Match the scroll container's height so each
-                        // pane IS one scroll-snap "page".
-                        minHeight: "100%",
+                        transform: `translateY(${offset * 100}%)`,
+                        opacity: isActive ? 1 : 0,
+                        // Inactive layers don't intercept pointer
+                        // events — only the active day responds to
+                        // clicks, drags, hole-dug toggles, etc.
+                        pointerEvents: isActive ? "auto" : "none",
                       }}
+                      // aria-hidden on inactive layers keeps screen
+                      // readers focused on the active day.
+                      aria-hidden={!isActive}
                     >
                       <MonitorDayColumn
                         dateStr={dateStr}

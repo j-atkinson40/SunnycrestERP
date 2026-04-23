@@ -49,6 +49,7 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
       service_time: "10:00",
       service_type: "graveside",
       vault_type: "Monticello",
+      equipment_type: "Full w/ Placer",
     },
     special_instructions: null,
     ...overrides,
@@ -176,7 +177,7 @@ describe("DeliveryCard — primary text hierarchy (Phase 3.1)", () => {
     expect(line?.textContent).toMatch(/ETA 15:30/)
   })
 
-  it("product line shows vault type · equipment hint", () => {
+  it("product line shows vault type · equipment bundle (Phase 3.2.1)", () => {
     const base = makeDelivery()
     render(
       <Harness>
@@ -185,7 +186,69 @@ describe("DeliveryCard — primary text hierarchy (Phase 3.1)", () => {
     )
     const prod = document.querySelector('[data-slot="dispatch-card-product"]')
     expect(prod?.textContent).toMatch(/Monticello/)
-    expect(prod?.textContent).toMatch(/Graveside setup/)
+    expect(prod?.textContent).toMatch(/Full w\/ Placer/)
+    // Phase 3.2.1 regression guard: the old service_type-derived hints
+    // ("Graveside setup", "Church procession") should NOT appear —
+    // those were mismapped as equipment. Equipment comes from its
+    // own type_config.equipment_type field now.
+    expect(prod?.textContent).not.toMatch(/Graveside setup/)
+    expect(prod?.textContent).not.toMatch(/Church procession/)
+    expect(prod?.textContent).not.toMatch(/FH procession/)
+  })
+
+  it("product line renders vault alone if equipment_type is absent", () => {
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={{
+            ...base,
+            type_config: {
+              ...base.type_config,
+              equipment_type: null,
+            },
+          }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const prod = document.querySelector('[data-slot="dispatch-card-product"]')
+    expect(prod?.textContent).toContain("Monticello")
+    // No separator when one side is absent
+    expect(prod?.textContent).not.toMatch(/ · /)
+  })
+
+  it("service-time line uses service_type as the LOCATION label, not as equipment", () => {
+    // Phase 3.2.1 field-mapping test — service_type='church' yields
+    // "11:00 Church" in the time line (the service LOCATION). It does
+    // NOT show up as equipment on line 4 (equipment is its own field).
+    const base = makeDelivery()
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={{
+            ...base,
+            type_config: {
+              ...base.type_config,
+              service_type: "church",
+              service_time: "11:00",
+              eta: "12:00",
+              equipment_type: "Full Equipment",
+            },
+          }}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const timeLine = document.querySelector(
+      '[data-slot="dispatch-card-timeline"]',
+    )
+    expect(timeLine?.textContent).toMatch(/Church/)
+    const prodLine = document.querySelector(
+      '[data-slot="dispatch-card-product"]',
+    )
+    expect(prodLine?.textContent).toContain("Full Equipment")
+    expect(prodLine?.textContent).not.toMatch(/Church/)
   })
 })
 

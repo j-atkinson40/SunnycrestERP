@@ -85,6 +85,20 @@ export interface DeliveryDTO {
  * Display-field bag rendered on the Monitor card. Populated by the
  * seed / scheduling board's serializer; null-safe everywhere.
  *
+ * Field meanings (Phase 3.2.1 clarification per user feedback):
+ *   - service_type:   where the service HAPPENS — graveside / church
+ *                     / funeral_home / ancillary_* / direct_ship.
+ *                     Drives the service-time line label ("11:00
+ *                     Church · ETA 12:00"). NOT an equipment cue.
+ *   - vault_type:     product name (Monticello, Cameo Rose, Continental
+ *                     Bronze, Triune Copper, Standard, Monarch,
+ *                     Graveliner, Salute, etc). First half of the
+ *                     product+equipment line.
+ *   - equipment_type: equipment bundle name (Full Equipment, Full w/
+ *                     Placer, Device, etc). Second half of the
+ *                     product+equipment line. Distinct field from
+ *                     vault_type; do not conflate with service_type.
+ *
  * Phase 3.1+3.2 additions for icon+tooltip compaction:
  *   - cemetery_section: MapPin icon tooltip (e.g., "Sec 14, Lot 42B")
  *   - driver_note: StickyNote icon tooltip (distinct from
@@ -100,8 +114,9 @@ export interface DeliveryTypeConfig {
   cemetery_section?: string | null
   funeral_home_name?: string | null
   service_time?: string | null
-  service_type?: string | null        // 'graveside' | 'church' | 'funeral_home' | 'ancillary_pickup' | ...
-  vault_type?: string | null
+  service_type?: string | null        // SERVICE LOCATION: 'graveside' | 'church' | 'funeral_home' | 'ancillary_pickup' | ...
+  vault_type?: string | null          // PRODUCT: vault product name
+  equipment_type?: string | null      // EQUIPMENT BUNDLE: 'Full Equipment' | 'Full w/ Placer' | 'Device' | ...
   eta?: string | null
   driver_note?: string | null
   chat_activity_count?: number | null

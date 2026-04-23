@@ -125,6 +125,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Monticello", "service_type": "graveside",
         "hole_dug": "yes", "scheduling_type": "kanban",
         "cemetery_section": "Sec 14, Lot 42B",
+        "equipment_type": "Full w/ Placer",
     },
     {
         "day_offset": 0, "time": "11:00", "driver_idx": 1,
@@ -133,6 +134,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Cameo Rose", "service_type": "church",
         "hole_dug": "yes", "scheduling_type": "kanban",
         "cemetery_section": "Sec 7, Lot 108",
+        "equipment_type": "Full Equipment",
         "eta": "12:15",
         "driver_note": "FH said procession may run long",
     },
@@ -143,6 +145,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Continental Bronze", "service_type": "graveside",
         "hole_dug": "yes", "scheduling_type": "kanban",
         "cemetery_section": "Sec 3, Lot 12",
+        "equipment_type": "Full w/ Placer",
         "chat_activity_count": 2,
     },
     {
@@ -152,6 +155,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Standard", "service_type": "funeral_home",
         "hole_dug": "yes", "scheduling_type": "kanban",
         "cemetery_section": "Sec 22, Lot 5",
+        "equipment_type": "Device",
         "eta": "15:30",
     },
     {
@@ -161,6 +165,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Triune Copper", "service_type": "church",
         "hole_dug": "yes", "scheduling_type": "kanban",
         "cemetery_section": "Sec 3, Lot 77",
+        "equipment_type": "Full w/ Placer",
         "eta": "12:10",
     },
 
@@ -172,6 +177,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Monticello", "service_type": "graveside",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 14, Lot 51",
+        "equipment_type": "Full Equipment",
     },
     {
         "day_offset": 1, "time": "11:00", "driver_idx": 1,
@@ -180,6 +186,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Cameo Rose", "service_type": "church",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 7, Lot 211",
+        "equipment_type": "Full w/ Placer",
         "eta": "12:00",
         "chat_activity_count": 1,
     },
@@ -190,6 +197,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Standard", "service_type": "graveside",
         "hole_dug": "no", "scheduling_type": "kanban",
         "cemetery_section": "Sec 9, Lot 33",
+        "equipment_type": "Full Equipment",
         "driver_note": "Call before arrival — gate closes 2pm",
     },
     {
@@ -199,6 +207,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Continental Bronze", "service_type": "graveside",
         "hole_dug": "yes", "scheduling_type": "kanban",
         "cemetery_section": "Sec 3, Lot 88",
+        "equipment_type": "Full w/ Placer",
     },
     {
         "day_offset": 1, "time": "15:00", "driver_idx": None,  # unassigned
@@ -207,6 +216,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Triune Copper", "service_type": "funeral_home",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 22, Lot 14",
+        "equipment_type": "Full Equipment",
         "eta": "16:15",
     },
     {
@@ -216,6 +226,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Standard", "service_type": "church",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 2, Lot 119",
+        "equipment_type": "Device",
         "eta": "17:00",
     },
 
@@ -227,6 +238,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Cameo Rose", "service_type": "graveside",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 7, Lot 309",
+        "equipment_type": "Full w/ Placer",
     },
     {
         "day_offset": 2, "time": "11:00", "driver_idx": None,
@@ -235,6 +247,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Standard", "service_type": "graveside",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 3, Lot 141",
+        "equipment_type": "Full Equipment",
     },
     {
         "day_offset": 2, "time": "13:00", "driver_idx": 2,
@@ -243,6 +256,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Monticello", "service_type": "church",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 11, Lot 67",
+        "equipment_type": "Full w/ Placer",
         "eta": "14:15",
     },
     {
@@ -252,6 +266,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Standard", "service_type": "graveside",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 3, Lot 202",
+        "equipment_type": "Device",
     },
 
     # ── THREE DAYS OUT — 2 deliveries, all unassigned ──
@@ -262,6 +277,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Standard", "service_type": "graveside",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 22, Lot 71",
+        "equipment_type": "Full Equipment",
     },
     {
         "day_offset": 3, "time": "13:00", "driver_idx": None,
@@ -270,6 +286,7 @@ DEMO_DELIVERIES = [
         "vault_type": "Cameo Rose", "service_type": "graveside",
         "hole_dug": "unknown", "scheduling_type": "kanban",
         "cemetery_section": "Sec 2, Lot 40",
+        "equipment_type": "Full w/ Placer",
     },
 
     # ── ANCILLARY — 3 pickups/drops across window ──
@@ -574,6 +591,16 @@ def _create_delivery(
     # (→ MessageCircle icon tooltip with unread-pill badge), eta
     # (→ inline "ETA 12:00" in the primary service-time line for
     # church/funeral_home services).
+    #
+    # Phase 3.2.1 semantics correction:
+    #   - service_type  = SERVICE LOCATION (graveside/church/funeral_
+    #                     home/ancillary_*). Drives the time-line
+    #                     label on the card. NOT equipment.
+    #   - vault_type    = PRODUCT name (Monticello, Cameo Rose, etc).
+    #   - equipment_type = EQUIPMENT BUNDLE (Full Equipment, Full w/
+    #                     Placer, Device, etc). Distinct field;
+    #                     previously confused with service_type-
+    #                     derived hint ("Graveside setup" etc).
     type_config = {
         "family_name": cfg["family"],
         "cemetery_name": cem.name if cem else None,
@@ -583,6 +610,7 @@ def _create_delivery(
         "service_time": service_time_display,
         "service_type": cfg["service_type"],
         "vault_type": cfg["vault_type"],
+        "equipment_type": cfg.get("equipment_type"),
         "eta": cfg.get("eta"),
         "driver_note": cfg.get("driver_note"),
         "chat_activity_count": cfg.get("chat_activity_count", 0),

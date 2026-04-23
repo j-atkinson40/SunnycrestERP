@@ -91,29 +91,18 @@ export function nextHoleDugStatus(curr: HoleDugStatus): HoleDugStatus {
 }
 
 
-/** Equipment / context hint derived from service_type. This becomes
- *  the small secondary descriptor next to the vault type. It's NOT a
- *  color cue (the tints were removed) — it's text that tells the
- *  dispatcher "what kind of setup is this". */
-function equipmentHintForServiceType(t: string | null | undefined): string | null {
-  switch (t) {
-    case "graveside":     return "Graveside setup"
-    case "church":        return "Church procession"
-    case "funeral_home":  return "FH procession"
-    case "drop-off":
-    case "drop_off":      return "Drop-off"
-    case "ancillary_pickup": return "Ancillary pickup"
-    case "ancillary_drop":   return "Ancillary drop"
-    case "direct_ship":      return "Direct ship"
-    default: return t ? t.replace(/_/g, " ") : null
-  }
-}
-
-
-/** Short inline label for the service-time line. Graveside omits the
- *  label (time alone implies graveside). Church / FH show the
- *  meeting-point label because the driver needs to know where service
- *  starts. Ancillary / direct_ship fall back to the hint text. */
+/** Short inline label for the service-time line — the SERVICE
+ *  LOCATION (where the service takes place, derived from
+ *  `type_config.service_type`). Not to be confused with equipment
+ *  (that's `type_config.equipment_type`, a separate field).
+ *
+ *  - Graveside: service happens at the cemetery — no meeting point
+ *    to label differently.
+ *  - Church / Funeral Home: service starts at a different location;
+ *    driver needs to know where.
+ *  - Ancillary / direct_ship: not kanban deliveries; no service-time
+ *    line rendered (handled by the `timeLine` being empty in the
+ *    card render). */
 function serviceTimeLocationLabel(t: string | null | undefined): string | null {
   switch (t) {
     case "graveside":     return "Graveside"
@@ -143,6 +132,7 @@ export function DeliveryCard({
   const time = (tc.service_time as string | undefined) ?? null
   const eta = (tc.eta as string | undefined) ?? null
   const vaultType = (tc.vault_type as string | undefined) ?? null
+  const equipmentType = (tc.equipment_type as string | undefined) ?? null
   const serviceType = (tc.service_type as string | undefined) ?? null
   const driverNote = (tc.driver_note as string | undefined) ?? ""
   const chatCount =
@@ -170,8 +160,6 @@ export function DeliveryCard({
   if (timeLocLabel) timeLineParts.push(timeLocLabel)
   const timeLine = timeLineParts.join(" ")
   const showEta = Boolean(eta) && serviceType !== "graveside"
-
-  const equipmentHint = equipmentHintForServiceType(serviceType)
 
   return (
     <div
@@ -265,15 +253,22 @@ export function DeliveryCard({
           </div>
         )}
 
-        {/* Line 4 — vault type · equipment hint (caption, muted) */}
-        {(vaultType || equipmentHint) && (
+        {/* Line 4 — Product · Equipment bundle (caption, muted).
+            Product = vault_type (Monticello / Graveliner / Salute /
+            etc). Equipment = equipment_type bundle name (Full
+            Equipment / Full w/ Placer / Device / etc). Distinct
+            fields; the "Church procession" / "Graveside setup"
+            descriptors were service_type hints mismapped as
+            equipment in Phase 3.1 — service_type is the service
+            LOCATION and lives in line 3 only. */}
+        {(vaultType || equipmentType) && (
           <div
             className="mt-0.5 truncate text-caption text-content-muted"
             data-slot="dispatch-card-product"
           >
             {vaultType && <span>{vaultType}</span>}
-            {vaultType && equipmentHint && <span>{" · "}</span>}
-            {equipmentHint && <span>{equipmentHint}</span>}
+            {vaultType && equipmentType && <span>{" · "}</span>}
+            {equipmentType && <span>{equipmentType}</span>}
           </div>
         )}
       </button>
