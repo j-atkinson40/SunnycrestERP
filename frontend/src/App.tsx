@@ -28,6 +28,7 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import FocusTestPage from "@/pages/dev/focus-test";
+import DispatchMonitorPage from "@/pages/dispatch/monitor";
 import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
 import CompanyMigrationReviewPage from "@/pages/admin/company-migration-review";
@@ -493,6 +494,23 @@ export default function App() {
                     path="/dev/focus-test"
                     element={<FocusTestPage />}
                   />
+
+                  {/* Phase B Session 1 — Dispatch Monitor. Reachable
+                      via direct URL + Cmd+K; not registered as a
+                      Space per SPACES_PLAN Option 1 (composition
+                      default for Home Pulse, landing here until
+                      Phase D Pulse engine ships). Gated on
+                      `delivery.view`. */}
+                  <Route
+                    element={
+                      <ProtectedRoute requiredPermission="delivery.view" />
+                    }
+                  >
+                    <Route
+                      path="/dispatch/monitor"
+                      element={<DispatchMonitorPage />}
+                    />
+                  </Route>
 
                   {/* User management — requires users.view permission */}
                   <Route

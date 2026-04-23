@@ -21,8 +21,8 @@ Endpoints:
 
 from __future__ import annotations
 
-from datetime import date
-from typing import Literal
+from datetime import date, timedelta
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_permission
 from app.database import get_db
 from app.models.delivery import Delivery
+from app.models.driver import Driver
 from app.models.user import User
 from app.services import delivery_schedule_service as schedule_service
 
@@ -304,3 +305,166 @@ def update_hole_dug_status(
             if delivery.requested_date else None
         ),
     )
+
+
+# ── Monitor-purpose delivery + driver reads ──────────────────────────
+#
+# Added alongside the state-machine endpoints because the legacy
+# `/delivery/deliveries` list endpoint's DeliveryListItem shape
+# doesn't carry `type_config` or `hole_dug_status`, and the Monitor
+# card needs both. Purpose-built response keeps the dispatch router
+# self-contained + leaves the existing /delivery surface untouched.
+
+
+class MonitorDeliveryDTO(BaseModel):
+    """Delivery shape for the Monitor card. Carries the display
+    fields from `type_config` + the scheduling + quick-edit state
+    the card renders."""
+    id: str
+    order_id: str | None = None
+    customer_id: str | None = None
+    delivery_type: str
+    status: str
+    priority: str
+    requested_date: str | None = None
+    scheduled_at: str | None = None
+    scheduling_type: str | None = None
+    ancillary_fulfillment_status: str | None = None
+    direct_ship_status: str | None = None
+    assigned_driver_id: str | None = None
+    hole_dug_status: str | None = None
+    type_config: dict[str, Any] | None = None
+    special_instructions: str | None = None
+
+
+class MonitorDriverDTO(BaseModel):
+    """Driver shape for the Monitor lanes + quick-edit assign picker."""
+    id: str
+    license_number: str | None = None
+    license_class: str | None = None
+    active: bool
+    display_name: str | None = None
+
+
+@router.get(
+    "/deliveries",
+    response_model=list[MonitorDeliveryDTO],
+    dependencies=[Depends(require_permission("delivery.view"))],
+)
+def list_monitor_deliveries(
+    start: date = Query(..., description="Inclusive start date"),
+    end: date = Query(..., description="Inclusive end date"),
+    scheduling_type: Literal["kanban", "ancillary", "direct_ship"] | None = Query(
+        None,
+        description="Filter by scheduling_type. Null = all three.",
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[MonitorDeliveryDTO]:
+    """Monitor delivery read. Returns deliveries within the date range
+    with full display context. Date range capped at 31 days.
+
+    Tenant-scoped via current_user.company_id. No cross-tenant leakage
+    possible — the filter is unconditional.
+    """
+    if end < start:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="end must be >= start",
+        )
+    if (end - start).days > 31:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Range capped at 31 days",
+        )
+
+    q = db.query(Delivery).filter(
+        Delivery.company_id == current_user.company_id,
+        Delivery.requested_date >= start,
+        Delivery.requested_date <= end,
+    )
+    if scheduling_type is not None:
+        q = q.filter(Delivery.scheduling_type == scheduling_type)
+
+    rows = q.order_by(
+        Delivery.requested_date.asc(),
+        Delivery.scheduled_at.asc().nulls_last(),
+    ).all()
+
+    return [
+        MonitorDeliveryDTO(
+            id=r.id,
+            order_id=r.order_id,
+            customer_id=r.customer_id,
+            delivery_type=r.delivery_type,
+            status=r.status,
+            priority=r.priority,
+            requested_date=r.requested_date.isoformat() if r.requested_date else None,
+            scheduled_at=r.scheduled_at.isoformat() if r.scheduled_at else None,
+            scheduling_type=r.scheduling_type,
+            ancillary_fulfillment_status=r.ancillary_fulfillment_status,
+            direct_ship_status=r.direct_ship_status,
+            assigned_driver_id=r.assigned_driver_id,
+            hole_dug_status=r.hole_dug_status,
+            type_config=r.type_config,
+            special_instructions=r.special_instructions,
+        )
+        for r in rows
+    ]
+
+
+@router.get(
+    "/drivers",
+    response_model=list[MonitorDriverDTO],
+    dependencies=[Depends(require_permission("delivery.view"))],
+)
+def list_monitor_drivers(
+    active_only: bool = Query(True, description="Hide inactive drivers"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[MonitorDriverDTO]:
+    """Driver roster for Monitor lanes + quick-edit picker. Resolves
+    display_name from either employee_id → users OR portal_user_id →
+    portal_users (matching the Phase 8e.2 dual-identity pattern).
+    """
+    q = db.query(Driver).filter(Driver.company_id == current_user.company_id)
+    if active_only:
+        q = q.filter(Driver.active.is_(True))
+    drivers = q.all()
+
+    # Name resolution — two-lookup pattern for dual identity.
+    out: list[MonitorDriverDTO] = []
+    from app.models.user import User as _User
+
+    for d in drivers:
+        display_name = None
+        if d.employee_id:
+            emp = db.query(_User).filter(_User.id == d.employee_id).first()
+            if emp:
+                display_name = (
+                    f"{emp.first_name or ''} {emp.last_name or ''}".strip() or None
+                )
+        if display_name is None and d.portal_user_id:
+            # PortalUser is the new identity path (Phase 8e.2). Attempt
+            # to resolve; fall through gracefully if unavailable.
+            try:
+                from app.models.portal_user import PortalUser  # noqa
+                pu = db.query(PortalUser).filter(
+                    PortalUser.id == d.portal_user_id
+                ).first()
+                if pu:
+                    display_name = (
+                        f"{pu.first_name or ''} {pu.last_name or ''}".strip() or None
+                    )
+            except Exception:
+                pass
+
+        out.append(MonitorDriverDTO(
+            id=d.id,
+            license_number=d.license_number,
+            license_class=d.license_class,
+            active=d.active,
+            display_name=display_name,
+        ))
+
+    return out

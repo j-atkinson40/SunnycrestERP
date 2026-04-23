@@ -623,4 +623,36 @@ export const manufacturingActions: ActionRegistryEntry[] = [
     vertical: "manufacturing",
     route: "/agents",
   },
+
+  // ── Dispatch (Phase B Session 1) ──────────────────────────
+  // Monitor lives as a standalone route pre-Phase-D. NOT a Space per
+  // SPACES_PLAN Option 1. Cmd+K discovery via multiple aliases since
+  // dispatchers ask for it several ways ("show today", "tomorrow's
+  // schedule", "dispatch monitor"). Permission-gated on delivery.view
+  // so dispatchers + admins + office see it; drivers do not (they're
+  // on portal UX).
+  {
+    id: "nav_dispatch_monitor",
+    title: "Dispatch monitor",
+    subtitle: "Three-day schedule view",
+    icon: "calendar-clock",
+    kind: "navigate",
+    keywords: [
+      "dispatch monitor",
+      "dispatch",
+      "today's schedule",
+      "show today",
+      "show tomorrow",
+      "show schedule",
+      "tomorrows schedule",
+      "tomorrow schedule",
+      "two days out",
+      "schedule monitor",
+      "week view",
+    ],
+    roles: ["admin", "dispatcher", "office"],
+    vertical: "manufacturing",
+    permission: "delivery.view",
+    route: "/dispatch/monitor",
+  },
 ];
