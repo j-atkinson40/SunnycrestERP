@@ -94,7 +94,15 @@ describe("Canvas", () => {
 })
 
 
-describe("Canvas — Session 3.7 tier dispatch", () => {
+describe("Canvas — Session 3.8 tier dispatch via crossfade", () => {
+  // Session 3.8 architectural shift: all three tier renderers always
+  // mount in the DOM; visibility switches via `data-active` on each
+  // `[data-tier-renderer]` wrapper with opacity + pointer-events
+  // transitions. Tests below assert `data-active="true"` on the
+  // expected renderer, not presence/absence (which is unreliable now
+  // — everything is always present). The overall Canvas continues to
+  // carry `data-focus-tier` for tier-at-a-glance introspection.
+
   function setViewport(width: number, height: number) {
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -107,75 +115,120 @@ describe("Canvas — Session 3.7 tier dispatch", () => {
     window.dispatchEvent(new Event("resize"))
   }
 
-  it("renders canvas tier widgets at ultra-wide viewport (3840×2160)", async () => {
-    // Session 3.7 post-verification fix — tier detection is now
-    // content-aware. Seeded Kanban fixture has 3 widgets at 320/280
-    // pixel widths, which don't fit in canvas reserved space until
-    // the viewport is generous enough (reserved ≥ widget+16 per side).
-    // 3840×2160 (4K) gives reservedLeft/Right=1220 + reservedTop/
-    // Bottom=630 — seeded widgets fit comfortably → canvas tier.
+  function activeTierRenderer(): string | null {
+    const el = document.querySelector(
+      '[data-tier-renderer][data-active="true"]',
+    )
+    return el?.getAttribute("data-tier-renderer") ?? null
+  }
+
+  it("all three tier renderers mount simultaneously (crossfade contract)", async () => {
+    // Session 3.8 — renderers don't conditionally mount/unmount;
+    // the crossfade is driven by `data-active`, so all three wrapper
+    // divs exist in the DOM at all times.
+    setViewport(1920, 1080)
+    try {
+      render(<Harness />)
+      await new Promise((r) => setTimeout(r, 50))
+      const renderers = document.querySelectorAll('[data-tier-renderer]')
+      expect(renderers).toHaveLength(3)
+      expect(
+        document.querySelector('[data-tier-renderer="canvas"]'),
+      ).toBeInTheDocument()
+      expect(
+        document.querySelector('[data-tier-renderer="stack"]'),
+      ).toBeInTheDocument()
+      expect(
+        document.querySelector('[data-tier-renderer="icon"]'),
+      ).toBeInTheDocument()
+    } finally {
+      setViewport(1440, 900)
+    }
+  })
+
+  it("canvas tier active at ultra-wide viewport (3840×2160)", async () => {
     setViewport(3840, 2160)
     try {
       render(<Harness />)
       await new Promise((r) => setTimeout(r, 50))
       const canvas = document.querySelector('[data-slot="focus-canvas"]')
       expect(canvas).toHaveAttribute("data-focus-tier", "canvas")
-      // Canvas tier renders WidgetChrome wrappers (drag/resize).
+      expect(activeTierRenderer()).toBe("canvas")
+      // The stack + icon renderer wrappers are mounted but inactive
+      // (opacity 0, pointer-events none). `data-active="false"`.
+      expect(
+        document
+          .querySelector('[data-tier-renderer="stack"]')
+          ?.getAttribute("data-active"),
+      ).toBe("false")
+      expect(
+        document
+          .querySelector('[data-tier-renderer="icon"]')
+          ?.getAttribute("data-active"),
+      ).toBe("false")
+      // Canvas widgets still render inside their (active) wrapper.
       expect(
         document.querySelector('[data-slot="focus-widget-chrome"]'),
       ).toBeInTheDocument()
-      // Stack rail + icon button are NOT rendered in canvas mode.
-      expect(
-        document.querySelector('[data-slot="focus-stack-rail"]'),
-      ).not.toBeInTheDocument()
-      expect(
-        document.querySelector('[data-slot="focus-icon-button"]'),
-      ).not.toBeInTheDocument()
     } finally {
       setViewport(1440, 900)
     }
   })
 
   it("seeded widgets force stack at 1920×1080 (content-aware transition)", async () => {
-    // Regression guard for the Session 3.7 verification bug — the old
-    // viewport-only `vw < 1000 OR vh < 700` heuristic would have
-    // returned canvas at 1920×1080, which caused the 3 seeded widgets
-    // to render clipped at viewport edges. Content-aware detection
-    // catches reserved-space overflow and picks stack instead.
+    // Regression guard for Session 3.7 verification. Content-aware
+    // canvas↔stack unchanged by 3.8; stack renderer becomes active.
     setViewport(1920, 1080)
     try {
       render(<Harness />)
       await new Promise((r) => setTimeout(r, 50))
       const canvas = document.querySelector('[data-slot="focus-canvas"]')
       expect(canvas).toHaveAttribute("data-focus-tier", "stack")
-      expect(
-        document.querySelector('[data-slot="focus-stack-rail"]'),
-      ).toBeInTheDocument()
-      expect(
-        document.querySelector('[data-slot="focus-widget-chrome"]'),
-      ).not.toBeInTheDocument()
+      expect(activeTierRenderer()).toBe("stack")
     } finally {
       setViewport(1440, 900)
     }
   })
 
-  it("renders stack tier at medium-narrow viewport (900×800)", async () => {
-    setViewport(900, 800)
+  it("stack tier active at 1024×768 (above 928×432 geometric floor)", async () => {
+    // Session 3.8 — stack↔icon is geometric. Floor derived in
+    // stackFitsAlongsideCore = 928w/432h. 1024×768 sits above both;
+    // seeded widgets force canvas fit to fail, so stack takes over.
+    setViewport(1024, 768)
     try {
       render(<Harness />)
       await new Promise((r) => setTimeout(r, 50))
       const canvas = document.querySelector('[data-slot="focus-canvas"]')
       expect(canvas).toHaveAttribute("data-focus-tier", "stack")
-      // Stack rail rendered; canvas widgets + icon NOT.
+      expect(activeTierRenderer()).toBe("stack")
+    } finally {
+      setViewport(1440, 900)
+    }
+  })
+
+  it("icon tier active below stack-fits floor (900×800)", async () => {
+    // Session 3.8 breaking change from Session 3.7 — at 900×800
+    // Session 3.7 returned stack (vw ≥ 700), Session 3.8 correctly
+    // returns icon because stack can't fit alongside a min-sized
+    // core (needs ≥ 928w).
+    setViewport(900, 800)
+    try {
+      render(<Harness />)
+      await new Promise((r) => setTimeout(r, 50))
+      const canvas = document.querySelector('[data-slot="focus-canvas"]')
+      expect(canvas).toHaveAttribute("data-focus-tier", "icon")
+      expect(activeTierRenderer()).toBe("icon")
+      // Icon renderer is active; stack + canvas are mounted but inactive.
       expect(
-        document.querySelector('[data-slot="focus-stack-rail"]'),
-      ).toBeInTheDocument()
+        document
+          .querySelector('[data-tier-renderer="canvas"]')
+          ?.getAttribute("data-active"),
+      ).toBe("false")
       expect(
-        document.querySelector('[data-slot="focus-widget-chrome"]'),
-      ).not.toBeInTheDocument()
-      expect(
-        document.querySelector('[data-slot="focus-icon-button"]'),
-      ).not.toBeInTheDocument()
+        document
+          .querySelector('[data-tier-renderer="stack"]')
+          ?.getAttribute("data-active"),
+      ).toBe("false")
     } finally {
       setViewport(1440, 900)
     }
@@ -188,61 +241,78 @@ describe("Canvas — Session 3.7 tier dispatch", () => {
       await new Promise((r) => setTimeout(r, 50))
       const canvas = document.querySelector('[data-slot="focus-canvas"]')
       expect(canvas).toHaveAttribute("data-focus-tier", "icon")
-      // Icon button rendered (idle state); stack + canvas NOT.
+      expect(activeTierRenderer()).toBe("icon")
+      // IconButton should render inside the active icon wrapper.
       expect(
         document.querySelector('[data-slot="focus-icon-button"]'),
       ).toBeInTheDocument()
-      expect(
-        document.querySelector('[data-slot="focus-stack-rail"]'),
-      ).not.toBeInTheDocument()
-      expect(
-        document.querySelector('[data-slot="focus-widget-chrome"]'),
-      ).not.toBeInTheDocument()
     } finally {
       setViewport(1440, 900)
     }
   })
 
-  it("tier transition preserves widget state (same canonical layout)", async () => {
-    // Start ultra-wide — seeded widgets fit canvas reserved space.
+  it("tier transitions preserve widget state across viewport shifts", async () => {
+    // Ultra-wide — canvas tier, widgets mount in WidgetChrome.
     setViewport(3840, 2160)
     render(<Harness />)
     await new Promise((r) => setTimeout(r, 50))
+    expect(activeTierRenderer()).toBe("canvas")
     expect(
       document.querySelector('[data-widget-id="mock-saved-view-1"]'),
     ).toBeInTheDocument()
 
-    // Transition to stack-forcing viewport — widget still rendered
-    // (via StackRail scroll-snap tile now instead of WidgetChrome).
-    setViewport(900, 800)
+    // Stack-forcing viewport — Session 3.8 shifts stack floor to 928w,
+    // so we use 1024 here (was 900 in Session 3.7, which now drops to
+    // icon). Seeded widgets don't fit canvas → stack active.
+    setViewport(1024, 768)
     await new Promise((r) => setTimeout(r, 50))
+    expect(activeTierRenderer()).toBe("stack")
+    // Widget state preserved — rendered via StackRail tile.
     expect(
       document.querySelector('[data-widget-id="mock-saved-view-1"]'),
     ).toBeInTheDocument()
 
-    // Transition to icon — widget NOT rendered (hidden behind icon
-    // button until sheet is opened).
+    // Icon tier — widget mounts in BottomSheet only when sheet open;
+    // idle icon state doesn't show widget bodies.
     setViewport(390, 844)
     await new Promise((r) => setTimeout(r, 50))
+    expect(activeTierRenderer()).toBe("icon")
     expect(
-      document.querySelector('[data-widget-id="mock-saved-view-1"]'),
-    ).not.toBeInTheDocument()
+      document.querySelector('[data-slot="focus-icon-button"]'),
+    ).toBeInTheDocument()
 
-    // Transition to 1920×1080 (still stack per content-aware detection
-    // with seeded widgets) — widget rendered via StackRail again.
+    // 1920×1080 (still stack with seeded widgets).
     setViewport(1920, 1080)
     await new Promise((r) => setTimeout(r, 50))
+    expect(activeTierRenderer()).toBe("stack")
     expect(
       document.querySelector('[data-widget-id="mock-saved-view-1"]'),
     ).toBeInTheDocument()
 
-    // Back to ultra-wide — canvas tier restored, widget in WidgetChrome.
+    // Back to ultra-wide — canvas restored.
     setViewport(3840, 2160)
     await new Promise((r) => setTimeout(r, 50))
+    expect(activeTierRenderer()).toBe("canvas")
     expect(
       document.querySelector('[data-widget-id="mock-saved-view-1"]'),
     ).toBeInTheDocument()
 
     setViewport(1440, 900)
+  })
+
+  it("tier renderer wrappers carry opacity transition classes", async () => {
+    // Session 3.8 crossfade is token-driven: `transition-opacity
+    // duration-settle ease-settle`. This test is a lightweight
+    // contract check that the wrappers ship the expected Tailwind
+    // class tokens so future refactors don't silently drop the fade.
+    setViewport(1440, 900)
+    render(<Harness />)
+    await new Promise((r) => setTimeout(r, 50))
+    const renderers = document.querySelectorAll('[data-tier-renderer]')
+    renderers.forEach((r) => {
+      expect(r.className).toContain("transition-opacity")
+      expect(r.className).toContain("duration-settle")
+      expect(r.className).toContain("ease-settle")
+    })
   })
 })

@@ -1,6 +1,6 @@
 /**
  * Canvas — tier-dispatching widget region surrounding the anchored
- * Focus core. Phase A Session 3.7.
+ * Focus core. Phase A Session 3.7, continuous cascade Session 3.8.
  *
  * Three responsive tiers:
  *   - canvas: free-form placement (drag/resize, anchor positioning)
@@ -12,11 +12,24 @@
  * transitioning between tiers. `useViewportTier` hook detects tier
  * and re-renders appropriately on window resize.
  *
+ * Session 3.8 crossfade: all three renderers mount simultaneously;
+ * visibility switches via `data-active` attribute + opacity/pointer-
+ * events transitions. A tier change fades the old renderer out as
+ * the new one fades in — simultaneous crossfade, not sequential —
+ * matching the continuous-geometric-cascade model documented in
+ * geometry.ts's `determineTier`. Core size continues to transition
+ * smoothly via Focus.tsx's Popup `transition-[width,height,left,
+ * top]`. Together they deliver macOS-window-resize feel: widgets
+ * flow, stack fades in/out, icon materializes — no discrete mode
+ * switch.
+ *
  * Pointer-events discipline (inherited from Session 3):
  *   - Canvas wrapper has `pointer-events: none` so backdrop clicks
  *     still reach Dialog.Backdrop for dismiss
- *   - Interactive sub-components set `pointer-events: auto` on
- *     themselves
+ *   - Active tier's subtree re-enables pointer-events via
+ *     `data-active=true` styling
+ *   - Inactive tier subtrees keep `pointer-events: none` during fade
+ *     so in-flight gestures can't hit a dimmed renderer
  */
 
 import {
@@ -159,9 +172,32 @@ export function Canvas() {
           />
         )}
 
+        {/* Crossfade contract: all three tier subtrees render
+            always, visibility switches via `data-active`. CSS
+            transitions opacity + pointer-events over `--duration-
+            settle` (token-first per Aesthetic Arc). Token-
+            referenced opacity transition so reduced-motion users
+            inherit the global retrofit in base.css. Inactive
+            subtrees keep `pointer-events: none` so a dimmed widget
+            can't eat a click mid-fade.
+
+            Session 3.8 — simultaneous crossfade. Old + new render
+            together during the fade window, neither discretely
+            replacing the other. Matches macOS window-resize feel
+            rather than "mode switch" feel. */}
+
         {/* CANVAS TIER — free-form widgets at anchor positions. */}
-        {tier === "canvas" &&
-          Object.entries(widgets).map(([id, state]) => (
+        <div
+          data-slot="focus-tier-renderer"
+          data-tier-renderer="canvas"
+          data-active={tier === "canvas" ? "true" : "false"}
+          className={cn(
+            "absolute inset-0 transition-opacity duration-settle ease-settle",
+            "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
+            "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
+          )}
+        >
+          {Object.entries(widgets).map(([id, state]) => (
             <div key={id} className="pointer-events-auto">
               <WidgetChrome
                 widgetId={id as WidgetId}
@@ -174,39 +210,57 @@ export function Canvas() {
               </WidgetChrome>
             </div>
           ))}
+        </div>
 
-        {/* STACK TIER — right-rail Smart Stack. */}
-        {tier === "stack" && (
+        {/* STACK TIER — right-rail Smart Stack + expanded overlay. */}
+        <div
+          data-slot="focus-tier-renderer"
+          data-tier-renderer="stack"
+          data-active={tier === "stack" ? "true" : "false"}
+          className={cn(
+            "absolute inset-0 transition-opacity duration-settle ease-settle",
+            "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
+            "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
+          )}
+        >
           <StackRail
             widgets={widgets}
             onExpandWidget={(id) => setExpandedWidgetId(id)}
           />
-        )}
+          {expandedWidgetId && widgets[expandedWidgetId] && (
+            <StackExpandedOverlay
+              widgetId={expandedWidgetId}
+              state={widgets[expandedWidgetId]}
+              onDismiss={() => setExpandedWidgetId(null)}
+            />
+          )}
+        </div>
 
-        {/* STACK TIER expanded overlay — rendered above stack when
-            user taps a widget. */}
-        {tier === "stack" && expandedWidgetId && widgets[expandedWidgetId] && (
-          <StackExpandedOverlay
-            widgetId={expandedWidgetId}
-            state={widgets[expandedWidgetId]}
-            onDismiss={() => setExpandedWidgetId(null)}
-          />
-        )}
-
-        {/* ICON TIER — floating button (when closed) or bottom sheet
-            (when open). Mutually exclusive. */}
-        {tier === "icon" && !sheetOpen && (
-          <IconButton
-            widgetCount={Object.keys(widgets).length}
-            onOpen={() => setSheetOpen(true)}
-          />
-        )}
-        {tier === "icon" && sheetOpen && (
-          <BottomSheet
-            widgets={widgets}
-            onDismiss={() => setSheetOpen(false)}
-          />
-        )}
+        {/* ICON TIER — floating button (closed) or bottom sheet (open).
+            Mutually exclusive within the tier. */}
+        <div
+          data-slot="focus-tier-renderer"
+          data-tier-renderer="icon"
+          data-active={tier === "icon" ? "true" : "false"}
+          className={cn(
+            "absolute inset-0 transition-opacity duration-settle ease-settle",
+            "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
+            "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
+          )}
+        >
+          {!sheetOpen && (
+            <IconButton
+              widgetCount={Object.keys(widgets).length}
+              onOpen={() => setSheetOpen(true)}
+            />
+          )}
+          {sheetOpen && (
+            <BottomSheet
+              widgets={widgets}
+              onDismiss={() => setSheetOpen(false)}
+            />
+          )}
+        </div>
       </div>
     </DndContext>
   )

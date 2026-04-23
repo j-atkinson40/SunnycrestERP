@@ -20,6 +20,7 @@ import {
   rectsOverlap,
   resolvePosition,
   snapTo8px,
+  stackFitsAlongsideCore,
   widgetsFitInCanvas,
   type Rect,
 } from "./geometry"
@@ -375,6 +376,18 @@ describe("computeCoreRect — Session 3.7 tier-aware", () => {
     expect(r.height).toBe(768)
   })
 
+  it("stack tier caps at CORE_MAX on ultra-wide viewport (Session 3.8)", () => {
+    // Session 3.8 added CORE_MAX caps to the stack formula so core
+    // doesn't grow unbounded at ultra-wide viewports. At 3840×2160:
+    //   width = min(1400, max(600, 3840-312-16)) = min(1400, 3512) = 1400
+    //   height = min(900, max(400, 2160-32)) = min(900, 2128) = 900
+    const r = computeCoreRect("stack", 3840, 2160)
+    expect(r.width).toBe(1400)
+    expect(r.height).toBe(900)
+    // Centered vertically.
+    expect(r.y).toBe((2160 - 900) / 2)
+  })
+
   it("icon tier fills viewport minus small padding", () => {
     const r = computeCoreRect("icon", 390, 844)
     expect(r.width).toBe(390 - 16)
@@ -522,18 +535,32 @@ describe("widgetsFitInCanvas — Session 3.7 post-verification content check", (
 })
 
 
-describe("determineTier — Session 3.7 content-aware", () => {
-  it("picks icon for narrow viewport regardless of widgets", () => {
+describe("determineTier — Session 3.8 continuous geometric cascade", () => {
+  // Session 3.8 changed the icon-tier gate from the fixed `vw < 700`
+  // pixel threshold to the geometric `stackFitsAlongsideCore` check,
+  // which lands at ~928w/432h (CORE_MIN + rail + margins). Tests
+  // below encode the new geometric boundaries.
+
+  it("picks icon when stack can't fit alongside a min-sized core", () => {
+    // Below the stack-fits floor: canvas & stack both impossible.
     expect(determineTier(699, 844)).toBe("icon")
     expect(determineTier(390, 844)).toBe("icon")
     expect(determineTier(300, 1200)).toBe("icon")
-    // Even with big widgets, icon tier dominates under 700 wide.
+    // Still icon even with widgets — geometric floor wins first.
     expect(determineTier(690, 1200, [widget("top-left", 500, 500)])).toBe("icon")
+    // 900×800 is below the 928-wide stack floor (Session 3.7 would
+    // have chosen stack here; Session 3.8 correctly picks icon).
+    expect(determineTier(900, 800)).toBe("icon")
+    // Just-under the floor — still icon.
+    expect(determineTier(927, 500)).toBe("icon")
+    // Height floor — even at wide viewport, too-short drops to icon.
+    expect(determineTier(1920, 400)).toBe("icon")
   })
 
-  it("empty widgets + any viewport ≥ 700 → canvas (vacuously fits)", () => {
-    expect(determineTier(700, 700)).toBe("canvas")
-    expect(determineTier(900, 800)).toBe("canvas")
+  it("empty widgets above stack-fits floor → canvas (vacuously fits)", () => {
+    // ≥ 928w/432h threshold where stack can fit alongside core.
+    expect(determineTier(928, 432)).toBe("canvas")
+    expect(determineTier(1000, 500)).toBe("canvas")
     expect(determineTier(1440, 900)).toBe("canvas")
     expect(determineTier(1920, 1080)).toBe("canvas")
   })
@@ -565,11 +592,55 @@ describe("determineTier — Session 3.7 content-aware", () => {
     expect(determineTier(1920, 1080, [small])).toBe("canvas")
   })
 
-  it("single oversized widget forces stack regardless of viewport", () => {
+  it("single oversized widget at wide viewport → stack (stack can still fit)", () => {
     const huge = widget("top-left", 5000, 3000)
     expect(determineTier(1920, 1080, [huge])).toBe("stack")
     // Even at 4K.
     expect(determineTier(3840, 2160, [huge])).toBe("stack")
+  })
+
+  it("oversized widget below stack-fits floor → icon (geometric floor wins)", () => {
+    // Stack-floor check happens before widget-fit check, so even
+    // "widgets could theoretically fit canvas" falls to icon if the
+    // viewport can't host a minimum stack.
+    const huge = widget("top-left", 5000, 3000)
+    expect(determineTier(800, 500, [huge])).toBe("icon")
+    expect(determineTier(927, 432, [huge])).toBe("icon")
+  })
+})
+
+
+describe("stackFitsAlongsideCore — Session 3.8 stack↔icon geometric gate", () => {
+  it("fits exactly at the derived floor (928×432)", () => {
+    // Derived: CORE_MIN_WIDTH(600) + STACK_EDGE_MARGIN(16) +
+    // STACK_CORE_GAP(16) + STACK_RAIL_WIDTH(280) + STACK_EDGE_MARGIN(16)
+    // = 928. Height: CORE_MIN_HEIGHT(400) + STACK_EDGE_MARGIN*2(32)
+    // = 432.
+    expect(stackFitsAlongsideCore(928, 432)).toBe(true)
+  })
+
+  it("rejects one-below-floor viewports", () => {
+    expect(stackFitsAlongsideCore(927, 500)).toBe(false)
+    expect(stackFitsAlongsideCore(1000, 431)).toBe(false)
+    expect(stackFitsAlongsideCore(927, 431)).toBe(false)
+  })
+
+  it("accepts above-floor viewports", () => {
+    expect(stackFitsAlongsideCore(1024, 768)).toBe(true)
+    expect(stackFitsAlongsideCore(1440, 900)).toBe(true)
+    expect(stackFitsAlongsideCore(1920, 1080)).toBe(true)
+    expect(stackFitsAlongsideCore(3840, 2160)).toBe(true)
+  })
+
+  it("typical mobile landscape (iPhone Pro Max) fails the floor", () => {
+    // 932×430 is iPhone Pro Max landscape. Width just clears, height
+    // does not (< 432). Correctly drops to icon.
+    expect(stackFitsAlongsideCore(932, 430)).toBe(false)
+  })
+
+  it("typical tablet (iPad mini) passes the floor", () => {
+    // 1024×768 — above both threshold dims.
+    expect(stackFitsAlongsideCore(1024, 768)).toBe(true)
   })
 })
 

@@ -1,5 +1,5 @@
 /**
- * Canvas geometry — Phase A Session 3.5.
+ * Canvas geometry — Phase A Session 3.5, extended Session 3.8.
  *
  * Pure-function utilities for the Focus canvas. Zone-relative
  * (anchor-based) positioning replaces Session 3's absolute-pixel
@@ -29,6 +29,24 @@
  *   2. Apply zone-specific delta (which edges/corners move).
  *   3. Enforce min size + clamp to canvas.
  *   4. Re-project to anchor-offset, preserving original anchor.
+ *
+ * Tier detection (Session 3.8 continuous cascade):
+ *   Layout is continuous. The three render paths (canvas, stack,
+ *   icon) remain but the SWITCH between them happens at geometric
+ *   constraints, not fixed viewport pixel thresholds. Core size is
+ *   a continuous function of viewport within each tier's min/max
+ *   bounds. Transitions between tiers happen exactly when the next
+ *   tier's geometric requirement stops being satisfied:
+ *
+ *     canvas  — widgets fit in reserved margin around core
+ *     stack   — stack rail fits alongside a minimum-sized core
+ *     icon    — neither fits; floating button + bottom-sheet
+ *
+ *   Session 3.7.1 introduced content-aware canvas↔stack detection
+ *   via `widgetsFitInCanvas`. Session 3.8 extends the same principle
+ *   to stack↔icon via `stackFitsAlongsideCore` — replacing the
+ *   Session 3.7 `vw < 700` hard pixel threshold. See the matching
+ *   "Almost But Not Quite" entry in PLATFORM_QUALITY_BAR.md.
  */
 
 import type {
@@ -440,19 +458,15 @@ export function findOpenZone(
 export type FocusTier = "canvas" | "stack" | "icon"
 
 
-/** Tier thresholds.
- *
- *  Icon tier is pure viewport-based: below 700px wide, a usable
- *  canvas + core layout isn't possible regardless of widget content.
- *
- *  Canvas vs. stack is **content-aware** (Session 3.7 post-verification
- *  fix — see `widgetsFitInCanvas` + `determineTier` below). The old
- *  TIER_STACK_MAX_WIDTH / TIER_CANVAS_MIN_HEIGHT viewport-only
- *  thresholds were insufficient — widgets at their canonical size
- *  could extend past reserved canvas margin at "wide enough" viewports
- *  and render clipped. The new contract: if any widget's anchor can't
- *  accommodate its size in canvas reserved space, the whole Focus
- *  transitions to stack where widgets DO fit cleanly. */
+/** Floor constant retained for reference + backward compat. Tier
+ *  detection is now fully geometric (Session 3.8) — both the
+ *  canvas↔stack boundary (content-aware via `widgetsFitInCanvas`,
+ *  Session 3.7.1) and the stack↔icon boundary (via
+ *  `stackFitsAlongsideCore`, Session 3.8) derive from the actual
+ *  geometric requirements of the rendered layout. The derived
+ *  stack-fits floor is ~928px (see `stackFitsAlongsideCore`). This
+ *  constant previously served as a hard `vw < 700 → icon` pixel
+ *  threshold in `determineTier`. */
 export const TIER_ICON_MAX_WIDTH = 700
 
 /** Right-rail stack width in stack mode. Reserved on the right side
@@ -460,7 +474,12 @@ export const TIER_ICON_MAX_WIDTH = 700
 export const STACK_RAIL_WIDTH = 280
 
 /** Core min/max dimensions. Core floors at 600×400 (below this
- *  Kanban + other core modes become unusable) and caps at 1400×900. */
+ *  Kanban + other core modes become unusable) and caps at 1400×900.
+ *  These bounds apply in canvas AND stack tiers (Session 3.8 — stack
+ *  formula now also respects CORE_MAX so core doesn't grow unbounded
+ *  on ultra-wide viewports). Icon tier remains uncapped by design —
+ *  narrow viewports define the mode, and clamping to MIN would force
+ *  horizontal overflow. */
 export const CORE_MIN_WIDTH = 600
 export const CORE_MIN_HEIGHT = 400
 export const CORE_MAX_WIDTH = 1400
@@ -469,6 +488,11 @@ export const CORE_MAX_HEIGHT = 900
 /** Reserved canvas margin around the core in canvas mode — each
  *  side reserves this much for widgets. */
 export const CANVAS_RESERVED_MARGIN = 100
+
+/** Stack tier layout constants. Extracted so `stackFitsAlongsideCore`
+ *  and `computeCoreRect` (stack branch) share the same numbers. */
+export const STACK_EDGE_MARGIN = 16
+export const STACK_CORE_GAP = 16
 
 /** Breathing-room buffer between widget edge and reserved-space edge
  *  used by `widgetsFitInCanvas`. A widget exactly the size of reserved
@@ -530,48 +554,92 @@ export function widgetsFitInCanvas(
 }
 
 
+/** Can a minimum-sized core + stack rail + their margins all fit
+ *  alongside each other at the given viewport?
+ *
+ *  Session 3.8 stack↔icon geometric gate (replaces Session 3.7's
+ *  `vw < TIER_ICON_MAX_WIDTH`). A stack layout needs:
+ *
+ *      core_min_width + left_margin + gap + rail_width + right_margin
+ *
+ *  Below that width, we can't render a usable stack without widget+
+ *  core overlap. It must drop to icon.
+ *
+ *  Height: needs at least CORE_MIN_HEIGHT + 2×STACK_EDGE_MARGIN of
+ *  vertical room to render the rail + core side-by-side. Below
+ *  that, icon tier's viewport-filling overlay handles the compression. */
+export function stackFitsAlongsideCore(
+  viewportWidth: number,
+  viewportHeight: number,
+): boolean {
+  const minStackWidth =
+    CORE_MIN_WIDTH +
+    STACK_EDGE_MARGIN +
+    STACK_CORE_GAP +
+    STACK_RAIL_WIDTH +
+    STACK_EDGE_MARGIN
+  const minStackHeight = CORE_MIN_HEIGHT + STACK_EDGE_MARGIN * 2
+  return viewportWidth >= minStackWidth && viewportHeight >= minStackHeight
+}
+
+
 /** Pick the tier for the current viewport + widget set.
  *
- *  Content-aware (Session 3.7 post-verification fix):
- *    1. vw < 700 → icon (pure viewport — canvas unusable at that width)
- *    2. Else, if any widget doesn't fit canvas reserved space → stack
- *    3. Else → canvas
+ *  Session 3.8 — fully geometric cascade:
+ *    1. If stack can't fit alongside a MIN-sized core → icon (floor)
+ *    2. Else, if widgets fit canvas reserved space → canvas
+ *    3. Else → stack
  *
- *  The old viewport-only heuristic (`vw < 1000 OR vh < 700 → stack`)
- *  under-detected clipping because reserved margins shrink linearly
- *  with viewport but widget sizes stay fixed. Three 320×240 widgets
- *  at 1400×900 get 100px reserved space per side — clipping. New
- *  logic catches that at the fit-check step and transitions to stack
- *  where widgets DO fit.
+ *  Canvas is structurally stricter than stack (needs a wider viewport
+ *  to leave widgets room). So we check the stack floor first: if
+ *  even stack can't fit, canvas won't either, and we fall to icon.
+ *  Above that floor, canvas is preferred when widgets fit; otherwise
+ *  stack takes over. No fixed pixel thresholds anywhere — the three
+ *  render paths (canvas, stack, icon) remain unchanged but the
+ *  SWITCH between them tracks the actual geometric constraints of
+ *  what's being rendered.
  *
- *  Empty widget list is vacuously-fits → canvas at any viewport ≥ 700.
- *  Session 4+ may add an empty-state viewport floor if empty canvas
- *  at cramped viewports proves awkward. */
+ *  The effective stack↔icon floor lands at ~928px wide / 432px tall
+ *  (see `stackFitsAlongsideCore`) instead of Session 3.7's hard
+ *  `vw < 700` pixel threshold.
+ *
+ *  Session 3.7 history: `vw < 700 → icon` was a fixed-viewport gate.
+ *  Session 3.7.1 made canvas↔stack content-aware via `widgetsFitInCanvas`.
+ *  Session 3.8 extends the same principle to stack↔icon via
+ *  `stackFitsAlongsideCore` — user-observed "discrete mode switch"
+ *  feel at intermediate viewports is resolved. */
 export function determineTier(
   viewportWidth: number,
   viewportHeight: number,
   widgets: Record<WidgetId, WidgetState> | WidgetState[] = [],
 ): FocusTier {
-  if (viewportWidth < TIER_ICON_MAX_WIDTH) return "icon"
-  if (!widgetsFitInCanvas(widgets, viewportWidth, viewportHeight)) {
-    return "stack"
-  }
-  return "canvas"
+  if (!stackFitsAlongsideCore(viewportWidth, viewportHeight)) return "icon"
+  if (widgetsFitInCanvas(widgets, viewportWidth, viewportHeight)) return "canvas"
+  return "stack"
 }
 
 
 /** Compute the anchored core's viewport rect per tier.
  *
- *  - canvas: min(MAX, max(MIN, viewport - 2*margin)) — reserves
- *    100px on each side for canvas widgets
- *  - stack: viewport-width minus right-rail; height minus standard
- *    margins. Core expands to take main viewport area
- *  - icon: fills viewport (minus modest padding) — widgets live in
- *    bottom-sheet overlay, not around core
+ *  All three formulas are continuous within their tier — core size
+ *  scales smoothly with viewport between the MIN/MAX bounds. Session
+ *  3.8 extended the stack formula to also respect CORE_MAX so core
+ *  doesn't grow unbounded on ultra-wide viewports and the canvas↔
+ *  stack boundary converges at those widths.
  *
- *  MUST stay in sync with Focus.tsx's Popup inline styling or
- *  findOpenZone's core-forbidden-zone math drifts from the actual
- *  rendered core. */
+ *  - canvas: clamp(MIN, viewport - 2×CANVAS_RESERVED_MARGIN, MAX) —
+ *    reserves 100px on each side for canvas widgets
+ *  - stack: clamp(MIN, viewport - (rail + margins), MAX) — core takes
+ *    remaining viewport width to the left of the rail; capped at MAX
+ *  - icon: fills viewport minus small safe padding — widgets live in
+ *    bottom-sheet overlay, not around core. No MIN clamp here: icon
+ *    mode is for narrow viewports by definition and clamping to MIN
+ *    would force horizontal overflow.
+ *
+ *  MUST stay in sync with Focus.tsx's Popup inline styling and
+ *  `widgetsFitInCanvas`'s implicit use of the canvas branch via
+ *  `computeCoreRect("canvas", vw, vh)` — findOpenZone's core-
+ *  forbidden-zone math drifts from the rendered core otherwise. */
 export function computeCoreRect(
   tier: FocusTier,
   viewportWidth: number,
@@ -595,25 +663,28 @@ export function computeCoreRect(
   }
   if (tier === "stack") {
     // Core occupies viewport minus right-rail minus margins.
-    const rightReserved = STACK_RAIL_WIDTH + 16 // gap between core + rail
-    const width = Math.max(
-      CORE_MIN_WIDTH,
-      viewportWidth - rightReserved - 16 /* left margin */,
+    const rightReserved =
+      STACK_RAIL_WIDTH + STACK_CORE_GAP + STACK_EDGE_MARGIN
+    const width = Math.min(
+      CORE_MAX_WIDTH,
+      Math.max(
+        CORE_MIN_WIDTH,
+        viewportWidth - rightReserved - STACK_EDGE_MARGIN,
+      ),
     )
-    const height = Math.max(
-      CORE_MIN_HEIGHT,
-      viewportHeight - 32 /* top/bottom margin */,
+    const height = Math.min(
+      CORE_MAX_HEIGHT,
+      Math.max(CORE_MIN_HEIGHT, viewportHeight - STACK_EDGE_MARGIN * 2),
     )
     return {
-      x: 16,
+      x: STACK_EDGE_MARGIN,
       y: (viewportHeight - height) / 2,
       width,
       height,
     }
   }
-  // icon: fills viewport (minus small safe padding). No min clamp
-  // here because icon mode is for narrow viewports by definition —
-  // core floors would overflow the viewport visibly.
+  // icon: fills viewport (minus small safe padding). No min/max
+  // clamp — narrow viewports define icon mode.
   return {
     x: 8,
     y: 8,
@@ -631,7 +702,7 @@ export function computeStackRailRect(
 ): Rect {
   const core = computeCoreRect("stack", viewportWidth, viewportHeight)
   return {
-    x: core.x + core.width + 16,
+    x: core.x + core.width + STACK_CORE_GAP,
     y: core.y,
     width: STACK_RAIL_WIDTH,
     height: core.height,

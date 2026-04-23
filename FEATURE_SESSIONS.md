@@ -6,6 +6,60 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 3.8 — Continuous geometric layout cascade
+
+**Date:** 2026-04-22
+**Session type:** Substantive refactor. Architectural correction caught during Session 3.7.2 user verification — the three-tier responsive cascade, while functional, felt like discrete mode switches rather than continuous flow. User insight during verification: "full canvas view down to mobile-sized state...smooth fluid cascade from desktop down." Plan confirmed with concrete design decisions (crossfade timing `--duration-settle`, simultaneous not sequential, widget-position transitions suppressed during drag via existing chrome-active guard, CORE_MAX unchanged).
+**Files touched:** 8 (`geometry.ts` + `.test.ts`, `Canvas.tsx` + `.test.tsx`, `WidgetChrome.tsx`, `CLAUDE.md`, `PLATFORM_QUALITY_BAR.md`, `FEATURE_SESSIONS.md`).
+**LOC:** ~200 changed. Most of Sessions 3, 3.5, 3.6, 3.7, 3.7.1, 3.7.2 work preserved — the three tier components (canvas / stack / icon) survive; only the SWITCHING logic, boundary formulas, and transition pipeline changed.
+**Tests:** 346 passing (336 baseline + 10 net). tsc clean. vite build clean in 4.83s.
+
+### User insight that caught the model error
+
+Session 3.7.2 verification flagged that stack-mode widgets rendered as a plain scrollable list instead of iOS Smart Stack (fixed within 3.7.2 by making tiles fill rail height). But looking at the overall responsive cascade, the user then observed that the three-tier model itself didn't feel continuous — it felt stepped. Dragging the window across a tier boundary produced an instant layout switch: canvas widgets disappeared, stack rail appeared, no crossfade. Widget positions on viewport resize snapped to new anchor-resolved coordinates without transition. The icon-tier gate at `vw < 700` was an arbitrary pixel threshold rather than the actual geometric requirement ("does stack fit alongside core?").
+
+The correct mental model, per user: **layout is continuous**. Three render paths remain (one primitive, architecturally mobile-ready per Session 3.7) but the transitions between them should happen exactly when geometric constraints force them, not at pre-configured breakpoints. The cascade should feel like macOS / iOS window resizing — content flows, tier transitions fade, widgets glide.
+
+### What was already continuous (pre-3.8)
+
+- `computeCoreRect` formulas were already continuous within each tier — `clamp(MIN, viewport - 2×MARGIN, MAX)` for canvas, `viewport - STACK_RAIL - 32` for stack, `viewport - 16` for icon. Core size scaled smoothly with viewport within each tier's bounds.
+- The Focus Popup already had `transition-[width,height,left,top] duration-settle ease-settle`, so core size animated smoothly when tier changed.
+- Canvas↔stack boundary was already geometric via `widgetsFitInCanvas` from Session 3.7.1.
+
+### What was discrete and is now continuous (3.8 changes)
+
+**1. Icon-tier gate — was pixel threshold, now geometric.** Replaced `vw < TIER_ICON_MAX_WIDTH(700)` with new `stackFitsAlongsideCore(vw, vh)`. Derived floor: `CORE_MIN_WIDTH(600) + STACK_EDGE_MARGIN(16) + STACK_CORE_GAP(16) + STACK_RAIL_WIDTH(280) + STACK_EDGE_MARGIN(16) = 928` wide; `CORE_MIN_HEIGHT(400) + 2×STACK_EDGE_MARGIN(16) = 432` tall. Below either — impossible to render a minimum core + rail with margins — tier drops to icon. Above both, canvas/stack gate on widget fit.
+
+`determineTier` check order tightened: `stackFitsAlongsideCore` runs first so canvas (structurally stricter than stack — needs wider viewport to leave widget room) can never return at a viewport where stack itself wouldn't fit. `TIER_ICON_MAX_WIDTH` constant kept for reference but no longer a direct gate.
+
+**2. Renderer transitions — were instant, now simultaneous crossfade.** Canvas.tsx restructured so all three tier subtrees (canvas widgets, stack rail, icon button / bottom sheet) always mount in the DOM inside `[data-tier-renderer]` wrappers with `data-active="true"|"false"`. Visibility switches via `transition-opacity duration-settle ease-settle` + `data-[active=true]:opacity-100 data-[active=false]:opacity-0` + `pointer-events-auto / pointer-events-none` so dimmed renderers can't eat a click during the fade. Simultaneous crossfade (old fades out AS new fades in, not sequential step-replacement) matches macOS window-resize feel rather than stepped mode-switch feel.
+
+Pre-3.8: `{tier === "canvas" && <widgets />} {tier === "stack" && <StackRail />} {tier === "icon" && <IconButton />}` — instant mount/unmount at tier change.
+
+Post-3.8: three `[data-tier-renderer]` wrappers always rendered; opacity + pointer-events switch via `data-active`. Instant mount/unmount replaced with 300ms crossfade.
+
+**3. Widget-position transitions on viewport resize — were snaps, now glides.** WidgetChrome wrapper gains `transition-[left,top,width,height] duration-settle ease-settle` so on viewport resize, widgets glide to their new anchor-resolved positions. Suppressed during drag / resize via `data-[chrome-active=true]:transition-none` (the existing chrome-active guard from Session 3.6). During active gesture, the widget follows the cursor in real time — not through an ease that would lag behind the pointer.
+
+**4. Canvas↔stack boundary matching.** Stack `computeCoreRect` formula gained `CORE_MAX` caps (previously uncapped on the upper bound). At wide viewports, both canvas and stack now cap core at 1400×900 — the boundary converges there with zero core-size pop. At narrower viewports the formulas differ inherently (canvas reserves 100 per side for widgets, stack reserves 280+ for rail), so a ~128px core-width step-change remains unavoidable; the existing Popup `transition-[width,height,left,top]` smooths that over 300ms. New extracted constants `STACK_EDGE_MARGIN = 16` and `STACK_CORE_GAP = 16` are shared between `stackFitsAlongsideCore`, `computeCoreRect`, and `computeStackRailRect` so the numbers can't drift across call sites.
+
+### Why this matters for the quality bar
+
+PLATFORM_QUALITY_BAR.md sets macOS and Apple-native apps as comparison standards. The question this session answered was "would this feel as good as a macOS window resize?" — and pre-3.8, the answer was no. macOS doesn't have discrete "modes" that swap at pixel thresholds; it has a single continuous layout that flows with window dimensions. Content reshapes itself as space is gained or lost. Sidebars narrow, main panes grow, at some compression point a pane collapses into a drawer — but those transitions happen at geometric constraints (can content still fit?), not at configured breakpoints.
+
+Three-tier cascade with discrete thresholds gets you most of the way to "responsive layout"; it doesn't clear the macOS bar. The 3.8 refactor closes that gap: core contracts continuously, tier boundaries move to geometric constraints, renderers crossfade instead of step-replacing, widgets glide on resize. The architectural shape was right from Session 3.7; the transitions between the shapes needed this one more pass to read as continuous.
+
+### Institutional lesson (added to PLATFORM_QUALITY_BAR.md)
+
+Discrete pixel thresholds in responsive UI are a code smell — they hide the underlying geometric constraint behind an arbitrary number. Look for what structurally fits, derive the threshold from that, and let transitions ride on geometric constraints rather than configured breakpoints. Tiers should emerge from "what fits at the current viewport + content," not be enumerated up front.
+
+### Verification
+
+Preview-verified across viewport progression (Chromium, live): canvas at 3840×2160 (core 1400×900, CORE_MAX capped), stack at 1800×1200 (core 1400 — boundary matches canvas at MAX), stack at 1400×900 (core 1072×868), stack at 928×700 (exact derived floor — core 600×668), icon at 927×700 (one px below → correctly drops), icon at 900×800 (was stack in 3.7, now correctly icon under geometric gate). All three `[data-tier-renderer]` wrappers mount simultaneously with `transition-opacity / 0.3s`. WidgetChrome carries `transition: left, top, width, height / 0.3s`, chrome-active=false (no gesture in progress).
+
+Tests: `stackFitsAlongsideCore` exact-floor + below-floor + above-floor + mobile-landscape + iPad-mini + geometric-floor-wins-on-oversized-widget (6 new); `determineTier` tests updated from Session 3.7's `vw ≥ 700` assumption to the new geometric `928×432` floor; 1 new CORE_MAX cap test on stack formula; 3 new Canvas crossfade tests asserting all-three-mounted + active-tier-via-data-active + opacity-transition-token-contract.
+
+---
+
 ## Phase A Session 3.7.1 — Content-aware tier detection (canvas vs. stack)
 
 **Date:** 2026-04-22

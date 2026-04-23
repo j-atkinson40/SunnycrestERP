@@ -22,6 +22,16 @@
  *    resolvePosition(pos, vw, vh). Widget stays in its anchor zone
  *    regardless of viewport changes. Live resize feedback uses the
  *    absolute rect from useResize's liveRect.
+ *
+ * Session 3.8 addition — smooth position transitions on viewport
+ * resize: the wrapper carries `transition-[left,top,width,height]`
+ * with `--duration-settle` so when viewport dims change and the
+ * resolved rect shifts, the widget glides to its new position
+ * instead of snapping. Transition is SUPPRESSED while chrome is
+ * active (`data-chrome-active=true`) — during drag or resize we
+ * want the widget to follow the cursor in real time, not chase it
+ * through a 240ms ease curve. The group-data-* variant in the
+ * class list handles both states without JS.
  */
 
 import { useDraggable } from "@dnd-kit/core"
@@ -162,6 +172,14 @@ export function WidgetChrome({
         "group absolute",
         "rounded-md border border-border-subtle bg-surface-elevated shadow-level-1",
         "transition-shadow duration-quick ease-settle",
+        // Session 3.8 — smooth position transitions on viewport
+        // resize. Suppressed while chrome-active so drag/resize
+        // follow the cursor in real time, not through an ease.
+        // Order: base transition first, then suppress — specificity
+        // isn't the concern (same property), but `transition-none`
+        // wins by being later in the resolved class list.
+        "transition-[left,top,width,height] duration-settle ease-settle",
+        "data-[chrome-active=true]:transition-none",
         chromeActive && "shadow-level-2",
         // Drag cursor on wrapper — widget body is draggable. The
         // chrome sub-elements (dismiss, resize zones) override this
