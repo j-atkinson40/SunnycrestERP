@@ -26,14 +26,18 @@ import {
 } from "./geometry"
 
 
-/** Helper to build a WidgetState for fit-check tests. */
+/** Helper to build a WidgetState for fit-check tests. Session 3.8.1
+ *  made the fit check offset-aware, so offsets default to 0 here but
+ *  tests that need non-zero offsets can pass them explicitly. */
 function widget(
   anchor: WidgetAnchor,
   width: number,
   height: number,
+  offsetX: number = 0,
+  offsetY: number = 0,
 ): WidgetState {
   return {
-    position: { anchor, offsetX: 0, offsetY: 0, width, height },
+    position: { anchor, offsetX, offsetY, width, height },
   }
 }
 
@@ -398,7 +402,7 @@ describe("computeCoreRect — Session 3.7 tier-aware", () => {
 })
 
 
-describe("widgetsFitInCanvas — Session 3.7 post-verification content check", () => {
+describe("widgetsFitInCanvas — Session 3.8.1 anchor-aware fit logic", () => {
   it("empty widget list fits vacuously", () => {
     expect(widgetsFitInCanvas([], 1920, 1080)).toBe(true)
     expect(widgetsFitInCanvas({}, 1920, 1080)).toBe(true)
@@ -414,27 +418,84 @@ describe("widgetsFitInCanvas — Session 3.7 post-verification content check", (
 
   it("small top-left widget fits in typical canvas reserved space", () => {
     // 1920x1080 canvas mode: coreRect width=1400, x=260. reservedLeft=260.
-    // Widget 80+16=96 ≤ 260 horizontally ✓. reservedTop=(1080-880)/2=100.
-    // Widget 80+16=96 ≤ 100 vertically ✓.
+    // Session 3.8.1 OR logic — horizontalClears: 0+80+16=96 ≤ 260 ✓ → fits.
     expect(widgetsFitInCanvas([widget("top-left", 80, 80)], 1920, 1080)).toBe(
       true,
     )
   })
 
   it("seeded 320×240 top-left widget DOES NOT fit at 1920×1080", () => {
-    // reservedLeft=260, width+16=336 > 260 → fails horizontal.
-    // This is the exact clipping case from the Session 3.7 verification.
+    // horizontalClears: 0+320+16=336 > reservedLeft=260 → false
+    // verticalClears: 0+240+16=256 > reservedTop=100 → false
+    // Neither clears → widget would overlap core → stack required.
     expect(
       widgetsFitInCanvas([widget("top-left", 320, 240)], 1920, 1080),
     ).toBe(false)
   })
 
   it("seeded 320×240 top-left widget DOES fit at ultra-wide 2560×1440", () => {
-    // reservedLeft = (2560-1400)/2 = 580. width+16=336 ≤ 580 ✓.
-    // reservedTop = (1440-900)/2 = 270. height+16=256 ≤ 270 ✓.
+    // horizontalClears: 0+320+16=336 ≤ reservedLeft=580 ✓ → fits (OR logic).
     expect(
       widgetsFitInCanvas([widget("top-left", 320, 240)], 2560, 1440),
     ).toBe(true)
+  })
+
+  it("corner widget fits via horizontal band alone (Session 3.8.1 OR logic)", () => {
+    // Issue 1 regression guard: at 2560×1300 reservedTop=(1300-900)/2=200.
+    // A 240-tall top-left widget doesn't fit in reservedTop (256>200), but
+    // it DOES fit in reservedLeft (336 ≤ 580). Pre-3.8.1 this returned
+    // false (AND logic required both); post-3.8.1 returns true (OR logic —
+    // widget sits in left band alongside core, doesn't overlap core).
+    expect(
+      widgetsFitInCanvas([widget("top-left", 320, 240)], 2560, 1300),
+    ).toBe(true)
+  })
+
+  it("corner widget fits via vertical band alone (OR logic, other axis)", () => {
+    // 2000×1500: reservedLeft=(2000-1400)/2=300, reservedTop=(1500-900)/2=300.
+    // Widget 500×200 top-left: horizontalClears 0+500+16=516 > 300 → false.
+    // verticalClears 0+200+16=216 ≤ 300 → true. Widget fits in top band.
+    expect(
+      widgetsFitInCanvas([widget("top-left", 500, 200)], 2000, 1500),
+    ).toBe(true)
+  })
+
+  it("corner widget fails only when BOTH axes overlap core (OR logic)", () => {
+    // 1920×1080: reservedLeft=260, reservedTop=100.
+    // Widget 300×200 top-left: 316 > 260 AND 216 > 100 → fails.
+    expect(
+      widgetsFitInCanvas([widget("top-left", 300, 200)], 1920, 1080),
+    ).toBe(false)
+  })
+
+  it("offset pushes widget toward core — widget that fit at origin fails at inner offset", () => {
+    // 2560×1440, reservedLeft=580, top-left widget 320×240:
+    // At offset (0, 0): horizontalClears 336 ≤ 580 ✓ → fits.
+    // At offset (300, 0): horizontalClears 300+320+16=636 > 580 → fails horiz.
+    //   verticalClears: 0+240+16=256 ≤ 270 ✓ → fits vertically → still fits.
+    // At offset (300, 100): horizontalClears 636 > 580 → fails.
+    //   verticalClears: 100+240+16=356 > 270 → fails → doesn't fit.
+    expect(
+      widgetsFitInCanvas(
+        [widget("top-left", 320, 240, 0, 0)],
+        2560,
+        1440,
+      ),
+    ).toBe(true)
+    expect(
+      widgetsFitInCanvas(
+        [widget("top-left", 320, 240, 300, 0)],
+        2560,
+        1440,
+      ),
+    ).toBe(true)
+    expect(
+      widgetsFitInCanvas(
+        [widget("top-left", 320, 240, 300, 100)],
+        2560,
+        1440,
+      ),
+    ).toBe(false)
   })
 
   it("right-rail widget fit check uses reservedRight (not left)", () => {
@@ -469,18 +530,23 @@ describe("widgetsFitInCanvas — Session 3.7 post-verification content check", (
     ).toBe(false)
   })
 
-  it("corner anchor checks BOTH dimensions (stricter than edge)", () => {
-    // top-right at 2560x1440: reservedRight=580, reservedTop=270.
-    // Width 320 fits horizontally (336 ≤ 580) AND height 240 fits
-    // vertically (256 ≤ 270) → passes.
+  it("corner anchor — Session 3.8.1 OR logic (either dimension clears core)", () => {
+    // top-right at 2560×1440: reservedRight=580, reservedTop=270.
+    // horizontalClears 336 ≤ 580 → fits (vertical also clears but
+    // either one alone is sufficient under OR logic).
     expect(
       widgetsFitInCanvas([widget("top-right", 320, 240)], 2560, 1440),
     ).toBe(true)
-    // At 2560x900: reservedTop=(900-700)/2? wait: core height = min(900, max(400, 900-200))=700, y=(900-700)/2=100. reservedTop=100.
-    // Width 320 fits horizontally (reservedRight=580, 336 ≤ 580) ✓
-    // Height 240 + 16 = 256 > 100 reservedTop → fails vertical
+    // At 2560×900: reservedTop=(900-700)/2=100. horizontalClears
+    // 336 ≤ 580 ✓. Even though vertical fails (256 > 100), OR logic
+    // returns true because the widget can sit in the right band
+    // without overlapping core.
     expect(
       widgetsFitInCanvas([widget("top-right", 320, 240)], 2560, 900),
+    ).toBe(true)
+    // At 1920×900: reservedRight=260, reservedTop=100. Both fail.
+    expect(
+      widgetsFitInCanvas([widget("top-right", 320, 240)], 1920, 900),
     ).toBe(false)
   })
 
@@ -566,7 +632,9 @@ describe("determineTier — Session 3.8 continuous geometric cascade", () => {
   })
 
   it("widgets that don't fit → stack (content-aware transition)", () => {
-    // Exact seeded Kanban fixture; fails canvas fit at "wide" viewports.
+    // Exact seeded Kanban fixture; fails canvas fit at narrow viewports.
+    // Under Session 3.8.1 OR logic, the narrow-viewport cases still
+    // fail because BOTH horizontal AND vertical bands are too small.
     const seeded: WidgetState[] = [
       widget("top-left", 320, 240),
       widget("right-rail", 280, 320),
@@ -584,6 +652,22 @@ describe("determineTier — Session 3.8 continuous geometric cascade", () => {
       widget("bottom-right", 280, 200),
     ]
     expect(determineTier(3840, 2160, seeded)).toBe("canvas")
+  })
+
+  it("wide-but-short viewport with corner widgets → canvas (Session 3.8.1 fix)", () => {
+    // Issue 1 regression guard. Pre-3.8.1 AND-logic fit check
+    // returned "stack" at 2560×1300 because the 240-tall top-left
+    // widget didn't fit reservedTop=200, even though reservedLeft=580
+    // had plenty of room. Post-3.8.1 OR-logic correctly returns
+    // "canvas" — the widget fits in the left band alongside core.
+    const seeded: WidgetState[] = [
+      widget("top-left", 320, 240),
+      widget("right-rail", 280, 320),
+      widget("bottom-right", 280, 200),
+    ]
+    expect(determineTier(2560, 1300, seeded)).toBe("canvas")
+    // And at 2560×1100 (typical 27" monitor viewport minus chrome).
+    expect(determineTier(2560, 1100, seeded)).toBe("canvas")
   })
 
   it("small widgets fit at 1920×1080 → canvas", () => {

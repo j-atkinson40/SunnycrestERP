@@ -94,4 +94,29 @@ describe("Focus component", () => {
     // accidental non-modal configuration.
     expect(dialog).toHaveAttribute("aria-modal", "true");
   });
+
+  it("Canvas renders AFTER Popup in DOM (Session 3.8.1 layering fix)", async () => {
+    // Issues 2 + 3 regression guard. Pre-Session-3.8.1, Canvas was
+    // mounted BEFORE Popup in the Dialog.Portal — both at z-index=
+    // var(--z-focus), DOM order determines paint order, Popup won.
+    // That made the icon button (rendered inside Canvas) invisible
+    // behind the viewport-filling core in icon tier, and made the
+    // stack rail appear "under" the growing core during
+    // stack↔canvas transitions. Swapping DOM order puts accessories
+    // (canvas widgets, stack rail, icon) in front of core — correct
+    // for every tier. This test catches any future re-reordering.
+    render(<Harness openOnMount="test-kanban" />);
+
+    const dialog = await screen.findByRole("dialog");
+    const canvas = document.querySelector('[data-slot="focus-canvas"]');
+    expect(canvas).toBeInTheDocument();
+
+    // Verify compareDocumentPosition: canvas FOLLOWS dialog in DOM.
+    // DOCUMENT_POSITION_FOLLOWING bit (4) set when second arg comes
+    // after first in tree order.
+    expect(
+      dialog.compareDocumentPosition(canvas!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 });

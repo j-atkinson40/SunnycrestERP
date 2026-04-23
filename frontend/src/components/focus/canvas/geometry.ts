@@ -501,23 +501,39 @@ export const STACK_CORE_GAP = 16
 export const WIDGET_FIT_BUFFER = 16
 
 
-/** Does each widget's anchor have enough reserved canvas space to
- *  render the widget at its canonical size without clipping?
+/** Does each widget fit in canvas reserved space without overlapping
+ *  the core at its stored anchor + offset + size?
  *
- *  Content-aware tier-detection primitive (Session 3.7 fix). Per
- *  anchor, the widget must fit in the band it anchors to:
+ *  Content-aware tier-detection primitive. Session 3.7 introduced the
+ *  per-anchor fit check. Session 3.8.1 rewrote it after user
+ *  verification surfaced that the Session 3.7 logic was over-strict
+ *  for CORNER anchors — a 320×240 top-left widget at 2560×1300 was
+ *  being flagged as "doesn't fit" because widget height (256) > top
+ *  reserved band (200), even though the widget CAN fit comfortably
+ *  alongside the core in the left band (reservedLeft = 580 at this
+ *  viewport). Result: stack tier at wide viewports where canvas
+ *  should clearly work.
  *
- *  - `*-left`   → width must fit in reservedLeft  (vw[0..coreRect.x])
- *  - `*-right`  → width must fit in reservedRight (vw[coreRect.x+w..vw])
- *  - `top-*`    → height must fit in reservedTop  (vh[0..coreRect.y])
- *  - `bottom-*` → height must fit in reservedBottom (vh[core.y+h..vh])
+ *  New rules per anchor:
  *
- *  Corner anchors (top-left, top-right, bottom-left, bottom-right)
- *  check BOTH dimensions — the anchor reserves the corner's overlap
- *  region, so the widget must fit in both bands. Rail anchors
- *  (`left-rail`, `right-rail`) are caught by the `includes("left")` /
- *  `includes("right")` branch; `top-center` + `bottom-center` only
- *  check vertical fit since they span horizontally across the core.
+ *  - **Corner anchors** (`top-left`, `top-right`, `bottom-left`,
+ *    `bottom-right`): fit if the widget's stored offset + size avoids
+ *    overlapping core IN EITHER DIMENSION. A top-left widget at
+ *    (offsetX, offsetY) + (width, height) fits if the widget's right
+ *    edge ≤ core.x OR the widget's bottom edge ≤ core.y. The widget
+ *    naturally occupies the L-shaped reserved area around the corner;
+ *    fitting requires avoiding the core rect in AT LEAST ONE axis,
+ *    not both.
+ *  - **Rail anchors** (`left-rail`, `right-rail`): only the horizontal
+ *    band matters — width + offsetX must fit in reservedLeft /
+ *    reservedRight. Height can extend the full viewport vertically.
+ *  - **Center anchors** (`top-center`, `bottom-center`): only the
+ *    vertical band matters — height + offsetY must fit in reservedTop
+ *    / reservedBottom. Width spans full viewport horizontally.
+ *
+ *  All checks use `+ buffer` (default WIDGET_FIT_BUFFER = 16) as
+ *  breathing room so widgets don't touch viewport edge or core edge
+ *  (reads as cramped).
  *
  *  Returns true if ALL widgets fit. Returns true vacuously for empty
  *  widget lists (empty canvas renders fine regardless of viewport).
@@ -540,14 +556,41 @@ export function widgetsFitInCanvas(
   const reservedBottom = viewportHeight - (coreRect.y + coreRect.height)
 
   for (const widget of list) {
-    const { anchor, width, height } = widget.position
+    const { anchor, width, height, offsetX, offsetY } = widget.position
 
-    if (anchor.includes("left") && width + buffer > reservedLeft) return false
-    if (anchor.includes("right") && width + buffer > reservedRight) return false
-    if (anchor.startsWith("top") && height + buffer > reservedTop) return false
-    if (anchor.startsWith("bottom") && height + buffer > reservedBottom) {
-      return false
+    // Rail anchors — horizontal band only.
+    if (anchor === "left-rail") {
+      if (offsetX + width + buffer > reservedLeft) return false
+      continue
     }
+    if (anchor === "right-rail") {
+      if (offsetX + width + buffer > reservedRight) return false
+      continue
+    }
+    // Center anchors — vertical band only.
+    if (anchor === "top-center") {
+      if (offsetY + height + buffer > reservedTop) return false
+      continue
+    }
+    if (anchor === "bottom-center") {
+      if (offsetY + height + buffer > reservedBottom) return false
+      continue
+    }
+    // Corner anchors — fit if widget's rect avoids core in EITHER
+    // dimension. Horizontal band goes up to reservedLeft /
+    // reservedRight; vertical band up to reservedTop / reservedBottom.
+    // Widget's effective extent along each axis = offset + size +
+    // buffer. If either extent ≤ the band, the widget doesn't cross
+    // into core rect on that axis, and rectangles don't overlap.
+    const horizontalBand = anchor.includes("left")
+      ? reservedLeft
+      : reservedRight
+    const verticalBand = anchor.startsWith("top")
+      ? reservedTop
+      : reservedBottom
+    const horizontalClears = offsetX + width + buffer <= horizontalBand
+    const verticalClears = offsetY + height + buffer <= verticalBand
+    if (!horizontalClears && !verticalClears) return false
   }
 
   return true

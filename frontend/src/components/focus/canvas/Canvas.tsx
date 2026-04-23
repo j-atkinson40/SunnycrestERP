@@ -192,7 +192,16 @@ export function Canvas() {
           data-tier-renderer="canvas"
           data-active={tier === "canvas" ? "true" : "false"}
           className={cn(
-            "absolute inset-0 transition-opacity duration-settle ease-settle",
+            "absolute inset-0 transition-opacity ease-settle",
+            // Session 3.8.1 — asymmetric fade duration. The inactive
+            // (fading-out) renderer uses duration-quick so it's
+            // mostly gone before the core has moved appreciably into
+            // its old area. Active (fading-in) renderer uses the
+            // full duration-settle for a deliberate reveal. Without
+            // asymmetry, the fading renderer sat in its old spatial
+            // position long enough for the growing core to visibly
+            // overlap it mid-fade ("stack appeared under core" bug).
+            "data-[active=true]:duration-settle data-[active=false]:duration-quick",
             "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
             "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
           )}
@@ -218,7 +227,16 @@ export function Canvas() {
           data-tier-renderer="stack"
           data-active={tier === "stack" ? "true" : "false"}
           className={cn(
-            "absolute inset-0 transition-opacity duration-settle ease-settle",
+            "absolute inset-0 transition-opacity ease-settle",
+            // Session 3.8.1 — asymmetric fade duration. The inactive
+            // (fading-out) renderer uses duration-quick so it's
+            // mostly gone before the core has moved appreciably into
+            // its old area. Active (fading-in) renderer uses the
+            // full duration-settle for a deliberate reveal. Without
+            // asymmetry, the fading renderer sat in its old spatial
+            // position long enough for the growing core to visibly
+            // overlap it mid-fade ("stack appeared under core" bug).
+            "data-[active=true]:duration-settle data-[active=false]:duration-quick",
             "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
             "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
           )}
@@ -243,7 +261,16 @@ export function Canvas() {
           data-tier-renderer="icon"
           data-active={tier === "icon" ? "true" : "false"}
           className={cn(
-            "absolute inset-0 transition-opacity duration-settle ease-settle",
+            "absolute inset-0 transition-opacity ease-settle",
+            // Session 3.8.1 — asymmetric fade duration. The inactive
+            // (fading-out) renderer uses duration-quick so it's
+            // mostly gone before the core has moved appreciably into
+            // its old area. Active (fading-in) renderer uses the
+            // full duration-settle for a deliberate reveal. Without
+            // asymmetry, the fading renderer sat in its old spatial
+            // position long enough for the growing core to visibly
+            // overlap it mid-fade ("stack appeared under core" bug).
+            "data-[active=true]:duration-settle data-[active=false]:duration-quick",
             "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
             "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
           )}

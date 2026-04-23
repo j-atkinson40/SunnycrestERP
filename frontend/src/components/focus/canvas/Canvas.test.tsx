@@ -300,19 +300,23 @@ describe("Canvas — Session 3.8 tier dispatch via crossfade", () => {
     setViewport(1440, 900)
   })
 
-  it("tier renderer wrappers carry opacity transition classes", async () => {
-    // Session 3.8 crossfade is token-driven: `transition-opacity
-    // duration-settle ease-settle`. This test is a lightweight
-    // contract check that the wrappers ship the expected Tailwind
-    // class tokens so future refactors don't silently drop the fade.
+  it("tier renderer wrappers carry asymmetric fade classes (Session 3.8.1)", () => {
+    // Session 3.8 crossfade is token-driven; Session 3.8.1 made
+    // the fade asymmetric — fading-out renderers use duration-quick
+    // so stale spatial positions don't linger long enough to be
+    // visible behind the growing core. Fading-in renderers still
+    // use duration-settle for a deliberate reveal.
     setViewport(1440, 900)
     render(<Harness />)
-    await new Promise((r) => setTimeout(r, 50))
     const renderers = document.querySelectorAll('[data-tier-renderer]')
     renderers.forEach((r) => {
       expect(r.className).toContain("transition-opacity")
-      expect(r.className).toContain("duration-settle")
       expect(r.className).toContain("ease-settle")
+      // Asymmetric duration tokens — verified as Tailwind class
+      // strings (computed-style check isn't reliable in jsdom for
+      // data-attribute selectors).
+      expect(r.className).toContain("data-[active=true]:duration-settle")
+      expect(r.className).toContain("data-[active=false]:duration-quick")
     })
   })
 })

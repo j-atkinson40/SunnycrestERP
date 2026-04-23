@@ -101,15 +101,6 @@ export function Focus() {
           )}
           style={{ zIndex: "var(--z-focus)" }}
         />
-        {/* Phase A Session 3 — Canvas hosts widgets around the
-            anchored core. Canvas has pointer-events: none on its
-            wrapper so backdrop clicks still reach the Backdrop;
-            widgets re-enable pointer events via WidgetChrome. Canvas
-            is a SIBLING of Dialog.Popup (not parent) — Popup needs
-            its own pointer-events to remain interactive, and
-            @dnd-kit's DndContext reaches useDraggable consumers via
-            React context regardless of DOM position. */}
-        <Canvas />
         <DialogPrimitive.Popup
           data-slot="focus-core"
           data-focus-tier={viewport.tier}
@@ -145,6 +136,36 @@ export function Focus() {
         >
           {currentFocus && <ModeDispatcher focusId={currentFocus.id} />}
         </DialogPrimitive.Popup>
+        {/* Phase A Session 3 — Canvas hosts widgets, stack rail, and
+            icon around the anchored core. Canvas has pointer-events:
+            none on its wrapper so backdrop clicks still reach the
+            Backdrop; active subtrees re-enable pointer-events via the
+            Session 3.8 crossfade wrapper's data-active gating.
+
+            Session 3.8.1 fix — Canvas renders AFTER Popup in DOM so
+            it paints ON TOP of the core. This fixes:
+
+              • Issue 3 — icon button hidden behind core in icon tier
+                (core fills viewport; icon sat behind at same z-index).
+              • Issue 2 — stack rail appearing "under" core during
+                stack↔canvas transitions (fading stack was rendered in
+                stale position; growing core covered it at same z-index,
+                making the fade look like the rail was dropping behind
+                the core instead of fading out cleanly).
+
+            Both were expressions of the same stacking-context bug:
+            Popup was later in DOM than Canvas, so at equal z-index it
+            won paint order. Swapping the DOM order puts accessories
+            (widgets / stack / icon) in front of core — correct for
+            every tier (icon floats over core by design; stack and
+            canvas widgets don't geometrically overlap core in final
+            state but need to paint above during transition).
+
+            Canvas still a SIBLING of Dialog.Popup (not parent) —
+            Popup needs its own pointer-events to remain interactive,
+            and @dnd-kit's DndContext reaches useDraggable consumers
+            via React context regardless of DOM position. */}
+        <Canvas />
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   )
