@@ -23,15 +23,19 @@
  *    regardless of viewport changes. Live resize feedback uses the
  *    absolute rect from useResize's liveRect.
  *
- * Session 3.8 addition — smooth position transitions on viewport
- * resize: the wrapper carries `transition-[left,top,width,height]`
- * with `--duration-settle` so when viewport dims change and the
- * resolved rect shifts, the widget glides to its new position
- * instead of snapping. Transition is SUPPRESSED while chrome is
- * active (`data-chrome-active=true`) — during drag or resize we
- * want the widget to follow the cursor in real time, not chase it
- * through a 240ms ease curve. The group-data-* variant in the
- * class list handles both states without JS.
+ * Session 3.8 initially added `transition-[left,top,width,height]`
+ * so widgets glided on viewport resize. Session 3.8.2 REMOVED those
+ * transitions after profiling showed the classic transition-lag
+ * problem: each viewport resize event set a new target, and CSS
+ * started a fresh 300ms ease to the new target. At 60Hz resize the
+ * widget was always ~100-150ms behind where it should be, reading
+ * as choppy "swimming" during drag. Native window-resize feel (macOS
+ * Finder) is content following viewport per-frame with no transition
+ * layer — layout is driven by the viewport's first-order motion, not
+ * by CSS interpolation on top. We now match that model: widget's
+ * `left/top/width/height` update synchronously with viewport changes.
+ * Tier-boundary visual continuity is carried by the tier renderer's
+ * opacity crossfade, not by core/widget layout transitions.
  */
 
 import { useDraggable } from "@dnd-kit/core"
@@ -172,14 +176,10 @@ export function WidgetChrome({
         "group absolute",
         "rounded-md border border-border-subtle bg-surface-elevated shadow-level-1",
         "transition-shadow duration-quick ease-settle",
-        // Session 3.8 — smooth position transitions on viewport
-        // resize. Suppressed while chrome-active so drag/resize
-        // follow the cursor in real time, not through an ease.
-        // Order: base transition first, then suppress — specificity
-        // isn't the concern (same property), but `transition-none`
-        // wins by being later in the resolved class list.
-        "transition-[left,top,width,height] duration-settle ease-settle",
-        "data-[chrome-active=true]:transition-none",
+        // Session 3.8.2 — NO transition on left/top/width/height.
+        // Position follows viewport per-frame to match native window-
+        // resize feel. See module header for the transition-lag
+        // problem this resolves.
         chromeActive && "shadow-level-2",
         // Drag cursor on wrapper — widget body is draggable. The
         // chrome sub-elements (dismiss, resize zones) override this

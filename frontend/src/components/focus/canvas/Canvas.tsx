@@ -17,11 +17,16 @@
  * events transitions. A tier change fades the old renderer out as
  * the new one fades in — simultaneous crossfade, not sequential —
  * matching the continuous-geometric-cascade model documented in
- * geometry.ts's `determineTier`. Core size continues to transition
- * smoothly via Focus.tsx's Popup `transition-[width,height,left,
- * top]`. Together they deliver macOS-window-resize feel: widgets
- * flow, stack fades in/out, icon materializes — no discrete mode
- * switch.
+ * geometry.ts's `determineTier`.
+ *
+ * Session 3.8.2 — core + widget sizes no longer transition on
+ * left/top/width/height. Session 3.8 tried a CSS transition on those
+ * but user verification surfaced the transition-lag problem (each
+ * resize event starts a new 300ms ease to new target, position
+ * always trails viewport by ~150ms). Layout props now update
+ * synchronously with viewport — macOS-Finder-style per-frame follow.
+ * The tier-renderer opacity crossfade carries visual continuity at
+ * tier boundaries; core/widget size changes instantly underneath.
  *
  * Pointer-events discipline (inherited from Session 3):
  *   - Canvas wrapper has `pointer-events: none` so backdrop clicks

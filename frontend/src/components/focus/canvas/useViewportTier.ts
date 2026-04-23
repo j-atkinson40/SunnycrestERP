@@ -1,6 +1,7 @@
 /**
  * useViewportTier — reactive hook exposing the current viewport
- * dimensions + focus tier. Phase A Session 3.7.
+ * dimensions + focus tier. Phase A Session 3.7, rAF-throttled
+ * Session 3.8.2.
  *
  * One source of truth for tier. Canvas + Focus both consume this so
  * core sizing and widget rendering stay in sync.
@@ -16,6 +17,15 @@
  * widgets), so a widget mutation triggers re-evaluation without the
  * hook needing a useEffect dependency on widgets. Viewport dims still
  * update only via the resize listener to avoid pointless re-renders.
+ *
+ * Session 3.8.2 — resize handler rAF-throttled. Browsers fire resize
+ * events during window drag faster than a render frame can complete
+ * (10+ per frame on some platforms). Without throttling, React would
+ * re-render on every event, stacking work. The rAF-throttle collapses
+ * multiple resize events within a single animation frame into ONE
+ * setDims call — one re-render per frame, matching the browser's
+ * paint cadence. Contributes to the macOS-Finder-style resize feel
+ * alongside the removal of layout-prop CSS transitions.
  */
 
 import { useEffect, useState } from "react"
@@ -43,11 +53,19 @@ export function useViewportTier(
 
   useEffect(() => {
     if (typeof window === "undefined") return
+    let rafId = 0
     const handler = () => {
-      setDims({ width: window.innerWidth, height: window.innerHeight })
+      if (rafId) return
+      rafId = requestAnimationFrame(() => {
+        setDims({ width: window.innerWidth, height: window.innerHeight })
+        rafId = 0
+      })
     }
     window.addEventListener("resize", handler)
-    return () => window.removeEventListener("resize", handler)
+    return () => {
+      window.removeEventListener("resize", handler)
+      if (rafId) cancelAnimationFrame(rafId)
+    }
   }, [])
 
   // Derive tier on every render so widget-set changes retrigger

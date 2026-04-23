@@ -117,14 +117,28 @@ export function Focus() {
             "p-6 overflow-auto",
             // Typography + focus reset
             "font-plex-sans text-body text-content-base outline-none",
-            // Enter / exit animation — matches overlay-family Dialog
+            // Enter / exit KEYFRAME animation — matches overlay-family
+            // Dialog. `animate-in`/`animate-out` use CSS animation,
+            // not transition, so `transition-none` below doesn't
+            // affect them.
             "duration-arrive ease-settle",
             "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
             "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             "data-closed:duration-settle data-closed:ease-gentle",
-            // Smooth tier transition — width/height animate when
-            // tier changes.
-            "transition-[width,height,left,top] duration-settle ease-settle",
+            // Session 3.8.2 — explicit transition-none on layout props.
+            // Without this, `duration-arrive` sets transition-duration
+            // to 0.4s and the default transition-property is `all`, so
+            // left/top/width/height would still transition over 400ms
+            // on every viewport change — the transition-lag problem
+            // that made resize feel choppy. Setting transition-property
+            // to none disables CSS transitions entirely on this element
+            // while leaving the keyframe animate-in/animate-out
+            // animations untouched (they're `animation`, not
+            // `transition`). Core follows viewport synchronously per-
+            // frame, macOS-Finder-style. Tier-boundary visual
+            // continuity is carried by the tier-renderer opacity
+            // crossfade in Canvas.tsx.
+            "transition-none",
           )}
           style={{
             zIndex: "var(--z-focus)",
