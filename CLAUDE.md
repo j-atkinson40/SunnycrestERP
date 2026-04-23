@@ -231,11 +231,12 @@ An overlay appears beneath the input with checkmarks for Deceased name, Date of 
 
 ## 1b. Canonical Platform Specs
 
-Eight markdown documents at repo root are the authoritative specs for Bridgeable. In-tree markdown is the source of truth. Project-knowledge PDFs uploaded to chat interfaces may lag the repo; when they disagree, the repo wins.
+Ten markdown documents at repo root are the authoritative specs for Bridgeable. In-tree markdown is the source of truth. Project-knowledge PDFs uploaded to chat interfaces may lag the repo; when they disagree, the repo wins.
 
 | File | Scope | Read when |
 |---|---|---|
 | [CLAUDE.md](CLAUDE.md) | Build standards, conventions, tech stack, arc logs, Recent Changes | Every session |
+| [PLATFORM_PRODUCT_PRINCIPLES.md](PLATFORM_PRODUCT_PRINCIPLES.md) | Product thinking and design philosophy — one-surface-three-verbs thesis, opinionated-but-configurable, data density over decoration, business-function triage (universal vs vertical), onboarding as first calibration, permission requests as admin triage, user configuration templates, the learning loop, scheduling semantics (ETA, draft/finalized), Fort Miller scaling principle. Established April 23, 2026 during Phase B planning. | Any contested product decision. When the other specs disagree or don't answer, this is the tiebreaker |
 | [BRIDGEABLE_MASTER.md](BRIDGEABLE_MASTER.md) | Master planning reference — vision, strategy, primitives (Spaces / Saved Views / Pins), Command Bar capabilities, Bridgeable Assist, Vision, Knowledge Ingestion, cross-tenant architecture, verticals roadmap. April 19, 2026 state. | Strategy, roadmap, or anything cross-vertical |
 | [PLATFORM_ARCHITECTURE.md](PLATFORM_ARCHITECTURE.md) | Three-primitive architecture (Monitor / Act / Decide), Focus primitive, Pulse surface, entity portal, chip conversation, pause sensor, observe-and-offer, bounded-decision discipline, cross-cutting principles. April 22, 2026. | Any architectural decision touching the new primitives |
 | [PLATFORM_QUALITY_BAR.md](PLATFORM_QUALITY_BAR.md) | Apple-grade quality standard for the entire platform — comparison standards (Freeform / Figma / Notion / Linear / Arc / Claude.ai), 8 quality dimensions (performance, animation, direct manipulation, visual restraint, consistency, affordance, polish, touch-grade detail), test method ("would this feel as good as the Apple equivalent?"), process discipline, evolving examples of "done right" and "almost but not quite." | **Every user-facing commit — this is the bar** |
@@ -247,13 +248,15 @@ Eight markdown documents at repo root are the authoritative specs for Bridgeable
 
 **Read PLATFORM_QUALITY_BAR.md before building any user-facing surface.** Every commit is evaluated against this bar. "Working" is not the bar; "feeling as good as the Apple equivalent" is the bar. Architectural shortcuts that compromise feel should be flagged + escalated, never silently taken. See §10 in PLATFORM_QUALITY_BAR.md for the process discipline.
 
+**Read PLATFORM_PRODUCT_PRINCIPLES.md when a product decision is contested.** The four-doc stack answers distinct questions: PRODUCT_PRINCIPLES = *why was it designed this way*; ARCHITECTURE = *how is it built*; QUALITY_BAR = *how good does it have to feel*; DESIGN_LANGUAGE = *what does it look like*. When those disagree or don't settle a call, PRODUCT_PRINCIPLES is the tiebreaker.
+
 **Scope relationship — BRIDGEABLE_MASTER vs PLATFORM_ARCHITECTURE.** Both are authoritative for their coverage areas, but they represent two layers of architectural thinking. `BRIDGEABLE_MASTER.md` captures the April 19, 2026 consolidation — three primitives of **Spaces / Saved Views / Pins**, the Command Bar with 18 unified capabilities, Bridgeable Assist, Vision, Knowledge Ingestion, Personalization Studio, N-way cross-tenant. `PLATFORM_ARCHITECTURE.md` (April 22, 2026) introduces a later architectural layer: the three primitives reframe as **Monitor (Spaces with composed Pulse) / Act (Command Bar) / Decide (Focus)**, formalizes Focus as the bounded-decision primitive, introduces Pulse as the per-Space composed surface, entity portal as the Command Bar organizing pattern, chip conversation + pause sensor as the multi-step input pattern, and observe-and-offer as the cross-cutting configuration principle.
 
 **Where the two docs disagree, PLATFORM_ARCHITECTURE.md wins** per its own header ("Where this doc and the existing docs disagree, this doc reflects the more recent thinking and supersedes"). Future work will merge the PLATFORM_ARCHITECTURE content back into BRIDGEABLE_MASTER to unify; deferred to post-architecture-migration.
 
 **Per-prompt reading list:**
-- **Scope/planning sessions:** CLAUDE.md + PLATFORM_ARCHITECTURE.md + BRIDGEABLE_MASTER.md + the vertical doc if vertical-specific.
-- **UI-touching prompts:** CLAUDE.md + DESIGN_LANGUAGE.md + PLATFORM_ARCHITECTURE.md (for new primitives) or UI_UX_ARC.md (for shipped primitives from the UI/UX arc).
+- **Scope/planning sessions:** CLAUDE.md + PLATFORM_PRODUCT_PRINCIPLES.md + PLATFORM_ARCHITECTURE.md + BRIDGEABLE_MASTER.md + the vertical doc if vertical-specific.
+- **UI-touching prompts:** CLAUDE.md + DESIGN_LANGUAGE.md + PLATFORM_ARCHITECTURE.md (for new primitives) or UI_UX_ARC.md (for shipped primitives from the UI/UX arc). Add PLATFORM_PRODUCT_PRINCIPLES.md when the prompt touches scan-and-act surfaces, Pulse composition, onboarding, or permission flows.
 - **Backend-only prompts:** CLAUDE.md only. Loading design docs wastes context.
 
 **Note:** `UI_UX_ARC.md` documents the seven primitives shipped during Phases 1–7 (Command Bar v1, Saved Views, Spaces, NL Creation, Triage, Briefings, Polish). It is NOT in the canonical-specs registry above because it is an arc log, not an architectural spec. `PLATFORM_ARCHITECTURE.md` supersedes its architectural framing (Command Bar v1 becomes the Act primitive; Spaces host the Pulse surface; Focus is the newly-introduced third primitive not in UI_UX_ARC).

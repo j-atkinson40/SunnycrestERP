@@ -6,9 +6,22 @@ Purpose: This document consolidates the platform architecture work developed acr
 
 Companion docs: Sits alongside `CLAUDE.md` (build standards + session log), 
 
+`PLATFORM_PRODUCT_PRINCIPLES.md` (product thinking — the *why* behind every
+architectural choice here; established April 23, 2026 during Phase B planning), 
+
 `BRIDGEABLE_MASTER.md` (master planning reference), `FEATURE_SESSIONS.md` , and 
 
 `FUNERAL_HOME_VERTICAL.md` . Where this doc and the existing docs disagree, this doc reflects the more recent thinking and supersedes. 
+
+**Relationship to PLATFORM_PRODUCT_PRINCIPLES.md.** This document answers
+*how is Bridgeable built* — primitives, Pulse, Focus choreography, cross-tenant
+shape, component contracts. PLATFORM_PRODUCT_PRINCIPLES.md answers *why was
+it designed this way* — the one-surface-three-verbs thesis, data density over
+decoration, business function triage (universal vs vertical), onboarding as
+first calibration, learning loop discipline, Fort Miller scaling claim, ETA +
+draft/finalized operational semantics. When an architectural decision here
+needs a *why* justification, read there. When the two docs disagree, the
+conflict is substantive — escalate rather than silently pick. 
 
 ## Table of Contents 
 

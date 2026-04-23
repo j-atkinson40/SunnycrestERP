@@ -6,6 +6,56 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Canonical doc — PLATFORM_PRODUCT_PRINCIPLES.md
+
+**Date:** 2026-04-23
+**Session type:** Documentation — canonical spec creation. No code shipped; no migrations. Captures product thinking articulated across Phase B planning conversation (Phase B Session 1 + Phase 3.1/3.2 operational feedback).
+**Files touched:** 3 — `PLATFORM_PRODUCT_PRINCIPLES.md` (new, ~800 lines), `CLAUDE.md` §1b (canonical specs table updated 8 → 10 documents, four-doc-stack tiebreaker guidance added), `PLATFORM_ARCHITECTURE.md` header (cross-reference to PRODUCT_PRINCIPLES + relationship paragraph explaining which doc answers which question).
+
+### What shipped
+
+A new canonical repo-root document — `PLATFORM_PRODUCT_PRINCIPLES.md` — sitting alongside the existing PLATFORM_ARCHITECTURE / PLATFORM_QUALITY_BAR / DESIGN_LANGUAGE stack. **Answers the question "why was it designed this way?" — the tiebreaker when the other three docs don't settle a product decision.**
+
+**Ten sections captured:**
+
+1. **The Bridgeable Thesis — One Surface, Three Verbs.** The pure expression: a single canvas that brings work to the user. Nav is fallback, not structure. Three verbs serve the work — Pulse (arrives), Command bar (summoned), Focus (decided) — plus Nav (fallback). The revolutionary claim: a $10M operation runs on one screen + command bar; a $200M operation (20x scale) runs the same way.
+
+2. **Opinionated but Configurable.** Default path is opinionated; custom spaces available for users who prefer explicit organization. The opinion earns trust by calibrating well; the escape hatch acknowledges that well-calibrated opinions can still miss individuals.
+
+3. **Data Density Over Decoration.** Professional operational users scan-and-act at speed across many items. Information density compounds over volume. Primary text carries fields the user acts on; status icons with tooltips carry scannable indicators; hover reveals detail; avoid decorative color-coding that doesn't inform decisions. James' Airtable setup at Sunnycrest is the comparison standard.
+
+4. **Business Function Triage: Universal vs Vertical.** Not all functions require equal design investment. Universal (Accounting, Compliance, HR, CRM, Safety) ship with strong defaults; vertical-specific (Manufacturing ops, Logistics variants, Smart Plant ops, vertical-specific workflows) get hand-designed energy.
+
+5. **Onboarding as First Calibration.** Pure observation-based learning has a cold-start problem. Solution: onboarding IS the first calibration via selectable cards (universal functions) + natural language field (operational specifics). Intelligence parses and proposes Pulse composition before confirmation. Day 1 calibrated to stated intent, not generic defaults.
+
+6. **Permission Requests as Admin Triage.** Sensitive areas require admin approval. User-described responsibilities generate permission requests, not automatic grants. Admin opens approval Focus: approve outright, refine and approve, deny. Reuses the approve/refine/deny pattern established by accounting agent jobs.
+
+7. **User Configuration Templates.** Configurations are serializable and composable. Composition model: role defaults + template layer + per-user personalization, merged at render time. Permission grants always route through admin approval even when applying templates. Enables 50+ hires/month without admin bottleneck.
+
+8. **The Learning Loop.** Observe behavior → infer intent → propose adjustments → learn from response → respect attention → never impose. Time horizon: day 1 decent defaults, month 3 calibrated to user, year 1 feels bespoke to company, year 2+ compounding moat.
+
+9. **Scheduling-Related Operational Semantics.** ETA is the funeral director's estimated family-arrival time at cemetery after church service — used for *scheduling capacity planning*, NOT driver setup target. Reading pattern: "11:00 Church · ETA 12:00". Draft vs Finalized: 1pm tenant-local auto-finalizes TOMORROW. Late orders post-finalization revert to draft. Past-date drafts are anomalies.
+
+10. **The Fort Miller Scaling Principle.** Sunnycrest ($10M, ~20 employees) is proof-of-concept. Fort Miller (~$200M, ~200 employees, 20x scale) is the scale test. Claim: the three-verb model is universal across operational complexity — at scale, Pulse's filtering matters more, not less.
+
+**Plus appendix on document maintenance.**
+
+### Cross-reference updates
+
+**CLAUDE.md §1b Canonical Platform Specs** — table header bumped 8 → 10 documents. PLATFORM_PRODUCT_PRINCIPLES.md inserted as second row, with guidance: *"Any contested product decision. When the other specs disagree or don't answer, this is the tiebreaker."* New paragraph explains the four-doc-stack division: PRODUCT_PRINCIPLES = *why*; ARCHITECTURE = *how*; QUALITY_BAR = *how good*; DESIGN_LANGUAGE = *what looks like*. Per-prompt reading list updated.
+
+**PLATFORM_ARCHITECTURE.md header** — companion-docs list extended to include PRODUCT_PRINCIPLES with an explicit relationship paragraph naming the thesis statements so searchers are routed to the right doc.
+
+### Why this doc exists
+
+Phase B planning surfaced principles that didn't belong in any existing spec. ARCHITECTURE doesn't capture *why* Pulse is opinionated — it documents *that* Pulse is composed from role-based templates. QUALITY_BAR doesn't capture *why* dispatcher surfaces need density over decoration — it evaluates implementations against Apple-grade feel. DESIGN_LANGUAGE doesn't capture *why* onboarding calibrates Pulse — it specifies color tokens. Previously these principles lived in conversation logs — recoverable via `git log` or chat history but not addressable. Every future session would have to rediscover them. This doc makes them addressable and canonical.
+
+### Source material
+
+Conversation history from Phase B Session 1 planning (April 22–23, 2026) + Phase 3.1+3.2 operational feedback + user prompt on April 23 requesting canonical capture. No code changed; no migrations; no tests.
+
+---
+
 ## Phase A Session 3.8.3 — Position via transform (composite-only updates)
 
 **Date:** 2026-04-23
