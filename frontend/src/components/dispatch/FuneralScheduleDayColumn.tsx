@@ -1,5 +1,5 @@
 /**
- * MonitorDayColumn — one day's pane in the Dispatch Monitor.
+ * FuneralScheduleDayColumn — one day's pane in the Funeral Schedule.
  *
  * Phase 3.3 surface polish (2026-04-23) — Apple Reminders quality
  * pass. Changes from Phase 3.2.1:
@@ -14,11 +14,6 @@
  *     elevated` wrapper. Cards provide visual weight via their own
  *     shadow-level-1 (DL §6 canonical — "elevation + shadow + color
  *     do the structural work, not drawn lines").
- *   - ALL drivers render, even with zero deliveries. Empty column
- *     shows driver name + count (0) header; page background below.
- *     Space allocated consistently across rows (dispatcher's eye
- *     scans left-to-right by driver without the driver set shifting
- *     when a column goes empty).
  *   - Day header: two-row composition. Row 1 = day label (text-h2
  *     Plex Sans, weight-medium) + right-aligned action/attribution.
  *     Row 2 = date · state-pill. Same slot for Finalize action and
@@ -27,6 +22,22 @@
  *     during an active drag (the lane has no background by default,
  *     so ring + offset is what signals "drop here" without
  *     introducing chrome in the resting state).
+ *
+ * Phase 3.3.1 correction (2026-04-23) — empty driver columns hide by
+ * default, reveal on drag:
+ *
+ *   - Resting state: only drivers with ≥ 1 delivery render. Surface
+ *     shows what IS; interaction reveals affordances. Rejects the
+ *     prior Phase 3.3 "always render all drivers" approach — user
+ *     explicitly preferred hide-by-default.
+ *   - Dragging: all active drivers render, alphabetically ordered by
+ *     display name. Empty columns expand via smooth `max-width` +
+ *     `opacity` transition so they appear as drop targets during
+ *     the drag gesture.
+ *   - Drag end: isDragging flips to false; empty columns collapse
+ *     back. If the card landed on a previously-empty driver, the
+ *     parent's optimistic update adds that driver to the "has
+ *     deliveries" set so its column persists naturally.
  *
  * Reference: Apple Reminders. Cozy warmth on warm off-white, cards
  * float, no containers competing with card shadows. Per
@@ -51,7 +62,7 @@ import type {
 import { DeliveryCard } from "./DeliveryCard"
 
 
-export interface MonitorDayColumnProps {
+export interface FuneralScheduleDayColumnProps {
   dateStr: string                         // ISO YYYY-MM-DD
   dayLabel: string                        // "Today" | "Tomorrow" | "Two days out" etc
   schedule: ScheduleStateDTO               // never null; "not_created" state means no row
@@ -73,13 +84,18 @@ export interface MonitorDayColumnProps {
   /** Override the finalized-by attribution text (e.g. resolved name).
    *  When omitted falls back to a generic "Finalized at {time}". */
   finalizedByLabel?: string | null
+  /** Phase 3.3.1 — true while a card is being dragged anywhere in
+   *  the DndContext. Drives the reveal of empty driver columns
+   *  (which serve as drop targets). Resting state hides empty
+   *  columns; drag surfaces them. */
+  isDragging?: boolean
 }
 
 
 const UNASSIGNED_LANE_ID = "__UNASSIGNED__"
 
 
-export function MonitorDayColumn({
+export function FuneralScheduleDayColumn({
   dateStr,
   dayLabel,
   schedule,
@@ -92,7 +108,8 @@ export function MonitorDayColumn({
   onFinalize,
   onOpenScheduling,
   finalizedByLabel,
-}: MonitorDayColumnProps) {
+  isDragging = false,
+}: FuneralScheduleDayColumnProps) {
   const finalized = schedule.state === "finalized"
   const notCreated = schedule.state === "not_created"
 
@@ -138,6 +155,35 @@ export function MonitorDayColumn({
   }
 
   const dateDisplay = formatDateDisplay(dateStr)
+
+  // Phase 3.3.1 — driver-column set is state-driven.
+  //
+  //   Resting:   activeDrivers  = drivers with ≥ 1 delivery today
+  //   Dragging:  visibleDrivers = all drivers, alphabetically sorted
+  //
+  // When `isDragging` flips true, the non-active drivers mount and
+  // transition from `max-w-0 opacity-0` to `max-w-[280px] opacity-100`.
+  // When it flips back to false, the transition runs in reverse. No
+  // unmount — kept in the DOM so the animation has somewhere to run
+  // to/from. `pointer-events: none` on collapsed columns prevents
+  // hover + click flicker.
+  const activeDriverIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const d of drivers) {
+      if ((kanbanByDriver.get(d.id) ?? []).length > 0) s.add(d.id)
+    }
+    return s
+  }, [drivers, kanbanByDriver])
+
+  // Sorted full roster — alphabetical by display_name (fallback to
+  // license number) for stable ordering during the drag reveal.
+  const sortedDrivers = useMemo(() => {
+    return [...drivers].sort((a, b) => {
+      const nameA = (a.display_name ?? a.license_number ?? "").toLowerCase()
+      const nameB = (b.display_name ?? b.license_number ?? "").toLowerCase()
+      return nameA.localeCompare(nameB)
+    })
+  }, [drivers])
 
   return (
     <section
@@ -318,29 +364,57 @@ export function MonitorDayColumn({
             />
           )}
 
-          {/* Driver lanes — horizontal stack. Phase 3.3: ALL active
-              drivers render, even with zero deliveries. Consistency
-              across days matters more than compaction — dispatcher's
-              eye scans the same driver set every day. */}
-          {drivers.map((driver) => {
+          {/* Driver lanes — horizontal stack. Phase 3.3.1:
+              active drivers (≥ 1 delivery today) always render;
+              empty drivers render at `max-w-0 opacity-0` in the
+              resting state and expand to `max-w-[280px]` +
+              `opacity-100` while `isDragging` is true. Columns are
+              alphabetically ordered so the reveal doesn't shuffle
+              the position of active columns the dispatcher is
+              already looking at. */}
+          {sortedDrivers.map((driver) => {
             const laneDeliveries = kanbanByDriver.get(driver.id) ?? []
+            const isActive = activeDriverIds.has(driver.id)
+            const revealed = isActive || isDragging
             return (
-              <DriverLane
+              <div
                 key={driver.id}
-                laneKey={`${dateStr}:${driver.id}`}
-                laneLabel={
-                  driver.display_name ??
-                  `Driver ${driver.license_number ?? "—"}`
-                }
-                deliveries={laneDeliveries}
-                ancillaryCounts={ancillaryCounts}
-                ancillariesByParent={ancillariesByParent}
-                expandedParents={expandedParents}
-                onToggleAncillary={toggleAncillary}
-                onOpenEdit={onOpenEdit}
-                onCycleHoleDug={onCycleHoleDug}
-                scheduleFinalized={finalized}
-              />
+                data-slot="dispatch-driver-lane-wrapper"
+                data-revealed={revealed ? "true" : "false"}
+                data-active-driver={isActive ? "true" : "false"}
+                className={cn(
+                  // Collapsed: width → 0, opacity → 0, pointer-
+                  // events blocked. Expanded: width 280 + opacity 1.
+                  // `flex-none` keeps the column's natural width
+                  // from being squeezed by flex distribution.
+                  "flex-none overflow-hidden",
+                  "transition-[max-width,opacity] duration-arrive",
+                  // Reveal curve matches the iOS Smart Stack tune
+                  // applied in Correction 3 — momentum-settle on
+                  // entry, gentle recede on exit.
+                  "ease-[cubic-bezier(0.32,0.72,0,1)]",
+                  revealed
+                    ? "max-w-[280px] opacity-100 pointer-events-auto"
+                    : "max-w-0 opacity-0 pointer-events-none",
+                )}
+                aria-hidden={!revealed}
+              >
+                <DriverLane
+                  laneKey={`${dateStr}:${driver.id}`}
+                  laneLabel={
+                    driver.display_name ??
+                    `Driver ${driver.license_number ?? "—"}`
+                  }
+                  deliveries={laneDeliveries}
+                  ancillaryCounts={ancillaryCounts}
+                  ancillariesByParent={ancillariesByParent}
+                  expandedParents={expandedParents}
+                  onToggleAncillary={toggleAncillary}
+                  onOpenEdit={onOpenEdit}
+                  onCycleHoleDug={onCycleHoleDug}
+                  scheduleFinalized={finalized}
+                />
+              </div>
             )
           })}
         </div>

@@ -1,5 +1,5 @@
 /**
- * MonitorDayColumn — vitest unit tests. Phase B Session 1 Phase 3.1+3.2.
+ * FuneralScheduleDayColumn — vitest unit tests. Phase B Session 1 Phase 3.1+3.2.
  *
  * Covers: header state rendering (draft/finalized/not_created),
  * Finalize button style-parity with finalized attribution (same
@@ -20,7 +20,7 @@ import type {
   ScheduleStateDTO,
 } from "@/services/dispatch-service"
 
-import { MonitorDayColumn } from "./MonitorDayColumn"
+import { FuneralScheduleDayColumn } from "./FuneralScheduleDayColumn"
 
 
 function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
@@ -93,11 +93,11 @@ function Harness({ children }: { children: React.ReactNode }) {
 }
 
 
-describe("MonitorDayColumn — header rendering", () => {
+describe("FuneralScheduleDayColumn — header rendering", () => {
   it("draft schedule shows DRAFT badge + Finalize affordance in attribution slot", () => {
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule({ state: "draft" })}
           deliveries={[makeDelivery()]}
@@ -122,7 +122,7 @@ describe("MonitorDayColumn — header rendering", () => {
     // slot + typography are shared.
     const { container } = render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule({ state: "draft" })}
           deliveries={[makeDelivery()]}
@@ -145,7 +145,7 @@ describe("MonitorDayColumn — header rendering", () => {
   it("finalized schedule shows attribution + no Finalize button", () => {
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule({
             state: "finalized",
@@ -173,7 +173,7 @@ describe("MonitorDayColumn — header rendering", () => {
   it("not_created schedule shows 'No schedule yet' affordance", () => {
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule({ state: "not_created" })}
           deliveries={[]}
@@ -192,8 +192,8 @@ describe("MonitorDayColumn — header rendering", () => {
 })
 
 
-describe("MonitorDayColumn — driver lanes (Phase 3.3: all drivers always render)", () => {
-  it("groups deliveries by assigned_driver_id with counts", () => {
+describe("FuneralScheduleDayColumn — driver lanes (Phase 3.3.1: hide-by-default, reveal-on-drag)", () => {
+  it("groups deliveries by assigned_driver_id with counts (both drivers have cards → both revealed)", () => {
     const deliveries = [
       makeDelivery({ assigned_driver_id: "driver-1" }),
       makeDelivery({ assigned_driver_id: "driver-1" }),
@@ -201,20 +201,17 @@ describe("MonitorDayColumn — driver lanes (Phase 3.3: all drivers always rende
     ]
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule()}
           deliveries={deliveries}
         />
       </Harness>,
     )
-    const lanes = document.querySelectorAll(
-      '[data-slot="dispatch-driver-lane"]',
+    const revealedWrappers = document.querySelectorAll(
+      '[data-slot="dispatch-driver-lane-wrapper"][data-revealed="true"]',
     )
-    // Phase 3.3: both drivers render even if only one had deliveries
-    // (every active driver always gets a column). Here both have
-    // deliveries so lane count is 2.
-    expect(lanes.length).toBe(2)
+    expect(revealedWrappers.length).toBe(2)
     expect(screen.getByText("Dave Miller")).toBeInTheDocument()
     expect(screen.getByText("Tom Henderson")).toBeInTheDocument()
   })
@@ -222,7 +219,7 @@ describe("MonitorDayColumn — driver lanes (Phase 3.3: all drivers always rende
   it("driver lanes are horizontal — kanban container uses flex-row overflow-x-auto", () => {
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule()}
           deliveries={[makeDelivery({ assigned_driver_id: "driver-1" })]}
@@ -244,63 +241,134 @@ describe("MonitorDayColumn — driver lanes (Phase 3.3: all drivers always rende
     ]
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule()}
           deliveries={deliveries}
         />
       </Harness>,
     )
-    const lanes = document.querySelectorAll(
-      '[data-slot="dispatch-driver-lane"]',
+    // Phase 3.3.1: unassigned renders (has a card) + driver-1 revealed
+    // (has a card). driver-2 is empty and thus collapsed at rest —
+    // wrapper present in DOM but data-revealed="false".
+    const revealedWrappers = document.querySelectorAll(
+      '[data-slot="dispatch-driver-lane-wrapper"][data-revealed="true"]',
     )
-    // Phase 3.3: unassigned + driver-1 + driver-2 (empty) = 3
-    // lanes. Unassigned shows because there's an unassigned card;
-    // driver-2 shows because Phase 3.3 always renders every driver.
-    expect(lanes.length).toBe(3)
+    expect(revealedWrappers.length).toBe(1)
     expect(screen.getByText(/unassigned/i)).toBeInTheDocument()
+    expect(screen.getByText("Dave Miller")).toBeInTheDocument()
+
+    // driver-2 wrapper present but collapsed.
+    const collapsedWrappers = document.querySelectorAll(
+      '[data-slot="dispatch-driver-lane-wrapper"][data-revealed="false"]',
+    )
+    expect(collapsedWrappers.length).toBe(1)
   })
 
-  it("empty driver columns render (Phase 3.3 — consistency across days)", () => {
-    // Only driver-1 has a delivery; driver-2 is active but has 0.
-    // Phase 3.2 skipped empty columns; Phase 3.3 renders them so the
-    // driver-row baseline stays consistent across days.
+  it("empty driver columns are HIDDEN at rest (Phase 3.3.1 correction)", () => {
+    // Only driver-1 has a delivery; driver-2 has 0. Resting state
+    // hides driver-2's column (wrapper `data-revealed='false'`,
+    // `max-w-0 opacity-0 pointer-events-none`).
     const deliveries = [
       makeDelivery({ assigned_driver_id: "driver-1" }),
     ]
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule()}
           deliveries={deliveries}
         />
       </Harness>,
     )
-    const lanes = document.querySelectorAll(
-      '[data-slot="dispatch-driver-lane"]',
-    )
-    expect(lanes.length).toBe(2)
-    expect(screen.getByText("Dave Miller")).toBeInTheDocument()
-    expect(screen.getByText("Tom Henderson")).toBeInTheDocument()
 
-    // Tom Henderson's lane is present but marked empty.
-    const tomLane = document.querySelector(
-      '[data-lane$=":driver-2"]',
+    const dave = document.querySelector(
+      '[data-slot="dispatch-driver-lane-wrapper"][data-active-driver="true"]',
     ) as HTMLElement
-    expect(tomLane).toBeInTheDocument()
-    expect(tomLane.getAttribute("data-empty")).toBe("true")
-    expect(
-      tomLane.querySelector('[data-slot="dispatch-driver-lane-empty"]'),
-    ).toBeInTheDocument()
+    expect(dave).toBeInTheDocument()
+    expect(dave.getAttribute("data-revealed")).toBe("true")
+
+    const tom = document.querySelector(
+      '[data-slot="dispatch-driver-lane-wrapper"][data-active-driver="false"]',
+    ) as HTMLElement
+    expect(tom).toBeInTheDocument()
+    expect(tom.getAttribute("data-revealed")).toBe("false")
+    expect(tom.className).toMatch(/max-w-0/)
+    expect(tom.className).toMatch(/opacity-0/)
+    expect(tom.className).toMatch(/pointer-events-none/)
+    expect(tom.getAttribute("aria-hidden")).toBe("true")
+  })
+
+  it("empty driver columns REVEAL when isDragging=true (drop targets)", () => {
+    const deliveries = [
+      makeDelivery({ assigned_driver_id: "driver-1" }),
+    ]
+    render(
+      <Harness>
+        <FuneralScheduleDayColumn
+          {...defaultProps}
+          schedule={makeSchedule()}
+          deliveries={deliveries}
+          isDragging={true}
+        />
+      </Harness>,
+    )
+    // Both wrappers now revealed.
+    const revealedWrappers = document.querySelectorAll(
+      '[data-slot="dispatch-driver-lane-wrapper"][data-revealed="true"]',
+    )
+    expect(revealedWrappers.length).toBe(2)
+    const collapsedWrappers = document.querySelectorAll(
+      '[data-slot="dispatch-driver-lane-wrapper"][data-revealed="false"]',
+    )
+    expect(collapsedWrappers.length).toBe(0)
+
+    // Tom's wrapper now has the expanded classes.
+    const tom = document.querySelector(
+      '[data-slot="dispatch-driver-lane-wrapper"][data-active-driver="false"]',
+    ) as HTMLElement
+    expect(tom.className).toMatch(/max-w-\[280px\]/)
+    expect(tom.className).toMatch(/opacity-100/)
+    expect(tom.className).toMatch(/pointer-events-auto/)
+  })
+
+  it("drivers render in alphabetical order during reveal (stable position)", () => {
+    // Reverse roster: drivers array has Tom before Dave intentionally.
+    const reverseRoster: DriverDTO[] = [
+      { id: "driver-2", license_number: "CDL-2", license_class: "CDL-A", active: true, display_name: "Tom Henderson" },
+      { id: "driver-1", license_number: "CDL-1", license_class: "CDL-A", active: true, display_name: "Dave Miller" },
+    ]
+    render(
+      <Harness>
+        <FuneralScheduleDayColumn
+          {...defaultProps}
+          drivers={reverseRoster}
+          schedule={makeSchedule()}
+          deliveries={[
+            makeDelivery({ assigned_driver_id: "driver-1" }),
+            makeDelivery({ assigned_driver_id: "driver-2" }),
+          ]}
+        />
+      </Harness>,
+    )
+    // Wrappers should be in alphabetical order — Dave (D) before Tom (T).
+    const wrappers = Array.from(
+      document.querySelectorAll('[data-slot="dispatch-driver-lane-wrapper"]'),
+    ) as HTMLElement[]
+    const laneLabels = wrappers.map(
+      (w) => w.querySelector('[data-slot="dispatch-driver-lane"]')
+        ?.getAttribute("data-lane") ?? "",
+    )
+    // driver-1 = Dave; driver-2 = Tom.
+    const daveIdx = laneLabels.findIndex((l) => l.endsWith(":driver-1"))
+    const tomIdx = laneLabels.findIndex((l) => l.endsWith(":driver-2"))
+    expect(daveIdx).toBeLessThan(tomIdx)
   })
 
   it("renders empty state when no drivers AND no unassigned cards", () => {
-    // Rare: no drivers in roster + no unassigned. Keeps
-    // defense-in-depth empty state.
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           drivers={[]}
           schedule={makeSchedule({ state: "draft" })}
@@ -316,11 +384,11 @@ describe("MonitorDayColumn — driver lanes (Phase 3.3: all drivers always rende
 })
 
 
-describe("MonitorDayColumn — Phase 3.3 surface polish regression guards", () => {
+describe("FuneralScheduleDayColumn — Phase 3.3 surface polish regression guards", () => {
   it("day section has no outer container chrome (no bg-surface-sunken, no border)", () => {
     const { container } = render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule({ state: "draft" })}
           deliveries={[makeDelivery()]}
@@ -341,7 +409,7 @@ describe("MonitorDayColumn — Phase 3.3 surface polish regression guards", () =
   it("driver lane has no background container (Phase 3.3)", () => {
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule()}
           deliveries={[makeDelivery({ assigned_driver_id: "driver-1" })]}
@@ -361,7 +429,7 @@ describe("MonitorDayColumn — Phase 3.3 surface polish regression guards", () =
 })
 
 
-describe("MonitorDayColumn — ancillary expansion", () => {
+describe("FuneralScheduleDayColumn — ancillary expansion", () => {
   it("clicking +N badge reveals inline panel with ancillary family names", async () => {
     const user = userEvent.setup()
     const parent = makeDelivery({
@@ -380,7 +448,7 @@ describe("MonitorDayColumn — ancillary expansion", () => {
     })
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule()}
           deliveries={[parent]}
@@ -406,13 +474,13 @@ describe("MonitorDayColumn — ancillary expansion", () => {
 })
 
 
-describe("MonitorDayColumn — finalize button", () => {
+describe("FuneralScheduleDayColumn — finalize button", () => {
   it("click fires onFinalize with the date", async () => {
     const user = userEvent.setup()
     const onFinalize = vi.fn()
     render(
       <Harness>
-        <MonitorDayColumn
+        <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule({ state: "draft" })}
           deliveries={[makeDelivery()]}

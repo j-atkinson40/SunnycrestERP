@@ -624,44 +624,51 @@ export const manufacturingActions: ActionRegistryEntry[] = [
     route: "/agents",
   },
 
-  // ── Dispatch (Phase B Session 1) ──────────────────────────
-  // Monitor lives as a standalone route pre-Phase-D. NOT a Space per
-  // SPACES_PLAN Option 1. Cmd+K discovery via multiple aliases since
+  // ── Funeral Schedule (Phase B Session 1) ──────────────────
+  // Funeral Schedule lives as a standalone route pre-Phase-D. NOT a
+  // Space per SPACES_PLAN Option 1. Phase 3.3.1 renamed from "Dispatch
+  // Monitor" — "Monitor" is the architectural noun for Pulse's purpose,
+  // not a component name; Redi-Rock Schedule + Wastewater Schedule are
+  // distinct widgets. Cmd+K discovery via multiple aliases since
   // dispatchers ask for it several ways ("show today", "tomorrow's
-  // schedule", "dispatch monitor"). Permission-gated on delivery.view
+  // schedule", "funeral schedule"). Permission-gated on delivery.view
   // so dispatchers + admins + office see it; drivers do not (they're
   // on portal UX).
   {
-    id: "nav_dispatch_monitor",
-    title: "Dispatch monitor",
+    id: "nav_funeral_schedule",
+    title: "Funeral Schedule",
     subtitle: "Focused single-day schedule",
     icon: "calendar-clock",
     kind: "navigate",
     keywords: [
-      "dispatch monitor",
+      "funeral schedule",
+      "schedule",
       "dispatch",
+      // Backward-compat aliases — dispatchers who learned the widget
+      // under the pre-3.3.1 name still discover it.
+      "dispatch monitor",
+      "monitor",
       "today's schedule",
       "show today",
       "show tomorrow",
       "show schedule",
       "tomorrows schedule",
       "tomorrow schedule",
-      "schedule monitor",
       "single day",
       "show single day",
     ],
     roles: ["admin", "dispatcher", "office"],
     vertical: "manufacturing",
     permission: "delivery.view",
-    route: "/dispatch/monitor",
+    route: "/dispatch/funeral-schedule",
   },
   {
     // Phase 3.2 — dedicated multi-day entry point. Hits the same route
-    // as nav_dispatch_monitor but with ?view=all for the stacked-days
+    // as nav_funeral_schedule but with ?view=all for the stacked-days
     // mode. Discovery: dispatchers who want the whole-week view type
     // "show all days" or "week view" at the command bar.
-    id: "nav_dispatch_monitor_all_days",
-    title: "Dispatch monitor — all days",
+    id: "nav_funeral_schedule_all_days",
+    title: "Funeral Schedule — all days",
     subtitle: "All days stacked (multi-day view)",
     icon: "calendar-clock",
     kind: "navigate",
@@ -678,6 +685,6 @@ export const manufacturingActions: ActionRegistryEntry[] = [
     roles: ["admin", "dispatcher", "office"],
     vertical: "manufacturing",
     permission: "delivery.view",
-    route: "/dispatch/monitor?view=all",
+    route: "/dispatch/funeral-schedule?view=all",
   },
 ];

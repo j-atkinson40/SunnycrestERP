@@ -15,8 +15,8 @@ Status: **infrastructure shell, not consumed yet.** Phase D builds
 the React Pulse composition engine that reads from this dict and
 renders the composed surface. Phase B Session 1 ships this file so
 the (manufacturing, dispatcher) composition exists from day one —
-when Phase D lands, dispatchers get their Monitor composition
-without a separate migration.
+when Phase D lands, dispatchers get their Funeral Schedule
+composition without a separate migration.
 
 **Consistent with SPACES_PLAN.md §2:** role-context differentiation
 lives in Pulse composition defaults on Home, NOT in separate Spaces.
@@ -53,7 +53,7 @@ class PulseComponentSpec:
     and how to scope it.
 
     `component_key` identifies the widget/renderer (e.g.
-    `"dispatch_monitor"`, `"briefing_card"`, `"saved_view"`). The
+    `"funeral_schedule"`, `"briefing_card"`, `"saved_view"`). The
     engine maintains a registry mapping component_key → React
     component. Unknown keys render as a muted "Component not yet
     available" placeholder so the platform degrades gracefully as
@@ -133,8 +133,10 @@ HOME_PULSE_COMPOSITIONS: dict[tuple[str, str], PulseComposition] = {}
 
 # ── (manufacturing, dispatcher) ──────────────────────────────────────
 # Phase B Session 1 demo hero composition. Dispatcher's Home Pulse
-# centers on the three-day scheduling Monitor with supporting
-# context.
+# centers on the three-day Funeral Schedule widget with supporting
+# context. (Phase 3.3.1 rename: previously "dispatch_monitor"; the
+# widget is "Funeral Schedule" — "Monitor" is the architectural noun
+# for Pulse's purpose, not a component name.)
 
 HOME_PULSE_COMPOSITIONS[("manufacturing", "dispatcher")] = PulseComposition(
     personal=(
@@ -148,13 +150,13 @@ HOME_PULSE_COMPOSITIONS[("manufacturing", "dispatcher")] = PulseComposition(
         _widget("my_triage_pending"),
     ),
     operational=(
-        # THE HERO — the three-day dispatch Monitor. Drives most of
+        # THE HERO — the three-day Funeral Schedule. Drives most of
         # the page. Phase B ships this as a standalone route
-        # (`/dispatch/monitor`) with this component_key also
-        # registered for Phase D composition.
-        _widget("dispatch_monitor", days=3),
+        # (`/dispatch/funeral-schedule`) with this component_key
+        # also registered for Phase D composition.
+        _widget("funeral_schedule", days=3),
         # Saved-view shortcuts for the dispatcher — show up
-        # underneath the Monitor as "deeper lists."
+        # underneath the schedule as "deeper lists."
         _saved_view(
             "saved_view_seed:dispatcher:pending_dispatch",
             label="Needs a driver",

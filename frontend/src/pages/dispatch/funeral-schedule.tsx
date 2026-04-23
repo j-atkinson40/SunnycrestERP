@@ -1,5 +1,14 @@
 /**
- * Dispatch Monitor — Phase B Session 1 (Phase 3.2.1 rotation rebuild).
+ * Funeral Schedule — dispatch Pulse widget for the (manufacturing,
+ * dispatcher) role. Phase B Session 1 + 3.2.1 rotation + 3.3 surface
+ * polish + 3.3.1 rename.
+ *
+ * **Terminology note (Phase 3.3.1, 2026-04-23):** This widget is the
+ * "Funeral Schedule." In Bridgeable architecture, "Monitor" is the
+ * architectural noun for Pulse's purpose (monitoring), NOT a component
+ * name. Redi-Rock Schedule and Wastewater Schedule will be distinct
+ * widgets with their own names. Previously called "Dispatch Monitor"
+ * (Phase 3.0–3.3); renamed for terminology discipline.
  *
  * Single-day default with iOS-style Smart Stack rotation. Multi-day
  * "show all days" opt-in via URL param + Cmd+K.
@@ -16,6 +25,15 @@
  * stage height) preserved via boundary-escalation wheel handling —
  * lane scrolls first; when at boundary, stage rotates.
  *
+ * **Phase 3.3.1 change (2026-04-23)**: rotation physics tuned from
+ * `duration-settle ease-settle` (300ms, cubic-bezier(0.2, 0, 0.1, 1))
+ * to 380ms cubic-bezier(0.32, 0.72, 0, 1) — iOS Smart Stack spring
+ * approximation. Duration bumped for physical weight; curve has more
+ * momentum-settle character than the canonical arrival curve.
+ * Empty driver columns hide by default, reveal during active drag
+ * as drop targets — surface shows what IS; interaction reveals
+ * affordances.
+ *
  *   - **Default:** ONE day visible at a time, full horizontal driver
  *     kanban per day. Scroll wheel / swipe / arrow keys / dot clicks
  *     rotate content within a fixed stage; page does not scroll.
@@ -31,9 +49,9 @@
  *     simultaneously).
  *   - **URL state:** `?view=all` = multi; default (no param) = single.
  *     `?day=YYYY-MM-DD` deep-links to a specific day in single mode.
- *     No localStorage persistence — reload of `/dispatch/monitor`
- *     with no params reverts to the time-based default (per user
- *     spec).
+ *     No localStorage persistence — reload of `/dispatch/funeral-
+ *     schedule` with no params reverts to the time-based default
+ *     (per user spec).
  *
  * Per SPACES_PLAN Option 1: this is NOT a Space. It's a route that
  * prepares to become the primary Operational-layer component of
@@ -66,7 +84,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { MonitorDayColumn } from "@/components/dispatch/MonitorDayColumn"
+import { FuneralScheduleDayColumn } from "@/components/dispatch/FuneralScheduleDayColumn"
 import {
   QuickEditDialog,
   type QuickEditSavePayload,
@@ -139,7 +157,7 @@ export function pickDefaultDayIndex(localHour: number): number {
 type ViewMode = "single" | "all"
 
 
-export default function DispatchMonitorPage() {
+export default function FuneralSchedulePage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -539,8 +557,30 @@ export default function DispatchMonitorPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   )
 
+  // Phase 3.3.1 correction — empty driver columns hide by default,
+  // reveal on drag. Surface shows what IS; interaction reveals
+  // affordances. User spec rejected the prior "always render all
+  // drivers" approach in favor of this pattern.
+  //
+  //   Resting:   only drivers with >= 1 delivery render as columns.
+  //   Dragging:  all active drivers render, alphabetically ordered,
+  //              revealed via smooth max-width + opacity transition.
+  //   Drag end:  isDragging → false; collapse back to active-only.
+  //              If the card dropped on a previously-empty driver,
+  //              that driver becomes active via optimistic update
+  //              and stays visible naturally.
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleDragStart = useCallback(() => {
+    setIsDragging(true)
+  }, [])
+
   const handleDragEnd = useCallback(
     async (ev: DragEndEvent) => {
+      // Collapse the reveal — drag is over. If the card landed on a
+      // previously-empty driver, the optimistic update below adds that
+      // driver to the "has deliveries" set so its column persists.
+      setIsDragging(false)
       const { active, over } = ev
       if (!over) return
       const deliveryId = String(active.id).replace(/^delivery:/, "")
@@ -572,6 +612,12 @@ export default function DispatchMonitorPage() {
     },
     [deliveries, reload],
   )
+
+  const handleDragCancel = useCallback(() => {
+    // Drag cancelled (ESC or drop outside any target) — collapse
+    // reveal. No state update needed otherwise.
+    setIsDragging(false)
+  }, [])
 
   // View mode toggle — updates URL state. Clears ?day= when switching
   // to all (not meaningful in multi-day).
@@ -630,7 +676,7 @@ export default function DispatchMonitorPage() {
 
   return (
     <div
-      data-slot="dispatch-monitor-page"
+      data-slot="dispatch-funeral-schedule-page"
       data-view-mode={viewMode}
       className={cn(
         "mx-auto max-w-[1800px] p-4 sm:p-6 lg:p-8",
@@ -641,7 +687,7 @@ export default function DispatchMonitorPage() {
       <header className="mb-4 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-h2 font-medium text-content-strong font-plex-serif">
-            Dispatch monitor
+            Funeral Schedule
           </h1>
           <p className="mt-1 text-body-sm text-content-muted">
             {viewMode === "single"
@@ -663,7 +709,7 @@ export default function DispatchMonitorPage() {
               role="tab"
               aria-selected={viewMode === "single"}
               onClick={() => setViewMode("single")}
-              data-slot="dispatch-monitor-view-single"
+              data-slot="dispatch-fs-view-single"
               className={cn(
                 "inline-flex items-center gap-1.5 rounded px-2.5 py-1",
                 "text-caption font-medium",
@@ -681,7 +727,7 @@ export default function DispatchMonitorPage() {
               role="tab"
               aria-selected={viewMode === "all"}
               onClick={() => setViewMode("all")}
-              data-slot="dispatch-monitor-view-all"
+              data-slot="dispatch-fs-view-all"
               className={cn(
                 "inline-flex items-center gap-1.5 rounded px-2.5 py-1",
                 "text-caption font-medium",
@@ -700,7 +746,7 @@ export default function DispatchMonitorPage() {
             size="sm"
             onClick={reload}
             disabled={loading}
-            data-slot="dispatch-monitor-refresh"
+            data-slot="dispatch-fs-refresh"
           >
             <RefreshCwIcon
               className={cn("h-4 w-4", loading && "animate-spin")}
@@ -714,7 +760,7 @@ export default function DispatchMonitorPage() {
       {/* Loading / error */}
       {loading && (
         <div
-          data-slot="dispatch-monitor-loading"
+          data-slot="dispatch-fs-loading"
           className="py-16 text-center text-body-sm text-content-muted"
         >
           Loading schedule…
@@ -723,7 +769,7 @@ export default function DispatchMonitorPage() {
       {error && (
         <div
           role="alert"
-          data-slot="dispatch-monitor-error"
+          data-slot="dispatch-fs-error"
           className={cn(
             "mb-4 rounded border p-3",
             "bg-status-error-muted border-status-error/30 text-status-error",
@@ -734,7 +780,12 @@ export default function DispatchMonitorPage() {
       )}
 
       {!loading && !error && days.length > 0 && (
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
           {viewMode === "single" ? (
             <div className="flex items-stretch gap-3">
               {/* Dots indicator column — left rail, one per day.
@@ -742,7 +793,7 @@ export default function DispatchMonitorPage() {
                   wheel/touch/keyboard). */}
               <nav
                 aria-label="Day navigation"
-                data-slot="dispatch-monitor-dots"
+                data-slot="dispatch-fs-dots"
                 className="sticky top-4 flex flex-col items-center gap-1.5 self-start"
               >
                 <button
@@ -767,7 +818,7 @@ export default function DispatchMonitorPage() {
                     aria-selected={idx === activeDayIndex}
                     aria-label={`Go to ${labelForOffset(idx)}`}
                     onClick={() => advanceTo(idx)}
-                    data-slot="dispatch-monitor-day-dot"
+                    data-slot="dispatch-fs-day-dot"
                     data-day-index={idx}
                     className={cn(
                       "h-2 w-2 rounded-full transition-colors duration-quick ease-settle",
@@ -810,7 +861,7 @@ export default function DispatchMonitorPage() {
                   interfere with child scroll regions. */}
               <div
                 ref={stageRef}
-                data-slot="dispatch-monitor-stack"
+                data-slot="dispatch-fs-stack"
                 data-active-day-index={activeDayIndex}
                 className="relative flex-1 overflow-hidden touch-pan-x"
                 style={{
@@ -836,13 +887,28 @@ export default function DispatchMonitorPage() {
                   return (
                     <div
                       key={dateStr}
-                      data-slot="dispatch-monitor-day-pane"
+                      data-slot="dispatch-fs-day-pane"
                       data-day-index={idx}
                       data-day-date={dateStr}
                       data-active={isActive ? "true" : "false"}
                       className={cn(
-                        "absolute inset-0 transition-[transform,opacity]",
-                        "duration-settle ease-settle",
+                        // Phase 3.3.1 rotation physics tune — iOS
+                        // Smart Stack approximation. 380ms duration
+                        // gives the card more physical weight than
+                        // the 300ms canonical arrival; cubic-bezier
+                        // (0.32, 0.72, 0, 1) has momentum-settle
+                        // character matching iOS widget rotation
+                        // (starts with more initial speed, decelerates
+                        // into place) vs the canonical ease-settle
+                        // (0.2, 0, 0.1, 1) which reads as more
+                        // mechanical/UI-toolkit at this scale of
+                        // motion. Localized to this component; not
+                        // promoted to a platform token yet (single
+                        // consumer, tune further if new surfaces
+                        // adopt).
+                        "absolute inset-0",
+                        "transition-[transform,opacity] duration-[380ms]",
+                        "ease-[cubic-bezier(0.32,0.72,0,1)]",
                       )}
                       style={{
                         transform: `translateY(${offset * 100}%)`,
@@ -856,7 +922,7 @@ export default function DispatchMonitorPage() {
                       // readers focused on the active day.
                       aria-hidden={!isActive}
                     >
-                      <MonitorDayColumn
+                      <FuneralScheduleDayColumn
                         dateStr={dateStr}
                         dayLabel={labelForOffset(idx)}
                         schedule={schedule}
@@ -869,6 +935,7 @@ export default function DispatchMonitorPage() {
                         onFinalize={handleFinalize}
                         onOpenScheduling={handleOpenScheduling}
                         finalizedByLabel={finalizedByLabel}
+                        isDragging={isDragging}
                       />
                     </div>
                   )
@@ -879,7 +946,7 @@ export default function DispatchMonitorPage() {
             /* Multi-day — plain vertical stack, no scroll-snap.
                "Show me the whole week at once" view. */
             <div
-              data-slot="dispatch-monitor-all-days"
+              data-slot="dispatch-fs-all-days"
               className="space-y-4"
             >
               {days.map((dateStr, idx) => {
@@ -894,7 +961,7 @@ export default function DispatchMonitorPage() {
                     ? "Auto-finalized"
                     : null
                 return (
-                  <MonitorDayColumn
+                  <FuneralScheduleDayColumn
                     key={dateStr}
                     dateStr={dateStr}
                     dayLabel={labelForOffset(idx)}
@@ -908,6 +975,7 @@ export default function DispatchMonitorPage() {
                     onFinalize={handleFinalize}
                     onOpenScheduling={handleOpenScheduling}
                     finalizedByLabel={finalizedByLabel}
+                    isDragging={isDragging}
                   />
                 )
               })}

@@ -6,6 +6,55 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase 3.3.1 — Funeral Schedule rename + hide-by-default driver columns + rotation physics tune
+
+**Date:** 2026-04-23
+**Session type:** Correction patch after Phase 3.3. Three explicit spec items not executed as specified in 3.3; this patch corrects all three.
+**Files touched:** 9 — `frontend/src/pages/dispatch/funeral-schedule.tsx` (renamed from monitor.tsx + symbol/slot renames + drag-state wiring + rotation-curve tune), `frontend/src/pages/dispatch/funeral-schedule.test.ts` (renamed + import path fix), `frontend/src/components/dispatch/FuneralScheduleDayColumn.tsx` (renamed from MonitorDayColumn.tsx + hide-by-default-reveal-on-drag behavior), `frontend/src/components/dispatch/FuneralScheduleDayColumn.test.tsx` (renamed + tests rewritten for new behavior), `frontend/src/App.tsx` (route + import), `frontend/src/services/actions/manufacturing.ts` (Cmd+K action id + keywords + route), `backend/app/services/spaces/pulse_compositions.py` (component_key + route refs), `backend/app/services/saved_views/seed.py` (docstring ref).
+
+### Three corrections
+
+**1. Rename: Dispatch Monitor → Funeral Schedule.** Terminology discipline. In Bridgeable architecture, "Monitor" is the architectural noun for Pulse's purpose (monitoring — per PLATFORM_ARCHITECTURE.md), NOT a component name. Redi-Rock Schedule and Wastewater Schedule will be distinct widgets with their own names. Phase 3.0–3.3 shipped under the wrong name; this patch corrects.
+
+Route changed `/dispatch/monitor` → `/dispatch/funeral-schedule`. No redirect from old path — deliberate, to avoid keeping the wrong name alive. Component symbols: `DispatchMonitorPage → FuneralSchedulePage`, `MonitorDayColumn → FuneralScheduleDayColumn`. Cmd+K action ids: `nav_dispatch_monitor → nav_funeral_schedule`. Action title "Dispatch monitor" → "Funeral Schedule". Pre-3.3.1 aliases ("dispatch monitor", "monitor") retained as backward-compat discovery keywords — dispatchers who learned the widget under the old name still find it. Data-slot attributes shortened from `dispatch-monitor-*` to `dispatch-fs-*` to keep classnames compact. Backend Pulse component_key `dispatch_monitor` → `funeral_schedule` in HOME_PULSE_COMPOSITIONS.
+
+**2. Empty driver columns: hide by default, reveal on drag.** Phase 3.3 shipped the OPPOSITE of specified behavior — rendered all drivers always with a `min-h-[80px]` placeholder — per a spec interpretation ("consistency across rows") that was subsequently rejected in favor of "surface shows what IS, interaction reveals affordances."
+
+Corrected behavior:
+- **Resting state:** only drivers with ≥ 1 delivery today render as columns. Empty drivers are DOM-present but collapsed via `max-w-0 opacity-0 pointer-events-none aria-hidden`.
+- **Dragging state:** all drivers reveal as drop targets, alphabetically ordered. Transition via `max-width` + `opacity` over `duration-arrive` (400ms) with the same iOS-spring curve applied to rotation in Correction 3.
+- **Drag end:** `isDragging` flips to false; empty columns collapse back. If a card was dropped on a previously-empty driver, the parent's optimistic update moves that driver into the active set so its column persists naturally.
+
+Implementation: `isDragging` state in `FuneralSchedulePage`, wired to `DndContext.onDragStart` / `onDragEnd` / `onDragCancel`, passed down to every `FuneralScheduleDayColumn` via `isDragging` prop. Day column computes `activeDriverIds` + `sortedDrivers` memos; each driver renders inside a wrapper `<div>` whose `max-width + opacity` transition depends on `isActive || isDragging`.
+
+Alphabetical ordering during reveal matters — dispatcher's eye is already on the columns for drivers with deliveries; new columns appear in stable positions (A, B, C, D), not inserted in roster-order which would shuffle existing columns left/right as columns appear.
+
+**3. Smart Stack rotation physics tuned.** Phase 3.3 chose not to tune ("over-tuning is worse than under-tuning"); user specification explicitly called for polish. Tune executed.
+
+From `duration-settle ease-settle` (300ms, cubic-bezier(0.2, 0, 0.1, 1) — canonical arrival curve, reads as mechanical/UI-toolkit at this scale of motion) to `duration-[380ms] ease-[cubic-bezier(0.32,0.72,0,1)]` — iOS Smart Stack spring approximation. 80ms longer duration for physical weight; curve has momentum-settle character (starts with more initial speed, decelerates into place) vs the stock arrival curve. Localized to this component — not promoted to a platform token yet (single consumer; re-evaluate if additional surfaces want the same feel).
+
+Same curve applied to the driver-column reveal transition (Correction 2) so the two motion contexts feel coherent — a widget rotation and a column reveal both carrying the "iOS-ish spring" character.
+
+### Meta-feedback acknowledged
+
+User flagged that two of three corrections here are rework because Phase 3.3 executed opposite-of-spec on two items (driver-column behavior + rotation polish) rather than flagging the disagreement during investigation. Pattern acknowledged: when user spec contradicts Claude's preferred interpretation, flag it during investigation ("user said X, DL §6 says Y, how to reconcile?") and wait for decision — don't execute the preferred interpretation and justify after. Correction-patch iteration cost is real.
+
+Applied to this patch: three spec items, three executions as specified, no opposite-interpretations. The rotation curve values are Claude's translation of "iOS-like spring" into concrete numbers; those remain interpretive but within the explicit "polish it" direction.
+
+### Tests
+
+Dispatch component tests rewritten for Phase 3.3.1 behavior. The "all drivers always render" test from 3.3 flipped to "empty driver columns are HIDDEN at rest" + "empty driver columns REVEAL when isDragging=true" — two distinct regression guards covering both halves of the spec. "drivers render in alphabetical order during reveal" added as a stability guard (reversed-roster fixture, assert Dave before Tom regardless of prop order).
+
+53/53 dispatch tests passing. 419/419 full frontend vitest (+2 net from 3.3 baseline after behavior-change rewrites). 41/41 backend dispatch regression. tsc + vite build clean in 5.05s.
+
+### Commit
+
+`fix(dispatch): Phase 3.3.1 corrections per spec`
+
+---
+
+
+
 ## PLATFORM_PRODUCT_PRINCIPLES.md — restructure + expansion
 
 **Date:** 2026-04-23

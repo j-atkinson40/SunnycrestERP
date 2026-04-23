@@ -1,5 +1,5 @@
 /**
- * DispatchMonitor — time-based default-day selection.
+ * FuneralSchedule — time-based default-day selection.
  *
  * `pickDefaultDayIndex` is the pure function driving the Smart
  * Stack's single-day default in Phase 3.2. Before 1pm tenant-local →
@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest"
 import {
   TIME_BASED_DEFAULT_PIVOT_HOUR,
   pickDefaultDayIndex,
-} from "./monitor"
+} from "./funeral-schedule"
 
 
 describe("pickDefaultDayIndex — time-based Smart Stack default", () => {

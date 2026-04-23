@@ -29,7 +29,7 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
 import FocusTestPage from "@/pages/dev/focus-test";
-import DispatchMonitorPage from "@/pages/dispatch/monitor";
+import FuneralSchedulePage from "@/pages/dispatch/funeral-schedule";
 import UserManagement from "@/pages/admin/user-management";
 import RoleManagement from "@/pages/admin/role-management";
 import CompanyMigrationReviewPage from "@/pages/admin/company-migration-review";
@@ -444,7 +444,7 @@ export default function App() {
           the tenant-route root. Sets the 150 ms delay from
           DESIGN_LANGUAGE §6 (prevents drive-by tooltips on cursor
           transit). Phase B Session 1 Phase 3.1+3.2 is the first
-          dense consumer (Monitor card icon+tooltip compaction row);
+          dense consumer (Funeral Schedule card icon+tooltip row);
           delivery-focused platform surfaces inherit the provider. */}
       <TooltipProvider>
         <ImpersonationBanner />
@@ -503,20 +503,23 @@ export default function App() {
                     element={<FocusTestPage />}
                   />
 
-                  {/* Phase B Session 1 — Dispatch Monitor. Reachable
-                      via direct URL + Cmd+K; not registered as a
-                      Space per SPACES_PLAN Option 1 (composition
-                      default for Home Pulse, landing here until
-                      Phase D Pulse engine ships). Gated on
-                      `delivery.view`. */}
+                  {/* Phase B Session 1 — Funeral Schedule (formerly
+                      "Dispatch Monitor"; renamed Phase 3.3.1 for
+                      terminology discipline — "Monitor" is the
+                      architectural noun for Pulse's purpose, not a
+                      component name). Reachable via direct URL +
+                      Cmd+K; not registered as a Space per SPACES_PLAN
+                      Option 1 (composition default for Home Pulse,
+                      landing here until Phase D Pulse engine ships).
+                      Gated on `delivery.view`. */}
                   <Route
                     element={
                       <ProtectedRoute requiredPermission="delivery.view" />
                     }
                   >
                     <Route
-                      path="/dispatch/monitor"
-                      element={<DispatchMonitorPage />}
+                      path="/dispatch/funeral-schedule"
+                      element={<FuneralSchedulePage />}
                     />
                   </Route>
 

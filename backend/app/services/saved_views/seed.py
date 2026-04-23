@@ -494,7 +494,7 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
     # NOTE ON DATE FILTERS — these seeds intentionally filter on
     # structural conditions (scheduling_type, status, null/not-null)
     # rather than relative dates. Today/Tomorrow/Two-Days-Out are
-    # rendered by the `dispatch_monitor` component which computes
+    # rendered by the `funeral_schedule` component which computes
     # relative dates at render time; they don't live as saved views.
     # Relative-date filters are a deferred saved-view feature.
     # ────────────────────────────────────────────────────────────────
