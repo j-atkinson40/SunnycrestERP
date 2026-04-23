@@ -22,14 +22,21 @@ which flips the schedule back to draft + stamps `last_reverted_at`
 preserved for audit — they narrate "finalized on X by Y, then
 reverted on Z."
 
-**Auto-finalize semantics.** The 1pm scheduler sweep finds
-`state='draft'` rows for today AND for any past dates that slipped.
+**Auto-finalize semantics.** The 1pm scheduler sweep targets
+**tomorrow's schedule** (`schedule_date = local_today + 1 day`)
+ONLY. Operational reality: by 1pm today, the dispatcher locks
+tomorrow's work so drivers can plan their morning. Today's schedule
+is already live at 1pm and never auto-finalized. Past-date drafts
+are anomalies (dispatcher forgot to finalize a past day) and stay
+draft — they surface via the Pulse composition's
+`overdue_draft_schedules` anomaly widget, not silently auto-resolved.
+
 Focus-open deferral: if any user has an active focus_session whose
 focus_type is dispatch-flavored and whose layout_state references
-this date, the sweep skips this iteration (up to 15-min grace).
-Hard cutoff 13:15 local — force-finalize regardless. All auto-
-finalizes stamp `auto_finalized=True` + `finalized_by_user_id=NULL`
-so audit can distinguish from user-driven finalizes.
+**tomorrow's date**, the sweep skips (up to 15-min grace). Hard
+cutoff 13:15 local — force-finalize regardless. All auto-finalizes
+stamp `auto_finalized=True` + `finalized_by_user_id=NULL` so audit
+can distinguish from user-driven finalizes.
 
 **Cross-tenant isolation.** Every function filters by `company_id`.
 Writes that span tenants raise on principle.
@@ -351,12 +358,14 @@ def _has_active_focus_for_date(
     schedule_date: date,
 ) -> bool:
     """Check if any user in the company has an active scheduling Focus
-    session whose layout_state references this date.
+    session whose layout_state references `schedule_date`.
 
-    Focus-open deferral per brief: if a dispatcher has the Scheduling
-    Focus open for today's schedule at auto-finalize fire time, defer
-    15 minutes so they get a chance to finalize explicitly. Hard cutoff
-    at 1:15pm — the caller enforces that bound.
+    Focus-open deferral per brief: the auto-finalize caller passes
+    TOMORROW's date (since that's what the 1pm sweep targets). If a
+    dispatcher has the Scheduling Focus open composing tomorrow's
+    schedule at the 1pm fire time, defer finalization up to 15
+    minutes so they can finalize explicitly. Hard cutoff at 1:15pm —
+    the caller enforces that bound via `in_grace_window`.
 
     Returns False if focus_sessions table or infrastructure isn't
     available (degrade gracefully — never block auto-finalize on a
@@ -406,23 +415,26 @@ def auto_finalize_pending_schedules(
     now_utc: datetime | None = None,
     company_ids: list[str] | None = None,
 ) -> list[AutoFinalizeResult]:
-    """Sweep tenants; finalize draft schedules whose tenant-local time
-    has reached the auto-finalize window.
+    """Sweep tenants; finalize TOMORROW's draft schedule when tenant-
+    local time has reached the 1pm auto-finalize window.
 
-    Called by the scheduler every 15 min starting at 13:00 (UTC —
-    the cron handles UTC firing; per-tenant tz resolution happens
-    here, same pattern as the briefings sweep).
+    Called by the scheduler every 15 min starting at 13:00 tenant-
+    local (the cron in `app/scheduler.py` runs in the scheduler's
+    timezone = America/New_York by default; per-tenant tz resolution
+    still happens here for multi-tz tenants).
 
     Per-tenant logic:
       1. Resolve tenant tz + current tenant-local datetime.
       2. If tenant-local time is before 13:00 → skip this tenant
          this tick.
-      3. Collect today's draft schedule + any past drafts that
-         slipped (these auto-finalize immediately — hard cutoff
-         enforced by having moved past 13:15).
-      4. For each draft:
-         - If tenant-local time is between 13:00 and 13:15 AND a
-           user has Focus open for that date → defer.
+      3. Find exactly ONE candidate: the draft schedule row for
+         `local_today + 1 day` (tomorrow). Past-date drafts are
+         NEVER auto-finalized — they stay draft and surface via the
+         `overdue_draft_schedules` anomaly widget. Today's schedule
+         is NEVER auto-finalized — it's already live work.
+      4. For the tomorrow candidate:
+         - If tenant-local time is between 13:00 and 13:14:59 AND
+           a user has Focus open for tomorrow's date → defer.
          - Else → finalize with auto=True, user_id=None.
       5. Collect results for logging / observability.
 
@@ -448,18 +460,22 @@ def auto_finalize_pending_schedules(
             continue
 
         local_today = local_now.date()
-        # Collect drafts for today + any past drafts that slipped.
-        draft_rows = (
+        local_tomorrow = local_today + timedelta(days=1)
+
+        # Exactly one candidate per tenant per tick: tomorrow's draft
+        # schedule row. No past-slippage sweep — past drafts are
+        # dispatcher-anomaly surface, not auto-resolved.
+        draft_row = (
             db.query(DeliverySchedule)
             .filter(
                 DeliverySchedule.company_id == company.id,
                 DeliverySchedule.state == "draft",
-                DeliverySchedule.schedule_date <= local_today,
+                DeliverySchedule.schedule_date == local_tomorrow,
             )
-            .all()
+            .first()
         )
 
-        considered: list[date] = [r.schedule_date for r in draft_rows]
+        considered: list[date] = [draft_row.schedule_date] if draft_row else []
         finalized: list[date] = []
         deferred: list[date] = []
         skipped: list[date] = []
@@ -471,35 +487,34 @@ def auto_finalize_pending_schedules(
             and local_now.minute < AUTO_FINALIZE_DEFERRED_HARD_CUTOFF_MINUTE
         )
 
-        for row in draft_rows:
-            # Focus-open deferral only applies to TODAY's schedule in
-            # the grace window. Past-date drafts always finalize.
+        if draft_row is not None:
+            # Focus-open deferral: if a dispatcher has the Scheduling
+            # Focus open with TOMORROW's date in layout_state, defer
+            # finalization within the 13:00-13:14:59 grace window.
             if (
                 in_grace_window
-                and row.schedule_date == local_today
-                and _has_active_focus_for_date(db, company.id, row.schedule_date)
+                and _has_active_focus_for_date(db, company.id, local_tomorrow)
             ):
-                deferred.append(row.schedule_date)
-                continue
-
-            try:
-                finalize_schedule(
-                    db,
-                    company.id,
-                    row.schedule_date,
-                    user_id=None,
-                    auto=True,
-                    commit=False,
-                )
-                finalized.append(row.schedule_date)
-            except Exception as exc:
-                logger.exception(
-                    "auto_finalize failed company_id=%s date=%s: %s",
-                    company.id,
-                    row.schedule_date,
-                    exc,
-                )
-                skipped.append(row.schedule_date)
+                deferred.append(draft_row.schedule_date)
+            else:
+                try:
+                    finalize_schedule(
+                        db,
+                        company.id,
+                        draft_row.schedule_date,
+                        user_id=None,
+                        auto=True,
+                        commit=False,
+                    )
+                    finalized.append(draft_row.schedule_date)
+                except Exception as exc:
+                    logger.exception(
+                        "auto_finalize failed company_id=%s date=%s: %s",
+                        company.id,
+                        draft_row.schedule_date,
+                        exc,
+                    )
+                    skipped.append(draft_row.schedule_date)
 
         # One commit per tenant — keep the transaction scoped.
         try:

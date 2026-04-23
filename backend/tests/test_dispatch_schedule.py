@@ -482,13 +482,21 @@ class TestHoleDug:
 
 
 class TestAutoFinalize:
+    """Auto-finalize sweep semantics: targets TOMORROW's schedule only.
+
+    Past-date drafts are anomalies; today's schedule is live work.
+    Neither is auto-finalized. Only `schedule_date = local_today + 1`
+    is considered.
+    """
+
     def test_sweep_skips_tenant_before_1pm_local(self, ctx):
         from app.database import SessionLocal
         from app.services import delivery_schedule_service as svc
 
         db = SessionLocal()
         try:
-            svc.ensure_schedule(db, ctx["company_id"], date.today())
+            tomorrow = date.today() + timedelta(days=1)
+            svc.ensure_schedule(db, ctx["company_id"], tomorrow)
             # Fire sweep at a UTC time that's 11am ET (= 16:00 UTC) —
             # before tenant's 1pm cutoff.
             fake_now = datetime.now(timezone.utc).replace(hour=16, minute=0, second=0, microsecond=0)
@@ -498,13 +506,59 @@ class TestAutoFinalize:
             own = [r for r in results if r.company_id == ctx["company_id"]]
             # Tenant skipped entirely → no result entry
             assert len(own) == 0
-            # Schedule still draft
-            r = svc.get_schedule_state(db, ctx["company_id"], date.today())
+            # Tomorrow's schedule still draft
+            r = svc.get_schedule_state(db, ctx["company_id"], tomorrow)
             assert r.state == "draft"
         finally:
             db.close()
 
-    def test_sweep_finalizes_past_1pm(self, ctx):
+    def test_sweep_finalizes_tomorrow_past_1pm(self, ctx):
+        from app.database import SessionLocal
+        from app.services import delivery_schedule_service as svc
+
+        db = SessionLocal()
+        try:
+            tomorrow = date.today() + timedelta(days=1)
+            svc.ensure_schedule(db, ctx["company_id"], tomorrow)
+            # Well past 1pm ET (20:00 UTC = 16:00 ET)
+            fake_now = datetime.now(timezone.utc).replace(hour=20, minute=0, second=0, microsecond=0)
+            results = svc.auto_finalize_pending_schedules(
+                db, now_utc=fake_now, company_ids=[ctx["company_id"]]
+            )
+            own = [r for r in results if r.company_id == ctx["company_id"]]
+            assert len(own) == 1
+            assert tomorrow in own[0].finalized_dates
+            r = svc.get_schedule_state(db, ctx["company_id"], tomorrow)
+            assert r.state == "finalized"
+            assert r.auto_finalized is True
+            assert r.finalized_by_user_id is None
+        finally:
+            db.close()
+
+    def test_sweep_never_touches_today(self, ctx):
+        """Regression guard — today's schedule stays draft, not auto-
+        finalized. Today's work is already live at 1pm."""
+        from app.database import SessionLocal
+        from app.services import delivery_schedule_service as svc
+
+        db = SessionLocal()
+        try:
+            today = date.today()
+            svc.ensure_schedule(db, ctx["company_id"], today)
+            fake_now = datetime.now(timezone.utc).replace(hour=20, minute=0, second=0, microsecond=0)
+            svc.auto_finalize_pending_schedules(
+                db, now_utc=fake_now, company_ids=[ctx["company_id"]]
+            )
+            r = svc.get_schedule_state(db, ctx["company_id"], today)
+            assert r.state == "draft"
+            assert r.auto_finalized is False
+        finally:
+            db.close()
+
+    def test_sweep_never_touches_past_drafts(self, ctx):
+        """Regression guard — past-date drafts are anomalies (dispatcher
+        forgot to finalize) and stay draft. Surface via the Pulse
+        `overdue_draft_schedules` anomaly widget, don't auto-resolve."""
         from app.database import SessionLocal
         from app.services import delivery_schedule_service as svc
 
@@ -512,30 +566,86 @@ class TestAutoFinalize:
         try:
             past = date.today() - timedelta(days=2)
             svc.ensure_schedule(db, ctx["company_id"], past)
-            # Well past 1pm ET
             fake_now = datetime.now(timezone.utc).replace(hour=20, minute=0, second=0, microsecond=0)
-            results = svc.auto_finalize_pending_schedules(
+            svc.auto_finalize_pending_schedules(
                 db, now_utc=fake_now, company_ids=[ctx["company_id"]]
             )
-            own = [r for r in results if r.company_id == ctx["company_id"]]
-            assert len(own) == 1
-            assert past in own[0].finalized_dates
             r = svc.get_schedule_state(db, ctx["company_id"], past)
-            assert r.state == "finalized"
-            assert r.auto_finalized is True
+            # Past draft stays draft
+            assert r.state == "draft"
+            assert r.auto_finalized is False
             assert r.finalized_by_user_id is None
         finally:
             db.close()
 
-    def test_sweep_idempotent_on_finalized(self, ctx):
+    def test_sweep_never_touches_two_days_out(self, ctx):
+        """Regression guard — schedules beyond tomorrow stay untouched.
+        The 1pm sweep only locks in tomorrow's work."""
         from app.database import SessionLocal
         from app.services import delivery_schedule_service as svc
 
         db = SessionLocal()
         try:
-            past = date.today() - timedelta(days=3)
+            two_days_out = date.today() + timedelta(days=2)
+            svc.ensure_schedule(db, ctx["company_id"], two_days_out)
+            fake_now = datetime.now(timezone.utc).replace(hour=20, minute=0, second=0, microsecond=0)
+            svc.auto_finalize_pending_schedules(
+                db, now_utc=fake_now, company_ids=[ctx["company_id"]]
+            )
+            r = svc.get_schedule_state(db, ctx["company_id"], two_days_out)
+            assert r.state == "draft"
+            assert r.auto_finalized is False
+        finally:
+            db.close()
+
+    def test_sweep_scope_boundary_with_multiple_drafts(self, ctx):
+        """Integration — seeded tenant with drafts at past/today/
+        tomorrow/+2d. Only tomorrow should flip. Regression for the
+        exact bug (user-reported) where the filter erroneously matched
+        multiple dates."""
+        from app.database import SessionLocal
+        from app.services import delivery_schedule_service as svc
+
+        db = SessionLocal()
+        try:
+            past = date.today() - timedelta(days=1)
+            today = date.today()
+            tomorrow = date.today() + timedelta(days=1)
+            day2 = date.today() + timedelta(days=2)
+            for d in (past, today, tomorrow, day2):
+                svc.ensure_schedule(db, ctx["company_id"], d)
+
+            fake_now = datetime.now(timezone.utc).replace(hour=20, minute=0, second=0, microsecond=0)
+            svc.auto_finalize_pending_schedules(
+                db, now_utc=fake_now, company_ids=[ctx["company_id"]]
+            )
+
+            # Only tomorrow is finalized.
+            states = {
+                d: svc.get_schedule_state(db, ctx["company_id"], d).state
+                for d in (past, today, tomorrow, day2)
+            }
+            assert states[past] == "draft"
+            assert states[today] == "draft"
+            assert states[tomorrow] == "finalized"
+            assert states[day2] == "draft"
+        finally:
+            db.close()
+
+    def test_sweep_idempotent_on_user_finalized_tomorrow(self, ctx):
+        """If the dispatcher explicitly finalized tomorrow's schedule
+        before the 1pm cron fires, the cron leaves it alone — the
+        filter is `state='draft'`, so a user-finalized row isn't
+        considered. User's finalize markers (auto_finalized=False,
+        finalized_by_user_id) stay intact."""
+        from app.database import SessionLocal
+        from app.services import delivery_schedule_service as svc
+
+        db = SessionLocal()
+        try:
+            tomorrow = date.today() + timedelta(days=1)
             svc.finalize_schedule(
-                db, ctx["company_id"], past,
+                db, ctx["company_id"], tomorrow,
                 user_id=ctx["admin_id"],
             )
             fake_now = datetime.now(timezone.utc).replace(hour=20, minute=0, second=0, microsecond=0)
@@ -546,11 +656,12 @@ class TestAutoFinalize:
             # Row already finalized, not included in considered (filter
             # is state='draft'), so finalized_dates should be empty.
             if own:
-                assert past not in own[0].finalized_dates
-            r = svc.get_schedule_state(db, ctx["company_id"], past)
+                assert tomorrow not in own[0].finalized_dates
+            r = svc.get_schedule_state(db, ctx["company_id"], tomorrow)
             # Still carrying the explicit user finalize (NOT auto_finalized)
             assert r.state == "finalized"
             assert r.auto_finalized is False
+            assert r.finalized_by_user_id == ctx["admin_id"]
         finally:
             db.close()
 
