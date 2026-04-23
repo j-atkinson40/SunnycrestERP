@@ -42,6 +42,22 @@ describe("StackRail", () => {
     })
   })
 
+  it("each tile fills full rail height (Smart Stack contract)", () => {
+    // Session 3.7.1 regression guard: tiles must be `height: 100%`
+    // + `minHeight: 100%` + `flexShrink: 0` so each fills the rail
+    // exactly, forcing scroll-snap to cycle one-by-one. The 3.7
+    // bug rendered tiles at their canvas-mode heights (200-320px)
+    // which fit simultaneously in the 70vh rail — no snap.
+    render(<StackRail widgets={threeWidgets} onExpandWidget={() => {}} />)
+    const tiles = document.querySelectorAll('[data-slot="focus-stack-tile"]')
+    tiles.forEach((tile) => {
+      const style = (tile as HTMLElement).style
+      expect(style.height).toBe("100%")
+      expect(style.minHeight).toBe("100%")
+      expect(style.flexShrink).toBe("0")
+    })
+  })
+
   it("renders dots indicator with one dot per widget", () => {
     render(<StackRail widgets={threeWidgets} onExpandWidget={() => {}} />)
     const tabs = screen.getAllByRole("tab")

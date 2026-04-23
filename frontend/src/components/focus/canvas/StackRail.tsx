@@ -2,8 +2,17 @@
  * StackRail — right-rail vertical Smart Stack. Phase A Session 3.7.
  *
  * Renders widgets in a scroll-snap column at the right of the
- * viewport. One widget visible at a time; scroll cycles through.
- * Tap a widget to expand into a floating overlay.
+ * viewport. ONE widget visible at a time; scroll cycles through —
+ * each tile fills the rail's full height so scroll-snap settles
+ * on exactly one widget at a time, matching iOS Home Screen Smart
+ * Stack behavior. Tap a widget to expand into a floating overlay.
+ *
+ * Session 3.7.1 fix: tiles originally used `state.position.height`
+ * (200-320px canvas heights), so three widgets fit in the 70vh rail
+ * simultaneously and scroll-snap never engaged — widgets rendered
+ * as a plain stacked list, not Smart Stack. Each tile now uses
+ * `height: 100%` + `flexShrink: 0` so it fills the rail exactly,
+ * forcing scroll to cycle one-by-one.
  *
  * Native CSS `scroll-snap-type: y mandatory` + `scroll-snap-align:
  * start` on each widget provides the snapping behavior. Native
@@ -14,7 +23,9 @@
  * Dots indicator column to the left of the rail — one dot per
  * widget; active dot filled brass, inactive outlined subtle.
  * IntersectionObserver on each widget tile reports visibility so
- * the active-dot state tracks the scroll position.
+ * the active-dot state tracks the scroll position. The observer's
+ * `root` is the rail scroll container (not the viewport) so
+ * intersection ratio is computed against the rail's visible area.
  *
  * Chrome (drag/resize/dismiss affordances) is disabled in stack
  * mode — widgets scroll in place, not drag. The mock widget content
@@ -40,15 +51,20 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
   const entries = Object.entries(widgets)
   const [activeIndex, setActiveIndex] = useState(0)
   const tileRefs = useRef<Array<HTMLDivElement | null>>([])
+  const railRef = useRef<HTMLDivElement | null>(null)
 
   // Intersection observer wiring — updates activeIndex when the
   // majority-visible tile changes. Threshold 0.55 so we don't flicker
-  // between tiles during mid-scroll. Guarded for environments (jsdom,
-  // very old browsers) that don't provide IntersectionObserver —
-  // activeIndex stays at 0 in that case.
+  // between tiles during mid-scroll. Root is the rail container so
+  // intersection is computed relative to the scrollable viewport of
+  // the rail, not the browser viewport — critical when the rail is
+  // vertically centered and smaller than the viewport. Guarded for
+  // environments (jsdom, very old browsers) that don't provide
+  // IntersectionObserver — activeIndex stays at 0 in that case.
   useEffect(() => {
     if (entries.length === 0) return
     if (typeof IntersectionObserver === "undefined") return
+    if (!railRef.current) return
     const observer = new IntersectionObserver(
       (observedEntries) => {
         for (const obs of observedEntries) {
@@ -60,7 +76,7 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
           }
         }
       },
-      { threshold: [0.55] },
+      { root: railRef.current, threshold: [0.55] },
     )
     tileRefs.current.forEach((el) => el && observer.observe(el))
     return () => observer.disconnect()
@@ -109,6 +125,7 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
 
       {/* Scroll-snap rail — actual widget tiles. */}
       <div
+        ref={railRef}
         data-slot="focus-stack-rail"
         className={cn(
           "flex flex-col overflow-y-auto",
@@ -123,7 +140,7 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
           scrollSnapType: "y mandatory",
         }}
       >
-        {entries.map(([id, state], i) => (
+        {entries.map(([id], i) => (
           <div
             key={id}
             ref={(el) => {
@@ -133,16 +150,21 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
             data-stack-index={i}
             data-widget-id={id}
             className={cn(
-              // Each tile is the full rail height minus a small
-              // offset so the "next tile" peeks in at the bottom,
-              // matching Smart Stack visual affordance.
-              "flex-none snap-start cursor-pointer",
+              // Each tile fills the full rail height so scroll-snap
+              // settles on exactly one tile at a time. `flexShrink:
+              // 0` + explicit `minHeight: 100%` defeats the flex
+              // default `min-height: auto` which would otherwise
+              // collapse the tile to content height and let multiple
+              // tiles fit simultaneously (the 3.7 → 3.7.1 bug).
+              "snap-start cursor-pointer",
               "border-b border-border-subtle/60 last:border-b-0",
               "transition-transform duration-quick ease-settle",
               "hover:bg-brass-subtle/20 active:scale-[0.98]",
             )}
             style={{
-              height: state.position.height,
+              height: "100%",
+              minHeight: "100%",
+              flexShrink: 0,
               scrollSnapAlign: "start",
             }}
             onClick={() => onExpandWidget(id as WidgetId)}
