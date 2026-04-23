@@ -3,7 +3,8 @@
 Scope: registry.py in isolation. No DB, no HTTP.
 
 Covers:
-  - Default seed populates 7 entity types (Phase 2 scope)
+  - Default seed populates 8 entity types (Phase 2 initial + Phase B
+    Session 1 added `delivery`)
   - Each entity has non-empty available_fields + default_sort
   - register_entity replaces by entity_type (last-write-wins)
   - reset_registry un-seeds
@@ -26,7 +27,8 @@ def _fresh_registry():
 
 
 class TestDefaultSeed:
-    def test_seven_entities_registered(self):
+    def test_eight_entities_registered(self):
+        # Phase 2 shipped 7; Phase B Session 1 added `delivery`.
         entities = {e.entity_type for e in registry.list_entities()}
         assert entities == {
             "fh_case",
@@ -36,6 +38,7 @@ class TestDefaultSeed:
             "product",
             "document",
             "vault_item",
+            "delivery",
         }
 
     def test_each_entity_has_fields_and_sort(self):
@@ -104,8 +107,8 @@ class TestFieldLookup:
 
 class TestResetRegistry:
     def test_reset_clears_and_re_seeds(self):
-        # Trigger seed
+        # Trigger seed — 8 after Phase B added `delivery`.
         before = len(registry.list_entities())
         registry.reset_registry()
         after = len(registry.list_entities())
-        assert before == after == 7
+        assert before == after == 8

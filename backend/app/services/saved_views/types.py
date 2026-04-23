@@ -37,6 +37,10 @@ EntityType = Literal[
     "product",
     "document",
     "vault_item",
+    # Phase B Session 1 — delivery as a first-class saved-view entity.
+    # Enables dispatcher saved-view seeds + future general-purpose
+    # delivery saved views.
+    "delivery",
 ]
 
 FilterOperator = Literal[

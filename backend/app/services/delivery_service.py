@@ -259,12 +259,52 @@ def create_delivery(db: Session, company_id: str, data: dict, actor_id: str | No
 
 
 def update_delivery(db: Session, delivery: Delivery, data: dict) -> Delivery:
+    # Capture the state the revert-hook needs to inspect BEFORE the
+    # mutation — the requested_date may itself be one of the edited
+    # fields, and we need to revert the schedule for whichever date
+    # (old or new) was finalized.
+    pre_edit_date = delivery.requested_date
+
     for k, v in data.items():
         if v is not None:
             setattr(delivery, k, v)
     delivery.modified_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(delivery)
+
+    # Phase B Session 1 — schedule revert hook. After the delivery
+    # commit, if this edit affected a finalized schedule, flip it
+    # back to draft. Called at both the pre-edit date (in case the
+    # delivery was REMOVED from a finalized day) and the post-edit
+    # date (in case it was MOVED INTO a finalized day).
+    try:
+        from app.services import delivery_schedule_service as _sched
+        if pre_edit_date is not None:
+            row = _sched.get_schedule_state(db, delivery.company_id, pre_edit_date)
+            if row is not None and row.state == "finalized":
+                _sched.revert_to_draft(
+                    db,
+                    delivery.company_id,
+                    pre_edit_date,
+                    reason=f"Delivery {delivery.id[:8]} edited after finalize",
+                )
+        if delivery.requested_date is not None and delivery.requested_date != pre_edit_date:
+            row = _sched.get_schedule_state(db, delivery.company_id, delivery.requested_date)
+            if row is not None and row.state == "finalized":
+                _sched.revert_to_draft(
+                    db,
+                    delivery.company_id,
+                    delivery.requested_date,
+                    reason=f"Delivery {delivery.id[:8]} moved into finalized day",
+                )
+    except Exception:
+        # Revert-hook failures never block the delivery update itself.
+        # Observability: failures log but don't raise.
+        import logging as _logging
+        _logging.getLogger(__name__).exception(
+            "schedule revert hook failed for delivery %s", delivery.id
+        )
+
     return delivery
 
 

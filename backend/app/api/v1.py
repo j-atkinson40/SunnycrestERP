@@ -73,6 +73,7 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     customers,
     deliveries,
     discount,
+    dispatch,
     finance_charges,
     delivery_portal,
     direct_ship,
@@ -324,6 +325,10 @@ v1_router.include_router(
 )
 v1_router.include_router(
     deliveries.router, prefix="/delivery", tags=["Delivery & Dispatch"]
+)
+# Phase B Session 1 — dispatch schedule state machine + hole-dug.
+v1_router.include_router(
+    dispatch.router, prefix="/dispatch", tags=["Dispatch"]
 )
 v1_router.include_router(
     discount.router, prefix="/discount", tags=["Early Payment Discount"]

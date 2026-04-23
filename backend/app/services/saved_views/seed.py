@@ -484,6 +484,142 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
             ),
         ),
     ],
+
+    # ────────────────────────────────────────────────────────────────
+    # Phase B Session 1 — Dispatcher (manufacturing) saved-view seeds.
+    # Five filtered views over the `delivery` entity type. Referenced
+    # by the (manufacturing, dispatcher) Pulse composition in
+    # `spaces/pulse_compositions.py` via their seed keys.
+    #
+    # NOTE ON DATE FILTERS — these seeds intentionally filter on
+    # structural conditions (scheduling_type, status, null/not-null)
+    # rather than relative dates. Today/Tomorrow/Two-Days-Out are
+    # rendered by the `dispatch_monitor` component which computes
+    # relative dates at render time; they don't live as saved views.
+    # Relative-date filters are a deferred saved-view feature.
+    # ────────────────────────────────────────────────────────────────
+
+    ("manufacturing", "dispatcher"): [
+        SeedTemplate(
+            template_id="pending_dispatch",
+            title="Needs a driver",
+            description=(
+                "Kanban-scheduled deliveries with a requested date set "
+                "but not yet assigned to a driver."
+            ),
+            entity_type="delivery",
+            config_factory=lambda role: _basic_table(
+                entity_type="delivery",
+                filters=[
+                    Filter(field="scheduling_type", operator="eq", value="kanban"),
+                    Filter(field="requested_date", operator="is_not_null"),
+                    Filter(field="status", operator="not_in",
+                           value=["completed", "cancelled", "failed"]),
+                    Filter(field="assigned_driver_id", operator="is_null"),
+                ],
+                sort=[Sort(field="requested_date", direction="asc")],
+                columns=[
+                    "requested_date",
+                    "status",
+                    "hole_dug_status",
+                    "assigned_driver_id",
+                ],
+                role_slug=role,
+            ),
+        ),
+        SeedTemplate(
+            template_id="this_weeks_deliveries",
+            title="This week's deliveries",
+            description=(
+                "All active kanban-scheduled deliveries across the "
+                "coming week, sorted by date."
+            ),
+            entity_type="delivery",
+            config_factory=lambda role: _basic_table(
+                entity_type="delivery",
+                filters=[
+                    Filter(field="scheduling_type", operator="eq", value="kanban"),
+                    Filter(field="requested_date", operator="is_not_null"),
+                    Filter(field="status", operator="not_in",
+                           value=["completed", "cancelled", "failed"]),
+                ],
+                sort=[Sort(field="requested_date", direction="asc")],
+                columns=[
+                    "requested_date",
+                    "status",
+                    "priority",
+                    "hole_dug_status",
+                    "assigned_driver_id",
+                ],
+                role_slug=role,
+            ),
+        ),
+        SeedTemplate(
+            template_id="ancillary_pending",
+            title="Ancillary — pickup / drop",
+            description=(
+                "Ancillary deliveries awaiting a dispatcher's next "
+                "action (unassigned, awaiting pickup, assigned)."
+            ),
+            entity_type="delivery",
+            config_factory=lambda role: _basic_list(
+                entity_type="delivery",
+                filters=[
+                    Filter(field="scheduling_type", operator="eq", value="ancillary"),
+                    Filter(
+                        field="ancillary_fulfillment_status",
+                        operator="in",
+                        value=["unassigned", "awaiting_pickup", "assigned_to_driver"],
+                    ),
+                ],
+                sort=[Sort(field="requested_date", direction="asc")],
+                role_slug=role,
+            ),
+        ),
+        SeedTemplate(
+            template_id="direct_ship_pending",
+            title="Direct ship — in flight",
+            description=(
+                "Direct-ship deliveries pending fulfillment from "
+                "Wilbert. Dispatcher tracks ordered + shipped states."
+            ),
+            entity_type="delivery",
+            config_factory=lambda role: _basic_list(
+                entity_type="delivery",
+                filters=[
+                    Filter(field="scheduling_type", operator="eq", value="direct_ship"),
+                    Filter(
+                        field="direct_ship_status",
+                        operator="in",
+                        value=["pending", "ordered_from_wilbert", "shipped"],
+                    ),
+                ],
+                sort=[Sort(field="requested_date", direction="asc")],
+                role_slug=role,
+            ),
+        ),
+        SeedTemplate(
+            template_id="hole_dug_unknown",
+            title="Hole status unknown",
+            description=(
+                "Kanban deliveries whose hole-dug status is unresolved "
+                "— quick-toggle from the Monitor card."
+            ),
+            entity_type="delivery",
+            config_factory=lambda role: _basic_list(
+                entity_type="delivery",
+                filters=[
+                    Filter(field="scheduling_type", operator="eq", value="kanban"),
+                    Filter(field="requested_date", operator="is_not_null"),
+                    Filter(field="status", operator="not_in",
+                           value=["completed", "cancelled", "failed"]),
+                    Filter(field="hole_dug_status", operator="is_null"),
+                ],
+                sort=[Sort(field="requested_date", direction="asc")],
+                role_slug=role,
+            ),
+        ),
+    ],
 }
 
 

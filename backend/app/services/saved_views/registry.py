@@ -512,6 +512,104 @@ def _seed_default_entities() -> None:
         default_columns=["title", "item_type", "status", "updated_at"],
     ))
 
+    # delivery ──────────────────────────────────────────────────────
+    # Phase B Session 1 — dispatcher-role saved views need delivery as
+    # a first-class entity. Surfaces the three-panel-scheduling-board
+    # data (kanban / ancillary / direct_ship) through one entity type;
+    # filters narrow the view.
+    def delivery_query(db: Session, company_id: str):
+        from app.models.delivery import Delivery
+
+        return db.query(Delivery).filter(Delivery.company_id == company_id)
+
+    def delivery_serialize(row: Any) -> dict:
+        # Pull enrichment from type_config JSONB (populated at render
+        # by the scheduling board's kanban serializer). Present with
+        # null-safety so saved views work even on deliveries without
+        # enriched type_config.
+        tc = row.type_config or {}
+        return {
+            "id": row.id,
+            "order_id": row.order_id,
+            "customer_id": row.customer_id,
+            "delivery_type": row.delivery_type,
+            "status": row.status,
+            "priority": row.priority,
+            "requested_date": _iso_date(row.requested_date),
+            "scheduled_at": _iso_dt(row.scheduled_at),
+            "completed_at": _iso_dt(row.completed_at),
+            "scheduling_type": row.scheduling_type,
+            "ancillary_fulfillment_status": row.ancillary_fulfillment_status,
+            "direct_ship_status": row.direct_ship_status,
+            "assigned_driver_id": row.assigned_driver_id,
+            "hole_dug_status": row.hole_dug_status,
+            "family_name": tc.get("family_name"),
+            "cemetery_name": tc.get("cemetery_name"),
+            "funeral_home_name": tc.get("funeral_home_name"),
+            "service_time": tc.get("service_time"),
+            "vault_type": tc.get("vault_type"),
+            "created_at": _iso_dt(row.created_at),
+            "modified_at": _iso_dt(row.modified_at),
+        }
+
+    register_entity(EntityTypeMetadata(
+        entity_type="delivery",
+        display_name="Deliveries",
+        icon="Truck",
+        navigate_url_template="/delivery/deliveries/{id}",
+        query_builder=delivery_query,
+        row_serializer=delivery_serialize,
+        available_fields=[
+            FieldMetadata("id", "ID", "text", filterable=False, groupable=False, hidden_by_default=True),
+            FieldMetadata("delivery_type", "Type", "text"),
+            FieldMetadata(
+                "status", "Status", "enum",
+                enum_values=[
+                    "pending", "scheduled", "in_transit", "arrived",
+                    "setup", "completed", "cancelled", "failed",
+                ],
+            ),
+            FieldMetadata(
+                "priority", "Priority", "enum",
+                enum_values=["low", "normal", "high", "urgent"],
+            ),
+            FieldMetadata("requested_date", "Requested date", "date"),
+            FieldMetadata(
+                "scheduling_type", "Scheduling bucket", "enum",
+                enum_values=["kanban", "ancillary", "direct_ship"],
+            ),
+            FieldMetadata(
+                "ancillary_fulfillment_status",
+                "Ancillary status",
+                "enum",
+                enum_values=[
+                    "unassigned", "awaiting_pickup", "assigned_to_driver",
+                    "picked_up", "delivered", "completed",
+                ],
+            ),
+            FieldMetadata(
+                "direct_ship_status", "Direct-ship status", "enum",
+                enum_values=[
+                    "pending", "ordered_from_wilbert", "shipped", "done",
+                ],
+            ),
+            FieldMetadata(
+                "hole_dug_status", "Hole dug", "enum",
+                enum_values=["unknown", "yes", "no"],
+            ),
+            FieldMetadata("assigned_driver_id", "Assigned driver", "relation", relation_entity="driver"),
+            FieldMetadata("modified_at", "Last updated", "datetime", groupable=False),
+        ],
+        default_sort=[{"field": "requested_date", "direction": "asc"}],
+        default_columns=[
+            "requested_date",
+            "scheduling_type",
+            "status",
+            "hole_dug_status",
+            "assigned_driver_id",
+        ],
+    ))
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 

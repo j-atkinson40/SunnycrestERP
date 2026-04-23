@@ -109,6 +109,16 @@ class Delivery(Base):
         String(36), ForeignKey("locations.id"), nullable=True
     )
 
+    # Dispatch quick-edit field (Phase B Session 1).
+    # Three states: 'unknown' | 'yes' | 'no'. NULL is the initial
+    # state for all deliveries — semantically "nobody touched this
+    # yet." The dispatcher quick-toggles from the Monitor card; a null
+    # read is distinct from 'unknown' (which means "dispatcher looked
+    # and doesn't know yet").
+    hole_dug_status: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

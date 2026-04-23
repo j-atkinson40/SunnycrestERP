@@ -54,6 +54,7 @@ from app.models.delivery import Delivery
 from app.models.delivery_event import DeliveryEvent
 from app.models.delivery_media import DeliveryMedia
 from app.models.delivery_route import DeliveryRoute
+from app.models.delivery_schedule import DeliverySchedule
 from app.models.delivery_settings import DeliverySettings
 from app.models.delivery_stop import DeliveryStop
 from app.models.delivery_type_definition import DeliveryTypeDefinition
@@ -443,6 +444,7 @@ __all__ = [
     "DeliveryEvent",
     "DeliveryMedia",
     "DeliveryRoute",
+    "DeliverySchedule",
     "DeliverySettings",
     "DeliveryStop",
     "DeliveryTypeDefinition",

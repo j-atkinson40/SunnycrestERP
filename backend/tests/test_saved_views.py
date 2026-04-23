@@ -679,14 +679,18 @@ class TestSeed:
 
 
 class TestAPI:
-    def test_list_entity_types_returns_7(self, client, auth_headers):
+    def test_list_entity_types_returns_8(self, client, auth_headers):
+        # Phase B Session 1 added `delivery` as the 8th saved-view
+        # entity type alongside fh_case / sales_order / invoice /
+        # contact / product / document / vault_item.
         resp = client.get("/api/v1/saved-views/entity-types", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.json()
-        assert len(body) == 7
+        assert len(body) == 8
         types = {e["entity_type"] for e in body}
         assert "sales_order" in types
         assert "vault_item" in types
+        assert "delivery" in types
 
     def test_create_and_get(self, client, auth_headers):
         create = client.post(

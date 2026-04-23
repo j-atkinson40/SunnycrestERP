@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.permissions import (
     ACCOUNTANT_DEFAULT_PERMISSIONS,
     ACCOUNTING_DEFAULT_PERMISSIONS,
+    DISPATCHER_DEFAULT_PERMISSIONS,
     DRIVER_DEFAULT_PERMISSIONS,
     EMPLOYEE_DEFAULT_PERMISSIONS,
     LEGACY_DESIGNER_DEFAULT_PERMISSIONS,
@@ -26,6 +27,7 @@ ROLE_FUNCTIONAL_AREAS: dict[str, list[str]] = {
     "admin": ["full_admin"],
     "manager": ["full_admin"],
     "office_staff": ["customer_management", "funeral_scheduling", "invoicing_ar"],
+    "dispatcher": ["delivery_dispatch", "driver_management"],
     "driver": [],
     "production": ["production_log", "safety_compliance"],
     "legacy_designer": ["customer_management"],
@@ -83,6 +85,12 @@ _SYSTEM_ROLES = [
         "slug": "production",
         "description": "Operations board and production hub full access",
         "permissions": PRODUCTION_DEFAULT_PERMISSIONS,
+    },
+    {
+        "name": "Dispatcher",
+        "slug": "dispatcher",
+        "description": "Scheduling monitor + scheduling focus; manages driver assignments, delivery schedules, and hole-dug status",
+        "permissions": DISPATCHER_DEFAULT_PERMISSIONS,
     },
     {
         "name": "Employee",

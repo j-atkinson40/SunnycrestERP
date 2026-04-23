@@ -25,7 +25,7 @@ PERMISSION_CATEGORIES: dict[str, dict[str, list[str]]] = {
     },
     "operations": {
         "operations": ["view"],
-        "orders": ["view", "create", "edit", "edit_status", "view_assigned", "mark_delivered"],
+        "orders": ["view", "create", "edit", "edit_status", "edit_scheduling_fields", "view_assigned", "mark_delivered"],
         "order_station": ["view"],
         "operations_board": ["view", "edit"],
         "scheduling_board": ["view"],
@@ -80,7 +80,7 @@ PERMISSION_CATEGORIES: dict[str, dict[str, list[str]]] = {
         "equipment": ["view", "create", "edit", "delete"],
         "customers": ["view", "create", "edit", "delete"],
         "vendors": ["view", "create", "edit", "delete"],
-        "delivery": ["view", "create", "edit", "delete", "dispatch", "track"],
+        "delivery": ["view", "create", "edit", "delete", "dispatch", "track", "assign_driver", "finalize_schedule", "edit_hole_dug"],
         "drivers": ["view", "create", "edit", "delete"],
         "vehicles": ["view", "create", "edit", "delete"],
         "routes": ["view", "create", "edit", "delete", "dispatch"],
@@ -383,6 +383,44 @@ PRODUCTION_OPTIONAL_TOGGLES = [
     "order_station.view",
 ]
 
+# Dispatcher — Phase B Session 1. Scheduling-focused role for the
+# Dispatch Monitor + Scheduling Focus workflow. Manages driver
+# assignments, delivery schedules, and hole-dug status. Read access
+# to orders and related customer/cemetery records; no financial
+# permissions. Explicitly NOT admin.
+DISPATCHER_DEFAULT_PERMISSIONS = [
+    # Dashboard + core navigation
+    "dashboard.view",
+    # Delivery operations — primary role focus
+    "delivery.view",
+    "delivery.edit",
+    "delivery.create",
+    "delivery.dispatch",
+    "delivery.track",
+    "delivery.assign_driver",
+    "delivery.finalize_schedule",
+    "delivery.edit_hole_dug",
+    # Routes + drivers — need to see + assign
+    "routes.view",
+    "routes.edit",
+    "routes.dispatch",
+    "drivers.view",
+    "vehicles.view",
+    # Orders — read access + scheduling-field edits only
+    "orders.view",
+    "orders.edit_scheduling_fields",
+    "orders.view_assigned",
+    # Scheduling board + operations board for context
+    "scheduling_board.view",
+    "operations_board.view",
+    # Customers + CRM read access for context
+    "customers.view",
+    "crm.view",
+    # Legacy delivery-module keys kept for backward compat
+    "ar.view",
+    "ar.update_order",
+]
+
 DRIVER_DEFAULT_PERMISSIONS = [
     "driver.console.view",
     "orders.view_assigned",
@@ -440,6 +478,7 @@ ROLE_DEFAULTS: dict[str, list[str]] = {
     "accountant": ACCOUNTANT_DEFAULT_PERMISSIONS,
     "office_staff": OFFICE_STAFF_DEFAULT_PERMISSIONS,
     "production": PRODUCTION_DEFAULT_PERMISSIONS,
+    "dispatcher": DISPATCHER_DEFAULT_PERMISSIONS,
     "driver": DRIVER_DEFAULT_PERMISSIONS,
     "employee": EMPLOYEE_DEFAULT_PERMISSIONS,
     "manager": MANAGER_DEFAULT_PERMISSIONS,

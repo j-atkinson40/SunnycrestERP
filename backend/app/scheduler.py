@@ -305,6 +305,63 @@ def job_briefing_sweep():
     _run_global("BRIEFING_SWEEP", sweep_briefings_to_generate)
 
 
+def job_dispatch_auto_finalize():
+    """Phase B Session 1 — auto-finalize pending schedules at 1pm
+    tenant-local.
+
+    Per-tenant tz pattern (matches briefings sweep): runs every 15 min
+    starting at 13:00 UTC. For each active tenant, resolves the
+    tenant's local time; if local time has reached 13:00, iterates
+    draft schedules (today + any past dates that slipped) and either
+    finalizes them or defers if a dispatcher has the Scheduling Focus
+    open for that date. Hard cutoff 13:15 local — never defer past.
+
+    Auto-finalized rows carry `auto_finalized=True` +
+    `finalized_by_user_id=NULL` so audit can distinguish from
+    user-driven finalizes. Idempotent — running on an already-
+    finalized row is a no-op.
+    """
+    run_id = _log_job_run("DISPATCH_AUTO_FINALIZE")
+    t0 = time.monotonic()
+    db = SessionLocal()
+    try:
+        from app.services.delivery_schedule_service import (
+            auto_finalize_pending_schedules,
+        )
+        results = auto_finalize_pending_schedules(db)
+        duration = time.monotonic() - t0
+        # One summary line per tenant that actually had activity.
+        active = [r for r in results if r.finalized_dates or r.deferred_dates or r.skipped_dates]
+        logger.info(
+            "[DISPATCH_AUTO_FINALIZE] tenants=%d active=%d elapsed=%.2fs",
+            len(results), len(active), duration,
+        )
+        for r in active:
+            logger.info(
+                "[DISPATCH_AUTO_FINALIZE] company_id=%s local=%s finalized=%s deferred=%s skipped=%s",
+                r.company_id,
+                r.tenant_local_now.isoformat(),
+                r.finalized_dates,
+                r.deferred_dates,
+                r.skipped_dates,
+            )
+        _complete_job_run(
+            run_id,
+            status="completed",
+            duration=duration,
+            success_count=sum(len(r.finalized_dates) for r in results),
+            tenant_count=len(results),
+        )
+    except Exception as exc:
+        duration = time.monotonic() - t0
+        logger.exception("[DISPATCH_AUTO_FINALIZE] failed: %s", exc)
+        _complete_job_run(
+            run_id, status="failed", duration=duration, error_message=str(exc)
+        )
+    finally:
+        db.close()
+
+
 def job_platform_health_recalculate():
     """Daily 2am — recalculate tenant health scores from open incidents."""
     run_id = _log_job_run("PLATFORM_HEALTH_RECALCULATE")
@@ -438,6 +495,7 @@ JOB_REGISTRY: dict[str, callable] = {
     # /workflows/{id}/start endpoint.
     "quote_auto_expiry": job_quote_auto_expiry,
     "briefing_sweep": job_briefing_sweep,
+    "dispatch_auto_finalize": job_dispatch_auto_finalize,
 }
 
 
@@ -647,6 +705,23 @@ def register_all_jobs():
         CronTrigger(minute="*/15"),
         id="briefing_sweep",
         name="briefing_sweep",
+        replace_existing=True,
+        misfire_grace_time=900,
+    )
+
+    # EVERY 15 MINUTES starting 13:00 UTC — Phase B Session 1
+    # dispatch auto-finalize. Runs hourly in aggregate (four ticks)
+    # but only tenants whose LOCAL time is past 13:00 finalize this
+    # tick. In-service tz resolution + Focus-open deferral in
+    # `delivery_schedule_service.auto_finalize_pending_schedules`.
+    # Hourly upper bound: fires at :00, :15, :30, :45 of hours 13-23
+    # UTC (covers every tenant tz from UTC-11 to UTC+13 with some
+    # overlap for safety).
+    scheduler.add_job(
+        job_dispatch_auto_finalize,
+        CronTrigger(hour="13-23", minute="*/15"),
+        id="dispatch_auto_finalize",
+        name="dispatch_auto_finalize",
         replace_existing=True,
         misfire_grace_time=900,
     )
