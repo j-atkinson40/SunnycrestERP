@@ -6,6 +6,69 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase A Session 3.8.3 — Position via transform (composite-only updates)
+
+**Date:** 2026-04-23
+**Session type:** Performance refactor on top of Sessions 3.8 / 3.8.1 / 3.8.2. Surfaced when user noted window-resize feel still trails tldraw.com / macOS Finder at the Quality Bar ceiling. Chronologically after Session 4 (persistence), but logically a continuation of the 3.8 layout-performance lineage — hence the 3.8.3 name.
+**Files touched:** 4 — `frontend/src/components/focus/canvas/WidgetChrome.tsx` (position math swap + header doc), `frontend/src/components/focus/Focus.tsx` (positioner-wrapper around Popup), `FEATURE_SESSIONS.md`, `PLATFORM_QUALITY_BAR.md`, `CLAUDE.md`.
+**LOC:** ~45 touched across WidgetChrome + Focus (the ~30-LOC user target plus the 15-LOC Popup wrapper that solves the CSS-animation conflict found during implementation).
+**Tests:** 366 vitest passing (no new tests — behavioral contract unchanged; Session 3.8.3 is purely internal rendering mechanics). tsc clean. vite build clean in 4.47s.
+
+### What shipped
+
+Widgets + Focus core now position themselves via `transform: translate3d(x, y, 0)` instead of `left/top`. Per-frame position updates during window resize are now **composite-only** (GPU layer push, no layout, no paint) instead of layout-inducing.
+
+| Element | Pre-3.8.3 | Post-3.8.3 |
+|---|---|---|
+| WidgetChrome (3-10 elements per Focus) | `left: X, top: Y` — full layout pass every frame | `transform: translate3d(X, Y, 0)` — composite-only |
+| Focus Popup (1 element) | `left: X, top: Y` on Popup | Wrapped in positioner div holding transform; Popup sizes to wrapper via `absolute inset-0` |
+
+**Width/height stays inline.** During a window-resize gesture, only `x, y` change per frame (widget width/height come from stored `position.width/height` — stable). So moving just `x, y` to transform removes all per-frame layout from widget rendering. Width/height still trigger layout when they *do* change (user-initiated widget resize gesture, tier crossings), but that's a rare event, not a per-frame cost.
+
+### Why the scoped fix instead of the full tldraw pattern
+
+Pre-build research (sub-agent) mapped tldraw's perf stack at github.com/tldraw/tldraw:
+
+| Layer | Mechanism | Benefit at 3-10 widgets |
+|---|---|---|
+| (a) `transform: matrix(...)` for position | Composite-only updates | **High** — this is the 30-LOC fix we shipped |
+| (b) Signals (`@tldraw/state`) + `useQuickReactor` bypassing React | Direct `elm.style.setProperty`, no reconciliation | ~0.5ms/frame, well under perceptual threshold — **skipped** |
+| (c) Memoized per-property diff | Skip no-op style writes | Negligible at our scale — **skipped** |
+
+tldraw's signals + ref-bypass stack earns its keep past ~100 moving shapes (Figma-class tooling routinely handles 500-50000). At 3-10 widgets, layer (a) alone closes the gap; layers (b)(c) would cost a full state-management rewrite for savings below the perceptual threshold.
+
+Research quote: *"you'd rewrite state management for 60fps of ~0.5ms savings per frame. Stay with React state; flip the positioning property to `transform`."*
+
+### CSS-animation conflict + positioner-wrapper solution
+
+**Implementation issue surfaced during planning:** Focus.Popup has `data-open:animate-in zoom-in-95 / data-closed:animate-out zoom-out-95` keyframe animations. Per the CSS Animations Level 1 spec, running animations **override** inline style for animated properties — including transform. If Popup carried both a `transform: translate3d(x, y, 0)` for position AND the zoom animation, during the 400ms open window the zoom keyframes would replace our position-transform, and the core would render at viewport (0, 0) scale-0.95 → (0, 0) scale-1, then *teleport* to `(coreRect.x, coreRect.y)` when the animation ends. Broken entry/exit.
+
+**Fix:** wrap `DialogPrimitive.Popup` in a positioner `<div>` that owns the position transform. Popup fills the wrapper via `absolute inset-0` and keeps its zoom animation. Two elements, two concurrent transforms — wrapper translates, Popup scales, no conflict because they're on different elements.
+
+Extra cost: ~15 LOC of wrapper markup + comment explaining the animation-conflict rationale so future edits don't collapse it back.
+
+### Architectural decisions locked
+
+1. **Width/height stays inline.** Window-resize is the hot path; widget width/height are stable during it. Reserving width/height for layout-inducing inline style is the honest tradeoff — only what changes per frame needs to go on transform.
+2. **Positioner wrapper for Popup, not inline transform.** Zoom animations on Popup require transform to be animation-owned during entry/exit. Wrapper element isolates position-transform from animation-transform.
+3. **No ResizeObserver on Focus root.** User approved skipping — current rAF-coalesced `window.resize` in `useViewportTier` (3.8.2) is adequate at this scale. Would add later only if measurably insufficient.
+4. **No CSS custom properties + no signals + no direct DOM writes + no split state model.** All ruled out by the scale-calibrated tldraw research.
+5. **Explicit `left: 0, top: 0`** alongside the transform — prevents browser auto-placement quirks when absolute-positioned elements have no explicit offset. Clean containing-block anchor.
+
+### Expected impact
+
+During window resize: widgets update ~0.1ms/widget/frame (GPU composite) vs. pre-fix ~2-5ms/widget/frame (full layout + paint across 3 widgets + backdrop-blur re-sampling). Core Popup's `width/height` still triggers layout per frame (one element, unavoidable), but that's a single layout pass vs. 3+ layout passes for widgets. "Swimming" feel should be gone.
+
+### Acknowledged ceiling
+
+Gap to native macOS Finder may remain — browsers still do more work than OS-level window managers, and backdrop-blur re-samples the underlying content per frame regardless of what we do above it. If Session 3.8.3 doesn't close the gap to the user's perceptual threshold, the architectural ceiling at this scale is reached; per the user's direction, document honestly in PLATFORM_QUALITY_BAR.md and move to Session 5 (pin system). Don't iterate blindly below the measurement threshold.
+
+### Verification
+
+tsc clean; vitest 366/366 passing (no behavioral contract change, so no new tests); vite build clean 4.47s. Visual verification user-side: drag browser window wide→narrow→wide, compare to tldraw.com in adjacent tab.
+
+---
+
 ## Phase A Session 4 — Persistence + return pill countdown
 
 **Date:** 2026-04-22

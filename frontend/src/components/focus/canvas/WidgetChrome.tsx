@@ -29,13 +29,25 @@
  * problem: each viewport resize event set a new target, and CSS
  * started a fresh 300ms ease to the new target. At 60Hz resize the
  * widget was always ~100-150ms behind where it should be, reading
- * as choppy "swimming" during drag. Native window-resize feel (macOS
- * Finder) is content following viewport per-frame with no transition
- * layer — layout is driven by the viewport's first-order motion, not
- * by CSS interpolation on top. We now match that model: widget's
- * `left/top/width/height` update synchronously with viewport changes.
- * Tier-boundary visual continuity is carried by the tier renderer's
- * opacity crossfade, not by core/widget layout transitions.
+ * as choppy "swimming" during drag.
+ *
+ * Session 3.8.3 — position via `transform: translate3d(x, y, 0)`
+ * instead of `left/top`. Per tldraw pattern research + user approval:
+ * `transform` updates are composite-only (GPU layer push, no layout,
+ * no paint) while `left/top` trigger full layout + paint per frame.
+ * At our scale (3-10 widgets per Focus) layer 1 of the tldraw stack
+ * (transform for position) provides the perceptible improvement;
+ * layers 2-3 (signals + ref-based direct DOM writes) are overkill
+ * vs. state-management complexity. During a window resize, widget
+ * width/height are STABLE (they come from stored position.width /
+ * height); only x/y change per frame. Moving only x/y to transform
+ * keeps per-frame updates off the layout path entirely.
+ *
+ * Transform composition: base position-translate is written first,
+ * then @dnd-kit's drag translate (active during drag), then drag-
+ * scale. Multiple transforms in a single `transform` string compose
+ * left-to-right via matrix multiplication — equivalent to applying
+ * each translate in sequence.
  */
 
 import { useDraggable } from "@dnd-kit/core"
@@ -165,6 +177,20 @@ export function WidgetChrome({
   const displayRect = resize.liveRect ?? resolved
   const chromeActive = isDragging || resize.isResizing
 
+  // Session 3.8.3 — compose transform. Base position-translate comes
+  // first; @dnd-kit's drag translate (`translate3d(dx, dy, 0)` during
+  // drag) stacks via CSS matrix multiplication; drag-scale last. When
+  // @dnd-kit's `transform` is null (not dragging), `CSS.Translate.
+  // toString` returns null/empty — filter it out of the composition.
+  const dragTransformStr = transform ? CSS.Translate.toString(transform) : null
+  const composedTransform = [
+    `translate3d(${displayRect.x}px, ${displayRect.y}px, 0)`,
+    dragTransformStr || null,
+    isDragging ? "scale(1.02)" : null,
+  ]
+    .filter(Boolean)
+    .join(" ")
+
   return (
     <div
       ref={setNodeRef}
@@ -177,9 +203,10 @@ export function WidgetChrome({
         "rounded-md border border-border-subtle bg-surface-elevated shadow-level-1",
         "transition-shadow duration-quick ease-settle",
         // Session 3.8.2 — NO transition on left/top/width/height.
-        // Position follows viewport per-frame to match native window-
-        // resize feel. See module header for the transition-lag
-        // problem this resolves.
+        // Session 3.8.3 — position is now on transform, not left/top;
+        // width/height stay as inline style (stable during window
+        // resize, only change during user-initiated widget resize
+        // gesture which is a rare event).
         chromeActive && "shadow-level-2",
         // Drag cursor on wrapper — widget body is draggable. The
         // chrome sub-elements (dismiss, resize zones) override this
@@ -188,13 +215,15 @@ export function WidgetChrome({
         isDragging && "cursor-grabbing",
       )}
       style={{
-        left: displayRect.x,
-        top: displayRect.y,
+        // Anchor at (0,0) of containing block (the data-tier-renderer,
+        // which is `absolute inset-0` of the fixed-inset Canvas). The
+        // transform then translates to the resolved position. Keeping
+        // left/top explicit prevents browser auto-placement quirks.
+        left: 0,
+        top: 0,
         width: displayRect.width,
         height: displayRect.height,
-        transform: isDragging
-          ? `${CSS.Translate.toString(transform) ?? ""} scale(1.02)`
-          : CSS.Translate.toString(transform),
+        transform: composedTransform,
         zIndex: chromeActive ? 2 : 1,
       }}
       {...listeners}

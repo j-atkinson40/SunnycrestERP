@@ -101,55 +101,77 @@ export function Focus() {
           )}
           style={{ zIndex: "var(--z-focus)" }}
         />
-        <DialogPrimitive.Popup
-          data-slot="focus-core"
-          data-focus-tier={viewport.tier}
-          aria-modal="true"
-          aria-label={
-            currentFocus ? `Focus: ${currentFocus.id}` : "Focus"
-          }
-          className={cn(
-            // Positioning — anchored from coreRect (tier-aware).
-            "fixed",
-            // Chrome — anchored core above backdrop
-            "bg-surface-raised rounded-lg shadow-level-3",
-            // Content — inner padding generous per DESIGN_LANGUAGE §5
-            "p-6 overflow-auto",
-            // Typography + focus reset
-            "font-plex-sans text-body text-content-base outline-none",
-            // Enter / exit KEYFRAME animation — matches overlay-family
-            // Dialog. `animate-in`/`animate-out` use CSS animation,
-            // not transition, so `transition-none` below doesn't
-            // affect them.
-            "duration-arrive ease-settle",
-            "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
-            "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-            "data-closed:duration-settle data-closed:ease-gentle",
-            // Session 3.8.2 — explicit transition-none on layout props.
-            // Without this, `duration-arrive` sets transition-duration
-            // to 0.4s and the default transition-property is `all`, so
-            // left/top/width/height would still transition over 400ms
-            // on every viewport change — the transition-lag problem
-            // that made resize feel choppy. Setting transition-property
-            // to none disables CSS transitions entirely on this element
-            // while leaving the keyframe animate-in/animate-out
-            // animations untouched (they're `animation`, not
-            // `transition`). Core follows viewport synchronously per-
-            // frame, macOS-Finder-style. Tier-boundary visual
-            // continuity is carried by the tier-renderer opacity
-            // crossfade in Canvas.tsx.
-            "transition-none",
-          )}
+        {/* Session 3.8.3 — positioner wrapper owns transform-for-
+            position. Dialog.Popup inside fills via `w-full h-full`
+            + `position: absolute inset-0` so its open/close zoom
+            keyframe animations (`data-open:animate-in zoom-in-95`)
+            don't conflict with position: CSS animations replace
+            inline transform during their runtime, so if Popup
+            itself carried the position-translate, during the 400ms
+            open animation the zoom-in-95 keyframe would override and
+            the core would render at (0,0) instead of centered. The
+            wrapper holds the position transform; Popup holds the
+            zoom animation. Both play concurrently on different
+            elements without conflict.
+            Popup's size changes per frame during window resize — an
+            unavoidable layout cost for one element, acceptable per
+            the Session 3.8.3 tldraw-calibrated analysis. */}
+        <div
+          data-slot="focus-core-positioner"
           style={{
-            zIndex: "var(--z-focus)",
-            left: coreRect.x,
-            top: coreRect.y,
+            position: "fixed",
+            left: 0,
+            top: 0,
             width: coreRect.width,
             height: coreRect.height,
+            transform: `translate3d(${coreRect.x}px, ${coreRect.y}px, 0)`,
+            zIndex: "var(--z-focus)",
           }}
         >
-          {currentFocus && <ModeDispatcher focusId={currentFocus.id} />}
-        </DialogPrimitive.Popup>
+          <DialogPrimitive.Popup
+            data-slot="focus-core"
+            data-focus-tier={viewport.tier}
+            aria-modal="true"
+            aria-label={
+              currentFocus ? `Focus: ${currentFocus.id}` : "Focus"
+            }
+            className={cn(
+              // Fill the positioner — wrapper handles viewport
+              // placement via transform; Popup just claims the
+              // interior.
+              "absolute inset-0",
+              // Chrome — anchored core above backdrop
+              "bg-surface-raised rounded-lg shadow-level-3",
+              // Content — inner padding generous per DESIGN_LANGUAGE §5
+              "p-6 overflow-auto",
+              // Typography + focus reset
+              "font-plex-sans text-body text-content-base outline-none",
+              // Enter / exit KEYFRAME animation — matches overlay-family
+              // Dialog. `animate-in`/`animate-out` use CSS animation,
+              // not transition, so `transition-none` below doesn't
+              // affect them. Session 3.8.3: animation transforms now
+              // act on the Popup element only — the wrapper owns the
+              // position transform — so zoom-in-95 / zoom-out-95 play
+              // correctly without needing to encode the core position
+              // in the keyframes.
+              "duration-arrive ease-settle",
+              "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
+              "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+              "data-closed:duration-settle data-closed:ease-gentle",
+              // Session 3.8.2 — explicit transition-none on layout
+              // props. Without this, `duration-arrive` sets
+              // transition-duration to 0.4s and the default
+              // transition-property is `all`, so layout changes on
+              // the Popup would still transition over 400ms. Keeping
+              // transition-none preserves the macOS-Finder-style
+              // per-frame follow on any size change propagated from
+              // the wrapper.
+              "transition-none",
+            )}
+          >
+            {currentFocus && <ModeDispatcher focusId={currentFocus.id} />}
+          </DialogPrimitive.Popup>
+        </div>
         {/* Phase A Session 3 — Canvas hosts widgets, stack rail, and
             icon around the anchored core. Canvas has pointer-events:
             none on its wrapper so backdrop clicks still reach the
