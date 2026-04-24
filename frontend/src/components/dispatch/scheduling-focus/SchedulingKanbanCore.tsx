@@ -308,7 +308,9 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       if (!delivery) return
       if (delivery.primary_assignee_id === nextAssigneeId) return
 
-      // Optimistic UI
+      // Optimistic UI — local state reflects the new assignment
+      // immediately. Backend PATCH runs in the background; only
+      // the error path re-fetches authoritative state.
       setDeliveries((prev) =>
         prev.map((d) =>
           d.id === deliveryId
@@ -320,10 +322,16 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         await updateDelivery(deliveryId, {
           primary_assignee_id: nextAssigneeId,
         })
-        reload()
+        // Phase 4.2.4 — success-path reload removed. The optimistic
+        // update above already reflects the backend's intended state;
+        // a reload here would fire setLoading(true) on the parent
+        // effect and render the loading shell → visible flash after
+        // every drop. Trust optimistic state; the next manual
+        // refresh (or user-initiated reload from the toolbar) picks
+        // up concurrent edits from other dispatchers if any.
       } catch (e) {
         console.error("scheduling focus drag failed:", e)
-        reload() // reload will re-fetch authoritative state
+        reload() // error-path reload restores authoritative state
       }
     },
     [deliveries, reload],

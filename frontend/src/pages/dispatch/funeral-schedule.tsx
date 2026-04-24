@@ -678,10 +678,13 @@ export default function FuneralSchedulePage() {
         await updateDelivery(deliveryId, {
           primary_assignee_id: targetAssigneeId,
         })
-        reload()
+        // Phase 4.2.4 — success-path reload removed (caused screen
+        // flash after every drop because reload → setLoading(true)
+        // in the parent useEffect). Optimistic update above already
+        // reflects intended state; no reload needed on success.
       } catch (e) {
         console.error("driver reassign failed:", e)
-        reload()
+        reload() // error-path reload restores authoritative state
       }
     },
     [deliveries, reload],

@@ -96,7 +96,15 @@ function TooltipContent({
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner
-        className="isolate z-50 outline-none"
+        // Phase A Session 4.2.4 — use --z-tooltip (130) not z-50.
+        // Tooltips inside Focus cores were rendering at z-50 while
+        // the Focus Popup sits at --z-focus (100), so tooltips
+        // disappeared behind the Focus overlay. --z-tooltip sits
+        // above --z-toast (120) — tooltips are the topmost
+        // transient UI feedback. See DESIGN_LANGUAGE.md §9
+        // Layering tokens.
+        className="isolate outline-none"
+        style={{ zIndex: "var(--z-tooltip)" }}
         side={side}
         sideOffset={sideOffset}
         align={align}
@@ -106,7 +114,7 @@ function TooltipContent({
           data-slot="tooltip-content"
           data-size={size}
           className={cn(
-            "z-50 max-w-xs origin-(--transform-origin) rounded-md border border-border-subtle bg-surface-raised font-plex-sans text-content-base shadow-level-2 duration-settle ease-settle data-[side=bottom]:slide-in-from-top-1 data-[side=inline-end]:slide-in-from-left-1 data-[side=inline-start]:slide-in-from-right-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-quick data-closed:ease-gentle",
+            "max-w-xs origin-(--transform-origin) rounded-md border border-border-subtle bg-surface-raised font-plex-sans text-content-base shadow-level-2 duration-settle ease-settle data-[side=bottom]:slide-in-from-top-1 data-[side=inline-end]:slide-in-from-left-1 data-[side=inline-start]:slide-in-from-right-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-quick data-closed:ease-gentle",
             size === "default" && "px-2 py-1 text-caption",
             size === "md" && "px-3 py-2 text-body-sm",
             className,

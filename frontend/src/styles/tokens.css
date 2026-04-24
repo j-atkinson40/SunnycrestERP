@@ -151,6 +151,15 @@
   --z-focus: 100;
   --z-command-bar: 110;
   --z-toast: 120;
+  /* Phase A Session 4.2.4 — tooltip tier sits ABOVE every
+   * composed overlay. Rationale: tooltips are temporary, hover-
+   * triggered affordances; when a user points at an icon inside a
+   * Focus core or Dialog, the tooltip must be visible on top. The
+   * existing Tooltip primitive at `z-50` was below --z-focus: 100,
+   * so tooltips in Focus surfaces rendered behind the Popup.
+   * 130 sits above --z-toast (120) — tooltips are the topmost
+   * transient UI feedback. */
+  --z-tooltip: 130;
 }
 
 /* ============================================================

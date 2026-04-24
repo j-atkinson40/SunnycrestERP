@@ -12,7 +12,12 @@
 import { render } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
-import { DndContext } from "@dnd-kit/core"
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 import type { DeliveryDTO } from "@/services/dispatch-service"
@@ -63,9 +68,18 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
 function Harness({ children }: { children: React.ReactNode }) {
   // TooltipProvider mirrors the app-root mount (for the icon+tooltip
   // compaction row). DndContext required by useDraggable.
+  //
+  // Phase 4.2.4 — PointerSensor configured with the same activation
+  // constraint as production (distance: 8). Without this, any
+  // pointerdown on the body would activate drag and suppress the
+  // subsequent click — breaking the "short click opens detail"
+  // contract the test exercises.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  )
   return (
     <TooltipProvider delay={0}>
-      <DndContext>{children}</DndContext>
+      <DndContext sensors={sensors}>{children}</DndContext>
     </TooltipProvider>
   )
 }

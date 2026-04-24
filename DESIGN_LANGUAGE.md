@@ -2277,11 +2277,12 @@ Phase A Session 1 introduces a layering-token system. New overlay code uses thes
 |---|---|---|
 | `--z-base` | `0` | Default content flow |
 | `--z-elevated` | `10` | Cards, elevated surfaces, return pill |
-| `--z-dropdown` | `50` | Dropdowns, tooltips, peek panels |
+| `--z-dropdown` | `50` | Dropdowns, peek panels |
 | `--z-modal` | `80` | Dialogs, sheets, slide-overs |
 | `--z-focus` | `100` | Focus primitive overlay (Phase A) |
 | `--z-command-bar` | `110` | Command bar — intentionally above Focus per architecture, though it is hidden while a Focus is open per Phase A Session 1 decision |
-| `--z-toast` | `120` | Toast notifications — always on top |
+| `--z-toast` | `120` | Toast notifications |
+| `--z-tooltip` | `130` | Tooltips — topmost transient UI feedback. Above toast so a tooltip over a toast is still readable; added in Phase A Session 4.2.4 after tooltips inside Focus cores rendered at `z-50` and disappeared behind the Popup. |
 
 Definition in `styles/tokens.css` mirrors the above verbatim per the tokens.css header discipline ("edit DESIGN_LANGUAGE.md first, then port the change here"). If you are adding a new overlay tier, add it in this table first with a clear rationale, then port to `tokens.css` in the same commit.
 

@@ -223,14 +223,23 @@ export function DeliveryCard({
       role="button"
       tabIndex={0}
     >
-      {/* Body — clickable for edit. Drag listeners sit on the wrapper.
-          Inner button's stopPropagation prevents body click from also
-          firing a drag-start on the wrapper's pointerdown. */}
+      {/* Body — clickable for edit AND draggable.
+          Phase 4.2.4 — the prior `onPointerDown={e.stopPropagation()}`
+          prevented drag from activating when pointerdown landed on
+          the body (only the icon row was draggable). Removed so the
+          wrapper's drag listeners receive the pointerdown and the
+          PointerSensor's `activationConstraint: { distance: 8 }`
+          distinguishes click (release within 8px) from drag (movement
+          >8px). Click semantic: short press = open QuickEdit; press-
+          and-drag = reassign. onClick still stopPropagation to keep
+          the card wrapper from double-handling (e.g. if we later
+          add a wrapper-level onClick). @dnd-kit suppresses the
+          `click` event when a drag has activated, so the onOpenEdit
+          callback never fires after a completed drag. */}
       <button
         type="button"
         data-slot="dispatch-card-body"
         data-density={density}
-        onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation()
           onOpenEdit?.(delivery)
@@ -432,7 +441,15 @@ function IconTooltip({
         render={
           <span
             data-slot={dataSlot}
-            onPointerDown={(e) => e.stopPropagation()}
+            // Phase 4.2.4 — prior `onPointerDown={e.stopPropagation()}`
+            // prevented drag from activating from the icon-row area
+            // (only inter-icon gaps were draggable, which looked like
+            // random draggability). Removed so the wrapper's drag
+            // listeners receive pointerdown from anywhere on the
+            // card. PointerSensor activation-constraint distance:8
+            // distinguishes hover/click (no movement) from drag
+            // (>8px movement), so the tooltip still shows on hover
+            // and short-click doesn't start drag.
             className={cn(
               "relative inline-flex h-6 w-6 items-center justify-center rounded-sm",
               "focus-ring-brass outline-none cursor-default",
