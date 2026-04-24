@@ -84,7 +84,9 @@ import {
   useRef,
   useState,
 } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router-dom"
+
+import { useFocus } from "@/contexts/focus-context"
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -168,8 +170,15 @@ type ViewMode = "single" | "all"
 
 
 export default function FuneralSchedulePage() {
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  // Phase B Session 4 Phase 4.2 — "Open scheduling" launches the
+  // Scheduling Focus (the Decide primitive for dispatch) instead of
+  // navigating away. Prior (Phase 3) code called
+  // `navigate('/delivery/scheduling-board?date=...')` — a route that
+  // doesn't exist in App.tsx (pre-existing 404). Fixed as part of
+  // 4.2 by routing through useFocus().open so the Focus overlays the
+  // Monitor widget and the user returns here on close.
+  const focus = useFocus()
 
   // URL-derived state.
   const urlView = searchParams.get("view")
@@ -517,9 +526,9 @@ export default function FuneralSchedulePage() {
 
   const handleOpenScheduling = useCallback(
     (dateStr: string) => {
-      navigate(`/delivery/scheduling-board?date=${dateStr}`)
+      focus.open("funeral-scheduling", { params: { date: dateStr } })
     },
-    [navigate],
+    [focus],
   )
 
   const handleCycleHoleDug = useCallback(

@@ -14,6 +14,11 @@ import { PeekProvider } from "@/contexts/peek-context";
 import { FocusProvider } from "@/contexts/focus-context";
 import { Focus } from "@/components/focus/Focus";
 import { ReturnPill } from "@/components/focus/ReturnPill";
+// Phase B Session 4 Phase 4.2 — side-effect import registers the
+// funeral-scheduling Focus. Must run before any surface attempts to
+// open it (Cmd+K action, Monitor button). At app bootstrap is the
+// simplest place to guarantee that.
+import "@/components/dispatch/scheduling-focus/register";
 import { AffinityVisitWatcher } from "@/components/spaces/AffinityVisitWatcher";
 import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";

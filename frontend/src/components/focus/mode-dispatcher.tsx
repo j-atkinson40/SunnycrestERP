@@ -47,7 +47,11 @@ export function ModeDispatcher({ focusId }: { focusId: string }) {
   if (!config) {
     return <UnknownFocusError focusId={focusId} />
   }
-  const Renderer = MODE_RENDERERS[config.mode]
+  // Phase B Session 4: specialized renderer takes precedence over the
+  // mode-generic stub when a Focus registers a `coreComponent`. Falls
+  // back to the mode-generic MODE_RENDERERS entry otherwise. Open-
+  // closed: adding a new specialized core doesn't touch this dispatch.
+  const Renderer = config.coreComponent ?? MODE_RENDERERS[config.mode]
   return <Renderer focusId={focusId} config={config} />
 }
 

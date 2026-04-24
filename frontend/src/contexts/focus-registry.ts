@@ -139,6 +139,20 @@ export interface FocusConfig {
    *  dispatcher will read `config.defaultLayout?.tenantDefault` to
    *  seed `sessionEphemeral` on open (Session 4). */
   defaultLayout?: LayoutConfig
+  /** Optional specialized renderer for this Focus. When provided, the
+   *  ModeDispatcher uses this component instead of the generic stub
+   *  registered for `mode` in `MODE_RENDERERS`. Phase B Session 4
+   *  introduced this extension point so a real-workflow Focus (e.g.
+   *  funeral scheduling) can ship its own core that reads live data +
+   *  does real drag-drop, without displacing the `test-kanban` stub
+   *  used by the Phase A dev test page. Open-closed: a future
+   *  specialized kanban (Redi-Rock dispatch, disinterment scheduling)
+   *  registers its own `coreComponent` without touching
+   *  `MODE_RENDERERS`. */
+  coreComponent?: React.ComponentType<{
+    focusId: string
+    config: FocusConfig
+  }>
 }
 
 

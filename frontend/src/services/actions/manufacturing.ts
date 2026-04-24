@@ -663,6 +663,41 @@ export const manufacturingActions: ActionRegistryEntry[] = [
     route: "/dispatch/funeral-schedule",
   },
   {
+    // Phase B Session 4 Phase 4.2 — launch the Scheduling Focus.
+    // Distinct from nav_funeral_schedule (Monitor navigation, view
+    // verb) — this is the Decide verb. Different intent, different
+    // entry. "open scheduling" / "plan tomorrow" / "schedule
+    // tomorrow" are the canonical discovery phrases.
+    //
+    // Route-based launch: navigates to /dispatch/funeral-schedule
+    // with ?focus=funeral-scheduling. The FocusProvider's URL-
+    // reconcile effect sees the ?focus param and opens the Focus
+    // atop the Monitor widget. Target date defaults to tomorrow
+    // (tenant-local) via the core's param-resolution cascade;
+    // deep-link consumers can add &day=YYYY-MM-DD.
+    id: "open_funeral_scheduling_focus",
+    title: "Open Scheduling Focus",
+    subtitle: "Plan tomorrow's schedule",
+    icon: "calendar-plus",
+    kind: "navigate",
+    keywords: [
+      "open scheduling",
+      "scheduling focus",
+      "plan schedule",
+      "plan tomorrow",
+      "schedule tomorrow",
+      "schedule day",
+      "funeral scheduling",
+      "dispatch planning",
+      "build schedule",
+      "decide",
+    ],
+    roles: ["admin", "dispatcher", "office"],
+    vertical: "manufacturing",
+    permission: "delivery.finalize_schedule",
+    route: "/dispatch/funeral-schedule?focus=funeral-scheduling",
+  },
+  {
     // Phase 3.2 — dedicated multi-day entry point. Hits the same route
     // as nav_funeral_schedule but with ?view=all for the stacked-days
     // mode. Discovery: dispatchers who want the whole-week view type
