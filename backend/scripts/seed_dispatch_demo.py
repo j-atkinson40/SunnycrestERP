@@ -580,10 +580,12 @@ def _create_delivery(
     db.add(so)
     db.flush()
 
-    # Driver assignment
-    assigned_driver_id = None
+    # Primary assignee (Phase 4.3.2 r56 — renamed from
+    # assigned_driver_id; FK users.id). Translate driver.id →
+    # users.id via drivers.employee_id.
+    primary_assignee_id = None
     if cfg["driver_idx"] is not None and cfg["driver_idx"] < len(drivers):
-        assigned_driver_id = drivers[cfg["driver_idx"]].id
+        primary_assignee_id = drivers[cfg["driver_idx"]].employee_id
 
     # type_config JSONB — powers the Monitor card display. Phase 3.1+3.2
     # compaction fields: cemetery_section (→ MapPin icon tooltip),
@@ -630,7 +632,7 @@ def _create_delivery(
         scheduling_type=cfg["scheduling_type"],
         type_config=type_config,
         hole_dug_status=cfg["hole_dug"],
-        assigned_driver_id=assigned_driver_id,
+        primary_assignee_id=primary_assignee_id,
         special_instructions=(
             f"{DEMO_TAG} {cfg['family']} — {cfg['service_type']}"
         ),

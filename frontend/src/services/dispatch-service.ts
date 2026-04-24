@@ -74,7 +74,23 @@ export interface DeliveryDTO {
   scheduling_type: "kanban" | "ancillary" | "direct_ship" | null
   ancillary_fulfillment_status: string | null
   direct_ship_status: string | null
-  assigned_driver_id: string | null
+  // Phase 4.3.2 (r56) — renamed from `assigned_driver_id`; the field
+  // now holds a `users.id` value (was `drivers.id`). Compare against
+  // `DriverDTO.user_id`, not `DriverDTO.id`, when grouping cards by
+  // assignee. Portal-only drivers have null `user_id` and cannot be
+  // drag-assigned via kanban until the post-September follow-up.
+  primary_assignee_id: string | null
+  // Phase 4.3.2 — optional second person. Shown as icon+tooltip in
+  // the card status row (Phase 4.3.4 UI).
+  helper_user_id: string | null
+  // Phase 4.3.2 — self-referential FK for the ancillary three-state
+  // model. NULL + primary_assignee_id null = pool;
+  // NULL + primary_assignee_id set = standalone;
+  // set = attached (parent is another kanban delivery).
+  attached_to_delivery_id: string | null
+  // Phase 4.3.2 — per-delivery start-of-day target for the primary
+  // assignee. Not the ETA; a scheduling hint for route planning.
+  driver_start_time: string | null  // "HH:MM:SS"
   hole_dug_status: HoleDugStatus
   type_config: DeliveryTypeConfig | null
   special_instructions: string | null
@@ -142,6 +158,14 @@ export interface TenantTimeDTO {
 
 export interface DriverDTO {
   id: string
+  /** Phase 4.3.2 (r56) — the canonical assignee identity. Equal to
+   *  `drivers.employee_id` on the backend (FK `users.id`). Compare
+   *  this against `DeliveryDTO.primary_assignee_id` when grouping
+   *  cards by driver. NULL for portal-only drivers; they appear in
+   *  the roster but cannot be drag-assigned until the post-September
+   *  follow-up lifts the limitation. `id` remains the `drivers.id`
+   *  primary key for record identity. */
+  user_id: string | null
   license_number: string | null
   license_class: string | null
   active: boolean
@@ -270,7 +294,19 @@ export async function updateDelivery(
   deliveryId: string,
   patch: {
     scheduled_at?: string | null
-    assigned_driver_id?: string | null
+    /** Phase 4.3.2 (r56) — renamed from `assigned_driver_id`. The
+     *  backend accepts either a `users.id` or (transitionally) a
+     *  `drivers.id` value; the `resolve_primary_assignee_id` helper
+     *  translates via `Driver.employee_id`. Going forward, frontend
+     *  should pass `DriverDTO.user_id` directly. */
+    primary_assignee_id?: string | null
+    /** Phase 4.3.2 — optional second person (FK users.id). */
+    helper_user_id?: string | null
+    /** Phase 4.3.2 — self-referential FK for ancillary three-state
+     *  model. */
+    attached_to_delivery_id?: string | null
+    /** Phase 4.3.2 — per-delivery start-of-day target. */
+    driver_start_time?: string | null
     special_instructions?: string | null
     priority?: string
     status?: string

@@ -606,7 +606,10 @@ def get_console_deliveries(
         .filter(
             Delivery.company_id == current_user.company_id,
             Delivery.scheduling_type == "ancillary",
-            Delivery.assigned_driver_id == driver.id,
+            # Phase 4.3.2 (r56) — column renamed to primary_assignee_id
+            # (FK users.id). Drivers are backed by user via
+            # Driver.employee_id.
+            Delivery.primary_assignee_id == driver.employee_id,
             Delivery.requested_date == target_date,
             or_(Delivery.ancillary_is_floating.is_(False), Delivery.ancillary_is_floating.is_(None)),
             Delivery.status != "cancelled",
@@ -765,7 +768,8 @@ def confirm_ancillary_delivery(
         Delivery.id == delivery_id,
         Delivery.company_id == current_user.company_id,
         Delivery.scheduling_type == "ancillary",
-        Delivery.assigned_driver_id == driver.id,
+        # Phase 4.3.2 (r56) — primary_assignee_id (FK users.id).
+        Delivery.primary_assignee_id == driver.employee_id,
     ).first()
     if not delivery:
         raise HTTPException(status_code=404, detail="Ancillary delivery not found or not assigned to you")

@@ -573,7 +573,9 @@ export interface AncillaryCard {
   ancillary_fulfillment_status: AncillaryFulfillmentStatus;
   ancillary_is_floating: boolean;
   ancillary_soft_target_date: string | null;
-  assigned_driver_id: string | null;
+  // Phase 4.3.2 (r56) — renamed from assigned_driver_id; now holds
+  // a users.id value (was drivers.id). Compare with DriverDTO.user_id.
+  primary_assignee_id: string | null;
   pickup_expected_by: string | null;
   pickup_confirmed_at: string | null;
   pickup_confirmed_by: string | null;

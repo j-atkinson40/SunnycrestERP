@@ -337,15 +337,25 @@ class MonitorDeliveryDTO(BaseModel):
     scheduling_type: str | None = None
     ancillary_fulfillment_status: str | None = None
     direct_ship_status: str | None = None
-    assigned_driver_id: str | None = None
+    # Phase 4.3.2 (r56) — renamed from assigned_driver_id; FK users.id.
+    # Frontend compares against MonitorDriverDTO.user_id, not .id.
+    primary_assignee_id: str | None = None
     hole_dug_status: str | None = None
     type_config: dict[str, Any] | None = None
     special_instructions: str | None = None
 
 
 class MonitorDriverDTO(BaseModel):
-    """Driver shape for the Monitor lanes + quick-edit assign picker."""
+    """Driver shape for the Monitor lanes + quick-edit assign picker.
+
+    Phase 4.3.2 adds ``user_id`` — the canonical assignee identity
+    (= ``drivers.employee_id``). ``id`` remains the ``drivers.id``
+    primary key for record identity. Drag + assignment operations
+    compare against ``user_id`` because the Delivery column holds
+    ``users.id`` values post-r56 rename.
+    """
     id: str
+    user_id: str | None = None  # Phase 4.3.2: drivers.employee_id
     license_number: str | None = None
     license_class: str | None = None
     active: bool
@@ -410,7 +420,7 @@ def list_monitor_deliveries(
             scheduling_type=r.scheduling_type,
             ancillary_fulfillment_status=r.ancillary_fulfillment_status,
             direct_ship_status=r.direct_ship_status,
-            assigned_driver_id=r.assigned_driver_id,
+            primary_assignee_id=r.primary_assignee_id,
             hole_dug_status=r.hole_dug_status,
             type_config=r.type_config,
             special_instructions=r.special_instructions,
@@ -467,6 +477,14 @@ def list_monitor_drivers(
 
         out.append(MonitorDriverDTO(
             id=d.id,
+            # Phase 4.3.2 — `user_id` is the canonical assignee
+            # identity post-r56. NULL for portal-only drivers
+            # (employee_id NULL + portal_user_id set); kanban
+            # assignment for portal drivers is post-September
+            # follow-up. Frontend shows portal-only drivers in the
+            # roster but they can't be drag-assigned until that
+            # follow-up ships.
+            user_id=d.employee_id,
             license_number=d.license_number,
             license_class=d.license_class,
             active=d.active,

@@ -254,7 +254,7 @@ def get_action_items(
                 "service_time": service_time,
                 "status": d.status,
                 "priority": d.priority,
-                "assigned_driver_id": d.assigned_driver_id,
+                "primary_assignee_id": d.primary_assignee_id,
             })
     except Exception as e:
         logger.warning("Error fetching orders due today: %s", e)

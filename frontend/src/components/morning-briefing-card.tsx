@@ -180,7 +180,10 @@ interface ActionItemOrder {
   service_time: string | null;
   status: string;
   priority: string | null;
-  assigned_driver_id: string | null;
+  // Phase 4.3.2 (r56) — renamed from assigned_driver_id; value is
+  // users.id (was drivers.id). Briefing service's response key is
+  // now `primary_assignee_id` to match.
+  primary_assignee_id: string | null;
 }
 
 interface ActionItemInvoice {
@@ -476,7 +479,7 @@ function BriefingActionItems({ items, onRefresh }: { items: ActionItems; onRefre
                           {order.service_time}
                         </span>
                       )}
-                      {!order.assigned_driver_id && (
+                      {!order.primary_assignee_id && (
                         <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
                           No driver
                         </Badge>

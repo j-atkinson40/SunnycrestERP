@@ -541,7 +541,7 @@ def _seed_default_entities() -> None:
             "scheduling_type": row.scheduling_type,
             "ancillary_fulfillment_status": row.ancillary_fulfillment_status,
             "direct_ship_status": row.direct_ship_status,
-            "assigned_driver_id": row.assigned_driver_id,
+            "primary_assignee_id": row.primary_assignee_id,
             "hole_dug_status": row.hole_dug_status,
             "family_name": tc.get("family_name"),
             "cemetery_name": tc.get("cemetery_name"),
@@ -597,7 +597,10 @@ def _seed_default_entities() -> None:
                 "hole_dug_status", "Hole dug", "enum",
                 enum_values=["unknown", "yes", "no"],
             ),
-            FieldMetadata("assigned_driver_id", "Assigned driver", "relation", relation_entity="driver"),
+            # Phase 4.3.2 (r56) — renamed from assigned_driver_id; FK
+            # to users.id. `relation_entity="user"` reflects the
+            # underlying tenant-user identity.
+            FieldMetadata("primary_assignee_id", "Primary assignee", "relation", relation_entity="user"),
             FieldMetadata("modified_at", "Last updated", "datetime", groupable=False),
         ],
         default_sort=[{"field": "requested_date", "direction": "asc"}],
@@ -606,7 +609,7 @@ def _seed_default_entities() -> None:
             "scheduling_type",
             "status",
             "hole_dug_status",
-            "assigned_driver_id",
+            "primary_assignee_id",
         ],
     ))
 

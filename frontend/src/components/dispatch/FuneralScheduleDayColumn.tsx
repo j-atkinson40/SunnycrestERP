@@ -120,15 +120,17 @@ export function FuneralScheduleDayColumn({
 
   // Separate kanban deliveries (primary cards on lanes) from
   // ancillary+direct_ship (surfaced via parent's +N badge).
+  // Phase 4.3.2 (r56) — grouping key is now `primary_assignee_id`
+  // (users.id). DriverDTO.user_id is the lane key, not DriverDTO.id.
   const { kanbanByDriver, unassignedKanban } = useMemo(() => {
     const byDriver = new Map<string, DeliveryDTO[]>()
     const unassigned: DeliveryDTO[] = []
     for (const d of deliveries) {
       if (d.scheduling_type !== "kanban") continue
-      const did = d.assigned_driver_id
-      if (did) {
-        if (!byDriver.has(did)) byDriver.set(did, [])
-        byDriver.get(did)!.push(d)
+      const assigneeId = d.primary_assignee_id
+      if (assigneeId) {
+        if (!byDriver.has(assigneeId)) byDriver.set(assigneeId, [])
+        byDriver.get(assigneeId)!.push(d)
       } else {
         unassigned.push(d)
       }
@@ -167,10 +169,17 @@ export function FuneralScheduleDayColumn({
   // unmount — kept in the DOM so the animation has somewhere to run
   // to/from. `pointer-events: none` on collapsed columns prevents
   // hover + click flicker.
+  // Phase 4.3.2 (r56) — activeDriverIds is a set of drivers.id
+  // values (for rendering-side reveal logic). The delivery→driver
+  // match uses driver.user_id since primary_assignee_id holds
+  // users.id. Drivers with null user_id (portal-only) never have
+  // deliveries mapped to them → never active.
   const activeDriverIds = useMemo(() => {
     const s = new Set<string>()
     for (const d of drivers) {
-      if ((kanbanByDriver.get(d.id) ?? []).length > 0) s.add(d.id)
+      if (d.user_id && (kanbanByDriver.get(d.user_id) ?? []).length > 0) {
+        s.add(d.id)
+      }
     }
     return s
   }, [drivers, kanbanByDriver])
@@ -373,7 +382,13 @@ export function FuneralScheduleDayColumn({
               the position of active columns the dispatcher is
               already looking at. */}
           {sortedDrivers.map((driver) => {
-            const laneDeliveries = kanbanByDriver.get(driver.id) ?? []
+            // Phase 4.3.2 (r56) — map delivery-grouping + lane-key
+            // via driver.user_id (users.id, FK target), NOT driver.id.
+            // Portal-only drivers (user_id null) are skipped entirely
+            // — they appear in the roster but can't be drag-assigned
+            // until the post-September follow-up.
+            if (!driver.user_id) return null
+            const laneDeliveries = kanbanByDriver.get(driver.user_id) ?? []
             const isActive = activeDriverIds.has(driver.id)
             const revealed = isActive || isDragging
             return (
@@ -400,7 +415,11 @@ export function FuneralScheduleDayColumn({
                 aria-hidden={!revealed}
               >
                 <DriverLane
-                  laneKey={`${dateStr}:${driver.id}`}
+                  // Phase 4.3.2 (r56) — lane key uses user_id so
+                  // the drag handler's parsed targetDriverRaw is a
+                  // users.id value, ready to ship to the backend's
+                  // primary_assignee_id field.
+                  laneKey={`${dateStr}:${driver.user_id}`}
                   laneLabel={
                     driver.display_name ??
                     `Driver ${driver.license_number ?? "—"}`

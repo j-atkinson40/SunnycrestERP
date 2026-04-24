@@ -17,9 +17,79 @@ from app.models.delivery_media import DeliveryMedia
 from app.models.delivery_route import DeliveryRoute
 from app.models.delivery_stop import DeliveryStop
 from app.models.driver import Driver
+from app.models.user import User
 from app.models.vehicle import Vehicle
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.3 (r56) transitional assignee-identity helper
+# ---------------------------------------------------------------------------
+
+
+def resolve_primary_assignee_id(
+    db: Session, raw_value: str | None, company_id: str
+) -> str | None:
+    """Translate a raw assignee identifier to a valid ``users.id``.
+
+    Phase 4.3.2 migrated ``deliveries.assigned_driver_id`` (bare
+    String, stored ``drivers.id`` values) to
+    ``deliveries.primary_assignee_id`` (FK to ``users.id``). Many
+    existing call sites — the Monitor drag handler, the ancillary
+    assign routes, the Scheduling Focus drag handler — continue to
+    pass ``drivers.id`` values because frontend ``MonitorDriverDTO``
+    exposes ``driver.id`` as the assignee identity.
+
+    This helper is the transitional glue. It accepts either:
+
+      - a ``users.id`` value (returned unchanged)
+      - a ``drivers.id`` value (translated to ``drivers.employee_id``
+        = the canonical tenant-user identity for that Driver row)
+      - ``None`` (returned as None — valid "clear assignment")
+
+    Raises ``ValueError`` if:
+      - the value is neither a User.id nor a Driver.id under the
+        caller's tenant
+      - the Driver has no ``employee_id`` (portal-only drivers;
+        kanban assignment for those is post-September follow-up)
+
+    Callers translate ``ValueError`` into HTTP 400 at the route
+    boundary. This helper is intentionally tenant-scoped — the
+    ``company_id`` argument prevents cross-tenant resolution even
+    against valid-looking ids from other tenants.
+
+    Retired in Phase 4.3.3 once the frontend ``MonitorDriverDTO``
+    surfaces ``user_id`` explicitly and every caller passes it.
+    """
+    if raw_value is None:
+        return None
+    # Is it already a valid users.id?
+    hit_user = (
+        db.query(User)
+        .filter(User.id == raw_value, User.company_id == company_id)
+        .first()
+    )
+    if hit_user is not None:
+        return raw_value
+    # Fallback: maybe it's a drivers.id — translate via employee_id.
+    hit_driver = (
+        db.query(Driver)
+        .filter(Driver.id == raw_value, Driver.company_id == company_id)
+        .first()
+    )
+    if hit_driver is not None:
+        if hit_driver.employee_id is None:
+            raise ValueError(
+                "Driver has no linked user account (portal-only "
+                "driver). Kanban assignment for portal drivers is a "
+                "post-September follow-up."
+            )
+        return hit_driver.employee_id
+    raise ValueError(
+        f"primary_assignee_id={raw_value!r} does not resolve to a "
+        f"tenant user or driver."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +339,7 @@ def update_delivery(db: Session, delivery: Delivery, data: dict) -> Delivery:
     # belt-and-suspenders over the route-layer `exclude_none=True` that
     # already stripped nulls before they reached this function. Its
     # effect was to silently discard ANY explicit null in `data`,
-    # which broke drag-to-Unassigned (setting `assigned_driver_id` to
+    # which broke drag-to-Unassigned (setting `primary_assignee_id` to
     # None is a legitimate "clear the field" operation, not a "skip
     # this field" signal). The route layer now uses
     # `exclude_unset=True` so unset fields are omitted from `data` but

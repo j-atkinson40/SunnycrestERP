@@ -18,7 +18,10 @@
  *   - service_time — free-text time field (e.g. "10:00", "11:30"),
  *     stored in `type_config.service_time` so the display updates
  *     immediately
- *   - assigned_driver_id — dropdown, null option = unassigned
+ *   - primary_assignee_id — dropdown, null option = unassigned
+ *     (Phase 4.3.2 r56 — renamed from assigned_driver_id; now holds
+ *     users.id values. Dropdown options carry driver.user_id as the
+ *     `value`, so no translation is needed.)
  *   - hole_dug_status — three-state radio (unknown/yes/no) + "not
  *     set" option
  *   - special_instructions — note field, append or replace
@@ -54,6 +57,9 @@ import { cn } from "@/lib/utils"
 export interface QuickEditSavePayload {
   deliveryId: string
   serviceTime: string | null
+  /** Phase 4.3.2 (r56) — renamed from `assignedDriverId`. Value is
+   *  a users.id (or null = unassigned). Parent caller sends it to
+   *  the backend as `primary_assignee_id`. */
   assignedDriverId: string | null
   holeDugStatus: HoleDugStatus
   note: string | null
@@ -102,7 +108,7 @@ export function QuickEditDialog({
     if (delivery === null) return
     const tc = delivery.type_config ?? {}
     setServiceTime((tc.service_time as string | undefined) ?? "")
-    setAssignedDriverId(delivery.assigned_driver_id ?? null)
+    setAssignedDriverId(delivery.primary_assignee_id ?? null)
     // Phase 3.1: hole_dug is three-state non-nullable. If a legacy
     // DTO still surfaces null (pre-r50 migration), coerce to
     // 'unknown' — matches the backfill semantic.
@@ -155,10 +161,17 @@ export function QuickEditDialog({
     setPendingPayload(null)
   }
 
-  const driverOptions = drivers.map((d) => ({
-    id: d.id,
-    label: d.display_name || `Driver ${d.license_number ?? "(no CDL#)"}`,
-  }))
+  // Phase 4.3.2 (r56) — option value = driver.user_id (users.id),
+  // so the selected value flows cleanly to the backend's
+  // primary_assignee_id. Portal-only drivers (user_id null) are
+  // filtered out until the post-September follow-up lifts the
+  // portal-driver kanban-assignment gap.
+  const driverOptions = drivers
+    .filter((d) => d.user_id !== null)
+    .map((d) => ({
+      id: d.user_id as string,
+      label: d.display_name || `Driver ${d.license_number ?? "(no CDL#)"}`,
+    }))
 
   return (
     <>

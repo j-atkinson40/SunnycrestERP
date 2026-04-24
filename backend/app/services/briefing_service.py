@@ -169,7 +169,7 @@ def _build_funeral_scheduling_context(
                 "requested_date": str(d.requested_date) if d.requested_date else None,
                 "window_start": str(d.required_window_start) if d.required_window_start else None,
                 "window_end": str(d.required_window_end) if d.required_window_end else None,
-                "assigned_driver_id": d.assigned_driver_id,
+                "primary_assignee_id": d.primary_assignee_id,
                 "delivery_address": d.delivery_address,
                 "special_instructions": d.special_instructions,
                 "type_config": d.type_config,
@@ -1254,7 +1254,13 @@ def generate_driver_briefing(db: Session, user: User) -> str:
             .filter(
                 Delivery.company_id == user.company_id,
                 Delivery.requested_date == today,
-                Delivery.assigned_driver_id == user.id,
+                # Phase 4.3.2 (r56) — column renamed to
+                # primary_assignee_id (FK users.id). This filter
+                # previously compared `assigned_driver_id` (which
+                # stored drivers.id values) to `user.id` — a
+                # structural mismatch that never returned rows. The
+                # rename coincidentally fixes that latent bug.
+                Delivery.primary_assignee_id == user.id,
                 Delivery.status != "cancelled",
             )
             .order_by(Delivery.required_window_start)
@@ -1358,7 +1364,7 @@ def _serialize_context_to_text(
             cust = d.get("customer_name") or "Unknown"
             dtype = d.get("delivery_type") or ""
             addr = d.get("delivery_address") or ""
-            driver = "Assigned" if d.get("assigned_driver_id") else "UNASSIGNED"
+            driver = "Assigned" if d.get("primary_assignee_id") else "UNASSIGNED"
             status = d.get("status", "")
             window = ""
             if d.get("window_start"):
@@ -1383,7 +1389,7 @@ def _serialize_context_to_text(
         lines.append(f"TOMORROW'S DELIVERIES ({tc2}):")
         for d in context.get("tomorrow_deliveries", []):
             cust = d.get("customer_name") or "Unknown"
-            driver = "Assigned" if d.get("assigned_driver_id") else "UNASSIGNED"
+            driver = "Assigned" if d.get("primary_assignee_id") else "UNASSIGNED"
             lines.append(f"- {cust} -- Driver: {driver}")
 
     elif primary_area == "invoicing_ar":

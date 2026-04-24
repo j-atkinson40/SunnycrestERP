@@ -343,11 +343,37 @@ def update_delivery(
     # Phase 4.2.2 — `exclude_unset=True` (not `exclude_none=True`). The
     # previous filter stripped every explicit `null` from the patch,
     # which silently swallowed drag-to-Unassigned (frontend sends
-    # `{"assigned_driver_id": null}` to clear an assignment). Pydantic's
+    # `{"primary_assignee_id": null}` to clear an assignment). Pydantic's
     # `exclude_unset` excludes only fields the client didn't set,
     # preserving explicit nulls as "please clear this field." Monitor
     # widget + Scheduling Focus + QuickEdit dialog all benefit.
-    updated = delivery_service.update_delivery(db, delivery, data.model_dump(exclude_unset=True))
+    patch = data.model_dump(exclude_unset=True)
+    # Phase 4.3.2 — translate `primary_assignee_id` from transitional
+    # Driver.id values to canonical users.id. Existing frontend
+    # surfaces (Monitor, Scheduling Focus, QuickEdit) still pass
+    # Driver.id values from MonitorDriverDTO.id; the helper accepts
+    # either User.id (passthrough) or Driver.id (resolve via
+    # Driver.employee_id). Retires when Phase 4.3.3 surfaces user_id
+    # on the DriverDTO.
+    if "primary_assignee_id" in patch:
+        try:
+            patch["primary_assignee_id"] = delivery_service.resolve_primary_assignee_id(
+                db, patch["primary_assignee_id"], current_user.company_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    # Same translation for helper — helper_user_id should already be
+    # a user.id (no frontend-legacy driver_id pathway exists), but be
+    # defensively consistent so the Phase 4.3b Cmd+K / QuickEdit
+    # path can reuse the same helper without surprise behavior.
+    if "helper_user_id" in patch:
+        try:
+            patch["helper_user_id"] = delivery_service.resolve_primary_assignee_id(
+                db, patch["helper_user_id"], current_user.company_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    updated = delivery_service.update_delivery(db, delivery, patch)
     # If carrier was newly assigned, trigger notification
     if updated.carrier_id and updated.carrier_id != old_carrier_id:
         if updated.carrier and updated.carrier.carrier_type == "third_party":

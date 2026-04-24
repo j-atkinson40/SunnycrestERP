@@ -38,7 +38,10 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
     scheduling_type: "kanban",
     ancillary_fulfillment_status: null,
     direct_ship_status: null,
-    assigned_driver_id: "driver-1",
+    primary_assignee_id: "driver-1",
+    helper_user_id: null,
+    attached_to_delivery_id: null,
+    driver_start_time: null,
     hole_dug_status: "unknown",
     type_config: {
       family_name: "Fitzgerald",

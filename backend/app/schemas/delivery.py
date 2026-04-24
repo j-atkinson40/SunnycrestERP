@@ -1,6 +1,6 @@
 """Pydantic schemas for the Driver Scheduling & Delivery system."""
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -388,11 +388,16 @@ class DeliveryUpdate(BaseModel):
     # Ancillary fields
     scheduling_type: str | None = None
     ancillary_fulfillment_status: str | None = None
-    assigned_driver_id: str | None = None
+    # Phase 4.3 (r56) — renamed from assigned_driver_id; FK users.id.
+    primary_assignee_id: str | None = None
     pickup_expected_by: datetime | None = None
     pickup_confirmed_by: str | None = None
     ancillary_is_floating: bool | None = None
     ancillary_soft_target_date: date | None = None
+    # Phase 4.3 (r56) — helper + attach + start time.
+    helper_user_id: str | None = None
+    attached_to_delivery_id: str | None = None
+    driver_start_time: time | None = None
     # Direct ship fields
     direct_ship_status: str | None = None
     wilbert_order_number: str | None = None
@@ -419,9 +424,14 @@ class DeliveryListItem(BaseModel):
     # Ancillary fields
     scheduling_type: str | None = None
     ancillary_fulfillment_status: str | None = None
-    assigned_driver_id: str | None = None
+    # Phase 4.3 (r56) — renamed from assigned_driver_id.
+    primary_assignee_id: str | None = None
     ancillary_is_floating: bool | None = None
     ancillary_soft_target_date: date | None = None
+    # Phase 4.3 (r56) — helper + attach + start time.
+    helper_user_id: str | None = None
+    attached_to_delivery_id: str | None = None
+    driver_start_time: time | None = None
 
     class Config:
         from_attributes = True
@@ -456,12 +466,17 @@ class DeliveryResponse(BaseModel):
     # Ancillary fields
     scheduling_type: str | None = None
     ancillary_fulfillment_status: str | None = None
-    assigned_driver_id: str | None = None
+    # Phase 4.3 (r56) — renamed from assigned_driver_id.
+    primary_assignee_id: str | None = None
     pickup_expected_by: datetime | None = None
     pickup_confirmed_at: datetime | None = None
     pickup_confirmed_by: str | None = None
     ancillary_is_floating: bool | None = None
     ancillary_soft_target_date: date | None = None
+    # Phase 4.3 (r56) — helper + attach + start time.
+    helper_user_id: str | None = None
+    attached_to_delivery_id: str | None = None
+    driver_start_time: time | None = None
     # Direct ship fields
     direct_ship_status: str | None = None
     wilbert_order_number: str | None = None

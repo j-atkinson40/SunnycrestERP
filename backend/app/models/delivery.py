@@ -1,8 +1,8 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, Time
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,7 +10,31 @@ from app.database import Base
 
 
 class Delivery(Base):
-    """A single delivery request — may be linked to a sales order."""
+    """A single delivery request — may be linked to a sales order.
+
+    Phase 4.3 (r56) ancillary three-state + helper model:
+      - ``primary_assignee_id`` (FK users.id): the person assigned to
+        deliver this. Domain-broadened from "driver" — any tenant
+        user is eligible (office staff occasionally delivers when
+        drivers are unavailable). Renamed from ``assigned_driver_id``
+        in r56; the old column stored ``drivers.id`` values without
+        a FK constraint; the new column stores ``users.id`` values
+        with a real FK. Portal-only Drivers (Phase 8e.2 with
+        ``portal_user_id`` set but ``employee_id=NULL``) currently
+        cannot be assigned via this FK — post-September follow-up.
+      - ``attached_to_delivery_id`` (self-ref FK): for ancillary
+        deliveries, points at the primary kanban Delivery this is
+        physically paired with. Three ancillary states:
+          · pool: ``attached_to_delivery_id=NULL + primary_assignee_id=NULL + requested_date=NULL``
+          · standalone: ``attached_to_delivery_id=NULL + primary_assignee_id + requested_date set``
+          · attached: ``attached_to_delivery_id`` set; driver/date inherit from parent
+      - ``helper_user_id`` (FK users.id): optional second person
+        accompanying the primary assignee. Shown as icon+tooltip in
+        the card status row.
+      - ``driver_start_time`` (TIME): per-delivery start-of-day
+        target for the primary assignee. Not the ETA; a scheduling
+        hint for route planning.
+    """
 
     __tablename__ = "deliveries"
 
@@ -70,9 +94,37 @@ class Delivery(Base):
     ancillary_fulfillment_status: Mapped[str | None] = mapped_column(
         String(30), nullable=True, index=True
     )  # unassigned, awaiting_pickup, assigned_to_driver, completed
-    assigned_driver_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True
-    )  # driver assigned for ancillary delivery (not via route/stop)
+    # Phase 4.3 (r56): renamed from `assigned_driver_id`, now FK to
+    # `users.id` (was bare String(36), no FK). Represents the primary
+    # deliverer — typically a driver-role user, but any tenant user
+    # is eligible. See class docstring for rationale + portal-driver
+    # follow-up note.
+    primary_assignee_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Phase 4.3 (r56): optional second person accompanying the
+    # primary assignee. Icon+tooltip in card status row.
+    helper_user_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Phase 4.3 (r56): self-referential FK. When set, this delivery
+    # is physically paired with another kanban delivery (same stop).
+    # When NULL + primary_assignee_id set = standalone; when
+    # NULL + primary_assignee_id NULL = pool.
+    attached_to_delivery_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("deliveries.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Phase 4.3 (r56): per-delivery start-of-day target. Route
+    # planning hint for the primary assignee — not ETA.
+    driver_start_time: Mapped[time | None] = mapped_column(
+        Time, nullable=True
+    )
     pickup_expected_by: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -133,3 +185,13 @@ class Delivery(Base):
     stops = relationship("DeliveryStop", back_populates="delivery")
     events = relationship("DeliveryEvent", back_populates="delivery", order_by="DeliveryEvent.created_at")
     media = relationship("DeliveryMedia", back_populates="delivery")
+    # Phase 4.3 (r56) user relationships + self-ref. Explicit
+    # foreign_keys to disambiguate (primary_assignee + helper both
+    # target users.id; attached_to_delivery is self-ref).
+    primary_assignee = relationship(
+        "User", foreign_keys=[primary_assignee_id]
+    )
+    helper = relationship("User", foreign_keys=[helper_user_id])
+    attached_to_delivery = relationship(
+        "Delivery", foreign_keys=[attached_to_delivery_id], remote_side=[id]
+    )

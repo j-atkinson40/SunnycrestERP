@@ -28,7 +28,7 @@
  *     "Surface At Rest vs On Interaction").
  *   - @dnd-kit drag between any two columns (including from/to
  *     Unassigned). Drop fires PATCH /delivery/:id with new
- *     assigned_driver_id; optimistic UI + reload on completion.
+ *     primary_assignee_id; optimistic UI + reload on completion.
  *   - Target-day from URL ?day=YYYY-MM-DD (via FocusState.params
  *     seeded from openFocus options). Defaults to tomorrow if
  *     absent.
@@ -238,15 +238,17 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
 
   // Group deliveries by driver (kanban-scheduling only; ancillary +
   // direct-ship are out of scope for 4.2).
+  // Phase 4.3.2 (r56) — grouping key is now `primary_assignee_id`
+  // (users.id). Compare lane membership via driver.user_id below.
   const { kanbanByDriver, unassignedKanban } = useMemo(() => {
     const byDriver = new Map<string, DeliveryDTO[]>()
     const unassigned: DeliveryDTO[] = []
     for (const d of deliveries) {
       if (d.scheduling_type !== "kanban") continue
-      const did = d.assigned_driver_id
-      if (did) {
-        if (!byDriver.has(did)) byDriver.set(did, [])
-        byDriver.get(did)!.push(d)
+      const assigneeId = d.primary_assignee_id
+      if (assigneeId) {
+        if (!byDriver.has(assigneeId)) byDriver.set(assigneeId, [])
+        byDriver.get(assigneeId)!.push(d)
       } else {
         unassigned.push(d)
       }
@@ -297,23 +299,26 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       const sep = laneKey.indexOf(":")
       if (sep === -1) return
       const targetDriverRaw = laneKey.slice(sep + 1)
-      const nextDriverId =
+      // Phase 4.3.2 (r56) — lane keys carry user_id (users.id) values,
+      // not driver.id. The parsed raw value is ready to ship to the
+      // backend's primary_assignee_id field.
+      const nextAssigneeId =
         targetDriverRaw === UNASSIGNED_LANE_ID ? null : targetDriverRaw
       const delivery = deliveries.find((d) => d.id === deliveryId)
       if (!delivery) return
-      if (delivery.assigned_driver_id === nextDriverId) return
+      if (delivery.primary_assignee_id === nextAssigneeId) return
 
       // Optimistic UI
       setDeliveries((prev) =>
         prev.map((d) =>
           d.id === deliveryId
-            ? { ...d, assigned_driver_id: nextDriverId }
+            ? { ...d, primary_assignee_id: nextAssigneeId }
             : d,
         ),
       )
       try {
         await updateDelivery(deliveryId, {
-          assigned_driver_id: nextDriverId,
+          primary_assignee_id: nextAssigneeId,
         })
         reload()
       } catch (e) {
@@ -493,13 +498,19 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
             />
 
             {/* Driver columns — alphabetical. All render, even empty
-                (this IS the decide surface; all options visible). */}
+                (this IS the decide surface; all options visible).
+                Phase 4.3.2 (r56) — laneKey + lane-match use
+                driver.user_id (users.id, FK target). Portal-only
+                drivers (user_id null) are skipped entirely — they
+                appear nowhere on the kanban until the post-September
+                follow-up lifts the portal-driver assignment gap. */}
             {sortedDrivers.map((driver) => {
-              const laneDeliveries = kanbanByDriver.get(driver.id) ?? []
+              if (!driver.user_id) return null
+              const laneDeliveries = kanbanByDriver.get(driver.user_id) ?? []
               return (
                 <SchedulingLane
                   key={driver.id}
-                  laneKey={`${targetDate}:${driver.id}`}
+                  laneKey={`${targetDate}:${driver.user_id}`}
                   laneLabel={
                     driver.display_name ??
                     `Driver ${driver.license_number ?? "—"}`

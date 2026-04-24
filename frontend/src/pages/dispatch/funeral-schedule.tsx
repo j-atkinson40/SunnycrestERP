@@ -289,6 +289,29 @@ export default function FuneralSchedulePage() {
   }, [start, end, refreshCount, days])
 
   // ── Derived data ──
+  //
+  // Phase 4.3.2 (r56, Item 7) — ancillary badge counts switched
+  // from `order_id` inference to the canonical
+  // `attached_to_delivery_id` FK. Three reasons the FK-based path
+  // is correct:
+  //
+  //   1. Accuracy. The old inference picked `[0]` of the kanban
+  //      deliveries sharing an order_id, which was arbitrary when
+  //      a single order had multiple kanban shipments (split, multi-
+  //      stop). The FK points at THE parent the ancillary is
+  //      physically paired with.
+  //
+  //   2. Standalone exclusion by construction. Phase 4.3 standalone
+  //      ancillaries have `attached_to_delivery_id = NULL` + a
+  //      primary_assignee_id + date — they're assigned to a driver
+  //      but not physically riding with a specific parent delivery.
+  //      They must NOT count toward any parent's badge. The `if
+  //      (d.attached_to_delivery_id)` guard accomplishes this
+  //      naturally.
+  //
+  //   3. Pool exclusion too. Pool ancillaries have null
+  //      attached_to_delivery_id + null primary_assignee_id; same
+  //      guard filters them out.
   const { deliveriesByDate, ancillaryCountsByDate, ancillariesByParent } =
     useMemo(() => {
       const byDate = new Map<string, DeliveryDTO[]>()
@@ -298,10 +321,29 @@ export default function FuneralSchedulePage() {
         if (!d.requested_date) continue
         if (!byDate.has(d.requested_date)) byDate.set(d.requested_date, [])
         byDate.get(d.requested_date)!.push(d)
-        if (
-          d.scheduling_type === "ancillary" ||
-          d.scheduling_type === "direct_ship"
-        ) {
+        // Attached ancillaries count against their parent's badge.
+        // direct_ship retains the order_id inference path for now —
+        // direct_ship doesn't use the new attached_to_delivery_id
+        // model (it ships via Wilbert, not paired with a kanban
+        // delivery). Phase 4.3 does not migrate direct_ship.
+        if (d.scheduling_type === "ancillary") {
+          if (d.attached_to_delivery_id) {
+            const parent = deliveries.find(
+              (p) => p.id === d.attached_to_delivery_id,
+            )
+            if (parent) {
+              parentCounts.set(
+                parent.id,
+                (parentCounts.get(parent.id) ?? 0) + 1,
+              )
+              if (!parentMap.has(parent.id)) parentMap.set(parent.id, [])
+              parentMap.get(parent.id)!.push(d)
+            }
+          }
+          // else: pool or standalone — no parent badge contribution
+        } else if (d.scheduling_type === "direct_ship") {
+          // direct_ship uses legacy order_id inference (unchanged
+          // from Phase 3); no parent FK exists for this path.
           if (d.order_id) {
             const parent = deliveries.find(
               (p) =>
@@ -560,7 +602,11 @@ export default function FuneralSchedulePage() {
       }
       try {
         await updateDelivery(payload.deliveryId, {
-          assigned_driver_id: payload.assignedDriverId,
+          // Phase 4.3.2 (r56) — QuickEdit continues to collect a
+          // driver.id via its dropdown; backend helper translates
+          // driver.id → users.id via Driver.employee_id. Phase 4.3.3
+          // can migrate QuickEditDialog to use user_id directly.
+          primary_assignee_id: payload.assignedDriverId,
           special_instructions: payload.note,
           type_config: nextTc,
         })
@@ -612,21 +658,25 @@ export default function FuneralSchedulePage() {
       const sep = laneKey.indexOf(":")
       if (sep === -1) return
       const targetDriverRaw = laneKey.slice(sep + 1)
-      const targetDriverId =
+      // Phase 4.3.2 (r56) — lane keys now carry user_id values (see
+      // FuneralScheduleDayColumn laneKey construction). The parsed
+      // raw value is a users.id (or UNASSIGNED sentinel), ready for
+      // the backend's primary_assignee_id field.
+      const targetAssigneeId =
         targetDriverRaw === "__UNASSIGNED__" ? null : targetDriverRaw
       const delivery = deliveries.find((d) => d.id === deliveryId)
       if (!delivery) return
-      if (delivery.assigned_driver_id === targetDriverId) return
+      if (delivery.primary_assignee_id === targetAssigneeId) return
       setDeliveries((prev) =>
         prev.map((d) =>
           d.id === deliveryId
-            ? { ...d, assigned_driver_id: targetDriverId }
+            ? { ...d, primary_assignee_id: targetAssigneeId }
             : d,
         ),
       )
       try {
         await updateDelivery(deliveryId, {
-          assigned_driver_id: targetDriverId,
+          primary_assignee_id: targetAssigneeId,
         })
         reload()
       } catch (e) {

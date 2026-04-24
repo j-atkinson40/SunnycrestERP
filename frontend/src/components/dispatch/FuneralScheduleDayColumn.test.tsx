@@ -38,7 +38,10 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
     scheduling_type: "kanban",
     ancillary_fulfillment_status: null,
     direct_ship_status: null,
-    assigned_driver_id: null,
+    primary_assignee_id: null,
+    helper_user_id: null,
+    attached_to_delivery_id: null,
+    driver_start_time: null,
     hole_dug_status: "unknown",
     type_config: { family_name: "Smith", service_type: "graveside" },
     special_instructions: null,
@@ -65,9 +68,12 @@ function makeSchedule(overrides: Partial<ScheduleStateDTO> = {}): ScheduleStateD
 }
 
 
+// Phase 4.3.2 (r56) — DriverDTO.user_id is the assignee identity
+// (= drivers.employee_id FK users.id). Tests set user_id == id for
+// fixture simplicity; grouping + lane match use user_id.
 const drivers: DriverDTO[] = [
-  { id: "driver-1", license_number: "CDL-1", license_class: "CDL-A", active: true, display_name: "Dave Miller" },
-  { id: "driver-2", license_number: "CDL-2", license_class: "CDL-A", active: true, display_name: "Tom Henderson" },
+  { id: "driver-1", user_id: "driver-1", license_number: "CDL-1", license_class: "CDL-A", active: true, display_name: "Dave Miller" },
+  { id: "driver-2", user_id: "driver-2", license_number: "CDL-2", license_class: "CDL-A", active: true, display_name: "Tom Henderson" },
 ]
 
 
@@ -193,11 +199,11 @@ describe("FuneralScheduleDayColumn — header rendering", () => {
 
 
 describe("FuneralScheduleDayColumn — driver lanes (Phase 3.3.1: hide-by-default, reveal-on-drag)", () => {
-  it("groups deliveries by assigned_driver_id with counts (both drivers have cards → both revealed)", () => {
+  it("groups deliveries by primary_assignee_id with counts (both drivers have cards → both revealed)", () => {
     const deliveries = [
-      makeDelivery({ assigned_driver_id: "driver-1" }),
-      makeDelivery({ assigned_driver_id: "driver-1" }),
-      makeDelivery({ assigned_driver_id: "driver-2" }),
+      makeDelivery({ primary_assignee_id: "driver-1" }),
+      makeDelivery({ primary_assignee_id: "driver-1" }),
+      makeDelivery({ primary_assignee_id: "driver-2" }),
     ]
     render(
       <Harness>
@@ -222,7 +228,7 @@ describe("FuneralScheduleDayColumn — driver lanes (Phase 3.3.1: hide-by-defaul
         <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule()}
-          deliveries={[makeDelivery({ assigned_driver_id: "driver-1" })]}
+          deliveries={[makeDelivery({ primary_assignee_id: "driver-1" })]}
         />
       </Harness>,
     )
@@ -236,8 +242,8 @@ describe("FuneralScheduleDayColumn — driver lanes (Phase 3.3.1: hide-by-defaul
 
   it("surfaces unassigned lane when deliveries lack a driver", () => {
     const deliveries = [
-      makeDelivery({ assigned_driver_id: null }),
-      makeDelivery({ assigned_driver_id: "driver-1" }),
+      makeDelivery({ primary_assignee_id: null }),
+      makeDelivery({ primary_assignee_id: "driver-1" }),
     ]
     render(
       <Harness>
@@ -270,7 +276,7 @@ describe("FuneralScheduleDayColumn — driver lanes (Phase 3.3.1: hide-by-defaul
     // hides driver-2's column (wrapper `data-revealed='false'`,
     // `max-w-0 opacity-0 pointer-events-none`).
     const deliveries = [
-      makeDelivery({ assigned_driver_id: "driver-1" }),
+      makeDelivery({ primary_assignee_id: "driver-1" }),
     ]
     render(
       <Harness>
@@ -301,7 +307,7 @@ describe("FuneralScheduleDayColumn — driver lanes (Phase 3.3.1: hide-by-defaul
 
   it("empty driver columns REVEAL when isDragging=true (drop targets)", () => {
     const deliveries = [
-      makeDelivery({ assigned_driver_id: "driver-1" }),
+      makeDelivery({ primary_assignee_id: "driver-1" }),
     ]
     render(
       <Harness>
@@ -335,8 +341,10 @@ describe("FuneralScheduleDayColumn — driver lanes (Phase 3.3.1: hide-by-defaul
   it("drivers render in alphabetical order during reveal (stable position)", () => {
     // Reverse roster: drivers array has Tom before Dave intentionally.
     const reverseRoster: DriverDTO[] = [
-      { id: "driver-2", license_number: "CDL-2", license_class: "CDL-A", active: true, display_name: "Tom Henderson" },
-      { id: "driver-1", license_number: "CDL-1", license_class: "CDL-A", active: true, display_name: "Dave Miller" },
+      // Phase 4.3.2 (r56) — user_id required for kanban lane
+      // rendering; portal-only drivers (user_id null) are skipped.
+      { id: "driver-2", user_id: "driver-2", license_number: "CDL-2", license_class: "CDL-A", active: true, display_name: "Tom Henderson" },
+      { id: "driver-1", user_id: "driver-1", license_number: "CDL-1", license_class: "CDL-A", active: true, display_name: "Dave Miller" },
     ]
     render(
       <Harness>
@@ -345,8 +353,8 @@ describe("FuneralScheduleDayColumn — driver lanes (Phase 3.3.1: hide-by-defaul
           drivers={reverseRoster}
           schedule={makeSchedule()}
           deliveries={[
-            makeDelivery({ assigned_driver_id: "driver-1" }),
-            makeDelivery({ assigned_driver_id: "driver-2" }),
+            makeDelivery({ primary_assignee_id: "driver-1" }),
+            makeDelivery({ primary_assignee_id: "driver-2" }),
           ]}
         />
       </Harness>,
@@ -412,7 +420,7 @@ describe("FuneralScheduleDayColumn — Phase 3.3 surface polish regression guard
         <FuneralScheduleDayColumn
           {...defaultProps}
           schedule={makeSchedule()}
-          deliveries={[makeDelivery({ assigned_driver_id: "driver-1" })]}
+          deliveries={[makeDelivery({ primary_assignee_id: "driver-1" })]}
         />
       </Harness>,
     )
@@ -435,7 +443,7 @@ describe("FuneralScheduleDayColumn — ancillary expansion", () => {
     const parent = makeDelivery({
       id: "parent-1",
       order_id: "so-1",
-      assigned_driver_id: "driver-1",
+      primary_assignee_id: "driver-1",
     })
     const ancillary = makeDelivery({
       id: "anc-1",

@@ -102,7 +102,11 @@ def _serialize_ancillary_card(delivery: Delivery) -> dict:
         "ancillary_fulfillment_status": delivery.ancillary_fulfillment_status or "unassigned",
         "ancillary_is_floating": bool(delivery.ancillary_is_floating),
         "ancillary_soft_target_date": delivery.ancillary_soft_target_date.isoformat() if delivery.ancillary_soft_target_date else None,
-        "assigned_driver_id": delivery.assigned_driver_id,
+        # Phase 4.3.2 (r56) — renamed from assigned_driver_id; value
+        # is now users.id (was drivers.id). Frontend consumers compare
+        # against DriverDTO.user_id (=drivers.employee_id), not
+        # DriverDTO.id.
+        "primary_assignee_id": delivery.primary_assignee_id,
         "pickup_expected_by": delivery.pickup_expected_by.isoformat() if delivery.pickup_expected_by else None,
         "pickup_confirmed_at": delivery.pickup_confirmed_at.isoformat() if delivery.pickup_confirmed_at else None,
         "pickup_confirmed_by": delivery.pickup_confirmed_by,
@@ -147,17 +151,25 @@ def _get_available_drivers(db: Session, company_id: str) -> list[dict]:
     return result
 
 
-def _resolve_driver_names(db: Session, driver_ids: list[str]) -> dict[str, str]:
-    """Resolve a list of driver IDs to display names."""
-    if not driver_ids:
+def _resolve_driver_names(db: Session, user_ids: list[str]) -> dict[str, str]:
+    """Resolve a list of user IDs to display names.
+
+    Phase 4.3.2 (r56) — now keyed on users.id. Pre-rename, this
+    resolved drivers.id via the Driver.employee relationship. Post-
+    rename, deliveries.primary_assignee_id directly stores users.id,
+    so we query User.first_name + User.last_name.
+    """
+    if not user_ids:
         return {}
-    drivers = db.query(Driver).filter(Driver.id.in_(driver_ids)).all()
-    names = {}
-    for drv in drivers:
-        name = f"Driver {drv.id[:8]}"
-        if drv.employee:
-            name = f"{drv.employee.first_name} {drv.employee.last_name}"
-        names[drv.id] = name
+    from app.models.user import User as _User
+
+    users = db.query(_User).filter(_User.id.in_(user_ids)).all()
+    names: dict[str, str] = {}
+    for u in users:
+        name = f"{u.first_name or ''} {u.last_name or ''}".strip()
+        if not name:
+            name = u.email or f"User {u.id[:8]}"
+        names[u.id] = name
     return names
 
 
@@ -273,7 +285,10 @@ def list_ancillary_orders(
     # Assigned — group by driver, then by date within each driver
     assigned_by_driver: dict[str, list[dict]] = {}
     for card in assigned_items:
-        driver_id = card.get("assigned_driver_id") or "unknown"
+        # Phase 4.3.2 — value now a users.id (was drivers.id). The
+        # grouping key is the assignee identity; driver_names below
+        # resolves via users.id directly.
+        driver_id = card.get("primary_assignee_id") or "unknown"
         if driver_id not in assigned_by_driver:
             assigned_by_driver[driver_id] = []
         assigned_by_driver[driver_id].append(card)
@@ -359,8 +374,17 @@ def assign_ancillary_to_driver(
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
 
+    # Phase 4.3.2 — translate drivers.id → users.id via employee_id.
+    # Portal-only drivers (employee_id=None) return 400; kanban-side
+    # portal-driver assignment is a post-September follow-up.
+    if driver.employee_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Driver has no linked user account (portal-only driver).",
+        )
+
     delivery.ancillary_fulfillment_status = "assigned_to_driver"
-    delivery.assigned_driver_id = data.driver_id
+    delivery.primary_assignee_id = driver.employee_id
     delivery.modified_at = datetime.now(UTC)
     db.commit()
 
@@ -376,7 +400,7 @@ def assign_floating_order(
 ):
     """Atomic floating-to-scheduled conversion.
 
-    Sets delivery_date, assigned_driver_id, ancillary_is_floating=false,
+    Sets delivery_date, primary_assignee_id, ancillary_is_floating=false,
     and ancillary_fulfillment_status='assigned_to_driver' in one transaction.
     """
     delivery = db.query(Delivery).filter(
@@ -394,10 +418,15 @@ def assign_floating_order(
     ).first()
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
+    if driver.employee_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Driver has no linked user account (portal-only driver).",
+        )
 
-    # Atomic update
+    # Atomic update. primary_assignee_id is users.id, not drivers.id.
     delivery.requested_date = data.delivery_date
-    delivery.assigned_driver_id = data.driver_id
+    delivery.primary_assignee_id = driver.employee_id
     delivery.ancillary_is_floating = False
     delivery.ancillary_fulfillment_status = "assigned_to_driver"
     delivery.ancillary_soft_target_date = None
@@ -567,14 +596,14 @@ def update_scheduling_type(
         delivery.ancillary_fulfillment_status = "unassigned"
     elif data.scheduling_type == "direct_ship":
         delivery.ancillary_fulfillment_status = None
-        delivery.assigned_driver_id = None
+        delivery.primary_assignee_id = None
         delivery.ancillary_is_floating = False
         delivery.ancillary_soft_target_date = None
         if not delivery.direct_ship_status:
             delivery.direct_ship_status = "pending"
     elif data.scheduling_type == "kanban":
         delivery.ancillary_fulfillment_status = None
-        delivery.assigned_driver_id = None
+        delivery.primary_assignee_id = None
         delivery.ancillary_is_floating = False
         delivery.ancillary_soft_target_date = None
         delivery.direct_ship_status = None

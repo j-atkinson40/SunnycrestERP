@@ -96,19 +96,25 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     vi.mocked(fetchDeliveriesForRange).mockResolvedValue([
       makeDelivery({
         id: "del-1",
-        assigned_driver_id: "drv-dave",
+        // Phase 4.3.2 (r56) — delivery.primary_assignee_id is a
+        // users.id; fixtures use the same string for driver.user_id
+        // below for grouping-match.
+        primary_assignee_id: "drv-dave",
         type_config: { family_name: "Smith", service_type: "graveside" },
       }),
       makeDelivery({
         id: "del-2",
-        assigned_driver_id: null, // unassigned
+        primary_assignee_id: null, // unassigned
         type_config: { family_name: "Jones", service_type: "graveside" },
       }),
     ])
     vi.mocked(fetchDrivers).mockResolvedValue([
       // Intentional reverse alphabetical to prove sort happens.
+      // user_id == id for fixture simplicity — real backend would
+      // separate drivers.id from drivers.employee_id (users.id).
       {
         id: "drv-tom",
+        user_id: "drv-tom",
         license_number: "CDL-2",
         license_class: "CDL-A",
         active: true,
@@ -116,6 +122,7 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
       },
       {
         id: "drv-mike",
+        user_id: "drv-mike",
         license_number: "CDL-3",
         license_class: "CDL-B",
         active: true,
@@ -123,6 +130,7 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
       },
       {
         id: "drv-dave",
+        user_id: "drv-dave",
         license_number: "CDL-1",
         license_class: "CDL-A",
         active: true,
@@ -360,7 +368,10 @@ function makeDelivery(
     scheduling_type: "kanban",
     ancillary_fulfillment_status: null,
     direct_ship_status: null,
-    assigned_driver_id: null,
+    primary_assignee_id: null,
+    helper_user_id: null,
+    attached_to_delivery_id: null,
+    driver_start_time: null,
     hole_dug_status: "unknown",
     type_config: {
       family_name: "Test",
