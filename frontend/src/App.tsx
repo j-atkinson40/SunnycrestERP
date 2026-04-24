@@ -450,8 +450,23 @@ export default function App() {
           DESIGN_LANGUAGE §6 (prevents drive-by tooltips on cursor
           transit). Phase B Session 1 Phase 3.1+3.2 is the first
           dense consumer (Funeral Schedule card icon+tooltip row);
-          delivery-focused platform surfaces inherit the provider. */}
-      <TooltipProvider>
+          delivery-focused platform surfaces inherit the provider.
+
+          Phase B Session 4 Phase 4.2.5 — `timeout={0}` disables
+          base-ui/floating-ui's FloatingDelayGroup grouping behavior.
+          Pre-4.2.5 the default timeout=400ms let adjacent tooltips
+          open instantly within 400ms of a prior close. In practice
+          this caused an erratic state race: hovering between the
+          four card-status icons (User / MapPin / StickyNote /
+          MessageCircle) in quick succession, some tooltips would
+          "stick closed" until the user cycled through a different
+          icon. The group-state tracked the "current open" tooltip
+          across instances in a way that occasionally left stale
+          references. Disabling grouping makes each Tooltip root
+          fully independent — every hover pays the 150ms delay,
+          every close fully resets state. Trades a small amount of
+          snappiness for reliability. */}
+      <TooltipProvider timeout={0}>
         <ImpersonationBanner />
         <OfflineBanner />
         <KeyboardHelpOverlay />

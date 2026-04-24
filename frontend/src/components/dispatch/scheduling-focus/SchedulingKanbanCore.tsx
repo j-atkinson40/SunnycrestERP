@@ -73,6 +73,10 @@ import { createPortal } from "react-dom"
 import { useSearchParams } from "react-router-dom"
 
 import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
+import {
+  QuickEditDialog,
+  type QuickEditSavePayload,
+} from "@/components/dispatch/QuickEditDialog"
 import { Button } from "@/components/ui/button"
 import { useFocus } from "@/contexts/focus-context"
 import { cn } from "@/lib/utils"
@@ -83,6 +87,7 @@ import {
   fetchTenantTime,
   finalizeSchedule,
   updateDelivery,
+  updateHoleDug,
   type DeliveryDTO,
   type DriverDTO,
   type ScheduleStateDTO,
@@ -282,6 +287,17 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
   // `overflow-y-auto` body establishes one).
   const [activeDeliveryId, setActiveDeliveryId] = useState<string | null>(null)
 
+  // Phase 4.2.5 — QuickEdit dialog state. Focus didn't wire
+  // `onOpenEdit` on DeliveryCard pre-4.2.5, so short-clicks on cards
+  // did nothing visible even though the click event fired. Adding
+  // the Monitor's QuickEdit pattern here makes clicks open the edit
+  // dialog consistently across both surfaces. Save handler mirrors
+  // Monitor's handleSaveEdit but trims down: Focus doesn't apply
+  // the schedule-revert confirmation UI (Focus is already the
+  // full-screen plan-all-day surface, so mid-session edits don't
+  // surprise anyone).
+  const [editTarget, setEditTarget] = useState<DeliveryDTO | null>(null)
+
   const handleDragStart = useCallback((ev: DragStartEvent) => {
     const id = String(ev.active.id).replace(/^delivery:/, "")
     setActiveDeliveryId(id)
@@ -342,6 +358,73 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
     // without mutating state.
     setActiveDeliveryId(null)
   }, [])
+
+  // Phase 4.2.5 — QuickEdit save handler. Parallels Monitor's
+  // handleSaveEdit but trimmed for Focus context (no schedule-revert
+  // confirmation modal; Focus dispatchers expect full control). Uses
+  // optimistic-update pattern consistent with handleDragEnd:
+  // updateDelivery + updateHoleDug in the background, local state
+  // mutates immediately, error-path logs + closes dialog without
+  // refetch.
+  const handleSaveEdit = useCallback(
+    async (payload: QuickEditSavePayload) => {
+      const delivery = deliveries.find((d) => d.id === payload.deliveryId)
+      if (!delivery) return
+      const existingTc = delivery.type_config ?? {}
+      const nextTc = {
+        ...existingTc,
+        service_time: payload.serviceTime,
+      }
+      // Optimistic local update so UI reflects the change before the
+      // backend roundtrip finishes.
+      setDeliveries((prev) =>
+        prev.map((d) =>
+          d.id === payload.deliveryId
+            ? {
+                ...d,
+                primary_assignee_id: payload.assignedDriverId,
+                special_instructions: payload.note,
+                type_config: nextTc,
+                hole_dug_status: payload.holeDugStatus,
+              }
+            : d,
+        ),
+      )
+      setEditTarget(null)
+      try {
+        await updateDelivery(payload.deliveryId, {
+          primary_assignee_id: payload.assignedDriverId,
+          special_instructions: payload.note,
+          type_config: nextTc,
+        })
+        if (payload.holeDugStatus !== delivery.hole_dug_status) {
+          await updateHoleDug(payload.deliveryId, payload.holeDugStatus)
+        }
+      } catch (e) {
+        console.error("scheduling focus quick-edit save failed:", e)
+        reload() // error-path only — restore authoritative state
+      }
+    },
+    [deliveries, reload],
+  )
+
+  const handleCycleHoleDug = useCallback(
+    async (delivery: DeliveryDTO, next: "unknown" | "yes" | "no") => {
+      // Optimistic update — match the handleDragEnd pattern.
+      setDeliveries((prev) =>
+        prev.map((d) =>
+          d.id === delivery.id ? { ...d, hole_dug_status: next } : d,
+        ),
+      )
+      try {
+        await updateHoleDug(delivery.id, next)
+      } catch (e) {
+        console.error("scheduling focus hole-dug cycle failed:", e)
+        reload()
+      }
+    },
+    [reload],
+  )
 
   // Preview delivery for the DragOverlay (derived fresh each render
   // from authoritative `deliveries` state — stays in sync with
@@ -502,6 +585,8 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
               deliveries={unassignedKanban}
               scheduleFinalized={isFinalized}
               activeDeliveryId={activeDeliveryId}
+              onOpenEdit={setEditTarget}
+              onCycleHoleDug={handleCycleHoleDug}
               isUnassignedLane
             />
 
@@ -526,6 +611,8 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
                   deliveries={laneDeliveries}
                   scheduleFinalized={isFinalized}
                   activeDeliveryId={activeDeliveryId}
+                  onOpenEdit={setEditTarget}
+                  onCycleHoleDug={handleCycleHoleDug}
                 />
               )
             })}
@@ -585,6 +672,20 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
           )}
         </DndContext>
       )}
+
+      {/* Phase 4.2.5 — QuickEdit dialog for Focus. Short-click on a
+          card body calls onOpenEdit, which sets editTarget, which
+          opens this dialog. Mirror of the Monitor's QuickEdit pattern
+          (funeral-schedule.tsx). Rendered at the core level (outside
+          the DndContext) so dialog lifecycle is independent of drag
+          state. */}
+      <QuickEditDialog
+        delivery={editTarget}
+        drivers={drivers}
+        scheduleFinalized={isFinalized}
+        onClose={() => setEditTarget(null)}
+        onSave={handleSaveEdit}
+      />
     </div>
   )
 }
@@ -606,6 +707,10 @@ interface SchedulingLaneProps {
    *  follows the pointer. */
   activeDeliveryId?: string | null
   isUnassignedLane?: boolean
+  /** Phase 4.2.5 — short-click on the card body opens QuickEdit. */
+  onOpenEdit?: (delivery: DeliveryDTO) => void
+  /** Phase 4.2.5 — hole-dug badge cycles via click. */
+  onCycleHoleDug?: (delivery: DeliveryDTO, next: "unknown" | "yes" | "no") => void
 }
 
 
@@ -617,6 +722,8 @@ function SchedulingLane({
   scheduleFinalized,
   activeDeliveryId,
   isUnassignedLane,
+  onOpenEdit,
+  onCycleHoleDug,
 }: SchedulingLaneProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: laneKey,
@@ -740,6 +847,12 @@ function SchedulingLane({
                 // widget keeps the default density (no prop =
                 // "default").
                 density="compact"
+                // Phase 4.2.5 — wire short-click → QuickEdit +
+                // hole-dug cycle. Threaded from the core via lane
+                // props. Pre-4.2.5 the Focus DeliveryCard had no
+                // click handler at all — short-clicks were silent.
+                onOpenEdit={onOpenEdit}
+                onCycleHoleDug={onCycleHoleDug}
               />
             </div>
           )
