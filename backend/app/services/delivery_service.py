@@ -265,9 +265,20 @@ def update_delivery(db: Session, delivery: Delivery, data: dict) -> Delivery:
     # (old or new) was finalized.
     pre_edit_date = delivery.requested_date
 
+    # Phase 4.2.2 — removed the prior `if v is not None` guard. It was
+    # belt-and-suspenders over the route-layer `exclude_none=True` that
+    # already stripped nulls before they reached this function. Its
+    # effect was to silently discard ANY explicit null in `data`,
+    # which broke drag-to-Unassigned (setting `assigned_driver_id` to
+    # None is a legitimate "clear the field" operation, not a "skip
+    # this field" signal). The route layer now uses
+    # `exclude_unset=True` so unset fields are omitted from `data` but
+    # explicit nulls reach this loop and set the column to NULL as
+    # intended. Callers passing literal dicts (carrier_portal.py,
+    # deliveries.py manual carrier-status path) never include None
+    # keys, so they're unaffected.
     for k, v in data.items():
-        if v is not None:
-            setattr(delivery, k, v)
+        setattr(delivery, k, v)
     delivery.modified_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(delivery)

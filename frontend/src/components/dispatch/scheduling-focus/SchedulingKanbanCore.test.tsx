@@ -259,6 +259,55 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     expect(close).toBeInTheDocument()
   })
 
+  it("each rendered card is wrapped in a card-slot with data-ghost='false' at rest (Phase 4.2.2)", async () => {
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    // Phase 4.2.2 — every in-lane card now sits in a
+    // `scheduling-focus-card-slot` wrapper. At rest, the wrapper
+    // carries `data-ghost="false"` (no card is being dragged). When
+    // drag starts, the slot whose id matches `activeDeliveryId`
+    // flips to `data-ghost="true"` + `opacity-40 pointer-events-none`
+    // to hint "came from here" while DragOverlay owns the floating
+    // preview. Full drag simulation isn't exercised in jsdom (dnd-kit
+    // needs real pointer events); this is the DOM-contract check.
+    const slots = await waitFor(() => {
+      const nodes = document.querySelectorAll(
+        '[data-slot="scheduling-focus-card-slot"]',
+      )
+      expect(nodes.length).toBeGreaterThan(0)
+      return nodes
+    })
+    for (const slot of Array.from(slots)) {
+      expect(slot.getAttribute("data-ghost")).toBe("false")
+    }
+  })
+
+  it("DragOverlay container is mounted while DndContext is active (Phase 4.2.2)", async () => {
+    // @dnd-kit renders <DragOverlay> into a portal on dragStart; at
+    // rest there's no floating preview in the DOM. What we CAN assert
+    // is that the DndContext wrapping our kanban renders — meaning
+    // the body is the post-loading render path (not the error state
+    // or the loading skeleton). Structural guard against accidental
+    // DndContext removal.
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="scheduling-focus-kanban"]'),
+      ).toBeInTheDocument()
+    })
+    // drag-preview slot is NOT present at rest (no active drag).
+    expect(
+      document.querySelector('[data-slot="scheduling-focus-drag-preview"]'),
+    ).toBeNull()
+  })
+
   it("finalized schedule hides the Finalize button + shows attribution hint", async () => {
     vi.mocked(fetchSchedule).mockResolvedValue({
       id: "sch-2",

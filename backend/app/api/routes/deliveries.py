@@ -340,7 +340,14 @@ def update_delivery(
     if not delivery:
         raise HTTPException(status_code=404, detail="Delivery not found")
     old_carrier_id = delivery.carrier_id
-    updated = delivery_service.update_delivery(db, delivery, data.model_dump(exclude_none=True))
+    # Phase 4.2.2 — `exclude_unset=True` (not `exclude_none=True`). The
+    # previous filter stripped every explicit `null` from the patch,
+    # which silently swallowed drag-to-Unassigned (frontend sends
+    # `{"assigned_driver_id": null}` to clear an assignment). Pydantic's
+    # `exclude_unset` excludes only fields the client didn't set,
+    # preserving explicit nulls as "please clear this field." Monitor
+    # widget + Scheduling Focus + QuickEdit dialog all benefit.
+    updated = delivery_service.update_delivery(db, delivery, data.model_dump(exclude_unset=True))
     # If carrier was newly assigned, trigger notification
     if updated.carrier_id and updated.carrier_id != old_carrier_id:
         if updated.carrier and updated.carrier.carrier_type == "third_party":

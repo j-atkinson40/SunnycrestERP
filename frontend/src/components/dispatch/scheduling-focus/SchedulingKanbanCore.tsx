@@ -53,11 +53,13 @@
 
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core"
 import { CheckCircle2Icon, ChevronDownIcon, XIcon } from "lucide-react"
 import {
@@ -268,8 +270,24 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   )
 
+  // Phase 4.2.2 — track the active drag id so the DragOverlay can
+  // render a floating preview at document level (portaled above every
+  // sibling stacking context). Fixes the prior "dragged card rendered
+  // behind adjacent columns" bug where the card's `transform` placed
+  // it visually across columns but its DOM position kept it beneath
+  // siblings that had their own stacking context (the adjacent lane's
+  // `overflow-y-auto` body establishes one).
+  const [activeDeliveryId, setActiveDeliveryId] = useState<string | null>(null)
+
+  const handleDragStart = useCallback((ev: DragStartEvent) => {
+    const id = String(ev.active.id).replace(/^delivery:/, "")
+    setActiveDeliveryId(id)
+  }, [])
+
   const handleDragEnd = useCallback(
     async (ev: DragEndEvent) => {
+      // Clear the overlay preview regardless of drop validity.
+      setActiveDeliveryId(null)
       const { active, over } = ev
       if (!over) return
       const deliveryId = String(active.id).replace(/^delivery:/, "")
@@ -303,6 +321,23 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       }
     },
     [deliveries, reload],
+  )
+
+  const handleDragCancel = useCallback(() => {
+    // Drop outside any droppable OR Esc cancels — clear overlay
+    // without mutating state.
+    setActiveDeliveryId(null)
+  }, [])
+
+  // Preview delivery for the DragOverlay (derived fresh each render
+  // from authoritative `deliveries` state — stays in sync with
+  // optimistic updates).
+  const activeDelivery = useMemo(
+    () =>
+      activeDeliveryId
+        ? deliveries.find((d) => d.id === activeDeliveryId) ?? null
+        : null,
+    [activeDeliveryId, deliveries],
   )
 
   const handleFinalize = useCallback(async () => {
@@ -430,7 +465,12 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         </div>
       )}
       {!loading && !error && (
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
           <div
             data-slot="scheduling-focus-kanban"
             className={cn(
@@ -447,6 +487,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
               laneSubLabel="needs a driver"
               deliveries={unassignedKanban}
               scheduleFinalized={isFinalized}
+              activeDeliveryId={activeDeliveryId}
               isUnassignedLane
             />
 
@@ -464,10 +505,48 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
                   }
                   deliveries={laneDeliveries}
                   scheduleFinalized={isFinalized}
+                  activeDeliveryId={activeDeliveryId}
                 />
               )
             })}
           </div>
+
+          {/* DragOverlay — portaled to document.body by @dnd-kit, so
+              the dragged card always floats above every sibling
+              stacking context (columns' overflow-y-auto bodies create
+              their own). @dnd-kit tracks the pointer; we only supply
+              the preview content. Scale 1.02 + shadow-level-3
+              matches PLATFORM_QUALITY_BAR §2 drag lift ("subtle scale
+              1.02-1.04; shadow-level-1 → shadow-level-2 typical;
+              DragOverlay adds one more level because it's floating
+              free of the lane chrome").
+
+              Note: the underlying card inside DragOverlay is NOT
+              draggable (no useDraggable) — it's a pure visual preview.
+              @dnd-kit handles all pointer events at the context level
+              while an activeId is set. */}
+          <DragOverlay
+            dropAnimation={{
+              duration: 180,
+              easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)",
+            }}
+            // zIndex falls back to @dnd-kit default (9999) which
+            // exceeds the Focus --z-focus layer — correct; the
+            // dragged card must float above the Focus chrome too.
+          >
+            {activeDelivery && (
+              <div
+                data-slot="scheduling-focus-drag-preview"
+                className="scale-[1.02] shadow-level-3 rounded-md w-[220px]"
+              >
+                <DeliveryCard
+                  delivery={activeDelivery}
+                  scheduleFinalized={isFinalized}
+                  density="compact"
+                />
+              </div>
+            )}
+          </DragOverlay>
         </DndContext>
       )}
     </div>
@@ -484,6 +563,12 @@ interface SchedulingLaneProps {
   laneSubLabel?: string
   deliveries: DeliveryDTO[]
   scheduleFinalized: boolean
+  /** Phase 4.2.2 — id of the currently-dragging delivery, if any.
+   *  When present AND matching a delivery in this lane, the in-lane
+   *  card renders as a ghost (opacity-40 + pointer-events-none) so
+   *  the user sees where the card "came from" while the DragOverlay
+   *  follows the pointer. */
+  activeDeliveryId?: string | null
   isUnassignedLane?: boolean
 }
 
@@ -494,6 +579,7 @@ function SchedulingLane({
   laneSubLabel,
   deliveries,
   scheduleFinalized,
+  activeDeliveryId,
   isUnassignedLane,
 }: SchedulingLaneProps) {
   const { setNodeRef, isOver } = useDroppable({
@@ -591,17 +677,37 @@ function SchedulingLane({
             drop here
           </div>
         )}
-        {deliveries.map((d) => (
-          <DeliveryCard
-            key={d.id}
-            delivery={d}
-            scheduleFinalized={scheduleFinalized}
-            // Phase 4.2.1 — Focus surface uses compact density so
-            // more cards fit the constrained viewport. Monitor
-            // widget keeps the default density (no prop = "default").
-            density="compact"
-          />
-        ))}
+        {deliveries.map((d) => {
+          const isGhost = activeDeliveryId === d.id
+          return (
+            <div
+              key={d.id}
+              data-slot="scheduling-focus-card-slot"
+              data-ghost={isGhost ? "true" : "false"}
+              className={cn(
+                "transition-opacity duration-quick ease-settle",
+                // Phase 4.2.2 — the card at the drag origin renders
+                // as a ghost while the DragOverlay handles the
+                // floating preview. Opacity 40% keeps the "where it
+                // came from" hint without stealing visual weight from
+                // the overlay. pointer-events:none is belt-and-
+                // suspenders — @dnd-kit already routes pointer events
+                // to the overlay while dragging.
+                isGhost && "opacity-40 pointer-events-none",
+              )}
+            >
+              <DeliveryCard
+                delivery={d}
+                scheduleFinalized={scheduleFinalized}
+                // Phase 4.2.1 — Focus surface uses compact density so
+                // more cards fit the constrained viewport. Monitor
+                // widget keeps the default density (no prop =
+                // "default").
+                density="compact"
+              />
+            </div>
+          )
+        })}
       </div>
     </div>
   )
