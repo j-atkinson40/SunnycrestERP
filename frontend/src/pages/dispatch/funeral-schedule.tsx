@@ -72,10 +72,12 @@
 
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core"
 import {
   useCallback,
@@ -84,6 +86,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { createPortal } from "react-dom"
 import { useSearchParams } from "react-router-dom"
 
 import { useFocus } from "@/contexts/focus-context"
@@ -96,6 +99,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
 import { FuneralScheduleDayColumn } from "@/components/dispatch/FuneralScheduleDayColumn"
 import {
   QuickEditDialog,
@@ -641,8 +645,22 @@ export default function FuneralSchedulePage() {
   //              and stays visible naturally.
   const [isDragging, setIsDragging] = useState(false)
 
-  const handleDragStart = useCallback(() => {
+  // Phase 4.2.6 — DragOverlay active-id (matches Focus's
+  // SchedulingKanbanCore pattern from Phase 4.2.2). When set, the
+  // card at that id renders as a ghost in its origin lane while a
+  // floating preview (portaled to document.body) tracks the cursor.
+  // Fixes the "dragged card renders behind adjacent column" symptom:
+  // each lane's `overflow-y-auto` body establishes its own stacking
+  // context, so the default in-place `transform: translate` drag
+  // would paint the card beneath sibling columns. Portaling to
+  // document.body via DragOverlay lifts the preview above every
+  // stacking context.
+  const [activeDeliveryId, setActiveDeliveryId] = useState<string | null>(null)
+
+  const handleDragStart = useCallback((ev: DragStartEvent) => {
     setIsDragging(true)
+    const id = String(ev.active.id).replace(/^delivery:/, "")
+    setActiveDeliveryId(id)
   }, [])
 
   const handleDragEnd = useCallback(
@@ -651,6 +669,7 @@ export default function FuneralSchedulePage() {
       // previously-empty driver, the optimistic update below adds that
       // driver to the "has deliveries" set so its column persists.
       setIsDragging(false)
+      setActiveDeliveryId(null)
       const { active, over } = ev
       if (!over) return
       const deliveryId = String(active.id).replace(/^delivery:/, "")
@@ -694,7 +713,19 @@ export default function FuneralSchedulePage() {
     // Drag cancelled (ESC or drop outside any target) — collapse
     // reveal. No state update needed otherwise.
     setIsDragging(false)
+    setActiveDeliveryId(null)
   }, [])
+
+  // Preview delivery for the DragOverlay (derived fresh each render
+  // from authoritative `deliveries` state — stays in sync with
+  // optimistic updates). Matches SchedulingKanbanCore's pattern.
+  const activeDelivery = useMemo(
+    () =>
+      activeDeliveryId
+        ? deliveries.find((d) => d.id === activeDeliveryId) ?? null
+        : null,
+    [activeDeliveryId, deliveries],
+  )
 
   // View mode toggle — updates URL state. Clears ?day= when switching
   // to all (not meaningful in multi-day).
@@ -1053,10 +1084,49 @@ export default function FuneralSchedulePage() {
                     onOpenScheduling={handleOpenScheduling}
                     finalizedByLabel={finalizedByLabel}
                     isDragging={isDragging}
+                    activeDeliveryId={activeDeliveryId}
                   />
                 )
               })}
             </div>
+          )}
+
+          {/* Phase 4.2.6 — DragOverlay pattern lifted from
+              SchedulingKanbanCore (Phase 4.2.2). Portaled to
+              document.body so the dragged card floats above every
+              sibling-column stacking context. Each lane's
+              `overflow-y-auto` body creates its own stacking
+              context; without the portal, @dnd-kit's default
+              in-place `transform: translate` would render the
+              card behind adjacent columns.
+
+              No containing-block trap here (Monitor isn't inside
+              the Focus positioner), but we portal anyway for
+              consistency with Focus and to future-proof against
+              any transform-bearing ancestor landing above. */}
+          {createPortal(
+            <DragOverlay
+              dropAnimation={{
+                duration: 180,
+                easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)",
+              }}
+            >
+              {activeDelivery && (
+                <div
+                  data-slot="funeral-schedule-drag-preview"
+                  className="scale-[1.02] shadow-level-3 rounded-md w-[280px]"
+                >
+                  <DeliveryCard
+                    delivery={activeDelivery}
+                    scheduleFinalized={
+                      schedules.get(activeDelivery.requested_date ?? "")
+                        ?.state === "finalized"
+                    }
+                  />
+                </div>
+              )}
+            </DragOverlay>,
+            document.body,
           )}
         </DndContext>
       )}

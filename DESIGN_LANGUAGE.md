@@ -2278,9 +2278,9 @@ Phase A Session 1 introduces a layering-token system. New overlay code uses thes
 | `--z-base` | `0` | Default content flow |
 | `--z-elevated` | `10` | Cards, elevated surfaces, return pill |
 | `--z-dropdown` | `50` | Dropdowns, peek panels |
-| `--z-modal` | `80` | Dialogs, sheets, slide-overs |
 | `--z-focus` | `100` | Focus primitive overlay (Phase A) |
-| `--z-command-bar` | `110` | Command bar — intentionally above Focus per architecture, though it is hidden while a Focus is open per Phase A Session 1 decision |
+| `--z-modal` | `105` | Dialogs, sheets, slide-overs. **Above `--z-focus`** so Dialogs opened from inside a Focus (e.g. QuickEdit from a scheduling card) render above the Focus Popup. Bumped from `80` in Phase A Session 4.2.6 after QuickEditDialog mounted successfully but rendered behind the Focus overlay, appearing invisible to the user. Focus is exclusive so no non-nested Dialog is simultaneously active — there is no conflict at this layer. |
+| `--z-command-bar` | `110` | Command bar — intentionally above Focus + Modal per architecture, though it is hidden while a Focus is open per Phase A Session 1 decision |
 | `--z-toast` | `120` | Toast notifications |
 | `--z-tooltip` | `130` | Tooltips — topmost transient UI feedback. Above toast so a tooltip over a toast is still readable; added in Phase A Session 4.2.4 after tooltips inside Focus cores rendered at `z-50` and disappeared behind the Popup. |
 

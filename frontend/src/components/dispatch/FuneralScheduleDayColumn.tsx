@@ -89,6 +89,11 @@ export interface FuneralScheduleDayColumnProps {
    *  (which serve as drop targets). Resting state hides empty
    *  columns; drag surfaces them. */
   isDragging?: boolean
+  /** Phase 4.2.6 — delivery id currently being dragged, if any.
+   *  When set, the matching in-lane card renders as a ghost
+   *  (opacity-40 + pointer-events-none) so the user sees where
+   *  the card came from while the DragOverlay tracks the cursor. */
+  activeDeliveryId?: string | null
 }
 
 
@@ -109,6 +114,7 @@ export function FuneralScheduleDayColumn({
   onOpenScheduling,
   finalizedByLabel,
   isDragging = false,
+  activeDeliveryId = null,
 }: FuneralScheduleDayColumnProps) {
   const finalized = schedule.state === "finalized"
   const notCreated = schedule.state === "not_created"
@@ -369,6 +375,7 @@ export function FuneralScheduleDayColumn({
               onOpenEdit={onOpenEdit}
               onCycleHoleDug={onCycleHoleDug}
               scheduleFinalized={finalized}
+              activeDeliveryId={activeDeliveryId}
               isUnassignedLane
             />
           )}
@@ -432,6 +439,7 @@ export function FuneralScheduleDayColumn({
                   onOpenEdit={onOpenEdit}
                   onCycleHoleDug={onCycleHoleDug}
                   scheduleFinalized={finalized}
+                  activeDeliveryId={activeDeliveryId}
                 />
               </div>
             )
@@ -458,6 +466,10 @@ interface DriverLaneProps {
   onCycleHoleDug: (d: DeliveryDTO, next: HoleDugStatus) => void
   scheduleFinalized: boolean
   isUnassignedLane?: boolean
+  /** Phase 4.2.6 — id of the currently-dragging delivery, if any.
+   *  Matching in-lane card renders as a ghost while the DragOverlay
+   *  handles the floating preview. */
+  activeDeliveryId?: string | null
 }
 
 
@@ -473,6 +485,7 @@ function DriverLane({
   onCycleHoleDug,
   scheduleFinalized,
   isUnassignedLane,
+  activeDeliveryId,
 }: DriverLaneProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: laneKey,
@@ -562,8 +575,21 @@ function DriverLane({
           const ancillaries = expanded
             ? (ancillariesByParent.get(d.id) ?? [])
             : []
+          // Phase 4.2.6 — origin card ghosts while DragOverlay
+          // tracks the cursor. Opacity 40 keeps the "came from
+          // here" hint; pointer-events:none is belt-and-suspenders
+          // (the overlay already owns pointer routing).
+          const isGhost = activeDeliveryId === d.id
           return (
-            <div key={d.id}>
+            <div
+              key={d.id}
+              data-slot="dispatch-card-slot"
+              data-ghost={isGhost ? "true" : "false"}
+              className={cn(
+                "transition-opacity duration-quick ease-settle",
+                isGhost && "opacity-40 pointer-events-none",
+              )}
+            >
               <DeliveryCard
                 delivery={d}
                 scheduleFinalized={scheduleFinalized}

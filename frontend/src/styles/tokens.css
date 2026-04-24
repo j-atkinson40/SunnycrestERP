@@ -147,7 +147,19 @@
   --z-base: 0;
   --z-elevated: 10;
   --z-dropdown: 50;
-  --z-modal: 80;
+  /* Phase A Session 4.2.6 — --z-modal bumped from 80 → 105, which
+   * places standalone Dialogs ABOVE Focus (z-100). Reality dictates
+   * the reordering: a Dialog opened from inside a Focus (e.g. the
+   * Scheduling Focus's QuickEdit dialog) must render above the
+   * Focus Popup, not behind it. The prior 80 value reflected the
+   * original "Focus is above modals" intent, but in practice Focus
+   * is exclusive (when open, no non-nested Dialog is simultaneously
+   * active), so only the nested-dialog case is real. 105 coexists
+   * with Focus-at-100 correctly for nested Dialogs, and doesn't
+   * conflict with standalone Dialogs (no Focus open → nothing else
+   * between 100 and 110 exists). Command-bar (110) stays above.
+   */
+  --z-modal: 105;
   --z-focus: 100;
   --z-command-bar: 110;
   --z-toast: 120;

@@ -54,10 +54,17 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
+      // Phase A Session 4.2.6 — z-index routed through --z-modal
+      // (token, value 105) instead of literal z-50. Dialogs opened
+      // from inside a Focus (which sits at --z-focus: 100) must
+      // render above the Focus Popup; the prior z-50 put them
+      // behind it — QuickEditDialog mounted correctly but was
+      // invisible. See DESIGN_LANGUAGE.md §9 Layering tokens.
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/40 transition-opacity duration-arrive ease-settle supports-backdrop-filter:backdrop-blur-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:duration-settle data-closed:ease-gentle",
+        "fixed inset-0 isolate bg-black/40 transition-opacity duration-arrive ease-settle supports-backdrop-filter:backdrop-blur-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:duration-settle data-closed:ease-gentle",
         className
       )}
+      style={{ zIndex: "var(--z-modal)" }}
       {...props}
     />
   )
@@ -76,10 +83,16 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        // Phase A Session 4.2.6 — z-index routed through --z-modal
+        // (105, above --z-focus: 100) so nested Dialogs inside a
+        // Focus render above the Focus Popup. Prior literal z-50
+        // put the Popup behind Focus → QuickEditDialog mounted
+        // correctly but was invisible to the user.
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border-subtle bg-surface-raised p-6 font-plex-sans text-body-sm text-content-base shadow-level-2 outline-none duration-arrive ease-settle sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-settle data-closed:ease-gentle",
+          "fixed top-1/2 left-1/2 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border-subtle bg-surface-raised p-6 font-plex-sans text-body-sm text-content-base shadow-level-2 outline-none duration-arrive ease-settle sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-settle data-closed:ease-gentle",
           className
         )}
+        style={{ zIndex: "var(--z-modal)" }}
         {...props}
       >
         {children}
