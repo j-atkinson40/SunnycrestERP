@@ -21,9 +21,19 @@
  * transform translateY slides the active day into view while the
  * previous day slides out. Page does NOT scroll during day rotation.
  * Horizontal scroll within a day (driver lanes) preserved for that
- * dimension. Vertical scroll within a lane (when lane content exceeds
- * stage height) preserved via boundary-escalation wheel handling —
- * lane scrolls first; when at boundary, stage rotates.
+ * dimension.
+ *
+ * **Phase 3.3.2 wheel capture correction (2026-04-24)**: the 3.2.1
+ * wheel handler walked DOM ancestors looking for a vertically-
+ * scrollable child to yield to (boundary-escalation). At resting
+ * state the stage has no such children — the walk fell through to
+ * preventDefault correctly. But `<main>` (AppLayout's content
+ * region) has `overflow-y-auto`, and in some traversal cases the
+ * page scroll was being triggered before the stage handler fired.
+ * Fixed: removed the vertical-wheel ancestor walk entirely. Stage
+ * captures ALL vertical wheel within its bounds regardless of cursor
+ * target (card, lane, header, empty — all rotate). Horizontal wheel
+ * still yields so lane overflow-x-auto works natively.
  *
  * **Phase 3.3.1 change (2026-04-23)**: rotation physics tuned from
  * `duration-settle ease-settle` (300ms, cubic-bezier(0.2, 0, 0.1, 1))
@@ -366,12 +376,20 @@ export default function FuneralSchedulePage() {
   )
 
   // Wheel gesture → day rotation. Non-passive listener (React onWheel
-  // is passive by default; preventDefault would be a no-op). Only
-  // consumes vertical wheel; horizontal wheel propagates to driver-
-  // lane native overflow-x. Boundary-escalation: if the wheel target
-  // is inside a scrollable child that can still scroll in the wheel
-  // direction, let it scroll and skip rotation — only rotate when
-  // the child is at its boundary (or there's no scrollable child).
+  // is passive by default; preventDefault would be a no-op).
+  //
+  // Phase 3.3.2 correction: stage captures ALL vertical wheel within
+  // its bounds regardless of cursor target (card, lane, header, empty
+  // area — all rotate). Prior 3.2.1 walk-up walked ancestors looking
+  // for a scrollable child to yield to, which was over-engineered for
+  // a case that doesn't exist (the stage has no vertically-scrolling
+  // children) and was incorrectly yielding vertical wheel to
+  // `<main>`'s overflow-y-auto (the page scroll container), producing
+  // page-scroll-instead-of-rotation when the cursor was over a card
+  // or lane.
+  //
+  // Horizontal-dominant wheel still yields so the driver-lane
+  // overflow-x-auto handles left/right pan natively.
   useEffect(() => {
     if (viewMode !== "single") return
     const stage = stageRef.current
@@ -384,28 +402,11 @@ export default function FuneralSchedulePage() {
       // handle it. Don't preventDefault, don't rotate.
       if (absX > absY) return
 
-      // Boundary-escalation — if a vertically scrollable ancestor of
-      // the event target can still scroll in the wheel direction,
-      // yield to it (lane scrolls before stage rotates).
-      let el = e.target as Element | null
-      while (el && el !== stage) {
-        const style = window.getComputedStyle(el)
-        const overflowY = style.overflowY
-        if (
-          (overflowY === "auto" || overflowY === "scroll") &&
-          el.scrollHeight > el.clientHeight
-        ) {
-          const atTop = el.scrollTop <= 0
-          const atBottom =
-            el.scrollTop + el.clientHeight >= el.scrollHeight - 1
-          if (e.deltaY < 0 && !atTop) return
-          if (e.deltaY > 0 && !atBottom) return
-          break
-        }
-        el = el.parentElement
-      }
-
-      // Vertical wheel on stage with no consuming child — rotate.
+      // Vertical-dominant wheel — ALWAYS capture + rotate. No
+      // ancestor-walk, no yield-to-scrollable-parent. The stage is
+      // the authoritative handler for vertical wheel within its
+      // bounds; page scroll must never happen from wheel inside the
+      // stage.
       e.preventDefault()
 
       // Cooldown — don't rotate again while an animation is in
