@@ -1112,9 +1112,21 @@ export default function FuneralSchedulePage() {
               }}
             >
               {activeDelivery && (
+                // Phase 4.2.7 — `w-full` instead of `w-[280px]`.
+                // @dnd-kit's PositionedOverlay (the DragOverlay root
+                // element) sets `width: rect.width` from the active
+                // card's getBoundingClientRect at drag-start, which
+                // for Monitor Sunday through Thursday is 274.4px
+                // (lane width minus rendering nuance), not the 280px
+                // the lane nominally claims. A hard 280px inner
+                // child overflowed 5.6px to the right, and combined
+                // with `scale-[1.02]` drew the preview visibly off
+                // from the cursor's grip point. Using `w-full`
+                // matches the Popup's measured width exactly so the
+                // preview tracks the cursor with grip-point fidelity.
                 <div
                   data-slot="funeral-schedule-drag-preview"
-                  className="scale-[1.02] shadow-level-3 rounded-md w-[280px]"
+                  className="scale-[1.02] shadow-level-3 rounded-md w-full"
                 >
                   <DeliveryCard
                     delivery={activeDelivery}
