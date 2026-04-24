@@ -69,6 +69,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { createPortal } from "react-dom"
 import { useSearchParams } from "react-router-dom"
 
 import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
@@ -511,42 +512,58 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
             })}
           </div>
 
-          {/* DragOverlay — portaled to document.body by @dnd-kit, so
-              the dragged card always floats above every sibling
-              stacking context (columns' overflow-y-auto bodies create
-              their own). @dnd-kit tracks the pointer; we only supply
-              the preview content. Scale 1.02 + shadow-level-3
-              matches PLATFORM_QUALITY_BAR §2 drag lift ("subtle scale
-              1.02-1.04; shadow-level-1 → shadow-level-2 typical;
-              DragOverlay adds one more level because it's floating
-              free of the lane chrome").
+          {/* DragOverlay — must be portaled to document.body because
+              the Focus core positioner (Focus.tsx Session 3.8.3)
+              wraps the Popup subtree in `position: fixed; transform:
+              translate3d(coreRect.x, coreRect.y, 0)`. A CSS transform
+              on an ancestor becomes the containing block for
+              `position: fixed` descendants (spec-mandated), so
+              @dnd-kit's DragOverlay — which sets itself to `position:
+              fixed; top: rect.top; left: rect.left` from the original
+              card's `getBoundingClientRect()` (viewport coords) —
+              renders offset by `(coreRect.x, coreRect.y)`: the
+              "dragged card appears below-right of cursor" symptom.
 
-              Note: the underlying card inside DragOverlay is NOT
-              draggable (no useDraggable) — it's a pure visual preview.
-              @dnd-kit handles all pointer events at the context level
-              while an activeId is set. */}
-          <DragOverlay
-            dropAnimation={{
-              duration: 180,
-              easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)",
-            }}
-            // zIndex falls back to @dnd-kit default (9999) which
-            // exceeds the Focus --z-focus layer — correct; the
-            // dragged card must float above the Focus chrome too.
-          >
-            {activeDelivery && (
-              <div
-                data-slot="scheduling-focus-drag-preview"
-                className="scale-[1.02] shadow-level-3 rounded-md w-[220px]"
-              >
-                <DeliveryCard
-                  delivery={activeDelivery}
-                  scheduleFinalized={isFinalized}
-                  density="compact"
-                />
-              </div>
-            )}
-          </DragOverlay>
+              Fix: `createPortal` the DragOverlay to `document.body`.
+              React context propagates through portals, so DndContext
+              still reaches DragOverlay; the DOM mount at body level
+              has no transformed ancestor, so fixed positioning is
+              viewport-relative as intended.
+
+              Scale 1.02 + shadow-level-3 matches PLATFORM_QUALITY_BAR
+              §2 drag lift ("subtle scale 1.02-1.04; shadow-level-1 →
+              shadow-level-2 typical; DragOverlay adds one more level
+              because it's floating free of the lane chrome").
+
+              The card inside DragOverlay is NOT draggable (no
+              useDraggable) — it's a pure visual preview. @dnd-kit
+              handles all pointer events at the context level while
+              an activeId is set. */}
+          {createPortal(
+            <DragOverlay
+              dropAnimation={{
+                duration: 180,
+                easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)",
+              }}
+              // zIndex falls back to @dnd-kit default (9999) which
+              // exceeds the Focus --z-focus layer — correct; the
+              // dragged card must float above the Focus chrome too.
+            >
+              {activeDelivery && (
+                <div
+                  data-slot="scheduling-focus-drag-preview"
+                  className="scale-[1.02] shadow-level-3 rounded-md w-[220px]"
+                >
+                  <DeliveryCard
+                    delivery={activeDelivery}
+                    scheduleFinalized={isFinalized}
+                    density="compact"
+                  />
+                </div>
+              )}
+            </DragOverlay>,
+            document.body,
+          )}
         </DndContext>
       )}
     </div>
