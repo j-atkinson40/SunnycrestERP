@@ -208,7 +208,23 @@ export function Canvas() {
             // overlap it mid-fade ("stack appeared under core" bug).
             "data-[active=true]:duration-settle data-[active=false]:duration-quick",
             "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
-            "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
+            // Phase B Session 4 Phase 4.2.1 — canvas tier is the ONE
+            // tier where the tier-renderer itself is non-interactive:
+            // each widget inside wraps itself in `pointer-events-auto`
+            // (see the widget .map below), so the wrapping tier-
+            // renderer has nothing of its own to catch. Keeping it
+            // `pointer-events-none` lets drag events in Focus cores
+            // beneath (e.g. SchedulingKanbanCore's DndContext on
+            // cards) reach their listeners without the full-viewport
+            // `absolute inset-0` renderer intercepting pointerdown
+            // via elementFromPoint-on-top.
+            //
+            // Stack + icon tiers still need `pointer-events-auto` on
+            // their tier-renderer because StackRail / IconButton are
+            // themselves interactive (scroll-snap region, button
+            // click) and don't wrap their interactive surface in
+            // another per-child auto layer.
+            "pointer-events-none",
           )}
         >
           {Object.entries(widgets).map(([id, state]) => (

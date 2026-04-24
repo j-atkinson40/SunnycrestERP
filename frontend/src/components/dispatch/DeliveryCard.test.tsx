@@ -534,6 +534,129 @@ describe("DeliveryCard — ancillary badge", () => {
 })
 
 
+describe("DeliveryCard — density prop (Phase 4.2.1)", () => {
+  it("default density (no prop) uses generous body padding px-3 py-2", () => {
+    render(
+      <Harness>
+        <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
+      </Harness>,
+    )
+    const body = document.querySelector(
+      '[data-slot="dispatch-card-body"]',
+    ) as HTMLElement
+    // data-density stamp defaults to "default"
+    expect(body.getAttribute("data-density")).toBe("default")
+    expect(body.className).toMatch(/px-3/)
+    expect(body.className).toMatch(/py-2\b/)
+  })
+
+  it("density='default' explicit matches default behavior", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery()}
+          scheduleFinalized={false}
+          density="default"
+        />
+      </Harness>,
+    )
+    const body = document.querySelector(
+      '[data-slot="dispatch-card-body"]',
+    ) as HTMLElement
+    expect(body.getAttribute("data-density")).toBe("default")
+    expect(body.className).toMatch(/px-3/)
+  })
+
+  it("density='compact' tightens body padding to px-2.5 py-1.5", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery()}
+          scheduleFinalized={false}
+          density="compact"
+        />
+      </Harness>,
+    )
+    const body = document.querySelector(
+      '[data-slot="dispatch-card-body"]',
+    ) as HTMLElement
+    expect(body.getAttribute("data-density")).toBe("compact")
+    expect(body.className).toMatch(/px-2\.5/)
+    expect(body.className).toMatch(/py-1\.5/)
+    // Regression guard — default padding must NOT appear on compact.
+    expect(body.className).not.toMatch(/\bpx-3\b/)
+    expect(body.className).not.toMatch(/\bpy-2\b/)
+  })
+
+  it("density='compact' tightens icon-row padding to px-2.5 py-1", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery()}
+          scheduleFinalized={false}
+          density="compact"
+        />
+      </Harness>,
+    )
+    const iconRow = document.querySelector(
+      '[data-slot="dispatch-card-icon-row"]',
+    ) as HTMLElement
+    expect(iconRow.className).toMatch(/px-2\.5/)
+    expect(iconRow.className).toMatch(/py-1\b/)
+    expect(iconRow.className).not.toMatch(/\bpx-3\b/)
+    expect(iconRow.className).not.toMatch(/py-1\.5/)
+  })
+
+  it("density='compact' preserves all primary text lines (data density principle)", () => {
+    // Compact mode tightens padding; it must NOT hide FH / cemetery /
+    // time / product lines. All 4 primary lines continue to render.
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery()}
+          scheduleFinalized={false}
+          density="compact"
+        />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-card-fh"]'),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="dispatch-card-cemetery"]'),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="dispatch-card-timeline"]'),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="dispatch-card-product"]'),
+    ).toBeInTheDocument()
+  })
+
+  it("density='compact' preserves status-icon row (family / section / hole-dug)", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery()}
+          scheduleFinalized={false}
+          density="compact"
+          onCycleHoleDug={() => {}}
+        />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-family"]'),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-section"]'),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="dispatch-hole-dug-badge"]'),
+    ).toBeInTheDocument()
+  })
+})
+
+
 describe("DeliveryCard — body click fires onOpenEdit", () => {
   it("click on card body → onOpenEdit(delivery)", async () => {
     const user = userEvent.setup()

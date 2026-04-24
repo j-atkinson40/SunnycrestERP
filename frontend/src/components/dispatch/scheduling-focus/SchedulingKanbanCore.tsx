@@ -509,9 +509,16 @@ function SchedulingLane({
       data-unassigned={isUnassignedLane ? "true" : "false"}
       data-drop-over={isOver ? "true" : "false"}
       className={cn(
-        "flex-none w-[280px] flex flex-col",
+        // Phase 4.2.1 — 220px wide (down from 280px). Focus viewport
+        // is constrained; tighter columns + compact cards show
+        // more options at a glance without sacrificing readability.
+        // No lane container chrome (no gray wrapper, no white box).
+        // Typography-led headers + floating cards per Phase 3.3
+        // canonical pattern — each card is its own material object
+        // on the Focus Popup surface.
+        "flex-none w-[220px] flex flex-col",
         // Drop-target affordance — brass ring on active drag. No
-        // resting-state chrome.
+        // resting-state chrome per Phase 3.3.
         "transition-[box-shadow] duration-quick ease-settle",
         isOver && [
           "rounded-md",
@@ -522,7 +529,10 @@ function SchedulingLane({
       <div
         data-slot="scheduling-focus-lane-header"
         className={cn(
-          "flex items-baseline gap-2 px-1 pb-3",
+          // Typography-led header — no box, no background. Just
+          // driver name + count. Reads as column label, not as
+          // container chrome.
+          "flex items-baseline gap-2 px-1 pb-2",
           isUnassignedLane && "italic",
         )}
       >
@@ -553,7 +563,9 @@ function SchedulingLane({
       <div
         data-slot="scheduling-focus-lane-body"
         className={cn(
-          "flex-1 space-y-3 pb-2 overflow-y-auto",
+          // space-y-2 (was space-y-3) — Phase 4.2.1 tighter card
+          // rhythm pairs with the compact-density card interior.
+          "flex-1 space-y-2 pb-2 overflow-y-auto",
           "min-h-[120px]",
         )}
       >
@@ -561,10 +573,20 @@ function SchedulingLane({
           <div
             data-slot="scheduling-focus-lane-empty"
             className={cn(
-              "flex h-24 items-center justify-center",
-              "rounded-md border border-dashed border-border-subtle/60",
+              // Empty columns REMAIN VISIBLE in the Decide surface
+              // (contrast with Monitor widget which hides empty
+              // drivers at rest — this IS the decide workspace, all
+              // options must be visible).
+              //
+              // Subtle drop placeholder: softer border, shorter
+              // height. Reads as "open slot" not as "empty box."
+              "flex h-16 items-center justify-center",
+              "rounded-md border border-dashed border-border-subtle/40",
               "text-caption text-content-subtle italic",
+              // Brass tint on drop hover to reinforce the lane ring.
+              "data-[drop-over=true]:border-brass/40",
             )}
+            data-drop-over={isOver ? "true" : "false"}
           >
             drop here
           </div>
@@ -574,6 +596,10 @@ function SchedulingLane({
             key={d.id}
             delivery={d}
             scheduleFinalized={scheduleFinalized}
+            // Phase 4.2.1 — Focus surface uses compact density so
+            // more cards fit the constrained viewport. Monitor
+            // widget keeps the default density (no prop = "default").
+            density="compact"
           />
         ))}
       </div>

@@ -77,6 +77,25 @@ export interface DeliveryCardProps {
   ancillaryExpanded?: boolean
   /** ARIA label override for the draggable wrapper. */
   ariaLabel?: string
+  /** Visual density (Phase 4.2.1).
+   *
+   *  - "default" (Funeral Schedule Monitor widget): wider padding +
+   *    generous status-row spacing. Tuned for the desktop Monitor
+   *    widget's lane width (standalone kanban at full page width).
+   *  - "compact" (Scheduling Focus Decide surface): tighter padding
+   *    + smaller status-row icons. Keeps primary text hierarchy
+   *    (FH / cemetery / time / product) fully readable while fitting
+   *    more cards in the constrained Focus viewport (220px-wide
+   *    driver columns vs. Monitor's 280px). All lines stay
+   *    text-body-sm; the density knob only adjusts padding +
+   *    icon-row scale, never hides content.
+   *
+   *  Prop-driven density (single component, reused across surfaces)
+   *  over per-surface forks — matches the Session 3 primitive pattern
+   *  (`<Button size="sm">` vs no prop) and keeps drag logic, type_config
+   *  rendering, hole-dug + ancillary semantics identical across
+   *  Monitor + Decide. */
+  density?: "default" | "compact"
 }
 
 
@@ -122,7 +141,9 @@ export function DeliveryCard({
   onCycleHoleDug,
   ancillaryExpanded = false,
   ariaLabel,
+  density = "default",
 }: DeliveryCardProps) {
+  const isCompact = density === "compact"
   const tc = delivery.type_config ?? {}
   const family = (tc.family_name as string | undefined) ?? ""
   const cemetery = (tc.cemetery_name as string | undefined) ?? ""
@@ -208,13 +229,17 @@ export function DeliveryCard({
       <button
         type="button"
         data-slot="dispatch-card-body"
+        data-density={density}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation()
           onOpenEdit?.(delivery)
         }}
         className={cn(
-          "block w-full px-3 py-2 text-left",
+          "block w-full text-left",
+          // Phase 4.2.1 — density-driven padding. Compact tightens
+          // horizontal + vertical rhythm without hiding any content.
+          isCompact ? "px-2.5 py-1.5" : "px-3 py-2",
           "focus-ring-brass outline-none rounded-md",
         )}
         aria-label={`Edit ${family || "unnamed"} family delivery`}
@@ -290,7 +315,14 @@ export function DeliveryCard({
           rail at the card's bottom edge. */}
       <div
         data-slot="dispatch-card-icon-row"
-        className="flex items-center justify-between gap-1.5 border-t border-border-subtle/60 px-3 py-1.5"
+        className={cn(
+          "flex items-center justify-between gap-1.5",
+          "border-t border-border-subtle/60",
+          // Phase 4.2.1 — density-driven row padding. Keeps the
+          // icon sizes stable across densities (data density
+          // principle — every affordance stays readable / tappable).
+          isCompact ? "px-2.5 py-1" : "px-3 py-1.5",
+        )}
       >
         {/* Left — secondary-info icons with tooltips. Each renders
             only when its data is present, keeping the row clean. */}
