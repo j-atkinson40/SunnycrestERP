@@ -1247,6 +1247,21 @@ AgentRunner.AGENT_REGISTRY[AgentJobType.MONTH_END_CLOSE] = MonthEndCloseAgent
 ### shadcn/ui v4
 Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` instead. Use `buttonVariants()` for styling Links as buttons.
 
+### Spec-Override Discipline
+
+When user specification appears to conflict with design system canons, implementation conventions, or Sonnet's preferred interpretation:
+
+1. **Flag the conflict** during pre-build investigation phase.
+2. **Articulate both interpretations** clearly.
+3. **Wait for user decision.**
+4. **Execute per confirmed direction.**
+
+Do not execute opposite of stated spec and justify after the fact. User spec is the primary source of direction. Canonical docs inform the approach but do not override explicit user direction. When tension exists between the two, resolution happens through conversation, not unilateral interpretation.
+
+This rule caught an instance in Phase 3.3 where three explicit spec items were not executed due to Sonnet's preference for canonical doc interpretation (Dispatch Monitor rename skipped; empty driver columns shipped as "always render" when spec said "hide by default reveal on drag"; rotation physics left untouched when user specified "needs polish"). Rework was required in Phase 3.3.1. The discipline prevents this pattern from recurring.
+
+Scope: applies to build prompts where the user has stated explicit direction. Exploratory/design conversations where the user is asking Sonnet to think alongside them are different — those invite interpretation. Build prompts with spec lists do not.
+
 ## 13. Business Context
 
 ### Tenant Types

@@ -28,6 +28,7 @@ settle it, read here.
 | 2026-04-23 | Initial canonical capture from Phase B planning.                   |
 | 2026-04-23 | Added "The Platform Is Honest" section.                            |
 | 2026-04-23 | Restructured per expanded user spec — added "Software as New-Employee Coaching", renamed scheduling section to "Domain-Specific Operational Semantics", resequenced. |
+| 2026-04-24 | Added three sections: "Dashboards as Universal Primitive," "Everything Composable is a Widget," "Surface At Rest vs On Interaction." Captures the primitive-layer unification (Pulse + custom Spaces are both dashboards; saved views + system widgets + smart widgets are all widgets) and canonicalizes the drag-reveal behavioral pattern from Funeral Schedule 3.3.1. |
 
 ---
 
@@ -82,6 +83,55 @@ locked in.
 
 ---
 
+## Dashboards as Universal Primitive
+
+A dashboard composes widgets into a Tetris-like layout. Dashboards
+are the primary surface of every Space.
+
+Two composition modes:
+
+- **Pulse (Intelligence-composed):** Home Space dashboard. Bridgeable
+  composes based on role, time, task state, behavior, anomalies.
+- **User-composed:** Custom Space dashboards. User drags widgets
+  from catalog, arranges via Tetris layout.
+
+Same visual language, same widget library, same layout engine, same
+interactions. Only difference is composition authority — Intelligence
+vs user.
+
+Templates extend naturally: admin snapshots user's custom dashboard
+composition, applies to other users. Same template mechanism as user
+configuration templates.
+
+"Correct me" invitation works on both — user can refine either
+composition mode, routing through appropriate permission gates.
+
+---
+
+## Everything Composable is a Widget
+
+A widget is any composable unit that renders on a dashboard. Three
+types:
+
+- **System widgets:** built-in platform widgets with purpose-built
+  backends (Funeral Schedule, AR Outstanding, Production Queue, etc.)
+- **Saved views:** user-created widgets that filter/configure
+  existing entity data. User filters a list, saves configuration
+  as named widget, appears in catalog.
+- **Smart widgets:** hybrid where user picks category and
+  Intelligence picks content (*"show production anomalies here"*)
+
+All three render identically on dashboards. All three are in the
+widget catalog. Only composition authority differs.
+
+This unifies what would otherwise be separate primitives. Users
+learn widgets once; saved views aren't a separate concept to
+understand. Permission model applies uniformly. Templates include
+saved-view widgets naturally. Cross-tenant sharing uses same
+mechanism.
+
+---
+
 ## Data Density Over Decoration
 
 Professional operational users scan-and-act at speed across many
@@ -103,6 +153,32 @@ icon patterns over text labels.
 
 This principle applies broadly: any surface where users scan many
 items at speed.
+
+---
+
+## Surface At Rest vs On Interaction
+
+Surfaces show their primary purpose at rest; reveal secondary
+affordances on interaction.
+
+**Example:** Funeral Schedule at rest shows only drivers with
+assignments (the scheduled state). During drag, empty drivers slide
+in as drop targets (the "could be changed" state). When drag ends,
+they collapse back if unused.
+
+This is the inverse of generic convention (show all options always,
+let user filter). Bridgeable's discipline: canvas is for seeing what
+IS; interaction is for exploring what COULD BE.
+
+Applied broadly:
+
+- Pulse shows what matters now; interaction reveals configuration.
+- Command bar shows no results at rest; reveals candidates on typing.
+- Focus shows decision surface; reveals tools on interaction.
+
+Design discipline: if a surface requires showing "everything always"
+to be useful, the primitive is wrong. Good surfaces surface their
+primary purpose; interactions reveal what's contextually needed.
 
 ---
 
