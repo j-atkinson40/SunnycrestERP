@@ -324,7 +324,6 @@ export default function FuneralSchedulePage() {
   // active day slides out, the new one slides in. No scroll-snap, no
   // IntersectionObserver — the index IS the state.
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0)
-  const stageRef = useRef<HTMLDivElement | null>(null)
 
   // Wheel/touch gesture state — used by the gesture-capture handlers
   // below to trigger rotation without scrolling the page.
@@ -375,43 +374,71 @@ export default function FuneralSchedulePage() {
     [activeDayIndex, days, searchParams, setSearchParams],
   )
 
-  // Wheel gesture → day rotation. Non-passive listener (React onWheel
-  // is passive by default; preventDefault would be a no-op).
+  // ── Stage gesture listeners (Phase 3.3.3 — callback ref) ─────────
   //
-  // Phase 3.3.2 correction: stage captures ALL vertical wheel within
-  // its bounds regardless of cursor target (card, lane, header, empty
-  // area — all rotate). Prior 3.2.1 walk-up walked ancestors looking
-  // for a scrollable child to yield to, which was over-engineered for
-  // a case that doesn't exist (the stage has no vertically-scrolling
-  // children) and was incorrectly yielding vertical wheel to
-  // `<main>`'s overflow-y-auto (the page scroll container), producing
-  // page-scroll-instead-of-rotation when the cursor was over a card
-  // or lane.
+  // Pre-3.3.3 attached wheel + pointer listeners via `useEffect` that
+  // read a `stageRef` created with `useRef`. In the running dev build
+  // the effect was not attaching the wheel listener to the live stage
+  // DOM element (reason indeterminate after deep DevTools inspection —
+  // the fiber's ref slot had the correct element, the effect body was
+  // correct when replicated manually, but `preventDefault` never
+  // fired on wheel events reaching the stage in bubble phase). This
+  // produced the symptom: wheel over cards/lanes within the stage
+  // caused the page (`<main>` has `overflow-y-auto`) to scroll
+  // instead of rotating days.
   //
-  // Horizontal-dominant wheel still yields so the driver-lane
-  // overflow-x-auto handles left/right pan natively.
+  // Fix: switch to **callback ref**. The callback fires synchronously
+  // when React commits the DOM — the listener is attached atomically
+  // with the ref being set. No useEffect lifecycle, no dep-array
+  // timing, no way to race. This is the architecturally correct shape
+  // for DOM-listener-tied-to-element-lifetime side effects.
+  //
+  // Handler closures read current values (`advanceTo`, `activeDay
+  // Index`, `viewMode`) via latest-refs so the callback doesn't need
+  // to re-subscribe when those change.
+  //
+  // Wheel semantics (unchanged from 3.3.2):
+  //   - Horizontal-dominant wheel → return, let driver-lane
+  //     overflow-x-auto scroll natively.
+  //   - Vertical-dominant wheel → preventDefault + accumulate + rotate
+  //     on threshold. Stage is authoritative; no ancestor-walk.
+  //
+  // Touch semantics (unchanged from 3.3.2):
+  //   - pointerdown (touch) captures start.
+  //   - pointerup vertical-dominant above threshold rotates.
+  const advanceToRef = useRef(advanceTo)
   useEffect(() => {
-    if (viewMode !== "single") return
-    const stage = stageRef.current
-    if (!stage) return
+    advanceToRef.current = advanceTo
+  })
+  const activeDayIndexRef = useRef(activeDayIndex)
+  useEffect(() => {
+    activeDayIndexRef.current = activeDayIndex
+  })
+  const viewModeRef = useRef(viewMode)
+  useEffect(() => {
+    viewModeRef.current = viewMode
+  })
 
+  const stageCleanupRef = useRef<(() => void) | null>(null)
+
+  const setStageNode = useCallback((node: HTMLDivElement | null) => {
+    // Detach from prior node (if any).
+    if (stageCleanupRef.current) {
+      stageCleanupRef.current()
+      stageCleanupRef.current = null
+    }
+    if (!node) return
+
+    // ── Wheel handler (non-passive so preventDefault actually
+    // blocks the default scroll action).
     const onWheel = (e: WheelEvent) => {
+      if (viewModeRef.current !== "single") return
       const absY = Math.abs(e.deltaY)
       const absX = Math.abs(e.deltaX)
-      // Horizontal-dominant wheel — let the driver-lane overflow-x
-      // handle it. Don't preventDefault, don't rotate.
       if (absX > absY) return
 
-      // Vertical-dominant wheel — ALWAYS capture + rotate. No
-      // ancestor-walk, no yield-to-scrollable-parent. The stage is
-      // the authoritative handler for vertical wheel within its
-      // bounds; page scroll must never happen from wheel inside the
-      // stage.
       e.preventDefault()
 
-      // Cooldown — don't rotate again while an animation is in
-      // progress. Absorbs the remainder of a continuous trackpad
-      // gesture so one swipe = one rotation (not 5).
       const sinceLast = Date.now() - lastRotationAtRef.current
       if (sinceLast < ROTATION_COOLDOWN_MS) return
 
@@ -419,14 +446,12 @@ export default function FuneralSchedulePage() {
       if (Math.abs(wheelAccumRef.current) >= WHEEL_THRESHOLD) {
         const next =
           wheelAccumRef.current > 0
-            ? activeDayIndex + 1
-            : activeDayIndex - 1
-        advanceTo(next)
+            ? activeDayIndexRef.current + 1
+            : activeDayIndexRef.current - 1
+        advanceToRef.current(next)
         wheelAccumRef.current = 0
       }
 
-      // End-of-gesture detector — if wheel stops for 200ms, reset the
-      // accumulator so a later gesture starts fresh.
       if (wheelEndTimerRef.current !== null) {
         clearTimeout(wheelEndTimerRef.current)
       }
@@ -434,56 +459,45 @@ export default function FuneralSchedulePage() {
         wheelAccumRef.current = 0
       }, 200)
     }
+    node.addEventListener("wheel", onWheel, { passive: false })
 
-    stage.addEventListener("wheel", onWheel, { passive: false })
-    return () => {
-      stage.removeEventListener("wheel", onWheel)
-      if (wheelEndTimerRef.current !== null) {
-        clearTimeout(wheelEndTimerRef.current)
-      }
-    }
-  }, [viewMode, activeDayIndex, advanceTo])
-
-  // Touch gesture → day rotation. Captures start on pointerdown,
-  // resolves on pointerup: vertical-dominant swipe above threshold
-  // rotates; horizontal-dominant swipe is ignored (driver-lane native
-  // touch scroll handles it).
-  useEffect(() => {
-    if (viewMode !== "single") return
-    const stage = stageRef.current
-    if (!stage) return
-
+    // ── Touch handlers.
     const onPointerDown = (e: PointerEvent) => {
+      if (viewModeRef.current !== "single") return
       if (e.pointerType !== "touch") return
       touchStartRef.current = { x: e.clientX, y: e.clientY }
     }
-
     const onPointerUp = (e: PointerEvent) => {
+      if (viewModeRef.current !== "single") return
       if (e.pointerType !== "touch") return
       const start = touchStartRef.current
       touchStartRef.current = null
       if (!start) return
 
-      const deltaY = start.y - e.clientY  // positive = swipe up
+      const deltaY = start.y - e.clientY
       const deltaX = e.clientX - start.x
-
       if (Math.abs(deltaX) > Math.abs(deltaY)) return
       if (Math.abs(deltaY) < SWIPE_THRESHOLD) return
 
       const sinceLast = Date.now() - lastRotationAtRef.current
       if (sinceLast < ROTATION_COOLDOWN_MS) return
 
-      if (deltaY > 0) advanceTo(activeDayIndex + 1)
-      else advanceTo(activeDayIndex - 1)
+      if (deltaY > 0) advanceToRef.current(activeDayIndexRef.current + 1)
+      else advanceToRef.current(activeDayIndexRef.current - 1)
     }
-
-    stage.addEventListener("pointerdown", onPointerDown)
+    node.addEventListener("pointerdown", onPointerDown)
     window.addEventListener("pointerup", onPointerUp)
-    return () => {
-      stage.removeEventListener("pointerdown", onPointerDown)
+
+    stageCleanupRef.current = () => {
+      node.removeEventListener("wheel", onWheel)
+      node.removeEventListener("pointerdown", onPointerDown)
       window.removeEventListener("pointerup", onPointerUp)
+      if (wheelEndTimerRef.current !== null) {
+        clearTimeout(wheelEndTimerRef.current)
+        wheelEndTimerRef.current = null
+      }
     }
-  }, [viewMode, activeDayIndex, advanceTo])
+  }, [])
 
   // ── Actions ──
   const reload = useCallback(() => setRefreshCount((n) => n + 1), [])
@@ -861,7 +875,7 @@ export default function FuneralSchedulePage() {
                   `overflow-x-auto`; the stage's overflow clip doesn't
                   interfere with child scroll regions. */}
               <div
-                ref={stageRef}
+                ref={setStageNode}
                 data-slot="dispatch-fs-stack"
                 data-active-day-index={activeDayIndex}
                 className="relative flex-1 overflow-hidden touch-pan-x"
