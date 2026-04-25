@@ -235,22 +235,39 @@ export function Canvas() {
             // overlap it mid-fade ("stack appeared under core" bug).
             "data-[active=true]:duration-settle data-[active=false]:duration-quick",
             "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
-            // Phase B Session 4 Phase 4.2.1 — canvas tier is the ONE
-            // tier where the tier-renderer itself is non-interactive:
-            // each widget inside wraps itself in `pointer-events-auto`
-            // (see the widget .map below), so the wrapping tier-
-            // renderer has nothing of its own to catch. Keeping it
-            // `pointer-events-none` lets drag events in Focus cores
-            // beneath (e.g. SchedulingKanbanCore's DndContext on
-            // cards) reach their listeners without the full-viewport
-            // `absolute inset-0` renderer intercepting pointerdown
-            // via elementFromPoint-on-top.
+            // Phase B Session 4 Phase 4.2.1 — tier renderer is non-
+            // interactive: each interactive surface inside wraps
+            // itself in `pointer-events-auto` (canvas widgets via
+            // the widget .map below; StackRail self-asserts auto;
+            // IconButton + BottomSheet self-assert auto). Keeping
+            // the tier renderer `pointer-events-none` lets pointer
+            // events in regions where the renderer's children are
+            // not present fall through to elements beneath via
+            // elementFromPoint paint-order.
             //
-            // Stack + icon tiers still need `pointer-events-auto` on
-            // their tier-renderer because StackRail / IconButton are
-            // themselves interactive (scroll-snap region, button
-            // click) and don't wrap their interactive surface in
-            // another per-child auto layer.
+            // Why this matters: Canvas is a SIBLING of focus-core-
+            // positioner inside Dialog.Portal, but renders AFTER
+            // (Phase 4.2.3 DOM-order swap so accessories paint on
+            // top of core). At equal z-index with `absolute inset-0`,
+            // the renderer covers the FULL viewport. Without
+            // pointer-events-none, the renderer would capture every
+            // pointer event in its bounds — including over the
+            // kanban beneath — and elementFromPoint would return
+            // the renderer instead of the card.
+            //
+            // Phase 4.3b.3.1 — extended same `pointer-events-none`
+            // contract to stack-tier + icon-tier renderers (was
+            // `data-[active=true]:pointer-events-auto`). Pre-4.3b.3
+            // the inconsistency didn't surface user-visible because
+            // production Focuses had no widgets → canvas tier always
+            // active. AncillaryPoolPin (4.3b.3) is the first real
+            // widget that forces stack tier, exposing the prior
+            // tier-renderer-captures-events bug. Phase 4.2.1
+            // comment claimed stack+icon need auto on the renderer
+            // because StackRail/IconButton don't self-assert auto
+            // — that's no longer true (they all self-assert auto on
+            // their own outer containers); the prior comment was
+            // outdated. All three tier renderers now consistent.
             "pointer-events-none",
           )}
         >
@@ -293,7 +310,17 @@ export function Canvas() {
             // overlap it mid-fade ("stack appeared under core" bug).
             "data-[active=true]:duration-settle data-[active=false]:duration-quick",
             "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
-            "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
+            // Phase 4.3b.3.1 — pointer-events-none ALWAYS (was
+            // active=auto / inactive=none). StackRail itself
+            // self-asserts pointer-events-auto on its outer
+            // container (see StackRail.tsx line ~90), so events
+            // inside the rail still reach the rail. Renderer-level
+            // none means events in regions WITHOUT StackRail (the
+            // empty-space majority of the viewport) fall through
+            // via elementFromPoint paint-order to the kanban
+            // beneath. See the canvas-tier comment block above for
+            // the full rationale + the 4.3b.3.1 regression history.
+            "pointer-events-none",
           )}
         >
           <StackRail
@@ -327,7 +354,16 @@ export function Canvas() {
             // overlap it mid-fade ("stack appeared under core" bug).
             "data-[active=true]:duration-settle data-[active=false]:duration-quick",
             "data-[active=true]:opacity-100 data-[active=false]:opacity-0",
-            "data-[active=true]:pointer-events-auto data-[active=false]:pointer-events-none",
+            // Phase 4.3b.3.1 — pointer-events-none ALWAYS, matching
+            // canvas + stack tier renderers. IconButton self-asserts
+            // pointer-events-auto (line 34) and BottomSheet's four
+            // inner elements (backdrop + sheet + expanded backdrop +
+            // expanded panel) all self-assert pointer-events-auto.
+            // Renderer-level none means viewport regions without
+            // those interactive surfaces fall through to anything
+            // beneath. Same Phase 4.3b.3.1 regression-fix rationale
+            // as the canvas + stack renderers above.
+            "pointer-events-none",
           )}
         >
           {!sheetOpen && (
