@@ -230,7 +230,26 @@ export function WidgetChrome({
         left: 0,
         top: 0,
         width: displayRect.width,
-        height: displayRect.height,
+        // Aesthetic Arc Session 1.5 — content-driven height. When
+        // position.height === "auto", omit the inline height so
+        // children determine it, with optional maxHeight cap +
+        // overflow-y scroll. This honors PLATFORM_PRODUCT_PRINCIPLES
+        // "Widget Content Sizing" — height grows to content, not
+        // to a fixed budget.
+        ...(position.height === "auto"
+          ? {
+              height: "auto",
+              minHeight: 0,
+              maxHeight:
+                typeof position.maxHeight === "number"
+                  ? position.maxHeight
+                  : undefined,
+              overflowY:
+                typeof position.maxHeight === "number" ? "auto" : "visible",
+            }
+          : {
+              height: displayRect.height,
+            }),
         transform: composedTransform,
         zIndex: chromeActive ? 2 : 1,
       }}
@@ -293,16 +312,44 @@ export function WidgetChrome({
           interactive content (buttons, links) within the widget body
           should use stopPropagation on pointerdown if they need to
           be clickable without initiating drag. Session 3.5 mock
-          widget is non-interactive so no conflict. */}
-      <div className="h-full w-full overflow-hidden rounded-md">
+          widget is non-interactive so no conflict.
+
+          Aesthetic Arc Session 1.5 — content-area height is
+          conditional on the chrome's height mode:
+          • Fixed-height chrome (number): h-full + overflow-hidden,
+            content fills exactly the chrome rect.
+          • Auto-height chrome ("auto"): no h-full, no overflow-
+            hidden — content drives its own size; the outer
+            chrome's max-height + overflow-y: auto handles scroll
+            for content exceeding the cap. */}
+      <div
+        className={cn(
+          "w-full",
+          position.height === "auto"
+            ? "rounded-md"
+            : "h-full overflow-hidden rounded-md",
+        )}
+      >
         {children}
       </div>
 
       {/* 8 invisible resize zones — 4 corners + 4 edges. Each has a
           distinct cursor style (CSS handles cursor on hover) + its
           own onPointerDown. stopPropagation prevents drag
-          initiation. */}
-      {RESIZE_ZONES.map(({ zone, className, cursor, ariaLabel }) => (
+          initiation.
+          Aesthetic Arc Session 1.5 — when height is "auto" (content-
+          driven sizing), vertical resize zones (n/s edges + all 4
+          corners which affect height) are filtered out. Only left/
+          right edges remain — width is still user-tunable, height
+          is content-driven. Users who want a fixed height should
+          set it explicitly in the layout config rather than dragging
+          to graduate the widget; that path is preserved for future
+          UX work. */}
+      {RESIZE_ZONES.filter(({ zone }) =>
+        position.height === "auto"
+          ? zone === "w" || zone === "e"
+          : true,
+      ).map(({ zone, className, cursor, ariaLabel }) => (
         <div
           key={zone}
           data-slot="focus-widget-resize-zone"

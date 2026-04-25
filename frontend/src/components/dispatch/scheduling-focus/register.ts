@@ -65,17 +65,27 @@ registerFocus({
   mode: "kanban",
   displayName: "Funeral Scheduling",
   coreComponent: SchedulingKanbanCore,
-  // Phase 4.3b.3 seed (Aesthetic Arc Session 1 Commit C — width
-  // narrowed 260 → 180 so the pin fits in canvas tier and kanban
-  // centers via computeCoreRect's existing canvas-tier formula).
-  // User can drag-reposition; Phase A Session 4's focus_sessions
-  // persistence remembers the override per-user.
+  // Phase 4.3b.3 seed, refined through Aesthetic Arc Session 1
+  // (Commit C: width narrowed 260 → 180 so the pin fits in canvas
+  // tier and kanban centers via computeCoreRect's canvas-tier
+  // formula) and Session 1.5 (height: 600 → "auto" + maxHeight: 480
+  // per the new Widget Content Sizing principle in PLATFORM_PRODUCT
+  // _PRINCIPLES.md). User can drag-reposition; Phase A Session 4's
+  // focus_sessions persistence remembers the override per-user.
   //
   // Position: right-rail anchor, offset (16, 16) — sits near the
-  // top-right corner of the canvas. Width 180px (was 260) fits in
-  // the post-Session-1 CANVAS_RESERVED_MARGIN=220 band; height 600
-  // unchanged. Section 0 Quietness — peripheral reference surface,
-  // quietly available, not visually competing with kanban.
+  // top-right corner of the canvas. Width 180px fits in the post-
+  // Session-1 CANVAS_RESERVED_MARGIN=220 band.
+  //
+  // Aesthetic Arc Session 1.5 — height "auto" + maxHeight 480:
+  //   • Empty state: pin fits to ~120px (header + small empty copy)
+  //   • 1 pool item: ~150px (header + 1 row + padding)
+  //   • 5 items: ~280px
+  //   • 10+ items: hits maxHeight=480, WidgetChrome's overflow-y
+  //     auto handles scroll at the chrome level
+  // Section 0 Restraint TP3: empty internal space is decorative
+  // chrome, removed. Pin claims only the visual real estate its
+  // content actually needs.
   defaultLayout: {
     tenantDefault: {
       widgets: {
@@ -86,7 +96,8 @@ registerFocus({
             offsetX: 16,
             offsetY: 16,
             width: 180,
-            height: 600,
+            height: "auto",
+            maxHeight: 480,
           },
         },
       },

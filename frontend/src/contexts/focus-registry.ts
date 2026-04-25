@@ -89,13 +89,34 @@ export type WidgetAnchor =
  *
  *  left-rail and right-rail use offsetY from the TOP of the viewport
  *  (same as top-* anchors) — rails span vertically by definition;
- *  offsetY picks the vertical position within the rail. */
+ *  offsetY picks the vertical position within the rail.
+ *
+ *  Aesthetic Arc Session 1.5 — `height` extended to accept `"auto"`
+ *  for content-driven sizing per the new "Widget Content Sizing"
+ *  principle (PLATFORM_PRODUCT_PRINCIPLES.md). When height is
+ *  "auto":
+ *    • WidgetChrome omits inline height (lets content determine it)
+ *    • Optional `maxHeight` caps growth with overflow scroll
+ *    • Vertical resize zones no-op (height isn't user-tunable when
+ *      content drives it)
+ *    • `resolvePosition` substitutes 0 for height in math; this is
+ *      safe for top-*, left-rail, right-rail anchors (which don't
+ *      use height in y-positioning); bottom-* anchors should not
+ *      use auto-height (the y-anchor needs a number to subtract
+ *      from viewportHeight). Test: the canonical AncillaryPoolPin
+ *      uses right-rail anchor — height-in-y math irrelevant.
+ *  Width remains required (layout-constrained); only height is
+ *  optional-content-driven per the principle. */
 export interface WidgetPosition {
   anchor: WidgetAnchor
   offsetX: number
   offsetY: number
   width: number
-  height: number
+  height: number | "auto"
+  /** Optional cap on widget height when `height === "auto"`. Above
+   *  this, the widget body scrolls. Ignored when height is a fixed
+   *  number. */
+  maxHeight?: number
 }
 
 /** Full per-widget state. Session 3 ships with just `position`;

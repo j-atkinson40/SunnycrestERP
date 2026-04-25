@@ -261,7 +261,16 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
         // materialization unit — they float, they're individually
         // present, they don't enclose other content. The pin now
         // reads as a tablet.
-        "flex h-full flex-col",
+        //
+        // Aesthetic Arc Session 1.5 — `flex h-full flex-col` →
+        // `flex flex-col`. Dropping h-full because the pin's
+        // WidgetChrome wrapper is now content-driven height (height:
+        // "auto" + maxHeight: 480 in register.ts). With h-full the
+        // pin would collapse to 0 because the parent has no fixed
+        // height. PLATFORM_PRODUCT_PRINCIPLES "Widget Content
+        // Sizing" — the pin natural-flows to its content, capped at
+        // maxHeight by WidgetChrome with overflow-y: auto.
+        "flex flex-col",
         "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
         "rounded-md shadow-level-1",
         // Subtle dim during refresh — keeps the existing list visible
@@ -337,17 +346,20 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
         )}
       </div>
 
-      {/* List body — scrollable when overflow. Empty state when no
-          pool items. */}
-      <div
-        data-slot="ancillary-pool-pin-list"
-        className="flex-1 overflow-y-auto"
-      >
+      {/* List body — Aesthetic Arc Session 1.5 simplifies to natural
+          content flow. Pre-Session-1.5 had `flex-1 overflow-y-auto`
+          for scroll-within-pin when fixed-height; Session 1.5 makes
+          the WidgetChrome wrapper content-driven (max-height: 480 +
+          overflow-y: auto), so scroll happens at the chrome level
+          when content exceeds the cap. List body just natural-flows.
+          Empty-state inner block also drops `h-full` since there's
+          no parent height to fill. */}
+      <div data-slot="ancillary-pool-pin-list">
         {poolAncillaries.length === 0 && !poolLoading && (
           <div
             data-slot="ancillary-pool-pin-empty"
             className={cn(
-              "flex h-full flex-col items-center justify-center gap-2",
+              "flex flex-col items-center justify-center gap-2",
               "px-4 py-6 text-center",
             )}
           >

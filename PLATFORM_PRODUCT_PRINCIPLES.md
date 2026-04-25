@@ -36,6 +36,7 @@ settle it, read here.
 | 2026-04-23 | Restructured per expanded user spec — added "Software as New-Employee Coaching", renamed scheduling section to "Domain-Specific Operational Semantics", resequenced. |
 | 2026-04-24 | Added three sections: "Dashboards as Universal Primitive," "Everything Composable is a Widget," "Surface At Rest vs On Interaction." Captures the primitive-layer unification (Pulse + custom Spaces are both dashboards; saved views + system widgets + smart widgets are all widgets) and canonicalizes the drag-reveal behavioral pattern from Funeral Schedule 3.3.1. |
 | 2026-04-25 | Added cross-references to the three-layer design thesis canon: `PLATFORM_DESIGN_THESIS.md` (synthesis), `DESIGN_LANGUAGE.md` §0 (Layer 1 — Range Rover visual values), `PLATFORM_INTERACTION_MODEL.md` (Layer 2 — Tony Stark / Jarvis behavior), `PLATFORM_QUALITY_BAR.md` (Layer 3 — Apple Pro era execution). Articulations of interaction model already in this doc (whole-element drag, Cmd+K-outside-Focus, Surface-At-Rest-vs-On-Interaction, The-Platform-Is-Honest) cross-link into the new Interaction Model doc which articulates the broader Layer 2 model they instantiate. |
+| 2026-04-25 (PM) | Added "Widget Content Sizing" principle after "Surface At Rest vs On Interaction." Canvas widgets size to their contents by default — width is layout-constrained, height is content-driven. Empty internal space is decorative chrome and rejected per Section 0 Restraint TP3. New widgets declare `height: "auto"` with optional `maxHeight` cap. AncillaryPoolPin (Aesthetic Arc Session 1.5) is the reference implementation. Existing fixed-height widgets are tech debt to revisit per natural-touch refactor. |
 
 ---
 
@@ -186,6 +187,81 @@ Applied broadly:
 Design discipline: if a surface requires showing "everything always"
 to be useful, the primitive is wrong. Good surfaces surface their
 primary purpose; interactions reveal what's contextually needed.
+
+---
+
+## Widget Content Sizing
+
+> **Canvas widgets size to their contents by default. Width is often
+> layout-constrained; height is content-driven. Empty internal space
+> is decorative chrome and rejected per Section 0 Restraint.**
+
+A widget that reserves vertical space for content it doesn't have is
+the same anti-pattern as a card with a placeholder beneath the title
+— it claims real estate without earning it. The user reads "this
+widget is bigger than what's in it," registers the gap as decoration,
+and the platform's restraint discipline (Section 0 Restraint
+Translation Principle 3 — *if you can remove an element and the user
+doesn't notice, the element was decorative — remove it*) is broken
+at the widget chrome level.
+
+**Width is allowed to be fixed.** Widgets often have layout
+constraints (right-rail anchor band, design intent for column
+behavior, 8px-grid alignment) that justify a chosen width regardless
+of content. Width-by-design is an acceptable answer to
+*how-wide-should-this-be*.
+
+**Height should grow to content.** Default height for any new widget
+is `"auto"`. Height is a function of what's currently in the widget:
+a pool with one item is short; a pool with ten items is taller.
+Height-by-design is the wrong answer to *how-tall-should-this-be*
+unless the design exists for a specific content reason.
+
+**Bounded growth via maxHeight.** Widgets with potentially unbounded
+content (lists, queues, history feeds, search results) declare a
+`maxHeight` cap. Above the cap, the widget body scrolls. At-rest
+height matches actual content; growth halts at the cap. The cap is
+a visual ceiling, not a default reservation.
+
+**Implementation contract** (`WidgetPosition`,
+`frontend/src/contexts/focus-registry.ts`):
+
+| Field | Meaning |
+|---|---|
+| `width: number` | Fixed pixel width. Always required. |
+| `height: number \| "auto"` | Fixed pixel height OR content-driven. `"auto"` is preferred for new widgets. |
+| `maxHeight?: number` | Optional cap when `height === "auto"`. Above this, the widget body scrolls (`overflow-y: auto`). |
+
+`WidgetChrome` honors the contract: when `height === "auto"`, the
+chrome's inline height is omitted, content drives intrinsic height,
+and `max-height` + `overflow-y: auto` cap growth if `maxHeight` is
+set. Vertical resize zones are filtered out (no n/s/corner handles)
+because height isn't user-tunable in content mode.
+
+**Reference implementation** — the Funeral Scheduling Focus's
+`AncillaryPoolPin` (`frontend/src/components/dispatch/scheduling-
+focus/register.ts`) declares `height: "auto", maxHeight: 480`. Empty
+state ~120px; one pool item ~150px; growing past 10 items hits the
+cap and scrolls. Pre-Aesthetic-Arc-Session-1.5 the pin was a fixed
+600px regardless of content — visually long, with empty interior
+when a tenant had few pool items, violating both Restraint and
+Considered Materiality.
+
+**Going forward:**
+
+- New widgets declare `height: "auto"` by default.
+- Existing widgets with fixed heights are tech debt to be revisited
+  per natural-touch refactor.
+- A widget that fundamentally needs a fixed height (e.g., a clock
+  widget showing a single timestamp) should justify the fixed value
+  in the registration comment — the principle's exceptions exist but
+  must be argued.
+
+This principle pairs with **Surface At Rest vs On Interaction**
+above: surfaces show their primary purpose at rest, sized to that
+purpose. A widget with empty internal padding has its rest state
+saying "I'm a budget for content I might have" — wrong; the rest
+state should say "this is what I have right now."
 
 ---
 

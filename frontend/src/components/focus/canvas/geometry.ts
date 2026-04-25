@@ -100,6 +100,21 @@ export function resolvePosition(
 ): Rect {
   const { anchor, offsetX, offsetY, width, height } = pos
 
+  // Aesthetic Arc Session 1.5 — height "auto" support. Resolve to
+  // a numeric height for math purposes:
+  //  • For non-bottom anchors (top-*, left-rail, right-rail), height
+  //    isn't used in y-positioning, so substituting 0 is safe; the
+  //    rendered height matches content, and the rect's height field
+  //    just reads as 0 for downstream math. Callers that need the
+  //    rendered height should query DOM (resize math, drag bounds).
+  //  • For bottom-* anchors, height drives y; "auto" is unsupported
+  //    (would need DOM measurement to invert). We fall back to
+  //    maxHeight (if set) or 0 — but bottom-* + auto height is a
+  //    misconfiguration; canonical content-sized widgets use rail/
+  //    top anchors.
+  const numericHeight: number =
+    height === "auto" ? (pos.maxHeight ?? 0) : height
+
   let x = 0
   let y = 0
 
@@ -120,19 +135,19 @@ export function resolvePosition(
       break
     case "bottom-left":
       x = offsetX
-      y = viewportHeight - height - offsetY
+      y = viewportHeight - numericHeight - offsetY
       break
     case "bottom-center":
       x = (viewportWidth - width) / 2 + offsetX
-      y = viewportHeight - height - offsetY
+      y = viewportHeight - numericHeight - offsetY
       break
     case "bottom-right":
       x = viewportWidth - width - offsetX
-      y = viewportHeight - height - offsetY
+      y = viewportHeight - numericHeight - offsetY
       break
   }
 
-  return { x, y, width, height }
+  return { x, y, width, height: numericHeight }
 }
 
 
@@ -574,7 +589,15 @@ export function widgetsFitInCanvas(
   const reservedBottom = viewportHeight - (coreRect.y + coreRect.height)
 
   for (const widget of list) {
-    const { anchor, width, height, offsetX, offsetY } = widget.position
+    const { anchor, width, height, offsetX, offsetY, maxHeight } =
+      widget.position
+
+    // Aesthetic Arc Session 1.5 — height "auto" support. For fit
+    // math, "auto" widgets use maxHeight (the cap) if defined, else
+    // 0 (assume widget will fit; content-driven widgets without a
+    // cap don't claim vertical real estate up-front for fit checks).
+    const numericHeight: number =
+      height === "auto" ? (maxHeight ?? 0) : height
 
     // Rail anchors — horizontal band only.
     if (anchor === "left-rail") {
@@ -587,11 +610,11 @@ export function widgetsFitInCanvas(
     }
     // Center anchors — vertical band only.
     if (anchor === "top-center") {
-      if (offsetY + height + buffer > reservedTop) return false
+      if (offsetY + numericHeight + buffer > reservedTop) return false
       continue
     }
     if (anchor === "bottom-center") {
-      if (offsetY + height + buffer > reservedBottom) return false
+      if (offsetY + numericHeight + buffer > reservedBottom) return false
       continue
     }
     // Corner anchors — fit if widget's rect avoids core in EITHER
@@ -607,7 +630,7 @@ export function widgetsFitInCanvas(
       ? reservedTop
       : reservedBottom
     const horizontalClears = offsetX + width + buffer <= horizontalBand
-    const verticalClears = offsetY + height + buffer <= verticalBand
+    const verticalClears = offsetY + numericHeight + buffer <= verticalBand
     if (!horizontalClears && !verticalClears) return false
   }
 
