@@ -37,6 +37,7 @@ settle it, read here.
 | 2026-04-24 | Added three sections: "Dashboards as Universal Primitive," "Everything Composable is a Widget," "Surface At Rest vs On Interaction." Captures the primitive-layer unification (Pulse + custom Spaces are both dashboards; saved views + system widgets + smart widgets are all widgets) and canonicalizes the drag-reveal behavioral pattern from Funeral Schedule 3.3.1. |
 | 2026-04-25 | Added cross-references to the three-layer design thesis canon: `PLATFORM_DESIGN_THESIS.md` (synthesis), `DESIGN_LANGUAGE.md` §0 (Layer 1 — Range Rover visual values), `PLATFORM_INTERACTION_MODEL.md` (Layer 2 — Tony Stark / Jarvis behavior), `PLATFORM_QUALITY_BAR.md` (Layer 3 — Apple Pro era execution). Articulations of interaction model already in this doc (whole-element drag, Cmd+K-outside-Focus, Surface-At-Rest-vs-On-Interaction, The-Platform-Is-Honest) cross-link into the new Interaction Model doc which articulates the broader Layer 2 model they instantiate. |
 | 2026-04-25 (PM) | Added "Widget Content Sizing" principle after "Surface At Rest vs On Interaction." Canvas widgets size to their contents by default — width is layout-constrained, height is content-driven. Empty internal space is decorative chrome and rejected per Section 0 Restraint TP3. New widgets declare `height: "auto"` with optional `maxHeight` cap. AncillaryPoolPin (Aesthetic Arc Session 1.5) is the reference implementation. Existing fixed-height widgets are tech debt to revisit per natural-touch refactor. |
+| 2026-04-25 (PM, late) | Renamed + expanded "Widget Content Sizing" → "Widget Compactness" (Aesthetic Arc Session 1.6). Principle now covers BOTH dimensions + boundary affordances: width sizes to content (text wraps, no ellipsis truncation as default); chrome aligns within surface's effective extent (kanban-level Finalize button aligns to kanban content right edge, not focus-core right edge); applies to non-widget surfaces too via `w-fit max-w-full mx-auto`. Pin item titles now wrap via `line-clamp-2`; SchedulingKanbanCore wraps the whole kanban + header in a content-width centered container so Finalize aligns with rightmost lane. References + exceptions documented. |
 
 ---
 
@@ -190,32 +191,33 @@ primary purpose; interactions reveal what's contextually needed.
 
 ---
 
-## Widget Content Sizing
+## Widget Compactness
 
-> **Canvas widgets size to their contents by default. Width is often
-> layout-constrained; height is content-driven. Empty internal space
-> is decorative chrome and rejected per Section 0 Restraint.**
+> **Surfaces — widgets, the kanban core, any container that holds
+> content — size to their contents in both dimensions. Empty
+> internal space is decorative chrome and rejected per Section 0
+> Restraint.**
 
-A widget that reserves vertical space for content it doesn't have is
-the same anti-pattern as a card with a placeholder beneath the title
-— it claims real estate without earning it. The user reads "this
-widget is bigger than what's in it," registers the gap as decoration,
-and the platform's restraint discipline (Section 0 Restraint
-Translation Principle 3 — *if you can remove an element and the user
-doesn't notice, the element was decorative — remove it*) is broken
-at the widget chrome level.
+A surface that reserves space (vertical OR horizontal) for content
+it doesn't have is the same anti-pattern as a card with a
+placeholder beneath the title — it claims real estate without
+earning it. The user reads "this surface is bigger than what's in
+it," registers the gap as decoration, and the platform's restraint
+discipline (Section 0 Restraint Translation Principle 3 — *if you
+can remove an element and the user doesn't notice, the element was
+decorative — remove it*) is broken at the surface chrome level.
 
-**Width is allowed to be fixed.** Widgets often have layout
-constraints (right-rail anchor band, design intent for column
-behavior, 8px-grid alignment) that justify a chosen width regardless
-of content. Width-by-design is an acceptable answer to
-*how-wide-should-this-be*.
+**The principle expands across two dimensions and one boundary
+rule.** Width, height, and chrome alignment all answer to the same
+discipline.
 
-**Height should grow to content.** Default height for any new widget
-is `"auto"`. Height is a function of what's currently in the widget:
-a pool with one item is short; a pool with ten items is taller.
-Height-by-design is the wrong answer to *how-tall-should-this-be*
-unless the design exists for a specific content reason.
+### Height: content-driven by default
+
+Default height for any new widget is `"auto"`. Height is a function
+of what's currently in the widget: a pool with one item is short; a
+pool with ten items is taller. Height-by-design is the wrong answer
+to *how-tall-should-this-be* unless the design exists for a specific
+content reason.
 
 **Bounded growth via maxHeight.** Widgets with potentially unbounded
 content (lists, queues, history feeds, search results) declare a
@@ -223,12 +225,63 @@ content (lists, queues, history feeds, search results) declare a
 height matches actual content; growth halts at the cap. The cap is
 a visual ceiling, not a default reservation.
 
-**Implementation contract** (`WidgetPosition`,
-`frontend/src/contexts/focus-registry.ts`):
+### Width: content-fitting, no truncation default
+
+**Width sizes to display content cleanly without truncation.**
+Either text fits on a single line at the current width, OR text
+wraps to multiple lines naturally. **Ellipsis truncation
+(`text-overflow: ellipsis`) is a failure mode** — either the widget
+is too narrow (widen) or the content is too long for the layout
+(wrap, or rethink what to display).
+
+The historical default `truncate` Tailwind utility is a holdover
+from desktop-app-list patterns where row height is fixed and text
+must conform. In Bridgeable widgets, height is content-driven (see
+above) — a row's text wrapping to two lines is fine; the widget
+grows to accommodate. Use `line-clamp-2` (or 3) as a graceful
+overflow cap when truly necessary; default to natural wrap.
+
+**Width may still be fixed by layout constraint.** Right-rail
+anchor bands, kanban lane uniformity for visual scanning, 8px-grid
+alignment — these are legitimate reasons to set a fixed width.
+What's NOT legitimate: a fixed width that's narrower than the
+expected content + truncates as a result. If the layout demands a
+specific width AND the content doesn't fit, the answer is wrap
+(content-driven height absorbs the wrap), not ellipsis.
+
+**Where width is content-driven.** The kanban container itself
+sizes to lane content + gaps (not to the focus core's full inner
+width). The header chrome above the kanban aligns within that
+content-driven width, not to the inner-core's right edge. This
+keeps everything contained within the visible work surface.
+
+### Boundary affordances: chrome aligns to content extent
+
+**Chrome elements (action buttons, navigation, headers) align
+within the surface's effective horizontal extent. Nothing floats
+beyond what it logically belongs to.**
+
+- An action button inside a kanban column header aligns to that
+  column's left/right edges, not to the focus core's edges.
+- An action button in a kanban-level header (Finalize, Add Lane,
+  Reset) aligns to the kanban container's right edge, not to the
+  focus core's right edge. If the kanban is content-width and
+  centered, the header chrome is content-width and centered.
+- A widget's count chip / filter button / sort dropdown aligns to
+  the widget's content extent, not to a chrome wrapper that
+  exceeds it.
+
+The British register (Section 0) reinforces this: surfaces don't
+announce themselves with chrome. A button floating to the right of
+"empty space within the surface" reads as the platform claiming
+more visual real estate than the work earns. Pulling chrome inside
+content extent says: this surface is exactly as wide as its work.
+
+### Implementation contract
 
 | Field | Meaning |
 |---|---|
-| `width: number` | Fixed pixel width. Always required. |
+| `width: number` | Fixed pixel width. Always required. Justified by layout constraint (rail anchor, column uniformity); never to truncate content. |
 | `height: number \| "auto"` | Fixed pixel height OR content-driven. `"auto"` is preferred for new widgets. |
 | `maxHeight?: number` | Optional cap when `height === "auto"`. Above this, the widget body scrolls (`overflow-y: auto`). |
 
@@ -238,30 +291,73 @@ and `max-height` + `overflow-y: auto` cap growth if `maxHeight` is
 set. Vertical resize zones are filtered out (no n/s/corner handles)
 because height isn't user-tunable in content mode.
 
-**Reference implementation** — the Funeral Scheduling Focus's
-`AncillaryPoolPin` (`frontend/src/components/dispatch/scheduling-
-focus/register.ts`) declares `height: "auto", maxHeight: 480`. Empty
-state ~120px; one pool item ~150px; growing past 10 items hits the
-cap and scrolls. Pre-Aesthetic-Arc-Session-1.5 the pin was a fixed
-600px regardless of content — visually long, with empty interior
-when a tenant had few pool items, violating both Restraint and
-Considered Materiality.
+**For width-driven widgets within the canvas widget framework**:
+`width` remains a fixed pixel value (rail anchor or layout
+constraint). Inside the widget, content uses natural wrap +
+optional `line-clamp` for graceful overflow. Don't apply
+`truncate` as a default.
 
-**Going forward:**
+**For non-widget surfaces** (the kanban core, hub dashboards, any
+content container outside the canvas widget framework): use
+`w-fit max-w-full mx-auto` (or equivalent) so the container
+natural-sizes to content and centers within the available space.
+Header chrome aligns within that container's width via standard
+flex layout (`justify-between` etc.).
+
+### Reference implementations
+
+- **`AncillaryPoolPin`** (`frontend/src/components/dispatch/
+  scheduling-focus/register.ts`) — `height: "auto", maxHeight: 480`.
+  Empty state ~120px; one pool item ~150px; growing past 10 items
+  hits the cap and scrolls. Item title text wraps via
+  `line-clamp-2` (Aesthetic Arc Session 1.6) — no truncation
+  default.
+- **`SchedulingKanbanCore`** kanban container (`SchedulingKanbanCore
+  .tsx`) — wrapped in `w-fit max-w-full mx-auto` (Aesthetic Arc
+  Session 1.6) so the surface natural-sizes to lane content + gaps,
+  and centers within the focus-core inner area. Header sits within
+  that same content width, so the Finalize action button's right
+  edge aligns to the rightmost kanban lane's right edge — chrome
+  contained within the work surface, not floating in empty space.
+
+### Going forward
 
 - New widgets declare `height: "auto"` by default.
-- Existing widgets with fixed heights are tech debt to be revisited
-  per natural-touch refactor.
-- A widget that fundamentally needs a fixed height (e.g., a clock
-  widget showing a single timestamp) should justify the fixed value
-  in the registration comment — the principle's exceptions exist but
-  must be argued.
+- New widgets and content surfaces let text wrap; reach for
+  `truncate` only when the layout genuinely cannot accommodate any
+  wrap (rare).
+- New non-widget surfaces use `w-fit max-w-full mx-auto` (or
+  equivalent) to size to content + center.
+- Existing widgets with fixed heights, default-truncated text, or
+  full-width chrome are tech debt to be revisited per natural-touch
+  refactor.
+- A surface that fundamentally needs to fill available space (e.g.,
+  the focus core itself, the App's main scroll area) should justify
+  the fill in the registration / mounting comment — the principle's
+  exceptions exist but must be argued.
 
-This principle pairs with **Surface At Rest vs On Interaction**
-above: surfaces show their primary purpose at rest, sized to that
-purpose. A widget with empty internal padding has its rest state
-saying "I'm a budget for content I might have" — wrong; the rest
-state should say "this is what I have right now."
+### How this principle pairs
+
+- **Surface At Rest vs On Interaction** (above) — surfaces show
+  their primary purpose at rest, sized to that purpose. A widget
+  with empty internal padding has its rest state saying "I'm a
+  budget for content I might have" — wrong; the rest state should
+  say "this is what I have right now."
+- **Section 0 Restraint Translation Principle 3** — *if you can
+  remove an element and the user doesn't notice, the element was
+  decorative — remove it.* Empty horizontal space inside a surface
+  passes that test (the user doesn't notice it shrinking when
+  removed); empty vertical space passes the same test.
+- **Section 0 British register** — *the thing is good; you'll see
+  if you look closely; we're not going to point at it.* Surfaces
+  don't announce themselves with oversized chrome. A button at
+  the inner-core right edge floating in empty space announces. A
+  button at the rightmost-lane right edge aligned with the work
+  it controls doesn't announce.
+- **PLATFORM_INTERACTION_MODEL "Tablets are the materialization
+  unit"** — tablets are individually present, sized to themselves,
+  not enclosing other content as containers. Compactness expresses
+  this in the rest-state geometry.
 
 ---
 
