@@ -356,18 +356,36 @@ describe("clampRectToCanvas + enforceMinRect", () => {
 
 describe("computeCoreRect — Session 3.7 tier-aware", () => {
   it("canvas tier caps at CORE_MAX on wide viewport", () => {
-    // 1920-200=1720, capped at 1400. 1080-200=880, under 900 cap.
+    // Aesthetic Arc Session 1 Commit C — CANVAS_RESERVED_MARGIN
+    // 100 → 220. New arithmetic at 1920×1080:
+    //   width  = min(1400, max(600, 1920-440)) = min(1400, 1480) = 1400 (capped)
+    //   height = min(900, max(400, 1080-440))  = min(900, 640)  = 640
+    // Width still hits CORE_MAX cap on wide viewports — that's
+    // unchanged. Height now constrained by MARGIN (was constrained
+    // by CORE_MAX_HEIGHT pre-Session-1: 1080-200=880 < 900). Top
+    // widgets gain vertical band (reservedTop = (1080-640)/2 = 220
+    // post-Session-1, was 100 pre-Session-1).
     const r = computeCoreRect("canvas", 1920, 1080)
     expect(r.width).toBe(1400)
-    expect(r.height).toBe(880)
+    expect(r.height).toBe(640)
   })
 
   it("canvas tier floors at CORE_MIN on narrow viewport", () => {
-    // 700-200=500, floored at 600. 700-200=500, floored at 400? No -
-    // 500 > 400, so no floor needed. min(900, 500) = 500.
+    // Aesthetic Arc Session 1 Commit C — CANVAS_RESERVED_MARGIN
+    // bumped 100 → 220. New arithmetic at 700×700:
+    //   width  = min(1400, max(600, 700-440)) = max(600, 260) = 600
+    //   height = min(900, max(400, 700-440))  = max(400, 260) = 400
+    // Both clamp to CORE_MIN; pre-Session-1 height was 500 (when
+    // 700-200=500 > 400 floor → no floor needed). Post-Session-1 the
+    // height ALSO hits the CORE_MIN_HEIGHT floor since reservedTop
+    // grew. Same behavior shape (clamp at CORE_MIN); different
+    // arithmetic. Real-world impact at this viewport: the canvas
+    // tier still wouldn't render here (stack tier kicks in around
+    // vw=928 via `stackFitsAlongsideCore`); this test exercises the
+    // computeCoreRect formula directly.
     const r = computeCoreRect("canvas", 700, 700)
     expect(r.width).toBe(600)
-    expect(r.height).toBe(500)
+    expect(r.height).toBe(400)
   })
 
   it("stack tier reserves right-rail", () => {
@@ -461,10 +479,21 @@ describe("widgetsFitInCanvas — Session 3.8.1 anchor-aware fit logic", () => {
   })
 
   it("corner widget fails only when BOTH axes overlap core (OR logic)", () => {
-    // 1920×1080: reservedLeft=260, reservedTop=100.
-    // Widget 300×200 top-left: 316 > 260 AND 216 > 100 → fails.
+    // Aesthetic Arc Session 1 Commit C — at 1920×1080 the geometry
+    // shifted: width capped at 1400 (unchanged) → reservedLeft=260
+    // (unchanged); height now constrained by MARGIN=220 not by
+    // CORE_MAX_HEIGHT cap → height=640, reservedTop=(1080-640)/2=220
+    // (was 100).
+    //
+    // The original test asserted "300×200 fails because both axes
+    // overlap core." Post-Session-1 a 300×200 top-left clears
+    // vertically (216 ≤ 220) but not horizontally (316 > 260) → OR
+    // logic returns true. Bumped widget dimensions to 300×240 so
+    // verticalClears 256 > 220 still fails on both axes → false.
+    // Same test intent (BOTH-axes-fail returns false), updated
+    // numbers reflecting the new reservedTop.
     expect(
-      widgetsFitInCanvas([widget("top-left", 300, 200)], 1920, 1080),
+      widgetsFitInCanvas([widget("top-left", 300, 240)], 1920, 1080),
     ).toBe(false)
   })
 
@@ -511,23 +540,27 @@ describe("widgetsFitInCanvas — Session 3.8.1 anchor-aware fit logic", () => {
 
   it("top-center widget only checks vertical fit (spans horizontally)", () => {
     // top-center anchor: no "left"/"right" branch, only "top" branch.
-    // At 1920x1080 reservedTop=100. Large width doesn't matter here.
+    // Aesthetic Arc Session 1 Commit C — at 1920x1080 reservedTop=
+    // 220 (was 100). Large width doesn't matter here. Boundary
+    // values bumped to keep "fits" + "doesn't fit" both exercised
+    // against the new reservedTop.
     expect(
       widgetsFitInCanvas([widget("top-center", 800, 80)], 1920, 1080),
-    ).toBe(true) // 80+16=96 ≤ 100
+    ).toBe(true) // 80+16=96 ≤ 220
     expect(
-      widgetsFitInCanvas([widget("top-center", 200, 200)], 1920, 1080),
-    ).toBe(false) // 200+16=216 > 100
+      widgetsFitInCanvas([widget("top-center", 200, 240)], 1920, 1080),
+    ).toBe(false) // 240+16=256 > 220
   })
 
   it("bottom-center widget checks reservedBottom", () => {
-    // At 1920x1080: reservedBottom=(1080-880)/2=100.
+    // Aesthetic Arc Session 1 Commit C — at 1920x1080 reservedBottom
+    // = (1080-640)/2 = 220 (was 100). Boundary values bumped.
     expect(
       widgetsFitInCanvas([widget("bottom-center", 400, 80)], 1920, 1080),
-    ).toBe(true) // 96 ≤ 100
+    ).toBe(true) // 96 ≤ 220
     expect(
-      widgetsFitInCanvas([widget("bottom-center", 400, 200)], 1920, 1080),
-    ).toBe(false)
+      widgetsFitInCanvas([widget("bottom-center", 400, 240)], 1920, 1080),
+    ).toBe(false) // 256 > 220
   })
 
   it("corner anchor — Session 3.8.1 OR logic (either dimension clears core)", () => {

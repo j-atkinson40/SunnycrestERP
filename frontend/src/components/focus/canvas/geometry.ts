@@ -486,8 +486,26 @@ export const CORE_MAX_WIDTH = 1400
 export const CORE_MAX_HEIGHT = 900
 
 /** Reserved canvas margin around the core in canvas mode — each
- *  side reserves this much for widgets. */
-export const CANVAS_RESERVED_MARGIN = 100
+ *  side reserves this much for widgets.
+ *
+ *  Aesthetic Arc Session 1 Commit C — bumped 100 → 220 so the
+ *  Scheduling Focus's right-rail AncillaryPoolPin (now 180px wide,
+ *  was 260px) fits comfortably in canvas tier at typical desktop
+ *  viewports. Pre-bump the pin always exceeded the 100px margin
+ *  → forced stack tier → core anchored left (NOT centered). Post-
+ *  bump the pin fits in the right-rail band → canvas tier handles
+ *  typical desktop widths → core centered horizontally via
+ *  computeCoreRect's existing canvas-tier formula.
+ *
+ *  Test impact: at all common test viewports (1920×1080, 2560×1440,
+ *  2000×1500, 2560×1300), reservedLeft/Right is determined by the
+ *  CORE_MAX_WIDTH=1400 cap, NOT by this margin — so existing
+ *  geometry tests at those viewports are unaffected. The single
+ *  test below the cap (canvas tier @ 700×700, "narrow viewport"
+ *  test in geometry.test.ts) updates to reflect the new margin
+ *  arithmetic. Stack tier layout, widget anchoring, drag/drop math
+ *  are all unaffected. */
+export const CANVAS_RESERVED_MARGIN = 220
 
 /** Stack tier layout constants. Extracted so `stackFitsAlongsideCore`
  *  and `computeCoreRect` (stack branch) share the same numbers. */

@@ -16,19 +16,27 @@
  * Default layout
  * ──────────────
  * The funeral-scheduling Focus's `defaultLayout.tenantDefault` seeds
- * the AncillaryPoolPin at right-rail anchor (~260px wide × ~70vh
- * tall). The right-rail anchor is one of the 8 canonical widget
- * anchors (focus-registry.ts). User can drag-reposition via
- * WidgetChrome — the position then persists per-user via Phase A
- * Session 4's focus_sessions table.
+ * the AncillaryPoolPin at right-rail anchor (180px wide, was 260
+ * pre-Aesthetic-Arc-Session-1). The right-rail anchor is one of the
+ * 8 canonical widget anchors (focus-registry.ts). User can drag-
+ * reposition via WidgetChrome — the position then persists per-user
+ * via Phase A Session 4's focus_sessions table.
  *
- * Width 260px chosen to balance content visibility (5+ pool items
- * visible at once at typical row height) against canvas real estate
- * (kanban core needs ~1100px+ to render comfortably with all driver
- * lanes; right-rail 260 leaves the core that space at vw=1500+).
- * Height auto-sized via `height: 70vh` analog from StackRail —
- * generous enough for overflow scroll, short enough to hint the
- * pin is one widget among potentially several.
+ * Aesthetic Arc Session 1 Commit C — pin narrowed from 260 → 180px
+ * so it fits in canvas tier alongside the kanban (CANVAS_RESERVED_
+ * MARGIN bumped 100→220 in geometry.ts). Pre-Session-1 the 260px
+ * pin always exceeded the canvas-tier reserved margin, forcing
+ * stack tier → core left-anchored → kanban not centered. Post-
+ * Session-1 the pin is a peripheral reference (Section 0 Quietness
+ * + Detail Concentration: pin is not primary work, should be
+ * quietly available not visually competing) and fits in canvas
+ * tier where computeCoreRect centers the core symmetrically.
+ *
+ * Width 180px is the new balance between content visibility (still
+ * 4+ pool items visible at typical row height with truncated
+ * labels) and canvas real estate (kanban core gets full breathing
+ * room with the centered-by-construction canvas-tier formula).
+ * Height 600 unchanged.
  */
 
 import { registerFocus } from "@/contexts/focus-registry"
@@ -57,15 +65,17 @@ registerFocus({
   mode: "kanban",
   displayName: "Funeral Scheduling",
   coreComponent: SchedulingKanbanCore,
-  // Phase 4.3b.3 — seed the ancillary pool pin in tenantDefault.
+  // Phase 4.3b.3 seed (Aesthetic Arc Session 1 Commit C — width
+  // narrowed 260 → 180 so the pin fits in canvas tier and kanban
+  // centers via computeCoreRect's existing canvas-tier formula).
   // User can drag-reposition; Phase A Session 4's focus_sessions
   // persistence remembers the override per-user.
   //
   // Position: right-rail anchor, offset (16, 16) — sits near the
-  // top-right corner of the canvas, hugging the right edge for the
-  // full vertical extent. Width 260px provides comfortable row
-  // visibility; height 600px (capped by the canvas's available
-  // height at canvas tier) shows ~10 rows before scroll.
+  // top-right corner of the canvas. Width 180px (was 260) fits in
+  // the post-Session-1 CANVAS_RESERVED_MARGIN=220 band; height 600
+  // unchanged. Section 0 Quietness — peripheral reference surface,
+  // quietly available, not visually competing with kanban.
   defaultLayout: {
     tenantDefault: {
       widgets: {
@@ -75,7 +85,7 @@ registerFocus({
             anchor: "right-rail",
             offsetX: 16,
             offsetY: 16,
-            width: 260,
+            width: 180,
             height: 600,
           },
         },
