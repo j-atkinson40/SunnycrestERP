@@ -37,7 +37,7 @@ import { useEffect, useRef, useState } from "react"
 import type { WidgetId, WidgetState } from "@/contexts/focus-registry"
 import { cn } from "@/lib/utils"
 
-import { MockSavedViewWidget } from "./MockSavedViewWidget"
+import { getWidgetRenderer } from "./widget-renderers"
 import { STACK_RAIL_WIDTH } from "./geometry"
 
 
@@ -140,47 +140,52 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
           scrollSnapType: "y mandatory",
         }}
       >
-        {entries.map(([id], i) => (
-          <div
-            key={id}
-            ref={(el) => {
-              tileRefs.current[i] = el
-            }}
-            data-slot="focus-stack-tile"
-            data-stack-index={i}
-            data-widget-id={id}
-            className={cn(
-              // Each tile fills the full rail height so scroll-snap
-              // settles on exactly one tile at a time. `flexShrink:
-              // 0` + explicit `minHeight: 100%` defeats the flex
-              // default `min-height: auto` which would otherwise
-              // collapse the tile to content height and let multiple
-              // tiles fit simultaneously (the 3.7 → 3.7.1 bug).
-              "snap-start cursor-pointer",
-              "border-b border-border-subtle/60 last:border-b-0",
-              "transition-transform duration-quick ease-settle",
-              "hover:bg-brass-subtle/20 active:scale-[0.98]",
-            )}
-            style={{
-              height: "100%",
-              minHeight: "100%",
-              flexShrink: 0,
-              scrollSnapAlign: "start",
-            }}
-            onClick={() => onExpandWidget(id as WidgetId)}
-            role="button"
-            tabIndex={0}
-            aria-label={`Expand widget ${i + 1}`}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault()
-                onExpandWidget(id as WidgetId)
-              }
-            }}
-          >
-            <MockSavedViewWidget />
-          </div>
-        ))}
+        {entries.map(([id, state], i) => {
+          // Phase 4.3b.3 — dispatch by widgetType (registered renderers
+          // OR MockSavedViewWidget fallback for back-compat).
+          const Renderer = getWidgetRenderer(state.widgetType)
+          return (
+            <div
+              key={id}
+              ref={(el) => {
+                tileRefs.current[i] = el
+              }}
+              data-slot="focus-stack-tile"
+              data-stack-index={i}
+              data-widget-id={id}
+              className={cn(
+                // Each tile fills the full rail height so scroll-snap
+                // settles on exactly one tile at a time. `flexShrink:
+                // 0` + explicit `minHeight: 100%` defeats the flex
+                // default `min-height: auto` which would otherwise
+                // collapse the tile to content height and let multiple
+                // tiles fit simultaneously (the 3.7 → 3.7.1 bug).
+                "snap-start cursor-pointer",
+                "border-b border-border-subtle/60 last:border-b-0",
+                "transition-transform duration-quick ease-settle",
+                "hover:bg-brass-subtle/20 active:scale-[0.98]",
+              )}
+              style={{
+                height: "100%",
+                minHeight: "100%",
+                flexShrink: 0,
+                scrollSnapAlign: "start",
+              }}
+              onClick={() => onExpandWidget(id as WidgetId)}
+              role="button"
+              tabIndex={0}
+              aria-label={`Expand widget ${i + 1}`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  onExpandWidget(id as WidgetId)
+                }
+              }}
+            >
+              <Renderer widgetId={id} />
+            </div>
+          )
+        })}
       </div>
     </div>
   )

@@ -59,11 +59,11 @@ import {
   snapTo8px,
 } from "./geometry"
 import { IconButton } from "./IconButton"
-import { MockSavedViewWidget } from "./MockSavedViewWidget"
 import { StackExpandedOverlay } from "./StackExpandedOverlay"
 import { StackRail } from "./StackRail"
 import { useViewportTier } from "./useViewportTier"
 import { WidgetChrome } from "./WidgetChrome"
+import { getWidgetRenderer } from "./widget-renderers"
 
 
 // Phase B Session 4.3b D-1 elevation. The canvas drag id has a
@@ -254,19 +254,26 @@ export function Canvas() {
             "pointer-events-none",
           )}
         >
-          {Object.entries(widgets).map(([id, state]) => (
-            <div key={id} className="pointer-events-auto">
-              <WidgetChrome
-                widgetId={id as WidgetId}
-                position={state.position}
-                canvasWidth={viewport.width}
-                canvasHeight={viewport.height}
-                onDismiss={() => removeWidget(id as WidgetId)}
-              >
-                <MockSavedViewWidget />
-              </WidgetChrome>
-            </div>
-          ))}
+          {Object.entries(widgets).map(([id, state]) => {
+            // Phase 4.3b.3 — dispatch by widgetType. Legacy layouts
+            // without an explicit widgetType resolve to MockSavedView
+            // Widget per the registry default. New widgets register
+            // via side-effect imports at app boot.
+            const Renderer = getWidgetRenderer(state.widgetType)
+            return (
+              <div key={id} className="pointer-events-auto">
+                <WidgetChrome
+                  widgetId={id as WidgetId}
+                  position={state.position}
+                  canvasWidth={viewport.width}
+                  canvasHeight={viewport.height}
+                  onDismiss={() => removeWidget(id as WidgetId)}
+                >
+                  <Renderer widgetId={id} />
+                </WidgetChrome>
+              </div>
+            )
+          })}
         </div>
 
         {/* STACK TIER — right-rail Smart Stack + expanded overlay. */}

@@ -22,7 +22,7 @@ import { useEffect, useState } from "react"
 import type { WidgetId, WidgetState } from "@/contexts/focus-registry"
 import { cn } from "@/lib/utils"
 
-import { MockSavedViewWidget } from "./MockSavedViewWidget"
+import { getWidgetRenderer } from "./widget-renderers"
 import { useSwipeDismiss } from "./useSwipeDismiss"
 
 
@@ -120,32 +120,37 @@ export function BottomSheet({ widgets, onDismiss }: BottomSheetProps) {
           data-slot="focus-bottom-sheet-content"
           className="flex-1 overflow-y-auto px-4 pb-6"
         >
-          {entries.map(([id, state]) => (
-            <div
-              key={id}
-              data-slot="focus-bottom-sheet-tile"
-              data-widget-id={id}
-              className={cn(
-                "mb-3 cursor-pointer overflow-hidden",
-                "rounded-md border border-border-subtle bg-surface-elevated",
-                "transition-transform duration-quick ease-settle",
-                "hover:bg-brass-subtle/20 active:scale-[0.98]",
-              )}
-              style={{ height: state.position.height }}
-              role="button"
-              tabIndex={0}
-              aria-label="Expand widget"
-              onClick={() => setExpandedWidget(id as WidgetId)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault()
-                  setExpandedWidget(id as WidgetId)
-                }
-              }}
-            >
-              <MockSavedViewWidget />
-            </div>
-          ))}
+          {entries.map(([id, state]) => {
+            // Phase 4.3b.3 — dispatch by widgetType (registered renderers
+            // OR MockSavedViewWidget fallback for back-compat).
+            const Renderer = getWidgetRenderer(state.widgetType)
+            return (
+              <div
+                key={id}
+                data-slot="focus-bottom-sheet-tile"
+                data-widget-id={id}
+                className={cn(
+                  "mb-3 cursor-pointer overflow-hidden",
+                  "rounded-md border border-border-subtle bg-surface-elevated",
+                  "transition-transform duration-quick ease-settle",
+                  "hover:bg-brass-subtle/20 active:scale-[0.98]",
+                )}
+                style={{ height: state.position.height }}
+                role="button"
+                tabIndex={0}
+                aria-label="Expand widget"
+                onClick={() => setExpandedWidget(id as WidgetId)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    setExpandedWidget(id as WidgetId)
+                  }
+                }}
+              >
+                <Renderer widgetId={id} />
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -178,7 +183,14 @@ export function BottomSheet({ widgets, onDismiss }: BottomSheetProps) {
             style={{ zIndex: "var(--z-focus)" }}
             onClick={() => setExpandedWidget(null)}
           >
-            <MockSavedViewWidget />
+            {(() => {
+              // Phase 4.3b.3 — render the expanded widget's registered
+              // type (or MockSavedViewWidget fallback).
+              const Renderer = getWidgetRenderer(
+                widgets[expandedWidget]?.widgetType,
+              )
+              return <Renderer widgetId={expandedWidget} />
+            })()}
           </div>
         </>
       )}

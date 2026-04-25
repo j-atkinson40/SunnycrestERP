@@ -22,7 +22,7 @@ import { useEffect } from "react"
 import type { WidgetId, WidgetState } from "@/contexts/focus-registry"
 import { cn } from "@/lib/utils"
 
-import { MockSavedViewWidget } from "./MockSavedViewWidget"
+import { getWidgetRenderer } from "./widget-renderers"
 
 
 interface StackExpandedOverlayProps {
@@ -33,8 +33,13 @@ interface StackExpandedOverlayProps {
 
 
 export function StackExpandedOverlay({
+  widgetId,
+  state,
   onDismiss,
 }: StackExpandedOverlayProps) {
+  // Phase 4.3b.3 — dispatch by widgetType. The expanded view renders
+  // the same widget the StackRail tile shows, just at a larger size.
+  const Renderer = getWidgetRenderer(state.widgetType)
   // Esc dismisses.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -83,7 +88,7 @@ export function StackExpandedOverlay({
         }}
         onClick={onDismiss}
       >
-        <MockSavedViewWidget />
+        <Renderer widgetId={widgetId} />
       </div>
     </>
   )

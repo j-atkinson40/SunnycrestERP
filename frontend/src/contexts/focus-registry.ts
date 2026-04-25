@@ -99,11 +99,22 @@ export interface WidgetPosition {
 }
 
 /** Full per-widget state. Session 3 ships with just `position`;
- *  future sessions may add `isMinimized`, `zIndex`, custom props per
+ *  Session 4.3b.3 adds optional `widgetType` for the typed-widget
+ *  registry (see `components/focus/canvas/widget-renderers.ts`).
+ *  Future sessions may add `isMinimized`, `zIndex`, custom props per
  *  widget type, etc. Nested shape future-proofs without reshaping
- *  consumers. */
+ *  consumers.
+ *
+ *  `widgetType` is OPTIONAL for back-compat: pre-4.3b.3 layouts that
+ *  predate the typed-widget system (test-kanban's mock layout, any
+ *  legacy persisted layouts) leave it undefined, which the registry
+ *  resolves to `MockSavedViewWidget`. New layouts (the funeral-
+ *  scheduling Focus's tenantDefault, future pin systems) set it
+ *  explicitly to a registered widget type string like
+ *  `"funeral-scheduling.ancillary-pool"`. */
 export interface WidgetState {
   position: WidgetPosition
+  widgetType?: string
 }
 
 export type WidgetId = string
