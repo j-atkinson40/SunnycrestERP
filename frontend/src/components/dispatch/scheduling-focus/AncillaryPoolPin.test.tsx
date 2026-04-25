@@ -427,3 +427,51 @@ describe("AncillaryPoolPin — loading state", () => {
     expect(root.className).not.toMatch(/opacity-80/)
   })
 })
+
+
+// Phase 4.3b.4 — pin as drop target.
+//
+// AncillaryPoolPin's outer container becomes a useDroppable consumer
+// for the canonical "ancillary-pool" id. Standalone + attached
+// ancillaries dropping here trigger return-to-pool;
+// SchedulingKanbanCore's drag handler routes the API call. This
+// suite covers the pin's structural side: droppable wired,
+// data-pool-drop-target stamps correctly when the visual feedback
+// gate is satisfied.
+describe("AncillaryPoolPin — drop target (Phase 4.3b.4)", () => {
+  it("renders data-pool-drop-target=false at rest (no active drag)", () => {
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin />
+      </Harness>,
+    )
+    const root = document.querySelector(
+      '[data-slot="ancillary-pool-pin"]',
+    ) as HTMLElement
+    expect(root.getAttribute("data-pool-drop-target")).toBe("false")
+  })
+
+  it("exports stable droppable id constant matching the handler", async () => {
+    // The pin's useDroppable id and the kanban core's drop-routing
+    // logic share the canonical string via a single export. Drift
+    // would silently break drag-to-pool. This test asserts the
+    // export exists and is the expected value.
+    const mod = await import("./AncillaryPoolPin")
+    expect(mod.ANCILLARY_POOL_DROPPABLE_ID).toBe("ancillary-pool")
+  })
+
+  it("empty state copy stays default when no active drag", () => {
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin />
+      </Harness>,
+    )
+    const empty = document.querySelector(
+      '[data-slot="ancillary-pool-pin-empty"]',
+    )
+    expect(empty?.textContent).toMatch(/No pool items/)
+    expect(empty?.textContent).toMatch(/Pair complete/)
+    // No "Drop to return" copy when no drag is active.
+    expect(empty?.textContent).not.toMatch(/Drop to return/)
+  })
+})

@@ -54,13 +54,21 @@
  * cleanup. For 4.3b.3 the helper inlines.
  */
 
-import { useDraggable } from "@dnd-kit/core"
+import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { InboxIcon } from "lucide-react"
 
+import { useFocusDndActiveId } from "@/components/focus/FocusDndProvider"
 import { useSchedulingFocus } from "@/contexts/scheduling-focus-context"
 import { cn } from "@/lib/utils"
 import type { DeliveryDTO } from "@/services/dispatch-service"
+
+
+/** Drop target id for the AncillaryPoolPin. SchedulingKanbanCore's
+ *  drag handler routes ancillary drops on this id to
+ *  `returnAncillaryToPool`. Exported so tests + handler can share
+ *  the canonical string without drift. */
+export const ANCILLARY_POOL_DROPPABLE_ID = "ancillary-pool"
 
 
 // Same fallback chain AncillaryCard uses (Flag 5 from 4.3.3 spec).
@@ -194,14 +202,54 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
   // this widget is only valid inside the funeral-scheduling Focus.
   const { poolAncillaries, poolLoading } = useSchedulingFocus()
 
+  // Phase 4.3b.4 — pin becomes a drop target for return-to-pool.
+  // Drag flows that drop here:
+  //   - Standalone ancillary in a driver lane → returnAncillaryToPool
+  //   - Attached ancillary from drawer expansion → returnAncillaryToPool
+  //   - Pool item from this same pin → no-op (already in pool)
+  // SchedulingKanbanCore's onDragEnd handler routes by `over.id ===
+  // ANCILLARY_POOL_DROPPABLE_ID`. Visual feedback below mirrors the
+  // delivery-as-parent droppable pattern: brass dashed outline +
+  // brass-subtle wash, gated on active drag being an ancillary
+  // (delivery: + widget: drags don't trigger pin feedback).
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: ANCILLARY_POOL_DROPPABLE_ID,
+  })
+  const activeDragId = useFocusDndActiveId()
+  const isAncillaryDragActive = activeDragId?.startsWith("ancillary:") ?? false
+  // The pin is its own source of items, so a pool→pool drop should
+  // NOT light up — feedback only when the dragged ancillary is NOT
+  // currently in the pool list (standalone or attached).
+  const draggedIsFromPool =
+    activeDragId !== null &&
+    poolAncillaries.some(
+      (d) => d.id === activeDragId.replace(/^ancillary:/, ""),
+    )
+  const showPoolDropFeedback =
+    isOver && isAncillaryDragActive && !draggedIsFromPool
+
   return (
     <div
+      ref={setDropRef}
       data-slot="ancillary-pool-pin"
+      data-pool-drop-target={showPoolDropFeedback ? "true" : "false"}
       className={cn(
         "flex h-full flex-col bg-surface-elevated",
         // Subtle dim during refresh — keeps the existing list visible
         // but signals data is in flight.
         poolLoading && "opacity-80",
+        // Phase 4.3b.4 — drop-target visual feedback. Brass dashed
+        // outline + brass-subtle wash matching DeliveryCard's parent-
+        // drop pattern (Phase 4.3b.3) for consistency across all
+        // ancillary drop surfaces (lane = solid brass ring;
+        // parent card = dashed brass ring; pin = dashed brass
+        // ring). Same DESIGN_LANGUAGE §6 brass family across the
+        // platform's ancillary-drag affordances.
+        showPoolDropFeedback && [
+          "ring-2 ring-brass ring-dashed ring-offset-2 ring-offset-surface-base",
+          "bg-brass-subtle/40",
+        ],
+        "transition-shadow duration-quick ease-settle",
       )}
     >
       {/* Header — eyebrow + count badge. Matches DESIGN_LANGUAGE §4
@@ -275,7 +323,7 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
                 "leading-tight",
               )}
             >
-              No pool items
+              {showPoolDropFeedback ? "Drop to return to pool" : "No pool items"}
             </p>
             <p
               className={cn(
@@ -283,7 +331,9 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
                 "leading-tight",
               )}
             >
-              Pair complete — every ancillary is assigned.
+              {showPoolDropFeedback
+                ? "Releases driver + date assignment."
+                : "Pair complete — every ancillary is assigned."}
             </p>
           </div>
         )}

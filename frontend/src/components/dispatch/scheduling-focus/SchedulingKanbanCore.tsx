@@ -54,10 +54,12 @@
 import {
   DragOverlay,
   useDndMonitor,
+  useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
+import { CSS } from "@dnd-kit/utilities"
 import { CheckCircle2Icon, ChevronDownIcon, XIcon } from "lucide-react"
 import {
   useCallback,
@@ -71,6 +73,7 @@ import { useSearchParams } from "react-router-dom"
 
 import { AncillaryCard } from "@/components/dispatch/AncillaryCard"
 import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
+import { ANCILLARY_POOL_DROPPABLE_ID } from "@/components/dispatch/scheduling-focus/AncillaryPoolPin"
 import {
   QuickEditDialog,
   type QuickEditSavePayload,
@@ -428,6 +431,12 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       // a colon-separated date:driver shape that doesn't match the
       // delivery-as-parent: discriminator.
       const isParentDrop = overId.startsWith("delivery-as-parent:")
+      // Phase 4.3b.4 — pin drop target. AncillaryPoolPin's outer
+      // container exposes a useDroppable with id =
+      // ANCILLARY_POOL_DROPPABLE_ID. Standalone + attached
+      // ancillaries dropping here return-to-pool; pool-source
+      // drops are no-ops (already in pool).
+      const isPoolDrop = overId === ANCILLARY_POOL_DROPPABLE_ID
 
       // Source resolution. Phase 4.3b.3 — sources can come from EITHER
       // the day's deliveries (kanban primaries, standalone ancillaries,
@@ -440,6 +449,30 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       const sourceDelivery = fromDeliveries ?? fromPool ?? null
       if (!sourceDelivery) return
       const isFromPool = fromDeliveries === undefined && fromPool !== undefined
+
+      // ── Pin-drop branch (Phase 4.3b.4) ──────────────────────────
+      if (isPoolDrop) {
+        // Only ancillaries belong in the pool.
+        if (sourceDelivery.scheduling_type !== "ancillary") return
+        // Pool→pool no-op.
+        if (isFromPool) return
+
+        // Optimistic update — remove from deliveries; pool will
+        // refresh after API call. Brief flash where the ancillary
+        // disappears from the kanban before the pin updates is
+        // acceptable because the dispatcher's attention is on the
+        // pin (drop target).
+        setDeliveries((prev) => prev.filter((d) => d.id !== deliveryId))
+        try {
+          await returnAncillaryToPool(deliveryId)
+          // Refresh pool so the now-pool item appears in the pin.
+          schedulingFocus?.reloadPool()
+        } catch (e) {
+          console.error("scheduling focus return-to-pool failed:", e)
+          reload() // restore authoritative state
+        }
+        return
+      }
 
       // ── Parent-drop branch ─────────────────────────────────────
       if (isParentDrop) {
@@ -1291,35 +1324,13 @@ function SchedulingLane({
                     "bg-surface-sunken/60 px-3 py-2",
                   )}
                 >
-                  {attached.map((a) => {
-                    const tc = a.type_config ?? {}
-                    const family =
-                      (tc.family_name as string | undefined) ?? "—"
-                    const stype =
-                      (tc.service_type as string | undefined) ?? ""
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        data-slot="dispatch-ancillary-expanded-item"
-                        data-ancillary-id={a.id}
-                        onClick={() => onOpenEdit?.(a)}
-                        className={cn(
-                          "w-full text-left text-caption",
-                          "text-content-base hover:text-content-strong",
-                          "focus-ring-brass outline-none rounded",
-                          "px-1 py-0.5",
-                        )}
-                      >
-                        <span className="font-medium">{family}</span>
-                        {stype && (
-                          <span className="ml-2 text-content-muted">
-                            · {stype.replace(/_/g, " ")}
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
+                  {attached.map((a) => (
+                    <DrawerAncillaryItem
+                      key={a.id}
+                      ancillary={a}
+                      onOpenEdit={onOpenEdit}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -1468,5 +1479,93 @@ function DaySelectorButton({
         </div>
       )}
     </div>
+  )
+}
+
+
+// ── Drawer ancillary item (Phase 4.3b.4) ─────────────────────────────
+
+
+interface DrawerAncillaryItemProps {
+  ancillary: DeliveryDTO
+  onOpenEdit?: (delivery: DeliveryDTO) => void
+}
+
+
+/**
+ * Expanded-drawer ancillary row — one entry per attached ancillary
+ * inside a parent kanban delivery's expansion drawer (Phase 4.3.3.1
+ * shipped the drawer; Phase 4.3.3.1 pre-positioned data-slot +
+ * data-ancillary-id; Phase 4.3b.4 adds the drag wiring).
+ *
+ * Drag source: id = `ancillary:<id>` matching the AncillaryPoolPin
+ * + standalone-card drag sources. SchedulingKanbanCore's drag
+ * handler routes the drop:
+ *   - Driver lane (different driver) → assignAncillaryStandalone
+ *     (FK clears, new assignee + parent's date)
+ *   - Driver lane (same driver as parent) → assignAncillaryStandalone
+ *     ("detach but keep with this driver")
+ *   - Unassigned lane → returnAncillaryToPool
+ *   - Pin (ancillary-pool droppable) → returnAncillaryToPool
+ *   - Different parent card → attachAncillary (re-attach)
+ *
+ * Click vs drag: PointerSensor activation constraint (distance: 8)
+ * separates them. Quick click (release within 8px) fires
+ * onOpenEdit. Press + drag past 8px activates drag, suppresses
+ * click. Same pattern as DeliveryCard / AncillaryCard / PoolItem.
+ *
+ * Whole-element drag per PRODUCT_PRINCIPLES "Drag interactions:
+ * whole-element drag, no handles" — useDraggable listeners spread
+ * on the entire button. No grip icon.
+ */
+function DrawerAncillaryItem({
+  ancillary,
+  onOpenEdit,
+}: DrawerAncillaryItemProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({
+      id: `ancillary:${ancillary.id}`,
+      data: { ancillaryId: ancillary.id, source: "drawer" },
+    })
+  const dragStyle = transform
+    ? { transform: CSS.Translate.toString(transform) }
+    : undefined
+
+  const tc = ancillary.type_config ?? {}
+  const family = (tc.family_name as string | undefined) ?? "—"
+  const stype = (tc.service_type as string | undefined) ?? ""
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={dragStyle}
+      type="button"
+      data-slot="dispatch-ancillary-expanded-item"
+      data-ancillary-id={ancillary.id}
+      data-dragging={isDragging ? "true" : "false"}
+      {...attributes}
+      {...listeners}
+      onClick={() => onOpenEdit?.(ancillary)}
+      className={cn(
+        "w-full text-left text-caption",
+        "text-content-base hover:text-content-strong",
+        "focus-ring-brass outline-none rounded",
+        "px-1 py-0.5",
+        "cursor-grab active:cursor-grabbing",
+        // Phase 4.3b.4 drag lift — subtle scale + opacity dim per
+        // PQB §2 canonical drag-source contract. Smaller scale than
+        // DeliveryCard (1.01 vs 1.02) because drawer items are
+        // already compact + indented; bigger scale would feel
+        // disproportionate.
+        isDragging && "opacity-95 scale-[1.01] bg-brass-subtle/60",
+      )}
+    >
+      <span className="font-medium">{family}</span>
+      {stype && (
+        <span className="ml-2 text-content-muted">
+          · {stype.replace(/_/g, " ")}
+        </span>
+      )}
+    </button>
   )
 }

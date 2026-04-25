@@ -498,6 +498,45 @@ describe("SchedulingKanbanCore — attached-ancillary parity (Phase 4.3.3.1)", (
       document.querySelector('[data-slot="dispatch-ancillary-expanded"]'),
     ).toBeNull()
   })
+
+  // Phase 4.3b.4 — drawer items are drag sources.
+  //
+  // Each expanded drawer item now wraps useDraggable so the
+  // dispatcher can drag the rider out to detach. Click still opens
+  // QuickEdit because PointerSensor activation constraint
+  // (distance: 8 from FocusDndProvider) cleanly separates click
+  // from drag. This test verifies the structural wiring: items
+  // render with the canonical drag attributes; data-slot +
+  // data-ancillary-id (Phase 4.3.3.1 pre-positioned) preserved.
+  it("drawer items are draggable (Phase 4.3b.4 detach gesture)", async () => {
+    const user = userEvent.setup()
+    render(
+      <Harness initialUrl="/?day=2026-04-25">
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="scheduling-focus-kanban"]'),
+      ).toBeInTheDocument()
+    })
+    const badge = document.querySelector(
+      '[data-slot="dispatch-ancillary-badge"]',
+    ) as HTMLElement
+    await user.click(badge)
+    const drawerItem = document.querySelector(
+      '[data-slot="dispatch-ancillary-expanded-item"]',
+    ) as HTMLElement
+    expect(drawerItem).toBeTruthy()
+    // Whole-element drag per Phase 4.3b.3.2 platform principle —
+    // useDraggable listeners are on the button itself, no separate
+    // grip handle.
+    expect(drawerItem.getAttribute("aria-roledescription")).toBe("draggable")
+    expect(drawerItem.tagName).toBe("BUTTON")
+    // Phase 4.3.3.1 pre-positioned data attributes survive the
+    // 4.3b.4 useDraggable wrap.
+    expect(drawerItem.getAttribute("data-ancillary-id")).toBe("murphy-rider")
+  })
 })
 
 
