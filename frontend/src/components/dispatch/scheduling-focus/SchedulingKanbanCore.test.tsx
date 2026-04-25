@@ -551,14 +551,14 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     })
   })
 
-  it("DateBox surface uses bg-surface-elevated (calibration regression)", async () => {
-    // Aesthetic-coherence regression — DateBox must NOT drift to
-    // generic SaaS chip register (bg-muted, rounded-full, neutral
-    // border). Calibrated against AncillaryPoolPin + DeliveryCard:
-    // bg-surface-elevated + border-border-subtle + radius-sm. If
-    // a future refactor flips these tokens (e.g. someone rounds-
-    // everything to rounded-full or swaps surface-elevated for
-    // muted), this test catches it before merge.
+  it("DateBox surface is transparent + half-strength border at rest (Aesthetic Arc Session 1.5 calibration)", async () => {
+    // Aesthetic-coherence regression. Pre-Session-1.5 DateBox had
+    // bg-surface-elevated at rest (primary-nav weight, competing
+    // with H2 day label). Post-Session-1.5: transparent surface +
+    // half-strength border-border-subtle/50 — quiet peek affordance,
+    // jewelry only at active state. Drift guards still in place
+    // against generic SaaS chip register (bg-muted, rounded-full,
+    // shadow-md).
     render(
       <Harness>
         <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
@@ -572,8 +572,10 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
       return node!
     })
     const cls = box.className
-    expect(cls).toMatch(/bg-surface-elevated/)
-    expect(cls).toMatch(/border-border-subtle/)
+    // No surface fill at rest.
+    expect(cls).not.toMatch(/bg-surface-elevated/)
+    // Half-strength border only.
+    expect(cls).toMatch(/border-border-subtle\/50/)
     expect(cls).toMatch(/rounded-sm/)
     // Drift guards — these tokens MUST NOT appear at rest.
     expect(cls).not.toMatch(/bg-muted\b/)

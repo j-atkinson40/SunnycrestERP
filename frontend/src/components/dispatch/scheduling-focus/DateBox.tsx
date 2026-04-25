@@ -179,47 +179,51 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
             aria-pressed={active}
             className={cn(
               // Architectural proportions — square-shouldered, sharp
-              // corners. Generous internal padding (workshop-not-
-              // cramped per Section 5).
+              // corners. Aesthetic Arc Session 1.5 Commit C tightened
+              // padding + min-width: the box should read as a
+              // discoverable peek affordance, not a primary nav
+              // element. Section 0 British register — quiet at rest,
+              // jewelry only when engaged.
               "inline-flex flex-col items-center justify-center",
-              "min-w-[60px] px-3 py-1.5 rounded-sm",
-              // Material at rest — fill-only lift from page bg, no
-              // shadow (date boxes are inline affordances, not
-              // floating cards). Subtle warm-gray surface.
-              "bg-surface-elevated",
-              // Border rest state — subtle perimeter to give the box
-              // its "object" affordance. Brass on active state
-              // (jewelry — Detail Concentration §4 translation).
-              "border border-border-subtle",
-              // Hover — subtle brass warming. No border change at
-              // hover; border change reserved for active (the
-              // selected day signal). Matches AncillaryPoolPin
-              // PoolItem's hover pattern (`hover:bg-brass-subtle/40`).
-              "hover:bg-brass-subtle/30",
+              "min-w-[44px] px-2 py-0.5 rounded-sm",
+              // Aesthetic Arc Session 1.5 — Material at rest is
+              // TRANSPARENT (no surface fill). Pre-Session-1.5 the
+              // box had `bg-surface-elevated` which made the box read
+              // as a "primary navigation element" weighing same as
+              // the H2 day label.
+              // Post-Session-1.5: transparent surface + subtle
+              // half-strength border. The box reads as "I'm a
+              // discoverable peek affordance" — quiet at rest, jewelry
+              // only when active. Section 0 Detail Concentration TP4
+              // — brass concentrates at active state; rest state
+              // stays minimal.
+              "border border-border-subtle/50",
+              // Hover — subtle brass warming. Border lifts to full
+              // strength on hover for "this is interactive" feedback
+              // without committing to active jewelry.
+              "hover:bg-brass-subtle/20 hover:border-border-subtle",
               // Quietness — motion is purposeful, no bounce. Same
               // tokens as the rest of the platform's hover transitions.
               "transition-colors duration-quick ease-settle",
               // Brass focus ring — platform-wide convention for
               // interactive non-input elements (DESIGN_LANGUAGE §6
-              // focus indicators). Inherits the `--focus-ring-alpha`
-              // composition.
+              // focus indicators).
               "focus-ring-brass outline-none",
               // Active state — jewelry on. Brass border + brass-
-              // subtle wash. Matches AncillaryPoolPin's active drop-
-              // target chrome (`bg-brass-subtle/40` + brass border)
-              // for cross-surface consistency. Tightening the border
-              // color to `border-brass` (full saturation) at active
-              // gives the "this day is selected" signal weight; rest
-              // and hover both carry the subtle border.
+              // subtle wash. Same composition as AncillaryPoolPin
+              // active drop-target + Finalize button at-rest brass
+              // text. Cross-surface vocabulary consistency.
               active && [
                 "border-brass bg-brass-subtle/50",
               ],
             )}
           >
-            {/* Eyebrow — weekday abbreviation. Same micro-eyebrow
-                treatment used in the Scheduling header itself + the
-                AncillaryPoolPin header. Cross-surface vocabulary
-                consistency. */}
+            {/* Eyebrow — weekday abbreviation. Aesthetic Arc Session
+                1.5 — sized down (text-micro is platform-wide eyebrow
+                already; just lighter weight for quietness).
+                Cross-surface vocabulary consistency: same micro-
+                eyebrow treatment as Scheduling header + AncillaryPool
+                Pin header. */}
             <span
               className={cn(
                 "text-micro uppercase tracking-wider leading-tight",
@@ -229,14 +233,17 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
             >
               {weekday}
             </span>
-            {/* Date — month + day. Plex Mono on the digit area for
-                tabular alignment with the lane count digits + the
-                ancillary pool count chip; both sit on the same vertical
-                rhythm in the surrounding chrome. */}
+            {/* Date — month + day. Aesthetic Arc Session 1.5 —
+                font-size dropped from text-body-sm (14px) to
+                text-caption (12px); date should harmonize visually
+                with the eyebrow and not assert primary-text
+                weight. Plex Mono retained for tabular alignment with
+                lane count digits + count chip. */}
             <span
               className={cn(
-                "text-body-sm leading-tight tabular-nums",
-                "text-content-strong font-plex-mono",
+                "text-[0.75rem] leading-tight tabular-nums",
+                "text-content-base font-plex-mono",
+                active && "text-content-strong",
               )}
             >
               {monthDay}

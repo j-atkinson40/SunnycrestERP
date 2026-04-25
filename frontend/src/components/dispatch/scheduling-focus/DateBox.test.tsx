@@ -185,13 +185,17 @@ describe("DateBox rendering", () => {
     })
   })
 
-  it("calibration: surface uses elevated + subtle-bordered + sharp corners (no SaaS chip drift)", () => {
+  it("calibration: transparent surface + half-strength border + sharp corners (Aesthetic Arc Session 1.5)", () => {
     // Aesthetic-coherence regression. DESIGN_LANGUAGE Section 0
-    // calibration: bg-surface-elevated (material lift) +
-    // border-border-subtle (perimeter affordance) + rounded-sm
-    // (4px sharp corners, NOT pillowy-full). If a future refactor
-    // drifts to bg-muted (generic SaaS) or rounded-full (consumer
-    // chip), this test fails.
+    // calibration. Pre-Session-1.5: bg-surface-elevated + full-
+    // strength border-border-subtle. Post-Session-1.5: TRANSPARENT
+    // surface (no fill) + half-strength border (border-border-
+    // subtle/50). The box should read as a quiet peek affordance,
+    // not a primary nav element competing with the H2 day label.
+    // Active state still applies brass jewelry (separate test
+    // below). If a future refactor drifts to bg-muted (generic
+    // SaaS) or rounded-full (consumer chip) or restores the
+    // elevated surface at rest, this test fails.
     const { container } = render(
       <Harness>
         <DateBox date="2026-04-25" active={false} onClick={() => {}} />
@@ -201,8 +205,11 @@ describe("DateBox rendering", () => {
       '[data-slot="scheduling-focus-date-box"]',
     ) as HTMLElement
     const cls = box.className
-    expect(cls).toMatch(/bg-surface-elevated/)
-    expect(cls).toMatch(/border-border-subtle/)
+    // No surface fill at rest — transparent against the dimmed
+    // backdrop.
+    expect(cls).not.toMatch(/bg-surface-elevated/)
+    // Half-strength border only.
+    expect(cls).toMatch(/border-border-subtle\/50/)
     expect(cls).toMatch(/rounded-sm/)
     // Drift guards — these tokens MUST NOT appear at rest.
     expect(cls).not.toMatch(/bg-muted\b/)
