@@ -17,9 +17,30 @@
 
 ## Section 0 — The Object's Character
 
+> **Bridgeable's design philosophy mirrors Land Rover's: restrained, materially honest, architecturally proportioned, quietly confident, made to last. Applied natively to digital surfaces, not borrowed from automotive vocabulary.**
+
+That thesis is the platform's North Star. It governs every visual decision — color, type, surface, motion, spacing, iconography, density, all of it. When Sections 1–10 specify values and Sections 2–9 lock the tokens, this thesis is what they're all working toward.
+
 Bridgeable is an instrument. Sections 1 and onward define the moods (light = Mediterranean garden morning; dark = cocktail lounge evening) — the atmospheres the tool is observed within. This section defines what the tool itself **is**, independent of where it's seen. The same Leica camera body is the same instrument under garden sun or lamplight; the light on it changes, the object does not. Section 0 articulates that object.
 
-This section is opinionated, short, and load-bearing. Every visual decision in the platform answers to it.
+This section is opinionated, long, and load-bearing. Every visual decision in the platform answers to it. Read it once carefully; refer back when in doubt.
+
+### Design DNA, not vehicle vocabulary
+
+The Land Rover frame is the most important single statement in this document, and it is the most easily misread. Read carefully.
+
+**What the thesis means:** Imagine Land Rover's design team was given a brief to create operational software for the physical economy. They wouldn't put steering wheels and tachometers in it. They'd make something that *feels like their work, expressed in pixels*. Same instincts about restraint. Same approach to materials. Same proportions. Same quiet confidence. Same time-resistance. The result is software that **shares the design DNA of the vehicle without any of the literal vehicle vocabulary**.
+
+**What the thesis does NOT mean:**
+- NOT heads-up display chrome (transparent overlays, projection effects, vehicle-dashboard simulations)
+- NOT vehicle-specific iconography (steering wheels, speedometers, tachometers, fuel gauges)
+- NOT automotive color palettes (carbon fiber black, race red, racing stripes, hi-vis safety yellow)
+- NOT skeuomorphic dashboard chrome (gauges rendered in pixels, instrument-cluster compositions, dial-textured surfaces)
+- NOT any literal vehicle imagery, vocabulary, or styling
+
+The "would this look at home as a screen inside a Range Rover" test — when invoked — is a **coherence check**, not a style mandate. It asks: does this share the design DNA of the vehicle, such that if it were embedded in a Range Rover dashboard, it would look like the same team made both? It does NOT ask: does this look like a HUD or vehicle UI element.
+
+The check is on **shared design instincts**, not shared visual elements.
 
 ### The reference family
 
@@ -84,6 +105,138 @@ The reference family converges on eight qualities. A Bridgeable surface that ach
 
 **8. Heirloom commitment.** The platform is worth maintaining. It is not disposable. Its visual language reads as something a serious operation invests in for years, not as something that will be replaced when the next design trend arrives. This is partly a result of (5) time-resistance and partly an attitude of design — every detail considered enough that it would not embarrass the team in five years.
 
+### The ten translation principles
+
+The eight qualities answer "what character does Bridgeable have?" These ten principles answer "how does that character translate into actual design decisions?" Each principle takes a Land-Rover-design instinct and articulates how to apply it natively to digital surfaces.
+
+**1. Materials translate as digital materials.** Real wood becomes warm-grained dark surfaces with subtle elevation. Real metal becomes brass accents with appropriate sheen. Real leather becomes warm-tinted neutral surfaces with hint of grain (where grain is *implied* by warmth and texture in the color, not depicted). The principle is "honest digital materials at full strength" — not skeuomorphic textures, but the **digital equivalent of how the vehicle treats real material**. Surfaces that feel substantial and warm, not flat and cheap. Surfaces that have presence without pretending to be physical.
+
+Implementation: `bg-surface-elevated` carries lifted lightness + warmer hue (Section 3). `shadow-level-1` carries warm-tinted soft shadow (Section 6). The brass token retains a single fixed hue across modes (Section 2 cross-mode rule). Together: cards feel material because they elevate with warmth, not because they show fake wood grain.
+
+**2. Proportions translate directly.** Range Rover proportions are tall, square, generous, settled. Digital surfaces have the same relationships. Generous spacing. Square-shouldered cards. Flat-roofed elements that don't taper into curved corners. Vertical sides meeting horizontal tops cleanly. A Bridgeable card has the same proportional relationship to its surface that a Range Rover door has to its window — solid, considered, with breathing room. This principle is mostly about spacing and aspect ratios, which are completely medium-independent.
+
+Implementation: Section 5 spacing scale defaults generous (`p-6` cards, `space-10` region gaps). Section 6 radii: `radius-md` (8px) at card scale, NOT `radius-xl` (16px) — square-shouldered, not pillowy. Aspect ratios on hero surfaces favor 16:9 / 4:3 / 3:2 (architectural) over 1:1 / 9:16 (consumer photo).
+
+**3. Restraint translates literally.** Reduce until removing one more element breaks it, then stop. A Range Rover door has a handle, a window, a mirror, a body line, and almost nothing else. A Bridgeable card has a title, the data that matters, and almost nothing else. No badges. No tags. No metadata clutter. No decorative accents. **The discipline of what to leave out is the most direct translation of the design instinct.**
+
+Implementation: every element on a card must justify its presence in operational terms. "It looks nice" is not a justification. If you can remove an element and the user doesn't notice, the element was decorative — remove it. If you can remove an element and the user can't complete their work, the element was structural — keep it. The dispatcher's `DeliveryCard` (in-register calibration surface, see below) is the canonical reference — title, key facts, status row, nothing else.
+
+**4. Detail concentration translates.** Range Rovers spend their detail budget in *specific places* — door pulls, gear selectors, dial textures, air vent surrounds. The exterior is restrained; **points of human touch are jewelry**. Bridgeable does the same. Platform-wide language is restrained; points of interaction (brass action button, focused input ring, important controls) are crafted with attention disproportionate to surrounding surface. **The user's hand lands on jewelry, even though surrounding surface is calm.** This separates "minimalist" from "minimalist with care."
+
+Implementation: brass primary buttons get the detail budget — the brass token is precisely calibrated, hover/active states are deliberate, focus rings are crafted, the radius is exactly right. The surrounding card chrome is calm — `shadow-level-1`, no perimeter border, generous padding. The composition reads as "calm surface + jewel button" — not as "decorated surface where the button blends in."
+
+The principle has a corollary: **don't sprinkle detail evenly across the surface.** A platform with brass borders, brass dividers, brass icons, brass everything reads as decorated. A platform with brass concentrated at action surfaces reads as considered.
+
+**5. Quietness translates as sensory quietness.** A Range Rover is *acoustically* quiet — the engineering investment in noise/vibration/harshness is enormous. The digital equivalent is **sensory quietness**: no unnecessary motion, no notification noise, no celebratory feedback, no bouncing animations, no startling color changes, no "great job!" moments. The platform doesn't compete for attention. It's a calm space the operator works inside.
+
+Implementation: motion is purposeful (Section 6) — animation conveys state change, not delight. No spring bounce except where physical mass is implied (drag lift). No celebration on save. No confetti. No animated checkmarks. No icons that bounce on hover. The platform is busy when the work is busy; otherwise it's silent.
+
+**6. Architectural quality translates.** Range Rovers reference modernist architecture — they look more like buildings than cars. Bridgeable references architecture too. **Surfaces are architectural — they have weight, hierarchy, structure.** A Pulse dashboard is a room, not a page. A Focus is a space you enter, not a modal that appears. The metaphors are spatial and architectural rather than documentary or playful. The internal language matches: surfaces, spaces, rooms, edges, weights — closer to how architects talk than how UI designers usually talk.
+
+Implementation: Section 1's "two moods" use architectural references (terrace, lounge), not document references (page, sheet) or consumer references (feed, timeline). Code comments + commit messages reflect the same vocabulary — "the focus-core-positioner is a containing block," "the kanban lane carries no chrome of its own; cards float on it as material objects." This vocabulary discipline shows up in Bridgeable code throughout.
+
+**7. Time-resistance translates.** Range Rover design ages well because it doesn't chase trends. Bridgeable made in 2026 should look right in 2036. Avoid current-decade signals. **No glassmorphism, no AI-purple gradients, no rounded-everything maximalism.** The platform should look like it could have been designed in 2018 and could plausibly release in 2034 — a span where the design values remain coherent because they're not pegged to a specific moment's fashion.
+
+Implementation: every visual decision is checked against "would this date the platform?" Trend conventions are explicitly forbidden in Section 10. The reference family in Section 0 is itself time-resistant by construction — Leica looked right in 1954, Wegner chairs look right today. Bridgeable inherits the property by referring to that family.
+
+**8. Commitment frame translates.** Range Rovers are objects you live with — maintain, have a relationship with, part of your life over years. Bridgeable should feel the same. **Not disposable software; an operating environment licensees commit to and grow with.** The aesthetic communicates that. Heavy in the good sense — substantial, made-to-last, worth the relationship. The opposite of disposable consumer apps designed to be light and forgettable.
+
+Implementation: visual weight is permitted — surfaces have presence, type has authority, brass has gravity. The platform doesn't shrink itself to seem unimposing. It carries the weight of the work being done. A licensee who commits to Bridgeable should feel the platform commits back.
+
+**9. British-ness is worth naming.** Range Rover has a specifically *British* sensibility — restrained, understated, slightly reserved, more concerned with rightness than display. American luxury (Cadillac) is about **scale and presence**. German luxury (Mercedes, BMW) is about **engineering visibility**. Italian luxury (Ferrari) is about **emotional theater**. **British luxury (Range Rover, Bentley, Aston Martin) is about not having to prove it.** The thing is good; you'll see if you look closely; we're not going to point at it. This is the right register for operators doing serious work. Not flashy, not theatrical, just correct.
+
+Implementation: the platform never announces its quality. No "premium" badges. No "designed by" signatures. No theatrical onboarding. No look-at-me moments. The quality reveals itself in use — a dispatcher who works in Bridgeable for a week notices the type cadence, the spacing rhythm, the brass weight, the shadow character. They don't get sold those things up front. The platform is good; they'll see if they look closely; we're not going to point at it.
+
+**10. Reference point outside software entirely.** Most software design happens in dialogue with other software — designers look at Notion, Linear, Figma, Stripe. The result is convergence; software narrows toward a small range of patterns. **Taking the reference point from outside software (vehicle design philosophy from a specific cultural tradition) escapes that convergence.** Design decisions are calibrated against a different, deeper reference. The platform doesn't look like other SaaS — not because differentiation was the goal, but because the optimization axis is different.
+
+This is how genuinely distinctive design happens. Apple under Ive: Braun and Dieter Rams, not other computer companies. Teenage Engineering: analog synthesizers and Soviet industrial design, not other gadget makers. Linear: pre-computer information design (signal flags, factory shop tickets, library catalogs) more than other web apps. **The best design identities come from references adjacent to but outside the medium.** Range Rover → operational software is exactly that move.
+
+Implementation: when calibrating a new component, the question is NOT "how does Linear / Notion / Stripe handle this?" The question is "how does the reference family handle the *equivalent function* in physical objects?" A button is a control surface — what does a Land Rover gear selector look like? An empty state is a quiet moment — what does a workshop look like when no work is in progress? A loading indicator is a "machine is preparing" signal — what does a Leica's mirror flip-up sound like? The translations are not literal; the references force the optimization axis off the SaaS-convergence axis.
+
+### Detail concentration — the single principle most often missed
+
+Translation principle 4 deserves emphasis because it's the principle most often missed when implementing the rest correctly. A platform can have:
+- Honest materials (token system correct)
+- Correct proportions (spacing scale correct)
+- Restraint (chrome removed where unjustified)
+- Sensory quietness (animations purposeful)
+- Architectural register (vocabulary right)
+- Time-resistance (no trend conventions)
+- Commitment frame (substantial weight)
+- British register (not announcing itself)
+
+— and STILL feel generic, because **every element is calibrated to the same level of attention**. Restraint without detail concentration produces an aesthetic that's "minimalist," but flat. The Range Rover register is "minimalist with care": the body is calm, the door pulls are jewelry. Without the jewelry, restraint becomes austerity, and austerity becomes generic.
+
+**The rule:** Identify the points of human touch — the buttons that get clicked, the inputs that get focused, the controls that get operated, the icons that signal state — and concentrate detail there. The surrounding surface must be calm enough that the detail reads as concentrated. If detail is sprinkled everywhere, no element gets to be jewelry.
+
+**What gets the detail budget:**
+- Primary action buttons (brass, with calibrated hover + active states + focus ring)
+- Focused input rings (brass at `--focus-ring-alpha` with the precise glow specification)
+- Status indicators that carry decision weight (the icon-row hole-dug badge, the chat unread chip, the +N attached-ancillary badge)
+- The brass count chip on the AncillaryPoolPin header
+- Hover-revealed affordances (eye-icon peek triggers, the dismiss X on cards)
+- The few touchpoints in a complex surface where attention should land
+
+**What does NOT get the detail budget:**
+- Surface backgrounds (calm, material, not decorated)
+- Card chrome perimeters (no border — material via lift + shadow)
+- Lane / column / region containers (typography-led headers, no boxed-in chrome)
+- Icons in dense rows (uniform stroke weight, uniform color from text-content-muted, uniform size)
+- Most type (consistent scale, consistent weight, no decorative emphasis)
+- Most spacing (predictable scale, no signature-moment rhythms outside intentional places)
+
+The composition reads correctly when a user looking at a Bridgeable surface can name three or four things their eye lands on, and those three or four things are the ones the dispatcher needs to act on. If the eye lands on chrome, decoration, or surfaces that aren't actionable, detail concentration failed.
+
+### The British register
+
+Translation principle 9 also deserves emphasis. The *British luxury sensibility* is the cultural orientation that distinguishes Bridgeable from peer platforms aimed at the same operator audience. It's the register that says "not having to prove it."
+
+**The British register, contrasted:**
+
+|Tradition | What it signals | Sample products |
+|---|---|---|
+| American luxury | Scale, presence, "look at me" | Cadillac Escalade, Tesla Model X, Apple Watch Ultra |
+| German luxury | Engineering visibility, "look how this works" | Mercedes S-Class, BMW M5, Leica M11 |
+| Italian luxury | Emotional theater, "feel this" | Ferrari, Lamborghini, Alessi homewares |
+| Japanese restraint | Spiritual minimalism, "less is more, intentionally" | Muji, mid-period Apple, Sony WH-1000XM |
+| **British luxury** | **Not having to prove it. "It's good; you'll see; we're not going to point at it"** | **Range Rover, Bentley, Aston Martin, Linn turntables, Rolls-Royce, the Leica M-series (Solms-era German design but distinctly British in restraint)** |
+
+Bridgeable sits in the British register. **Not announcing its quality is itself a quality marker.** A platform that needs to put "Premium" badges, "designed by" signatures, "powered by AI" disclaimers, or "celebrating excellence" empty states in front of users to communicate seriousness has already failed — those announcements are the tell that the underlying quality wasn't strong enough to communicate itself.
+
+**Implementation rules from the British register:**
+- No version-number marketing (the platform doesn't say "v3.0 — now with...!")
+- No theatrical onboarding sequences (a single Pulse + a working demo is the orientation; no four-step intro tour)
+- No success theater (no confetti, no "amazing!" messages, no "you're crushing it" celebrations)
+- No "AI" badges or sparkle icons announcing intelligence (intelligence shows up by being right, not by waving a flag)
+- No designer / engineer signatures in the UI (the platform speaks; the makers don't announce themselves)
+- No "premium" or "professional" feature gating styling (gating is functional, not theatrical — see Phase 8a Settings space treatment)
+
+The British register is what allows Bridgeable to be **substantial without being heavy**. American luxury would make the platform heavy by adding scale. German luxury would make it heavy by exposing engineering. Italian luxury would make it heavy by adding theater. The British register makes it substantial by *withholding announcement* — the weight is real, you just have to be in the platform for a few hours to feel it.
+
+### Why a reference outside software
+
+Translation principle 10 is the meta-rationale for everything else in Section 0. The choice of Range Rover (or any reference outside software) is not arbitrary. It's a deliberate move to escape SaaS convergence.
+
+Most software gets designed in dialogue with other software. Designers look at Notion, Linear, Figma, Stripe, Vercel, Apple's HIG, Google's Material. The result is convergence — software narrows toward a small range of patterns. SaaS platforms in 2024–2026 are remarkably indistinguishable from each other because they all reference each other. The optimization axis is "be a slightly better version of [reference platform]," and that axis collapses inward.
+
+**The Bridgeable move: take the reference point from outside software entirely.** Calibrate against vehicle design philosophy from a specific cultural tradition (British luxury, embodied by Land Rover). The optimization axis becomes "is this consistent with the design DNA of that reference?" — and that axis is *orthogonal* to the SaaS-convergence axis. The platform doesn't look like Notion, Linear, or Stripe — not because differentiation was the goal, but because the optimization axis is somewhere else entirely.
+
+**Historical precedent for this move:**
+
+- **Apple under Jonathan Ive.** Reference: Braun and Dieter Rams, not other computer companies. Result: Apple products that didn't look like PCs. The iMac G3 (1998), iPod (2001), iPhone (2007) all referenced industrial design from outside the computer industry. Apple was distinctive because the optimization axis was "this is good industrial design," not "this is a better PC."
+- **Teenage Engineering.** Reference: analog synthesizers from the 1960s + Soviet industrial design + airline cabin aesthetics, not other consumer electronics. Result: products that don't look like other gadgets. The OP-1 (2011), TX-6 (2022), EP-133 (2023) all carry references that other consumer-electronics designers don't reach for.
+- **Linear.** Reference: pre-computer information design — factory shop tickets, library catalogs, signal flags — more than other project-management software. Result: Linear feels different from Asana / Jira / Trello in a way that's hard to articulate but immediately legible.
+- **Bridgeable.** Reference: Range Rover design philosophy + British luxury sensibility + workshop-with-tools-in-place + Leica/Teenage-Engineering-as-tools. Result: operational software for the physical economy that doesn't feel like other SaaS platforms.
+
+**The implementation discipline this rationale demands:**
+
+When calibrating a new component, the wrong question is "how does Linear handle this?" or "what would the Notion equivalent look like?" The right question is one of:
+1. **How does the reference family handle the equivalent function in physical objects?** A button is a control surface — what does a Land Rover gear selector look like? An empty state is a quiet moment — what does a workshop look like when no work is in progress?
+2. **What design instinct from the reference family applies here?** Restraint? Material honesty? Detail concentration? Quietness? Architectural proportion?
+3. **If the question must reach for software references, reach for software *outside* the SaaS convergence:** Bloomberg Terminal density, Linear restraint, Apple HIG-tier polish — but check that the reference doesn't itself collapse into SaaS-warm convergence (modern Notion does; mid-period Linear doesn't).
+
+This discipline keeps the optimization axis off the convergence axis. It's why Bridgeable cards don't look like Stripe cards. It's why Bridgeable buttons don't look like shadcn buttons. It's why the brass token sits where it sits.
+
 ### The relationship between Section 0 and Section 1
 
 Section 0 defines the **object** — what kind of tool Bridgeable is. Section 1 defines the **settings** — what light it's observed under. Both must hold simultaneously.
@@ -96,12 +249,12 @@ A surface that reads as Mediterranean morning (Section 1, light) but as a generi
 
 Codified as the platform's single-rule QA heuristic. Every visual element on Bridgeable must pass this test before shipping.
 
-**Rule:** Before shipping any visual element, ask: *does this evoke the emotional register articulated in Section 0 — warm restraint, considered materiality, architectural confidence, calm expensiveness, time-resistance, quietness, workshop-tool seriousness, heirloom commitment?*
+**Rule:** Before shipping any visual element, ask: *would this look like it was made by the same team that designed the rest of Bridgeable, applied with the design DNA articulated above? Does it share the qualities — restrained, materially honest, architecturally proportioned, quietly confident, time-resistant?*
 
 - If **yes** → ship.
-- If it drifts toward any of: **generic SaaS warmth** (warmth as decoration rather than material), **consumer-app playfulness** (rounded-everything maximalism, gamification, celebration animations), **laboratory cold** (clinical, neutral, sterile), **decorative flourish** (ornament without function), **trend-of-the-year** (gradient meshes, glassmorphism, neumorphism, AI-aesthetic) — refine before shipping.
+- If it drifts toward **generic SaaS warmth** (warmth as decoration rather than material), **consumer-app playfulness** (rounded-everything maximalism, gamification, celebration animations), **laboratory cold** (clinical, neutral, sterile), **current-decade trend-chasing** (gradient meshes, glassmorphism, neumorphism, AI-aesthetic), or **decorative flourish** (ornament without function) — refine before shipping.
 
-The test is **emotional register**, not literal vehicle aesthetics. The Range Rover frame is the imaginative bridge that articulates the register; the test is whether the register is achieved, not whether the surface looks like a vehicle.
+**The test is design DNA coherence, not vehicle styling.** Not "would this look like a HUD?" Not "would this fit in a vehicle?" Those framings risk over-literal interpretation. The Range Rover reference is the *DNA*: restrained, materially honest, architecturally proportioned, quietly confident, made to last. The test is whether a new surface carries that DNA — not whether it looks like an automotive artifact. A correctly-built Bridgeable surface should look like *Bridgeable*, not like a Range Rover, while sharing the underlying design discipline.
 
 **Sub-tests when the primary test is ambiguous:**
 
