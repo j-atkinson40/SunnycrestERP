@@ -879,7 +879,19 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       data-slot="scheduling-focus-core"
       data-target-date={targetDate}
       data-schedule-state={schedule?.state ?? "loading"}
-      className="flex h-full flex-col gap-3"
+      // Aesthetic Arc Session 1.6 Commit C — kanban compactness.
+      // PLATFORM_PRODUCT_PRINCIPLES "Widget Compactness" applies to
+      // non-widget surfaces too: the kanban core is content-width
+      // and centered within the focus-core inner area, NOT
+      // stretched to fill it. `w-fit max-w-full mx-auto` makes the
+      // div natural-size to its widest inflow child (kanban with
+      // N×220px lanes + gaps), capped at parent width with overflow,
+      // and centered horizontally. The header sits within that same
+      // content width — header `justify-between` pushes Finalize to
+      // the right edge of THIS container, which equals the right
+      // edge of the rightmost kanban lane. Chrome contained within
+      // the work surface, not floating in empty space past it.
+      className="flex h-full flex-col gap-3 w-fit max-w-full mx-auto"
     >
       {/* Header — Aesthetic Arc Session 1 (Phase 4.4.4-pre):
           [today_box] [eyebrow + H2 (clickable) + finalize-status] [day_after_box]   [Finalize]
@@ -988,12 +1000,23 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
               className={cn(
                 "inline-flex items-center gap-1",
                 "px-1.5 py-1 -my-1 rounded-sm",
+                // Aesthetic Arc Session 1.6 — typography bumped from
+                // text-[0.75rem] font-medium → text-[0.875rem]
+                // font-semibold for more distinctness per user spec
+                // ("font needs to be more distinct and it needs to be
+                // slightly bigger"). 14px semibold is heavier than
+                // the eyebrow + date box content, but still
+                // subordinate to the H2 day label (16px medium). The
+                // brass color carries the jewelry signal; the
+                // semibold weight gives the link real-action presence
+                // without adding chrome.
+                //
                 // tailwind-merge collapses `text-caption text-brass`
                 // because both are text-* utilities; use the arbitrary
                 // pixel size so size + color survive merge separately
                 // (same workaround the platform uses elsewhere when
                 // semantic size + color tokens collide).
-                "text-[0.75rem] leading-tight font-medium",
+                "text-[0.875rem] leading-tight font-semibold",
                 "text-brass hover:text-brass-hover",
                 "hover:bg-brass-subtle/30",
                 "transition-colors duration-quick ease-settle",
