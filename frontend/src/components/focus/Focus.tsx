@@ -114,7 +114,33 @@ export function Focus() {
           data-slot="focus-backdrop"
           className={cn(
             "fixed inset-0 isolate",
-            "bg-black/40 supports-backdrop-filter:backdrop-blur-md",
+            // Phase 4.4.2 — differential dim based on backdrop-
+            // filter support. Live verification surfaced that the
+            // dim alone (without blur) doesn't sufficiently obscure
+            // page content; the blur is what scatters page detail
+            // into an unreadable smear. Browsers without
+            // backdrop-filter support (Safari iOS without specific
+            // flags, older WebKit) need a stronger base dim to
+            // achieve equivalent modal-mode signal.
+            //
+            //   Default (no backdrop-filter support):
+            //     bg-black/70 alone — strong dim, modal signal
+            //     comes from opacity rather than blur
+            //
+            //   With backdrop-filter support (Chromium, Firefox,
+            //   modern Safari with flag):
+            //     bg-black/55 + blur-md — subtler dim because the
+            //     blur does the heavy lifting of obscuring page
+            //     detail; combined effect matches the "Focus
+            //     pushes the page back" feel the user spec'd.
+            //
+            // Cards + pin (bg-surface-elevated + shadow-level-1)
+            // read crisply against either backdrop variant —
+            // their own elevation tokens carry independently of
+            // the dim level.
+            "bg-black/70",
+            "supports-[backdrop-filter]:bg-black/55",
+            "supports-backdrop-filter:backdrop-blur-md",
             // Enter animation — matches overlay-family Dialog.tsx
             "transition-opacity duration-arrive ease-settle",
             "data-open:animate-in data-open:fade-in-0",
@@ -181,8 +207,25 @@ export function Focus() {
               // placement via transform; Popup just claims the
               // interior.
               "absolute inset-0",
-              // Chrome — anchored core above backdrop
-              "bg-surface-raised rounded-lg shadow-level-3",
+              // Phase B Session 4.4.2 — container chrome removed.
+              // Pre-4.4.2 the Popup was a "white card" with
+              // `bg-surface-raised rounded-lg shadow-level-3`. Per
+              // user spec ("Focus is a mode, not a modal — content
+              // floats directly on blurred background"), the Popup
+              // is now visually transparent. Modal signal comes from
+              // Dialog.Backdrop's `bg-black/40 backdrop-blur-md`
+              // alone. Each child element (header, lanes, cards,
+              // pin) provides its own visual weight via
+              // DESIGN_LANGUAGE elevation tokens — DeliveryCard's
+              // bg-surface-elevated + shadow-level-1 is the
+              // canonical "content as material object" treatment.
+              //
+              // Structurally critical bits preserved: `aria-modal`
+              // (focus trap + ESC + role=dialog inherited from
+              // base-ui Dialog.Popup), `absolute inset-0` (fills
+              // positioner), animations, `transition-none` (Session
+              // 3.8.2 viewport-sync), `p-6` (content padding from
+              // viewport edges).
               // Content — inner padding generous per DESIGN_LANGUAGE §5
               "p-6 overflow-auto",
               // Typography + focus reset
