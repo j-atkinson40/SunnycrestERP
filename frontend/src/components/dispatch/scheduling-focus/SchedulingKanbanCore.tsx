@@ -962,10 +962,40 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         <div className="flex flex-none items-center gap-2">
           {!isFinalized && (
             <Button
+              variant="outline"
               size="sm"
               onClick={handleFinalize}
               disabled={finalizing || loading || deliveries.length === 0}
               data-slot="scheduling-focus-finalize"
+              className={cn(
+                // Aesthetic Arc Session 1 Commit B — Finalize
+                // subordinated. Pre-Session-1 was solid brass at full
+                // primary-button weight; that gave it the same visual
+                // dominance as a hub-page CTA, which doesn't fit
+                // Section 0 Detail Concentration Translation
+                // Principle 4. Brass is jewelry at touchpoints; the
+                // primary work surface is the kanban below.
+                //
+                // Treatment: outline variant (transparent fill +
+                // restraint border), border switches to brass +
+                // brass-text + brass-subtle hover wash to retain the
+                // jewelry register without dominating the surface.
+                // Same composition the AncillaryPoolPin uses for its
+                // active drop-target chrome (cross-surface
+                // vocabulary consistency) and the DateBox uses on
+                // active state. Three surfaces, one brass-bordered
+                // jewelry pattern.
+                "border-brass text-brass",
+                "hover:bg-brass-subtle/40 hover:text-brass",
+                "hover:border-brass-hover",
+                // Disabled-state restraint — when no deliveries to
+                // finalize, the button reads as "not yet" not as
+                // "broken." Outline variant's disabled appearance is
+                // already restrained; explicit handling here keeps
+                // the brass tokens consistent with the active state.
+                "disabled:border-border-base disabled:text-content-muted",
+                "disabled:hover:bg-transparent disabled:hover:border-border-base",
+              )}
             >
               {finalizing ? "Finalizing…" : `Finalize ${dayLabel.split(",")[0]}`}
             </Button>
