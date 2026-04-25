@@ -12,13 +12,19 @@ decisions.
 
 **Relationship to siblings:**
 
-- `PLATFORM_ARCHITECTURE.md` answers: *how is Bridgeable built?*
+- `PLATFORM_DESIGN_THESIS.md` answers: ***what is Bridgeable, at the
+  level of design identity?*** The three-layer synthesis (Range
+  Rover / Tony Stark / Apple Pro). Top-level design canon.
+- `DESIGN_LANGUAGE.md` §0 answers: *what does it look like?* (Layer 1)
+- `PLATFORM_INTERACTION_MODEL.md` answers: *how does it behave?*
+  (Layer 2)
 - `PLATFORM_QUALITY_BAR.md` answers: *how good does it have to feel?*
-- `DESIGN_LANGUAGE.md` answers: *what does it look like?*
+  (Layer 3)
+- `PLATFORM_ARCHITECTURE.md` answers: *how is Bridgeable built?*
 - `PLATFORM_PRODUCT_PRINCIPLES.md` answers: ***why was it designed
   this way? what principles resolve disagreements at the fork?***
 
-When a product decision is contested and the three other docs don't
+When a product decision is contested and the others don't
 settle it, read here.
 
 **Version history:**
@@ -29,6 +35,7 @@ settle it, read here.
 | 2026-04-23 | Added "The Platform Is Honest" section.                            |
 | 2026-04-23 | Restructured per expanded user spec — added "Software as New-Employee Coaching", renamed scheduling section to "Domain-Specific Operational Semantics", resequenced. |
 | 2026-04-24 | Added three sections: "Dashboards as Universal Primitive," "Everything Composable is a Widget," "Surface At Rest vs On Interaction." Captures the primitive-layer unification (Pulse + custom Spaces are both dashboards; saved views + system widgets + smart widgets are all widgets) and canonicalizes the drag-reveal behavioral pattern from Funeral Schedule 3.3.1. |
+| 2026-04-25 | Added cross-references to the three-layer design thesis canon: `PLATFORM_DESIGN_THESIS.md` (synthesis), `DESIGN_LANGUAGE.md` §0 (Layer 1 — Range Rover visual values), `PLATFORM_INTERACTION_MODEL.md` (Layer 2 — Tony Stark / Jarvis behavior), `PLATFORM_QUALITY_BAR.md` (Layer 3 — Apple Pro era execution). Articulations of interaction model already in this doc (whole-element drag, Cmd+K-outside-Focus, Surface-At-Rest-vs-On-Interaction, The-Platform-Is-Honest) cross-link into the new Interaction Model doc which articulates the broader Layer 2 model they instantiate. |
 
 ---
 
@@ -636,7 +643,17 @@ New principles added post-April-2026 go at the end of the section
 they logically belong in, with a date stamp. New top-level sections
 get a version-history note in the header table.
 
-When in doubt: **read here first. Reference `PLATFORM_ARCHITECTURE
-.md` for how; reference `PLATFORM_QUALITY_BAR.md` for how-good;
-reference `DESIGN_LANGUAGE.md` for what-looks-like; reference this
-for why.**
+When in doubt: **read here first.** Reference the three-layer design
+thesis canon for design identity:
+
+- `PLATFORM_DESIGN_THESIS.md` — the synthesis (top-level design
+  identity). When a question crosses Layer 1/2/3, this resolves it.
+- `DESIGN_LANGUAGE.md` §0 — Layer 1 (visual values).
+  *What does it look like?*
+- `PLATFORM_INTERACTION_MODEL.md` — Layer 2 (interaction behavior).
+  *How does it behave?*
+- `PLATFORM_QUALITY_BAR.md` — Layer 3 (execution standard).
+  *How good does it have to feel?*
+
+Reference `PLATFORM_ARCHITECTURE.md` for *how is it built*; reference
+this doc for *why was it designed this way*.

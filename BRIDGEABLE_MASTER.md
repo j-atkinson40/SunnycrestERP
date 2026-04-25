@@ -2266,6 +2266,15 @@ Bridgeable offer: $2,500-3,500/month all-in
 
 Three foundational principles established April 2026 that govern all platform design decisions going forward.
 
+> **Design canon expanded April 25, 2026.** The three principles below remain canonical for their scope (input-modality / UX-quality-bar / configuration-as-primitive). The platform's *design identity* — the shape of the synthesis these principles serve — is canonicalized in three additional docs:
+>
+> - [`PLATFORM_DESIGN_THESIS.md`](PLATFORM_DESIGN_THESIS.md) — top-level synthesis: *Bridgeable looks like a Range Rover, behaves like Tony Stark's workshop, and is built like an Apple Pro app*. Three layers (visual / behavior / craft), three references, three jobs, all sourced outside software.
+> - [`PLATFORM_INTERACTION_MODEL.md`](PLATFORM_INTERACTION_MODEL.md) — Layer 2 (interaction). Tony Stark / Jarvis interaction philosophy: summon, arrange, park, dismiss. Floating tablets as materialization unit. Voice/text invocation as primary verb.
+> - [`DESIGN_LANGUAGE.md` §0](DESIGN_LANGUAGE.md) — Layer 1 (visual values). Range Rover register: restraint, materiality, architectural proportion, time-resistance, British understatement.
+> - [`PLATFORM_QUALITY_BAR.md`](PLATFORM_QUALITY_BAR.md) — Layer 3 (execution standard). Apple Pro era at peak Jony Ive form. Final Cut Pro / Logic Pro / Aperture / original iPhone discipline. Explicitly rejects current-decade Apple drift (Liquid Glass, soft-everything, gradient-heavy).
+>
+> Read the thesis doc first when designing a new surface. The three sub-docs each own a layer; the thesis doc resolves cross-layer conflicts.
+
 ### Principle 1: Input Modality as Platform Layer
 
 **Every input modality — text, voice, camera, call audio, ambient audio, sensor data — is a capture layer into a unified platform pipeline. Features are output mappings, not input silos.**

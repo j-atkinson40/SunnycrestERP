@@ -1,32 +1,85 @@
 # PLATFORM_QUALITY_BAR.md
 
-**The quality standard for Bridgeable: Apple-grade across the entire platform, not just specific surfaces.**
+**The quality standard for Bridgeable: Apple Pro era across the entire platform, not just specific surfaces.**
 
-Escalated from a canvas-specific standard to platform-wide per the April 22, 2026 decision. Reasoning: if the long-term vision is to be foundational software for the physical economy, Apple-grade quality has to be the bar from day one — every interaction shapes the user's relationship with the product, and cumulative quality compounds. Every shortcut compounds in the opposite direction.
+This is **Layer 3 of the three-layer design thesis** ([`PLATFORM_DESIGN_THESIS.md`](PLATFORM_DESIGN_THESIS.md)). Layer 1 (visual values) lives in [`DESIGN_LANGUAGE.md` §0](DESIGN_LANGUAGE.md). Layer 2 (interaction model) lives in [`PLATFORM_INTERACTION_MODEL.md`](PLATFORM_INTERACTION_MODEL.md). This doc is the execution standard — *how well-made is Bridgeable, at a craft level?*
+
+Escalated from a canvas-specific standard to platform-wide per the April 22, 2026 decision. Apple Pro era as the explicit reference articulated April 25, 2026 (Phase 4.4.3a-bis). Reasoning: if the long-term vision is to be foundational software for the physical economy, peak-Apple-craft quality has to be the bar from day one — every interaction shapes the user's relationship with the product, and cumulative quality compounds. Every shortcut compounds in the opposite direction.
 
 Canonical in repo. Referenced from [CLAUDE.md §1c Canonical Platform Specs](CLAUDE.md). Every user-facing commit is evaluated against this document.
 
 ---
 
+## The reference frame — Apple Pro era
+
+**The "Apple Pro" reference means Apple at peak considered restraint.** Not current-decade Apple. Specifically:
+
+- **Jony Ive era hardware** (2007–2017). Original iPhone, unibody MacBook, iPod nano (4th–6th gen), iPad mini (2012), Apple Watch (2014), AirPods Pro (2019). Products that say almost nothing on their surface — single button, clean type, no decoration. The product is the statement.
+- **Pro app discipline at peak.** Final Cut Pro at its peak. Logic Pro at its peak. Aperture in its maturity. Apps that respect the user's attention, deliver serious craft, and don't perform. Pro app interfaces from the Cocoa-mature era (2012–2018).
+- **Original iPod and iPhone clarity.** Single-purpose hardware whose interaction model is so clean that the platform vanishes and only the work remains.
+
+This reference contributes the **execution standard**: how well-made every detail is. Type meticulously chosen. Animations precisely timed. Edges crisply rendered. Materials honestly represented. Performance buttery. Every interaction considered.
+
+### What this reference does NOT mean — current-decade Apple drift
+
+Apple's design language has shifted in recent years toward softer, more decorative direction. The "Apple Pro" reference explicitly **rejects current-decade Apple drift**:
+
+| Current Apple drift | What we reject |
+|---|---|
+| **Liquid Glass aesthetics** | Translucent layered surfaces, parallax depth, skeuomorphic glass |
+| **Soft luminance everywhere** | Overly-rounded corners, soft shadows, gradient-heavy interfaces |
+| **Decorative animations** | Bounce on every tap, spring physics on hovers, animated icons |
+| **Skeleton loaders that linger** | Cinematographic content reveals instead of just appearing |
+| **Optimistic UI that pretends** | Showing fake progress on operations that haven't happened |
+| **iOS 17+ ornamental flourishes** | Wobble effects, parallax tilt, decorative motion |
+
+**Take the quality bar from peak Apple. Take the discipline. Don't take the current style.**
+
+The reference is *Apple at peak*, not *Apple now*. When in doubt, ask: "Would this ship in Final Cut Pro at peak Apple form?" — not "Would this ship in iOS 17?"
+
+---
+
 ## Comparison Standards
 
-### Primary North Star
+### Primary reference — Apple Pro era
 
-Apple's **Freeform, Notes, Reminders, Calendar** — direct manipulation, smooth physics, visual restraint, consistent interaction language.
+The execution standard is calibrated against Apple's Pro app discipline at its peak (Cocoa-mature era, 2012–2018):
 
-### Adjacent references
+- **Final Cut Pro X** (2011–2017 mature releases) — pro video editor, restrained chrome, professional-grade information density, every interaction considered for editor workflow
+- **Logic Pro** (2013+ Logic Pro X mature releases) — pro audio production environment, density-without-clutter, deep keyboard support, instrument-grade precision
+- **Aperture** (RIP 2014, but reference example for what photo-pro UX should be) — calm, considered, no decoration
+- **Original iPhone hardware era** (2007–2010) — clarity through restraint, single-button discipline
+- **unibody MacBook** (2008–2012) — material honesty in hardware translated to software (no decoration, materials at their full strength)
 
-| App | What we borrow |
-|---|---|
-| **Figma** | Canvas interactions, performance with many objects, smart alignment guides |
-| **Notion** | Block manipulation, slash-command UX, inline editing, drag-to-reorder |
-| **Linear** | Keyboard-first for power users, instant interactions, restrained UI |
-| **Arc browser** | Sidebar interactions, command palette, smooth transitions |
-| **Claude.ai** | Chat UX, contextual surfaces, long-form reading |
+### Surface-specific references
+
+For specific surfaces, additional references apply (these are subordinate to Apple Pro era):
+
+| Surface | Compare to | Notes |
+|---|---|---|
+| Canvas / Focus interactions | Apple Freeform | Direct manipulation, smooth physics |
+| Lists / tables | Notion databases, Apple Notes lists | Density, inline editing |
+| Forms | Apple System Settings, Apple Pages | Restrained, considered |
+| Command bar | Spotlight, Apple Notes search | Speed, forgiveness, intent-resolution |
+| Navigation | Apple Music sidebar, Arc browser sidebar | Hierarchy without clutter |
+| Animations | Apple Music transitions (peak era), Notion block animations | Functional, not decorative |
+| Performance | Native iPad apps, Linear web app | 60fps, sub-100ms input-to-response |
+| Text input | Apple Mail compose, Notion inline editor | Crisp, immediate, forgiving |
+| Pro tool density | Final Cut Pro, Logic Pro | Density at scale, expert-targeted |
+
+### Why these and not others
+
+- **Linear** — keyboard-first for power users, instant interactions, restrained UI. Aligns with Layer 2 interaction model + Layer 3 craft. **Ship-quality reference for B2B web app craft at our scale.**
+- **Figma** — canvas interactions with many objects, smart alignment, performance at scale. Reference for Focus canvas surfaces specifically.
+- **Notion** — block manipulation, slash-command UX, inline editing, drag-to-reorder. Reference for editing surfaces; lighter on the Apple Pro craft bar than Linear or Figma.
+- **Arc browser** — sidebar interactions, command palette, smooth transitions. Reference for sidebar / nav patterns specifically.
+- **Claude.ai** — chat UX, contextual surfaces, long-form reading. Reference for Q&A and conversational surfaces.
 
 ### NOT the bar
 
-Salesforce, NetSuite, traditional B2B SaaS — page reloads, modal stacks, form-heavy. Even modern SaaS competitors like Monday and Asana — better than enterprise but not Apple-grade.
+Salesforce, NetSuite, traditional B2B SaaS — page reloads, modal stacks, form-heavy. Even modern SaaS competitors like Monday and Asana — better than enterprise but not Apple-Pro-grade.
+
+**Also not the bar: current-decade Apple consumer surfaces.** iOS 17+, recent macOS, the Liquid Glass / Vision Pro aesthetic. These are explicit drift references — what we *don't* want to ship. See "What this reference does NOT mean" above.
 
 ---
 
@@ -106,20 +159,33 @@ Salesforce, NetSuite, traditional B2B SaaS — page reloads, modal stacks, form-
 
 ## Test Method
 
-For every commit, ask: **"would this feel as good as the Apple equivalent?"** If no, push for better before shipping.
+For every commit, ask: **"Would this ship in an Apple Pro app at peak Apple form?"** If no, push for better before shipping.
 
-Specific comparisons:
+This is the canonical Test 3 from [`PLATFORM_DESIGN_THESIS.md`](PLATFORM_DESIGN_THESIS.md). Specific sub-questions:
 
-| Surface | Compare to |
+- Would Final Cut Pro X ship this animation timing?
+- Would Logic Pro ship this type rendering?
+- Would the original iPhone team ship this latency?
+- Would the unibody MacBook designers approve this edge weight?
+- Would Aperture ship this color calibration?
+
+If the answer to any of these is "no — they'd raise the bar," the surface needs work before shipping.
+
+### Surface-specific reference comparisons
+
+The Apple Pro era reference applies platform-wide. For specific surfaces, additional references inform what "great" looks like:
+
+| Surface | Compare against |
 |---|---|
-| Canvas / Focus interactions | Apple Freeform |
-| Lists / tables | Notion databases, Apple Notes lists |
-| Forms | Apple System Settings, Apple Pages |
-| Command bar | Spotlight, Apple Notes search |
-| Navigation | Apple Music sidebar, Arc browser sidebar |
-| Animations | Apple Music transitions, Notion block animations |
-| Performance | Native iPad apps, Linear web app |
+| Canvas / Focus interactions | Apple Freeform (peak era) |
+| Lists / tables | Notion databases, Apple Notes lists, Linear list views |
+| Forms | Apple System Settings (peak era), Apple Pages |
+| Command bar | Spotlight, Linear command palette, Apple Notes search |
+| Navigation | Apple Music sidebar (peak era), Arc browser sidebar |
+| Animations | Apple Music transitions (peak era), Linear's instant feel |
+| Performance | Native iPad apps, Linear web app, Figma canvas |
 | Text input | Apple Mail compose, Notion inline editor |
+| Pro tool density | Final Cut Pro, Logic Pro, Bloomberg Terminal (with Bloomberg's typography discipline) |
 
 ---
 
@@ -173,11 +239,59 @@ Specific comparisons:
 
 ---
 
+## Calibration Against Existing Surfaces (April 2026)
+
+These surfaces are at the Apple Pro bar today (or close enough that they serve as in-house calibration points). New surfaces compared against these should feel like they belong; surfaces that feel different need refinement.
+
+**At-bar surfaces:**
+
+- **Funeral Schedule kanban DeliveryCard** ([`frontend/src/components/dispatch/DeliveryCard.tsx`](frontend/src/components/dispatch/DeliveryCard.tsx)) — Phase 3.1 + 3.2 + 4.2.4 work. Whole-card drag, restrained typography hierarchy, brass for status emphasis only, no perimeter border. Cards float on the lane background as material objects. **Canonical card surface for the platform.**
+- **Scheduling Focus core after Phase 4.4.2 container removal** ([`frontend/src/components/focus/Focus.tsx`](frontend/src/components/focus/Focus.tsx)) — content floats directly on dimmed-blurred backdrop. No container chrome. Each child element provides its own visual weight. "Focus is a mode, not a modal."
+- **AncillaryPoolPin** ([`frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx`](frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx)) — workshop-tool register at small scale. Whole-row drag, no handle, brass count chip. Compact rows, no decorative chrome.
+- **DateBox flanking affordance (Phase 4.4.3)** ([`frontend/src/components/dispatch/scheduling-focus/DateBox.tsx`](frontend/src/components/dispatch/scheduling-focus/DateBox.tsx)) — first surface built against locked DESIGN_LANGUAGE Section 0. Square-shouldered, brass-on-active jewelry signal, restrained at rest. Calibration surface for all three layers passing simultaneously.
+- **QuickEditDialog** — section-grouped form with eyebrows, canonical input shells, no celebration on save, no decorative chrome. Restrained, considered, operator-grade.
+- **Brass primary buttons platform-wide** — single-color functional emphasis. Same button reads native to both light and dark mode. Material continuity across modes.
+- **Phase A Session 3.5 zone-relative canvas positioning** — 8-zone resize with cursor-only affordance. Drag-from-anywhere matches native canvas app expectations (Freeform-grade interaction feel).
+- **Phase 4.2.4 whole-card drag with PointerSensor activation distance: 8** — clean separation of click vs drag through gesture distinguishing, not through dedicated handles. Apple Pro pattern: the affordance IS the cursor change, not a visible icon.
+
+**Drift surfaces (flagged for refactor when next touched):**
+
+- **WidgetChrome decorative grip icon** — retained from Phase A Session 3.5 as `pointer-events: none` decoration. Per the post-4.3b.3.2 platform principle ("drag handles are an anti-pattern"), this icon now violates Layer 1 Considered Materiality + Layer 2 whole-element drag rule. Tracked in [`PLATFORM_PRODUCT_PRINCIPLES.md` "Drag interactions"](PLATFORM_PRODUCT_PRINCIPLES.md) as tech debt.
+- **BlockLibrary grip icon** — same pattern, same rationale to retire.
+- **Legacy pages still on shadcn defaults** (~213 pages per Aesthetic Arc Phase II audit, pre-batch-1) — most render coherently because their primitives have been refreshed (Sessions 2–3), but page-level chrome still uses generic shadcn classes. Long-tail natural-touch refactor.
+- **Status-pill ad-hoc rendering sites** (~1305 ad-hoc Tailwind status-color usages noted in Aesthetic Arc Phase II audit) — should migrate to `<StatusPill>` or `<Badge variant="info|warning|success|error">`. Long-tail.
+
+These calibration points are not aspirational — they exist in the codebase today. New surfaces should compare against them; refactor passes should pull drift surfaces toward the in-register surfaces.
+
+---
+
+## Relationship to the Three-Layer Design Thesis
+
+This doc is **Layer 3** of the synthesis articulated in [`PLATFORM_DESIGN_THESIS.md`](PLATFORM_DESIGN_THESIS.md):
+
+> *Bridgeable looks like a Range Rover, behaves like Tony Stark's workshop, and is built like an Apple Pro app.*
+
+| Layer | Doc | Question it answers |
+|---|---|---|
+| 1 — Range Rover | [`DESIGN_LANGUAGE.md` §0](DESIGN_LANGUAGE.md) | What does it look like? |
+| 2 — Tony Stark / Jarvis | [`PLATFORM_INTERACTION_MODEL.md`](PLATFORM_INTERACTION_MODEL.md) | How does it behave? |
+| 3 — Apple Pro | This doc | How well-made is it? |
+
+All three tests must pass before ship. This doc owns Test 3:
+
+> *Would this ship in an Apple Pro app at peak Apple form?*
+
+When this doc and another canonical doc appear to disagree, [`PLATFORM_DESIGN_THESIS.md`](PLATFORM_DESIGN_THESIS.md) "Where the layers would conflict, and how to resolve" articulates the resolution. Most apparent conflicts dissolve when the question of "which layer is being asked?" is clarified.
+
+---
+
 ## Long-term Vision Alignment
 
-Per [BRIDGEABLE_MASTER.md](BRIDGEABLE_MASTER.md), the platform aims to be foundational software for the physical economy. That scale requires Apple-grade quality from day one — every interaction every user has shapes their relationship with the product.
+Per [BRIDGEABLE_MASTER.md](BRIDGEABLE_MASTER.md), the platform aims to be foundational software for the physical economy. That scale requires peak-Apple-Pro-grade quality from day one — every interaction every user has shapes their relationship with the product.
 
 The September 2026 Wilbert demo is the first public test. Subsequent vertical rollouts (precast, wastewater, Redi-Rock, cemetery, crematory, funeral home, and beyond) build on the same foundation. **Every primitive shipped to spec compounds; every shortcut compounds in the opposite direction.**
+
+The strategic positioning: the design moat is the **three-layer coherence**. Competitors can copy individual features. They cannot easily copy a coherent three-layer design identity rooted in references they don't share, applied with discipline they don't have. Hold the bar.
 
 ---
 

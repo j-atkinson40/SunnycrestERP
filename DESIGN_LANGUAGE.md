@@ -17,9 +17,11 @@
 
 ## Section 0 — The Object's Character
 
+> **This section is Layer 1 of the three-layer design thesis.** Layer 2 (interaction model) lives in [`PLATFORM_INTERACTION_MODEL.md`](PLATFORM_INTERACTION_MODEL.md). Layer 3 (execution standard) lives in [`PLATFORM_QUALITY_BAR.md`](PLATFORM_QUALITY_BAR.md). The synthesis is in [`PLATFORM_DESIGN_THESIS.md`](PLATFORM_DESIGN_THESIS.md): *Bridgeable looks like a Range Rover, behaves like Tony Stark's workshop, and is built like an Apple Pro app.* Read the thesis doc first if this is your first encounter with the platform's design canon.
+
 > **Bridgeable's design philosophy mirrors Land Rover's: restrained, materially honest, architecturally proportioned, quietly confident, made to last. Applied natively to digital surfaces, not borrowed from automotive vocabulary.**
 
-That thesis is the platform's North Star. It governs every visual decision — color, type, surface, motion, spacing, iconography, density, all of it. When Sections 1–10 specify values and Sections 2–9 lock the tokens, this thesis is what they're all working toward.
+That thesis is the platform's North Star *for visual values* (Layer 1). It governs every visual decision — color, type, surface, motion, spacing, iconography, density, all of it. When Sections 1–10 specify values and Sections 2–9 lock the tokens, this thesis is what they're all working toward.
 
 Bridgeable is an instrument. Sections 1 and onward define the moods (light = Mediterranean garden morning; dark = cocktail lounge evening) — the atmospheres the tool is observed within. This section defines what the tool itself **is**, independent of where it's seen. The same Leica camera body is the same instrument under garden sun or lamplight; the light on it changes, the object does not. Section 0 articulates that object.
 
