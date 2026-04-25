@@ -74,6 +74,7 @@ import { useSearchParams } from "react-router-dom"
 import { AncillaryCard } from "@/components/dispatch/AncillaryCard"
 import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
 import { ANCILLARY_POOL_DROPPABLE_ID } from "@/components/dispatch/scheduling-focus/AncillaryPoolPin"
+import { DateBox } from "@/components/dispatch/scheduling-focus/DateBox"
 import {
   QuickEditDialog,
   type QuickEditSavePayload,
@@ -212,6 +213,16 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
   const [refreshTick, setRefreshTick] = useState(0)
   const [finalizing, setFinalizing] = useState(false)
   const [daySelectorOpen, setDaySelectorOpen] = useState(false)
+
+  // Phase B Session 4.4.3 — adjacent-day peek/slide state. Each date
+  // box (today / day-after) toggles its own boolean. Phase 4.4.3 is
+  // state-tracking only; visual feedback is the brass-on-active
+  // affordance on the box. Phase 4.4.4 wires these flags to the
+  // multi-day rendering + slide animation. Both can be active
+  // independently (allowing a future 3-day expanded view) — the
+  // exclusivity decision waits for Phase 4.4.4 layout design.
+  const [prevExpanded, setPrevExpanded] = useState(false)
+  const [nextExpanded, setNextExpanded] = useState(false)
 
   // Phase 4.3b.3 — pool ancillaries live in SchedulingFocusContext
   // (provider mounted at Focus.tsx level when active focus is
@@ -841,6 +852,11 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
   const handleSelectDay = useCallback((iso: string) => {
     setTargetDate(iso)
     setDaySelectorOpen(false)
+    // Phase 4.4.3 — date-box peek state is relative to the current
+    // center date. Any-day jump resets both flags so the new center
+    // date is unflanked by previously-engaged peeks.
+    setPrevExpanded(false)
+    setNextExpanded(false)
   }, [])
 
   // ── Render ────────────────────────────────────────────────────────
@@ -866,39 +882,71 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       data-schedule-state={schedule?.state ?? "loading"}
       className="flex h-full flex-col gap-4"
     >
-      {/* Header — day label + day selector + finalize action */}
+      {/* Header — Phase 4.4.3 layout:
+          [today_box] [eyebrow + H2 (clickable) + finalize-status] [day_after_box]   [Close] [Finalize]
+
+          Date boxes flank the H2 cluster as primary peek/slide
+          affordance (Phase 4.4.4 wires the slide animation). The H2
+          itself is the popover trigger for any-day jump, replacing
+          the prior separate "Change day" sub-button — Section 0
+          Restraint Translation Principle: removable element was
+          decorative; H2 carries both the date display AND the
+          interaction affordance.
+
+          Generous gap between date boxes and H2 cluster matches
+          Section 5 spacing scale (density permitted, but spaced).
+          The DaySelectorPopover wraps the H2 button, owning the
+          popover open state + click-outside dismissal. */}
       <header
         data-slot="scheduling-focus-header"
         className="flex items-start justify-between gap-4"
       >
-        <div className="min-w-0">
-          <p className="text-micro uppercase tracking-wider text-content-muted">
-            Scheduling
-          </p>
-          <div className="mt-0.5 flex items-center gap-2">
-            <h2
-              className={cn(
-                "text-h2 font-medium leading-none text-content-strong",
-                "font-plex-sans tracking-tight",
-              )}
-            >
-              {dayLabel}
-            </h2>
-            <DaySelectorButton
+        <div className="flex flex-1 items-start gap-5 min-w-0">
+          {/* Today date box — peek the day before centerDate. */}
+          <DateBox
+            date={addDays(targetDate, -1)}
+            active={prevExpanded}
+            onClick={() => setPrevExpanded((v) => !v)}
+            ariaLabel={`Peek ${formatDayLabel(
+              addDays(targetDate, -1),
+              tenantTime.local_date,
+            )}`}
+          />
+
+          {/* Center cluster — eyebrow + H2 (popover trigger) + finalize-
+              status alert. min-w-0 keeps the H2 truncation working
+              when the dayLabel is long (e.g. "Wednesday, December 31"). */}
+          <div className="min-w-0 flex-shrink">
+            <p className="text-micro uppercase tracking-wider text-content-muted">
+              Scheduling
+            </p>
+            <DaySelectorPopover
               targetDate={targetDate}
               todayIso={tenantTime.local_date}
               open={daySelectorOpen}
               onToggle={() => setDaySelectorOpen((v) => !v)}
               onSelect={handleSelectDay}
               onDismiss={() => setDaySelectorOpen(false)}
+              dayLabel={dayLabel}
             />
+            {isFinalized && schedule?.finalized_at && (
+              <p className="mt-1 flex items-center gap-1 text-caption text-status-success">
+                <CheckCircle2Icon className="h-3.5 w-3.5" aria-hidden />
+                Schedule finalized. Drag-rearrange will revert to draft.
+              </p>
+            )}
           </div>
-          {isFinalized && schedule?.finalized_at && (
-            <p className="mt-1 flex items-center gap-1 text-caption text-status-success">
-              <CheckCircle2Icon className="h-3.5 w-3.5" aria-hidden />
-              Schedule finalized. Drag-rearrange will revert to draft.
-            </p>
-          )}
+
+          {/* Day-after date box — peek the day after centerDate. */}
+          <DateBox
+            date={addDays(targetDate, 1)}
+            active={nextExpanded}
+            onClick={() => setNextExpanded((v) => !v)}
+            ariaLabel={`Peek ${formatDayLabel(
+              addDays(targetDate, 1),
+              tenantTime.local_date,
+            )}`}
+          />
         </div>
 
         <div className="flex flex-none items-center gap-2">
@@ -1368,30 +1416,46 @@ function SchedulingLane({
 }
 
 
-// ── Day selector (compact popover) ──────────────────────────────────
+// ── Day selector popover ────────────────────────────────────────────
+//
+// Phase B Session 4.4.3 — refactored from `DaySelectorButton` (a
+// separate "Change day" sub-button next to the H2) to
+// `DaySelectorPopover` (a wrapper that makes the H2 itself the
+// popover trigger). Per Section 0 Restraint Translation Principle:
+// the standalone trigger button was decorative — H2 carries both
+// the date display AND the interaction affordance, so the sub-
+// button can come out without losing function.
+//
+// The popover content + click-outside + listbox semantics are
+// preserved verbatim from the prior DaySelectorButton.
 
 
-interface DaySelectorButtonProps {
+interface DaySelectorPopoverProps {
   targetDate: string
   todayIso: string
   open: boolean
   onToggle: () => void
   onSelect: (iso: string) => void
   onDismiss: () => void
+  /** Pre-formatted full day label (e.g. "Wednesday, April 25") —
+   *  rendered as the H2 button content. The parent already computes
+   *  this for the finalize button copy ("Finalize Wednesday"); this
+   *  prop avoids a duplicate computation. */
+  dayLabel: string
 }
 
 
-function DaySelectorButton({
+function DaySelectorPopover({
   targetDate,
   todayIso,
   open,
   onToggle,
   onSelect,
   onDismiss,
-}: DaySelectorButtonProps) {
+  dayLabel,
+}: DaySelectorPopoverProps) {
   // Offer Today through +6 days — a dispatcher's typical planning
-  // horizon. Rendered as a simple menu; no external popover library
-  // dependency (keeps this core self-contained for 4.2).
+  // horizon. Same options list the prior DaySelectorButton offered.
   const options = useMemo(() => {
     const out: Array<{ iso: string; label: string }> = []
     for (let i = 0; i <= 6; i++) {
@@ -1404,10 +1468,7 @@ function DaySelectorButton({
     return out
   }, [todayIso])
 
-  // Click-outside to dismiss — same pattern as the legacy ad-hoc
-  // dropdowns in ancillary-panel. For 4.2 this is inline; if we grow
-  // more menu-like affordances in the Focus we'll refactor onto the
-  // Popover primitive.
+  // Click-outside to dismiss — preserved from DaySelectorButton.
   const containerRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!open) return
@@ -1421,7 +1482,17 @@ function DaySelectorButton({
   }, [open, onDismiss])
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative inline-block mt-0.5">
+      {/* H2 button — the trigger surface. Typography-first: looks
+          like a heading, behaves like a button. The chevron sits
+          inline at heading scale (h-5 w-5) to read as a visible-
+          but-quiet "this is interactive" affordance without
+          competing with the day label.
+
+          Section 0 BRITISH REGISTER: the chevron is small enough
+          that it reads as an indicator, not as a decoration; the
+          H2 itself is the headline, the chevron whispers "you can
+          tap this for more." */}
       <button
         type="button"
         onClick={onToggle}
@@ -1429,17 +1500,22 @@ function DaySelectorButton({
         aria-haspopup="listbox"
         aria-expanded={open}
         className={cn(
-          "inline-flex items-center gap-1 rounded-sm px-1.5 py-1 -my-1",
-          "text-caption font-medium text-brass hover:text-brass-hover",
-          "hover:bg-brass-subtle/40",
-          "transition-colors duration-quick ease-settle",
-          "focus-ring-brass outline-none",
+          "inline-flex items-baseline gap-1.5",
+          "text-h2 font-medium leading-none text-content-strong",
+          "font-plex-sans tracking-tight",
+          // Subtle hover affordance — text shifts slightly toward
+          // brass family. Restraint over loud color flip.
+          "hover:text-brass-hover transition-colors duration-quick ease-settle",
+          // Brass focus ring + slight padding so the ring has room
+          // to render around the heading without cropping.
+          "focus-ring-brass outline-none rounded-sm px-1 -mx-1",
         )}
       >
-        Change day
+        <span>{dayLabel}</span>
         <ChevronDownIcon
           className={cn(
-            "h-3.5 w-3.5 transition-transform duration-quick",
+            "h-5 w-5 self-center text-content-muted",
+            "transition-transform duration-quick",
             open && "rotate-180",
           )}
           aria-hidden

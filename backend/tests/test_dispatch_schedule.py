@@ -1282,3 +1282,295 @@ class TestPoolAncillariesEndpoint:
         for row in r.json():
             assert row["helper_user_name"] is None
             assert row["attached_to_family_name"] is None
+
+
+# ── Phase 4.4.3 — Day-summary endpoint ──────────────────────────────
+
+
+class TestDaySummary:
+    """`GET /api/v1/dispatch/day-summary?date=YYYY-MM-DD` returns a
+    lightweight count-and-finalize summary for one date. Powers the
+    Scheduling Focus header date-box hover tooltip.
+
+    Counts are scoped to the same set the kanban surface renders:
+      - scheduling_type == 'kanban'
+      - status NOT IN ('cancelled', 'completed')
+
+    finalize_status comes from the dispatch_schedule_state row, falling
+    back to 'not_created' when no row exists.
+    """
+
+    def test_zero_counts_when_no_deliveries(self, client, ctx):
+        """No deliveries on the target date → zero counts +
+        not_created finalize state."""
+        target = date.today() + timedelta(days=1)
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["date"] == target.isoformat()
+        assert data["total_deliveries"] == 0
+        assert data["unassigned_count"] == 0
+        assert data["finalize_status"] == "not_created"
+        assert data["finalized_at"] is None
+
+    def test_counts_kanban_assigned_and_unassigned(self, client, ctx):
+        """Three kanban deliveries: two assigned, one unassigned →
+        total=3, unassigned=1."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        target = date.today() + timedelta(days=2)
+        db = SessionLocal()
+        try:
+            assigned_a = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="scheduled", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=ctx["admin_id"],
+            )
+            assigned_b = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="pending", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=ctx["dispatcher_id"],
+            )
+            unassigned = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="pending", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=None,
+            )
+            db.add_all([assigned_a, assigned_b, unassigned])
+            db.commit()
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total_deliveries"] == 3
+        assert data["unassigned_count"] == 1
+
+    def test_excludes_ancillary_and_direct_ship(self, client, ctx):
+        """Ancillary + direct_ship rows on the target date should NOT
+        contribute to total_deliveries (counts are kanban-only)."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        target = date.today() + timedelta(days=3)
+        db = SessionLocal()
+        try:
+            kanban = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="scheduled", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=ctx["admin_id"],
+            )
+            ancillary_standalone = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="scheduled", priority="normal",
+                scheduling_type="ancillary", requested_date=target,
+                primary_assignee_id=ctx["admin_id"],
+                ancillary_is_floating=False,
+            )
+            direct_ship = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="pending", priority="normal",
+                scheduling_type="direct_ship", requested_date=target,
+            )
+            db.add_all([kanban, ancillary_standalone, direct_ship])
+            db.commit()
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        # Only the kanban delivery contributes.
+        assert r.json()["total_deliveries"] == 1
+
+    def test_excludes_terminal_statuses(self, client, ctx):
+        """Cancelled + completed kanban rows are NOT counted (they
+        don't represent active work to schedule)."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        target = date.today() + timedelta(days=4)
+        db = SessionLocal()
+        try:
+            active = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="pending", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=None,
+            )
+            cancelled = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="cancelled", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=ctx["admin_id"],
+            )
+            completed = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="completed", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=ctx["admin_id"],
+            )
+            db.add_all([active, cancelled, completed])
+            db.commit()
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        data = r.json()
+        # Active counts; cancelled + completed don't.
+        assert data["total_deliveries"] == 1
+        assert data["unassigned_count"] == 1
+
+    def test_excludes_other_dates(self, client, ctx):
+        """Deliveries on neighboring days do NOT bleed into the target
+        date count. Tests requested_date == target equality."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        target = date.today() + timedelta(days=5)
+        before = target - timedelta(days=1)
+        after = target + timedelta(days=1)
+        db = SessionLocal()
+        try:
+            on_target = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="pending", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=None,
+            )
+            on_before = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="pending", priority="normal",
+                scheduling_type="kanban", requested_date=before,
+                primary_assignee_id=None,
+            )
+            on_after = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx["company_id"],
+                delivery_type="vault", status="pending", priority="normal",
+                scheduling_type="kanban", requested_date=after,
+                primary_assignee_id=None,
+            )
+            db.add_all([on_target, on_before, on_after])
+            db.commit()
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        assert r.json()["total_deliveries"] == 1
+
+    def test_finalize_status_draft_after_ensure(self, client, ctx):
+        """When the schedule row exists in draft state, finalize_status
+        comes through as 'draft' (not 'not_created')."""
+        target = date.today() + timedelta(days=6)
+        # Create the schedule row via the existing ensure endpoint.
+        r_ensure = client.post(
+            f"/api/v1/dispatch/schedule/{target.isoformat()}/ensure",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r_ensure.status_code == 200
+
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["finalize_status"] == "draft"
+        assert data["finalized_at"] is None
+
+    def test_finalize_status_finalized_with_timestamp(self, client, ctx):
+        """When finalized, finalize_status='finalized' and finalized_at
+        carries the ISO timestamp."""
+        target = date.today() + timedelta(days=7)
+        # Need at least one delivery so finalize doesn't no-op for an
+        # empty schedule (some implementations require deliveries).
+        # Using the helper to keep payload minimal.
+        _make_delivery(ctx["company_id"], requested_date=target)
+
+        client.post(
+            f"/api/v1/dispatch/schedule/{target.isoformat()}/ensure",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        r_fin = client.post(
+            f"/api/v1/dispatch/schedule/{target.isoformat()}/finalize",
+            json={},
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r_fin.status_code == 200, r_fin.text
+
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["finalize_status"] == "finalized"
+        assert data["finalized_at"] is not None
+
+    def test_tenant_isolation(self, client, ctx, ctx_other):
+        """Counts are scoped to the caller's tenant. Rows in tenant B
+        do not contribute to tenant A's day-summary."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        target = date.today() + timedelta(days=8)
+        db = SessionLocal()
+        try:
+            other = Delivery(
+                id=str(uuid.uuid4()), company_id=ctx_other["company_id"],
+                delivery_type="vault", status="pending", priority="normal",
+                scheduling_type="kanban", requested_date=target,
+                primary_assignee_id=None,
+            )
+            db.add(other)
+            db.commit()
+        finally:
+            db.close()
+
+        # Tenant A sees zero — tenant B's row doesn't bleed across.
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        assert r.json()["total_deliveries"] == 0
+
+    def test_requires_delivery_view_permission(self, client, ctx):
+        """Readonly user (no delivery.view) gets 403."""
+        target = date.today() + timedelta(days=9)
+        r = client.get(
+            f"/api/v1/dispatch/day-summary?date={target.isoformat()}",
+            headers=_hdr(ctx["readonly_token"], ctx["slug"]),
+        )
+        assert r.status_code == 403
+
+    def test_invalid_date_returns_422(self, client, ctx):
+        """Malformed date string is caught by FastAPI's date parsing →
+        422 unprocessable entity."""
+        r = client.get(
+            "/api/v1/dispatch/day-summary?date=not-a-date",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 422

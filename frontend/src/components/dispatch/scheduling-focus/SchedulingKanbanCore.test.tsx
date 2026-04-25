@@ -33,11 +33,19 @@ vi.mock("@/services/dispatch-service", () => ({
   fetchDrivers: vi.fn(),
   finalizeSchedule: vi.fn(),
   updateDelivery: vi.fn(),
+  // Phase B Session 4.4.3 — DateBox components in the header call
+  // useDaySummary which calls fetchDaySummary. The flanking date
+  // boxes resolve to centerDate ± 1, so each render fires one
+  // request per box; tests don't care about resolved values for
+  // the structural assertions, so a stable empty-zero summary
+  // satisfies every case.
+  fetchDaySummary: vi.fn(),
 }))
 
 
 // Import the mocks so we can program per-test returns.
 import {
+  fetchDaySummary,
   fetchDeliveriesForRange,
   fetchDrivers,
   fetchSchedule,
@@ -147,10 +155,25 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
         display_name: "Dave Miller",
       },
     ])
+    // Phase 4.4.3 default: empty draft summary on every date the
+    // flanking DateBoxes ask about. Per-test cases override.
+    vi.mocked(fetchDaySummary).mockImplementation(async (dateStr: string) => ({
+      date: dateStr,
+      total_deliveries: 0,
+      unassigned_count: 0,
+      finalize_status: "draft" as const,
+      finalized_at: null,
+    }))
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks()
+    // Phase 4.4.3 — module-scoped cache in useDaySummary persists
+    // across tests within the same vitest worker. Clear it between
+    // tests so per-test mockResolvedValue(...) fixtures don't get
+    // shadowed by a cached prior summary.
+    const { _resetDaySummaryCache } = await import("@/hooks/useDaySummary")
+    _resetDaySummaryCache()
   })
 
   it("defaults target date to tomorrow when no date param provided", async () => {
@@ -352,6 +375,201 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     expect(
       document.querySelector('[data-slot="scheduling-focus-finalize"]'),
     ).toBeNull()
+  })
+
+  // Phase B Session 4.4.3 — date-box flanking affordance.
+
+  it("renders two flanking DateBoxes around the H2 day label", async () => {
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    const boxes = await waitFor(() => {
+      const nodes = document.querySelectorAll(
+        '[data-slot="scheduling-focus-date-box"]',
+      )
+      expect(nodes.length).toBe(2)
+      return nodes
+    })
+    // Center date is tomorrow (2026-04-25). Flanking dates are
+    // 2026-04-24 (today / day-before) and 2026-04-26 (day-after).
+    const dates = Array.from(boxes).map((b) => b.getAttribute("data-date"))
+    expect(dates).toContain("2026-04-24")
+    expect(dates).toContain("2026-04-26")
+  })
+
+  it("DateBoxes start in the inactive (data-active='false') state", async () => {
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    const boxes = await waitFor(() => {
+      const nodes = document.querySelectorAll(
+        '[data-slot="scheduling-focus-date-box"]',
+      )
+      expect(nodes.length).toBe(2)
+      return nodes
+    })
+    for (const box of Array.from(boxes)) {
+      expect(box.getAttribute("data-active")).toBe("false")
+      expect(box.getAttribute("aria-pressed")).toBe("false")
+    }
+  })
+
+  it("clicking a DateBox toggles its active state on, then off", async () => {
+    const user = userEvent.setup()
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    const today = await waitFor(() => {
+      const node = document.querySelector(
+        '[data-slot="scheduling-focus-date-box"][data-date="2026-04-24"]',
+      ) as HTMLElement | null
+      expect(node).not.toBeNull()
+      return node!
+    })
+    expect(today.getAttribute("data-active")).toBe("false")
+
+    await user.click(today)
+    expect(today.getAttribute("data-active")).toBe("true")
+    expect(today.getAttribute("aria-pressed")).toBe("true")
+
+    // Click again — toggle off.
+    await user.click(today)
+    expect(today.getAttribute("data-active")).toBe("false")
+    expect(today.getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("date boxes toggle independently (both can be active simultaneously)", async () => {
+    const user = userEvent.setup()
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    await waitFor(() => {
+      const nodes = document.querySelectorAll(
+        '[data-slot="scheduling-focus-date-box"]',
+      )
+      expect(nodes.length).toBe(2)
+    })
+    const prev = document.querySelector(
+      '[data-slot="scheduling-focus-date-box"][data-date="2026-04-24"]',
+    ) as HTMLElement
+    const next = document.querySelector(
+      '[data-slot="scheduling-focus-date-box"][data-date="2026-04-26"]',
+    ) as HTMLElement
+
+    await user.click(prev)
+    await user.click(next)
+    expect(prev.getAttribute("data-active")).toBe("true")
+    expect(next.getAttribute("data-active")).toBe("true")
+  })
+
+  it("H2 click still opens the day-jump popover (regression)", async () => {
+    const user = userEvent.setup()
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    const trigger = await waitFor(() => {
+      const node = document.querySelector(
+        '[data-slot="scheduling-focus-day-selector"]',
+      ) as HTMLElement | null
+      expect(node).not.toBeNull()
+      return node!
+    })
+    // Popover menu is absent at rest.
+    expect(
+      document.querySelector(
+        '[data-slot="scheduling-focus-day-selector-menu"]',
+      ),
+    ).toBeNull()
+    await user.click(trigger)
+    // Menu appears after click — the H2 IS the trigger now (no
+    // separate "Change day" sub-button).
+    expect(
+      document.querySelector(
+        '[data-slot="scheduling-focus-day-selector-menu"]',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it("any-day jump via popover resets date-box active flags", async () => {
+    const user = userEvent.setup()
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    // Engage one box.
+    const prev = await waitFor(() => {
+      const node = document.querySelector(
+        '[data-slot="scheduling-focus-date-box"][data-date="2026-04-24"]',
+      ) as HTMLElement | null
+      expect(node).not.toBeNull()
+      return node!
+    })
+    await user.click(prev)
+    expect(prev.getAttribute("data-active")).toBe("true")
+
+    // Open the day-jump popover and pick a different day.
+    const trigger = document.querySelector(
+      '[data-slot="scheduling-focus-day-selector"]',
+    ) as HTMLElement
+    await user.click(trigger)
+    // Pick "+3" — fourth option in the listbox (Today, Tomorrow,
+    // +2, +3, ...). Use role=option to find clickable items.
+    const options = document.querySelectorAll('[role="option"]')
+    expect(options.length).toBeGreaterThan(3)
+    await user.click(options[3] as HTMLElement)
+
+    // After day jump, the new flanking boxes appear at the new
+    // center; their active state should be reset to false.
+    await waitFor(() => {
+      const boxes = document.querySelectorAll(
+        '[data-slot="scheduling-focus-date-box"]',
+      )
+      expect(boxes.length).toBe(2)
+      for (const box of Array.from(boxes)) {
+        expect(box.getAttribute("data-active")).toBe("false")
+      }
+    })
+  })
+
+  it("DateBox surface uses bg-surface-elevated (calibration regression)", async () => {
+    // Aesthetic-coherence regression — DateBox must NOT drift to
+    // generic SaaS chip register (bg-muted, rounded-full, neutral
+    // border). Calibrated against AncillaryPoolPin + DeliveryCard:
+    // bg-surface-elevated + border-border-subtle + radius-sm. If
+    // a future refactor flips these tokens (e.g. someone rounds-
+    // everything to rounded-full or swaps surface-elevated for
+    // muted), this test catches it before merge.
+    render(
+      <Harness>
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    const box = await waitFor(() => {
+      const node = document.querySelector(
+        '[data-slot="scheduling-focus-date-box"]',
+      ) as HTMLElement | null
+      expect(node).not.toBeNull()
+      return node!
+    })
+    const cls = box.className
+    expect(cls).toMatch(/bg-surface-elevated/)
+    expect(cls).toMatch(/border-border-subtle/)
+    expect(cls).toMatch(/rounded-sm/)
+    // Drift guards — these tokens MUST NOT appear at rest.
+    expect(cls).not.toMatch(/bg-muted\b/)
+    expect(cls).not.toMatch(/rounded-full/)
+    expect(cls).not.toMatch(/shadow-md/)
   })
 })
 

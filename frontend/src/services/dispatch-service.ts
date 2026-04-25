@@ -304,6 +304,31 @@ export async function fetchTenantTime(): Promise<TenantTimeDTO> {
 }
 
 
+// ── Phase B Session 4.4.3 — Day summary for date-box hover preview ──
+
+
+/** Lightweight summary for one date — counts + finalize state. Powers
+ *  the Scheduling Focus header date-box tooltip ("{N} deliveries ·
+ *  {M} unassigned · {status}"). Counts are kanban-only (excludes
+ *  ancillary + direct_ship + terminal-status rows) so the preview
+ *  matches the kanban surface the dispatcher sees. */
+export interface DaySummaryDTO {
+  date: string                                                  // YYYY-MM-DD
+  total_deliveries: number
+  unassigned_count: number
+  finalize_status: "draft" | "finalized" | "not_created"
+  finalized_at: string | null                                   // ISO 8601 or null
+}
+
+
+export async function fetchDaySummary(dateStr: string): Promise<DaySummaryDTO> {
+  const r = await apiClient.get<DaySummaryDTO>(
+    `/dispatch/day-summary?date=${encodeURIComponent(dateStr)}`,
+  )
+  return r.data
+}
+
+
 /** Convenience — partial-update a delivery. Used by the Monitor's
  *  quick-edit modal for time/driver/note. Schedule revert is handled
  *  server-side by the revert hook in delivery_service.update_delivery.

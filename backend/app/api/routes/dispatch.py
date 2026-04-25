@@ -28,6 +28,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_permission
@@ -91,6 +92,25 @@ class HoleDugResponse(BaseModel):
     hole_dug_status: str
     schedule_reverted: bool
     schedule_date: str | None
+
+
+class DaySummaryResponse(BaseModel):
+    """Phase B Session 4.4.3 — lightweight day summary for the
+    Scheduling Focus header date-box hover preview.
+
+    Response shape is intentionally narrow: a few counts + finalize
+    state, nothing else. Powers the tooltip "{N} deliveries · {M}
+    unassigned · {status}" line; not for any other purpose. If a
+    future caller needs a full delivery list for that date, hit
+    `/deliveries?start=X&end=X` instead — this endpoint is the
+    glanceable peek path.
+    """
+
+    date: str
+    total_deliveries: int
+    unassigned_count: int
+    finalize_status: Literal["draft", "finalized", "not_created"]
+    finalized_at: str | None
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -256,6 +276,88 @@ def revert_schedule_endpoint(
     if row is None:
         return _placeholder_response(schedule_date)
     return _schedule_to_response(row)
+
+
+# ── Day summary (Phase B Session 4.4.3 date-box hover preview) ───────
+
+
+@router.get(
+    "/day-summary",
+    response_model=DaySummaryResponse,
+    dependencies=[Depends(require_permission("delivery.view"))],
+)
+def get_day_summary(
+    target: date = Query(
+        ..., alias="date", description="Target date (YYYY-MM-DD), tenant-local."
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DaySummaryResponse:
+    """Lightweight summary for one date — counts + finalize state.
+
+    Powers the Scheduling Focus header date-box tooltip. The DateBoxes
+    that flank the H2 day label hover-fetch this endpoint to render
+    "{N} deliveries · {M} unassigned · {status}". Sub-100ms target;
+    one COUNT query (kanban only, excluding terminal statuses) plus
+    one schedule-state lookup.
+
+    Counts are scoped to the same set the kanban surface renders:
+      - scheduling_type='kanban' (excludes ancillary + direct_ship —
+        those are surfaced separately in the Focus surface)
+      - status NOT IN ('cancelled', 'completed') — terminal states
+        don't represent active work to schedule
+
+    finalize_status is read from `dispatch_schedule_state`. A date with
+    no row returns `not_created` (matches the `_placeholder_response`
+    convention from get_schedule).
+    """
+    base_q = db.query(Delivery).filter(
+        Delivery.company_id == current_user.company_id,
+        Delivery.requested_date == target,
+        Delivery.scheduling_type == "kanban",
+        Delivery.status.notin_(("cancelled", "completed")),
+    )
+
+    total_deliveries: int = (
+        db.query(func.count(Delivery.id))
+        .filter(
+            Delivery.company_id == current_user.company_id,
+            Delivery.requested_date == target,
+            Delivery.scheduling_type == "kanban",
+            Delivery.status.notin_(("cancelled", "completed")),
+        )
+        .scalar()
+        or 0
+    )
+    unassigned_count: int = (
+        base_q.filter(Delivery.primary_assignee_id.is_(None))
+        .with_entities(func.count(Delivery.id))
+        .scalar()
+        or 0
+    )
+
+    sched = schedule_service.get_schedule_state(
+        db, current_user.company_id, target
+    )
+    if sched is None:
+        finalize_state: Literal["draft", "finalized", "not_created"] = "not_created"
+        finalized_at_iso: str | None = None
+    else:
+        # Only "draft" and "finalized" are valid post-create states. Any
+        # other future state would be an unknown surfaced by the schema
+        # check on ScheduleStateResponse, not silently coerced here.
+        finalize_state = "finalized" if sched.state == "finalized" else "draft"
+        finalized_at_iso = (
+            sched.finalized_at.isoformat() if sched.finalized_at else None
+        )
+
+    return DaySummaryResponse(
+        date=target.isoformat(),
+        total_deliveries=int(total_deliveries),
+        unassigned_count=int(unassigned_count),
+        finalize_status=finalize_state,
+        finalized_at=finalized_at_iso,
+    )
 
 
 # ── Hole-dug quick-edit ────────────────────────────────────────────────
