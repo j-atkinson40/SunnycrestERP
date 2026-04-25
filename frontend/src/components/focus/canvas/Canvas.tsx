@@ -38,10 +38,7 @@
  */
 
 import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
+  useDndMonitor,
   type DragEndEvent,
 } from "@dnd-kit/core"
 import { useState } from "react"
@@ -69,15 +66,29 @@ import { useViewportTier } from "./useViewportTier"
 import { WidgetChrome } from "./WidgetChrome"
 
 
+// Phase B Session 4.3b D-1 elevation. The canvas drag id has a
+// `widget:` prefix so the elevated DndContext can discriminate canvas
+// widget drags from kanban delivery / ancillary drags. WidgetChrome
+// emits the prefixed id; this constant is the single source of truth
+// for the prefix string used by both the producer (WidgetChrome) and
+// the consumer (Canvas's handleDragEnd below).
+const WIDGET_DRAG_PREFIX = "widget:"
+
+
 export function Canvas() {
   const { currentFocus, updateSessionLayout, removeWidget } = useFocus()
 
   const [searchParams] = useSearchParams()
   const devMode = searchParams.get("dev-canvas") === "1"
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  )
+  // Pre-4.3b Canvas owned its own `<DndContext>` with a local
+  // PointerSensor. Phase 4.3b D-1 elevation moved the DndContext up
+  // to FocusDndProvider so cross-context drag (canvas widget OR
+  // canvas pin item → kanban lane) becomes possible. Canvas is now
+  // a CONSUMER of the elevated context via `useDndMonitor` —
+  // listener gates on the `widget:` id prefix, no-ops on every
+  // other drag (delivery: / ancillary:). Sensors live in the
+  // provider; same `distance: 8` activation constraint as before.
 
   const widgets = currentFocus?.layoutState?.widgets ?? {}
   // Session 3.7 fix — pass widgets so tier detection is content-aware.
@@ -98,8 +109,16 @@ export function Canvas() {
   function handleDragEnd(event: DragEndEvent) {
     // Drag only applies in canvas tier. Stack + icon tiers don't
     // mount WidgetChrome, so useDraggable never fires there.
+    //
+    // Phase 4.3b D-1 routing: the elevated DndContext also serves
+    // delivery: and ancillary: drags. Canvas's listener early-
+    // returns on every non-widget id, leaving those drags to the
+    // SchedulingKanbanCore listener (separate useDndMonitor
+    // subscriber).
     const { active, delta } = event
-    const widgetId = String(active.id) as WidgetId
+    const rawId = String(active.id)
+    if (!rawId.startsWith(WIDGET_DRAG_PREFIX)) return
+    const widgetId = rawId.slice(WIDGET_DRAG_PREFIX.length) as WidgetId
     const current = widgets[widgetId]
     if (!current) return
 
@@ -151,8 +170,16 @@ export function Canvas() {
     })
   }
 
+  // Subscribe to the elevated DndContext (provided by
+  // FocusDndProvider). The listener filters by id-prefix and runs
+  // the existing widget-repositioning logic. Other consumers
+  // (SchedulingKanbanCore, future AncillaryPoolPin) register their
+  // own listeners on the same context — @dnd-kit fires all listeners
+  // on each event; gating happens per-listener via the prefix check.
+  useDndMonitor({ onDragEnd: handleDragEnd })
+
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <>
       <div
         data-slot="focus-canvas"
         data-focus-tier={tier}
@@ -310,6 +337,6 @@ export function Canvas() {
           )}
         </div>
       </div>
-    </DndContext>
+    </>
   )
 }

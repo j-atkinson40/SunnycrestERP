@@ -19,6 +19,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 
 import { FocusProvider } from "@/contexts/focus-context"
 import type { FocusConfig } from "@/contexts/focus-registry"
+import { FocusDndProvider } from "@/components/focus/FocusDndProvider"
 
 import { SchedulingKanbanCore } from "./SchedulingKanbanCore"
 
@@ -62,10 +63,18 @@ function Harness({
   initialUrl?: string
   children: React.ReactNode
 }) {
+  // Phase 4.3b D-1 elevation. SchedulingKanbanCore subscribes to
+  // the elevated DndContext via `useDndMonitor`; the provider must
+  // be a parent or the hook throws. Production wires this via
+  // Focus.tsx → FocusDndProvider; tests mount the provider
+  // directly. TooltipProvider stays inside so tooltip portals can
+  // resolve.
   return (
     <MemoryRouter initialEntries={[initialUrl]}>
       <FocusProvider>
-        <TooltipProvider delay={0}>{children}</TooltipProvider>
+        <FocusDndProvider>
+          <TooltipProvider delay={0}>{children}</TooltipProvider>
+        </FocusDndProvider>
       </FocusProvider>
     </MemoryRouter>
   )

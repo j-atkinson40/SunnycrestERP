@@ -52,12 +52,9 @@
  */
 
 import {
-  DndContext,
   DragOverlay,
-  PointerSensor,
+  useDndMonitor,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
@@ -348,10 +345,16 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
     [drivers],
   )
 
-  // Drag sensors — 8px activation matches the Monitor widget.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  )
+  // Phase B Session 4.3b D-1 elevation. Pre-4.3b SchedulingKanbanCore
+  // owned its own `<DndContext>` with a local PointerSensor. Phase
+  // 4.3b moved DndContext + sensors up to FocusDndProvider so cross-
+  // context drag (canvas pin item → kanban lane) becomes possible.
+  // Sensors are now provider-owned (same `distance: 8` activation
+  // constraint as before, no behavioral change). This component
+  // subscribes to drag events via `useDndMonitor` (registered later
+  // in this function) — handler gates on the `delivery:` and
+  // `ancillary:` id prefixes; widget: drags are no-ops here and
+  // routed by Canvas's own listener.
 
   // Phase 4.2.2 — track the active drag id so the DragOverlay can
   // render a floating preview at document level (portaled above every
@@ -373,18 +376,33 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
   // surprise anyone).
   const [editTarget, setEditTarget] = useState<DeliveryDTO | null>(null)
 
+  // Phase 4.3b D-1 elevation. Listeners filter by id prefix; drags
+  // for canvas widgets (`widget:`) flow through Canvas's listener,
+  // not this one. Two prefixes are claimed here: `delivery:` (primary
+  // kanban + standalone ancillary cards in lanes) and `ancillary:`
+  // (Phase 4.3b pool pin items + drawer detach drags). Returning
+  // early on non-matching prefixes is the discriminator contract;
+  // multiple useDndMonitor consumers coexist on the elevated context.
   const handleDragStart = useCallback((ev: DragStartEvent) => {
-    const id = String(ev.active.id).replace(/^delivery:/, "")
+    const raw = String(ev.active.id)
+    if (!raw.startsWith("delivery:") && !raw.startsWith("ancillary:")) return
+    const id = raw.replace(/^(delivery|ancillary):/, "")
     setActiveDeliveryId(id)
   }, [])
 
   const handleDragEnd = useCallback(
     async (ev: DragEndEvent) => {
+      const rawId = String(ev.active.id)
+      // Phase 4.3b D-1 — early return on non-matching prefixes
+      // (canvas widget drags are routed by Canvas's listener).
+      if (!rawId.startsWith("delivery:") && !rawId.startsWith("ancillary:")) {
+        return
+      }
       // Clear the overlay preview regardless of drop validity.
       setActiveDeliveryId(null)
       const { active, over } = ev
       if (!over) return
-      const deliveryId = String(active.id).replace(/^delivery:/, "")
+      const deliveryId = String(active.id).replace(/^(delivery|ancillary):/, "")
       const laneKey = String(over.id)
       // Lane format: "YYYY-MM-DD:<driverId | __UNASSIGNED__>"
       const sep = laneKey.indexOf(":")
@@ -478,9 +496,25 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
 
   const handleDragCancel = useCallback(() => {
     // Drop outside any droppable OR Esc cancels — clear overlay
-    // without mutating state.
+    // without mutating state. Spurious clears for non-matching
+    // drags (e.g. user cancels a canvas widget drag) are harmless
+    // because activeDeliveryId is already null in that case.
     setActiveDeliveryId(null)
   }, [])
+
+  // Phase 4.3b D-1 elevation. Subscribe to the elevated DndContext
+  // (provided by FocusDndProvider). useDndMonitor must be called
+  // inside a DndContext descendant — SchedulingKanbanCore mounts
+  // inside Focus → FocusDndProvider, so the ancestor chain is
+  // guaranteed in production. Tests wrap with FocusDndProvider in
+  // their Harness. Listeners gate by id-prefix above; canvas
+  // widget drags flow through Canvas's separate listener, not this
+  // one.
+  useDndMonitor({
+    onDragStart: handleDragStart,
+    onDragEnd: handleDragEnd,
+    onDragCancel: handleDragCancel,
+  })
 
   // Phase 4.2.5 — QuickEdit save handler. Parallels Monitor's
   // handleSaveEdit but trimmed for Focus context (no schedule-revert
@@ -720,12 +754,12 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         </div>
       )}
       {!loading && !error && (
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
+        // Phase 4.3b D-1 — DndContext elevated to FocusDndProvider.
+        // Drag handlers registered above via useDndMonitor; this
+        // fragment just renders the kanban surface + DragOverlay
+        // (still portaled to body to escape the Focus positioner's
+        // transform-translate3d containing block per Phase 4.2.3).
+        <>
           <div
             data-slot="scheduling-focus-kanban"
             className={cn(
@@ -855,7 +889,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
             </DragOverlay>,
             document.body,
           )}
-        </DndContext>
+        </>
       )}
 
       {/* Phase 4.2.5 — QuickEdit dialog for Focus. Short-click on a

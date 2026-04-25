@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 
 import { FocusProvider } from "@/contexts/focus-context"
+import { FocusDndProvider } from "../FocusDndProvider"
 import { Canvas } from "./Canvas"
 
 
@@ -27,10 +28,16 @@ function Harness({
 }: {
   initialEntry?: string
 }) {
+  // Phase 4.3b D-1 elevation. Canvas calls `useDndMonitor` which
+  // requires a parent `<DndContext>`. Production gets it from
+  // FocusDndProvider mounted in Focus.tsx; tests mount the same
+  // provider directly so the consumer's hook contract holds.
   return (
     <MemoryRouter initialEntries={[initialEntry]}>
       <FocusProvider>
-        <Canvas />
+        <FocusDndProvider>
+          <Canvas />
+        </FocusDndProvider>
       </FocusProvider>
     </MemoryRouter>
   )

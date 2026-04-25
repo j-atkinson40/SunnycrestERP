@@ -151,8 +151,16 @@ export function WidgetChrome({
 }: WidgetChromeProps) {
   const { updateSessionLayout } = useFocus()
 
+  // Phase B Session 4.3b D-1 elevation. The drag id carries a
+  // `widget:` prefix so the elevated DndContext (FocusDndProvider)
+  // can discriminate canvas widget drags from kanban delivery /
+  // ancillary drags via id-prefix routing. Canvas's onDragEnd
+  // listener (useDndMonitor consumer) strips the prefix back to
+  // the raw widget id. Pre-4.3b the id was bare (no prefix); the
+  // prefix is mechanical and `data-widget-id` (read by tests) is
+  // unaffected.
   const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: widgetId })
+    useDraggable({ id: `widget:${widgetId}` })
 
   const resize = useResize({
     anchor: position.anchor,

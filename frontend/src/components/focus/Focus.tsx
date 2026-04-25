@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils"
 import { Canvas } from "./canvas/Canvas"
 import { computeCoreRect } from "./canvas/geometry"
 import { useViewportTier } from "./canvas/useViewportTier"
+import { FocusDndProvider } from "./FocusDndProvider"
 import { ModeDispatcher } from "./mode-dispatcher"
 
 
@@ -101,6 +102,17 @@ export function Focus() {
           )}
           style={{ zIndex: "var(--z-focus)" }}
         />
+        {/* Phase B Session 4.3b D-1 elevation. Single DndContext
+            spans both subtrees inside the Portal — the focus-core-
+            positioner (Popup → ModeDispatcher → core mode) AND the
+            sibling Canvas. Pre-4.3b each subtree owned its own
+            DndContext, which made cross-context drag (e.g. canvas
+            pin item → kanban lane) structurally impossible. Provider
+            mounts a single sensor + tracks activeId; consumers
+            register routing logic via useDndMonitor with id-prefix
+            discriminators (widget: / delivery: / ancillary:). See
+            FocusDndProvider.tsx header for the full rationale. */}
+        <FocusDndProvider>
         {/* Session 3.8.3 — positioner wrapper owns transform-for-
             position. Dialog.Popup inside fills via `w-full h-full`
             + `position: absolute inset-0` so its open/close zoom
@@ -202,6 +214,7 @@ export function Focus() {
             and @dnd-kit's DndContext reaches useDraggable consumers
             via React context regardless of DOM position. */}
         <Canvas />
+        </FocusDndProvider>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   )
