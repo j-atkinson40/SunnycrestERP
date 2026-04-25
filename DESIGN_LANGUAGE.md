@@ -1,6 +1,6 @@
 # Bridgeable Design Language
 
-**Status:** In authoring. Section 1 drafted; remaining sections to follow.
+**Status:** In authoring. Sections 0 and 1 drafted; remaining sections to follow.
 
 **Purpose:** This document defines the visual and sensory design language for the Bridgeable platform. It is the source of truth for how Bridgeable looks and feels across all verticals and all components. Component patterns (layouts, interaction flows, specific component behavior) live in `COMPONENT_PATTERNS.md`. This document changes slowly; that one changes as patterns evolve.
 
@@ -10,6 +10,158 @@
 - **Tertiary:** Future contributors who need to understand aesthetic intent without re-deriving it.
 
 **Format:** Each rule appears in three layers — **rule**, **rationale**, **implementation**. Sonnet can skip to implementation; humans read rationale to understand why the rule exists.
+
+**Reading order:** Section 0 articulates the emotional register that ties the platform's identity to its reference family — the *character of the tool itself*. Section 1 articulates the moods — the *settings the tool exists within*. The two layer: the moods are where the tool is observed; the register is what the tool is. Both must hold simultaneously for a Bridgeable surface to feel right.
+
+---
+
+## Section 0 — The Object's Character
+
+Bridgeable is an instrument. Sections 1 and onward define the moods (light = Mediterranean garden morning; dark = cocktail lounge evening) — the atmospheres the tool is observed within. This section defines what the tool itself **is**, independent of where it's seen. The same Leica camera body is the same instrument under garden sun or lamplight; the light on it changes, the object does not. Section 0 articulates that object.
+
+This section is opinionated, short, and load-bearing. Every visual decision in the platform answers to it.
+
+### The reference family
+
+Bridgeable's identity sits in a specific lineage of considered, restrained, time-resistant tools and instruments. The full reference family:
+
+- **Leica M-series camera body.** Brass, leather, restraint. Honest materials. Mechanical precision presented without ornament. Looked right in 1954, looks right now, will look right in 2046.
+- **Teenage Engineering OP-1.** Restraint at scale. Calm expensiveness. The simplicity is the flex.
+- **Old Land Rover Defender interior.** Functional honesty. Materials at their full strength. Tools belong where you can reach them.
+- **Filson briefcase, well-worn.** Heirloom-grade. Worth maintaining. Time-resistant, not time-frozen — patina without decay.
+- **Rotring 600 mechanical pencil.** Knurled metal, precise weight, no decoration. Doesn't ask for attention.
+- **Hans Wegner / Borge Mogensen furniture.** Architectural confidence. Joinery exposed, not hidden. Proportions earn the form.
+- **Linear app.** Information density without ornament. Keyboard-grade. Workshop-tool digital register.
+- **Bloomberg Terminal.** Density permitted. Functional color. Tool-grade — not decorative software.
+- **Industrial HMI panels.** Honest about being functional. No skeuomorphism, no ornament, no apology.
+- **Workshop with tools in their place.** Things have weight. Things have positions. Things are accessible because they need to be.
+- **Range Rover exterior architecture (NOT interior HUD).** Architectural proportions, restrained metalwork, surfaces that read as material rather than ornament. The vehicle's outside, not its dashboard.
+
+These eleven references share an emotional register that Bridgeable adopts as its own. They are NOT what Bridgeable looks like — Bridgeable is digital software and looks like digital software. They are what Bridgeable **feels like** to use.
+
+### Critical framing — what the reference family means
+
+The reference family is an **imaginative brief**, not a literal style spec. Bridgeable is not a HUD, not a dashboard cluster, not a vehicle interior, not a leather portfolio app, not a brass-finished skeuomorphic surface. It is digital software for the physical economy. The references articulate the *emotional register* — they are the answer to "what does this product feel like to use?", not "what does this product look like?".
+
+**DO translate the reference family into:**
+- Restraint at scale (simplicity that signals resources)
+- Architectural proportions (buildings, not vehicles — proportional discipline at the scale of the surface, not at the scale of literal vehicle parts)
+- Honest materials at full strength (real type, real shadow, no fake glass, no fake metal, no fake leather)
+- Quietness (calm presence, not engaging)
+- Density permitted (information-dense without clutter)
+- Functional color (brass for action; status colors for communication, not decoration)
+- Time-resistance (avoid current-decade visual trends — neumorphism in 2020, glassmorphism in 2022, AI gradients in 2024)
+- Heirloom commitment (worth maintaining, not disposable)
+
+**DO NOT translate the reference family into:**
+- Heads-up display chrome (transparent overlays, projection effects, vehicle dashboards)
+- Vehicle iconography (steering wheels, speedometers, gauges, dashboards)
+- Automotive color palettes (carbon fiber black, race red, racing green)
+- Camera-body skeuomorphism (knurled metal textures, brass fittings as decoration, leather grain as background pattern)
+- Workshop skeuomorphism (wood-grain surfaces, blueprint backgrounds, ruler tick marks)
+- Bloomberg Terminal literalism (green-on-black monospace prose, oppressive density)
+- Leica-camera-body literalism (silver-and-black photography UI)
+
+The references inform character. The character is then expressed in the canonical visual language of digital software — type, color, surface, motion, spacing — not in references to physical objects.
+
+### The eight emotional qualities
+
+The reference family converges on eight qualities. A Bridgeable surface that achieves all eight evokes the right register. A surface missing any one drifts.
+
+**1. Warm restraint.** Not cold lab. Not playful consumer. Warmth without softness; restraint without coldness. The platform is approachable but serious — adults working with adults, not customers being entertained.
+
+**2. Considered materiality.** Real type, real shadow, real elevation. Surfaces feel like material the way Wegner's chairs feel like wood — not because they show grain, but because their proportions and joinery are honest about what they are. UI surfaces feel like material via elevation, light direction, and shadow character. Never via skeuomorphic textures.
+
+**3. Architectural confidence.** Proportions matter more than decoration. Spacing, hierarchy, alignment, and type cadence carry the visual weight. When in doubt, make the proportions right rather than adding chrome. A well-proportioned plain surface beats a poorly-proportioned ornamented one every time.
+
+**4. Calm expensiveness.** The simplicity is the flex. The reference family signals expense not through gold and glass but through *what was deliberately left out*. Bridgeable should feel expensive the way a Leica feels expensive — through restraint and resolution, not through ornament. If it looks like a SaaS template with brass buttons, the restraint failed.
+
+**5. Time-resistance.** The platform must look right in 2026 AND in 2036. Avoid visual conventions tied to specific years — gradient meshes (2020s AI), glassmorphism (early 2020s), neumorphism (2020), Material Design soft drop shadows (2010s), iOS 7 thin-everything (2013). The reference family is time-resistant by construction — Leica looked right in 1954, Wegner chairs look right today, Filson briefcases look right after 50 years. Bridgeable inherits that property by referring to that family.
+
+**6. Quietness as a design value.** The platform is *available*, not *engaging*. It does not demand attention through animation, color, or chrome. It earns attention through density and clarity at the moment the user needs it. Quietness is positive, not absence — a quiet workshop is intentional, not empty.
+
+**7. Workshop-tool-grade seriousness.** The platform is for operators doing real work. It is not entertainment software. It does not gamify, celebrate, or anthropomorphize. It signals that the work being done is consequential and that the tool respects the work.
+
+**8. Heirloom commitment.** The platform is worth maintaining. It is not disposable. Its visual language reads as something a serious operation invests in for years, not as something that will be replaced when the next design trend arrives. This is partly a result of (5) time-resistance and partly an attitude of design — every detail considered enough that it would not embarrass the team in five years.
+
+### The relationship between Section 0 and Section 1
+
+Section 0 defines the **object** — what kind of tool Bridgeable is. Section 1 defines the **settings** — what light it's observed under. Both must hold simultaneously.
+
+A surface that reads as Mediterranean morning (Section 1, light) but as a generic SaaS dashboard (Section 0 violated) has the right warmth but the wrong character. A surface that reads as workshop-tool-grade (Section 0 honored) but as cold lab fluorescence (Section 1 violated) has the right character but the wrong setting. The platform achieves its identity only when both layers are present.
+
+**Mental model:** Picture a Leica M body sitting on a stone table on the Mediterranean garden terrace, morning light catching the brass top plate. The brass is the object's material (Section 0 — what the tool is). The terrace is the setting (Section 1 — where the tool is observed). The morning sun lands on the brass without changing what the brass is. That superposition — same object, two settings — is Bridgeable.
+
+### The aesthetic test
+
+Codified as the platform's single-rule QA heuristic. Every visual element on Bridgeable must pass this test before shipping.
+
+**Rule:** Before shipping any visual element, ask: *does this evoke the emotional register articulated in Section 0 — warm restraint, considered materiality, architectural confidence, calm expensiveness, time-resistance, quietness, workshop-tool seriousness, heirloom commitment?*
+
+- If **yes** → ship.
+- If it drifts toward any of: **generic SaaS warmth** (warmth as decoration rather than material), **consumer-app playfulness** (rounded-everything maximalism, gamification, celebration animations), **laboratory cold** (clinical, neutral, sterile), **decorative flourish** (ornament without function), **trend-of-the-year** (gradient meshes, glassmorphism, neumorphism, AI-aesthetic) — refine before shipping.
+
+The test is **emotional register**, not literal vehicle aesthetics. The Range Rover frame is the imaginative bridge that articulates the register; the test is whether the register is achieved, not whether the surface looks like a vehicle.
+
+**Sub-tests when the primary test is ambiguous:**
+
+- *Time-resistance check.* Imagine this surface in a screenshot dated 2036. Does it embarrass anyone? If it shows a 2020s convention (the things listed in §10 anti-patterns), it fails.
+- *Quietness check.* Cover the surface with a hand and try to recall whether you noticed any single decorative element. If yes, that element is too loud. If no, the chrome is calibrated correctly.
+- *Reference-family check.* Imagine this surface placed alongside the Linear inbox, the Leica M9 product page, the Teenage Engineering OP-1 packaging. Does it feel like it belongs in that company? If yes, the register is right. If it feels like it'd be more at home in a Notion onboarding tour or a Slack channel header, the register has drifted.
+- *Operator-respect check.* Would an operator with thirty years in a precast plant feel respected by this surface? Or would they feel patronized by emoji, illustrations, or condescending copy? Bridgeable users include people whose work is the physical economy. The visual language must match the seriousness of the work.
+
+### Anti-patterns specific to Section 0
+
+Generic-SaaS warm drift. The single most common failure mode in a platform that has the right tokens but the wrong character. Symptoms: warm gray surfaces with rounded-everything corners, brass buttons next to pastel illustrations, restrained typography next to celebratory animations, dim backdrop next to a stock smiling-team-photo. Each individual choice may be on-token; the composite reads as Notion-with-a-different-palette rather than as Bridgeable. Fix: review the eight qualities. Identify which are absent. Pull each toward presence.
+
+Reference-family literalism. Translating the reference into surface decoration — a leather-grain background because Filson briefcase, a brass radial gradient because Leica top plate, a workshop pegboard pattern because workshop. The references are *imaginative briefs*, not visual specifications. The character translates; the artifacts do not.
+
+Trend-tied visual conventions. Anything that places Bridgeable in a specific year — current-decade gradients, glassmorphism panes, neumorphism extrusions, soft-everything Apple consumer aesthetic, theatrical AI aesthetics (purple-to-pink gradients with sparkles). Time-resistance fails if the surface tells you what year it shipped.
+
+Decorative warmth. Warmth used to make surfaces "feel friendly" rather than to express material. Pastel cream backgrounds with no purpose, soft drop shadows on flat content, brass borders on cards that don't need emphasis. The warmth in Bridgeable is materially earned — surfaces are warm because they are observed in warm light, not because warmth is decorative. When warmth is present without justification, the register drifts toward generic-SaaS.
+
+Consumer-app maximalism. Rounded-everything (radius >16px on standard surfaces), celebration moments (confetti, animated checkmarks with sparkles, "great job!" copy), illustrative onboarding tours, decorative empty states with cheerful illustrations replacing functional information. These are correct in consumer software; they are wrong in operator software. Bridgeable's users are not customers being delighted; they are operators doing work.
+
+Workshop-tool aesthetic without the discipline that makes workshop tools work. Information density without legibility. Density-as-virtue produces Bloomberg-Terminal-without-Bloomberg's-decades-of-typography-discipline — dense AND illegible. Density requires *more* design, not less. If a dense view is hard to scan, density became clutter.
+
+### Calibration against existing surfaces (April 2026 baseline)
+
+These surfaces serve as in-house calibration points. New surfaces compared against these should feel like they belong; surfaces that feel different need refinement.
+
+**In-register surfaces** (achieve all eight qualities, evoke the right character):
+
+- **Funeral Schedule kanban DeliveryCard** (`frontend/src/components/dispatch/DeliveryCard.tsx`). `bg-surface-elevated` + `shadow-level-1`, no perimeter border, restrained typography hierarchy (eyebrow + truncated FH headline + subhead + service-time line + icon-row status). Floats on the lane background as a material object. Brass status indicator (chat unread chip) used as functional emphasis. This is the canonical "card as material" reference for the platform.
+- **Scheduling Focus core after Phase 4.4.2 container removal** (`frontend/src/components/focus/Focus.tsx`). Content floats directly on dimmed-blurred backdrop. No unifying container. Each child element provides its own visual weight via elevation tokens. "Focus is a mode, not a modal." The aesthetic register is most legible here because nothing decorative is present.
+- **AncillaryPoolPin** (`frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx`). Compact rows with no decorative chrome (Phase 4.3b.3.2 removed the grip icon). Eyebrow + truncated label + subhead per row. Brass count chip on header. Whole-row drag with no handle. Workshop-tool register applied at small scale.
+- **QuickEditDialog** (`frontend/src/components/dispatch/QuickEditDialog.tsx`). Section-grouped form (Assignment / Delivery state) with `text-micro uppercase tracking-wider` eyebrows. Form fields use the canonical input shell. No celebration on save; no decorative chrome. Restrained, considered, operator-grade.
+- **Brass primary buttons platform-wide.** Functional emphasis via the cross-mode brass thread. No icon clutter. Solid surface, contained label. The same button reads as native to both Mediterranean morning and cocktail lounge evening — material continuity across modes.
+
+**Drift surfaces** (have at least one quality missing; flagged for revisit):
+
+- **Manufacturing dashboard onboarding banner** (per CLAUDE.md Aesthetic Arc Phase II audit). Pre-Aesthetic-Arc had a setup banner with rocket emoji that violated Operator-respect + Quietness. Aesthetic Arc Phase II's Batch 1a refresh closed most of this; verify any remaining vestigial emoji or celebratory copy.
+- **WidgetChrome decorative grip icon** (`frontend/src/components/focus/canvas/WidgetChrome.tsx:259`). Retained from Phase A Session 3.5 as a "decorative drag affordance" with `pointer-events: none`. Per the post-4.3b.3.2 platform principle ("drag handles are an anti-pattern"), this icon now violates Considered Materiality (decorative, not earned) and Quietness (visible without functional purpose). Flagged in PRODUCT_PRINCIPLES.md drag-interactions section as tech debt; revisit when WidgetChrome is next touched.
+- **BlockLibrary grip icon** (`frontend/src/components/workflow/BlockLibrary.tsx:549`). Same pattern as WidgetChrome — pre-existing decorative grip. Same rationale to retire.
+- **Legacy pages still on shadcn defaults** (~213 pages per Aesthetic Arc Phase II audit, pre-batch-1). Most of those pages render coherently because their primitives have been refreshed (Sessions 2–3), but some page-level chrome (banners, headers, empty states) still uses generic shadcn semantic classes. Flagged for natural-touch refactor; the Aesthetic Arc batches close them progressively.
+- **Status-pill ad-hoc rendering sites** (~1305 ad-hoc Tailwind status-color usages noted in Aesthetic Arc Phase II audit). Most sites should migrate to `<StatusPill>` or `<Badge variant="info|warning|success|error">` per the Session 3 status-color recipe. Until they do, individual sites read as "platform with status colors" rather than as "platform with the canonical status color treatment."
+
+These calibration points are not aspirational — they exist in the codebase today. New surfaces should compare against them; refactor passes should pull drift surfaces toward the in-register surfaces.
+
+### What this section provides Sonnet
+
+When building any new visual surface, Sonnet should:
+
+1. **Read the eight qualities (above).** They are the platform's character.
+2. **Apply the aesthetic test** before shipping. If the surface fails any sub-test, pull toward the in-register calibration surfaces above.
+3. **Reach for Section 1's mood anchors** for color, warmth, material character, atmosphere. Section 1 carries the *settings*; Section 0 carries the *object*.
+4. **Reach for Sections 2–9** for specific values — token names, shadow specs, type scale, spacing scale, motion timing.
+5. **Reach for Section 10** when something feels off and the cause needs localization.
+
+When in doubt about whether a surface evokes the right register, the path is:
+
+- **Eight qualities** (Section 0) — does the surface achieve them?
+- **Mood anchors** (Section 1) — does the surface fit the morning-or-evening mood?
+- **In-register calibration surfaces** (Section 0, above) — does the surface feel like it belongs alongside DeliveryCard, the post-4.4.2 Focus core, AncillaryPoolPin?
+- If any of those answers is no, the surface needs refinement before shipping.
 
 ---
 
@@ -2291,6 +2443,24 @@ Definition in `styles/tokens.css` mirrors the above verbatim per the tokens.css 
 This section consolidates anti-patterns from every prior section into one reference. It is the document's diagnostic layer: when shipped UI feels wrong, this is where to look for what specifically broke.
 
 Anti-patterns are organized by what they break. Each entry names the violation, the specific rule it breaks (with the section it comes from), and why it matters.
+
+### Anti-patterns that break the object's character (Section 0)
+
+These are the highest-altitude failures — the surface may pass every individual rule (tokens correct, spacing on-scale, type within the system) yet still feel wrong because the *register* drifted. When these fail, the platform reads as "warm SaaS" or "consumer app" rather than as Bridgeable.
+
+**Generic-SaaS warm drift.** Violates the eight qualities (Section 0) collectively. Symptoms: warm gray surfaces with rounded-everything corners, brass buttons next to pastel illustrations, restrained typography next to celebratory animations, dim backdrop next to a stock smiling-team photo. Each individual choice may be on-token; the composite reads as Notion-with-a-different-palette rather than as Bridgeable. Fix: review the eight qualities. Identify which are absent. Pull each toward presence.
+
+**Reference-family literalism.** Violates Section 0's "DO NOT translate" list. Translating the imaginative brief into surface decoration — leather-grain backgrounds because Filson, brass radial gradients because Leica top plate, workshop pegboard patterns because workshop. The references are imaginative briefs, not visual specifications. Character translates; artifacts do not.
+
+**Trend-tied visual conventions.** Violates time-resistance (Section 0 quality 5). Anything that places Bridgeable in a specific year — current-decade gradient meshes, glassmorphism panes, neumorphism extrusions, soft-everything Apple consumer aesthetic, AI-aesthetic purple-to-pink-with-sparkles. Time-resistance fails if a screenshot tells you what year it shipped.
+
+**Decorative warmth.** Violates Section 0's considered-materiality quality. Warmth used to make surfaces "feel friendly" rather than to express material. Pastel cream backgrounds with no purpose, soft drop shadows on flat content, brass borders on cards that don't need emphasis. Bridgeable warmth is materially earned — surfaces are warm because observed in warm light, not because warmth is decorative.
+
+**Consumer-app maximalism.** Violates Section 0's workshop-tool-grade quality. Rounded-everything (radius >16px on standard surfaces), celebration moments (confetti, animated checkmarks with sparkles, "great job!" copy), illustrative onboarding tours, decorative empty states with cheerful illustrations replacing functional information. Correct in consumer software; wrong in operator software.
+
+**Workshop aesthetic without workshop discipline.** Violates Section 0's calm-expensiveness quality combined with Section 1's deliberate-restraint. Information density without legibility — Bloomberg Terminal aesthetic without Bloomberg's decades of typography discipline. Density requires *more* design, not less. If a dense view is hard to scan, density became clutter.
+
+When any of the above fires, refer to the **in-register calibration surfaces** named in Section 0 (DeliveryCard, post-4.4.2 Focus core, AncillaryPoolPin, QuickEditDialog, brass primary buttons). Pull the failing surface toward those references rather than toward generic SaaS conventions.
 
 ### Anti-patterns that break the warm-hue coherence
 
