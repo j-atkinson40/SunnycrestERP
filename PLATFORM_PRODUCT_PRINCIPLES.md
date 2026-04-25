@@ -483,6 +483,59 @@ Linear?" The answer is virtually always no.
 
 ---
 
+## Cmd+K outside Focus: defer to Focus Chat when target resolution is ambiguous
+
+The command bar (Cmd+K) is hidden inside Focus per primitive
+design (PA §5.15: Act and Decide are distinct primitives;
+information-lookup or in-Focus actions are answered by Focus
+Chat — Phase A Session 7 — not by escaping to the command bar).
+
+That leaves Cmd+K available outside Focus — on hub dashboards,
+on per-page surfaces, on the Pulse home view. For actions that
+need a TARGET delivery / case / record, target resolution outside
+Focus is harder than inside:
+
+- Outside Focus there's no "currently-selected item" concept on
+  most surfaces. NL extraction has to identify the target by
+  family name or some other shorthand the user types.
+- Inside Focus, the open Focus IS the context. Focus Chat
+  inherits target unambiguously.
+
+When QuickEdit (or an equivalent direct-edit affordance) already
+serves the use case efficiently, **defer NL-disambiguated Cmd+K
+alternatives to Focus Chat where target is unambiguous from
+context.** Don't build a Cmd+K NL flow that competes with a 2-3
+click QuickEdit path on the same surface — the QuickEdit path
+typically wins because it's faster, has better failure modes
+(visible form vs. silent NL parse miss), and doesn't require
+target disambiguation.
+
+Pattern surfaced during Phase 4.3b.1 investigation when
+considering "assign Dave as helper to DiNardo" via Cmd+K. Target
+resolution outside Focus required NL parsing of family + date;
+QuickEditDialog already supports the helper field with a
+deterministic dropdown. Cmd+K helper assignment deferred to Focus
+Chat (Phase A Session 7) where the open Focus's selected item
+provides the target without parsing.
+
+**Test for any new Cmd+K action:**
+1. Inside Focus → not applicable (Cmd+K is hidden; this is Focus
+   Chat territory).
+2. Outside Focus → does the user already have a faster
+   deterministic path (QuickEdit, single-click button, hover-
+   reveal)? If yes, defer.
+3. If no faster path exists, the action is a candidate for Cmd+K
+   — but design the disambiguation prompt explicitly (chip-driven
+   conversation, candidate cards) rather than hoping NL extracts
+   correctly.
+
+The principle isn't "Cmd+K is bad outside Focus." It's "Cmd+K
+isn't a general-purpose escape valve for any side-effect that
+needs a target — the target-resolution UX deserves explicit
+design every time."
+
+---
+
 ## Domain-Specific Operational Semantics
 
 Terminology matters when it reflects operational reality. These

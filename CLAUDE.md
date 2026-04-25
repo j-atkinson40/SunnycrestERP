@@ -1247,6 +1247,16 @@ AgentRunner.AGENT_REGISTRY[AgentJobType.MONTH_END_CLOSE] = MonthEndCloseAgent
 ### shadcn/ui v4
 Uses `@base-ui/react` — **no `asChild` prop**. Use `render={<Component />}` instead. Use `buttonVariants()` for styling Links as buttons.
 
+### Focus Canvas tier-renderer pointer-events contract
+
+All three Focus Canvas tier renderers (`canvas`, `stack`, `icon`) are uniformly `pointer-events: none`. Interactive descendants self-assert `pointer-events: auto` on their own outer containers — `WidgetChrome` for canvas-tier widgets, `StackRail` for the right-rail Smart Stack, `IconButton` + `BottomSheet` (4 elements) for icon tier. CSS pointer-events is not inherited; descendants with explicit `pointer-events: auto` receive events normally even when the parent renderer is `pointer-events: none`.
+
+This contract enables full-viewport renderer placement (`absolute inset-0`) without intercepting events meant for surfaces beneath. Canvas is a sibling of the focus-core-positioner inside `Dialog.Portal` but renders AFTER (Phase 4.2.3 DOM-order swap so accessories paint on top of core); at equal z-index this would otherwise mean every viewport coordinate gets captured by the topmost tier renderer, breaking kanban interactions in the popup beneath.
+
+Established in **Phase 4.2.1** for canvas tier; extended to stack + icon tiers in **Phase 4.3b.3.1** after the `AncillaryPoolPin` widget triggered the latent bug — pre-pin the stack tier was rarely active in production (no widgets → canvas tier always passed), so the pin's 260px width forcing fall-through to stack tier exposed the asymmetric pointer-events contract for the first time.
+
+**Future tier renderers + interactive children must follow this pattern.** Tier renderer = pointer-events: none. Each interactive surface inside self-asserts pointer-events: auto on its OWN container. New widgets that wrap their interactive content in another auto layer don't break anything; widgets that rely on the renderer's pointer-events would (silently — the bug surfaces only when widgets actually need to be active in production tier).
+
 ### Spec-Override Discipline
 
 When user specification appears to conflict with design system canons, implementation conventions, or Sonnet's preferred interpretation:

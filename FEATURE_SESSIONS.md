@@ -6,6 +6,117 @@ first. For the current platform state, see `CLAUDE.md`.
 
 ---
 
+## Phase 4.3b — D-1 DndContext elevation + ancillary pool pin + cross-context drag
+
+**Date:** 2026-04-25
+**Session type:** Multi-phase feature build with two regression-fix passes.
+**Commits (in order):**
+1. `cd31788` — 4.3b.2 D-1 elevation: single DndContext at Focus level
+2. `f2c2d3f` — 4.3b.3 commit 1: typed widget renderer registry
+3. `a39f82d` — 4.3b.3 commit 2: pool-ancillaries endpoint + SchedulingFocusContext
+4. `9a0d482` — 4.3b.3 commit 3: AncillaryPoolPin widget + 17 tests
+5. `d9e0055` — 4.3b.3 commit 4: cross-context drag + delivery-as-parent droppable
+6. `2d067ff` — 4.3b.3.1 regression fix: stack + icon tier renderers pointer-events-none
+7. `1ef7f59` — 4.3b.3.2: pool drag overlay + whole-item drag + canonicalize principle
+8. `395bfb9` — 4.3b.4 commit 1: pin drop target + drawer drag-to-detach
+9. `<this commit>` — 4.3b.4 commit 2: documentation
+
+### Phase 4.3b.1 — Pre-build investigation
+
+Investigation-only phase per CLAUDE.md §12. Six decision points + three acknowledgments surfaced before any code. User confirmed all six:
+- Pin placement: right-rail anchor, ~260px width
+- Saturday warning: deferred to dedicated Pulse-anomaly session
+- Drag-to-detach same-driver-lane: detach-to-standalone
+- Helper Cmd+K: deferred to Focus Chat (Phase A Session 7)
+- Test harness migration: acknowledged, mechanical
+- Drag id format change for Canvas widgets: acknowledged, mechanical
+- Pool fetch: new helper `fetchPoolAncillaries`
+
+### Phase 4.3b.2 — D-1 DndContext elevation
+
+**Goal:** single DndContext at Focus level so cross-context drag (canvas pin item → kanban lane) becomes structurally possible. Pre-4.3b each region (Canvas widgets, SchedulingKanbanCore lanes) owned its own `<DndContext>`; two parallel contexts meant a draggable in one tree could not target droppables in the other.
+
+**What shipped:** new `FocusDndProvider` component owns single `DndContext` + sensors + activeId state. Mounted inside `Dialog.Portal` in `Focus.tsx`, wrapping BOTH the focus-core-positioner (Popup → ModeDispatcher → core mode) AND the sibling Canvas. Multi-consumer pattern via `useDndMonitor`: Canvas + SchedulingKanbanCore each register their own listeners; gating happens per-listener via id-prefix discriminator (`widget:`, `delivery:`, `ancillary:`).
+
+**Drag id discriminator scheme:**
+- `widget:<widget_id>` — Canvas widget repositioning (Canvas useDndMonitor consumer)
+- `delivery:<delivery_id>` — primary kanban DeliveryCard + standalone AncillaryCard reassignment (SchedulingKanbanCore consumer)
+- `ancillary:<ancillary_id>` — pool pin items + drawer detach drags (SchedulingKanbanCore consumer)
+
+**Backwards-compat preserved:** Canvas tier renderer's `pointer-events-none` (Phase 4.2.1 fix), DragOverlay's `createPortal(document.body)` (Phase 4.2.3 fix), tier-renderer pointer-events contract for canvas tier. Test harnesses migrated to wrap with `<FocusDndProvider>` (~3 LOC each).
+
+**Verified live:** kanban Focus shows 5 cards with `aria-roledescription="draggable"`; dev `/dev/focus-test` Kanban Focus shows 3 canvas widgets with draggable attrs in canvas-tier renderer; console clean. User verified drag motion + DragOverlay positioning + cross-tier drag patterns.
+
+### Phase 4.3b.3 — Widget framework + AncillaryPoolPin + cross-context drag
+
+Four-commit chain shipped widget framework extension + pool data layer + pin component + cross-context routing.
+
+**Commit 1 (f2c2d3f) — typed widget renderer registry.** New `widget-renderers.ts` Map-based registry with `registerWidgetRenderer` + `getWidgetRenderer`. `WidgetState.widgetType?: string` added (optional; pre-4.3b.3 layouts unchanged). 4 dispatch sites updated: Canvas, BottomSheet, StackRail, StackExpandedOverlay. MockSavedViewWidget registered as `"mock-saved-view"` and used as the default fallback when widgetType is undefined OR unregistered.
+
+**Commit 2 (a39f82d) — pool data + context.** Backend `GET /api/v1/dispatch/pool-ancillaries` (5 BLOCKING tests). Frontend `SchedulingFocusDataProvider` mounted at Focus level only when active focus is `funeral-scheduling`; exposes `poolAncillaries`, `poolLoading`, `reloadPool`, `removeFromPoolOptimistic`. `useSchedulingFocus()` (throws outside provider) + `useSchedulingFocusOptional()` (null-safe for kanban core's existing test harnesses).
+
+**Commit 3 (9a0d482) — AncillaryPoolPin widget.** Right-rail anchor 260×600 default position (per user-confirmed Decision 1). Compact rows with `useDraggable({ id: "ancillary:<id>" })` per item. Headline fallback chain: product_summary → vault_type → delivery_type label. Subhead: family_name → funeral_home_name. 17 vitest tests covering empty state, populated state, drag wiring, provider contract, loading.
+
+**Commit 4 (d9e0055) — cross-context drag + delivery-as-parent droppable.** DeliveryCard becomes droppable when `scheduling_type === "kanban" && primary_assignee_id !== null`. `useFocusDndActiveId()` gates visual feedback to ancillary drags only. Drop-over visual: ring-2 ring-brass ring-dashed ring-offset-2 + bg-brass-subtle/40 + shadow-level-2. SchedulingKanbanCore handler routes parent-drops via `attachAncillary`; pool source resolved through context's `poolAncillaries`; optimistic add to deliveries on pool→lane / pool→attach; optimistic remove from pool.
+
+### Phase 4.3b.3.1 — Critical pointer-events regression fix
+
+User reported drag + tooltips broken across the funeral-scheduling Focus surface after Phase 4.3b.3 shipped. Diagnosed before patch: `elementFromPoint(murphy_card_center)` returned the stack-tier renderer DIV instead of the card. Same Phase 4.2.1 bug pattern, but on stack tier instead of canvas tier.
+
+**Why pre-4.3b.3 didn't break:** production funeral-scheduling Focus had no widgets → `widgetsFitInCanvas([], ...)` returned `true` vacuously → canvas tier always active → canvas's `pointer-events-none` (Phase 4.2.1 fix) saved the day.
+
+**Why 4.3b.3 broke it:** AncillaryPoolPin (260px) exceeds canvas reserved-right band (100px) → fit-check fails → stack tier active at all viewports → renderer's `pointer-events-auto` covered the full viewport.
+
+**Fix (commit 2d067ff):** Change stack-tier + icon-tier renderers to `pointer-events-none` always (matching canvas-tier). All three tier renderers now uniformly pointer-events-none. Interactive descendants self-assert pointer-events-auto on their own outer containers (StackRail line 90, IconButton line 34, BottomSheet 4 elements). Phase 4.2.1 comment claiming stack/icon need auto on the renderer was outdated and now contradicts the actual code; comment + contract corrected.
+
+**Lesson (institutional):** asymmetric pointer-events contracts between tier renderers are a latent bug surface that doesn't trip until widgets actually live in the affected tier. Mock test fixtures (test-kanban) had the same exposure since Phase A Session 3.7 but never surfaced because no real interactivity beneath them. Production surfaces with real kanban + tooltips beneath the renderer make the bug acute. Forward rule: tier renderers UNIFORMLY pointer-events-none; per-child auto on every interactive surface. Captured as a CLAUDE.md "Focus Canvas tier-renderer pointer-events contract" section so future tier renderers inherit the rule.
+
+### Phase 4.3b.3.2 — Pool drag overlay + whole-item drag + principle canonicalization
+
+Two narrow fixes after .1 verified working:
+
+**Fix 1 (DragOverlay containing-block trap for pool drags):** the kanban's existing portaled DragOverlay was the right surface to handle pool-source drags; it just looked up the active drag in `deliveries` only. Extended the lookup to BOTH `deliveries` AND `schedulingFocus.poolAncillaries`. Single DragOverlay handles every ancillary drag (pin source, drawer source, lane source) with one consistent visual + portal contract.
+
+**Fix 2 (whole-item drag on pin):** removed the decorative `GripVerticalIcon` from PoolItem. Whole-element drag was already wired (useDraggable listeners on the wrapper); the grip was purely visual clutter. Updated aria-label to whole-item phrasing.
+
+**Principle canonicalized:** new section "Drag interactions: whole-element drag, no handles" added to PLATFORM_PRODUCT_PRINCIPLES.md before "Domain-Specific Operational Semantics." Every draggable surface uses PointerSensor activation constraint (`distance: 8`) to separate click from drag. Decorative cursor changes (grab → grabbing) are correct; decorative grip icons are NOT. Reference implementations cited. Future Sonnet sessions adding drag surfaces inherit the principle.
+
+WidgetChrome line 259 + BlockLibrary line 549 still render GripVertical icons (pre-existing patterns). Both retained as decorative + non-interactive (`aria-hidden`, `pointer-events: none`) per Phase A Session 3.5. Per the new principle they should be revisited; out of 4.3b.3.2 scope, flagged as tech debt.
+
+### Phase 4.3b.4 — Drag-to-detach + drag-to-pool + closing docs
+
+Two-commit close-out of the 4.3b arc.
+
+**Commit 1 (395bfb9) — pin drop target + drawer drag-to-detach.** AncillaryPoolPin's outer container wraps `useDroppable({ id: ANCILLARY_POOL_DROPPABLE_ID })` (exported const, "ancillary-pool"). Visual feedback gated on active ancillary drag AND source not already in pool. Empty-state copy swaps to "Drop to return to pool" during drag-over. Drawer items now wrap `useDraggable` via a new `DrawerAncillaryItem` component extracted from the inline render (Phase 4.3.3.1 pre-positioned the data-slot + data-ancillary-id; this commit adds the drag wiring). PointerSensor activation constraint preserves click semantics — quick click still fires onOpenEdit + opens QuickEdit. SchedulingKanbanCore's drag handler gains a pin-drop branch (BEFORE parent-drop and lane-drop) that routes to `returnAncillaryToPool` + `reloadPool`.
+
+**Commit 2 (this commit) — documentation.**
+- CLAUDE.md gains a "Focus Canvas tier-renderer pointer-events contract" section codifying the 4.3b.3.1 lesson.
+- PLATFORM_PRODUCT_PRINCIPLES.md gains a "Cmd+K outside Focus: defer to Focus Chat when target resolution is ambiguous" section codifying the 4.3b.1 architectural insight.
+- This FEATURE_SESSIONS.md entry covering the full 4.3b arc.
+
+### Test counts
+
+- Pre-4.3b: 476 vitest passing
+- 4.3b.2: 476 (no new tests — refactor only; existing tests cover behaviorally)
+- 4.3b.3: 493 (+17 AncillaryPoolPin tests) + 5 backend pool-endpoint tests
+- 4.3b.3.1: 493 (no new tests — pointer-events fix is structural)
+- 4.3b.3.2: 495 (+2 whole-item drag invariant tests)
+- 4.3b.4: 499 (+3 pin drop-target + 1 drawer drag wiring)
+
+### Architectural lessons (institutional)
+
+1. **Tier renderers must be uniformly pointer-events-none.** Asymmetric per-tier contracts hide latent bugs that surface only when real widgets live in affected tiers. Test fixtures don't catch this because they're not live-interaction surfaces.
+
+2. **Multi-consumer DndContext via useDndMonitor + id-prefix discriminator** is the canonical pattern when one DndContext spans multiple feature subtrees. Each subtree's listener early-returns on non-matching prefixes; multiple listeners coexist cleanly.
+
+3. **Whole-element drag is the platform standard.** Decorative grip icons are anti-pattern. PointerSensor activation constraint (distance: 8) handles click-vs-drag separation universally.
+
+4. **Cmd+K outside Focus is not a general-purpose escape valve.** When QuickEdit (or equivalent direct-edit affordance) already serves the use case efficiently, defer NL-disambiguated Cmd+K alternatives to Focus Chat where target is unambiguous from context.
+
+5. **Pre-build investigation phase saved cycles.** 4.3b.1 surfaced 6 decision points that could have caused mid-build rework if not flagged early. Helper Cmd+K deferral, Saturday warning deferral, and pin placement decision came out of investigation cleanly. Same pattern recommended for future high-risk feature builds.
+
+---
+
 ## Phase 3.3.1 — Funeral Schedule rename + hide-by-default driver columns + rotation physics tune
 
 **Date:** 2026-04-23
