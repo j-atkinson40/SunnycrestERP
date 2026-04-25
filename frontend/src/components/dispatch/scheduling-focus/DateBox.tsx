@@ -179,29 +179,30 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
             aria-pressed={active}
             className={cn(
               // Architectural proportions — square-shouldered, sharp
-              // corners. Aesthetic Arc Session 1.5 Commit C tightened
-              // padding + min-width: the box should read as a
-              // discoverable peek affordance, not a primary nav
-              // element. Section 0 British register — quiet at rest,
-              // jewelry only when engaged.
+              // corners. Aesthetic Arc Session 1.6 calibrates the
+              // middle ground between Session 1's prominent surface-
+              // elevated treatment and Session 1.5's nearly-invisible
+              // transparent + half-border. User feedback: "date
+              // boxes are barely visible now so they need more
+              // work" + "1px border at warm-gray, not transparent."
+              // Result: transparent surface (no fill) + FULL-strength
+              // border-border-subtle + slightly larger type +
+              // bumped-back padding. Discoverable affordance,
+              // subordinate to H2 day label.
               "inline-flex flex-col items-center justify-center",
-              "min-w-[44px] px-2 py-0.5 rounded-sm",
-              // Aesthetic Arc Session 1.5 — Material at rest is
-              // TRANSPARENT (no surface fill). Pre-Session-1.5 the
-              // box had `bg-surface-elevated` which made the box read
-              // as a "primary navigation element" weighing same as
-              // the H2 day label.
-              // Post-Session-1.5: transparent surface + subtle
-              // half-strength border. The box reads as "I'm a
-              // discoverable peek affordance" — quiet at rest, jewelry
-              // only when active. Section 0 Detail Concentration TP4
-              // — brass concentrates at active state; rest state
-              // stays minimal.
-              "border border-border-subtle/50",
-              // Hover — subtle brass warming. Border lifts to full
-              // strength on hover for "this is interactive" feedback
-              // without committing to active jewelry.
-              "hover:bg-brass-subtle/20 hover:border-border-subtle",
+              "min-w-[48px] px-2.5 py-1 rounded-sm",
+              // Aesthetic Arc Session 1.6 — full-strength border at
+              // rest (was /50 half-strength in Session 1.5). User
+              // explicitly asked for "1px border at warm-gray, not
+              // transparent." The border restores presence without
+              // committing to a surface fill — the box reads as a
+              // discoverable peek affordance, distinct from but
+              // quieter than the H2 day label.
+              "border border-border-subtle",
+              // Hover — subtle brass warming. Bumped opacity slightly
+              // (/20 → /30) for clearer interactive feedback at the
+              // new visibility level.
+              "hover:bg-brass-subtle/30",
               // Quietness — motion is purposeful, no bounce. Same
               // tokens as the rest of the platform's hover transitions.
               "transition-colors duration-quick ease-settle",
@@ -218,12 +219,10 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
               ],
             )}
           >
-            {/* Eyebrow — weekday abbreviation. Aesthetic Arc Session
-                1.5 — sized down (text-micro is platform-wide eyebrow
-                already; just lighter weight for quietness).
-                Cross-surface vocabulary consistency: same micro-
-                eyebrow treatment as Scheduling header + AncillaryPool
-                Pin header. */}
+            {/* Eyebrow — weekday abbreviation. text-micro is platform-
+                wide eyebrow treatment. Cross-surface vocabulary
+                consistency: same micro-eyebrow as Scheduling header
+                + AncillaryPoolPin header. */}
             <span
               className={cn(
                 "text-micro uppercase tracking-wider leading-tight",
@@ -233,15 +232,17 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
             >
               {weekday}
             </span>
-            {/* Date — month + day. Aesthetic Arc Session 1.5 —
-                font-size dropped from text-body-sm (14px) to
-                text-caption (12px); date should harmonize visually
-                with the eyebrow and not assert primary-text
-                weight. Plex Mono retained for tabular alignment with
-                lane count digits + count chip. */}
+            {/* Date — month + day. Aesthetic Arc Session 1.6 —
+                font-size restored from 12px to 13px (text-[0.8125rem])
+                — middle ground between Session 1's 14px (text-body-sm)
+                and Session 1.5's 12px (text-caption). User: "slightly
+                larger than current, but still smaller than H2." H2 is
+                16px (text-h3); 13px keeps the box subordinate. Plex
+                Mono retained for tabular alignment with lane count
+                digits + count chip. */}
             <span
               className={cn(
-                "text-[0.75rem] leading-tight tabular-nums",
+                "text-[0.8125rem] leading-tight tabular-nums",
                 "text-content-base font-plex-mono",
                 active && "text-content-strong",
               )}

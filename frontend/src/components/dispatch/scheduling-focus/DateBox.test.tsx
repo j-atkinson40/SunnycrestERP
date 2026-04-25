@@ -185,17 +185,21 @@ describe("DateBox rendering", () => {
     })
   })
 
-  it("calibration: transparent surface + half-strength border + sharp corners (Aesthetic Arc Session 1.5)", () => {
-    // Aesthetic-coherence regression. DESIGN_LANGUAGE Section 0
-    // calibration. Pre-Session-1.5: bg-surface-elevated + full-
-    // strength border-border-subtle. Post-Session-1.5: TRANSPARENT
-    // surface (no fill) + half-strength border (border-border-
-    // subtle/50). The box should read as a quiet peek affordance,
-    // not a primary nav element competing with the H2 day label.
-    // Active state still applies brass jewelry (separate test
-    // below). If a future refactor drifts to bg-muted (generic
-    // SaaS) or rounded-full (consumer chip) or restores the
-    // elevated surface at rest, this test fails.
+  it("calibration: transparent surface + full-strength border + sharp corners (Aesthetic Arc Session 1.6)", () => {
+    // Aesthetic-coherence regression. Calibration journey across
+    // sessions:
+    //   Pre-Session-1.5: bg-surface-elevated + full-strength
+    //     border. Read as primary-nav weight, competing with H2.
+    //   Session 1.5: TRANSPARENT + half-strength /50 border.
+    //     Overcorrected — boxes barely visible.
+    //   Session 1.6 (current): transparent + FULL-strength border.
+    //     Middle ground per user spec ("1px border at warm-gray,
+    //     not transparent").
+    // The box should read as a discoverable peek affordance,
+    // distinct from but quieter than H2 day label. Active state
+    // still applies brass jewelry (separate test below). If a
+    // future refactor drifts to bg-muted, rounded-full, or
+    // restores the elevated surface at rest, this test fails.
     const { container } = render(
       <Harness>
         <DateBox date="2026-04-25" active={false} onClick={() => {}} />
@@ -208,8 +212,9 @@ describe("DateBox rendering", () => {
     // No surface fill at rest — transparent against the dimmed
     // backdrop.
     expect(cls).not.toMatch(/bg-surface-elevated/)
-    // Half-strength border only.
-    expect(cls).toMatch(/border-border-subtle\/50/)
+    // Full-strength border (no /50 alpha modifier — Session 1.5's
+    // half-strength was undercorrection per user feedback).
+    expect(cls).toMatch(/\bborder-border-subtle\b(?!\/)/)
     expect(cls).toMatch(/rounded-sm/)
     // Drift guards — these tokens MUST NOT appear at rest.
     expect(cls).not.toMatch(/bg-muted\b/)
