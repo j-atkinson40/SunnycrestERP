@@ -60,7 +60,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
-import { CheckCircle2Icon, ChevronDownIcon, XIcon } from "lucide-react"
+import { CheckCircle2Icon, ChevronDownIcon } from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -880,28 +880,32 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       data-slot="scheduling-focus-core"
       data-target-date={targetDate}
       data-schedule-state={schedule?.state ?? "loading"}
-      className="flex h-full flex-col gap-4"
+      className="flex h-full flex-col gap-3"
     >
-      {/* Header — Phase 4.4.3 layout:
-          [today_box] [eyebrow + H2 (clickable) + finalize-status] [day_after_box]   [Close] [Finalize]
+      {/* Header — Aesthetic Arc Session 1 (Phase 4.4.4-pre):
+          [today_box] [eyebrow + H2 (clickable) + finalize-status] [day_after_box]   [Finalize]
+
+          Aesthetic Arc Session 1 changes vs Phase 4.4.3:
+          - Close button REMOVED entirely (Section 0 Restraint
+            Translation Principle: backdrop click + Esc already
+            dismiss; the button was decorative. Operator-respect
+            says trust the user with platform conventions).
+          - Header vertical rhythm tightened: gap-4 → gap-3 between
+            header + body (Quietness — chrome subordinate to
+            kanban primary work surface).
+          - Finalize button subordinated in Commit B (brass-jewelry
+            register without dominance — see step B for treatment).
 
           Date boxes flank the H2 cluster as primary peek/slide
           affordance (Phase 4.4.4 wires the slide animation). The H2
-          itself is the popover trigger for any-day jump, replacing
-          the prior separate "Change day" sub-button — Section 0
-          Restraint Translation Principle: removable element was
-          decorative; H2 carries both the date display AND the
-          interaction affordance.
-
-          Generous gap between date boxes and H2 cluster matches
-          Section 5 spacing scale (density permitted, but spaced).
+          itself is the popover trigger for any-day jump.
           The DaySelectorPopover wraps the H2 button, owning the
           popover open state + click-outside dismissal. */}
       <header
         data-slot="scheduling-focus-header"
-        className="flex items-start justify-between gap-4"
+        className="flex items-center justify-between gap-4"
       >
-        <div className="flex flex-1 items-start gap-5 min-w-0">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
           {/* Today date box — peek the day before centerDate. */}
           <DateBox
             date={addDays(targetDate, -1)}
@@ -915,7 +919,13 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
 
           {/* Center cluster — eyebrow + H2 (popover trigger) + finalize-
               status alert. min-w-0 keeps the H2 truncation working
-              when the dayLabel is long (e.g. "Wednesday, December 31"). */}
+              when the dayLabel is long (e.g. "Wednesday, December 31").
+
+              Aesthetic Arc Session 1: H2 sized down from text-h2 to
+              text-h3 — the day label is important but doesn't need
+              to dominate. Section 0 British register: "the thing is
+              good; you'll see if you look closely; we're not going
+              to point at it." */}
           <div className="min-w-0 flex-shrink">
             <p className="text-micro uppercase tracking-wider text-content-muted">
               Scheduling
@@ -950,16 +960,6 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         </div>
 
         <div className="flex flex-none items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={close}
-            data-slot="scheduling-focus-close"
-            aria-label="Close scheduling Focus"
-          >
-            <XIcon className="h-4 w-4" aria-hidden />
-            Close
-          </Button>
           {!isFinalized && (
             <Button
               size="sm"
@@ -1485,14 +1485,17 @@ function DaySelectorPopover({
     <div ref={containerRef} className="relative inline-block mt-0.5">
       {/* H2 button — the trigger surface. Typography-first: looks
           like a heading, behaves like a button. The chevron sits
-          inline at heading scale (h-5 w-5) to read as a visible-
-          but-quiet "this is interactive" affordance without
-          competing with the day label.
+          inline at heading scale to read as a visible-but-quiet
+          "this is interactive" affordance without competing with
+          the day label.
 
-          Section 0 BRITISH REGISTER: the chevron is small enough
-          that it reads as an indicator, not as a decoration; the
-          H2 itself is the headline, the chevron whispers "you can
-          tap this for more." */}
+          Aesthetic Arc Session 1: heading sized down from text-h2
+          to text-h3 — the day label is important but doesn't need
+          to dominate the surface. Section 0 Quietness Translation
+          Principle 5 + British register ("the thing is good;
+          you'll see if you look closely; we're not going to point
+          at it"). Kanban is the primary work surface; chrome
+          subordinates to it. */}
       <button
         type="button"
         onClick={onToggle}
@@ -1501,7 +1504,7 @@ function DaySelectorPopover({
         aria-expanded={open}
         className={cn(
           "inline-flex items-baseline gap-1.5",
-          "text-h2 font-medium leading-none text-content-strong",
+          "text-h3 font-medium leading-none text-content-strong",
           "font-plex-sans tracking-tight",
           // Subtle hover affordance — text shifts slightly toward
           // brass family. Restraint over loud color flip.
@@ -1514,7 +1517,7 @@ function DaySelectorPopover({
         <span>{dayLabel}</span>
         <ChevronDownIcon
           className={cn(
-            "h-5 w-5 self-center text-content-muted",
+            "h-4 w-4 self-center text-content-muted",
             "transition-transform duration-quick",
             open && "rotate-180",
           )}

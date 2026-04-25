@@ -277,7 +277,7 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     })
   })
 
-  it("header shows day label + Change day selector + Finalize button", async () => {
+  it("header shows day label + day selector + Finalize button (Close removed in Aesthetic Arc Session 1)", async () => {
     render(
       <Harness>
         <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
@@ -294,10 +294,15 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     ) as HTMLElement
     expect(finalize).toBeInTheDocument()
     expect(finalize.textContent).toMatch(/Finalize Tomorrow/)
+    // Aesthetic Arc Session 1 — Close button retired per Section 0
+    // Restraint Translation Principle. Backdrop click + Esc already
+    // dismiss; the explicit button was decorative. Operator-respect
+    // says trust the user with platform conventions. This assertion
+    // is a regression guard against accidental re-add.
     const close = document.querySelector(
       '[data-slot="scheduling-focus-close"]',
     )
-    expect(close).toBeInTheDocument()
+    expect(close).toBeNull()
   })
 
   it("each rendered card is wrapped in a card-slot with data-ghost='false' at rest (Phase 4.2.2)", async () => {
