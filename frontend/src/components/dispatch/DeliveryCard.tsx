@@ -36,8 +36,9 @@
  * null-safe.
  */
 
-import { useDraggable } from "@dnd-kit/core"
+import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
+import { useFocusDndActiveId } from "@/components/focus/FocusDndProvider"
 import {
   CheckIcon,
   HelpCircleIcon,
@@ -200,11 +201,52 @@ export function DeliveryCard({
   // with service-time anchor on line 3.
   const startTime = formatStartTime(delivery.driver_start_time)
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: `delivery:${delivery.id}`,
-      data: { deliveryId: delivery.id },
-    })
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: `delivery:${delivery.id}`,
+    data: { deliveryId: delivery.id },
+  })
+
+  // Phase 4.3b.3 — primary kanban deliveries with an assignee can
+  // be the parent in an attach drop (a pool ancillary dragged onto
+  // them becomes a paired ancillary). Standalone ancillaries +
+  // unassigned primaries are NOT valid attach targets.
+  //
+  // useDroppable always runs (hooks must be unconditional); the
+  // `disabled` flag gates the actual drop registration. dnd-kit
+  // skips disabled droppables in collision detection.
+  const canBeAttachParent =
+    delivery.scheduling_type === "kanban" &&
+    delivery.primary_assignee_id !== null
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `delivery-as-parent:${delivery.id}`,
+    disabled: !canBeAttachParent,
+    data: { parentDeliveryId: delivery.id },
+  })
+
+  // Combine the two refs onto the same DOM node — same element is
+  // BOTH the drag source AND the drop target. dnd-kit canonical
+  // pattern when one element serves both roles.
+  const setNodeRef = (node: HTMLElement | null) => {
+    setDragRef(node)
+    setDropRef(node)
+  }
+
+  // Visual-feedback gate. The card lights up as a drop target ONLY
+  // when an `ancillary:`-prefix drag is active (pool item OR
+  // detached attached item being dragged). Other drag types
+  // (delivery: kanban cards, widget: canvas widgets) don't trigger
+  // attach feedback even if the over event fires, because attach
+  // semantics don't apply to them.
+  const activeDragId = useFocusDndActiveId()
+  const isAncillaryDragActive = activeDragId?.startsWith("ancillary:") ?? false
+  const showAttachFeedback =
+    isOver && canBeAttachParent && isAncillaryDragActive
 
   const dragStyle = transform
     ? { transform: CSS.Translate.toString(transform) }
@@ -232,6 +274,7 @@ export function DeliveryCard({
       data-hole-dug={delivery.hole_dug_status}
       data-schedule-state={scheduleFinalized ? "finalized" : "draft"}
       data-dragging={isDragging ? "true" : "false"}
+      data-attach-target={showAttachFeedback ? "true" : "false"}
       style={dragStyle}
       aria-label={ariaLabel ?? `Delivery for the ${family || "unknown"} family`}
       {...attributes}
@@ -258,6 +301,19 @@ export function DeliveryCard({
         // 1.02 to 1.04 typical lift; shadow intensification during
         // interaction — level-1 → level-2").
         isDragging && "shadow-level-2 opacity-95 scale-[1.02]",
+        // Phase 4.3b.3 — attach-target visual feedback. When an
+        // ancillary: drag is active AND the cursor is over a card
+        // that can serve as a parent (kanban + assigned), the card
+        // gets a brass dashed outline + brass-subtle wash. Matches
+        // the lane-droppable brass-ring convention from Scheduling
+        // Lane (§4.2 onwards). data-attach-target is the testable
+        // signal for the visual feedback gate.
+        showAttachFeedback && [
+          "ring-2 ring-brass ring-offset-2 ring-offset-surface-base",
+          "ring-dashed",
+          "shadow-level-2",
+          "bg-brass-subtle/40",
+        ],
         "cursor-grab active:cursor-grabbing",
         "focus-ring-brass outline-none",
       )}

@@ -81,6 +81,7 @@ import { useSchedulingFocusOptional } from "@/contexts/scheduling-focus-context"
 import { cn } from "@/lib/utils"
 import {
   assignAncillaryStandalone,
+  attachAncillary,
   detachAncillary,
   fetchDeliveriesForRange,
   fetchDrivers,
@@ -415,19 +416,118 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       const { active, over } = ev
       if (!over) return
       const deliveryId = String(active.id).replace(/^(delivery|ancillary):/, "")
-      const laneKey = String(over.id)
-      // Lane format: "YYYY-MM-DD:<driverId | __UNASSIGNED__>"
-      const sep = laneKey.indexOf(":")
+      const overId = String(over.id)
+
+      // Phase 4.3b.3 — drop target taxonomy:
+      //   "delivery-as-parent:<id>" → attach branch (pool/standalone
+      //                                ancillary onto a kanban parent
+      //                                delivery card)
+      //   "<date>:<driverId|__UNASSIGNED__>" → lane branch (standard
+      //                                drag-to-reassign)
+      // Branch first on parent-drop because lane-key format expects
+      // a colon-separated date:driver shape that doesn't match the
+      // delivery-as-parent: discriminator.
+      const isParentDrop = overId.startsWith("delivery-as-parent:")
+
+      // Source resolution. Phase 4.3b.3 — sources can come from EITHER
+      // the day's deliveries (kanban primaries, standalone ancillaries,
+      // attached drawer items) OR the pool pin (date-less pool
+      // ancillaries). The pool list lives in SchedulingFocusContext.
+      const fromDeliveries = deliveries.find((d) => d.id === deliveryId)
+      const fromPool = schedulingFocus?.poolAncillaries.find(
+        (d) => d.id === deliveryId,
+      )
+      const sourceDelivery = fromDeliveries ?? fromPool ?? null
+      if (!sourceDelivery) return
+      const isFromPool = fromDeliveries === undefined && fromPool !== undefined
+
+      // ── Parent-drop branch ─────────────────────────────────────
+      if (isParentDrop) {
+        const parentId = overId.replace(/^delivery-as-parent:/, "")
+        // Only ancillaries can attach. Primary kanban cards dropping
+        // on each other are no-ops (no semantic for "delivery as
+        // parent of delivery").
+        if (sourceDelivery.scheduling_type !== "ancillary") return
+        // Already attached to this parent → no-op (client-side
+        // guard; server would 409 anyway).
+        if (sourceDelivery.attached_to_delivery_id === parentId) return
+
+        // Validate parent: must be kanban + assigned. Server would
+        // reject otherwise; client guard avoids the API roundtrip
+        // for invalid drops.
+        const parent = deliveries.find((d) => d.id === parentId)
+        if (
+          !parent ||
+          parent.scheduling_type !== "kanban" ||
+          !parent.primary_assignee_id
+        ) {
+          return
+        }
+
+        // Optimistic update.
+        // From pool: remove from pool + add to deliveries with
+        //            attached state.
+        // From deliveries (standalone or different-parent attached):
+        //            mutate to attached state; no list-shape change.
+        if (isFromPool) {
+          schedulingFocus?.removeFromPoolOptimistic(deliveryId)
+          setDeliveries((prev) => [
+            ...prev,
+            {
+              ...sourceDelivery,
+              attached_to_delivery_id: parentId,
+              primary_assignee_id: parent.primary_assignee_id,
+              helper_user_id: parent.helper_user_id,
+              requested_date: parent.requested_date,
+              ancillary_is_floating: false,
+              ancillary_fulfillment_status: "assigned_to_driver",
+              attached_to_family_name:
+                (parent.type_config?.family_name as string | undefined) ??
+                null,
+            },
+          ])
+        } else {
+          setDeliveries((prev) =>
+            prev.map((d) =>
+              d.id === deliveryId
+                ? {
+                    ...d,
+                    attached_to_delivery_id: parentId,
+                    primary_assignee_id: parent.primary_assignee_id,
+                    helper_user_id: parent.helper_user_id,
+                    requested_date: parent.requested_date,
+                    ancillary_is_floating: false,
+                    ancillary_fulfillment_status: "assigned_to_driver",
+                    attached_to_family_name:
+                      (parent.type_config?.family_name as
+                        | string
+                        | undefined) ?? null,
+                  }
+                : d,
+            ),
+          )
+        }
+        try {
+          await attachAncillary(deliveryId, parentId)
+        } catch (e) {
+          console.error("scheduling focus attach failed:", e)
+          reload()
+        }
+        return
+      }
+
+      // ── Lane-drop branch (existing logic, extended for pool source) ──
+      const sep = overId.indexOf(":")
       if (sep === -1) return
-      const targetDriverRaw = laneKey.slice(sep + 1)
+      const targetDriverRaw = overId.slice(sep + 1)
       // Phase 4.3.2 (r56) — lane keys carry user_id (users.id) values,
       // not driver.id. The parsed raw value is ready to ship to the
       // backend's primary_assignee_id field.
       const nextAssigneeId =
         targetDriverRaw === UNASSIGNED_LANE_ID ? null : targetDriverRaw
-      const delivery = deliveries.find((d) => d.id === deliveryId)
-      if (!delivery) return
-      if (delivery.primary_assignee_id === nextAssigneeId) return
+      // Same-assignee drops are no-ops (pool→Unassigned is the
+      // null===null case, no API call needed).
+      if (sourceDelivery.primary_assignee_id === nextAssigneeId) return
 
       // Phase 4.3.3 — branch on scheduling_type.
       //
@@ -439,47 +539,77 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       // calls return-to-pool (full reset to floating). Drag-to-
       // driver-column for an ancillary calls assign-standalone
       // (sets driver + date, ensures FK is null, clears floating).
-      const isAncillary = delivery.scheduling_type === "ancillary"
+      const isAncillary = sourceDelivery.scheduling_type === "ancillary"
 
       // Optimistic UI — local state reflects the new assignment
       // immediately. Backend PATCH runs in the background; only
       // the error path re-fetches authoritative state.
-      setDeliveries((prev) =>
-        prev.map((d) => {
-          if (d.id !== deliveryId) return d
-          if (isAncillary && nextAssigneeId === null) {
-            // Ancillary → pool: clear assignment + date + FK,
-            // mark floating. Mirrors return_ancillary_to_pool
-            // server side.
-            return {
-              ...d,
-              primary_assignee_id: null,
-              attached_to_delivery_id: null,
-              requested_date: null,
-              ancillary_is_floating: true,
-              ancillary_fulfillment_status: "unassigned",
-            }
-          }
-          if (isAncillary) {
-            // Ancillary → standalone: set assignee, ensure FK
-            // null, clear floating. Date inherits the focus's
-            // targetDate (the day this lane represents).
-            return {
-              ...d,
+      //
+      // Phase 4.3b.3 — pool source paths add to deliveries instead
+      // of mutating in-place (the source isn't in the deliveries
+      // array yet).
+      if (isFromPool) {
+        schedulingFocus?.removeFromPoolOptimistic(deliveryId)
+        if (isAncillary && nextAssigneeId !== null && targetDate) {
+          // Pool → driver lane → standalone
+          setDeliveries((prev) => [
+            ...prev,
+            {
+              ...sourceDelivery,
               primary_assignee_id: nextAssigneeId,
-              attached_to_delivery_id: null,
               requested_date: targetDate,
+              attached_to_delivery_id: null,
               ancillary_is_floating: false,
               ancillary_fulfillment_status: "assigned_to_driver",
+            },
+          ])
+        }
+        // Pool → Unassigned: short-circuited above (same-assignee
+        // null===null no-op); no setDeliveries needed.
+      } else {
+        setDeliveries((prev) =>
+          prev.map((d) => {
+            if (d.id !== deliveryId) return d
+            if (isAncillary && nextAssigneeId === null) {
+              // Ancillary → pool: clear assignment + date + FK,
+              // mark floating. Mirrors return_ancillary_to_pool
+              // server side.
+              return {
+                ...d,
+                primary_assignee_id: null,
+                attached_to_delivery_id: null,
+                requested_date: null,
+                ancillary_is_floating: true,
+                ancillary_fulfillment_status: "unassigned",
+              }
             }
-          }
-          // Primary delivery — just update assignee.
-          return { ...d, primary_assignee_id: nextAssigneeId }
-        }),
-      )
+            if (isAncillary) {
+              // Ancillary → standalone: set assignee, ensure FK
+              // null, clear floating. Date inherits the focus's
+              // targetDate (the day this lane represents).
+              return {
+                ...d,
+                primary_assignee_id: nextAssigneeId,
+                attached_to_delivery_id: null,
+                requested_date: targetDate,
+                ancillary_is_floating: false,
+                ancillary_fulfillment_status: "assigned_to_driver",
+              }
+            }
+            // Primary delivery — just update assignee.
+            return { ...d, primary_assignee_id: nextAssigneeId }
+          }),
+        )
+      }
+
       try {
         if (isAncillary && nextAssigneeId === null) {
+          // From-deliveries → pool: hit the endpoint. Pool source
+          // can't reach this branch (early-returned above on
+          // null===null).
           await returnAncillaryToPool(deliveryId)
+          // Refresh pool so the now-pool item appears in the pin.
+          schedulingFocus?.reloadPool()
         } else if (isAncillary && nextAssigneeId !== null && targetDate) {
           await assignAncillaryStandalone(
             deliveryId,
@@ -503,7 +633,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         reload() // error-path reload restores authoritative state
       }
     },
-    [deliveries, reload, targetDate],
+    [deliveries, reload, schedulingFocus, targetDate],
   )
 
   const handleDragCancel = useCallback(() => {
