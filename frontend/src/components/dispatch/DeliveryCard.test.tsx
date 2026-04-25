@@ -695,3 +695,82 @@ describe("DeliveryCard — body click fires onOpenEdit", () => {
     expect(onOpenEdit).toHaveBeenCalledWith(delivery)
   })
 })
+
+
+describe("DeliveryCard — driver_start_time eyebrow (Phase 4.3.3)", () => {
+  it("renders eyebrow when driver_start_time is set, formatted to 12-hour", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({ driver_start_time: "06:30:00" })}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const eyebrow = document.querySelector(
+      '[data-slot="dispatch-card-start-time"]',
+    )
+    expect(eyebrow).toBeInTheDocument()
+    expect(eyebrow?.textContent).toBe("Start 6:30am")
+  })
+
+  it("formats whole-hour as 'Start 5am' (no :00)", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({ driver_start_time: "05:00:00" })}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const eyebrow = document.querySelector(
+      '[data-slot="dispatch-card-start-time"]',
+    )
+    expect(eyebrow?.textContent).toBe("Start 5am")
+  })
+
+  it("renders pm for hours >=12", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({ driver_start_time: "13:15:00" })}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const eyebrow = document.querySelector(
+      '[data-slot="dispatch-card-start-time"]',
+    )
+    expect(eyebrow?.textContent).toBe("Start 1:15pm")
+  })
+
+  it("hides eyebrow when driver_start_time is null (use tenant default)", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({ driver_start_time: null })}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-card-start-time"]'),
+    ).toBeNull()
+  })
+
+  it("hides eyebrow when driver_start_time is undefined", () => {
+    // Older Monitor responses might omit the field entirely. Defensive
+    // guard: treat undefined same as null.
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({ driver_start_time: undefined as unknown as string | null })}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-card-start-time"]'),
+    ).toBeNull()
+  })
+})

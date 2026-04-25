@@ -137,6 +137,33 @@ function serviceTimeLocationLabel(t: string | null | undefined): string | null {
 }
 
 
+/**
+ * Format `delivery.driver_start_time` (backend "HH:MM:SS") for the
+ * card's eyebrow display. Returns null when input is null/empty so
+ * callers can `if (startTime)` to gate the rendering.
+ *
+ * Output: "Start 6:30am" / "Start 5:00am" — 12-hour with am/pm
+ * suffix. Plex Mono on the digits via the inline span (caller-side)
+ * for tabular alignment with the line 3 service-time digits.
+ *
+ * Phase 4.3.3 — only displayed when explicitly set on the delivery.
+ * NULL → use tenant default → not displayed (the dispatcher's
+ * default expectation is the tenant default, no need to repeat it
+ * on every card).
+ */
+function formatStartTime(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(raw)
+  if (!m) return null
+  const hh = Number(m[1])
+  const mm = m[2]
+  if (Number.isNaN(hh) || hh < 0 || hh > 23) return null
+  const period = hh < 12 ? "am" : "pm"
+  const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh
+  return mm === "00" ? `Start ${h12}${period}` : `Start ${h12}:${mm}${period}`
+}
+
+
 export function DeliveryCard({
   delivery,
   scheduleFinalized,
@@ -163,6 +190,13 @@ export function DeliveryCard({
   const driverNote = (tc.driver_note as string | undefined) ?? ""
   const chatCount =
     typeof tc.chat_activity_count === "number" ? tc.chat_activity_count : 0
+  // Phase 4.3.3 — explicit per-delivery driver start time. NULL =
+  // use tenant default (DeliverySettings.default_driver_start_time);
+  // not displayed when null. Format from backend is "HH:MM:SS";
+  // we render "HH:MM" or 12-hour-AM/PM-ish label depending on
+  // density. Eyebrow above the FH headline so it doesn't compete
+  // with service-time anchor on line 3.
+  const startTime = formatStartTime(delivery.driver_start_time)
 
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
@@ -258,6 +292,27 @@ export function DeliveryCard({
         )}
         aria-label={`Edit ${family || "unnamed"} family delivery`}
       >
+        {/* Phase 4.3.3 eyebrow — driver start time when set. Tiny
+            uppercase muted label sits above the FH headline so the
+            primary text hierarchy is unchanged. NULL value =
+            implicit tenant default (07:00 from DeliverySettings) =
+            not displayed. Per DL §4 type scale: text-micro
+            uppercase tracking-wider content-muted is the canonical
+            eyebrow treatment. font-plex-mono on digits for tabular
+            alignment with the service-time line below. */}
+        {startTime && (
+          <div
+            data-slot="dispatch-card-start-time"
+            className={cn(
+              "text-micro uppercase tracking-wider text-content-muted",
+              "font-plex-mono leading-tight",
+            )}
+            aria-label={`Driver start time ${startTime.replace(/^Start /, "")}`}
+          >
+            {startTime}
+          </div>
+        )}
+
         {/* Line 1 — funeral home (the headline; identifies the job). */}
         <div
           className={cn(

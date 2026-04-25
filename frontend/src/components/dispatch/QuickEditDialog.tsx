@@ -61,6 +61,15 @@ export interface QuickEditSavePayload {
    *  a users.id (or null = unassigned). Parent caller sends it to
    *  the backend as `primary_assignee_id`. */
   assignedDriverId: string | null
+  /** Phase 4.3.3 — optional second person on this delivery.
+   *  users.id (or null = no helper). Parent caller sends as
+   *  `helper_user_id`. */
+  helperUserId: string | null
+  /** Phase 4.3.3 — explicit driver start time, "HH:MM" wall clock.
+   *  Null = use tenant default (DeliverySettings.default_driver_
+   *  start_time, currently 07:00). Parent sends as
+   *  `driver_start_time`. */
+  driverStartTime: string | null
   holeDugStatus: HoleDugStatus
   note: string | null
   /** True iff the parent schedule is currently finalized; parent
@@ -75,6 +84,16 @@ export interface QuickEditDialogProps {
   delivery: DeliveryDTO | null
   /** Full driver roster for the picker. */
   drivers: DriverDTO[]
+  /** Phase 4.3.3 — eligible helpers (any active tenant user
+   *  excluding the current primary_assignee). Parent passes the
+   *  full user list; the dialog filters out the primary at render.
+   *  When omitted, the helper field is hidden (back-compat fallback
+   *  for callers that haven't migrated yet). */
+  helperCandidates?: HelperCandidate[]
+  /** Phase 4.3.3 — tenant-wide weekday default start time, used
+   *  for the "Use default" hint label. Defaults to "07:00" when
+   *  not provided. */
+  tenantDefaultStartTime?: string
   /** True iff the delivery's schedule is finalized — drives the
    *  revert-confirmation UX. */
   scheduleFinalized: boolean
@@ -86,9 +105,23 @@ export interface QuickEditDialogProps {
 }
 
 
+/**
+ * Phase 4.3.3 — minimal helper candidate shape. Any active tenant
+ * user. Parent caller hands these in pre-filtered (active +
+ * tenant-scoped). The dialog further filters out whichever user is
+ * the current primary_assignee — you can't be your own helper.
+ */
+export interface HelperCandidate {
+  id: string  // users.id
+  display_name: string
+}
+
+
 export function QuickEditDialog({
   delivery,
   drivers,
+  helperCandidates,
+  tenantDefaultStartTime = "07:00",
   scheduleFinalized,
   onClose,
   onSave,
@@ -96,6 +129,14 @@ export function QuickEditDialog({
   const open = delivery !== null
   const [serviceTime, setServiceTime] = useState("")
   const [assignedDriverId, setAssignedDriverId] = useState<string | null>(null)
+  const [helperUserId, setHelperUserId] = useState<string | null>(null)
+  const [driverStartTime, setDriverStartTime] = useState<string>("")
+  // Phase 4.3.3 — useDefault tracks whether the start-time input
+  // is in "use tenant default" mode (input disabled, value cleared
+  // on save) vs explicit-override mode (input enabled, value
+  // persisted). Toggle initializes from delivery.driver_start_time
+  // — null = use default, non-null = explicit.
+  const [useDefaultStart, setUseDefaultStart] = useState<boolean>(true)
   const [holeDug, setHoleDug] = useState<HoleDugStatus>("unknown")
   const [note, setNote] = useState("")
   const [saving, setSaving] = useState(false)
@@ -109,6 +150,12 @@ export function QuickEditDialog({
     const tc = delivery.type_config ?? {}
     setServiceTime((tc.service_time as string | undefined) ?? "")
     setAssignedDriverId(delivery.primary_assignee_id ?? null)
+    setHelperUserId(delivery.helper_user_id ?? null)
+    // Phase 4.3.3 — start time form state. Backend gives "HH:MM:SS";
+    // <input type="time"> wants "HH:MM". Trim seconds.
+    const rawStart = delivery.driver_start_time ?? null
+    setDriverStartTime(rawStart ? rawStart.slice(0, 5) : "")
+    setUseDefaultStart(rawStart === null)
     // Phase 3.1: hole_dug is three-state non-nullable. If a legacy
     // DTO still surfaces null (pre-r50 migration), coerce to
     // 'unknown' — matches the backfill semantic.
@@ -129,6 +176,14 @@ export function QuickEditDialog({
     deliveryId: delivery.id,
     serviceTime: serviceTime.trim() || null,
     assignedDriverId: assignedDriverId,
+    helperUserId: helperUserId,
+    // Phase 4.3.3 — when "Use default" is on, the value is cleared
+    // back to null so the tenant default takes over server-side.
+    // When off, send the explicit value (HH:MM); backend stores as
+    // a TIME column.
+    driverStartTime: useDefaultStart
+      ? null
+      : driverStartTime.trim() || null,
     holeDugStatus: holeDug,
     note: note.trim() || null,
     scheduleWasFinalized: scheduleFinalized,
@@ -173,6 +228,17 @@ export function QuickEditDialog({
       label: d.display_name || `Driver ${d.license_number ?? "(no CDL#)"}`,
     }))
 
+  // Phase 4.3.3 — helper candidates. Filter out the current primary
+  // assignee (you can't be your own helper). Uses helperCandidates
+  // when provided; falls back to driverOptions when absent so older
+  // callers still get a usable dropdown (driver-role-only).
+  const helperOptions =
+    helperCandidates !== undefined
+      ? helperCandidates
+          .filter((c) => c.id !== assignedDriverId)
+          .map((c) => ({ id: c.id, label: c.display_name }))
+      : driverOptions.filter((o) => o.id !== assignedDriverId)
+
   return (
     <>
       <Dialog
@@ -193,97 +259,219 @@ export function QuickEditDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {/* Time */}
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-edit-time">Service time</Label>
-              <Input
-                id="quick-edit-time"
-                type="time"
-                value={serviceTime}
-                onChange={(e) => setServiceTime(e.target.value)}
-                disabled={saving}
-                placeholder="10:00"
-              />
-            </div>
-
-            {/* Driver */}
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-edit-driver">Assigned driver</Label>
-              <select
-                id="quick-edit-driver"
-                value={assignedDriverId ?? ""}
-                onChange={(e) =>
-                  setAssignedDriverId(e.target.value || null)
-                }
-                disabled={saving}
+          <div className="space-y-5 py-2">
+            {/* Phase 4.3.3 — section: Assignment.
+                Groups the WHO + WHEN-they-start fields. */}
+            <section
+              data-slot="dispatch-quick-edit-section-assignment"
+              className="space-y-3"
+            >
+              <h3
                 className={cn(
-                  "w-full rounded border border-border-base",
-                  "bg-surface-raised px-4 py-2.5",
-                  "text-body text-content-base font-plex-sans",
-                  "focus:border-brass focus:ring-2 focus:ring-brass/30",
-                  "outline-none",
+                  "text-micro uppercase tracking-wider",
+                  "text-content-muted font-plex-sans",
                 )}
               >
-                <option value="">Unassigned</option>
-                {driverOptions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                Assignment
+              </h3>
 
-            {/* Hole dug — three-state non-nullable (Phase 3.1). */}
-            <div className="space-y-1.5">
-              <Label>Hole dug</Label>
-              <div
-                role="radiogroup"
-                aria-label="Hole-dug status"
-                className="flex items-center gap-1 rounded border border-border-base bg-surface-raised p-1"
-              >
-                {(["unknown", "yes", "no"] as const).map((v) => {
-                  const stored: HoleDugStatus = v
-                  const selected = holeDug === stored
-                  const label =
-                    v === "unknown" ? "Unknown"
-                    : v === "yes" ? "Yes"
-                    : "No"
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      disabled={saving}
-                      onClick={() => setHoleDug(stored)}
-                      className={cn(
-                        "flex-1 rounded px-2 py-1.5 text-body-sm transition-colors duration-quick",
-                        selected
-                          ? "bg-brass text-content-on-brass font-medium"
-                          : "text-content-muted hover:text-content-strong hover:bg-surface-sunken",
-                        "focus-ring-brass outline-none",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  )
-                })}
+              {/* Driver */}
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-edit-driver">Assigned driver</Label>
+                <select
+                  id="quick-edit-driver"
+                  value={assignedDriverId ?? ""}
+                  onChange={(e) => {
+                    const next = e.target.value || null
+                    setAssignedDriverId(next)
+                    // If new primary == current helper, clear the
+                    // helper (can't be your own helper).
+                    if (next !== null && next === helperUserId) {
+                      setHelperUserId(null)
+                    }
+                  }}
+                  disabled={saving}
+                  className={cn(
+                    "w-full rounded border border-border-base",
+                    "bg-surface-raised px-4 py-2.5",
+                    "text-body text-content-base font-plex-sans",
+                    "focus:border-brass focus:ring-2 focus:ring-brass/30",
+                    "outline-none",
+                  )}
+                >
+                  <option value="">Unassigned</option>
+                  {driverOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </div>
 
-            {/* Note */}
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-edit-note">Note</Label>
-              <Textarea
-                id="quick-edit-note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                disabled={saving}
-                placeholder="Dispatcher notes — visible to drivers."
-                rows={3}
-              />
-            </div>
+              {/* Phase 4.3.3 — Helper (optional second person).
+                  Eligibility per Flag 4: any active tenant user,
+                  excluding the primary_assignee. The helper field
+                  is hidden when no helperCandidates prop given
+                  (back-compat for legacy callers). */}
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-edit-helper">
+                  Helper{" "}
+                  <span className="text-content-muted font-normal">
+                    (optional)
+                  </span>
+                </Label>
+                <select
+                  id="quick-edit-helper"
+                  data-slot="dispatch-quick-edit-helper"
+                  value={helperUserId ?? ""}
+                  onChange={(e) => setHelperUserId(e.target.value || null)}
+                  disabled={saving}
+                  className={cn(
+                    "w-full rounded border border-border-base",
+                    "bg-surface-raised px-4 py-2.5",
+                    "text-body text-content-base font-plex-sans",
+                    "focus:border-brass focus:ring-2 focus:ring-brass/30",
+                    "outline-none",
+                  )}
+                >
+                  <option value="">No helper</option>
+                  {helperOptions.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Phase 4.3.3 — Driver start time with Use-default
+                  toggle. Default-on disables the input + clears the
+                  value at save (null = use tenant default). Default-
+                  off enables the input + persists the value as
+                  HH:MM. Hint text shows the tenant default in either
+                  state so the dispatcher knows what null means. */}
+              <div className="space-y-1.5">
+                <div className="flex items-baseline justify-between">
+                  <Label htmlFor="quick-edit-start-time">
+                    Driver start time
+                  </Label>
+                  <label
+                    className={cn(
+                      "flex items-center gap-1.5 text-caption",
+                      "text-content-muted cursor-pointer select-none",
+                    )}
+                    data-slot="dispatch-quick-edit-start-time-default-toggle"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={useDefaultStart}
+                      onChange={(e) => setUseDefaultStart(e.target.checked)}
+                      disabled={saving}
+                      className="cursor-pointer"
+                    />
+                    Use tenant default
+                  </label>
+                </div>
+                <Input
+                  id="quick-edit-start-time"
+                  data-slot="dispatch-quick-edit-start-time-input"
+                  type="time"
+                  value={useDefaultStart ? "" : driverStartTime}
+                  onChange={(e) => setDriverStartTime(e.target.value)}
+                  disabled={saving || useDefaultStart}
+                  placeholder={tenantDefaultStartTime}
+                />
+                <p
+                  className={cn(
+                    "text-caption text-content-muted leading-tight",
+                  )}
+                >
+                  {useDefaultStart
+                    ? `Defaults to ${tenantDefaultStartTime} (tenant setting).`
+                    : "Override the tenant default for this delivery only."}
+                </p>
+              </div>
+            </section>
+
+            {/* Phase 4.3.3 — section: Delivery state.
+                Groups WHEN-the-service-happens + status indicators
+                + dispatcher's note. */}
+            <section
+              data-slot="dispatch-quick-edit-section-state"
+              className="space-y-3"
+            >
+              <h3
+                className={cn(
+                  "text-micro uppercase tracking-wider",
+                  "text-content-muted font-plex-sans",
+                )}
+              >
+                Delivery state
+              </h3>
+
+              {/* Service time */}
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-edit-time">Service time</Label>
+                <Input
+                  id="quick-edit-time"
+                  type="time"
+                  value={serviceTime}
+                  onChange={(e) => setServiceTime(e.target.value)}
+                  disabled={saving}
+                  placeholder="10:00"
+                />
+              </div>
+
+              {/* Hole dug — three-state non-nullable (Phase 3.1). */}
+              <div className="space-y-1.5">
+                <Label>Hole dug</Label>
+                <div
+                  role="radiogroup"
+                  aria-label="Hole-dug status"
+                  className="flex items-center gap-1 rounded border border-border-base bg-surface-raised p-1"
+                >
+                  {(["unknown", "yes", "no"] as const).map((v) => {
+                    const stored: HoleDugStatus = v
+                    const selected = holeDug === stored
+                    const label =
+                      v === "unknown" ? "Unknown"
+                      : v === "yes" ? "Yes"
+                      : "No"
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        disabled={saving}
+                        onClick={() => setHoleDug(stored)}
+                        className={cn(
+                          "flex-1 rounded px-2 py-1.5 text-body-sm transition-colors duration-quick",
+                          selected
+                            ? "bg-brass text-content-on-brass font-medium"
+                            : "text-content-muted hover:text-content-strong hover:bg-surface-sunken",
+                          "focus-ring-brass outline-none",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Note */}
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-edit-note">Note</Label>
+                <Textarea
+                  id="quick-edit-note"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  disabled={saving}
+                  placeholder="Dispatcher notes — visible to drivers."
+                  rows={3}
+                />
+              </div>
+            </section>
 
             {/* Revert warning when schedule is finalized */}
             {scheduleFinalized && (

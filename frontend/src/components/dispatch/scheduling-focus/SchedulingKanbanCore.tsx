@@ -383,6 +383,10 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
             ? {
                 ...d,
                 primary_assignee_id: payload.assignedDriverId,
+                helper_user_id: payload.helperUserId,
+                driver_start_time: payload.driverStartTime
+                  ? `${payload.driverStartTime}:00`
+                  : null,
                 special_instructions: payload.note,
                 type_config: nextTc,
                 hole_dug_status: payload.holeDugStatus,
@@ -394,6 +398,12 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       try {
         await updateDelivery(payload.deliveryId, {
           primary_assignee_id: payload.assignedDriverId,
+          // Phase 4.3.3 — helper + start time round-trip via the
+          // PATCH /delivery/deliveries/{id} endpoint. Backend
+          // resolves helper_user_id through resolve_primary_
+          // assignee_id (same translation contract).
+          helper_user_id: payload.helperUserId,
+          driver_start_time: payload.driverStartTime,
           special_instructions: payload.note,
           type_config: nextTc,
         })

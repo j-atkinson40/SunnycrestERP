@@ -611,6 +611,12 @@ export default function FuneralSchedulePage() {
           // driver.id → users.id via Driver.employee_id. Phase 4.3.3
           // can migrate QuickEditDialog to use user_id directly.
           primary_assignee_id: payload.assignedDriverId,
+          // Phase 4.3.3 — helper + start time now round-trip
+          // through QuickEdit. Helper is users.id (or null).
+          // driver_start_time is "HH:MM" or null (use tenant
+          // default).
+          helper_user_id: payload.helperUserId,
+          driver_start_time: payload.driverStartTime,
           special_instructions: payload.note,
           type_config: nextTc,
         })
