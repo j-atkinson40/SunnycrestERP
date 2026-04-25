@@ -351,6 +351,12 @@ class MonitorDeliveryDTO(BaseModel):
     hole_dug_status: str | None = None
     type_config: dict[str, Any] | None = None
     special_instructions: str | None = None
+    # Phase 4.3.3.1 — denormalized display fields. Resolved server-side
+    # via batched lookups to power on-card affordances (helper icon
+    # tooltip; attach-detach surface). Both null-safe; DTO consumers
+    # gate UI on presence.
+    helper_user_name: str | None = None
+    attached_to_family_name: str | None = None
 
 
 class MonitorDriverDTO(BaseModel):
@@ -415,6 +421,50 @@ def list_monitor_deliveries(
         Delivery.scheduled_at.asc().nulls_last(),
     ).all()
 
+    # Phase 4.3.3.1 — batched name resolution for two display fields:
+    #   - helper_user_name: derived from User.first_name + .last_name
+    #     when delivery.helper_user_id is set. One IN-query against the
+    #     unique helper_user_ids in this page; no N+1.
+    #   - attached_to_family_name: derived from
+    #     parent_delivery.type_config["family_name"] when this row is
+    #     an attached ancillary. One IN-query against the unique
+    #     attached_to_delivery_ids (those parent ids point at other
+    #     Delivery rows in the same tenant; we re-query the kanban
+    #     parents that this list might not include if the user filtered
+    #     by scheduling_type).
+    helper_ids = {r.helper_user_id for r in rows if r.helper_user_id}
+    helper_name_map: dict[str, str] = {}
+    if helper_ids:
+        users = (
+            db.query(User)
+            .filter(
+                User.company_id == current_user.company_id,
+                User.id.in_(helper_ids),
+            )
+            .all()
+        )
+        for u in users:
+            full = f"{u.first_name or ''} {u.last_name or ''}".strip()
+            if full:
+                helper_name_map[u.id] = full
+
+    parent_ids = {r.attached_to_delivery_id for r in rows if r.attached_to_delivery_id}
+    parent_family_map: dict[str, str] = {}
+    if parent_ids:
+        parents = (
+            db.query(Delivery)
+            .filter(
+                Delivery.company_id == current_user.company_id,
+                Delivery.id.in_(parent_ids),
+            )
+            .all()
+        )
+        for p in parents:
+            tc = p.type_config or {}
+            fam = tc.get("family_name") if isinstance(tc, dict) else None
+            if isinstance(fam, str) and fam.strip():
+                parent_family_map[p.id] = fam.strip()
+
     return [
         MonitorDeliveryDTO(
             id=r.id,
@@ -438,6 +488,9 @@ def list_monitor_deliveries(
             hole_dug_status=r.hole_dug_status,
             type_config=r.type_config,
             special_instructions=r.special_instructions,
+            # Phase 4.3.3.1 — denormalized display.
+            helper_user_name=helper_name_map.get(r.helper_user_id) if r.helper_user_id else None,
+            attached_to_family_name=parent_family_map.get(r.attached_to_delivery_id) if r.attached_to_delivery_id else None,
         )
         for r in rows
     ]

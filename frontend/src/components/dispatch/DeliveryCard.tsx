@@ -412,6 +412,26 @@ export function DeliveryCard({
               dataSlot="dispatch-icon-section"
             />
           )}
+          {/* Phase 4.3.3.1 — helper indicator. Shows when the delivery
+              has a helper_user_id; tooltip surfaces the helper's name
+              from the denormalized helper_user_name field on the DTO.
+              Highlight (text-brass) per IconTooltip convention because
+              "this delivery has a second person" is information worth
+              noticing. Falls back to "Helper: assigned" when the name
+              didn't resolve (defensive — backend may have lost the
+              user row, but the UI still flags the helper presence). */}
+          {delivery.helper_user_id && (
+            <IconTooltip
+              icon={UsersIcon}
+              label={
+                delivery.helper_user_name
+                  ? `Helper: ${delivery.helper_user_name}`
+                  : "Helper: assigned"
+              }
+              dataSlot="dispatch-icon-helper"
+              highlight
+            />
+          )}
           {driverNote && (
             <IconTooltip
               icon={StickyNoteIcon}

@@ -83,6 +83,7 @@ import { useFocus } from "@/contexts/focus-context"
 import { cn } from "@/lib/utils"
 import {
   assignAncillaryStandalone,
+  detachAncillary,
   fetchDeliveriesForRange,
   fetchDrivers,
   fetchSchedule,
@@ -449,7 +450,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       try {
         if (isAncillary && nextAssigneeId === null) {
           await returnAncillaryToPool(deliveryId)
-        } else if (isAncillary && targetDate) {
+        } else if (isAncillary && nextAssigneeId !== null && targetDate) {
           await assignAncillaryStandalone(
             deliveryId,
             nextAssigneeId,
@@ -538,6 +539,31 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       }
     },
     [deliveries, reload],
+  )
+
+  // Phase 4.3.3.1 — detach handler for the QuickEditDialog detach
+  // button. Same shape as Monitor's handleDetachFromQuickEdit:
+  // detachAncillary backend call + close dialog + reload. Optimistic
+  // mutation here would have to mirror the backend's full state-
+  // transition contract (clear FK, set is_floating=false, retain
+  // assignee + date) which is duplicative; one round-trip + reload
+  // keeps the source of truth on the server.
+  const handleDetachFromQuickEdit = useCallback(
+    async (deliveryId: string) => {
+      try {
+        await detachAncillary(deliveryId)
+        setEditTarget(null)
+        reload()
+      } catch (e) {
+        console.error("scheduling focus ancillary detach failed:", e)
+        // Surface the failure inline so the user sees something
+        // happened — alert is acceptable here because detach is
+        // explicitly user-initiated (vs. background sync).
+        // eslint-disable-next-line no-alert
+        alert("Couldn't detach the ancillary. Try again.")
+      }
+    },
+    [reload],
   )
 
   const handleCycleHoleDug = useCallback(
@@ -844,6 +870,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         scheduleFinalized={isFinalized}
         onClose={() => setEditTarget(null)}
         onSave={handleSaveEdit}
+        onDetach={handleDetachFromQuickEdit}
       />
     </div>
   )

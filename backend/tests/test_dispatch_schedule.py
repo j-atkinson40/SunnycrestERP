@@ -903,3 +903,202 @@ class TestAPI:
         assert 0 <= body["local_hour"] <= 23
         assert isinstance(body["local_minute"], int)
         assert 0 <= body["local_minute"] <= 59
+
+
+# ── Phase 4.3.3.1 — DTO denormalized display fields ─────────────────
+
+
+class TestMonitorDTODenormalization:
+    """The /api/v1/dispatch/deliveries endpoint resolves two display
+    fields server-side: helper_user_name (User join) and
+    attached_to_family_name (parent Delivery's type_config.family_name).
+    The frontend uses these directly without a second round-trip per
+    card. Phase 4.3.3.1 closes the verification finding "helper not
+    visible on card" (Issue 3) and "no parent context on detach button"
+    (Issue 4).
+
+    Both fields are batched (one IN-query each) so a 31-day range
+    won't N+1 even with hundreds of attached ancillaries.
+    """
+
+    def test_helper_user_name_resolves_when_helper_set(self, client, ctx):
+        """Single delivery with helper_user_id = dispatcher_user_id.
+        DTO surfaces helper_user_name = 'D Dispatch' (first + last)."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            d = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                requested_date=today,
+                status="scheduled",
+                priority="normal",
+                scheduling_type="kanban",
+                primary_assignee_id=ctx["admin_id"],
+                helper_user_id=ctx["dispatcher_id"],
+            )
+            db.add(d)
+            db.commit()
+            delivery_id = d.id
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/deliveries?start={today.isoformat()}&end={today.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        match = next(d for d in r.json() if d["id"] == delivery_id)
+        assert match["helper_user_id"] == ctx["dispatcher_id"]
+        assert match["helper_user_name"] == "D Dispatch"
+
+    def test_helper_user_name_null_when_no_helper(self, client, ctx):
+        """Delivery without helper_user_id surfaces helper_user_name=None."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            d = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                requested_date=today,
+                status="scheduled",
+                priority="normal",
+                scheduling_type="kanban",
+            )
+            db.add(d)
+            db.commit()
+            delivery_id = d.id
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/deliveries?start={today.isoformat()}&end={today.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        match = next(d for d in r.json() if d["id"] == delivery_id)
+        assert match["helper_user_id"] is None
+        assert match["helper_user_name"] is None
+
+    def test_attached_to_family_name_resolves_from_parent(self, client, ctx):
+        """Attached ancillary surfaces parent's type_config.family_name
+        as attached_to_family_name. Powers the 'Detach from Murphy' button
+        copy in QuickEditDialog."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            parent = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                requested_date=today,
+                status="scheduled",
+                priority="normal",
+                scheduling_type="kanban",
+                type_config={"family_name": "Murphy", "service_type": "graveside"},
+            )
+            db.add(parent)
+            db.flush()
+            child = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                requested_date=today,
+                status="scheduled",
+                priority="normal",
+                scheduling_type="ancillary",
+                attached_to_delivery_id=parent.id,
+                ancillary_is_floating=False,
+                ancillary_fulfillment_status="assigned_to_driver",
+            )
+            db.add(child)
+            db.commit()
+            child_id = child.id
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/deliveries?start={today.isoformat()}&end={today.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        match = next(d for d in r.json() if d["id"] == child_id)
+        assert match["attached_to_delivery_id"] is not None
+        assert match["attached_to_family_name"] == "Murphy"
+
+    def test_attached_to_family_name_null_when_not_attached(self, client, ctx):
+        """Standalone delivery (not attached) surfaces None."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            d = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                requested_date=today,
+                status="scheduled",
+                priority="normal",
+                scheduling_type="kanban",
+                type_config={"family_name": "Smith"},
+            )
+            db.add(d)
+            db.commit()
+            delivery_id = d.id
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/deliveries?start={today.isoformat()}&end={today.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        match = next(d for d in r.json() if d["id"] == delivery_id)
+        assert match["attached_to_delivery_id"] is None
+        assert match["attached_to_family_name"] is None
+
+    def test_dto_includes_both_phase_4_3_3_1_fields(self, client, ctx):
+        """Empty-list contract: every row in the response, even on a
+        plain unassigned delivery, carries both new fields. Schema
+        guarantee for the frontend DTO mirror."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            d = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                requested_date=today,
+                status="scheduled",
+                priority="normal",
+                scheduling_type="kanban",
+            )
+            db.add(d)
+            db.commit()
+        finally:
+            db.close()
+
+        r = client.get(
+            f"/api/v1/dispatch/deliveries?start={today.isoformat()}&end={today.isoformat()}",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        for row in r.json():
+            assert "helper_user_name" in row
+            assert "attached_to_family_name" in row

@@ -41,6 +41,8 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
     primary_assignee_id: null,
     helper_user_id: null,
     attached_to_delivery_id: null,
+    helper_user_name: null,
+    attached_to_family_name: null,
     driver_start_time: null,
     hole_dug_status: "unknown",
     type_config: { family_name: "Smith", service_type: "graveside" },

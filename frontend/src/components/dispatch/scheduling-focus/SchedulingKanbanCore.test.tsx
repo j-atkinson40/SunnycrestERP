@@ -518,6 +518,8 @@ function makeDelivery(
     helper_user_id: null,
     attached_to_delivery_id: null,
     driver_start_time: null,
+    helper_user_name: null,
+    attached_to_family_name: null,
     hole_dug_status: "unknown",
     type_config: {
       family_name: "Test",

@@ -107,6 +107,7 @@ import {
 } from "@/components/dispatch/QuickEditDialog"
 import {
   fetchDeliveriesForRange,
+  detachAncillary,
   fetchDrivers,
   fetchScheduleRange,
   fetchTenantTime,
@@ -631,6 +632,25 @@ export default function FuneralSchedulePage() {
       }
     },
     [deliveries, reload],
+  )
+
+  // Phase 4.3.3.1 — detach an attached ancillary from its parent.
+  // Backend `/ancillary/{id}/detach` clears attached_to_delivery_id +
+  // sets ancillary_is_floating=false + retains primary_assignee +
+  // requested_date (defaults to standalone, single-path per Flag 2).
+  // We close the dialog + reload after the call resolves.
+  const handleDetachFromQuickEdit = useCallback(
+    async (deliveryId: string) => {
+      try {
+        await detachAncillary(deliveryId)
+        setEditTarget(null)
+        reload()
+      } catch (e) {
+        console.error("ancillary detach failed:", e)
+        alert("Couldn't detach the ancillary. Try again.")
+      }
+    },
+    [reload],
   )
 
   const sensors = useSensors(
@@ -1160,6 +1180,7 @@ export default function FuneralSchedulePage() {
         }
         onClose={() => setEditTarget(null)}
         onSave={handleSaveEdit}
+        onDetach={handleDetachFromQuickEdit}
       />
     </div>
   )

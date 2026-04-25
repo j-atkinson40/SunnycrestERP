@@ -102,6 +102,12 @@ export interface QuickEditDialogProps {
   /** Called when the user confirms a save. Parent handles the API
    *  call + optimistic UI + any revert confirmation. */
   onSave: (payload: QuickEditSavePayload) => Promise<void> | void
+  /** Phase 4.3.3.1 — invoked when the user clicks "Detach from
+   *  {family}" on an attached ancillary. Parent calls
+   *  detachAncillary(deliveryId), refreshes the deliveries list, and
+   *  closes the dialog. Optional — the detach button is hidden when
+   *  this prop is omitted (back-compat for legacy callers). */
+  onDetach?: (deliveryId: string) => Promise<void> | void
 }
 
 
@@ -125,6 +131,7 @@ export function QuickEditDialog({
   scheduleFinalized,
   onClose,
   onSave,
+  onDetach,
 }: QuickEditDialogProps) {
   const open = delivery !== null
   const [serviceTime, setServiceTime] = useState("")
@@ -140,6 +147,10 @@ export function QuickEditDialog({
   const [holeDug, setHoleDug] = useState<HoleDugStatus>("unknown")
   const [note, setNote] = useState("")
   const [saving, setSaving] = useState(false)
+  // Phase 4.3.3.1 — separate "detaching" busy state so Save isn't
+  // disabled while a detach is in flight (different intent, different
+  // API call). Disable both interactions while either is pending.
+  const [detaching, setDetaching] = useState(false)
   const [confirmRevertOpen, setConfirmRevertOpen] = useState(false)
   const [pendingPayload, setPendingPayload] =
     useState<QuickEditSavePayload | null>(null)
@@ -162,6 +173,7 @@ export function QuickEditDialog({
     setHoleDug(delivery.hole_dug_status ?? "unknown")
     setNote(delivery.special_instructions ?? "")
     setSaving(false)
+    setDetaching(false)
     setConfirmRevertOpen(false)
     setPendingPayload(null)
   }, [delivery])
@@ -206,6 +218,21 @@ export function QuickEditDialog({
       await onSave(payload)
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Phase 4.3.3.1 — detach an attached ancillary from its parent.
+  // Routes through the parent-supplied onDetach callback (which
+  // typically calls detachAncillary + refreshes + closes). Errors
+  // surface to console; we don't try/catch around the close call
+  // because the parent owns dialog lifecycle on success.
+  async function handleDetachClick() {
+    if (delivery === null || onDetach === undefined) return
+    setDetaching(true)
+    try {
+      await onDetach(delivery.id)
+    } finally {
+      setDetaching(false)
     }
   }
 
@@ -390,6 +417,47 @@ export function QuickEditDialog({
                     : "Override the tenant default for this delivery only."}
                 </p>
               </div>
+
+              {/* Phase 4.3.3.1 — Detach button (only on attached
+                  ancillaries). Sits at the bottom of the Assignment
+                  section because detach IS an assignment-shape change
+                  (ancillary moves from "paired with parent" to
+                  standalone, claiming its own slot in the lane).
+                  Distinct from Save: Save persists the assignment +
+                  state edits the user typed; Detach is a one-shot
+                  side-effect that rewires the row's parent FK. Hidden
+                  when the delivery isn't attached OR no onDetach prop
+                  was passed (back-compat). */}
+              {delivery.attached_to_delivery_id && onDetach && (
+                <div
+                  data-slot="dispatch-quick-edit-detach-row"
+                  className="pt-2 border-t border-border-subtle/60"
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDetachClick}
+                    disabled={saving || detaching}
+                    data-slot="dispatch-quick-edit-detach"
+                  >
+                    {detaching
+                      ? "Detaching…"
+                      : delivery.attached_to_family_name
+                        ? `Detach from ${delivery.attached_to_family_name}`
+                        : "Detach from parent delivery"}
+                  </Button>
+                  <p
+                    className={cn(
+                      "mt-1.5 text-caption text-content-muted leading-tight",
+                    )}
+                  >
+                    Detaches this ancillary from its parent so it stands
+                    alone in the lane. Inherited assignee + date are
+                    preserved.
+                  </p>
+                </div>
+              )}
             </section>
 
             {/* Phase 4.3.3 — section: Delivery state.

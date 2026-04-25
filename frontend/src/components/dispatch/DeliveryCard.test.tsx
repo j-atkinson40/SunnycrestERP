@@ -47,6 +47,8 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
     helper_user_id: null,
     attached_to_delivery_id: null,
     driver_start_time: null,
+    helper_user_name: null,
+    attached_to_family_name: null,
     hole_dug_status: "unknown",
     type_config: {
       family_name: "Fitzgerald",
@@ -556,6 +558,66 @@ describe("DeliveryCard — ancillary badge", () => {
     expect(badge.getAttribute("aria-label")).toMatch(/2 ancillary items attached/i)
     await user.click(badge)
     expect(onToggle).toHaveBeenCalledWith("del-1")
+  })
+})
+
+
+// ── Phase 4.3.3.1 — helper icon ──────────────────────────────────────
+
+
+describe("DeliveryCard — helper icon (Phase 4.3.3.1)", () => {
+  it("hidden when delivery has no helper_user_id", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({ helper_user_id: null })}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-icon-helper"]'),
+    ).toBeNull()
+  })
+
+  it("shown when helper_user_id is set; tooltip carries resolved name", () => {
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({
+            helper_user_id: "user-mike",
+            helper_user_name: "Mike Kowalski",
+          })}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const icon = document.querySelector(
+      '[data-slot="dispatch-icon-helper"]',
+    ) as HTMLElement
+    expect(icon).toBeTruthy()
+    expect(icon.getAttribute("aria-label")).toBe("Helper: Mike Kowalski")
+  })
+
+  it("falls back to 'Helper: assigned' when helper_user_name didn't resolve", () => {
+    // Defensive — backend lost the user row but the UI still flags
+    // the helper presence so the dispatcher knows there's a second
+    // person they haven't seen the name of.
+    render(
+      <Harness>
+        <DeliveryCard
+          delivery={makeDelivery({
+            helper_user_id: "user-orphan",
+            helper_user_name: null,
+          })}
+          scheduleFinalized={false}
+        />
+      </Harness>,
+    )
+    const icon = document.querySelector(
+      '[data-slot="dispatch-icon-helper"]',
+    ) as HTMLElement
+    expect(icon.getAttribute("aria-label")).toBe("Helper: assigned")
   })
 })
 

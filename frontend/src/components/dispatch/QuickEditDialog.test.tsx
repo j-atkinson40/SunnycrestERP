@@ -35,6 +35,8 @@ function makeDelivery(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
     helper_user_id: null,
     attached_to_delivery_id: null,
     driver_start_time: null,
+    helper_user_name: null,
+    attached_to_family_name: null,
     hole_dug_status: "unknown",
     type_config: {
       family_name: "Fitzgerald",
@@ -394,5 +396,111 @@ describe("QuickEditDialog — Phase 4.3.3 grouped sections + helper + start time
     await user.selectOptions(primarySel, "driver-2")
     await user.click(screen.getByRole("button", { name: /^save$/i }))
     expect(onSave.mock.calls[0][0].helperUserId).toBeNull()
+  })
+})
+
+
+// ── Phase 4.3.3.1 — detach attached ancillary ───────────────────────
+
+
+describe("QuickEditDialog — detach button (Phase 4.3.3.1)", () => {
+  it("hidden when delivery is not attached to a parent", () => {
+    render(
+      <QuickEditDialog
+        delivery={makeDelivery({ attached_to_delivery_id: null })}
+        drivers={drivers}
+        scheduleFinalized={false}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        onDetach={vi.fn()}
+      />,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-quick-edit-detach"]'),
+    ).toBeNull()
+  })
+
+  it("hidden when onDetach prop is omitted (back-compat)", () => {
+    render(
+      <QuickEditDialog
+        delivery={makeDelivery({
+          attached_to_delivery_id: "parent-1",
+          attached_to_family_name: "Murphy",
+        })}
+        drivers={drivers}
+        scheduleFinalized={false}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        // onDetach intentionally omitted
+      />,
+    )
+    expect(
+      document.querySelector('[data-slot="dispatch-quick-edit-detach"]'),
+    ).toBeNull()
+  })
+
+  it("shown with parent family name when attached + onDetach provided", () => {
+    render(
+      <QuickEditDialog
+        delivery={makeDelivery({
+          attached_to_delivery_id: "parent-1",
+          attached_to_family_name: "Murphy",
+        })}
+        drivers={drivers}
+        scheduleFinalized={false}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        onDetach={vi.fn()}
+      />,
+    )
+    const btn = document.querySelector(
+      '[data-slot="dispatch-quick-edit-detach"]',
+    ) as HTMLElement
+    expect(btn).toBeTruthy()
+    expect(btn.textContent).toMatch(/Detach from Murphy/)
+  })
+
+  it("falls back to generic copy when parent family name missing", () => {
+    render(
+      <QuickEditDialog
+        delivery={makeDelivery({
+          attached_to_delivery_id: "parent-1",
+          attached_to_family_name: null,
+        })}
+        drivers={drivers}
+        scheduleFinalized={false}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        onDetach={vi.fn()}
+      />,
+    )
+    const btn = document.querySelector(
+      '[data-slot="dispatch-quick-edit-detach"]',
+    ) as HTMLElement
+    expect(btn.textContent).toMatch(/Detach from parent delivery/)
+  })
+
+  it("clicking the button calls onDetach with the delivery id", async () => {
+    const user = userEvent.setup()
+    const onDetach = vi.fn()
+    render(
+      <QuickEditDialog
+        delivery={makeDelivery({
+          id: "anc-99",
+          attached_to_delivery_id: "parent-1",
+          attached_to_family_name: "Murphy",
+        })}
+        drivers={drivers}
+        scheduleFinalized={false}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        onDetach={onDetach}
+      />,
+    )
+    const btn = document.querySelector(
+      '[data-slot="dispatch-quick-edit-detach"]',
+    ) as HTMLElement
+    await user.click(btn)
+    expect(onDetach).toHaveBeenCalledWith("anc-99")
   })
 })

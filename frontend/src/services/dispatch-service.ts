@@ -94,6 +94,14 @@ export interface DeliveryDTO {
   hole_dug_status: HoleDugStatus
   type_config: DeliveryTypeConfig | null
   special_instructions: string | null
+  // Phase 4.3.3.1 — denormalized display fields surfaced by the
+  // Monitor route. Both null-safe; UI gates affordances on presence.
+  // helper_user_name powers the on-card helper IconTooltip ("Helper:
+  // Dave Miller"). attached_to_family_name powers the QuickEditDialog
+  // detach button ("Detach from Murphy") when this row is an attached
+  // ancillary.
+  helper_user_name: string | null
+  attached_to_family_name: string | null
 }
 
 
