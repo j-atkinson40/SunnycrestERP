@@ -58,6 +58,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+// Phase 4.3.3 — IconTooltip extracted to `_shared.tsx` so
+// AncillaryCard reuses the same icon+tooltip composition. Local
+// definition retained below as a deprecation comment for one
+// release, then removed.
+import { IconTooltip as _SharedIconTooltip } from "./_shared"
 
 
 export interface DeliveryCardProps {
@@ -422,68 +427,11 @@ export function DeliveryCard({
 // always-present family + section which render in content-muted).
 
 
-function IconTooltip({
-  icon: Icon,
-  label,
-  dataSlot,
-  highlight = false,
-  badge,
-}: {
-  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>
-  label: string
-  dataSlot: string
-  highlight?: boolean
-  badge?: number
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            data-slot={dataSlot}
-            // Phase 4.2.4 — prior `onPointerDown={e.stopPropagation()}`
-            // prevented drag from activating from the icon-row area
-            // (only inter-icon gaps were draggable, which looked like
-            // random draggability). Removed so the wrapper's drag
-            // listeners receive pointerdown from anywhere on the
-            // card. PointerSensor activation-constraint distance:8
-            // distinguishes hover/click (no movement) from drag
-            // (>8px movement), so the tooltip still shows on hover
-            // and short-click doesn't start drag.
-            className={cn(
-              "relative inline-flex h-6 w-6 items-center justify-center rounded-sm",
-              "focus-ring-brass outline-none cursor-default",
-              highlight ? "text-brass" : "text-content-muted",
-              "hover:bg-surface-sunken transition-colors duration-quick",
-            )}
-            role="img"
-            aria-label={label}
-            tabIndex={0}
-          >
-            <Icon className="h-3.5 w-3.5" aria-hidden />
-            {typeof badge === "number" && badge > 0 && (
-              <span
-                data-slot={`${dataSlot}-badge`}
-                className={cn(
-                  "absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1",
-                  "inline-flex items-center justify-center rounded-full",
-                  "bg-brass text-content-on-brass text-[10px] font-medium",
-                  "font-plex-mono tabular-nums",
-                )}
-                aria-hidden
-              >
-                {badge}
-              </span>
-            )}
-          </span>
-        }
-      />
-      <TooltipContent side="top" size="default" className="max-w-[240px]">
-        {label}
-      </TooltipContent>
-    </Tooltip>
-  )
-}
+// Phase 4.3.3 — IconTooltip moved to `./_shared.tsx`. Local re-
+// export preserves call-site stability inside DeliveryCard for the
+// transition window. Future cleanup: import from `./_shared` directly
+// at use sites.
+const IconTooltip = _SharedIconTooltip
 
 
 // ── Hole-dug three-state badge ─────────────────────────────────────────
