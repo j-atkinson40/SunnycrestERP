@@ -135,9 +135,12 @@ function PoolItem({ delivery }: PoolItemProps) {
       {...listeners}
       className={cn(
         // Compact row chrome — visually subordinate to lane cards.
-        // Single border-bottom separates rows; bg-transparent at rest;
-        // hover gets a subtle brass-subtle wash matching the platform's
-        // hover convention.
+        //
+        // Aesthetic Arc Session 1 Commit D — divider softened
+        // (border-b/60 → /30) so individual rows feel like distinct
+        // items on a unified tablet surface rather than rule-line-
+        // separated cells. Same intent as the post-Session-1 header
+        // divider: whispers separation rather than announcing it.
         //
         // Phase 4.3b.3.2 — whole-item drag (no grip handle). Per the
         // platform standard, every draggable surface uses the
@@ -149,7 +152,7 @@ function PoolItem({ delivery }: PoolItemProps) {
         // cards). See PRODUCT_PRINCIPLES.md "Drag interactions" for
         // the canonical statement.
         "relative px-3 py-2",
-        "border-b border-border-subtle/60 last:border-b-0",
+        "border-b border-border-subtle/30 last:border-b-0",
         "transition-colors duration-quick ease-settle",
         "hover:bg-brass-subtle/40 cursor-grab active:cursor-grabbing",
         "focus-ring-brass outline-none",
@@ -234,7 +237,33 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
       data-slot="ancillary-pool-pin"
       data-pool-drop-target={showPoolDropFeedback ? "true" : "false"}
       className={cn(
-        "flex h-full flex-col bg-surface-elevated",
+        // Aesthetic Arc Session 1 Commit D — pin reads as a floating
+        // tablet, not a solid rectangle pasted on the dimmed
+        // backdrop. Pre-Session-1: bg-surface-elevated alone (hard
+        // edges, no elevation, no surface alpha) → read as a "white
+        // box" on the dimmed backdrop, jarring against the cards
+        // floating around it. Post-Session-1:
+        //   • bg-surface-elevated/85 — 15% alpha lets the dimmed
+        //     backdrop bleed through subtly. The pin no longer
+        //     reads as opaque overlay.
+        //   • shadow-level-1 — same elevation token as the
+        //     DeliveryCard / AncillaryCard. Cross-surface material
+        //     consistency (Section 0 Considered Materiality TP1).
+        //   • rounded-md — square-shouldered radii (Section 0
+        //     Architectural Proportions TP2; not pillowy-large).
+        //   • supports-[backdrop-filter]:backdrop-blur-sm — when
+        //     the browser supports it, the pin's surface gets a
+        //     subtle blur of whatever bleeds through. Reads as a
+        //     frosted-glass tablet floating over content rather
+        //     than an opaque overlay. Falls back gracefully on
+        //     browsers without backdrop-filter.
+        // PLATFORM_INTERACTION_MODEL: tablets are the
+        // materialization unit — they float, they're individually
+        // present, they don't enclose other content. The pin now
+        // reads as a tablet.
+        "flex h-full flex-col",
+        "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
+        "rounded-md shadow-level-1",
         // Subtle dim during refresh — keeps the existing list visible
         // but signals data is in flight.
         poolLoading && "opacity-80",
@@ -255,12 +284,21 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
       {/* Header — eyebrow + count badge. Matches DESIGN_LANGUAGE §4
           eyebrow treatment: text-micro uppercase tracking-wider
           text-content-muted. Count chip styling parallels the chat
-          unread chip from _shared.tsx IconTooltip badge. */}
+          unread chip from _shared.tsx IconTooltip badge.
+
+          Aesthetic Arc Session 1 Commit D — header divider softened.
+          Pre-Session-1: hard `border-b border-border-subtle` divider
+          read as a structural rule on a containing-box surface. Post-
+          Session-1: `border-b border-border-subtle/40` — half-strength
+          alpha. The divider whispers "two regions" rather than
+          announcing it (British register). Matches the way
+          DeliveryCard handles internal section transitions
+          (typography-led, no boxed sub-regions). */}
       <div
         data-slot="ancillary-pool-pin-header"
         className={cn(
           "flex items-baseline justify-between gap-2",
-          "border-b border-border-subtle px-3 py-2",
+          "border-b border-border-subtle/40 px-3 py-2",
         )}
       >
         <div>
