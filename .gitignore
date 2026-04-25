@@ -49,3 +49,4 @@ backend/static/legacy-vault-prints/
 # Large binary assets that don't belong in source
 templates/standard/*.tif
 templates/standard/*.tiff
+.claude/scheduled_tasks.lock
