@@ -51,12 +51,33 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { useFocus } from "@/contexts/focus-context"
+import { SchedulingFocusDataProvider } from "@/contexts/scheduling-focus-context"
 import { cn } from "@/lib/utils"
 import { Canvas } from "./canvas/Canvas"
 import { computeCoreRect } from "./canvas/geometry"
 import { useViewportTier } from "./canvas/useViewportTier"
 import { FocusDndProvider } from "./FocusDndProvider"
 import { ModeDispatcher } from "./mode-dispatcher"
+
+
+// Phase 4.3b.3 — feature-specific providers gated on active focus id.
+// Kept narrow: only the funeral-scheduling Focus needs the
+// scheduling-data provider. Other focus modes mount with the same
+// FocusDndProvider but no extra data layer. As more vertical-
+// specific providers ship (disinterment scheduling, etc.), this
+// dispatch grows.
+function FocusDataProviderForFocusId({
+  focusId,
+  children,
+}: {
+  focusId: string | null
+  children: React.ReactNode
+}): React.ReactElement {
+  if (focusId === "funeral-scheduling") {
+    return <SchedulingFocusDataProvider>{children}</SchedulingFocusDataProvider>
+  }
+  return <>{children}</>
+}
 
 
 export function Focus() {
@@ -111,7 +132,15 @@ export function Focus() {
             mounts a single sensor + tracks activeId; consumers
             register routing logic via useDndMonitor with id-prefix
             discriminators (widget: / delivery: / ancillary:). See
-            FocusDndProvider.tsx header for the full rationale. */}
+            FocusDndProvider.tsx header for the full rationale.
+
+            Phase 4.3b.3 — wrapped in feature-specific data
+            provider (only mounted when active focus ==
+            funeral-scheduling). Pool ancillaries flow to the
+            AncillaryPoolPin via this layer; kanban core reads via
+            useSchedulingFocusOptional for cross-context drag
+            routing. */}
+        <FocusDataProviderForFocusId focusId={currentFocus?.id ?? null}>
         <FocusDndProvider>
         {/* Session 3.8.3 — positioner wrapper owns transform-for-
             position. Dialog.Popup inside fills via `w-full h-full`
@@ -215,6 +244,7 @@ export function Focus() {
             via React context regardless of DOM position. */}
         <Canvas />
         </FocusDndProvider>
+        </FocusDataProviderForFocusId>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   )

@@ -77,6 +77,7 @@ import {
 } from "@/components/dispatch/QuickEditDialog"
 import { Button } from "@/components/ui/button"
 import { useFocus } from "@/contexts/focus-context"
+import { useSchedulingFocusOptional } from "@/contexts/scheduling-focus-context"
 import { cn } from "@/lib/utils"
 import {
   assignAncillaryStandalone,
@@ -208,9 +209,20 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
   const [finalizing, setFinalizing] = useState(false)
   const [daySelectorOpen, setDaySelectorOpen] = useState(false)
 
+  // Phase 4.3b.3 — pool ancillaries live in SchedulingFocusContext
+  // (provider mounted at Focus.tsx level when active focus is
+  // funeral-scheduling). Kanban core reads via the optional hook so
+  // existing tests that don't wrap with the provider continue to
+  // render. When null (test path or non-funeral-scheduling focus),
+  // pool-related drag routing falls through to the no-op branch.
+  const schedulingFocus = useSchedulingFocusOptional()
+
   const reload = useCallback(() => {
     setRefreshTick((n) => n + 1)
-  }, [])
+    // Also refresh the pool — drag operations that move items into
+    // the pool (return-to-pool) need both kanban + pool to reload.
+    schedulingFocus?.reloadPool()
+  }, [schedulingFocus])
 
   // Fetch deliveries + drivers + schedule state for the target date.
   useEffect(() => {

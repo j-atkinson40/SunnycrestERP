@@ -497,6 +497,95 @@ def list_monitor_deliveries(
 
 
 @router.get(
+    "/pool-ancillaries",
+    response_model=list[MonitorDeliveryDTO],
+    dependencies=[Depends(require_permission("delivery.view"))],
+)
+def list_pool_ancillaries(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[MonitorDeliveryDTO]:
+    """Pool ancillaries for the AncillaryPoolPin (Phase B Session
+    4.3b.3). Pool state per PRODUCT_PRINCIPLES "Domain-Specific
+    Operational Semantics > Ancillary orders":
+
+        attached_to_delivery_id IS NULL
+        AND primary_assignee_id IS NULL
+        AND ancillary_is_floating IS TRUE
+
+    Tenant-scoped via current_user.company_id. Returns the same
+    MonitorDeliveryDTO shape as /deliveries so the AncillaryPoolPin
+    can reuse the existing TypeScript DeliveryDTO type. Excludes
+    completed and cancelled rows. Excludes ancillaries that have
+    been claimed (assignee set or attached) — those render in
+    driver lanes / drawer expansion respectively.
+
+    Why a dedicated endpoint instead of extending /deliveries with
+    `include_pool=true`: the date-range filter on /deliveries is
+    structural (the caller's day-window matters); pool items are
+    explicitly date-less. Conflating them in one endpoint requires
+    either ignoring the date filter for pool rows (surprising) or
+    a discriminator response shape (more complex than separate
+    endpoints). Two clean endpoints, one clear contract each.
+    """
+    rows = (
+        db.query(Delivery)
+        .filter(
+            Delivery.company_id == current_user.company_id,
+            Delivery.scheduling_type == "ancillary",
+            Delivery.attached_to_delivery_id.is_(None),
+            Delivery.primary_assignee_id.is_(None),
+            Delivery.ancillary_is_floating.is_(True),
+            Delivery.status != "cancelled",
+        )
+        .filter(
+            # Exclude completed; null fulfillment_status is allowed
+            # (legacy data). Match the existing /ancillary endpoint's
+            # filter pattern for consistency.
+            (Delivery.ancillary_fulfillment_status != "completed")
+            | (Delivery.ancillary_fulfillment_status.is_(None)),
+        )
+        .order_by(
+            Delivery.ancillary_soft_target_date.asc().nullslast(),
+            Delivery.created_at.asc(),
+        )
+        .all()
+    )
+
+    # Pool ancillaries have neither helper nor parent by definition,
+    # so the denormalized helper_user_name / attached_to_family_name
+    # fields are always None. Skip the batched lookups the main
+    # endpoint runs.
+    return [
+        MonitorDeliveryDTO(
+            id=r.id,
+            order_id=r.order_id,
+            customer_id=r.customer_id,
+            delivery_type=r.delivery_type,
+            status=r.status,
+            priority=r.priority,
+            requested_date=r.requested_date.isoformat() if r.requested_date else None,
+            scheduled_at=r.scheduled_at.isoformat() if r.scheduled_at else None,
+            scheduling_type=r.scheduling_type,
+            ancillary_fulfillment_status=r.ancillary_fulfillment_status,
+            direct_ship_status=r.direct_ship_status,
+            primary_assignee_id=r.primary_assignee_id,
+            helper_user_id=r.helper_user_id,
+            attached_to_delivery_id=r.attached_to_delivery_id,
+            driver_start_time=r.driver_start_time.isoformat()
+            if r.driver_start_time
+            else None,
+            hole_dug_status=r.hole_dug_status,
+            type_config=r.type_config,
+            special_instructions=r.special_instructions,
+            helper_user_name=None,
+            attached_to_family_name=None,
+        )
+        for r in rows
+    ]
+
+
+@router.get(
     "/drivers",
     response_model=list[MonitorDriverDTO],
     dependencies=[Depends(require_permission("delivery.view"))],

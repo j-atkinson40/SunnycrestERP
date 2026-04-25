@@ -282,6 +282,19 @@ export async function fetchDrivers(): Promise<DriverDTO[]> {
 }
 
 
+/** Phase B Session 4.3b.3 — fetch pool (floating + unassigned)
+ *  ancillaries for the AncillaryPoolPin widget. Tenant-scoped server-
+ *  side. Returns flat array of DeliveryDTO entries; same shape as the
+ *  /deliveries endpoint so the pin can reuse the existing card
+ *  components. Excludes completed and cancelled rows. */
+export async function fetchPoolAncillaries(): Promise<DeliveryDTO[]> {
+  const r = await apiClient.get<DeliveryDTO[]>(
+    `/dispatch/pool-ancillaries`,
+  )
+  return r.data
+}
+
+
 /** Read tenant-local wall clock. Used by the Monitor's Smart Stack to
  *  pick the single-day default (before 1pm tenant-local → Today
  *  primary; after 1pm → Tomorrow primary). */

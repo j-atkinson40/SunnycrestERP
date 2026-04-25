@@ -1102,3 +1102,183 @@ class TestMonitorDTODenormalization:
         for row in r.json():
             assert "helper_user_name" in row
             assert "attached_to_family_name" in row
+
+
+# ── Phase 4.3b.3 — Pool ancillaries endpoint ────────────────────────
+
+
+class TestPoolAncillariesEndpoint:
+    """`GET /api/v1/dispatch/pool-ancillaries` returns flat list of
+    pool-state ancillaries for the AncillaryPoolPin widget. Pool
+    state per PRODUCT_PRINCIPLES "Domain-Specific Operational
+    Semantics > Ancillary orders":
+
+        attached_to_delivery_id IS NULL
+        AND primary_assignee_id IS NULL
+        AND ancillary_is_floating IS TRUE
+    """
+
+    def test_returns_only_pool_state_ancillaries(self, client, ctx):
+        """Mix of states: pool, standalone, attached, primary kanban,
+        completed pool. Endpoint returns only the pool row."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        db = SessionLocal()
+        try:
+            # Pool — should appear
+            pool = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                status="pending",
+                priority="normal",
+                scheduling_type="ancillary",
+                attached_to_delivery_id=None,
+                primary_assignee_id=None,
+                ancillary_is_floating=True,
+                type_config={"family_name": "Lombardi"},
+            )
+            # Standalone — should NOT appear (has assignee)
+            standalone = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                requested_date=date.today(),
+                status="scheduled",
+                priority="normal",
+                scheduling_type="ancillary",
+                attached_to_delivery_id=None,
+                primary_assignee_id=ctx["admin_id"],
+                ancillary_is_floating=False,
+                type_config={"family_name": "Patel"},
+            )
+            # Primary kanban — should NOT appear (wrong scheduling_type)
+            primary = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                requested_date=date.today(),
+                status="scheduled",
+                priority="normal",
+                scheduling_type="kanban",
+            )
+            # Completed pool — should NOT appear (filter excludes
+            # completed)
+            completed_pool = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                status="pending",
+                priority="normal",
+                scheduling_type="ancillary",
+                attached_to_delivery_id=None,
+                primary_assignee_id=None,
+                ancillary_is_floating=True,
+                ancillary_fulfillment_status="completed",
+            )
+            db.add_all([pool, standalone, primary, completed_pool])
+            db.commit()
+            pool_id = pool.id
+        finally:
+            db.close()
+
+        r = client.get(
+            "/api/v1/dispatch/pool-ancillaries",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        rows = r.json()
+        ids = [row["id"] for row in rows]
+        assert pool_id in ids
+        # The other three should NOT appear.
+        assert all(row["scheduling_type"] == "ancillary" for row in rows)
+        assert all(row["primary_assignee_id"] is None for row in rows)
+        assert all(row["attached_to_delivery_id"] is None for row in rows)
+        # Family name surfaces (used by the pin to label items).
+        pool_row = next(row for row in rows if row["id"] == pool_id)
+        assert pool_row["type_config"]["family_name"] == "Lombardi"
+
+    def test_empty_when_no_pool_items(self, client, ctx):
+        """No pool ancillaries → empty array. Pin's empty state."""
+        r = client.get(
+            "/api/v1/dispatch/pool-ancillaries",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_tenant_isolation(self, client, ctx, ctx_other):
+        """Pool item in tenant A is not visible to tenant B."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        db = SessionLocal()
+        try:
+            other_pool = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx_other["company_id"],
+                delivery_type="vault",
+                status="pending",
+                priority="normal",
+                scheduling_type="ancillary",
+                attached_to_delivery_id=None,
+                primary_assignee_id=None,
+                ancillary_is_floating=True,
+            )
+            db.add(other_pool)
+            db.commit()
+            other_pool_id = other_pool.id
+        finally:
+            db.close()
+
+        # Tenant A's dispatcher should NOT see tenant B's pool item.
+        r = client.get(
+            "/api/v1/dispatch/pool-ancillaries",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        ids = [row["id"] for row in r.json()]
+        assert other_pool_id not in ids
+
+    def test_requires_delivery_view_permission(self, client, ctx):
+        """Readonly user (no delivery.view) gets 403."""
+        r = client.get(
+            "/api/v1/dispatch/pool-ancillaries",
+            headers=_hdr(ctx["readonly_token"], ctx["slug"]),
+        )
+        assert r.status_code == 403
+
+    def test_helper_and_attached_fields_null_for_pool(self, client, ctx):
+        """Pool items by definition have no helper or parent. Returned
+        DTO should always have helper_user_name=None +
+        attached_to_family_name=None for every row."""
+        from app.database import SessionLocal
+        from app.models.delivery import Delivery
+
+        db = SessionLocal()
+        try:
+            pool = Delivery(
+                id=str(uuid.uuid4()),
+                company_id=ctx["company_id"],
+                delivery_type="vault",
+                status="pending",
+                priority="normal",
+                scheduling_type="ancillary",
+                attached_to_delivery_id=None,
+                primary_assignee_id=None,
+                ancillary_is_floating=True,
+            )
+            db.add(pool)
+            db.commit()
+        finally:
+            db.close()
+
+        r = client.get(
+            "/api/v1/dispatch/pool-ancillaries",
+            headers=_hdr(ctx["dispatcher_token"], ctx["slug"]),
+        )
+        assert r.status_code == 200
+        for row in r.json():
+            assert row["helper_user_name"] is None
+            assert row["attached_to_family_name"] is None
