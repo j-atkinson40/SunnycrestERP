@@ -12,6 +12,7 @@
  */
 
 import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -341,6 +342,151 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     // Finalize button absent when state=finalized.
     expect(
       document.querySelector('[data-slot="scheduling-focus-finalize"]'),
+    ).toBeNull()
+  })
+})
+
+
+// ── Phase 4.3.3.1 — attached-ancillary parity with Monitor ──────────
+
+
+describe("SchedulingKanbanCore — attached-ancillary parity (Phase 4.3.3.1)", () => {
+  beforeEach(() => {
+    vi.mocked(fetchTenantTime).mockResolvedValue({
+      tenant_timezone: "America/New_York",
+      local_iso: "2026-04-25T10:00:00-04:00",
+      local_date: "2026-04-25",
+      local_hour: 10,
+      local_minute: 0,
+    })
+    vi.mocked(fetchSchedule).mockResolvedValue({
+      id: "sch-3",
+      company_id: "co-1",
+      schedule_date: "2026-04-25",
+      state: "draft",
+      finalized_at: null,
+      finalized_by_user_id: null,
+      auto_finalized: false,
+      last_reverted_at: null,
+      last_revert_reason: null,
+      created_at: null,
+      updated_at: null,
+    })
+    vi.mocked(fetchDrivers).mockResolvedValue([
+      {
+        id: "drv-bob",
+        user_id: "drv-bob",
+        license_number: "CDL-4",
+        license_class: "CDL-A",
+        active: true,
+        display_name: "Bob Johnson",
+      },
+    ])
+    // Bob has Murphy primary + a Murphy urn-rider ancillary attached
+    // to it (mirrors the dispatch demo seed's attached-state row).
+    vi.mocked(fetchDeliveriesForRange).mockResolvedValue([
+      makeDelivery({
+        id: "murphy-primary",
+        primary_assignee_id: "drv-bob",
+        type_config: {
+          family_name: "Murphy",
+          service_type: "graveside",
+        },
+      }),
+      makeDelivery({
+        id: "murphy-rider",
+        scheduling_type: "ancillary",
+        attached_to_delivery_id: "murphy-primary",
+        primary_assignee_id: "drv-bob",
+        type_config: {
+          family_name: "Murphy",
+          service_type: "ancillary_pickup",
+          vault_type: "Urn vault (rider)",
+        },
+      }),
+    ])
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("renders +N ancillary badge on parent in Focus (mirrors Monitor)", async () => {
+    render(
+      <Harness initialUrl="/?day=2026-04-25">
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="scheduling-focus-kanban"]'),
+      ).toBeInTheDocument()
+    })
+    // Parent card should carry an ancillary badge with count=1.
+    const badges = document.querySelectorAll(
+      '[data-slot="dispatch-ancillary-badge"]',
+    )
+    expect(badges.length).toBe(1)
+    const countChip = badges[0].querySelector(
+      '[data-slot="dispatch-ancillary-badge-count"]',
+    )
+    expect(countChip?.textContent).toBe("1")
+  })
+
+  it("attached ancillary does NOT render as a standalone card", async () => {
+    render(
+      <Harness initialUrl="/?day=2026-04-25">
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="scheduling-focus-kanban"]'),
+      ).toBeInTheDocument()
+    })
+    // 1 primary delivery card + 0 standalone ancillary cards.
+    expect(
+      document.querySelectorAll('[data-slot="dispatch-delivery-card"]').length,
+    ).toBe(1)
+    expect(
+      document.querySelectorAll('[data-slot="dispatch-ancillary-card"]').length,
+    ).toBe(0)
+  })
+
+  it("clicking the badge expands inline drawer with attached ancillary", async () => {
+    const user = userEvent.setup()
+    render(
+      <Harness initialUrl="/?day=2026-04-25">
+        <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
+      </Harness>,
+    )
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="scheduling-focus-kanban"]'),
+      ).toBeInTheDocument()
+    })
+    // Drawer absent at rest.
+    expect(
+      document.querySelector('[data-slot="dispatch-ancillary-expanded"]'),
+    ).toBeNull()
+    const badge = document.querySelector(
+      '[data-slot="dispatch-ancillary-badge"]',
+    ) as HTMLElement
+    await user.click(badge)
+    // Drawer appears + contains the attached ancillary item.
+    const drawer = document.querySelector(
+      '[data-slot="dispatch-ancillary-expanded"]',
+    )
+    expect(drawer).toBeInTheDocument()
+    const items = drawer?.querySelectorAll(
+      '[data-slot="dispatch-ancillary-expanded-item"]',
+    )
+    expect(items?.length).toBe(1)
+    expect(items?.[0].getAttribute("data-ancillary-id")).toBe("murphy-rider")
+    // Click the badge again → collapse.
+    await user.click(badge)
+    expect(
+      document.querySelector('[data-slot="dispatch-ancillary-expanded"]'),
     ).toBeNull()
   })
 })

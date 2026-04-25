@@ -254,8 +254,10 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
   // AND primary_assignee_id set). These render in driver lanes
   // alongside primary kanban deliveries via AncillaryCard. ATTACHED
   // ancillaries (attached_to_delivery_id set) are NOT rendered in
-  // lanes — they show as a +N badge on the parent's DeliveryCard
-  // (Phase 4.3b adds click-to-expand). POOL ancillaries (no driver,
+  // lanes — they show as a +N badge on the parent's DeliveryCard,
+  // expandable to inline slots (4.3.3.1 ships Focus parity with
+  // Monitor's expansion behavior; 4.3b adds drag-to-detach on the
+  // expanded slots themselves). POOL ancillaries (no driver,
   // floating) render in the Phase 4.3b pool pin widget — out of
   // 4.3.3 scope.
   //
@@ -264,9 +266,11 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
     kanbanByDriver,
     unassignedKanban,
     standaloneAncillariesByDriver,
+    attachedAncillariesByParent,
   } = useMemo(() => {
     const byDriver = new Map<string, DeliveryDTO[]>()
     const standaloneByDriver = new Map<string, DeliveryDTO[]>()
+    const attachedByParent = new Map<string, DeliveryDTO[]>()
     const unassigned: DeliveryDTO[] = []
     for (const d of deliveries) {
       if (d.scheduling_type === "kanban") {
@@ -280,16 +284,27 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         continue
       }
       if (d.scheduling_type === "ancillary") {
+        // Phase 4.3.3.1 — capture attached ancillaries keyed by parent
+        // so DeliveryCard can render the +N count badge AND so the
+        // expansion drawer can iterate the children. Mirrors Monitor's
+        // pattern in funeral-schedule.tsx.
+        if (d.attached_to_delivery_id) {
+          const parentId = d.attached_to_delivery_id
+          if (!attachedByParent.has(parentId)) {
+            attachedByParent.set(parentId, [])
+          }
+          attachedByParent.get(parentId)!.push(d)
+          continue
+        }
         // Standalone: assigned + not attached to a parent.
         const assigneeId = d.primary_assignee_id
-        if (assigneeId && !d.attached_to_delivery_id) {
+        if (assigneeId) {
           if (!standaloneByDriver.has(assigneeId)) {
             standaloneByDriver.set(assigneeId, [])
           }
           standaloneByDriver.get(assigneeId)!.push(d)
         }
-        // Attached ancillaries: silently skipped here. Pool
-        // ancillaries (floating, no assignee) also skipped.
+        // Pool ancillaries (floating, no assignee, no parent): skipped.
       }
       // direct_ship: skipped — handled by separate dispatch UI.
     }
@@ -297,8 +312,28 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       kanbanByDriver: byDriver,
       unassignedKanban: unassigned,
       standaloneAncillariesByDriver: standaloneByDriver,
+      attachedAncillariesByParent: attachedByParent,
     }
   }, [deliveries])
+
+  // Phase 4.3.3.1 — expanded-parent state (Set of parent delivery_ids
+  // whose attached-ancillary drawer is currently open). Mirrors Monitor's
+  // expansion pattern in FuneralScheduleDayColumn.tsx. Click on the
+  // ancillary IconTooltip badge toggles membership.
+  const [expandedAncillaryParents, setExpandedAncillaryParents] = useState<
+    Set<string>
+  >(() => new Set())
+  const toggleAncillaryExpansion = useCallback((parentId: string) => {
+    setExpandedAncillaryParents((prev) => {
+      const next = new Set(prev)
+      if (next.has(parentId)) {
+        next.delete(parentId)
+      } else {
+        next.add(parentId)
+      }
+      return next
+    })
+  }, [])
 
   // Full roster sorted alphabetically — ALL drivers render (this is
   // the decide surface, all options visible is correct).
@@ -688,6 +723,9 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
               activeDeliveryId={activeDeliveryId}
               onOpenEdit={setEditTarget}
               onCycleHoleDug={handleCycleHoleDug}
+              attachedAncillariesByParent={attachedAncillariesByParent}
+              expandedAncillaryParents={expandedAncillaryParents}
+              onToggleAncillaryExpansion={toggleAncillaryExpansion}
               isUnassignedLane
             />
 
@@ -713,6 +751,9 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
                   }
                   deliveries={laneDeliveries}
                   ancillaries={laneAncillaries}
+                  attachedAncillariesByParent={attachedAncillariesByParent}
+                  expandedAncillaryParents={expandedAncillaryParents}
+                  onToggleAncillaryExpansion={toggleAncillaryExpansion}
                   scheduleFinalized={isFinalized}
                   activeDeliveryId={activeDeliveryId}
                   onOpenEdit={setEditTarget}
@@ -823,6 +864,19 @@ interface SchedulingLaneProps {
    *  primary DeliveryCards. Empty array = no standalone ancillaries
    *  in this lane. */
   ancillaries?: DeliveryDTO[]
+  /** Phase 4.3.3.1 — attached-ancillary lookup keyed by parent
+   *  delivery id. Used by primary DeliveryCards to (a) render a
+   *  +N count badge in the icon row and (b) render an inline
+   *  expansion drawer beneath the card when the user clicks the
+   *  badge. Same shape Monitor uses; Focus now mirrors it. */
+  attachedAncillariesByParent?: Map<string, DeliveryDTO[]>
+  /** Phase 4.3.3.1 — set of parent delivery ids whose attached-
+   *  ancillary drawer is currently expanded. Threaded through from
+   *  parent so state survives lane-prop reshuffles. */
+  expandedAncillaryParents?: Set<string>
+  /** Phase 4.3.3.1 — toggle a parent's expansion drawer. Lifted to
+   *  parent so all lanes share one expansion-state set. */
+  onToggleAncillaryExpansion?: (parentId: string) => void
   scheduleFinalized: boolean
   /** Phase 4.2.2 — id of the currently-dragging delivery, if any.
    *  When present AND matching a delivery in this lane, the in-lane
@@ -844,6 +898,9 @@ function SchedulingLane({
   laneSubLabel,
   deliveries,
   ancillaries = [],
+  attachedAncillariesByParent,
+  expandedAncillaryParents,
+  onToggleAncillaryExpansion,
   scheduleFinalized,
   activeDeliveryId,
   isUnassignedLane,
@@ -957,6 +1014,13 @@ function SchedulingLane({
         )}
         {deliveries.map((d) => {
           const isGhost = activeDeliveryId === d.id
+          // Phase 4.3.3.1 — count + expansion state for the +N
+          // ancillary badge. Same shape Monitor passes; null-safe so
+          // older callers (tests with no expansion plumbing) still
+          // render zero-count cards correctly.
+          const attached = attachedAncillariesByParent?.get(d.id) ?? []
+          const ancCount = attached.length
+          const expanded = expandedAncillaryParents?.has(d.id) ?? false
           return (
             <div
               key={d.id}
@@ -988,7 +1052,55 @@ function SchedulingLane({
                 // click handler at all — short-clicks were silent.
                 onOpenEdit={onOpenEdit}
                 onCycleHoleDug={onCycleHoleDug}
+                // Phase 4.3.3.1 — attached-ancillary count + expansion
+                // parity with Monitor.
+                ancillaryCount={ancCount}
+                ancillaryExpanded={expanded}
+                onToggleAncillary={onToggleAncillaryExpansion}
               />
+              {/* Phase 4.3.3.1 — expansion drawer below the parent card.
+                  Mirrors Monitor's pattern (FuneralScheduleDayColumn).
+                  Each attached ancillary is a click-to-edit button (NOT
+                  a drag source — drag-to-detach is Phase 4.3b). */}
+              {expanded && attached.length > 0 && (
+                <div
+                  data-slot="dispatch-ancillary-expanded"
+                  className={cn(
+                    "mt-1.5 ml-4 space-y-1 rounded-md border-l-2 border-brass/40",
+                    "bg-surface-sunken/60 px-3 py-2",
+                  )}
+                >
+                  {attached.map((a) => {
+                    const tc = a.type_config ?? {}
+                    const family =
+                      (tc.family_name as string | undefined) ?? "—"
+                    const stype =
+                      (tc.service_type as string | undefined) ?? ""
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        data-slot="dispatch-ancillary-expanded-item"
+                        data-ancillary-id={a.id}
+                        onClick={() => onOpenEdit?.(a)}
+                        className={cn(
+                          "w-full text-left text-caption",
+                          "text-content-base hover:text-content-strong",
+                          "focus-ring-brass outline-none rounded",
+                          "px-1 py-0.5",
+                        )}
+                      >
+                        <span className="font-medium">{family}</span>
+                        {stype && (
+                          <span className="ml-2 text-content-muted">
+                            · {stype.replace(/_/g, " ")}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )
         })}

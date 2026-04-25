@@ -43,9 +43,11 @@ import {
   HelpCircleIcon,
   MessageCircleIcon,
   MinusIcon,
+  PaperclipIcon,
   StickyNoteIcon,
   MapPinIcon,
   UserIcon,
+  UsersIcon,
 } from "lucide-react"
 
 import type {
@@ -429,30 +431,62 @@ export function DeliveryCard({
           )}
         </div>
 
-        {/* Right — status indicators (ancillary + hole-dug). */}
+        {/* Right — status indicators (ancillary + hole-dug).
+            Phase 4.3.3.1 — ancillary badge converted from "+N ancillary"
+            text pill to icon+count chip matching the IconTooltip+badge
+            pattern (Paperclip icon, chip overlaid top-right). Keeps
+            visual weight consistent with the chat-icon unread count
+            chip on the icon-row's left cluster — the pill version
+            dominated the row, the icon version is a peer affordance. */}
         <div className="flex items-center gap-1">
           {ancillaryCount > 0 && (
-            <button
-              type="button"
-              data-slot="dispatch-ancillary-badge"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleAncillary?.(delivery.id)
-              }}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2 py-0.5",
-                "text-caption font-medium bg-brass-muted text-content-strong",
-                "hover:bg-brass/20 transition-colors duration-quick",
-                "focus-ring-brass outline-none cursor-pointer",
-              )}
-              aria-label={`${ancillaryCount} ancillary ${
-                ancillaryCount === 1 ? "item" : "items"
-              } attached — click to ${ancillaryExpanded ? "collapse" : "expand"}`}
-              aria-expanded={ancillaryExpanded}
-            >
-              +{ancillaryCount} ancillary
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    data-slot="dispatch-ancillary-badge"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleAncillary?.(delivery.id)
+                    }}
+                    className={cn(
+                      "relative inline-flex h-6 w-6 items-center justify-center rounded-sm",
+                      "text-content-muted hover:bg-surface-sunken transition-colors duration-quick",
+                      "focus-ring-brass outline-none cursor-pointer",
+                    )}
+                    aria-label={`${ancillaryCount} ancillary ${
+                      ancillaryCount === 1 ? "item" : "items"
+                    } attached — click to ${
+                      ancillaryExpanded ? "collapse" : "expand"
+                    }`}
+                    aria-expanded={ancillaryExpanded}
+                  >
+                    <PaperclipIcon className="h-3.5 w-3.5" aria-hidden />
+                    <span
+                      data-slot="dispatch-ancillary-badge-count"
+                      className={cn(
+                        "absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1",
+                        "inline-flex items-center justify-center rounded-full",
+                        "bg-brass text-content-on-brass text-[10px] font-medium",
+                        "font-plex-mono tabular-nums",
+                      )}
+                      aria-hidden
+                    >
+                      {ancillaryCount}
+                    </span>
+                  </button>
+                }
+              />
+              <TooltipContent side="top" size="default">
+                {`${ancillaryCount} ancillary ${
+                  ancillaryCount === 1 ? "item" : "items"
+                } attached — click to ${
+                  ancillaryExpanded ? "collapse" : "expand"
+                }`}
+              </TooltipContent>
+            </Tooltip>
           )}
           <HoleDugBadge
             status={delivery.hole_dug_status}

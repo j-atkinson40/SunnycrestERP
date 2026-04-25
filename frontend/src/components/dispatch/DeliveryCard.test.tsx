@@ -529,6 +529,9 @@ describe("DeliveryCard — ancillary badge", () => {
   })
 
   it("shown when ancillaryCount > 0; click fires onToggleAncillary", async () => {
+    // Phase 4.3.3.1 — badge converted from "+N ancillary" text pill to
+    // Paperclip icon + count chip. Visual weight matches the chat-icon
+    // unread chip on the icon row's left cluster.
     const user = userEvent.setup()
     const onToggle = vi.fn()
     render(
@@ -544,7 +547,13 @@ describe("DeliveryCard — ancillary badge", () => {
     const badge = document.querySelector(
       '[data-slot="dispatch-ancillary-badge"]',
     ) as HTMLElement
-    expect(badge.textContent).toMatch(/\+2 ancillary/)
+    // Count chip is a separate sub-slot; render as the digit only,
+    // not the legacy "+N ancillary" text pill.
+    const countChip = document.querySelector(
+      '[data-slot="dispatch-ancillary-badge-count"]',
+    ) as HTMLElement
+    expect(countChip.textContent).toBe("2")
+    expect(badge.getAttribute("aria-label")).toMatch(/2 ancillary items attached/i)
     await user.click(badge)
     expect(onToggle).toHaveBeenCalledWith("del-1")
   })
