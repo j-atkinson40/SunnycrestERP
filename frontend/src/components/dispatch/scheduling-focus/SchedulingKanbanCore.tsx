@@ -72,6 +72,7 @@ import {
 import { createPortal } from "react-dom"
 import { useSearchParams } from "react-router-dom"
 
+import { AncillaryCard } from "@/components/dispatch/AncillaryCard"
 import { DeliveryCard } from "@/components/dispatch/DeliveryCard"
 import {
   QuickEditDialog,
@@ -81,11 +82,13 @@ import { Button } from "@/components/ui/button"
 import { useFocus } from "@/contexts/focus-context"
 import { cn } from "@/lib/utils"
 import {
+  assignAncillaryStandalone,
   fetchDeliveriesForRange,
   fetchDrivers,
   fetchSchedule,
   fetchTenantTime,
   finalizeSchedule,
+  returnAncillaryToPool,
   updateDelivery,
   updateHoleDug,
   type DeliveryDTO,
@@ -241,24 +244,60 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
     }
   }, [targetDate, refreshTick])
 
-  // Group deliveries by driver (kanban-scheduling only; ancillary +
-  // direct-ship are out of scope for 4.2).
-  // Phase 4.3.2 (r56) — grouping key is now `primary_assignee_id`
+  // Group deliveries by driver.
+  //
+  // Phase 4.3.2 (r56) — grouping key is `primary_assignee_id`
   // (users.id). Compare lane membership via driver.user_id below.
-  const { kanbanByDriver, unassignedKanban } = useMemo(() => {
+  //
+  // Phase 4.3.3 — extended to include STANDALONE ancillaries
+  // (scheduling_type='ancillary' AND attached_to_delivery_id=null
+  // AND primary_assignee_id set). These render in driver lanes
+  // alongside primary kanban deliveries via AncillaryCard. ATTACHED
+  // ancillaries (attached_to_delivery_id set) are NOT rendered in
+  // lanes — they show as a +N badge on the parent's DeliveryCard
+  // (Phase 4.3b adds click-to-expand). POOL ancillaries (no driver,
+  // floating) render in the Phase 4.3b pool pin widget — out of
+  // 4.3.3 scope.
+  //
+  // Direct-ship is also out of scope for the kanban view.
+  const {
+    kanbanByDriver,
+    unassignedKanban,
+    standaloneAncillariesByDriver,
+  } = useMemo(() => {
     const byDriver = new Map<string, DeliveryDTO[]>()
+    const standaloneByDriver = new Map<string, DeliveryDTO[]>()
     const unassigned: DeliveryDTO[] = []
     for (const d of deliveries) {
-      if (d.scheduling_type !== "kanban") continue
-      const assigneeId = d.primary_assignee_id
-      if (assigneeId) {
-        if (!byDriver.has(assigneeId)) byDriver.set(assigneeId, [])
-        byDriver.get(assigneeId)!.push(d)
-      } else {
-        unassigned.push(d)
+      if (d.scheduling_type === "kanban") {
+        const assigneeId = d.primary_assignee_id
+        if (assigneeId) {
+          if (!byDriver.has(assigneeId)) byDriver.set(assigneeId, [])
+          byDriver.get(assigneeId)!.push(d)
+        } else {
+          unassigned.push(d)
+        }
+        continue
       }
+      if (d.scheduling_type === "ancillary") {
+        // Standalone: assigned + not attached to a parent.
+        const assigneeId = d.primary_assignee_id
+        if (assigneeId && !d.attached_to_delivery_id) {
+          if (!standaloneByDriver.has(assigneeId)) {
+            standaloneByDriver.set(assigneeId, [])
+          }
+          standaloneByDriver.get(assigneeId)!.push(d)
+        }
+        // Attached ancillaries: silently skipped here. Pool
+        // ancillaries (floating, no assignee) also skipped.
+      }
+      // direct_ship: skipped — handled by separate dispatch UI.
     }
-    return { kanbanByDriver: byDriver, unassignedKanban: unassigned }
+    return {
+      kanbanByDriver: byDriver,
+      unassignedKanban: unassigned,
+      standaloneAncillariesByDriver: standaloneByDriver,
+    }
   }, [deliveries])
 
   // Full roster sorted alphabetically — ALL drivers render (this is
@@ -324,20 +363,68 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       if (!delivery) return
       if (delivery.primary_assignee_id === nextAssigneeId) return
 
+      // Phase 4.3.3 — branch on scheduling_type.
+      //
+      // PRIMARY (kanban): straight PATCH on primary_assignee_id.
+      // ANCILLARY: route through the dedicated state-machine
+      // endpoints so server-side fields (ancillary_is_floating,
+      // ancillary_fulfillment_status, attached_to_delivery_id)
+      // update correctly. Drag-to-Unassigned for an ancillary
+      // calls return-to-pool (full reset to floating). Drag-to-
+      // driver-column for an ancillary calls assign-standalone
+      // (sets driver + date, ensures FK is null, clears floating).
+      const isAncillary = delivery.scheduling_type === "ancillary"
+
       // Optimistic UI — local state reflects the new assignment
       // immediately. Backend PATCH runs in the background; only
       // the error path re-fetches authoritative state.
       setDeliveries((prev) =>
-        prev.map((d) =>
-          d.id === deliveryId
-            ? { ...d, primary_assignee_id: nextAssigneeId }
-            : d,
-        ),
+        prev.map((d) => {
+          if (d.id !== deliveryId) return d
+          if (isAncillary && nextAssigneeId === null) {
+            // Ancillary → pool: clear assignment + date + FK,
+            // mark floating. Mirrors return_ancillary_to_pool
+            // server side.
+            return {
+              ...d,
+              primary_assignee_id: null,
+              attached_to_delivery_id: null,
+              requested_date: null,
+              ancillary_is_floating: true,
+              ancillary_fulfillment_status: "unassigned",
+            }
+          }
+          if (isAncillary) {
+            // Ancillary → standalone: set assignee, ensure FK
+            // null, clear floating. Date inherits the focus's
+            // targetDate (the day this lane represents).
+            return {
+              ...d,
+              primary_assignee_id: nextAssigneeId,
+              attached_to_delivery_id: null,
+              requested_date: targetDate,
+              ancillary_is_floating: false,
+              ancillary_fulfillment_status: "assigned_to_driver",
+            }
+          }
+          // Primary delivery — just update assignee.
+          return { ...d, primary_assignee_id: nextAssigneeId }
+        }),
       )
       try {
-        await updateDelivery(deliveryId, {
-          primary_assignee_id: nextAssigneeId,
-        })
+        if (isAncillary && nextAssigneeId === null) {
+          await returnAncillaryToPool(deliveryId)
+        } else if (isAncillary && targetDate) {
+          await assignAncillaryStandalone(
+            deliveryId,
+            nextAssigneeId,
+            targetDate,
+          )
+        } else {
+          await updateDelivery(deliveryId, {
+            primary_assignee_id: nextAssigneeId,
+          })
+        }
         // Phase 4.2.4 — success-path reload removed. The optimistic
         // update above already reflects the backend's intended state;
         // a reload here would fire setLoading(true) on the parent
@@ -350,7 +437,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         reload() // error-path reload restores authoritative state
       }
     },
-    [deliveries, reload],
+    [deliveries, reload, targetDate],
   )
 
   const handleDragCancel = useCallback(() => {
@@ -587,7 +674,11 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
             )}
           >
             {/* Unassigned column — leftmost per user spec. Decide
-                surface's needs-a-driver pile. */}
+                surface's needs-a-driver pile.
+                Phase 4.3.3: Unassigned shows ONLY primary kanban
+                deliveries that lack a driver. Pool ancillaries
+                (no driver, floating) live in the Phase 4.3b pool
+                pin widget — out of 4.3.3 scope. */}
             <SchedulingLane
               laneKey={`${targetDate}:${UNASSIGNED_LANE_ID}`}
               laneLabel="Unassigned"
@@ -610,6 +701,8 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
             {sortedDrivers.map((driver) => {
               if (!driver.user_id) return null
               const laneDeliveries = kanbanByDriver.get(driver.user_id) ?? []
+              const laneAncillaries =
+                standaloneAncillariesByDriver.get(driver.user_id) ?? []
               return (
                 <SchedulingLane
                   key={driver.id}
@@ -619,6 +712,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
                     `Driver ${driver.license_number ?? "—"}`
                   }
                   deliveries={laneDeliveries}
+                  ancillaries={laneAncillaries}
                   scheduleFinalized={isFinalized}
                   activeDeliveryId={activeDeliveryId}
                   onOpenEdit={setEditTarget}
@@ -668,13 +762,27 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
               {activeDelivery && (
                 <div
                   data-slot="scheduling-focus-drag-preview"
+                  data-card-type={
+                    activeDelivery.scheduling_type === "ancillary"
+                      ? "ancillary"
+                      : "primary"
+                  }
                   className="scale-[1.02] shadow-level-3 rounded-md w-[220px]"
                 >
-                  <DeliveryCard
-                    delivery={activeDelivery}
-                    scheduleFinalized={isFinalized}
-                    density="compact"
-                  />
+                  {/* Phase 4.3.3 — preview matches the source card
+                      type (primary → DeliveryCard; standalone
+                      ancillary → AncillaryCard). Lift physics +
+                      width are identical so cursor grip-point
+                      tracking stays accurate across both types. */}
+                  {activeDelivery.scheduling_type === "ancillary" ? (
+                    <AncillaryCard delivery={activeDelivery} />
+                  ) : (
+                    <DeliveryCard
+                      delivery={activeDelivery}
+                      scheduleFinalized={isFinalized}
+                      density="compact"
+                    />
+                  )}
                 </div>
               )}
             </DragOverlay>,
@@ -709,6 +817,12 @@ interface SchedulingLaneProps {
   laneLabel: string
   laneSubLabel?: string
   deliveries: DeliveryDTO[]
+  /** Phase 4.3.3 — standalone ancillaries assigned to this driver
+   *  (or to nobody, for the Unassigned lane) but NOT attached to
+   *  a parent kanban delivery. Render as AncillaryCard alongside
+   *  primary DeliveryCards. Empty array = no standalone ancillaries
+   *  in this lane. */
+  ancillaries?: DeliveryDTO[]
   scheduleFinalized: boolean
   /** Phase 4.2.2 — id of the currently-dragging delivery, if any.
    *  When present AND matching a delivery in this lane, the in-lane
@@ -729,6 +843,7 @@ function SchedulingLane({
   laneLabel,
   laneSubLabel,
   deliveries,
+  ancillaries = [],
   scheduleFinalized,
   activeDeliveryId,
   isUnassignedLane,
@@ -784,6 +899,11 @@ function SchedulingLane({
         >
           {laneLabel}
         </span>
+        {/* Phase 4.3.3 — count includes BOTH primary deliveries +
+            standalone ancillaries so dispatchers see the driver's
+            full stop count at a glance. Ancillary count is the
+            second-class signal so it appears as "(+N)" suffix
+            after the primary count when nonzero. */}
         <span
           className={cn(
             "flex-none text-caption text-content-muted tabular-nums",
@@ -792,6 +912,11 @@ function SchedulingLane({
           )}
         >
           {deliveries.length}
+          {ancillaries.length > 0 && (
+            <span data-slot="scheduling-focus-lane-ancillary-count">
+              {" + "}{ancillaries.length}
+            </span>
+          )}
         </span>
         {laneSubLabel && deliveries.length > 0 && (
           <span className="text-caption text-content-muted italic">
@@ -863,6 +988,32 @@ function SchedulingLane({
                 // click handler at all — short-clicks were silent.
                 onOpenEdit={onOpenEdit}
                 onCycleHoleDug={onCycleHoleDug}
+              />
+            </div>
+          )
+        })}
+        {/* Phase 4.3.3 — standalone ancillaries render after primary
+            deliveries in the same lane. Visual hierarchy: primaries
+            first (the dispatcher's main scheduling decisions),
+            ancillaries second (independent stops). Same drag id
+            format `delivery:${id}` so the parent's onDragEnd treats
+            both card types uniformly. */}
+        {ancillaries.map((a) => {
+          const isGhost = activeDeliveryId === a.id
+          return (
+            <div
+              key={a.id}
+              data-slot="scheduling-focus-card-slot"
+              data-card-type="ancillary"
+              data-ghost={isGhost ? "true" : "false"}
+              className={cn(
+                "transition-opacity duration-quick ease-settle",
+                isGhost && "opacity-40 pointer-events-none",
+              )}
+            >
+              <AncillaryCard
+                delivery={a}
+                onOpenEdit={onOpenEdit}
               />
             </div>
           )

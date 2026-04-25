@@ -319,3 +319,77 @@ export async function updateDelivery(
   )
   return r.data
 }
+
+
+// ── Phase 4.3.3 — ancillary three-state machine endpoints ─────────
+
+
+const ANCILLARY_BASE = "/extensions/funeral-kanban/ancillary"
+
+
+/** Assign an ancillary as a standalone stop on a driver's day.
+ *
+ *  Used by the Scheduling Focus drag handler when a standalone or
+ *  pool ancillary lands in a driver column. Backend translates a
+ *  Driver.id `primary_assignee_id` to User.id via Driver.employee_id
+ *  (Phase 4.3.2 transitional contract).
+ *
+ *  Returns the updated ancillary card shape (not a full DeliveryDTO).
+ */
+export async function assignAncillaryStandalone(
+  ancillaryId: string,
+  primaryAssigneeId: string,
+  scheduledDate: string,  // 'YYYY-MM-DD'
+): Promise<unknown> {
+  const r = await apiClient.post(
+    `${ANCILLARY_BASE}/${ancillaryId}/assign-standalone`,
+    {
+      primary_assignee_id: primaryAssigneeId,
+      scheduled_date: scheduledDate,
+    },
+  )
+  return r.data
+}
+
+
+/** Return an ancillary to the unassigned pool. Idempotent —
+ *  pool→pool is a no-op. Clears assignee + date + parent FK,
+ *  flips ancillary_is_floating to true. */
+export async function returnAncillaryToPool(
+  ancillaryId: string,
+): Promise<unknown> {
+  const r = await apiClient.post(
+    `${ANCILLARY_BASE}/${ancillaryId}/return-to-pool`,
+  )
+  return r.data
+}
+
+
+/** Attach an ancillary to a parent kanban delivery (paired state).
+ *  Inherits driver + date from parent. Phase 4.3b uses this when
+ *  dragging a pool ancillary onto a parent card; Phase 4.3.3 ships
+ *  the API surface for completeness even though no Phase 4.3.3
+ *  drag flow calls it directly. */
+export async function attachAncillary(
+  ancillaryId: string,
+  parentDeliveryId: string,
+): Promise<unknown> {
+  const r = await apiClient.post(
+    `${ANCILLARY_BASE}/${ancillaryId}/attach`,
+    { parent_delivery_id: parentDeliveryId },
+  )
+  return r.data
+}
+
+
+/** Detach an ancillary from its parent — defaults to standalone
+ *  state (driver + date preserved, only the FK clears). Phase 4.3b
+ *  uses this when dragging an attached ancillary out of a parent. */
+export async function detachAncillary(
+  ancillaryId: string,
+): Promise<unknown> {
+  const r = await apiClient.post(
+    `${ANCILLARY_BASE}/${ancillaryId}/detach`,
+  )
+  return r.data
+}

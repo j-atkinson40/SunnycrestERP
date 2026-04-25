@@ -126,6 +126,9 @@ DEMO_DELIVERIES = [
         "hole_dug": "yes", "scheduling_type": "kanban",
         "cemetery_section": "Sec 14, Lot 42B",
         "equipment_type": "Full w/ Placer",
+        # Phase 4.3.3 — explicit per-delivery start time. Renders
+        # as "Start 6:30am" eyebrow above the headline.
+        "start_time": "06:30",
     },
     {
         "day_offset": 0, "time": "11:00", "driver_idx": 1,
@@ -137,6 +140,9 @@ DEMO_DELIVERIES = [
         "equipment_type": "Full Equipment",
         "eta": "12:15",
         "driver_note": "FH said procession may run long",
+        # Phase 4.3.3 — Tom (driver_idx=1) gets Dave (driver_idx=0)
+        # as helper for the procession-heavy church service.
+        "helper_driver_idx": 0,
     },
     {
         "day_offset": 0, "time": "13:00", "driver_idx": 2,
@@ -313,6 +319,22 @@ DEMO_DELIVERIES = [
         "vault_type": "Proof approval pickup", "service_type": "ancillary_pickup",
         "hole_dug": "unknown", "scheduling_type": "ancillary",
         "ancillary_status": "unassigned",
+    },
+    # Phase 4.3.3 — ATTACHED ancillary. Bob (driver_idx=3) takes the
+    # Murphy primary delivery TODAY at 11:00; this urn-vault extra
+    # rides along with that delivery via attach_to_family. Resolved
+    # in the second pass after all kanban deliveries exist.
+    {
+        "day_offset": 0, "time": None, "driver_idx": 3,
+        "family": "Murphy", "fh_name_match": "Green Valley Memorial",
+        "cemetery_match": None,
+        "vault_type": "Urn vault (rider)", "service_type": "ancillary_pickup",
+        "hole_dug": "unknown", "scheduling_type": "ancillary",
+        "ancillary_status": "assigned_to_driver",
+        # attach_to_family + day_offset together identify the parent
+        # kanban delivery to attach to. Resolved post-create.
+        "attach_to_family": "Murphy",
+        "attach_to_day_offset": 0,
     },
 
     # ── DIRECT SHIP — 2 in-flight from Wilbert ──
@@ -587,6 +609,32 @@ def _create_delivery(
     if cfg["driver_idx"] is not None and cfg["driver_idx"] < len(drivers):
         primary_assignee_id = drivers[cfg["driver_idx"]].employee_id
 
+    # Phase 4.3.3 — helper user (optional second person). Same
+    # translation as primary_assignee_id: helper_driver_idx points
+    # at drivers[] and we resolve to drivers[i].employee_id.
+    helper_user_id = None
+    helper_idx = cfg.get("helper_driver_idx")
+    if (
+        helper_idx is not None
+        and helper_idx < len(drivers)
+        and helper_idx != cfg.get("driver_idx")  # can't be your own helper
+    ):
+        helper_user_id = drivers[helper_idx].employee_id
+
+    # Phase 4.3.3 — explicit per-delivery driver start time. NULL =
+    # use tenant default (DeliverySettings.default_driver_start_time
+    # = '07:00'). Seed config provides "HH:MM"; convert to
+    # datetime.time for the TIME column.
+    raw_start = cfg.get("start_time")
+    driver_start_time = None
+    if raw_start:
+        from datetime import time as _time
+        try:
+            hh, mm = raw_start.split(":")
+            driver_start_time = _time(int(hh), int(mm))
+        except (ValueError, AttributeError):
+            driver_start_time = None  # malformed seed entry — skip silently
+
     # type_config JSONB — powers the Monitor card display. Phase 3.1+3.2
     # compaction fields: cemetery_section (→ MapPin icon tooltip),
     # driver_note (→ StickyNote icon tooltip), chat_activity_count
@@ -633,6 +681,12 @@ def _create_delivery(
         type_config=type_config,
         hole_dug_status=cfg["hole_dug"],
         primary_assignee_id=primary_assignee_id,
+        # Phase 4.3.3 — helper + start time + attach FK populate
+        # whatever the seed entry asked for. attach_to_family is
+        # resolved in a second pass after all kanban deliveries
+        # exist (see post-create attach loop in run()).
+        helper_user_id=helper_user_id,
+        driver_start_time=driver_start_time,
         special_instructions=(
             f"{DEMO_TAG} {cfg['family']} — {cfg['service_type']}"
         ),
@@ -643,6 +697,14 @@ def _create_delivery(
         delivery.ancillary_fulfillment_status = cfg.get(
             "ancillary_status", "unassigned"
         )
+        # Phase 4.3.3 — pool ancillaries (no driver, no date) get
+        # ancillary_is_floating=true. Standalone (driver+date set)
+        # gets floating=false. Attached (resolved in second pass)
+        # gets floating=false.
+        if cfg.get("driver_idx") is None:
+            delivery.ancillary_is_floating = True
+        else:
+            delivery.ancillary_is_floating = False
     elif cfg["scheduling_type"] == "direct_ship":
         delivery.direct_ship_status = cfg.get("direct_ship_status", "pending")
 
@@ -679,12 +741,60 @@ def run() -> None:
 
         # 4. Create deliveries
         today = date.today()
-        deliveries_created = 0
+        # Track created (cfg, delivery) pairs so the attach pass can
+        # resolve `attach_to_family` to a real Delivery.id.
+        created_pairs: list[tuple[dict, Delivery]] = []
         for cfg in DEMO_DELIVERIES:
-            _create_delivery(db, cfg, drivers, today)
-            deliveries_created += 1
+            d = _create_delivery(db, cfg, drivers, today)
+            created_pairs.append((cfg, d))
         db.commit()
+        deliveries_created = len(created_pairs)
         logger.info(f"created {deliveries_created} demo deliveries")
+
+        # 4b. Phase 4.3.3 — resolve attach_to_family on ancillaries.
+        # An ancillary cfg with attach_to_family + attach_to_day_offset
+        # gets attached_to_delivery_id pointed at the matching kanban
+        # parent (same family + same day). The ancillary inherits
+        # the parent's primary_assignee + helper + scheduled date
+        # via the attach_ancillary service in production; for the
+        # seed we set FK directly + clear ancillary_is_floating.
+        attaches_resolved = 0
+        for cfg, ancillary in created_pairs:
+            if cfg.get("scheduling_type") != "ancillary":
+                continue
+            target_family = cfg.get("attach_to_family")
+            target_day = cfg.get("attach_to_day_offset")
+            if target_family is None or target_day is None:
+                continue
+            # Find the kanban parent matching family + day_offset.
+            parent = next(
+                (
+                    pd
+                    for pcfg, pd in created_pairs
+                    if pcfg.get("scheduling_type") == "kanban"
+                    and pcfg.get("family") == target_family
+                    and pcfg.get("day_offset") == target_day
+                ),
+                None,
+            )
+            if parent is None:
+                logger.warning(
+                    f"attach_to_family={target_family!r} day={target_day} "
+                    f"unresolved for ancillary {ancillary.id}"
+                )
+                continue
+            ancillary.attached_to_delivery_id = parent.id
+            ancillary.ancillary_is_floating = False
+            # Inherit parent's date + assignees so the ancillary
+            # rides with the parent on the board.
+            ancillary.requested_date = parent.requested_date
+            ancillary.scheduled_at = parent.scheduled_at
+            ancillary.primary_assignee_id = parent.primary_assignee_id
+            ancillary.helper_user_id = parent.helper_user_id
+            attaches_resolved += 1
+        if attaches_resolved:
+            db.commit()
+            logger.info(f"resolved {attaches_resolved} ancillary attach links")
 
         # 5. Create schedule rows — TODAY finalized, others draft
         today_schedule = schedule_svc.ensure_schedule(db, TENANT_ID, today)
