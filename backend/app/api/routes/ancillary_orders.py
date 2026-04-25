@@ -622,3 +622,154 @@ def reassign_ancillary(
 ):
     """Reassign an ancillary order to a different driver."""
     return assign_ancillary_to_driver(delivery_id, data, db, current_user)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.3.3 — three-state machine endpoints (attach / detach /
+# standalone / pool). These compose with the legacy /assign +
+# /assign-floating endpoints; new dispatcher UI flows route through
+# these. Permission gate: delivery.edit (already in
+# require_module above; ancillary state changes are dispatcher-tier).
+# ---------------------------------------------------------------------------
+
+
+class AttachAncillaryRequest(BaseModel):
+    parent_delivery_id: str
+
+
+class AssignStandaloneRequest(BaseModel):
+    """Phase 4.3.3 — standalone ancillary assignment payload.
+
+    `primary_assignee_id` accepts either a Driver.id (transitional
+    Phase 4.3.2 contract — backend translates via Driver.employee_id)
+    or a User.id (canonical). Frontend MonitorDriverDTO.user_id
+    populates the canonical form going forward.
+    """
+    primary_assignee_id: str
+    scheduled_date: date
+
+
+@router.post("/ancillary/{delivery_id}/attach")
+def attach_to_parent(
+    delivery_id: str,
+    data: AttachAncillaryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Attach an ancillary to a parent kanban delivery.
+
+    Inherits driver + date from parent. Phase 4.3.3 spec —
+    pool/standalone → paired transition.
+    """
+    from app.services import ancillary_service
+
+    try:
+        a = ancillary_service.attach_ancillary(
+            db,
+            delivery_id,
+            data.parent_delivery_id,
+            current_user.company_id,
+        )
+    except ancillary_service.AncillaryNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ancillary_service.ParentNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ancillary_service.InvalidAncillaryTransition as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)})
+    return _serialize_ancillary_card(a)
+
+
+@router.post("/ancillary/{delivery_id}/detach")
+def detach_from_parent(
+    delivery_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Detach an ancillary from its parent.
+
+    Default transition: paired → standalone (driver + date
+    PRESERVED; only the FK clears). Caller wanting pool state
+    instead calls `/return-to-pool` after detach OR directly.
+    """
+    from app.services import ancillary_service
+
+    try:
+        a = ancillary_service.detach_ancillary(
+            db, delivery_id, current_user.company_id
+        )
+    except ancillary_service.AncillaryNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ancillary_service.InvalidAncillaryTransition as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)})
+    return _serialize_ancillary_card(a)
+
+
+@router.post("/ancillary/{delivery_id}/assign-standalone")
+def assign_standalone(
+    delivery_id: str,
+    data: AssignStandaloneRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Assign an ancillary as a standalone stop on a driver's day.
+
+    pool/standalone/paired → standalone. Clears
+    attached_to_delivery_id, sets driver + date, flips
+    fulfillment_status to assigned_to_driver.
+
+    Translates Driver.id → User.id via the Phase 4.3.2 transitional
+    helper before persisting (same pattern as PATCH
+    /delivery/deliveries/{id}).
+    """
+    from app.services import ancillary_service, delivery_service
+
+    try:
+        resolved_user_id = delivery_service.resolve_primary_assignee_id(
+            db, data.primary_assignee_id, current_user.company_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if resolved_user_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="primary_assignee_id is required for standalone assignment",
+        )
+
+    try:
+        a = ancillary_service.assign_ancillary_standalone(
+            db,
+            delivery_id,
+            resolved_user_id,
+            data.scheduled_date,
+            current_user.company_id,
+        )
+    except ancillary_service.AncillaryNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ancillary_service.InvalidAncillaryTransition as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)})
+    return _serialize_ancillary_card(a)
+
+
+@router.post("/ancillary/{delivery_id}/return-to-pool")
+def return_to_pool(
+    delivery_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return an ancillary to the unassigned pool.
+
+    Idempotent: pool→pool is a no-op. Clears every assignment
+    field. Sets ancillary_is_floating=True so it surfaces in the
+    Phase 4.3b pin widget.
+    """
+    from app.services import ancillary_service
+
+    try:
+        a = ancillary_service.return_ancillary_to_pool(
+            db, delivery_id, current_user.company_id
+        )
+    except ancillary_service.AncillaryNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ancillary_service.InvalidAncillaryTransition as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)})
+    return _serialize_ancillary_card(a)

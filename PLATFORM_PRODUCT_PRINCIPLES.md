@@ -451,9 +451,29 @@ dug. Current workflow is phone calls to cemeteries + sticky notes;
 cross-tenant cemetery integration (future) automates this.
 
 **Ancillary orders:** Smaller resale items (urns, cremation trays)
-piggy-backed on primary deliveries going geographically adjacent.
-Waiting-for-pairing pool lives in Scheduling Focus; paired
-ancillaries show as badge+icon on Monitor card.
+that ride alongside primary deliveries. Three states (Phase B
+Session 4 Phase 4.3 / r56–r57):
+
+- **Pool** — `attached_to_delivery_id IS NULL` AND
+  `primary_assignee_id IS NULL` AND `requested_date IS NULL`.
+  Waiting for pairing. Lives in the Scheduling Focus pool pin.
+- **Paired** — `attached_to_delivery_id` set. Rides geographically
+  with a primary kanban delivery. Driver + date inherit from
+  parent at attach time. Shows as `+N ancillary` badge on the
+  parent's Monitor card; click expands in Focus.
+- **Standalone** — `attached_to_delivery_id IS NULL` AND
+  `primary_assignee_id` set AND `requested_date` set.
+  Independent stop on a driver's day, e.g., slow-day driver
+  covering an ancillary-only drop-off, or office staff covering
+  when drivers unavailable. Renders as a small `AncillaryCard`
+  in driver lanes alongside primary `DeliveryCard`s.
+
+Detach defaults to **standalone** (single-path detach: driver +
+date preserved, only the parent FK clears). Return-to-pool is a
+separate explicit action. The four canonical transitions are
+implemented in `app/services/ancillary_service.py`:
+`attach_ancillary`, `detach_ancillary`,
+`assign_ancillary_standalone`, `return_ancillary_to_pool`.
 
 ---
 

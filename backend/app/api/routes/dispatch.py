@@ -340,6 +340,14 @@ class MonitorDeliveryDTO(BaseModel):
     # Phase 4.3.2 (r56) — renamed from assigned_driver_id; FK users.id.
     # Frontend compares against MonitorDriverDTO.user_id, not .id.
     primary_assignee_id: str | None = None
+    # Phase 4.3.3 — surface the three r56 fields the frontend
+    # already declares on its DeliveryDTO. Pre-4.3.3, these were
+    # stored on the column but not propagated to the Monitor /
+    # Scheduling Focus, so the new ancillary three-state model +
+    # helper + start-time displays were inert.
+    helper_user_id: str | None = None
+    attached_to_delivery_id: str | None = None
+    driver_start_time: str | None = None  # 'HH:MM:SS', tenant-local
     hole_dug_status: str | None = None
     type_config: dict[str, Any] | None = None
     special_instructions: str | None = None
@@ -421,6 +429,12 @@ def list_monitor_deliveries(
             ancillary_fulfillment_status=r.ancillary_fulfillment_status,
             direct_ship_status=r.direct_ship_status,
             primary_assignee_id=r.primary_assignee_id,
+            # Phase 4.3.3 — populate the three r56 fields. None-safe
+            # (driver_start_time is a TIME column → use isoformat()
+            # when present; the others are bare strings/UUIDs).
+            helper_user_id=r.helper_user_id,
+            attached_to_delivery_id=r.attached_to_delivery_id,
+            driver_start_time=r.driver_start_time.isoformat() if r.driver_start_time else None,
             hole_dug_status=r.hole_dug_status,
             type_config=r.type_config,
             special_instructions=r.special_instructions,

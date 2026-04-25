@@ -75,6 +75,22 @@ class DeliverySettings(Base):
     max_stops_per_route: Mapped[int | None] = mapped_column(Integer, nullable=True)
     default_delivery_window_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Phase 4.3.3 (r57) — tenant default driver start time.
+    #
+    # Default start time for weekday deliveries. Weekend deliveries
+    # (Saturday especially) typically specify explicit start times
+    # per delivery due to overtime rules. NULL
+    # `delivery.driver_start_time` = use this default. The
+    # QuickEditDialog's "Use default" toggle clears the per-delivery
+    # value back to NULL so this default takes over.
+    #
+    # Format: 'HH:MM' (24-hour, tenant-local). Stored as TEXT (not
+    # TIME) because the value is interpreted as tenant-local wall
+    # clock at dispatch time, not as a UTC instant.
+    default_driver_start_time: Mapped[str] = mapped_column(
+        String(5), nullable=False, default="07:00", server_default="07:00"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
