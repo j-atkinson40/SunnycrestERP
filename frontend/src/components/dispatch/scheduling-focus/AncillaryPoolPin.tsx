@@ -56,7 +56,7 @@
 
 import { useDraggable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVerticalIcon, InboxIcon } from "lucide-react"
+import { InboxIcon } from "lucide-react"
 
 import { useSchedulingFocus } from "@/contexts/scheduling-focus-context"
 import { cn } from "@/lib/utils"
@@ -130,7 +130,17 @@ function PoolItem({ delivery }: PoolItemProps) {
         // Single border-bottom separates rows; bg-transparent at rest;
         // hover gets a subtle brass-subtle wash matching the platform's
         // hover convention.
-        "group relative flex items-start gap-2 px-3 py-2",
+        //
+        // Phase 4.3b.3.2 — whole-item drag (no grip handle). Per the
+        // platform standard, every draggable surface uses the
+        // PointerSensor activation constraint (distance: 8) to
+        // separate click from drag. Explicit drag handles clutter UI
+        // and confuse the interaction model. This row is a peer of
+        // DeliveryCard's drag-from-anywhere pattern (Phase A
+        // Session 3.5 for canvas widgets, Phase 4.2.4 for delivery
+        // cards). See PRODUCT_PRINCIPLES.md "Drag interactions" for
+        // the canonical statement.
+        "relative px-3 py-2",
         "border-b border-border-subtle/60 last:border-b-0",
         "transition-colors duration-quick ease-settle",
         "hover:bg-brass-subtle/40 cursor-grab active:cursor-grabbing",
@@ -141,45 +151,28 @@ function PoolItem({ delivery }: PoolItemProps) {
       )}
       role="button"
       tabIndex={0}
-      aria-label={`Drag ${label} ancillary out of the pool`}
+      aria-label={`${label} — drag to assign or attach`}
     >
-      {/* Grip icon — decorative drag affordance. Per PQB §3 the body
-          itself is also draggable (8px activation distance distinguishes
-          click from drag), so the grip is a visual hint, not a required
-          handle. */}
-      <span
-        aria-hidden
+      <p
         className={cn(
-          "mt-0.5 flex-none text-content-subtle",
-          "transition-colors duration-quick",
-          "group-hover:text-content-muted",
+          "truncate text-body-sm font-medium leading-tight",
+          "text-content-strong font-plex-sans",
         )}
+        title={label}
       >
-        <GripVerticalIcon className="h-3.5 w-3.5" />
-      </span>
-
-      <div className="min-w-0 flex-1">
+        {label}
+      </p>
+      {subhead && (
         <p
           className={cn(
-            "truncate text-body-sm font-medium leading-tight",
-            "text-content-strong font-plex-sans",
+            "mt-0.5 truncate text-caption leading-tight",
+            "text-content-muted font-plex-sans",
           )}
-          title={label}
+          title={subhead}
         >
-          {label}
+          {subhead}
         </p>
-        {subhead && (
-          <p
-            className={cn(
-              "mt-0.5 truncate text-caption leading-tight",
-              "text-content-muted font-plex-sans",
-            )}
-            title={subhead}
-          >
-            {subhead}
-          </p>
-        )}
-      </div>
+      )}
     </div>
   )
 }

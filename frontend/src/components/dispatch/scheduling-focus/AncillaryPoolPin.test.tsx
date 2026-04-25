@@ -304,7 +304,7 @@ describe("AncillaryPoolPin — drag wiring", () => {
     expect(row?.getAttribute("aria-roledescription")).toBe("draggable")
   })
 
-  it("aria-label describes the drag intent + label", () => {
+  it("aria-label describes the item + drag intent", () => {
     const item = makePoolItem({
       id: "anc-1",
       type_config: { product_summary: "Marker base" },
@@ -317,7 +317,59 @@ describe("AncillaryPoolPin — drag wiring", () => {
     const row = document.querySelector(
       '[data-slot="ancillary-pool-item"]',
     )
-    expect(row?.getAttribute("aria-label")).toMatch(/drag.*marker base.*pool/i)
+    // Phase 4.3b.3.2 — aria-label updated to whole-item drag style
+    // ("Marker base — drag to assign or attach"). No "pool"
+    // qualifier needed since the row is intrinsically inside the pool.
+    expect(row?.getAttribute("aria-label")).toMatch(/marker base/i)
+    expect(row?.getAttribute("aria-label")).toMatch(/drag/i)
+  })
+})
+
+
+// Phase 4.3b.3.2 — whole-item drag invariant (no grip handle).
+//
+// Platform principle (canonicalized in PRODUCT_PRINCIPLES.md):
+// drag handles are an anti-pattern. Every draggable surface
+// supports whole-element drag via PointerSensor activation
+// constraint (distance: 8). This regression-guards the principle
+// for AncillaryPoolPin specifically.
+describe("AncillaryPoolPin — whole-item drag (no grip handle)", () => {
+  it("does NOT render a GripVertical icon (drag handles are anti-pattern)", () => {
+    const item = makePoolItem({ id: "anc-1" })
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [item] })}>
+        <AncillaryPoolPin />
+      </Harness>,
+    )
+    // Lucide icons render as SVGs with class containing "lucide-grip-vertical"
+    // OR pre-classed via the icon component name. The structural assertion:
+    // no SVG with that data-attribute or class inside the pin.
+    const allSvgs = document.querySelectorAll(
+      '[data-slot="ancillary-pool-pin"] svg',
+    )
+    const hasGrip = Array.from(allSvgs).some((svg) => {
+      const cls = svg.getAttribute("class") ?? ""
+      return cls.includes("lucide-grip-vertical")
+    })
+    expect(hasGrip).toBe(false)
+  })
+
+  it("draggable listeners + ref attach to the row container itself (not a sub-handle)", () => {
+    const item = makePoolItem({ id: "anc-1" })
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [item] })}>
+        <AncillaryPoolPin />
+      </Harness>,
+    )
+    const row = document.querySelector(
+      '[data-slot="ancillary-pool-item"]',
+    ) as HTMLElement
+    // The row IS the draggable surface; useDraggable applies
+    // aria-roledescription="draggable" + role="button" on the
+    // element with the listeners. If grip-handle pattern were in
+    // place, these would be on a child instead.
+    expect(row.getAttribute("aria-roledescription")).toBe("draggable")
+    expect(row.getAttribute("role")).toBe("button")
   })
 })
 

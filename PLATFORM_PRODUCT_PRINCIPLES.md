@@ -424,6 +424,65 @@ people with work to do who deserve help. Expert users still benefit
 
 ---
 
+## Drag interactions: whole-element drag, no handles
+
+**Drag handles are an anti-pattern on Bridgeable.** Every
+draggable surface supports whole-element drag activated by the
+PointerSensor activation constraint (`distance: 8`). Quick click
+fires the click handler if one is registered; press-and-move past
+8px activates drag. The two gestures are unambiguous because the
+8px threshold cleanly separates them.
+
+Why no handles
+──────────────
+- Explicit grip icons (⋮⋮) clutter UI and add visual noise to a
+  surface that should read as content-first.
+- Handles fragment the interaction model — users learn "this part
+  drags, this part clicks" instead of the simpler "press and hold
+  to grab anything."
+- The activation-constraint pattern is universal across our drag
+  surfaces, so a user who learns it once on kanban cards
+  immediately understands it on pin items, drawer items, canvas
+  widgets, future surfaces.
+
+Pattern applies platform-wide
+─────────────────────────────
+- Kanban DeliveryCard / AncillaryCard (Phase 4.2.4)
+- Canvas widgets via WidgetChrome (Phase A Session 3.5)
+- AncillaryPoolPin items (Phase 4.3b.3.2)
+- Expanded drawer attached-ancillary items (Phase 4.3b.4)
+- Future drag-aware widgets (drive-time matrix, staff
+  availability, pre-dig Intelligence pin)
+- Any element with `useDraggable` from the platform's elevated
+  DndContext (FocusDndProvider)
+
+Implementation contract
+───────────────────────
+- `useDraggable({ id })` listeners spread onto the element's
+  outermost interactive wrapper, NOT a separate handle child
+- `cursor-grab` + `active:cursor-grabbing` on the same wrapper —
+  the cursor IS the affordance
+- If the element also has a click handler, both compose cleanly:
+  click fires on release within 8px; drag fires on release after
+  >8px movement; @dnd-kit suppresses `click` after a completed
+  drag
+- Drag-state visual feedback (subtle scale 1.02-1.04, shadow
+  intensification, opacity dim) goes on the wrapper, not on a
+  handle
+
+Reference implementations that codify the pattern: `DeliveryCard
+.tsx` (whole-card drag with QuickEdit on click), `WidgetChrome.tsx`
+(whole-widget drag with resize zones via cursor change), and
+`AncillaryPoolPin.tsx` PoolItem (whole-row drag with subhead +
+headline as the draggable content).
+
+Decorative cursor changes (grab → grabbing) are correct; decorative
+icons are not. When in doubt, ask: "would I expect to see a grip
+icon on the equivalent surface in Apple Notes, Apple Reminders, or
+Linear?" The answer is virtually always no.
+
+---
+
 ## Domain-Specific Operational Semantics
 
 Terminology matters when it reflects operational reality. These

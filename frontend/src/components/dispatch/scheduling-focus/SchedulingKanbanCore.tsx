@@ -763,13 +763,31 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
   // Preview delivery for the DragOverlay (derived fresh each render
   // from authoritative `deliveries` state — stays in sync with
   // optimistic updates).
-  const activeDelivery = useMemo(
-    () =>
-      activeDeliveryId
-        ? deliveries.find((d) => d.id === activeDeliveryId) ?? null
-        : null,
-    [activeDeliveryId, deliveries],
-  )
+  //
+  // Phase 4.3b.3.2 — also look up in pool ancillaries (drag source
+  // can be the AncillaryPoolPin, whose items aren't in `deliveries`
+  // until the optimistic update fires after drop). Without this
+  // lookup, pool-source drags get no DragOverlay → preview renders
+  // in-place via the source's transform → falls behind the kanban
+  // (Phase 4.2.3 containing-block trap pattern: the source DOM
+  // node is inside Canvas's transformed positioner ancestor; only
+  // a `createPortal(document.body)` DragOverlay escapes it).
+  //
+  // The kanban's existing DragOverlay is already portaled to
+  // document.body and renders a compact AncillaryCard preview when
+  // `scheduling_type === "ancillary"`. Extending the lookup to
+  // include the pool list means a single DragOverlay handles
+  // every ancillary drag — pin source OR drawer source OR lane
+  // source — with consistent visual + portal contract.
+  const activeDelivery = useMemo(() => {
+    if (!activeDeliveryId) return null
+    const fromDeliveries = deliveries.find((d) => d.id === activeDeliveryId)
+    if (fromDeliveries) return fromDeliveries
+    const fromPool = schedulingFocus?.poolAncillaries.find(
+      (d) => d.id === activeDeliveryId,
+    )
+    return fromPool ?? null
+  }, [activeDeliveryId, deliveries, schedulingFocus])
 
   const handleFinalize = useCallback(async () => {
     if (!targetDate) return
