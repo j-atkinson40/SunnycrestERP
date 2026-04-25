@@ -164,10 +164,24 @@ function PoolItem({ delivery }: PoolItemProps) {
       tabIndex={0}
       aria-label={`${label} — drag to assign or attach`}
     >
+      {/* Aesthetic Arc Session 1.6 — title text wraps to up to 2 lines
+          (line-clamp-2 + break-words) instead of single-line truncate.
+          Per PLATFORM_PRODUCT_PRINCIPLES "Widget Compactness" (width
+          subsection): ellipsis truncation is a failure mode; default
+          to natural wrap when widget height is content-driven. The
+          pin is height: "auto" + maxHeight: 480, so adding a second
+          line for a long title is fine — pin grows by ~16px.
+          line-clamp-2 caps at 2 lines as graceful overflow for
+          unusually-long titles (avoids 5-line walls of text);
+          break-words handles unbroken character runs.
+          `title` attribute retained for native browser tooltip on
+          hover — discoverable for the rare case where line-2 still
+          truncates. */}
       <p
         className={cn(
-          "truncate text-body-sm font-medium leading-tight",
+          "text-body-sm font-medium leading-tight",
           "text-content-strong font-plex-sans",
+          "line-clamp-2 break-words",
         )}
         title={label}
       >
@@ -176,8 +190,9 @@ function PoolItem({ delivery }: PoolItemProps) {
       {subhead && (
         <p
           className={cn(
-            "mt-0.5 truncate text-caption leading-tight",
+            "mt-0.5 text-caption leading-tight",
             "text-content-muted font-plex-sans",
+            "line-clamp-2 break-words",
           )}
           title={subhead}
         >
