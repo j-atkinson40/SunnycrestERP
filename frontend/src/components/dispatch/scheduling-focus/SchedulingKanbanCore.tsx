@@ -79,7 +79,6 @@ import {
   QuickEditDialog,
   type QuickEditSavePayload,
 } from "@/components/dispatch/QuickEditDialog"
-import { Button } from "@/components/ui/button"
 import { useFocus } from "@/contexts/focus-context"
 import { useSchedulingFocusOptional } from "@/contexts/scheduling-focus-context"
 import { cn } from "@/lib/utils"
@@ -961,44 +960,52 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
 
         <div className="flex flex-none items-center gap-2">
           {!isFinalized && (
-            <Button
-              variant="outline"
-              size="sm"
+            // Aesthetic Arc Session 1.5 Commit B — Finalize as text-
+            // link, not a bordered button. Pre-Session-1.5 was
+            // brass-bordered button (~80-130px wide); Session 1.5
+            // drops the border entirely, yielding a brass-text link
+            // (~50-60px wide). Section 0 Detail Concentration TP4 —
+            // brass jewelry stays at the touchpoint (the text +
+            // hover state) without the surrounding button-chrome
+            // claiming horizontal real estate.
+            //
+            // The text-link treatment is consistent with how Cmd+K
+            // outside Focus (`PLATFORM_PRODUCT_PRINCIPLES.md`)
+            // describes the right surface for occasional state-
+            // change actions: a quiet path to a real action,
+            // weighted appropriately to the action's frequency. The
+            // dispatcher hits Finalize once per day; the button
+            // doesn't need to compete for attention.
+            //
+            // Native button retained for accessibility (focus ring,
+            // keyboard nav, role=button) — only the visual treatment
+            // becomes link-like.
+            <button
+              type="button"
               onClick={handleFinalize}
               disabled={finalizing || loading || deliveries.length === 0}
               data-slot="scheduling-focus-finalize"
               className={cn(
-                // Aesthetic Arc Session 1 Commit B — Finalize
-                // subordinated. Pre-Session-1 was solid brass at full
-                // primary-button weight; that gave it the same visual
-                // dominance as a hub-page CTA, which doesn't fit
-                // Section 0 Detail Concentration Translation
-                // Principle 4. Brass is jewelry at touchpoints; the
-                // primary work surface is the kanban below.
-                //
-                // Treatment: outline variant (transparent fill +
-                // restraint border), border switches to brass +
-                // brass-text + brass-subtle hover wash to retain the
-                // jewelry register without dominating the surface.
-                // Same composition the AncillaryPoolPin uses for its
-                // active drop-target chrome (cross-surface
-                // vocabulary consistency) and the DateBox uses on
-                // active state. Three surfaces, one brass-bordered
-                // jewelry pattern.
-                "border-brass text-brass",
-                "hover:bg-brass-subtle/40 hover:text-brass",
-                "hover:border-brass-hover",
-                // Disabled-state restraint — when no deliveries to
-                // finalize, the button reads as "not yet" not as
-                // "broken." Outline variant's disabled appearance is
-                // already restrained; explicit handling here keeps
-                // the brass tokens consistent with the active state.
-                "disabled:border-border-base disabled:text-content-muted",
-                "disabled:hover:bg-transparent disabled:hover:border-border-base",
+                "inline-flex items-center gap-1",
+                "px-1.5 py-1 -my-1 rounded-sm",
+                // tailwind-merge collapses `text-caption text-brass`
+                // because both are text-* utilities; use the arbitrary
+                // pixel size so size + color survive merge separately
+                // (same workaround the platform uses elsewhere when
+                // semantic size + color tokens collide).
+                "text-[0.75rem] leading-tight font-medium",
+                "text-brass hover:text-brass-hover",
+                "hover:bg-brass-subtle/30",
+                "transition-colors duration-quick ease-settle",
+                "focus-ring-brass outline-none",
+                "disabled:text-content-muted disabled:hover:bg-transparent",
+                "disabled:cursor-not-allowed",
+                !((finalizing || loading || deliveries.length === 0)) &&
+                  "cursor-pointer",
               )}
             >
-              {finalizing ? "Finalizing…" : `Finalize ${dayLabel.split(",")[0]}`}
-            </Button>
+              {finalizing ? "Finalizing…" : "Finalize"}
+            </button>
           )}
         </div>
       </header>

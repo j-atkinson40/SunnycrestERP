@@ -293,7 +293,11 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
       '[data-slot="scheduling-focus-finalize"]',
     ) as HTMLElement
     expect(finalize).toBeInTheDocument()
-    expect(finalize.textContent).toMatch(/Finalize Tomorrow/)
+    // Aesthetic Arc Session 1.5 Commit B — Finalize button text
+    // shortened "Finalize Tomorrow" → "Finalize". The day context
+    // is already in the H2 label; repeating it was redundant
+    // (Section 0 Restraint TP3).
+    expect(finalize.textContent).toMatch(/^Finalize$/)
     // Aesthetic Arc Session 1 — Close button retired per Section 0
     // Restraint Translation Principle. Backdrop click + Esc already
     // dismiss; the explicit button was decorative. Operator-respect
