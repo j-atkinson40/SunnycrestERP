@@ -56,7 +56,7 @@ export type AlertVariant =
   | "neutral";
 
 const alertVariants = cva(
-  "group/alert relative flex items-start gap-3 rounded-md border-l-4 p-4 font-plex-sans text-body-sm transition-opacity duration-settle ease-settle",
+  "group/alert relative flex items-start gap-3 rounded-md border-l-4 p-4 font-sans text-body-sm transition-opacity duration-settle ease-settle",
   {
     variants: {
       variant: {

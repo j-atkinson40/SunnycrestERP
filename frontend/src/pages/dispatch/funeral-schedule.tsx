@@ -814,13 +814,13 @@ export default function FuneralSchedulePage() {
       data-view-mode={viewMode}
       className={cn(
         "mx-auto max-w-[1800px] p-4 sm:p-6 lg:p-8",
-        "font-plex-sans text-content-base",
+        "font-sans text-content-base",
       )}
     >
       {/* Header */}
       <header className="mb-4 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-h2 font-medium text-content-strong font-plex-serif">
+          <h1 className="text-h2 font-medium text-content-strong font-display">
             Funeral Schedule
           </h1>
           <p className="mt-1 text-body-sm text-content-muted">

@@ -73,7 +73,7 @@ export function Breadcrumbs() {
   if (!crumbs) return null;
 
   return (
-    <nav className="flex items-center gap-1 font-plex-sans text-body-sm text-content-muted mb-4">
+    <nav className="flex items-center gap-1 font-sans text-body-sm text-content-muted mb-4">
       <Link
         to="/dashboard"
         className="rounded-sm transition-colors duration-quick ease-settle hover:text-content-strong focus-ring-accent"

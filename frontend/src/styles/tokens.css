@@ -116,10 +116,40 @@
   --shadow-level-2: 0 8px 24px var(--shadow-color-base), 0 2px 6px var(--shadow-color-subtle);
   --shadow-level-3: 0 16px 40px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base);
 
-  /* ─── TYPOGRAPHY — FAMILIES ─── */
-  --font-plex-sans: "IBM Plex Sans Variable", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-plex-serif: "IBM Plex Serif", Georgia, serif;
-  --font-plex-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* ─── TYPOGRAPHY — FAMILIES (Aesthetic Arc Session 4)
+   *   Migration IBM Plex → Fraunces (display) + Geist (body) +
+   *   Geist Mono (data). Per DESIGN_LANGUAGE.md Section 4.
+   *
+   *   Three roles:
+   *     - --font-fraunces  → display, proper-noun engraving,
+   *                          headings, day-switcher labels.
+   *                          Exposed as Tailwind `font-display`.
+   *     - --font-geist     → body sans, default. Exposed as
+   *                          Tailwind `font-sans` via the
+   *                          `--font-sans` alias in index.css.
+   *     - --font-geist-mono → data, numerals, eyebrows. Exposed
+   *                          as Tailwind `font-mono` via the
+   *                          `--font-mono` alias in index.css.
+   *
+   *   Legacy Plex tokens retained for one-release migration
+   *   window. They alias to the new families:
+   *     --font-plex-sans  → var(--font-geist)
+   *     --font-plex-serif → var(--font-fraunces)
+   *     --font-plex-mono  → var(--font-geist-mono)
+   *   This keeps font-plex-* utility usages working during the
+   *   atomic codebase sweep. Plex aliases retire when zero
+   *   references remain.
+   * ─── */
+  --font-fraunces: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman", serif;
+  --font-geist: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-geist-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Legacy aliases (retained for migration window) — point at the
+     new families so font-plex-* utility usages continue to render
+     correctly until the codebase sweep replaces them. */
+  --font-plex-sans: var(--font-geist);
+  --font-plex-serif: var(--font-fraunces);
+  --font-plex-mono: var(--font-geist-mono);
 
   /* ─── TYPOGRAPHY — SIZE SCALE (1.25 ratio modular) ─── */
   --text-display-lg: 3.052rem;

@@ -68,7 +68,7 @@ export default function OperationsBoardDesktop() {
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-h2 font-plex-serif font-medium text-content-strong">
+          <h1 className="text-h2 font-display font-medium text-content-strong">
             Operations Board
           </h1>
           <p className="text-body-sm text-content-muted">{formatDate()}</p>

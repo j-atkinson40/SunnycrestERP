@@ -57,7 +57,7 @@ function FormSection({
       data-slot="form-section"
       data-error={error ? "true" : undefined}
       className={cn(
-        "flex flex-col gap-3 font-plex-sans",
+        "flex flex-col gap-3 font-sans",
         error && "border-l-2 border-status-error pl-4",
         className,
       )}

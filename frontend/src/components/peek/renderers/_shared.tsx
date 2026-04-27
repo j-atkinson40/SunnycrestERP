@@ -29,7 +29,7 @@ export interface PeekFieldProps {
 export function PeekField({ label, value, className }: PeekFieldProps) {
   if (value === null || value === undefined || value === "") return null;
   return (
-    <div className={cn("flex justify-between gap-3 py-0.5 font-plex-sans", className)}>
+    <div className={cn("flex justify-between gap-3 py-0.5 font-sans", className)}>
       <span className="text-caption text-content-muted shrink-0">{label}</span>
       <span className="text-caption font-medium text-content-strong text-right truncate">
         {value}

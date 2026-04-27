@@ -23,7 +23,7 @@ export function MatrixCore({ config }: CoreProps) {
       <CoreHeader modeLabel="matrix" title={config.displayName} />
 
       <div className="flex-1 overflow-auto rounded-md border border-border-subtle bg-surface-sunken/40 p-4">
-        <table className="w-full border-collapse font-plex-sans text-body-sm">
+        <table className="w-full border-collapse font-sans text-body-sm">
           <thead>
             <tr>
               <th

@@ -114,7 +114,7 @@ function TooltipContent({
           data-slot="tooltip-content"
           data-size={size}
           className={cn(
-            "max-w-xs origin-(--transform-origin) rounded-md border border-border-subtle bg-surface-raised font-plex-sans text-content-base shadow-level-2 duration-settle ease-settle data-[side=bottom]:slide-in-from-top-1 data-[side=inline-end]:slide-in-from-left-1 data-[side=inline-start]:slide-in-from-right-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-quick data-closed:ease-gentle",
+            "max-w-xs origin-(--transform-origin) rounded-md border border-border-subtle bg-surface-raised font-sans text-content-base shadow-level-2 duration-settle ease-settle data-[side=bottom]:slide-in-from-top-1 data-[side=inline-end]:slide-in-from-left-1 data-[side=inline-start]:slide-in-from-right-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-quick data-closed:ease-gentle",
             size === "default" && "px-2 py-1 text-caption",
             size === "md" && "px-3 py-2 text-body-sm",
             className,
@@ -136,7 +136,7 @@ function TooltipShortcut({
     <span
       data-slot="tooltip-shortcut"
       className={cn(
-        "ml-2 rounded-sm border border-border-subtle bg-surface-base px-1 py-0.5 font-plex-mono text-[10px] text-content-muted",
+        "ml-2 rounded-sm border border-border-subtle bg-surface-base px-1 py-0.5 font-mono text-[10px] text-content-muted",
         className,
       )}
       {...props}

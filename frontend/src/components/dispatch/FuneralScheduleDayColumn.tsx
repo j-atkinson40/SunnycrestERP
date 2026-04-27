@@ -221,7 +221,7 @@ export function FuneralScheduleDayColumn({
           <h2
             className={cn(
               "text-h2 font-medium leading-none text-content-strong",
-              "font-plex-sans tracking-tight",
+              "font-sans tracking-tight",
             )}
           >
             {dayLabel}
@@ -288,7 +288,7 @@ export function FuneralScheduleDayColumn({
         {/* Row 2: date + state pill (draft only — finalized carries
             its pill content in the attribution text above). */}
         <div className="mt-1.5 flex items-center gap-2 text-body-sm text-content-muted">
-          <span className="font-plex-sans">{dateDisplay}</span>
+          <span className="font-sans">{dateDisplay}</span>
           {schedule.state === "draft" && (
             <span
               data-slot="dispatch-day-draft-badge"
@@ -535,7 +535,7 @@ function DriverLane({
         <span
           className={cn(
             "flex-none text-caption text-content-muted tabular-nums",
-            "font-plex-mono",
+            "font-mono",
             !hasDeliveries && "text-content-subtle",
           )}
         >

@@ -161,7 +161,7 @@ export function AncillaryCard({
         <div
           className={cn(
             "truncate text-body-sm font-medium leading-tight text-content-strong",
-            "font-plex-sans",
+            "font-sans",
           )}
           data-slot="dispatch-ancillary-card-product"
           title={label}

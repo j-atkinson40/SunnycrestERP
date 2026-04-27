@@ -114,7 +114,7 @@ export default function PortalResetPassword() {
       <div className="flex flex-1 items-start justify-center p-4 pt-12">
         <div className="w-full max-w-sm space-y-6">
           <div className="space-y-1 text-center">
-            <h1 className="text-h3 font-plex-serif font-medium text-content-strong">
+            <h1 className="text-h3 font-display font-medium text-content-strong">
               Set your password
             </h1>
             <p className="text-body-sm text-content-muted">

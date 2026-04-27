@@ -57,7 +57,7 @@ export function IconButton({ widgetCount, onOpen }: IconButtonProps) {
             "absolute -top-1 -right-1",
             "flex h-5 min-w-5 items-center justify-center rounded-full px-1",
             "bg-surface-raised text-content-strong",
-            "font-plex-mono text-micro font-medium",
+            "font-mono text-micro font-medium",
             "shadow-level-1 border border-border-subtle",
           )}
         >

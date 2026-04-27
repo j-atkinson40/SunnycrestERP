@@ -166,7 +166,7 @@ export default function PortalBrandingSettings() {
   return (
     <div className="mx-auto max-w-content p-6 space-y-6">
       <div>
-        <h1 className="text-h2 font-plex-serif font-medium text-content-strong">
+        <h1 className="text-h2 font-display font-medium text-content-strong">
           Portal branding
         </h1>
         <p className="mt-1 text-body-sm text-content-muted">
@@ -197,7 +197,7 @@ export default function PortalBrandingSettings() {
               <Input
                 value={branding.slug}
                 readOnly
-                className="bg-surface-sunken font-plex-mono"
+                className="bg-surface-sunken font-mono"
               />
               <p className="text-caption text-content-muted">
                 Portal URL: /portal/<strong>{branding.slug}</strong>/…
@@ -289,7 +289,7 @@ export default function PortalBrandingSettings() {
                 id="brand-color-input"
                 value={brandColor}
                 onChange={(e) => setBrandColor(e.target.value)}
-                className="w-40 font-plex-mono"
+                className="w-40 font-mono"
                 placeholder="#1E40AF"
                 data-testid="brand-color-hex"
               />
@@ -407,7 +407,7 @@ export default function PortalBrandingSettings() {
                         </span>
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 font-plex-mono",
+                            "inline-flex items-center gap-1 font-mono",
                             pass
                               ? "text-status-success"
                               : "text-status-error",
@@ -438,7 +438,7 @@ export default function PortalBrandingSettings() {
                         </span>
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 font-plex-mono",
+                            "inline-flex items-center gap-1 font-mono",
                             visible
                               ? "text-content-base"
                               : "text-status-warning",

@@ -97,7 +97,7 @@ export function MobileTabBar() {
     <>
       {/* Full-screen "More" overlay */}
       {moreOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-surface-base font-plex-sans md:hidden">
+        <div className="fixed inset-0 z-50 flex flex-col bg-surface-base font-sans md:hidden">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
             <span className="text-h4 font-medium text-content-strong">All Sections</span>
@@ -157,7 +157,7 @@ export function MobileTabBar() {
       {/* Bottom tab bar */}
       <nav
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-40 border-t border-border-subtle bg-surface-elevated font-plex-sans md:hidden",
+          "fixed bottom-0 left-0 right-0 z-40 border-t border-border-subtle bg-surface-elevated font-sans md:hidden",
           "safe-area-inset-bottom",
         )}
       >

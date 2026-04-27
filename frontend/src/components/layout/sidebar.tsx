@@ -249,7 +249,7 @@ export function Sidebar() {
   const { open: openCommandBar } = useCommandBar();
 
   return (
-    <aside className="hidden md:flex h-full w-64 flex-col border-r border-border-subtle bg-surface-sunken font-plex-sans">
+    <aside className="hidden md:flex h-full w-64 flex-col border-r border-border-subtle bg-surface-sunken font-sans">
       {/* Company header */}
       <div className="flex h-14 shrink-0 items-center border-b border-border-subtle px-5">
         <Link
@@ -278,7 +278,7 @@ export function Sidebar() {
         >
           <Sparkles className="size-4 shrink-0 text-content-subtle" />
           <span className="flex-1 text-left truncate">Search or ask...</span>
-          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-sm border border-border-subtle bg-surface-base px-1.5 py-0.5 text-micro font-medium font-plex-mono text-content-subtle">
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-sm border border-border-subtle bg-surface-base px-1.5 py-0.5 text-micro font-medium font-mono text-content-subtle">
             ⌘K
           </kbd>
         </button>
@@ -576,7 +576,7 @@ function SidebarItem({
       {item.badge != null && (
         <span
           className={cn(
-            "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-micro font-medium font-plex-mono",
+            "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-micro font-medium font-mono",
             "bg-accent-muted text-content-on-accent",
           )}
         >

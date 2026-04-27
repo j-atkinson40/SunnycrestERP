@@ -90,7 +90,7 @@ function FormSteps({
       data-slot="form-steps"
       data-orientation={orientation}
       className={cn(
-        "font-plex-sans",
+        "font-sans",
         isHorizontal ? "flex items-start" : "flex flex-col gap-3",
         className,
       )}

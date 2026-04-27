@@ -58,7 +58,7 @@ export default function FocusTestPage() {
         <p className="text-micro uppercase tracking-wider text-content-muted">
           Phase A · Session 2 · dev
         </p>
-        <h1 className="text-h2 font-plex-serif text-content-strong">
+        <h1 className="text-h2 font-display text-content-strong">
           Focus primitive — manual test
         </h1>
         <p className="text-body-sm text-content-muted">
@@ -92,7 +92,7 @@ export default function FocusTestPage() {
         </h2>
         <dl className="grid grid-cols-2 gap-y-1 text-body-sm">
           <dt className="text-content-muted">viewport</dt>
-          <dd className="font-plex-mono text-content-base">
+          <dd className="font-mono text-content-base">
             {viewport.width}×{viewport.height} · tier{" "}
             <span
               className={
@@ -107,19 +107,19 @@ export default function FocusTestPage() {
             </span>
           </dd>
           <dt className="text-content-muted">isOpen</dt>
-          <dd className="font-plex-mono text-content-base">
+          <dd className="font-mono text-content-base">
             {String(isOpen)}
           </dd>
           <dt className="text-content-muted">currentFocus.id</dt>
-          <dd className="font-plex-mono text-content-base">
+          <dd className="font-mono text-content-base">
             {currentFocus?.id ?? "—"}
           </dd>
           <dt className="text-content-muted">resolved mode</dt>
-          <dd className="font-plex-mono text-content-base">
+          <dd className="font-mono text-content-base">
             {resolvedMode}
           </dd>
           <dt className="text-content-muted">layoutState</dt>
-          <dd className="font-plex-mono text-content-base">
+          <dd className="font-mono text-content-base">
             {currentFocus?.layoutState === null
               ? "null (session-ephemeral, not yet set)"
               : currentFocus?.layoutState
@@ -127,7 +127,7 @@ export default function FocusTestPage() {
                 : "—"}
           </dd>
           <dt className="text-content-muted">lastClosedFocus.id</dt>
-          <dd className="font-plex-mono text-content-base">
+          <dd className="font-mono text-content-base">
             {lastClosedFocus?.id ?? "—"}
           </dd>
         </dl>
@@ -144,7 +144,7 @@ export default function FocusTestPage() {
           viewport edge — it snaps to that zone's anchor (left-rail /
           right-rail / top-* / bottom-*). Resize the browser window:
           a right-rail widget stays in the right rail. Append{" "}
-          <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-plex-mono text-micro">
+          <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-mono text-micro">
             &amp;dev-canvas=1
           </code>{" "}
           for the 8px grid.

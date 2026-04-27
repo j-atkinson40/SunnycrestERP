@@ -167,7 +167,7 @@ function StatusPill({
       data-status={status ?? null}
       data-variant={family}
       className={cn(
-        "inline-flex items-center justify-center rounded-full whitespace-nowrap font-plex-sans font-medium uppercase tracking-wider",
+        "inline-flex items-center justify-center rounded-full whitespace-nowrap font-sans font-medium uppercase tracking-wider",
         FAMILY_STYLES[family],
         SIZE_STYLES[size],
         className,

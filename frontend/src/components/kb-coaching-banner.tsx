@@ -72,7 +72,7 @@ export function KBCoachingBanner({ onNavigate }: { onNavigate?: (section: string
   if (!step.action && stats.documents >= 15) return null;
 
   return (
-    <div className="relative rounded-md border border-border-subtle bg-status-info-muted p-5 font-plex-sans">
+    <div className="relative rounded-md border border-border-subtle bg-status-info-muted p-5 font-sans">
       <button
         onClick={() => setDismissed(true)}
         className="absolute top-3 right-3 p-1 rounded text-content-muted transition-colors duration-quick ease-settle hover:bg-accent-subtle hover:text-content-strong focus-ring-accent"
@@ -90,7 +90,7 @@ export function KBCoachingBanner({ onNavigate }: { onNavigate?: (section: string
           <p className="text-body-sm text-content-muted mt-1">{step.description}</p>
 
           {/* Stats row */}
-          <div className="flex gap-4 mt-3 text-caption text-content-muted font-plex-mono">
+          <div className="flex gap-4 mt-3 text-caption text-content-muted font-mono">
             <span className="flex items-center gap-1">
               <BookOpen className="h-3.5 w-3.5" />
               {stats.documents} documents

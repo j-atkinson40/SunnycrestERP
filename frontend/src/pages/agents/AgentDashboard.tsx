@@ -202,7 +202,7 @@ export default function AgentDashboard() {
 
   return (
     <div className="space-y-6 p-6">
-      <h1 className="text-h2 font-plex-serif font-medium text-content-strong">
+      <h1 className="text-h2 font-display font-medium text-content-strong">
         Accounting Agents
       </h1>
 

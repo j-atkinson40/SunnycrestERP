@@ -157,7 +157,7 @@ export function NotificationDropdown() {
       >
         <Bell className="size-4" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-error px-1 text-micro font-semibold font-plex-mono text-[oklch(0.98_0.006_82)]">
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-error px-1 text-micro font-semibold font-mono text-[oklch(0.98_0.006_82)]">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -169,7 +169,7 @@ export function NotificationDropdown() {
           side="bottom"
           sideOffset={4}
         >
-          <Popover.Popup className="w-80 rounded-md border border-border-subtle bg-surface-raised font-plex-sans text-content-base shadow-level-2">
+          <Popover.Popup className="w-80 rounded-md border border-border-subtle bg-surface-raised font-sans text-content-base shadow-level-2">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2.5">
               <span className="text-body-sm font-medium text-content-strong">Notifications</span>
@@ -226,7 +226,7 @@ export function NotificationDropdown() {
                       <p className="truncate text-caption text-content-muted">
                         {notification.message}
                       </p>
-                      <p className="text-caption font-plex-mono text-content-subtle">
+                      <p className="text-caption font-mono text-content-subtle">
                         {timeAgo(notification.created_at)}
                       </p>
                     </div>

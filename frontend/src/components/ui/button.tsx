@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils"
  * Use `default` or `sm` for new work; xs sizes are documented legacy.
  */
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center bg-clip-padding font-plex-sans font-medium whitespace-nowrap transition-colors duration-quick ease-settle outline-none select-none focus-ring-accent active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed aria-invalid:border-status-error [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center bg-clip-padding font-sans font-medium whitespace-nowrap transition-colors duration-quick ease-settle outline-none select-none focus-ring-accent active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed aria-invalid:border-status-error [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {

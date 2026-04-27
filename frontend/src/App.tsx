@@ -337,16 +337,16 @@ class ErrorBoundary extends Component<
       // via Tailwind classes rather than inline styles. Pairs with
       // the Alert status-family recipe (status-error + surface-base).
       return (
-        <div className="min-h-screen bg-surface-base p-10 font-plex-sans text-content-base">
+        <div className="min-h-screen bg-surface-base p-10 font-sans text-content-base">
           <div className="mx-auto max-w-content">
             <div className="rounded-md border-l-4 border-l-status-error bg-status-error-muted p-6 text-status-error">
               <h1 className="text-h2 font-medium">Something went wrong</h1>
-              <pre className="mt-4 whitespace-pre-wrap rounded bg-surface-base p-3 font-plex-mono text-caption text-content-base">
+              <pre className="mt-4 whitespace-pre-wrap rounded bg-surface-base p-3 font-mono text-caption text-content-base">
                 {this.state.error?.message}
               </pre>
               <button
                 onClick={() => window.location.reload()}
-                className="mt-4 inline-flex items-center rounded bg-accent px-5 py-2.5 font-plex-sans text-body-sm font-semibold text-content-on-accent shadow-level-1 transition-colors duration-quick ease-settle hover:bg-accent-hover active:bg-accent-hover focus-ring-accent"
+                className="mt-4 inline-flex items-center rounded bg-accent px-5 py-2.5 font-sans text-body-sm font-semibold text-content-on-accent shadow-level-1 transition-colors duration-quick ease-settle hover:bg-accent-hover active:bg-accent-hover focus-ring-accent"
               >
                 Reload page
               </button>

@@ -28,7 +28,7 @@ export function EscToDismissHint() {
       data-slot="focus-core-footer"
       className="flex items-center gap-2 text-body-sm text-content-muted"
     >
-      <kbd className="rounded border border-border-subtle bg-surface-elevated px-2 py-0.5 font-plex-mono text-micro">
+      <kbd className="rounded border border-border-subtle bg-surface-elevated px-2 py-0.5 font-mono text-micro">
         Esc
       </kbd>
       <span>or click outside to dismiss</span>
@@ -52,7 +52,7 @@ export function CoreHeader({
       <p className="text-micro uppercase tracking-wider text-content-muted">
         Core mode · {modeLabel}
       </p>
-      <h2 className="text-h2 font-plex-serif text-content-strong">{title}</h2>
+      <h2 className="text-h2 font-display text-content-strong">{title}</h2>
     </header>
   )
 }

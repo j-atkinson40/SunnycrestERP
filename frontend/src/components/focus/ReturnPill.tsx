@@ -94,7 +94,7 @@ export function ReturnPill() {
           aria-label={`Return to ${target.id}`}
         >
           <ArrowLeft className="h-4 w-4 text-accent" />
-          <span className="font-plex-sans">
+          <span className="font-sans">
             Return to{" "}
             <span className="font-medium text-content-strong">
               {target.id}

@@ -190,15 +190,24 @@
 }
 
 @theme inline {
-    /* Aesthetic Arc Session 2 — platform font is IBM Plex Sans.
-     * The token reference (var(--font-plex-sans)) means any future
-     * Plex-hosting change (different CDN, different weights, different
-     * variable package) only edits tokens.css. Flipping this line
+    /* Aesthetic Arc Session 4 — platform default body font is Geist.
+     * The token reference (var(--font-geist)) means any future Geist-
+     * hosting change only edits tokens.css. Flipping this line
      * cascades to every rendered text node because Tailwind v4's
      * font-sans utility and the html { font-family } base rule both
-     * resolve this variable at runtime. Geist was the Session 1
-     * transitional default; Session 2 retires it. */
-    --font-sans: var(--font-plex-sans);
+     * resolve this variable at runtime.
+     *
+     * History: Session 1 transitional Geist → Session 2 IBM Plex
+     * Sans → Session 4 (current) Geist. The Geist family returns as
+     * the body typeface alongside Fraunces for display + Geist Mono
+     * for data, completing the role-specific type system per
+     * DESIGN_LANGUAGE.md Section 4. */
+    --font-sans: var(--font-geist);
+    /* Aesthetic Arc Session 4 — explicit role utilities.
+     * `font-display` resolves to Fraunces (proper nouns, headings).
+     * `font-mono` resolves to Geist Mono (numerals, eyebrows, data). */
+    --font-display: var(--font-fraunces);
+    --font-mono: var(--font-geist-mono);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -334,6 +343,13 @@
      * font-plex-serif + font-plex-mono; font-sans above now points
      * at Plex Sans as the platform default per Aesthetic Arc
      * Session 2) ─── */
+    /* Aesthetic Arc Session 4 — legacy font-plex-* utility bindings
+     * retained during migration window. Token aliases in tokens.css
+     * point them at the new families; these bindings keep the
+     * Tailwind utilities `font-plex-sans`, `font-plex-serif`,
+     * `font-plex-mono` working until the codebase sweep replaces
+     * them. Bindings + token aliases retire together when zero
+     * font-plex-* utility usages remain in the codebase. */
     --font-plex-sans: var(--font-plex-sans);
     --font-plex-serif: var(--font-plex-serif);
     --font-plex-mono: var(--font-plex-mono);

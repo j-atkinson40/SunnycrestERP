@@ -193,7 +193,7 @@ export default function SpacesSettings() {
       {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4 relative">
         <div>
-          <h1 className="text-h2 font-plex-serif font-medium text-content-strong">
+          <h1 className="text-h2 font-display font-medium text-content-strong">
             Spaces
           </h1>
           <p className="mt-1 text-body-sm text-content-muted">
@@ -1355,7 +1355,7 @@ function AffinityCountCard({ onClear }: { onClear: () => void }) {
           className="flex items-baseline gap-2"
           data-testid="affinity-counter"
         >
-          <span className="font-plex-mono text-display-lg font-medium tabular-nums text-content-strong">
+          <span className="font-mono text-display-lg font-medium tabular-nums text-content-strong">
             {count ?? "—"}
           </span>
           <span className="text-body-sm text-content-muted">

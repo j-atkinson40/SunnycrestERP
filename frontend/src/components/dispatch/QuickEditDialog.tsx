@@ -296,7 +296,7 @@ export function QuickEditDialog({
               <h3
                 className={cn(
                   "text-micro uppercase tracking-wider",
-                  "text-content-muted font-plex-sans",
+                  "text-content-muted font-sans",
                 )}
               >
                 Assignment
@@ -321,7 +321,7 @@ export function QuickEditDialog({
                   className={cn(
                     "w-full rounded border border-border-base",
                     "bg-surface-raised px-4 py-2.5",
-                    "text-body text-content-base font-plex-sans",
+                    "text-body text-content-base font-sans",
                     "focus:border-accent focus:ring-2 focus:ring-accent/30",
                     "outline-none",
                   )}
@@ -356,7 +356,7 @@ export function QuickEditDialog({
                   className={cn(
                     "w-full rounded border border-border-base",
                     "bg-surface-raised px-4 py-2.5",
-                    "text-body text-content-base font-plex-sans",
+                    "text-body text-content-base font-sans",
                     "focus:border-accent focus:ring-2 focus:ring-accent/30",
                     "outline-none",
                   )}
@@ -470,7 +470,7 @@ export function QuickEditDialog({
               <h3
                 className={cn(
                   "text-micro uppercase tracking-wider",
-                  "text-content-muted font-plex-sans",
+                  "text-content-muted font-sans",
                 )}
               >
                 Delivery state

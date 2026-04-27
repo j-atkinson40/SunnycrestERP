@@ -180,7 +180,7 @@ function PoolItem({ delivery }: PoolItemProps) {
       <p
         className={cn(
           "text-body-sm font-medium leading-tight",
-          "text-content-strong font-plex-sans",
+          "text-content-strong font-sans",
           "line-clamp-2 break-words",
         )}
         title={label}
@@ -191,7 +191,7 @@ function PoolItem({ delivery }: PoolItemProps) {
         <p
           className={cn(
             "mt-0.5 text-caption leading-tight",
-            "text-content-muted font-plex-sans",
+            "text-content-muted font-sans",
             "line-clamp-2 break-words",
           )}
           title={subhead}
@@ -329,7 +329,7 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
           <p
             className={cn(
               "text-micro uppercase tracking-wider",
-              "text-content-muted font-plex-sans",
+              "text-content-muted font-sans",
             )}
           >
             Ancillary pool
@@ -337,7 +337,7 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
           <h3
             className={cn(
               "mt-0.5 text-body-sm font-medium leading-tight",
-              "text-content-strong font-plex-sans",
+              "text-content-strong font-sans",
             )}
           >
             Waiting for pairing
@@ -350,7 +350,7 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
               "inline-flex items-center justify-center",
               "min-w-[20px] h-5 px-1.5 rounded-full",
               "bg-accent text-content-on-accent text-caption font-medium",
-              "font-plex-mono tabular-nums",
+              "font-mono tabular-nums",
             )}
             aria-label={`${poolAncillaries.length} pool ${
               poolAncillaries.length === 1 ? "item" : "items"
@@ -384,7 +384,7 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
             />
             <p
               className={cn(
-                "text-caption text-content-muted font-plex-sans",
+                "text-caption text-content-muted font-sans",
                 "leading-tight",
               )}
             >
@@ -392,7 +392,7 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
             </p>
             <p
               className={cn(
-                "text-micro text-content-subtle font-plex-sans",
+                "text-micro text-content-subtle font-sans",
                 "leading-tight",
               )}
             >

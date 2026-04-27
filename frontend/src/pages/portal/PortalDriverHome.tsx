@@ -53,7 +53,7 @@ export default function PortalDriverHome() {
       data-testid="portal-driver-home"
     >
       <div>
-        <h1 className="text-h3 font-plex-serif font-medium text-content-strong">
+        <h1 className="text-h3 font-display font-medium text-content-strong">
           {summary ? `Hi, ${summary.driver_name.split(" ")[0]}` : `Hi${me ? `, ${me.first_name}` : ""}`}
         </h1>
         <p className="text-body-sm text-content-muted">
@@ -78,7 +78,7 @@ export default function PortalDriverHome() {
                 className="flex items-baseline gap-2"
                 data-testid="portal-driver-today-stops"
               >
-                <span className="font-plex-mono text-display-lg font-medium tabular-nums text-content-strong">
+                <span className="font-mono text-display-lg font-medium tabular-nums text-content-strong">
                   {summary.today_stops_count}
                 </span>
                 <span className="text-body-sm text-content-muted">

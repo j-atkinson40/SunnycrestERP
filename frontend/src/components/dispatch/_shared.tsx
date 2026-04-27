@@ -87,7 +87,7 @@ export function IconTooltip({
                   "absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1",
                   "inline-flex items-center justify-center rounded-full",
                   "bg-accent text-content-on-accent text-[10px] font-medium",
-                  "font-plex-mono tabular-nums",
+                  "font-mono tabular-nums",
                 )}
                 aria-hidden
               >

@@ -231,7 +231,7 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
             <span
               className={cn(
                 "text-micro uppercase tracking-wider leading-tight",
-                "text-content-muted font-plex-sans",
+                "text-content-muted font-sans",
                 active && "text-content-base",
               )}
             >
@@ -248,7 +248,7 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
             <span
               className={cn(
                 "text-[0.8125rem] leading-tight tabular-nums",
-                "text-content-base font-plex-mono",
+                "text-content-base font-mono",
                 active && "text-content-strong",
               )}
             >

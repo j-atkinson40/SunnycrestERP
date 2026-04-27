@@ -1,33 +1,45 @@
 /* ============================================================
- * Aesthetic Arc Session 1 — Plex font family imports
+ * Aesthetic Arc Session 4 — Type system migration
+ * IBM Plex → Fraunces (display) + Geist (body) + Geist Mono (data)
  *
- * Self-hosted via @fontsource(-variable). No Google Fonts CDN.
- * Per DESIGN_LANGUAGE.md Section 4:
- *   - IBM Plex Sans (variable 100-700) — primary UI typeface
- *   - IBM Plex Serif 500 only — gravitas moments display face
- *   - IBM Plex Mono 400 only — structured data (IDs, timestamps)
+ * Self-hosted via @fontsource-variable. No Google Fonts CDN.
+ * Per DESIGN_LANGUAGE.md Section 4 (Aesthetic Arc Session 4 update):
+ *   - Fraunces (variable 100-900) — display typeface; proper-noun
+ *     "engraving" register, H1/H2/H3, day-switcher, large display
+ *     numerals, signature moments. Tailwind: font-display.
+ *   - Geist (variable 100-900) — body typeface; default font-sans.
+ *     Body prose, labels, button text, controls, descriptions.
+ *   - Geist Mono (variable 100-900) — data typeface; all numerals,
+ *     eyebrow uppercase tracking, code, technical literal language.
+ *     Tailwind: font-mono.
  *
- * Weight 400 italic for Plex Sans is included for inline semantic
- * italics (titles of works, foreign-language terms) per Section 4.
+ * One file per family thanks to variable-font packaging — covers
+ * full weight range (100-900) without per-weight imports.
  *
- * Aesthetic Arc Session 2 — Plex Sans becomes the platform font.
- * `--font-sans` in index.css points at `var(--font-plex-sans)` so
- * every `font-sans` Tailwind utility and the html body default
- * resolve to Plex Sans. The additive tokens --font-plex-{sans,
- * serif,mono} remain for explicit `font-plex-*` utility usage in
- * components that need to be explicit (rare; Plex Mono for
- * structured data, Plex Serif for gravitas moments).
- *
- * Geist font package removed Session 2. Platform is Plex.
+ * Migration shape: atomic swap with one-release legacy alias
+ * retention. The IBM Plex packages remain in package.json + the
+ * Plex tokens (--font-plex-sans / -serif / -mono) remain in
+ * tokens.css aliased to the new families during the migration
+ * window. The codebase sweep replaces font-plex-* utility usages;
+ * Plex packages + token aliases retire when zero references
+ * remain (target: end of Aesthetic Arc).
  * ============================================================ */
 
-/* IBM Plex Sans — variable font covering weights 100-700.
-   Used for any weight between 100-700 (we use 400, 500, 600). */
+/* Fraunces — humanist serif, display register.
+   Used for proper nouns + headings + day-switcher labels. */
+@import "@fontsource-variable/fraunces";
+
+/* Geist — modern restrained sans, default body typeface. */
+@import "@fontsource-variable/geist";
+
+/* Geist Mono — precision register for data. */
+@import "@fontsource-variable/geist-mono";
+
+/* IBM Plex retained during migration window — legacy callers
+   continue to work via token aliases (see tokens.css). Will be
+   removed when zero font-plex-* utility usages remain in the
+   codebase. */
 @import "@fontsource-variable/ibm-plex-sans/standard.css";
 @import "@fontsource-variable/ibm-plex-sans/standard-italic.css";
-
-/* IBM Plex Serif — 500 (Medium) only, display use per Section 4. */
 @import "@fontsource/ibm-plex-serif/500.css";
-
-/* IBM Plex Mono — 400 (Regular) only, structured-data use. */
 @import "@fontsource/ibm-plex-mono/400.css";

@@ -23,7 +23,7 @@ import { ChevronRightIcon, CheckIcon } from "lucide-react"
  * Separator: bg-border-subtle.
  * Label: text-micro font-medium uppercase tracking-wider text-content-subtle
  *   (group eyebrow per §4 size-weight pairings).
- * Shortcut: text-caption font-plex-mono text-content-subtle — keybind
+ * Shortcut: text-caption font-mono text-content-subtle — keybind
  *   display in mono per §4 ("structured data that benefits from fixed-
  *   width alignment" = code, shortcuts, IDs).
  */
@@ -64,7 +64,7 @@ function DropdownMenuContent({
         <MenuPrimitive.Popup
           data-slot="dropdown-menu-content"
           className={cn(
-            "z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-surface-raised p-2 font-plex-sans text-content-base shadow-level-2 outline-none duration-settle ease-settle data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-quick data-closed:ease-gentle",
+            "z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-md border border-border-subtle bg-surface-raised p-2 font-sans text-content-base shadow-level-2 outline-none duration-settle ease-settle data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-quick data-closed:ease-gentle",
             className
           )}
           {...props}
@@ -264,7 +264,7 @@ function DropdownMenuShortcut({
     <span
       data-slot="dropdown-menu-shortcut"
       className={cn(
-        "ml-auto font-plex-mono text-caption tracking-wider text-content-subtle group-focus/dropdown-menu-item:text-content-muted",
+        "ml-auto font-mono text-caption tracking-wider text-content-subtle group-focus/dropdown-menu-item:text-content-muted",
         className
       )}
       {...props}

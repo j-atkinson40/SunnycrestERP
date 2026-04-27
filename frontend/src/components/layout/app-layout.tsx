@@ -29,7 +29,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen bg-surface-base font-plex-sans text-content-base">
+    <div className="flex h-screen bg-surface-base font-sans text-content-base">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-14 items-center justify-between border-b border-border-subtle bg-surface-elevated px-6">

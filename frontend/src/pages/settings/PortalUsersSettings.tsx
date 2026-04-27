@@ -123,7 +123,7 @@ export default function PortalUsersSettings() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-h2 font-plex-serif font-medium text-content-strong">
+          <h1 className="text-h2 font-display font-medium text-content-strong">
             Portal users
           </h1>
           <p className="mt-1 text-body-sm text-content-muted">

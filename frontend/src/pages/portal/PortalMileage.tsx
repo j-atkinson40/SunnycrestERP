@@ -79,7 +79,7 @@ export default function PortalMileage() {
         Back to route
       </Button>
 
-      <h1 className="text-h3 font-plex-serif font-medium text-content-strong">
+      <h1 className="text-h3 font-display font-medium text-content-strong">
         Log mileage
       </h1>
 
@@ -96,7 +96,7 @@ export default function PortalMileage() {
                 min="0"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
-                className="h-12 text-body text-right font-plex-mono"
+                className="h-12 text-body text-right font-mono"
                 placeholder="0.0"
                 data-testid="start-mileage"
                 autoFocus
@@ -112,7 +112,7 @@ export default function PortalMileage() {
                 min="0"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
-                className="h-12 text-body text-right font-plex-mono"
+                className="h-12 text-body text-right font-mono"
                 placeholder="0.0"
                 data-testid="end-mileage"
               />
@@ -120,7 +120,7 @@ export default function PortalMileage() {
             {delta !== null && (
               <div className="rounded-md bg-surface-sunken p-3 text-center">
                 <span className="text-caption text-content-muted">Total:</span>{" "}
-                <span className="font-plex-mono font-medium text-body-sm text-content-strong">
+                <span className="font-mono font-medium text-body-sm text-content-strong">
                   {delta.toFixed(1)} miles
                 </span>
               </div>

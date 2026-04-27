@@ -66,14 +66,14 @@ function UnknownFocusError({ focusId }: { focusId: string }) {
         <p className="text-micro uppercase tracking-wider text-status-error">
           Unknown focus
         </p>
-        <h2 className="text-h2 font-plex-serif text-content-strong">
+        <h2 className="text-h2 font-display text-content-strong">
           No Focus registered at this id
         </h2>
       </header>
       <div className="flex-1 rounded-md border border-status-error/30 bg-status-error-muted/40 p-6">
         <p className="text-body-sm text-content-base">
           The id{" "}
-          <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-plex-mono text-micro">
+          <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-mono text-micro">
             {focusId}
           </code>{" "}
           was not found in the Focus registry. This usually means a

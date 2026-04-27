@@ -40,7 +40,7 @@ import { cn } from "@/lib/utils"
  * Focus: accent focus ring (when badge is rendered as interactive).
  */
 const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-sm border border-transparent bg-clip-padding px-2 py-0.5 font-plex-sans text-micro font-medium whitespace-nowrap transition-colors duration-quick ease-settle focus-ring-accent has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-status-error aria-invalid:ring-status-error/20 [&>svg]:pointer-events-none [&>svg]:size-3!",
+  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-sm border border-transparent bg-clip-padding px-2 py-0.5 font-sans text-micro font-medium whitespace-nowrap transition-colors duration-quick ease-settle focus-ring-accent has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-status-error aria-invalid:ring-status-error/20 [&>svg]:pointer-events-none [&>svg]:size-3!",
   {
     variants: {
       variant: {

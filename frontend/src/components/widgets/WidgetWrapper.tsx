@@ -122,7 +122,7 @@ export default function WidgetWrapper({
                           onSizeChange(s)
                           setMenuOpen(false)
                         }}
-                        className="rounded-sm border border-border-subtle px-1.5 py-0.5 text-caption font-plex-mono text-content-muted hover:bg-accent-subtle focus-ring-accent"
+                        className="rounded-sm border border-border-subtle px-1.5 py-0.5 text-caption font-mono text-content-muted hover:bg-accent-subtle focus-ring-accent"
                       >
                         {s}
                       </button>

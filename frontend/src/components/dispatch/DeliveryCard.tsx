@@ -356,14 +356,14 @@ export function DeliveryCard({
             implicit tenant default (07:00 from DeliverySettings) =
             not displayed. Per DL §4 type scale: text-micro
             uppercase tracking-wider content-muted is the canonical
-            eyebrow treatment. font-plex-mono on digits for tabular
+            eyebrow treatment. font-mono on digits for tabular
             alignment with the service-time line below. */}
         {startTime && (
           <div
             data-slot="dispatch-card-start-time"
             className={cn(
               "text-micro uppercase tracking-wider text-content-muted",
-              "font-plex-mono leading-tight",
+              "font-mono leading-tight",
             )}
             aria-label={`Driver start time ${startTime.replace(/^Start /, "")}`}
           >
@@ -375,7 +375,7 @@ export function DeliveryCard({
         <div
           className={cn(
             "truncate text-body-sm font-medium leading-tight text-content-strong",
-            "font-plex-sans",
+            "font-sans",
           )}
           data-slot="dispatch-card-fh"
           title={fh}
@@ -406,11 +406,11 @@ export function DeliveryCard({
             className="mt-0.5 truncate text-body-sm text-content-base"
             data-slot="dispatch-card-timeline"
           >
-            <span className="font-plex-mono tabular-nums">{timeLine}</span>
+            <span className="font-mono tabular-nums">{timeLine}</span>
             {showEta && (
               <span className="text-content-muted">
                 {" · ETA "}
-                <span className="font-plex-mono tabular-nums">{eta}</span>
+                <span className="font-mono tabular-nums">{eta}</span>
               </span>
             )}
           </div>
@@ -546,7 +546,7 @@ export function DeliveryCard({
                         "absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1",
                         "inline-flex items-center justify-center rounded-full",
                         "bg-accent text-content-on-accent text-[10px] font-medium",
-                        "font-plex-mono tabular-nums",
+                        "font-mono tabular-nums",
                       )}
                       aria-hidden
                     >

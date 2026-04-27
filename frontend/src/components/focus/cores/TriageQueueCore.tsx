@@ -44,7 +44,7 @@ export function TriageQueueCore({ config }: CoreProps) {
           >
             <span
               aria-label={`Shortcut ${i + 1}`}
-              className="flex h-6 w-6 flex-none items-center justify-center rounded-md border border-border-subtle bg-surface-elevated font-plex-mono text-micro text-content-strong"
+              className="flex h-6 w-6 flex-none items-center justify-center rounded-md border border-border-subtle bg-surface-elevated font-mono text-micro text-content-strong"
             >
               {i + 1}
             </span>

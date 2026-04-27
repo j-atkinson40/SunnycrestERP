@@ -130,7 +130,7 @@ export default function WidgetPicker({
                   {w.description}
                 </p>
                 <div className="flex items-center gap-2 mt-1.5">
-                  <span className="text-micro font-plex-mono text-content-subtle">
+                  <span className="text-micro font-mono text-content-subtle">
                     {w.default_size}
                   </span>
                   {w.required_extension && !w.is_available && (

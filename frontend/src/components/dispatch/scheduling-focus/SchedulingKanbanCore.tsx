@@ -1330,7 +1330,7 @@ function SchedulingLane({
         <span
           className={cn(
             "flex-none text-caption text-content-muted tabular-nums",
-            "font-plex-mono",
+            "font-mono",
             deliveries.length === 0 && "text-content-subtle",
           )}
         >
@@ -1569,7 +1569,7 @@ function DaySelectorPopover({
         className={cn(
           "inline-flex items-baseline gap-1.5",
           "text-h3 font-medium leading-none text-content-strong",
-          "font-plex-sans tracking-tight",
+          "font-sans tracking-tight",
           // Subtle hover affordance — text shifts slightly toward
           // accent family. Restraint over loud color flip.
           "hover:text-accent-hover transition-colors duration-quick ease-settle",

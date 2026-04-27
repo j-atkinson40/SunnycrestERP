@@ -101,7 +101,7 @@ export default function PortalDriverRoute() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-plex-mono text-caption text-content-muted">
+                    <span className="font-mono text-caption text-content-muted">
                       #{stop.sequence_number ?? "—"}
                     </span>
                     <span className="font-medium text-body text-content-strong truncate">

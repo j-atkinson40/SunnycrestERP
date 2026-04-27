@@ -39,7 +39,7 @@ export function MockSavedViewWidget() {
         </h3>
       </div>
       <div className="flex-1 overflow-auto">
-        <table className="w-full border-collapse font-plex-sans text-body-sm">
+        <table className="w-full border-collapse font-sans text-body-sm">
           <tbody>
             {MOCK_ROWS.map((row) => (
               <tr
@@ -57,7 +57,7 @@ export function MockSavedViewWidget() {
                     {row.status}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right font-plex-mono text-micro text-content-muted">
+                <td className="px-3 py-2 text-right font-mono text-micro text-content-muted">
                   {row.date}
                 </td>
               </tr>

@@ -76,7 +76,7 @@ export function SlideOver({
       )}
 
       <div
-        className={`absolute right-0 top-0 h-full w-full ${WIDTHS[width]} bg-surface-raised shadow-level-3 pointer-events-auto flex flex-col transition-transform duration-arrive ease-settle font-plex-sans text-content-base`}
+        className={`absolute right-0 top-0 h-full w-full ${WIDTHS[width]} bg-surface-raised shadow-level-3 pointer-events-auto flex flex-col transition-transform duration-arrive ease-settle font-sans text-content-base`}
         style={{ transform: "translateX(0)" }}
         role="dialog"
         aria-modal="true"

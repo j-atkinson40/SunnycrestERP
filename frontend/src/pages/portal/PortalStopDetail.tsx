@@ -161,7 +161,7 @@ export default function PortalStopDetail() {
       </Button>
 
       <div>
-        <h1 className="text-h3 font-plex-serif font-medium text-content-strong">
+        <h1 className="text-h3 font-display font-medium text-content-strong">
           {stop.customer_name ?? "Stop"}
         </h1>
         <div className="mt-2">

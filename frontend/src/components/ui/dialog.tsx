@@ -89,7 +89,7 @@ function DialogContent({
         // put the Popup behind Focus → QuickEditDialog mounted
         // correctly but was invisible to the user.
         className={cn(
-          "fixed top-1/2 left-1/2 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border-subtle bg-surface-raised p-6 font-plex-sans text-body-sm text-content-base shadow-level-2 outline-none duration-arrive ease-settle sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-settle data-closed:ease-gentle",
+          "fixed top-1/2 left-1/2 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border-subtle bg-surface-raised p-6 font-sans text-body-sm text-content-base shadow-level-2 outline-none duration-arrive ease-settle sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-settle data-closed:ease-gentle",
           className
         )}
         style={{ zIndex: "var(--z-modal)" }}

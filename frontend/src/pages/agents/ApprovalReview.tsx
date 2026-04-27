@@ -258,7 +258,7 @@ export default function ApprovalReview() {
       <Card>
         <CardContent className="p-6">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-h2 font-plex-serif font-medium text-content-strong">
+            <h1 className="text-h2 font-display font-medium text-content-strong">
               {label}
             </h1>
             {statusBadge(job.status)}
@@ -298,7 +298,7 @@ export default function ApprovalReview() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-h2 font-plex-serif font-medium text-content-strong">
+            <div className="text-h2 font-display font-medium text-content-strong">
               {job.anomaly_count}
             </div>
             <div className="text-caption text-content-muted mt-1">
@@ -308,7 +308,7 @@ export default function ApprovalReview() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-h2 font-plex-serif font-medium text-status-error">
+            <div className="text-h2 font-display font-medium text-status-error">
               {criticalCount}
             </div>
             <div className="text-caption text-content-muted mt-1">Critical</div>
@@ -316,7 +316,7 @@ export default function ApprovalReview() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-h2 font-plex-serif font-medium text-status-warning">
+            <div className="text-h2 font-display font-medium text-status-warning">
               {warningCount}
             </div>
             <div className="text-caption text-content-muted mt-1">Warnings</div>
@@ -324,7 +324,7 @@ export default function ApprovalReview() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-h2 font-plex-serif font-medium text-status-info">
+            <div className="text-h2 font-display font-medium text-status-info">
               {infoCount}
             </div>
             <div className="text-caption text-content-muted mt-1">Info</div>
@@ -453,7 +453,7 @@ export default function ApprovalReview() {
                   </button>
                   {expandedSteps.has(i) && (
                     <div className="px-6 pb-3 text-body-sm text-content-muted">
-                      <pre className="whitespace-pre-wrap bg-surface-sunken rounded-sm p-3 text-caption font-plex-mono">
+                      <pre className="whitespace-pre-wrap bg-surface-sunken rounded-sm p-3 text-caption font-mono">
                         {JSON.stringify(data, null, 2)}
                       </pre>
                     </div>

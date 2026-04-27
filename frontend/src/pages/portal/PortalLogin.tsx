@@ -115,7 +115,7 @@ export default function PortalLogin() {
           data-testid="portal-login-form-container"
         >
           <div className="space-y-1 text-center">
-            <h1 className="text-h3 font-plex-serif font-medium text-content-strong">
+            <h1 className="text-h3 font-display font-medium text-content-strong">
               {branding.display_name}
             </h1>
             <p className="text-body-sm text-content-muted">

@@ -229,7 +229,7 @@ export function Focus() {
               // Content — inner padding generous per DESIGN_LANGUAGE §5
               "p-6 overflow-auto",
               // Typography + focus reset
-              "font-plex-sans text-body text-content-base outline-none",
+              "font-sans text-body text-content-base outline-none",
               // Enter / exit KEYFRAME animation — matches overlay-family
               // Dialog. `animate-in`/`animate-out` use CSS animation,
               // not transition, so `transition-none` below doesn't

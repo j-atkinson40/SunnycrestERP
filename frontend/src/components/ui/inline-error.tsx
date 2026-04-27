@@ -61,7 +61,7 @@ export function InlineError({
       data-testid={props["data-testid"] ?? "inline-error"}
       data-severity={severity}
       className={cn(
-        "flex items-start gap-3 rounded-md border font-plex-sans px-3",
+        "flex items-start gap-3 rounded-md border font-sans px-3",
         size === "sm" ? "py-2 text-caption" : "py-3 text-body-sm",
         SEVERITY_STYLES[severity],
         className,
