@@ -131,6 +131,41 @@ The full Tony's workshop model — multiple coexisting tablets, drag-positionabl
 
 The architectural bones are in place: command bar can return any entity type as a card; contextual surfaces float over the current page; peek system can pin transient hovers. Generalizing to a multi-tablet arrangement with persistent positioning is a future evolution. **Build to the model; the model holds even when the surface is a single-tablet implementation today.**
 
+### Widgets as canonical tablet realization
+
+Established with the Widget Library Architecture (April 2026) — see [DESIGN_LANGUAGE.md Section 12](DESIGN_LANGUAGE.md) and [PLATFORM_ARCHITECTURE.md Section 9](PLATFORM_ARCHITECTURE.md).
+
+Widgets ARE tablets at the architectural layer. A widget is a registered, configurable, vertical-scoped, multi-variant tablet. The interaction model from this doc — summon → arrange → park → dismiss — is exactly what widgets DO; the Widget Library makes that interaction model materially first-class.
+
+**Variant tier mapping to surface metaphors.** The Glance / Brief / Detail / Deep variant taxonomy maps to surface metaphors that future device tiers will inherit:
+
+| Variant | Surface metaphor | Example |
+|---|---|---|
+| **Glance** | Watch / sidebar tier | Single number / icon + short label; pinned to Spaces sidebar; future Bridgeable Watch tier |
+| **Brief** | Phone / focused work surface | 3-5 row list, focused KPI cluster, single chart; default Pulse pin variant; default command bar peek variant |
+| **Detail** | Tablet / desktop work surface | Full scrollable widget with secondary metadata + interactions; default Focus canvas variant |
+| **Deep** | Primary work surface / fullscreen | Section-stacked, multi-pane, dense; equivalent to a dedicated app view |
+
+The variant taxonomy is **forward-compatible across form factors**. When Bridgeable Watch ships, Glance variants port. When the multi-tablet workshop spatial workspace ships, Brief / Detail variants float as canonical tablets. The model holds; the device tier evolves.
+
+**Workspace cores have widget views.** Per [DESIGN_LANGUAGE.md §12.6](DESIGN_LANGUAGE.md), every Focus core element has a corresponding widget representation. The widget surfaces workspace state for **reference and bounded micro-actions**; the Focus core remains the surface for **decisions involving trade-off evaluation**.
+
+This is the bridge between the Decide primitive (Focus) and the Monitor primitive (Pulse). Operators reference work + handle quick state flips from widgets pinned to Pulse. They open the Focus when they need to evaluate trade-offs, coordinate across multiple records, or commit to a decision moment.
+
+The interaction implication: **summon a widget when you need bounded action; summon a Focus when you need a decision.** Both summon, both materialize, both arrange, both dismiss. The interaction model is the same; the action surface scales with the work mode.
+
+**Widget interactivity discipline** (canonical, [DESIGN_LANGUAGE.md §12.6a](DESIGN_LANGUAGE.md)):
+
+> State changes are widget-appropriate; decisions belong in Focus.
+
+The criterion is interaction complexity, not editability. An interaction is widget-appropriate if (1) bounded scope, (2) no coordination required, (3) reversible / low-stakes, (4) time-bounded. If any fails, the interaction is Focus-required.
+
+This discipline IS the Decide-vs-Monitor primitive boundary made concrete at the interaction layer. Without it, widgets either become micro-Focuses (workspace metaphor collapses) or read-only viewers (forced trip to Focus for every flip; friction). The discipline produces a coherent platform where: operators handle quick work in widgets; complex work happens in Focus; both surfaces share data + mutation paths; user mental model stays clean.
+
+**Relationship to peek panels.** Peek panels stay separately routed (entity-type registered renderers) — different lifecycle (hover-summon, click-park) than widgets (pin/unpin). But peek content composition USES widget components: a customer peek renders the Customer Card Widget at Brief variant inside the peek panel chrome, including the bounded interactions. Visual language unified, interaction surface unified, routing primitive distinct.
+
+This pattern — composition reuse across primitives with distinct routing — is the platform's emerging architectural discipline. Peek + widget share the tablet visual contract + interaction discipline; their summon mechanisms differ. Same shape applies elsewhere: a future spatial parking lot would summon widgets via Spaces, peeks via hover, and command-bar tablets via voice/text — three summon mechanisms, one materialization unit, one interaction discipline.
+
 ---
 
 ## Voice/text invocation as primary verb

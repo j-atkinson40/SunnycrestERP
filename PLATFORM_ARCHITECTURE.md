@@ -1055,5 +1055,81 @@ Observe-and-offer (Section 6.1) requires behavioral analytics on the user’s in
 
 Several internal-doc-only references in earlier discussions still use older terminology: “decision workspace” / “focused workspace” / “triage” (when meaning the primitive vs. when meaning the queue-processing mode). This document uses the canonical names throughout. Older session notes and CLAUDE.md may have stale language to clean up when convenient. 
 
-_End of document. Open issues, unresolved decisions, and future workshopping topics are tracked in Section 8. This document supersedes earlier post-aesthetics-arc memory entries and discussion notes from the desktop sessions of April 2026._ 
+## 9. Widget Library Architecture 
+
+Established April 2026 (post-Aesthetic-Arc-Session-4.8 / Widget Library Investigation + Specification sessions). Widgets are the platform's universal materialization unit — they realize the floating-tablet interaction primitive (Section 5 + PLATFORM_INTERACTION_MODEL) at the architectural layer. Visual contract + variant taxonomy + persistence model live in [DESIGN_LANGUAGE.md Section 12](DESIGN_LANGUAGE.md). This section captures the architectural framing — phased plan, vertical-scoping mechanism, and connection to the Vault-as-foundation thesis.
+
+### 9.1 Why a widget library is foundational 
+
+Pre-Widget-Library, two coexisting widget frameworks evolved with different conventions: a canvas widget framework (Focus tier; one production widget — `AncillaryPoolPin`) and a dashboard widget framework (Operations Board + Vault Overview; 25+ production widgets). The Widget Library work is **foundational consolidation**, not a feature build. Unifying the contract under one shape lets every consumer surface — Pulse, Focus, Spaces, command bar peek, hub dashboards — reason about widgets identically. The architectural payoff: surfaces become bounded application of a locked library; per-surface widget convention divergence stops accreting.
+
+### 9.2 Universal materialization unit 
+
+A widget is a self-contained, reusable piece of operational content with a declared visual contract, multi-variant density taxonomy, vertical-aware visibility, and surface-flexible composition. The four primitives compose widgets per role:
+
+| Primitive | Surface | Role of widgets |
+|---|---|---|
+| Monitor | Pulse (per Space) | Composed widget grid; role-driven defaults; persistent reference + bounded micro-actions |
+| Decide | Focus (canvas) | Free-form anchor-positioned tablets; full action surface for the Focus core; widgets within Focus follow widget-interactivity-discipline (§12.6a) |
+| Configure | Spaces sidebar | Glance-variant pinned widgets; reference + navigation only |
+| Act | Command bar peek | Peek panels stay separately routed (entity-type renderers) but compose widget components for content |
+
+Same library, different surfaces. Catalog is one consistent flow for the user.
+
+### 9.3 The 4-axis filter 
+
+Widgets gate visibility on **four orthogonal axes**, all evaluated AND-wise. Pattern extends `vault.hub_registry`'s permission + module + extension triple with vertical scoping:
+
+1. **Permission** (`required_permission`) — role-based gate
+2. **Module** (`required_module`) — tenant capability flag (`company_modules` table)
+3. **Extension** (`required_extension`) — opt-in cross-tenant integration (`tenant_extensions`)
+4. **Vertical** (`required_vertical: Vertical[] | "*"`) — industry preset; default `"*"` cross-vertical
+
+Defense-in-depth: filter applied at catalog-fetch + layout-fetch + render-dispatch. Invisible-not-disabled discipline — widgets the user can't see are simply absent from catalog.
+
+This is the platform-wide vertical-scoping mechanism. Widget definitions adopt it; future first-class entities (workflows, saved views, briefings, integrations) may adopt the same 4-axis filter as their canonical visibility model.
+
+### 9.4 Connection to Vault-as-foundation 
+
+Vault ([CLAUDE.md §4](CLAUDE.md)) is the shared foundational data layer every tenant sees regardless of vertical. Widgets are, ultimately, **Vault views with chrome**. A Funeral Schedule Widget renders the same data the Funeral Scheduling Focus core operates on — which is itself a view into VaultItem-modeled delivery records. A Recent Activity Widget renders the same activity-log VaultItems the platform's audit infrastructure produces. The widget catalog over time becomes the cross-cutting browse surface for the Vault: vertical-aware, role-aware, action-discipline-aware. 
+
+This connection matters for the long-horizon platform: as Vault primitives expand (calendar, reminders, sharing, intelligence outputs), widgets surface those primitives consistently. New primitives → new widgets; no per-surface reinvention.
+
+### 9.5 Widget interactivity discipline (canonical) 
+
+The discipline live-canonicalized in [DESIGN_LANGUAGE.md §12.6a](DESIGN_LANGUAGE.md):
+
+> **State changes are widget-appropriate; decisions belong in Focus.**
+
+The criterion is interaction complexity, not editability. A widget is the right surface for an interaction if all four hold: (1) bounded scope, (2) no coordination required, (3) reversible / low-stakes, (4) time-bounded. If any fails, the interaction is Focus-required.
+
+This discipline IS the Decide primitive's boundary. Without it, widgets either become micro-Focuses (full editing surface, workspace metaphor collapses) or read-only viewers (forced trip to Focus for every flip, friction). The discipline produces a coherent platform: quick state flips happen in widgets; considered decisions happen in Focus; both share data + mutation paths.
+
+### 9.6 Phased implementation plan 
+
+| Phase | Scope | Pre/post-September |
+|---|---|---|
+| **W-1** | Foundation: unified `WidgetDefinition<TConfig>` contract; types + registry extension; canvas + dashboard frameworks both gain variant-aware dispatch; backfill `required_vertical: "*"` on existing widgets | Pre |
+| **W-2** | Spaces integration: `pin_type: "widget"` added to Spaces pin schema; Glance variants render in sidebar; existing widgets that have Glance variants pinnable | Pre |
+| **W-3** | Cold-start catalog: 12 widgets per [DESIGN_LANGUAGE.md §12.10](DESIGN_LANGUAGE.md), each with declared variants + per-variant interactions per §12.6a discipline | Pre |
+| **W-4** | Pulse surface: per-Space responsive widget grid; role-driven defaults; drag-rearrange + resize-to-variant-swap; persist via `User.preferences.spaces[].pulse_layout` JSONB | Pre |
+| **W-5** | Intelligence variant selection: surface-suggested initial variants based on observed engagement + available space; observe-and-offer variant adjustments | Post |
+| **W-6** | Long-tail migration: existing 25+ widgets gain additional variants "as touched"; cemetery + crematory vertical widgets ship as those tenants onboard; cross-tenant advanced widgets for partner network | Post |
+
+Decision sequence (revised by user during Spec session): **W-1 → W-2 → W-3 → W-4** is the pre-September build order. Sequence revised from investigation's W-1 → W-2 (cold-start) → W-3 (Spaces) because Spaces sidebar absorbs widget pins (Decision 2) — widgets need Glance variants from inception, not retroactively.
+
+### 9.7 Demo narrative 
+
+September Wilbert meeting demo flow (per Spec session):
+
+1. James (Sunnycrest manufacturing director) opens Production Space → Pulse shows manufacturing widgets (`pour_schedule`, `production_status`, `urn_catalog_status`, `recent_activity`, `today`). All vertical-filtered, all role-defaulted.
+2. James drags `urn_catalog_status` to upsize → variant swaps Glance → Brief; same widget, different content density.
+3. James opens Focus → AncillaryPool widget renders as canvas tablet (Brief variant) + DeliveryCard cards in kanban core. Same widget vocabulary, different surface.
+4. Tenant flip to Hopkins FH → Pulse shows funeral home widgets (vertical-filtered set is completely different from Sunnycrest's; same Pulse mechanism).
+5. Funeral Schedule widget at Detail variant renders the kanban data — interactive (drag deliveries, mark hole-dug, update ETAs) per widget interactivity discipline.
+6. Click → opens Funeral Scheduling Focus with same data + full editing chrome (finalize, day-switch, conflict resolution).
+
+Narrative: "Same widget library. Vertical-aware visibility. Variant-aware density. Coherent across surfaces. Workspace cores have widget views — bounded interactions in widgets, considered decisions in Focus."
+
+_End of document. Open issues, unresolved decisions, and future workshopping topics are tracked in Section 8. Widget Library Architecture lives in Section 9 above. This document supersedes earlier post-aesthetics-arc memory entries and discussion notes from the desktop sessions of April 2026._ 
 

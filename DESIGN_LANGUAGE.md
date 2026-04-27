@@ -3142,4 +3142,549 @@ When the platform's design vocabulary needs a new pattern (a role not covered by
 
 ---
 
+## Section 12 — Widget Library Architecture
+
+Widgets are the platform's universal materialization unit. A widget is a self-contained, reusable piece of operational content with a declared visual contract, multi-variant density taxonomy, vertical-aware visibility, and surface-flexible composition. Widgets land on Pulse (Monitor), Focus (Decide), Spaces (Configure), and command bar peek panel content (Act) — same library, different surfaces.
+
+This section defines the widget contract + variant taxonomy + visibility model + composition rules. Section 11 Pattern 1 is the visual contract widgets inherit; Section 12 is the architectural contract that turns a Pattern 1 tablet into a registered, configurable, vertical-scoped, multi-variant widget.
+
+Established Widget Library spec session (April 2026), post-investigation deliverable. Subsequent implementation phases tracked in [PLATFORM_ARCHITECTURE.md](PLATFORM_ARCHITECTURE.md) widget library subsection + [AESTHETIC_ARC.md](AESTHETIC_ARC.md) session log.
+
+### 12.1 Foundational frame
+
+**Widgets are the universal materialization unit.** Per [PLATFORM_INTERACTION_MODEL.md](PLATFORM_INTERACTION_MODEL.md), the platform's interaction model is *summon → arrange → park → dismiss* with floating tablets as the materialization unit. Widgets ARE those tablets at the architectural layer — registered components with consistent shape, summonable from the catalog, arrangeable on Pulse / Focus / sidebar, dismissible per surface lifecycle.
+
+**Universal across surfaces.**
+- **Pulse (Monitor)**: composed widget grid per Space, role-driven defaults, drag-rearrange + resize-to-variant-swap.
+- **Focus (Decide)**: canvas-pinned widgets at canonical anchors (Pattern 1 tablet treatment); Focus core element renders the workspace, surrounding widgets reference it.
+- **Spaces (Configure)**: widget pins in sidebar render at Glance variant; click navigates to fuller variant on Pulse OR opens floating tablet.
+- **Command bar (Act)**: peek panels stay separately routed (per entity type), but their content composition USES widget components — visual language unified, routing primitive distinct.
+- **Operations Board / Vault Overview / hub dashboards (legacy)**: existing grid surfaces continue working; widgets migrate to unified contract incrementally "as touched."
+
+**Inherits Pattern 1 (Section 11) as visual contract.** Every widget is a Pattern 1 tablet at heart. The composition principles — frosted-glass surface (or solid-fill on opaque substrates) + drawn edges via shadow-level-1 + bezel + grip indicator on left side + mono label header + terracotta count chip when applicable — apply across all widgets. Variant-specific chrome reduction (Glance omits bezel + eyebrow) is the only canonical deviation.
+
+**Inherits widget elevation tier (Section 3) for floating surfaces.** Widgets that float (Focus canvas tablets, command bar tablets, future Pulse pins) compose `var(--shadow-widget-tablet)` + `transform: var(--widget-tablet-transform)` per Aesthetic Arc Session 4.8 calibration. Widgets that mount in fixed-grid surfaces (Pulse grid cells, Vault Overview, Operations Board) use `var(--card-ambient-shadow)` (the card-tier elevation) — they ARE cards at that point, not floating tablets.
+
+**Architectural payoff.** A widget like `recent_activity` declares once, renders across four surfaces with surface-appropriate variant + chrome. A vertical-specific widget like `funeral_schedule` is invisible to a manufacturing tenant by construction (4-axis filter §12.4). The catalog is one consistent flow for the user: pick a widget, pick where it lives. The platform produces a Pulse for one tenant that's structurally identical to another's, but visibly different by virtue of vertical-aware filtering — which is the architectural payoff Section 12 delivers.
+
+### 12.2 Variant taxonomy
+
+Every widget declares one or more variants. Variants are first-class citizens, not bolted-on size modes. **Glance / Brief / Detail / Deep** is the canonical four-tier taxonomy.
+
+| Variant | Density | Default surfaces | Typical content |
+|---|---|---|---|
+| **Glance** | Minimal | Sidebar pin, Pulse rail, future Watch tier | Single number / icon + short label; optional accent count chip; no header chrome |
+| **Brief** | Focused | Pulse grid 2×1, Focus stack tier, sidebar mobile | Header + 3-5 row list OR single chart OR small KPI cluster |
+| **Detail** | Rich | Pulse grid 2×2 / 3×2, Focus canvas tier, Spaces dashboard | Header + scrollable list with secondary metadata + interactions |
+| **Deep** | Maximum | Focus canvas tier, dedicated Pulse zone, modal on small surfaces | Section-stacked content; multi-pane; dense data; the widget at full editorial scope |
+
+**Names map to user mental model.** "Give me a brief on cemetery status" → Brief variant. "I want the detail on this customer" → Detail variant. "Open the deep view of the pour schedule" → Deep variant. "Just the glance" → the count + label. The names reinforce platform identity *and* compose naturally with how operators speak.
+
+**Names future-proof surface metaphors.** Glance = Watch tier (when Bridgeable Watch ships). Brief = phone tier. Detail = tablet/desktop tier. Deep = primary work surface. The taxonomy ports cleanly across form factors without rename churn.
+
+**Variant compatibility matrix.**
+
+| Variant | Canvas (Focus) | Grid (Pulse / Spaces dashboard / Vault Overview) | Stack rail (mobile Focus) | Floating tablet (command bar peek) | Sidebar pin |
+|---|---|---|---|---|---|
+| Glance | ✗ (too small) | ✓ (1×1) | ✓ (compressed) | ✓ | ✓ |
+| Brief | ✓ | ✓ (2×1 typical) | ✓ | ✓ | ✗ (too big for sidebar) |
+| Detail | ✓ | ✓ (2×2 typical) | ✓ (scroll-snap one tile) | ✗ (too big) | ✗ |
+| Deep | ✓ | ✓ (full-row) | ✗ (use modal expand) | ✗ | ✗ |
+
+**Variant defaults per surface.**
+- Pulse pin: surface picks **Brief** as the universal default.
+- Spaces sidebar pin: **Glance** (the only valid sidebar variant).
+- Focus canvas pin: **Brief** or **Detail** (dispatcher decides; tablets need real estate).
+- Command bar peek panel: **Brief** (focused work surface, action-with-content).
+- Operations Board / Vault Overview: existing `default_size` becomes the **Brief** variant; other variants land incrementally "as touched."
+
+**User-driven variant change.**
+- Pulse + dashboard surfaces: drag-resize triggers variant swap when crossing variant breakpoints.
+- Focus canvas: explicit variant picker in WidgetChrome (right-click menu / settings popover).
+- Spaces sidebar: Glance only — to upsize, user repins to Pulse instead.
+- Command bar: Brief only — to upsize, user opens Focus.
+
+**Intelligence-driven variant selection (Phase W-5, post-September).** Defaults are role-driven + surface-driven (this section). Intelligence-suggested variants based on observed engagement + available space land Phase W-5. Phase W-1 through W-4 ship "default + manual" only. The taxonomy is forward-compatible.
+
+**Anti-patterns.**
+
+*Variant-per-component duplication.* Don't ship four separate React components per widget. Use ONE component that receives `variant_id` as a prop and switches internal rendering. Internal switch on `variant_id` keeps each widget's state, data hooks, and core logic in one file. Grid sizing CSS lives on the surface, not the widget.
+
+*Variants as visibility toggles.* Glance ≠ "hide most fields"; Detail ≠ "show everything." Each variant has a *deliberate* content scope:
+- **Glance**: the one number that matters
+- **Brief**: the actionable list (3-5 items)
+- **Detail**: the scrollable workspace with metadata + interactions
+- **Deep**: the complete view, multi-section
+
+Variants reflect intent, not just spatial budget. A widget with the same content rendered at 4 different sizes is doing variants wrong. A widget showing different *editorial* density per variant is doing variants right.
+
+*Variants without surface compatibility declarations.* If a widget doesn't have a Glance variant, it can't be sidebar-pinned. The compatibility matrix is enforced — not aspirational. If a surface needs a variant the widget doesn't have, the widget is unavailable on that surface (catalog UI hides it; defense in depth at fetch + render).
+
+### 12.3 Widget contract
+
+The unified contract single-sources the widget definition. Both canvas and dashboard widgets adopt this shape; surface discriminator on props lets one component render correctly across surfaces.
+
+**`WidgetDefinition<TConfig>`** (single source of truth):
+
+```typescript
+type WidgetSurface =
+  | "pulse_grid"          // Pulse responsive grid
+  | "focus_canvas"        // Focus free-form canvas
+  | "focus_stack"         // Focus stack rail (mobile tier)
+  | "spaces_pin"          // Spaces sidebar pin
+  | "floating_tablet"     // command bar floating tablet
+  | "dashboard_grid"      // Operations Board / Vault Overview / hub dashboards
+  | "peek_inline"         // peek panel content composition (no chrome)
+
+type Vertical =
+  | "manufacturing"
+  | "funeral_home"
+  | "cemetery"
+  | "crematory"
+
+interface WidgetDefinition<TConfig = unknown> {
+  // Identity
+  widget_id: string                    // dot-namespaced, e.g., "scheduling.ancillary-pool"
+  display_name: string                 // catalog UI human label
+  description: string                  // catalog browsable description
+  icon: string                         // Lucide icon name; rendered in header + catalog tile
+
+  // Variant declaration (Glance / Brief / Detail / Deep)
+  variants: WidgetVariant[]            // ordered, default first; at least one required
+  default_variant_id: string           // resolves to one of variants[].variant_id
+
+  // Visibility & gating (4-axis filter — see §12.4)
+  required_permission?: string         // role-based, e.g., "delivery.view"
+  required_module?: string             // tenant module flag (`company_modules` table)
+  required_extension?: string          // cross-tenant integration (e.g., "urn_sales")
+  required_vertical?: Vertical[] | "*" // vertical scoping; array = any-of, "*" = cross-vertical (default if omitted)
+  required_role?: string[]             // optional, finer-grained than permission
+
+  // Surface compatibility
+  supported_surfaces: WidgetSurface[]  // which surfaces this widget can render on
+  default_surfaces: WidgetSurface[]    // which surfaces seed this widget by default in role-driven layouts
+
+  // Per-instance configuration
+  config_schema?: ConfigSchema<TConfig> // shape validated; reuses saved-view config schema patterns
+  default_config?: TConfig
+
+  // Intelligence integration (Phase W-5)
+  intelligence_keywords: string[]      // discovery hints — when Intelligence might surface this widget
+  intelligence_relevance?: RelevanceFn // optional ranking signal for catalog ordering / variant selection
+}
+
+interface WidgetVariant {
+  variant_id: "glance" | "brief" | "detail" | "deep"
+
+  // Sizing — both grid + free-form supported
+  grid_size: { cols: number; rows: number }              // for fixed-grid surfaces
+  canvas_size: { width: number; height: number | "auto"; maxHeight?: number }  // for free-form surfaces
+
+  // Component
+  component: ComponentType<WidgetVariantProps<TConfig>>
+  density: "minimal" | "focused" | "rich" | "deep"       // metadata for Intelligence + UI
+
+  // Hard constraints
+  min_dimensions?: { width: number; height: number }      // surface refuses smaller
+  required_features?: string[]                            // some variants need extra context (e.g., "drag-context", "dnd-kit-context")
+}
+```
+
+**`WidgetVariantProps`** (the per-component contract):
+
+```typescript
+interface WidgetVariantProps<TConfig = unknown> {
+  widget_id: string                    // unique instance id (telemetry, drag, persistence)
+  config: TConfig                      // resolved per-instance config (default merged with user overrides)
+  surface: WidgetSurface               // discriminator — widget adapts internal layout per surface
+  variant_id: "glance" | "brief" | "detail" | "deep"
+
+  // Surface-injected context (optional, depending on surface)
+  size_hint?: { width: number; height: number }          // computed pixel dimensions for this slot
+  is_edit_mode?: boolean                                  // grid surfaces in edit mode
+  is_active?: boolean                                     // for stacked / icon-tier widgets, which is currently visible
+
+  // No data props — data ownership stays with widgets via feature contexts (canvas convention) or shared hooks (dashboard convention)
+}
+```
+
+**Key contract decisions.**
+
+- **Single component per widget**, internal switch on `variant_id`. Reduces duplication, keeps state + data hooks shared, makes variant-aware logic obvious. Per Decision 5 in spec session.
+- **Data ownership flexible per surface convention.** Canvas widgets continue using feature contexts (e.g., `useSchedulingFocus()`); dashboard widgets continue using `useWidgetData(url)`; SavedView-backed widgets use `executeSavedView()`. The contract doesn't dictate. Per Decision 6.
+- **No mandatory lifecycle hooks.** React's mount / unmount + props are the contract. Surface-level chrome (`WidgetChrome` for canvas, `WidgetWrapper` for grid, future `TabletShell` for floating) handles drag / resize / dismiss; widgets don't observe those.
+- **Surface discriminator on props.** A widget rendering on Pulse grid vs Focus canvas vs floating tablet may want to adapt internal layout (e.g., omit secondary actions on grid, expand them on canvas). The discriminator gives the widget the signal without forcing a separate component.
+- **Per-instance configuration via `config_schema`.** Reuses the same shape as saved-view config schemas (Phase 2 UI/UX arc). A widget like `saved_view` accepts `config = { view_id }`; `funeral_schedule` accepts `config = { date_offset, finalize_filter? }`; `recent_activity` accepts `config = { entity_types?, limit? }`. Validated against schema; user overrides stored per-instance.
+
+### 12.4 Visibility & gating model
+
+Widgets gate visibility on **four orthogonal axes**, all evaluated AND-wise. Defense-in-depth: filter applied at three points (catalog UI fetch, layout fetch, render dispatch) so a widget never accidentally renders for a user who shouldn't see it.
+
+**The four axes.**
+
+1. **Permission** (`required_permission`) — role-based gate. The user must hold the named permission via their role assignment. Examples: `delivery.view`, `customers.view`, `invoice.approve`. Backed by existing role / permission / role_permissions tables.
+2. **Module** (`required_module`) — tenant capability flag. The tenant must have the named module enabled via `company_modules` table. Examples: `crm`, `accounting`, `scheduling`. Cross-vertical capability gates.
+3. **Extension** (`required_extension`) — opt-in cross-tenant integration. The tenant must have the extension active via `tenant_extensions`. Examples: `urn_sales`, `wastewater`, `redi_rock`, `rosetta`, `npca_audit_prep`.
+4. **Vertical** (`required_vertical`) — industry preset. The tenant's `Company.vertical` value must match one of the declared verticals, OR the widget declares `"*"` (cross-vertical, default).
+
+**Composition.** All four axes are AND-evaluated. A widget like `urn_catalog_status` declares:
+```typescript
+required_vertical: ["manufacturing"],
+required_extension: "urn_sales",
+required_permission: "products.view",
+```
+The widget is visible to a user only if: tenant.vertical = "manufacturing" AND tenant has `urn_sales` extension AND user has `products.view` permission. Composable, predictable, declarative.
+
+**The `required_vertical` semantics.**
+- `["funeral_home"]` — single-vertical (visible only to funeral_home tenants)
+- `["funeral_home", "cemetery"]` — multi-vertical (visible to either)
+- `"*"` — cross-vertical (visible to all verticals, default if omitted)
+
+Per Decision 9, `required_vertical` is **optional with default `"*"`**. Forces explicit declaration only for vertical-specific widgets, not every widget. Existing widgets receive explicit `"*"` annotation in migration; new widgets declare explicitly.
+
+**Defense-in-depth filter sites.**
+1. **Catalog UI fetch** (`/widgets/available?page_context=...`): backend filters by all four axes; response is the visible-to-this-user catalog. Catalog UI shows ONLY available widgets.
+2. **Layout fetch** (`/widgets/layout?page_context=...`): backend filters layout entries by current visibility; widgets the user has lost access to (e.g., vertical change, role change, extension deactivation) are stripped from the layout response. Persisted layout retains them; rendered layout doesn't show them.
+3. **Render dispatch**: `getWidgetRenderer(widget_id)` checks current visibility one more time at render. If the widget is somehow in the layout but the user fails the gate, render returns a "widget no longer available" placeholder (recovery path; rare).
+
+**Invisible-not-disabled discipline.** A widget the user can't see is not rendered as locked / grayed-out / "Pro feature" gated. It's simply absent from the catalog. The user doesn't perceive the existence of widgets they can't access. This matches Section 0 calibration ("calm by default, intentional materialization") and the broader platform discipline of inviting invitations vs gated reveals.
+
+**Pattern reuse.** This 4-axis filter mirrors `vault.hub_registry`'s `required_permission` + `required_module` + `required_extension` triple, extended with `required_vertical`. Same evaluation logic, same defense-in-depth pattern. The widget library inherits the discipline; consumers (catalog UI, dashboard hooks, render dispatch) reuse the filter helper.
+
+### 12.5 Composition rules per surface
+
+Each surface that hosts widgets has specific layout, lifecycle, persistence, and variant-default conventions. The unified contract (§12.3) carries through; the surface discipline differs.
+
+**Focus (Decide) — canvas free-form, anchor-positioned.**
+- **Layout style**: 8-anchor positioning (top-left / top-center / top-right / left-rail / right-rail / bottom-left / bottom-center / bottom-right) + offset + width / height. Existing canvas widget primitive (Phase 4.3b.3.1 + Aesthetic Arc Session 4.8).
+- **Lifecycle**: mount on Focus open via `POST /focus/{type}/open`; persist via `focus_sessions.layout_state`; unmount on close; debounced layout writes (500ms). Per Phase A Session 4.
+- **Variant defaults**: **Brief** or **Detail** (Focus is a deliberate-action workspace; tablets need real estate). Compact (Glance) variants render in stack tier (mobile Focus); icon tier (narrow viewport) bypasses widgets entirely.
+- **Interactivity**: **full action surface for the Focus core**, where workspace-level decisions live (finalize, multi-record coordination, conflict resolution). Canvas-pinned widgets within Focus follow §12.6a Widget Interactivity Discipline — bounded micro-actions on the widget; complex decisions remain in the Focus core itself.
+- **Resize**: WidgetChrome `useResize` swaps variant when crossing variant breakpoints; otherwise fluid within current variant.
+- **Multiple instances**: allowed, rare per Focus shape.
+- **Tier degradation** (Phase A Session 3.7 cascade):
+  - Canvas tier → Brief / Detail / Deep (whatever the canonical variant the user pinned)
+  - Stack tier → Brief (compressed where needed)
+  - Icon tier → Glance (or icon button only — variants lower than Glance render as bottom-sheet expand)
+  - StackExpandedOverlay → Detail (full reveal of stack-tier tile)
+- **Visual chrome**: frosted-glass tablet treatment (Pattern 1 + widget-tier elevation per §3 + bezel + grip indicator). Per Aesthetic Arc Session 4.8.
+
+**Pulse (Monitor) — composed responsive grid per Space.**
+- **Layout style**: CSS responsive grid (`grid-template-columns: repeat(auto-fit, minmax(varies, 1fr))`) with grid_size from variant declaration.
+- **Lifecycle**: per-Space; load on Space activation; persist via `User.preferences.spaces[space_id].pulse_layout` JSONB. Per Decision 7. Migrate to dedicated table later if Pulse layouts grow complex.
+- **Variant defaults**: **Brief** for most; **Glance** for KPI rail; **Detail** for primary work-surface zones. Role-driven (Pulse seeds different defaults for director vs accountant vs production-manager).
+- **Interactivity**: Widget Interactivity Discipline (§12.6a) applies. Bounded micro-actions execute in-place on the Pulse-pinned widget — drag a delivery, mark a status, update a field. Decisions navigate to Focus — clicking a "needs decision" affordance opens the relevant Focus with the decision context preloaded. Pulse is the persistent reference + light-action surface; Focus is the deliberate-decision surface.
+- **Resize**: drag-rearrange + drag-resize via existing `useDashboard` pattern, but with **variant-swap on size-change** instead of just scaling content. Crossing the variant breakpoint flips the variant.
+- **Multiple instances**: allowed and common (e.g., two `funeral_schedule` widgets — today, this week — with different `config.date_offset`).
+- **Visual chrome**: solid-fill card treatment via `WidgetWrapper` (header bar + refresh / menu / edit affordances). Card-tier ambient shadow (not widget-tier — Pulse widgets are cards within the work surface, not floating tablets).
+
+**Spaces (Configure) — sidebar pinned, Glance only.**
+- **Layout style**: vertical list (`PinnedSection` above nav). Existing Phase 3 + 8e.1 mechanism.
+- **Lifecycle**: pin / unpin via `space-context.tsx`; persist via `User.preferences.spaces[].pins[]`. Existing.
+- **Widget integration** (Decision 2): Spaces pins gain `pin_type: "widget"` with `target: widget_id` and `config: TConfig`. Single user mental model: catalog flow → pin to Pulse OR pin to sidebar.
+- **Variant default**: **Glance** (sidebar real estate is narrow, ~240px wide).
+- **Interactivity**: minimal — Glance variants typically surface zero interactions per §12.6a per-variant declarations (count + label only). Tap navigates to Detail/Deep variant on Pulse OR opens Focus where the entity / workspace lives. Sidebar pins are reference + navigation, not action surfaces.
+- **Resize**: not supported. Glance is the only valid sidebar variant. To upsize, user repins to Pulse.
+- **Multiple instances**: allowed, constrained by `MAX_PINS_PER_SPACE = 20` cap.
+- **Visual chrome**: minimal — pin row matches existing nav-item / saved-view pin styling. Glance variant content + optional accent count chip. NO bezel, NO eyebrow, NO mono header — Glance variant chrome reduction (§12.8).
+- **Click**: navigates to fuller variant on Pulse (if pinned there too) OR opens floating tablet (command bar style).
+
+**Command bar (Act) — floating tablet, ephemeral.**
+- **Layout style**: floating tablet beside command bar input (or below). Current peek-panel architecture.
+- **Lifecycle**: ephemeral by default — summon on entity resolution, dismiss on Esc / backdrop click. Can be **parked** per PLATFORM_INTERACTION_MODEL (post-September spatial workspace).
+- **Variant default**: **Brief** (focused work surface, typical action-with-content).
+- **Interactivity**: Widget Interactivity Discipline (§12.6a) applies to peek-composed widget content. Reference + bounded actions (mark contacted, quick note, single-field update) execute in-place on parked peeks. Considered changes navigate to Focus or the entity's dedicated page.
+- **Resize**: not supported. Command bar tablets are bounded; user upsizes by opening Focus.
+- **Peek panel relationship** (Decision 3): peek panels stay separately routed (per entity type). They MAY internally compose widget components for content (e.g., embed `recent_activity` widget at Brief variant inside an entity peek). Visual language unified, interaction surface unified, routing primitive distinct.
+- **Visual chrome**: floating-tablet treatment via future `TabletShell` (frosted-glass + bezel + grip + parking surface). Widget-tier elevation per §3.
+
+**Operations Board / Vault Overview / hub dashboards (legacy migrating).**
+- **Layout style**: existing `useDashboard` + `WidgetGrid` pattern (CSS grid, dnd-kit reorder, edit-mode toggle).
+- **Lifecycle**: existing — load on page mount, persist via `user_widget_layouts`.
+- **Variant defaults**: **Brief** (existing `default_size` becomes the Brief variant's `grid_size`).
+- **Interactivity**: existing widget-internal interactions preserved during migration (each widget's current bounded actions remain). New variant builds adopt §12.6a discipline. Decisions navigate to relevant Focus / entity page (existing pattern, formalized).
+- **Migration**: backfill widget_definitions to declare `variants[]` with one Brief variant matching current shape. Other variants land incrementally "as touched" (Decision 10).
+- **Visual chrome**: existing `WidgetWrapper` (header + chrome) + card-tier shadow.
+
+### 12.6 Workspace cores have widget views (canon)
+
+**The canon: every Focus core element has a corresponding widget representation. Widgets surface workspace state for reference and bounded micro-actions. Decisions involving trade-off evaluation remain in workspaces (Focus).**
+
+The widget is **NOT a read-only mirror**; it's an **abridged interactive surface** showing the same data with a reduced action surface area. Edits that don't require evaluating trade-offs are widget-appropriate. Edits that require holistic evaluation are Focus-required.
+
+This is the bridge between the Focus primitive (deliberate-action workspace) and the Pulse primitive (passive monitoring). Operators handle quick state flips from widgets; complex coordination happens in Focus.
+
+**Canonical examples.**
+
+*Funeral Scheduling Focus core (kanban) → Funeral Schedule Widget.* The Focus core renders the kanban with full editing + decision affordances: drag deliveries between lanes, attach ancillaries, click cards to QuickEdit, **finalize the schedule**, **rebalance driver workloads**, **resolve scheduling conflicts**, day-switch + rebuild. The Funeral Schedule Widget at Detail variant renders the SAME kanban data — same cards, same lanes, same status indicators — and supports **bounded interactions**: drag a delivery between drivers (single reassignment), mark hole-dug (single state flip), update ETA / start time (single field), toggle ancillary attachment (single linkage), quick note (single annotation). The widget does NOT support: finalize, bulk reassignment, day navigation, conflict resolution, schedule rebuild — those are Focus-required because they involve evaluating trade-offs across multiple records or committing to a decision.
+
+*Future Arrangement Focus core → Arrangement Widget.* When the Arrangement primitive (FH vertical) ships, the same pattern applies: the widget surfaces case progression with bounded interactions (mark a stage complete, add a quick note, flag for follow-up); decisions about case routing or arrangement reschedule require Focus.
+
+*Future Pour Schedule Focus core (manufacturing) → Pour Schedule Widget.* Per cold-start catalog scope: the Pour Schedule Widget will exist at Brief / Detail / Deep variants when Pour Schedule Focus exists; widget supports single pour reassignment, individual status updates; production line rebalancing requires Focus.
+
+**Why this matters.** If widgets were truly read-only, operators would be forced into Focus for every micro-update — friction without payoff. If widgets had full editing capability, the workspace metaphor would muddy — no clear "where do I do which work" answer. Threading the needle: **widgets are reference + micro-actions; Focus is considered decisions + complex coordination**. Two genuinely different work modes.
+
+**Architectural implication: shared data layer.** Widget Detail / Deep variants embed the Focus core's data layer (e.g., the same `useSchedulingFocus()` context, or the same backend endpoint) with a deliberately reduced interaction surface. The widget component IS NOT a copy of the Focus core's component; it's a sibling render of the same data with different chrome + filtered interaction set. Glance / Brief variants typically render summary projections (counts, status pills) over the same data source. Mutations from widgets share the Focus core's mutation paths (e.g., the same `assignDriver(deliveryId, driverId)` service call) — single source of truth for state writes regardless of where the action originated.
+
+**Pattern documentation.** When a new Focus type ships, the spec includes the widget-view requirement: declare which variants the widget supports (matching surface compatibility), which interactions each variant exposes (per §12.6a discipline), and what "click on widget" navigates to (typically the Focus open URL with appropriate context, but may also be a deeper variant view first).
+
+### 12.6a Widget Interactivity Discipline
+
+**The principle: state changes are widget-appropriate; decisions belong in Focus.**
+
+The criterion is **interaction complexity**, not editability. Quick state flips don't require entering a workspace; multi-variable decisions do.
+
+**Tests for widget-appropriateness.** An interaction is widget-appropriate if all four hold:
+
+1. **Bounded scope.** The interaction touches one record / one field / one relationship at a time.
+2. **No coordination required.** The user can complete the interaction without considering effects on other work.
+3. **Reversible / low-stakes.** The interaction is a state flip, not a commit-to-decision moment.
+4. **Time-bounded.** The interaction takes seconds, not minutes of consideration.
+
+If any of the four fails, the interaction is Focus-required.
+
+**Examples table** (canonical reference for widget catalog authors):
+
+| Interaction type | Widget? | Focus? | Reasoning |
+|---|---|---|---|
+| Mark single delivery hole-dug | ✓ | – | Single state flip, bounded |
+| Drag one delivery between drivers | ✓ | – | Single reassignment, immediate |
+| Bulk reassign multiple deliveries | – | ✓ | Multi-record, requires coordination |
+| Update one ETA | ✓ | – | Single field, bounded |
+| Finalize / commit schedule | – | ✓ | Decision moment, irreversible |
+| View customer card | ✓ | – | Reference only |
+| Edit customer relationship details | – | ✓ | Multi-field, considered |
+| Add quick note | ✓ | – | Annotation, bounded |
+| Resolve scheduling conflict | – | ✓ | Trade-off evaluation |
+| Confirm ancillary pickup | ✓ | – | Single state flip |
+| Reorganize ancillary pool assignments | – | ✓ | Multi-record coordination |
+| Mark task complete | ✓ | – | Single state flip |
+| Reassign task to different person | ✓ | – | Single reassignment, immediate |
+| Add subtasks to a task | ✓ | – | Bounded annotation, reversible |
+| Approve / reject anomaly | ✓ | – | Single decision-record (the anomaly itself encapsulates the trade-off; widget surfaces the decision per item) |
+| Rebalance entire team's workload | – | ✓ | Multi-record coordination, requires Focus |
+| Quick status update on a record | ✓ | – | Single state flip |
+| Multi-step workflow execution | – | ✓ | Sequential coordination |
+| Toggle a setting | ✓ | – | Single config flip |
+| Adjust rules / policies | – | ✓ | Considered decision affecting future state |
+
+**Per-variant interaction declarations.** Widget definitions declare which interactions each variant surfaces. Glance variants typically surface zero interactions (count + label only). Brief variants surface 1-3 most-common bounded interactions. Detail / Deep variants surface the full bounded interaction set for the widget. Surfacing decisions consistent across variants — Glance never surfaces what Brief doesn't; Brief never surfaces what Detail doesn't.
+
+**Convention vs schema.** Per-variant interaction declarations may be expressed as schema (`WidgetVariant.supported_interactions: string[]`) or convention (documented per widget; enforced by code review + the canonical examples table above). Recommendation: **convention for Phase W-1 + W-2, schema for Phase W-3 onward** if interaction discoverability becomes catalog-relevant (e.g., "show me widgets that let me approve anomalies"). Phase W-3 widget builds declare per-variant supported interactions in their definition file as documentation-comments + Storybook examples; full schema surfaces if needed.
+
+**Why this discipline matters.** Without it, widgets either become micro-Focuses (full editing surface, workspace metaphor collapses) or read-only viewers (forced trip to Focus for every flip, friction). The discipline produces a coherent platform where: operators handle quick work in widgets; complex work happens in Focus; both surfaces share data + mutation paths; user mental model stays clean ("am I considering trade-offs? open Focus. just flipping a flag? do it here").
+
+**Cross-reference.** This discipline relates to PLATFORM_INTERACTION_MODEL.md *summon → arrange → park → dismiss* by adding the action discipline at the materialization unit. Widgets ARE tablets, and tablets host bounded interactions; full workspaces (Focus) host considered decisions.
+
+### 12.7 Entity cores have widget views (canon)
+
+**The canon: every first-class entity has a corresponding card widget that renders the entity's primary fields with declared variants. Widget Interactivity Discipline (§12.6a) applies — bounded entity edits are widget-appropriate; multi-field record changes require Focus or the entity's dedicated page.**
+
+Same pattern at entity scope. Customer entity → Customer Card Widget. Order entity → Order Card Widget. Cemetery entity → Cemetery Card Widget. Case entity → Case Card Widget.
+
+**Variant taxonomy applies.**
+- **Glance**: entity name + status indicator + key count (e.g., customer name + "3 open invoices")
+- **Brief**: entity name + 3-5 primary fields + most-recent-action affordance + bounded interactions (mark contacted, quick note, status flip)
+- **Detail**: full primary record + recent activity feed + secondary fields scrollable + bounded edit set (single-field updates, status changes, quick annotations)
+- **Deep**: typically opens dedicated entity detail page rather than rendering inline — Deep IS the entity's editing surface for considered changes
+
+**Bounded entity interactions (per §12.6a discipline).**
+
+Widget-appropriate (Brief / Detail variants):
+- **Status flip** (mark contacted, mark archived, toggle active/inactive)
+- **Quick note** (single annotation on the entity)
+- **Single-field update** (update phone number, update email)
+- **Tag / flag** (add a tag, flag for review)
+- **Quick assignment** (assign to user, set owner)
+
+Focus-required (or entity's dedicated detail page):
+- **Multi-field record changes** (full contact-info update, relationship-restructure)
+- **Linking entities** (associating customer with new account, relationship rules)
+- **Decision moments** (approve credit limit increase, write off bad debt, archive permanently)
+- **Workflows that touch multiple entities** (merge duplicate customers, transfer cases between FHs)
+
+The discipline parallels workspace-core widgets: easy state flips happen in the widget; considered changes happen in the entity's dedicated workspace.
+
+**Relationship to command bar peek panels.** Per Decision 3, peek panels stay separately routed (entity-type registered renderers). But peek content composition USES widget components. A peek of a Customer entity renders the Customer Card Widget at Brief variant inside the peek panel chrome — including the bounded interactions. A user hovering a customer reference + clicking-to-park the peek can mark contacted, add a quick note, etc., from the parked peek. Same Brief variant, same interactions, different routing primitive.
+
+**Lifecycle distinction.**
+- **Pinned widgets persist** — user pins Customer Card Widget for Hopkins Funeral Home to their Pulse; it stays until unpinned. Bounded interactions available throughout the pinned lifetime.
+- **Peek widgets are ephemeral** — user hovers a customer reference in a saved view, peek summons the Customer Card Widget at Brief variant for the duration of the hover (or click-to-park if hover-to-click promotion). Bounded interactions available during the peek session.
+
+Same visual vocabulary (Brief variant of Customer Card Widget renders identically in both contexts), same interaction set, different lifecycle (pinned vs ephemeral). The user perceives the widget consistently; the routing primitive handles persistence differently.
+
+**Architectural implication: entity widgets are catalog citizens.** A Customer Card Widget is in the catalog like any other widget. User can pin it to Pulse with `config = { customer_id }` to permanently surface a particular customer + interact with it via bounded actions. User can also encounter it ephemerally via peek panels with the same interaction surface. Same registered widget, different consumption.
+
+**Why entity card widgets matter.** Entities are the operational nouns; users reference them constantly + need bounded interactions on them constantly. Without entity card widgets, every entity-rendering surface (peek, Pulse pin, sidebar pin, search result tile) reinvents its own card composition + bounded-edit surface — divergence at scale. Centralizing entity rendering in widgets means: one Customer Card composition, one set of bounded interactions, used wherever a customer surfaces.
+
+### 12.8 Tablet materialization integration
+
+Pattern 1 (Section 11) defines the tablet-treatment composition. Section 12 inherits it with surface-driven adaptations and variant-driven chrome reduction.
+
+**Surface-driven chrome decisions.** The variant component itself doesn't pick its own chrome. The SURFACE wraps the widget appropriately:
+
+- **Canvas surface (Focus)** wraps in `WidgetChrome` — drag handle, dismiss X, resize zones, frosted-glass tablet treatment. Section 11 Pattern 1 + Aesthetic Arc Session 4.8 calibration (rounded-none, layered widget-tier shadow, translateY transform).
+- **Grid surface (Pulse / Vault Overview / Operations Board)** wraps in `WidgetWrapper` — header bar with icon + title, refresh / menu / edit affordances, solid-fill card treatment. Card-tier ambient shadow.
+- **Floating tablet (command bar peek)** wraps in future `TabletShell` — frosted-glass + bezel + grip + parking surface. Same Pattern 1 frosted-glass treatment as Focus canvas tablets.
+- **Sidebar pin (Spaces)** wraps in `PinnedItem` — compact row, no chrome. Glance variant content rendered directly.
+- **Peek panel (entity card content)** wraps in PeekHost (separately routed) — frosted-glass tablet, but content is Brief variant of an entity widget.
+
+**Cross-mode behavior.**
+- Frosted-glass treatment for tablets sitting over dimmed or blurred substrate (Focus, command bar tablet, peek panel) → `bg-surface-elevated/85` + `backdrop-blur-sm` + `rounded-none` (Aesthetic Arc Session 4.8).
+- Solid-fill treatment for cards mounted in opaque surfaces (Pulse, Vault Overview, Operations Board, Spaces dashboards) → `bg-surface-elevated` + `rounded-[2px]` (Pattern 2 architectural-corner spec).
+
+The Pattern 1 vs Pattern 2 distinction (Aesthetic Arc Session 4.8 canon): different surface treatments require different corner values to produce equivalent perceptual sharpness. Frosted-glass widgets use 0px; solid-fill widgets use 2px. Same architectural register.
+
+**Glance variant chrome reduction.** At Glance size (single number / icon), the bezel + mono eyebrow + grip indicator overhead consumes more visual real estate than the content. Resolution: **Glance variants OMIT bezel + OMIT eyebrow header**. They render as pure-content tiles with just the count chip + label. The tablet chrome scales WITH the variant — fuller chrome for fuller content, minimal chrome for minimal content. This is a Pattern 1 sub-rule documented for the variant taxonomy.
+
+**Watch-tier translation (post-September).** Glance variant maps cleanly to Apple Watch / iPhone widget-stack tier. Brief maps to iOS Medium widget. Detail maps to iOS Large. Deep maps to dedicated app deep-link. Even though watch deployment is post-September, the variant taxonomy is forward-compatible — a deliberate choice. Pattern 1 chrome reductions extend naturally to smaller tiers (Glance on watch is the same composition as Glance on sidebar).
+
+### 12.9 Persistence model
+
+Persistence is per-surface, not unified. Each surface has different access patterns and constraints; forcing a single storage layer fights those constraints. The IN-MEMORY layout shape IS unified (`WidgetState[]` with `widget_id`, `variant_id`, `position`, `config`); the STORAGE layer differs.
+
+| Surface | Storage | Schema location | Access pattern |
+|---|---|---|---|
+| Focus canvas | `focus_sessions.layout_state` JSONB | `r48_focus_sessions_and_layout_defaults` migration | Per-user per-Focus session; 3-tier resolve (active → recent → tenant default → registry); 500ms debounced writes |
+| Operations Board / Vault Overview / hub dashboards | `user_widget_layouts` table | Existing (pre-Widget Library) | Per-user per-page-context; row-level updates on layout change |
+| Spaces sidebar pins | `User.preferences.spaces[].pins[]` JSONB | `r41_user_space_affinity` and earlier | Per-user; Spaces config holds pin array; max 20 pins per Space |
+| Pulse | `User.preferences.spaces[space_id].pulse_layout` JSONB | Extended in Phase W-2 / W-4 | Per-user per-Space; same JSONB column as Spaces config; Phase 3 trade-off (no new table for bounded config) |
+| Command bar peek | Session-scoped (in-memory) | None — ephemeral | Per-session; resets on browser refresh; not persisted (peek is hover-summoned) |
+
+**Why distributed.** Each surface has different access patterns:
+- Focus needs fast 3-tier resolve with optimistic seed; benefits from the layout state being colocated with the Focus session.
+- Dashboards need stable per-page-context layouts; benefit from a normalized table.
+- Spaces pins are bounded (≤ 20 per Space, ≤ 7 Spaces per user); JSONB is appropriate.
+- Pulse layouts are similarly bounded; share Spaces' JSONB approach.
+- Command bar peeks are ephemeral by design.
+
+Forcing all into one table breaks one or more access patterns. Each surface's storage choice is deliberate.
+
+**In-memory layout shape unified.** Across all surfaces, the layout in memory is a `WidgetState[]` with consistent fields:
+
+```typescript
+interface WidgetState<TConfig = unknown> {
+  instance_id: string                  // unique per-instance UUID
+  widget_id: string                    // catalog reference
+  variant_id: "glance" | "brief" | "detail" | "deep"
+  position: WidgetPosition             // surface-specific shape
+  config: TConfig                      // per-instance config
+}
+```
+
+`WidgetPosition` is a discriminated union per surface:
+
+```typescript
+type WidgetPosition =
+  | { surface: "focus_canvas"; anchor: WidgetAnchor; offsetX: number; offsetY: number; width: number; height: number | "auto"; maxHeight?: number }
+  | { surface: "pulse_grid" | "dashboard_grid"; col: number; row: number; col_span: number; row_span: number }
+  | { surface: "spaces_pin"; sort_order: number }
+  | { surface: "floating_tablet"; ephemeral: true }
+```
+
+Surface code reads only the relevant variant; widget components only see `WidgetVariantProps` (which doesn't include position — surfaces handle positioning).
+
+**Migration discipline.** Existing widgets keep their existing storage. New widgets land on the unified contract. Mechanical migration is "as touched" (Decision 10). No big-bang migration; both frameworks coexist 1-2 release windows.
+
+### 12.10 Reference implementation
+
+Three canonical widgets serve as reference implementations for the Widget Library Architecture:
+
+**1. Funeral Schedule Widget (workspace-core widget).**
+- Cold-start catalog: `funeral_schedule`
+- Variants: Glance + Brief + Detail + Deep
+- Surface compatibility: `pulse_grid`, `focus_canvas`, `spaces_pin`, `dashboard_grid`
+- Vertical: `["funeral_home"]`
+- Demonstrates: §12.6 "Workspace cores have widget views" canon + §12.6a Widget Interactivity Discipline. Same kanban data as Funeral Scheduling Focus core, **abridged interactive surface** with bounded micro-actions; complex decisions remain in Focus.
+- Data source: shared with Focus via `useSchedulingFocus()` context (when widget is canvas-pinned in Focus) OR via direct backend fetch (when widget is on Pulse outside Focus). Mutations route through the same service calls as Focus.
+- Per-variant content + interactions:
+  - **Glance** — today's delivery count + finalize status. Interactions: none (count + label only). Tap navigates to Brief or Focus.
+  - **Brief** — lane summary (counts by driver) + key alerts. Interactions: drag delivery between drivers (single reassignment), mark hole-dug status (single state flip), tap card to expand summary.
+  - **Detail** — full kanban with hole-dug indicators + ancillary pool summary. Interactions: drag deliveries between drivers, mark hole-dug, update single ETA / start time, toggle ancillary attachment, quick note on a delivery.
+  - **Deep** — kanban + ancillary pool + flanking-day peek (post-Phase-4.4.4). Same interaction set as Detail.
+- **NOT supported in any variant**: finalize schedule, day-switch / day-rebuild, bulk reassignment, conflict resolution, schedule rebuild after disruption, adding new deliveries. Those are decision moments that require the Focus core's full editing chrome + workspace context.
+- Click "open in Focus" affordance (always present in Brief / Detail / Deep): launches Focus with the widget's current day pre-loaded.
+
+**2. Ancillary Pool Widget (canvas widget upgraded).**
+- Cold-start catalog: `ancillary_pool`
+- Variants: Glance + Brief + Detail
+- Surface compatibility: `pulse_grid`, `focus_canvas`, `spaces_pin`, `dashboard_grid`
+- Vertical: `["funeral_home"]`
+- Demonstrates: migration of existing AncillaryPoolPin (Phase 4.3b.3) from canvas-only widget to multi-variant catalog widget + §12.6a Widget Interactivity Discipline.
+- Data source: `useSchedulingFocus()` (Focus canvas) OR `/api/v1/dispatch/pool` (Pulse / Spaces).
+- Per-variant content + interactions:
+  - **Glance** — pool count (terracotta count chip). Interactions: none.
+  - **Brief** — top 5 pool items with FH name + product. Interactions: drag-attach to delivery (when in Focus canvas), mark item confirmed (single state flip), quick note.
+  - **Detail** — full scrollable list with drag-source affordance. Interactions: same as Brief plus mark confirmed in bulk-of-one (per-item), edit pickup notes per item.
+- **NOT supported in any variant**: pool reorganization (multi-record coordination), bulk reassignment, decision moments around competing pool priorities. Those route to Focus.
+
+**3. Recent Activity Widget (cross-vertical reference).**
+- Cold-start catalog: `recent_activity`
+- Variants: Glance + Brief + Detail
+- Surface compatibility: `pulse_grid`, `spaces_pin`, `dashboard_grid`, `peek_inline`
+- Vertical: `"*"` (cross-vertical)
+- Demonstrates: cross-vertical widget rendering across all surfaces with same component, different variants.
+- Data source: `useWidgetData("/api/v1/vault/activity/recent?limit=10")` with auto-refresh.
+- Per-variant content + interactions:
+  - **Glance** — count of new activity since last viewed. Interactions: none.
+  - **Brief** — 5 most recent activities with type icons + timestamps. Interactions: tap an activity to navigate to the related entity (peek or page).
+  - **Detail** — 20 most recent activities with full descriptions + entity links. Interactions: tap to navigate (no in-place edits — Recent Activity is a reference-only widget, the activities themselves don't have widget-level state to flip).
+- Used inside peek panels (entity detail context) at Brief variant.
+
+### Per-variant interaction declaration pattern
+
+For Phase W-1 + W-2, per-variant interaction declarations are **convention** — documented in widget definition comments + canonical examples table (§12.6a) + reference implementations above. Phase W-3 widget builds declare per-variant supported interactions in their definition file as documentation; Phase W-3+ may promote to schema-level declaration if interaction discoverability becomes catalog-relevant.
+
+The discipline is more important than the mechanism: when building a widget at any variant, ask the four §12.6a tests for each candidate interaction. If an interaction passes all four tests at the variant's content scope, surface it. If any test fails, route to Focus or the entity's dedicated page.
+
+**Cold-start catalog widget interaction summary** (full per-variant declarations land in widget files; this is the consolidated canonical reference):
+
+| Widget | Glance | Brief | Detail | Deep |
+|---|---|---|---|---|
+| `funeral_schedule` | None | drag, hole-dug | + ETA, ancillary, note | (same as Detail) |
+| `ancillary_pool` | None | drag-attach, confirm, note | + per-item edits | n/a |
+| `recent_activity` | None | tap-to-navigate | tap-to-navigate | n/a |
+| `today` | None | acknowledge alerts | + dismiss completed items | n/a |
+| `operator_profile` | None | switch active space | + edit role-driven defaults | n/a |
+| `anomalies` | n/a | approve/reject/snooze (single anomaly) | + note per anomaly | n/a |
+| `arrangement_pipeline` | n/a | tap to peek case | + mark stage complete (single case) | n/a |
+| `pour_schedule` | n/a | reassign single pour, status flip | + ETA per pour | (same as Detail) |
+| `urn_catalog_status` | None | tap-to-navigate | n/a | n/a |
+| `production_status` | n/a | acknowledge alerts | + status flip per line | n/a |
+| `saved_view` | n/a | execute view + view rows (interactions per saved-view config) | + filter / sort UI | + group / aggregation UI |
+| `briefing` | None | tap to expand | + dismiss / mark-read | n/a |
+
+In all rows, decisions involving trade-off evaluation, multi-record coordination, or commit-to-decision moments route to Focus or the entity's detail page. The matrix above is bounded to widget-appropriate interactions per §12.6a discipline.
+
+**Migration path for existing 25+ widgets.**
+- Operations Board widgets (16): wrap in `WidgetVariantProps` adapter, declare 1 Brief variant matching existing `default_size`, backfill `WidgetDefinition` from existing backend rows. Mechanical.
+- Vault Overview widgets (9): same as ops-board.
+- AncillaryPoolPin: becomes `scheduling.ancillary-pool` definition with 3 variants per above. Light refactor.
+- MockSavedViewWidget: retired in favor of real `saved_view` widget definition.
+- SavedViewWidget: promoted to first-class `saved_view` widget definition with config = `{view_id}`; 3 variants (Brief / Detail / Deep) matching saved-view presentation modes.
+- BriefingCard: promoted to `briefing.morning` and `briefing.evening` definitions, 3 variants each.
+- SpringBurialWidget / VaultReplenishmentWidget: become real WidgetDefinitions with `required_vertical` gating + 2 variants each (Glance + Brief).
+- Peek panel renderers: stay separate (not widgets) per Decision 3; may internally compose widget components for content.
+
+**Migration sequencing.**
+- Phase W-1: contract + types + canvas-side dispatcher extension. No migrations. Foundation only.
+- Phase W-2: Spaces pins gain widget pin_type. Existing widgets that have `supported_surfaces` including `spaces_pin` become pinnable to sidebars. Glance variants implemented for the cold-start subset.
+- Phase W-3: build the 12 cold-start widgets. Each ships with declared variants.
+- Phase W-4: Pulse surface ships, composing the cold-start catalog with role-driven defaults.
+- Phase W-5+: long-tail migration of existing 25+ widgets to declared variants, "as touched."
+
+### Cross-references
+
+- **Section 0**: thesis tests — every widget passes "would the same team have made this?" against DeliveryCard + AncillaryPoolPin reference components.
+- **Section 11 Pattern 1**: tablet treatment — visual contract widgets inherit.
+- **Section 11 Pattern 2**: card material treatment — applied to grid-mounted widgets via `WidgetWrapper`.
+- **Section 3 Widget elevation tier tokens**: `--widget-ambient-shadow`, `--widget-tablet-transform`, `--shadow-widget-tablet` — composed by floating-surface widgets.
+- **Section 6 Border treatment**: cross-mode corner specs — frosted-glass widgets use rounded-none, solid-fill widgets use rounded-[2px].
+- **PLATFORM_INTERACTION_MODEL.md** "The materialization unit — floating tablets": widgets are the canonical realization of the tablet primitive.
+- **PLATFORM_ARCHITECTURE.md** §3 (Spaces / Pulse / Monitor) + future Widget Library subsection: phased implementation plan W-1 through W-6.
+- **PLATFORM_PRODUCT_PRINCIPLES.md** "Widget Compactness": compact-to-contents canon applies; chrome scales with content, content scales with variant.
+- **AESTHETIC_ARC.md** Widget Library Investigation + Specification entries: arc context.
+
+---
+
 *End of DESIGN_LANGUAGE.md v1.0.*

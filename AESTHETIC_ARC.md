@@ -562,6 +562,57 @@ Pin auto-sizing height (`height: "auto" + maxHeight: 480` per new "Widget Conten
 
 Extended "Widget Content Sizing" → "Widget Compactness" principle in PRODUCT_PRINCIPLES.md to cover width + chrome containment + boundary affordances. Pin item titles wrap (`line-clamp-2 break-words`). SchedulingKanbanCore root wrapped in `w-fit max-w-full mx-auto` so kanban content-sizes + Finalize aligns to rightmost-lane right edge. Finalize typography bumped (12px font-medium → 14px font-semibold). DateBox visibility restored (transparent + full-strength `border-border-subtle` + `text-[0.8125rem]`). 4 commits: `db0dbe6` → `55e172e` → `895a058` → `785a38d`.
 
+### Widget Library Investigation + Specification (✅ Documented, 2026-04-27)
+
+Cross-arc work between Aesthetic Arc Session 4.8 (locked tablet visual contract) and Phase W-1 implementation. Two sessions: comprehensive investigation deliverable, then specification deliverables across 5 docs. NO CODE — pure architectural canonization. Includes one critical correction (read-only framing → interactivity discipline) caught by user mid-spec.
+
+**Investigation deliverable** (preceding session): comprehensive 11-section audit covering current state of two coexisting widget frameworks (canvas via `widget-renderers.ts` registry vs dashboard via `useDashboard` + `WidgetGrid`), inventory of 25+ existing widgets, surface-consumption analysis (Focus / Pulse / Spaces / command bar peek / hub dashboards), variant taxonomy proposal, vertical scoping mechanism via 4-axis filter (extending `vault.hub_registry`'s permission + module + extension triple with `required_vertical`), composition rules per surface, tablet-materialization integration with Section 11 Pattern 1, cold-start catalog recommendations, 13-risk register, 6-phase implementation plan W-1 → W-6. User reviewed; locked 10 architectural decisions + provided 3 strategic additions ("workspace cores have widget views" canon, "entity cores have widget views" canon, sequence revision Spaces-before-cold-start).
+
+**Specification deliverables** (this session):
+
+1. **DESIGN_LANGUAGE.md Section 12 — Widget Library Architecture** (NEW SECTION, ~440 lines): durable canonical reference. Subsections:
+   - 12.1 Foundational frame
+   - 12.2 Variant taxonomy: **Glance / Brief / Detail / Deep** (4 named tiers, Apple-style multi-variant per widget)
+   - 12.3 Widget contract: `WidgetDefinition<TConfig>` + `WidgetVariant` + `WidgetVariantProps` shapes
+   - 12.4 Visibility & gating: 4-axis filter (permission + module + extension + vertical) + defense-in-depth + invisible-not-disabled discipline
+   - 12.5 Composition rules per surface (Focus / Pulse / Spaces / command bar / dashboard)
+   - 12.6 Workspace cores have widget views (canon)
+   - **12.6a Widget Interactivity Discipline (canon — added during correction)**: state changes widget-appropriate, decisions belong in Focus; 4-test framework + canonical examples table
+   - 12.7 Entity cores have widget views (canon)
+   - 12.8 Tablet materialization integration (Pattern 1 inheritance + Glance variant chrome reduction)
+   - 12.9 Persistence model (per-surface storage, in-memory shape unified)
+   - 12.10 Reference implementation: Funeral Schedule + Ancillary Pool + Recent Activity widgets with per-variant interaction declarations + cold-start catalog widget interaction summary table
+
+2. **PLATFORM_ARCHITECTURE.md Section 9** (NEW): widget library framing, 4-axis filter as platform-wide vertical-scoping mechanism, connection to Vault-as-foundation thesis (widgets are Vault views with chrome), phased plan W-1 → W-6.
+
+3. **PLATFORM_INTERACTION_MODEL.md "Widgets as canonical tablet realization"** subsection added: variant tier mapping to surface metaphors (Glance = Watch, Brief = phone, Detail = tablet/desktop, Deep = primary work surface), workspace-cores-have-widget-views interaction implication, widget interactivity discipline cross-reference, peek-vs-widget composition reuse pattern.
+
+4. **BRIDGEABLE_MASTER.md §3.25**: strategic milestone capture, sequence W-1 → W-4 pre-September, September demo narrative, connection to Vault primitive layering (data → materialization → placement).
+
+5. **AESTHETIC_ARC.md** (this entry): cross-arc session log + critical correction documentation (below).
+
+**Critical correction caught mid-spec.** Initial Section 12 draft framed widget views of workspace cores as "read-only" (e.g., "Funeral Schedule Widget renders kanban data, **read-only**"). User flagged: this is wrong. Widgets ARE interactive — but with discipline about WHAT interactions belong where. The correct principle: **state changes are widget-appropriate; decisions belong in Focus.** Criterion is interaction complexity, not editability. Quick state flips don't require entering a workspace; multi-variable decisions do.
+
+The correction surfaced a deeper insight: the read-only framing was a derivation error from "widgets simpler than Focus." The user's strategic insight ("operators shouldn't have to enter Focus for quick edits") is more architecturally correct than the read-only simplification. If widgets were truly read-only, operators forced into Focus for every micro-update — friction without payoff. If widgets had full editing capability, workspace metaphor muddied — no clear "where do I do which work" answer. Threading the needle: widgets are reference + micro-actions; Focus is considered decisions + complex coordination. Two genuinely different work modes.
+
+Section 12 amended in same session: 12.6 rewritten ("abridged interactive surface" replacing "read-only mirror"); new 12.6a added with 4-test framework + canonical examples table + widget catalog interaction summary; 12.7 entity cards rewritten with bounded-edit set; 12.5 composition rules updated per-surface with interactivity discipline notes; 12.10 reference implementations updated with per-variant interaction declarations. Cross-references to PLATFORM_ARCHITECTURE + PLATFORM_INTERACTION_MODEL all carry the corrected framing.
+
+**Methodology learning canonicalized.** Per-variant interaction declarations are convention for Phase W-1 + W-2, schema-promoted for Phase W-3+ if interaction discoverability becomes catalog-relevant. Phase W-3 widget builds declare per-variant supported interactions in their definition file as documentation-comments + Storybook examples. The canonical examples table in §12.6a is the discipline anchor; new widgets pass the 4 tests for each candidate interaction.
+
+**Variant naming locked: Glance / Brief / Detail / Deep.** User preferred named tiers over generic Compact / Standard / Expanded / Full (investigation proposed). Names map to user mental model ("give me a brief on..."), reinforce platform identity, future-proof surface metaphor (Glance = Watch tier, etc.).
+
+**Sequence locked: W-1 → W-2 (Spaces) → W-3 (cold-start) → W-4 (Pulse).** Investigation proposed W-2 = cold-start, W-3 = Spaces. Revised because Spaces sidebar absorbs widget pins (Spec Decision 2) — widgets need Glance variants from inception, not retroactively bolted on. Pulse becomes more bounded after Spaces-with-widgets exists.
+
+**Cold-start catalog locked at 12 widgets** (4 cross-vertical + 3 funeral-home + 3 manufacturing + 2 cross-surface infrastructure), each with 2-4 declared variants. Phase W-3 ships these.
+
+**September demo strategy.** Per user direction: "build correctly for long-term platform health, timeline measured in days not weeks." Phase W-1 → W-4 all ships pre-September given velocity. Demo narrative: "Same widget library. Vertical-aware visibility. Variant-aware density. Coherent across surfaces. Workspace cores have widget views — bounded interactions in widgets, considered decisions in Focus."
+
+**After spec lock.** Phase W-1 (Foundation) ready to begin. Phases W-1 through W-4 are bounded application of the now-locked spec. Subsequent surface builds (Pulse beyond W-4, expanded Focus types, command-bar peek content composition unification, long-tail dashboard widget migration to declared variants) become bounded application of the canonized library.
+
+**Sequence after Widget Library Phases:** Phase 4.4.4 (slide animation + multi-day functional work) + Aesthetic Arc Sessions 5-9 component-by-component refinement against the locked Pattern 1 + Pattern 2 references unblock simultaneously.
+
+---
+
 ### Session 4.8 — Sharp Corner Sweep + Widget Elevation Amplification (✅ Shipped, 2026-04-27)
 
 Closes the two remaining items after Session 4.7 visual verification: DateBox corners not architectural-sharp + AncillaryPoolPin reading as elevated card vs floating tablet. Final aesthetic-foundation calibration before declaring lock.
