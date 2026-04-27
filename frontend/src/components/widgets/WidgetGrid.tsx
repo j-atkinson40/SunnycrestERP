@@ -77,8 +77,15 @@ function SortableWidget({
     >
       <WidgetErrorBoundary widgetId={item.widget_id}>
         <Component
-          // WidgetWrapper receives these via internal props
-          // Widget components manage their own WidgetWrapper
+          // WidgetWrapper receives these via internal props.
+          // Widget components manage their own WidgetWrapper.
+          //
+          // Widget Library Phase W-1 (Section 12.3 contract) injects
+          // `variant_id` + `surface` alongside the legacy underscore-
+          // prefixed framework props. Existing widgets ignore them
+          // (loose `WidgetProps` shape); Phase W-3 widgets adopt
+          // `WidgetVariantProps` and read them directly. Migration
+          // window per Decision 10.
           {...({
             _editMode: editMode,
             _dragHandleProps: listeners,
@@ -86,6 +93,9 @@ function SortableWidget({
             _onSizeChange: (size: string) => onSizeChange(item.widget_id, size),
             _size: item.size,
             _supportedSizes: item.supported_sizes,
+            // Phase W-1 unified contract.
+            variant_id: item.variant_id,
+            surface: "dashboard_grid" as const,
           } as Record<string, unknown>)}
         />
       </WidgetErrorBoundary>

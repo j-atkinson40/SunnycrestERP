@@ -79,7 +79,13 @@ export function useDashboard(pageContext: string) {
         enabled: true,
         position: maxPos + 1,
         size: defn.default_size,
-        config: {},
+        config: defn.default_config as Record<string, unknown> ?? {},
+        // Widget Library Phase W-1 — Section 12.3: per-instance
+        // variant selection. Defaults to the widget's declared
+        // default_variant_id when adding to dashboard. User can
+        // resize-to-variant-swap (Phase W-3+) or pick a different
+        // variant via the catalog UI.
+        variant_id: defn.default_variant_id,
         title: defn.title,
         description: defn.description,
         icon: defn.icon,

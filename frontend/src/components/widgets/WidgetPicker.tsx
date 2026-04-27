@@ -133,9 +133,24 @@ export default function WidgetPicker({
                   <span className="text-micro font-mono text-content-subtle">
                     {w.default_size}
                   </span>
+                  {/* Widget Library Phase W-1 — Section 12.2 variant
+                      indicator. Phase W-1 minimum: shows the count
+                      of declared variants + the default variant id.
+                      Phase W-3 expands this into a rich preview /
+                      variant picker per Section 12.5 catalog UI. */}
+                  {w.variants && w.variants.length > 1 && (
+                    <span className="text-micro text-content-subtle">
+                      {w.variants.length} variants
+                    </span>
+                  )}
                   {w.required_extension && !w.is_available && (
                     <span className="text-micro text-status-warning">
                       Requires {w.required_extension}
+                    </span>
+                  )}
+                  {!w.is_available && w.unavailable_reason === "vertical_required" && (
+                    <span className="text-micro text-status-warning">
+                      Vertical: {(w.required_vertical ?? []).join(", ")}
                     </span>
                   )}
                 </div>
