@@ -252,6 +252,29 @@ export function DeliveryCard({
     ? { transform: CSS.Translate.toString(transform) }
     : undefined
 
+  // Aesthetic Arc Session 4 — Pattern 3 first channel: left-edge
+  // flag wired to hole-dug semantic. The flag is a 3px-wide
+  // signal-color bar at the card's left edge — the card's primary
+  // status read at a glance, before the dispatcher's eye reaches
+  // the bottom-rail HoleDugBadge for the explicit icon.
+  //
+  // Mapping (DESIGN_LANGUAGE §11 Pattern 3 — two-channel rule):
+  //   unknown → border-l-accent       (terracotta — needs attention)
+  //   yes     → border-l-status-success (green — confirmed)
+  //   no      → border-l-transparent  (no flag — explicit "no hole" is
+  //                                    not an attention state, the
+  //                                    bottom badge carries the read)
+  //
+  // The two-channel composition: flag (color signal, peripheral
+  // attention) + bottom badge (icon + cycle affordance, deliberate
+  // interaction). Same data, two reads at different attention scales.
+  const flagColorClass =
+    delivery.hole_dug_status === "unknown"
+      ? "border-l-accent"
+      : delivery.hole_dug_status === "yes"
+        ? "border-l-status-success"
+        : "border-l-transparent"
+
   // Compose the compact service-time line. Examples (user spec):
   //   "11:00 Graveside"
   //   "11:00 Church · ETA 12:00"
@@ -292,6 +315,15 @@ export function DeliveryCard({
         // day-header badge ("Draft" pill). Whole-day state is
         // singular; per-card repetition was noise.
         "relative rounded-md bg-surface-elevated shadow-level-1",
+        // Aesthetic Arc Session 4 — Pattern 3 left-edge flag.
+        // 3px solid colored border on the left edge, color-mapped
+        // to hole-dug status above. With rounded-md (8px), the flag's
+        // top-left + bottom-left corners follow the radius — the
+        // visual is a tagged-edge accent, not a full-bleed bar.
+        // border-l-transparent (no flag) preserves the original
+        // chrome silhouette when no signal is active.
+        "border-l-[3px]",
+        flagColorClass,
         // Hover lifts to shadow-level-2 — matches Apple Reminders
         // "card catches a bit more light on hover." Pure shadow
         // transition, GPU-composited, no layout cost.
@@ -371,11 +403,22 @@ export function DeliveryCard({
           </div>
         )}
 
-        {/* Line 1 — funeral home (the headline; identifies the job). */}
+        {/* Line 1 — funeral home (the headline; identifies the job).
+            Aesthetic Arc Session 4 — Pattern 2 card material treatment
+            + DL §4 typeface roles: proper nouns (people, businesses,
+            places) carry the engraving register via font-display
+            (Fraunces). FH name is THE identifying word on the card,
+            seen first, repeated thousands of times across a season.
+            Fraunces' humanist-serif modulation gives proper nouns
+            the engraved-stone weight that distinguishes them from
+            the body content (Geist sans) flowing below. Weight 500
+            (font-medium) — Fraunces' display register reads heavy
+            at 500; pushing to 600 would over-engrave at this 14px
+            size. */}
         <div
           className={cn(
             "truncate text-body-sm font-medium leading-tight text-content-strong",
-            "font-sans",
+            "font-display",
           )}
           data-slot="dispatch-card-fh"
           title={fh}
@@ -656,6 +699,17 @@ function HoleDugBadge({
             className={cn(
               "inline-flex h-5 w-5 items-center justify-center rounded-full",
               config.cls,
+              // Aesthetic Arc Session 4 — Pattern 3 jewel-set status
+              // indicator. Inset box-shadow gives the badge a recessed-
+              // ring read — the icon sits in a small bezel cut into
+              // the card surface, not a chip pasted on top. Distinct
+              // from outer shadows (level-1/2/3 = elevation) — inset
+              // shadow = "set into" the surface. Single shadow value
+              // works in both modes; if dark mode needs strengthening
+              // a future session can promote this to a token
+              // (`--shadow-jewel-inset` light/dark) per DL §11
+              // Pattern 3 reference implementation note.
+              "shadow-[inset_0_1px_2px_rgb(0_0_0/0.15)]",
               onCycle &&
                 "hover:ring-1 hover:ring-accent/40 transition-all duration-quick cursor-pointer",
               !onCycle && "cursor-default",
