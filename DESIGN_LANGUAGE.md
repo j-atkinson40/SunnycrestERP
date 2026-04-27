@@ -796,23 +796,24 @@ Not every token has every variant. The table below lists all defined tokens.
 - `shadow-highlight-top` is the top-edge highlight used on elevated surfaces in dark mode per Section 2's "material, not paint" anchor. It's a thin (1px) inset highlight that reads as reflected warm light. Not used in light mode.
 - Shadow composition (blur, offset) is specified separately in Section 6.
 
-### Card material treatment tokens (Aesthetic Arc Session 4.5)
+### Card material treatment tokens (Aesthetic Arc Session 4.6 — mode-aware)
 
 **Rationale:** Pre-Session-4.5, cards composed `bg-surface-elevated + shadow-level-1` and read as flat outlined panels rather than physical material. The four tokens below add the **edge highlights + edge shadows + ambient lift** layer that turns a card into a tactile object on a substrate. Section 11 Pattern 2 documents the composition recipe; these tokens carry the values.
 
-The four tokens are **single-value across modes** (architectural-color rule per §2 — physical edges read identically in either room; the substrate around them changes). Light vs dark perceptual asymmetry is intentional: warm-cream edge-highlight at 5% alpha reads "catching focused light" on charcoal but near-imperceptible on cream — light-mode lift comes primarily from the ambient drop shadow instead.
+**Session 4.5 → 4.6 calibration history.** Session 4.5 shipped these tokens single-value-across-modes per the architectural-color rule. Visual verification revealed the single-value approach failed against actual substrate: light mode top-edge highlight (`rgba(255,240,220,0.05)` warm-cream tint) is invisible on cream substrate by definition; light-mode `0.35` bottom-edge reads as a hard border on cream; ambient with `-4px` spread + `10px` blur is too tight to read as "lift"; dark-mode `0.35` bottom-edge is too subtle on charcoal; dark-mode `5%` top-edge is redundant with `shadow-level-1`'s existing `3px 90%` top highlight (`--shadow-highlight-top`). Session 4.6 makes these tokens **mode-aware** because they're *perceptual* tokens (they need different values to produce the same perceptual signal against different substrates), not *identity* tokens (like `--accent` which keep one value across modes per §2). The "same physical edge in either room" semantic is preserved by tuning values so each mode reads the edge consistently.
 
-| Token | Value (single, both modes) | Composition role |
-|---|---|---|
-| `--card-edge-highlight` | `rgba(255, 240, 220, 0.05)` | Top-edge 1px inset highlight via `inset 0 1px 0 var(...)` — catch-the-light cue |
-| `--card-edge-shadow` | `rgba(0, 0, 0, 0.35)` | Bottom-edge 1px inset shadow via `inset 0 -1px 0 var(...)` — shadow-below cue |
-| `--card-ambient-shadow` | `0 4px 10px -4px rgba(0, 0, 0, 0.25)` | Drop shadow with negative spread — tighter halo than `shadow-level-1`, signals lift from substrate |
-| `--flag-press-shadow` | `rgba(0, 0, 0, 0.20)` | Right-of-flag 1px inset via `inset 1px 0 0 var(...)` — Pattern 3 left-edge flag pressed-in detail |
+| Token | Light mode | Dark mode | Composition role |
+|---|---|---|---|
+| `--card-edge-highlight` | `rgba(255, 255, 255, 0.45)` | `transparent` | Top-edge 1px inset via `inset 0 1px 0 var(...)`. Light mode: visible white catch-light on cream (substrate L=0.965 + 45% white = perceptual lift). Dark mode: no-op — defers to `shadow-level-1`'s existing 3px top-edge highlight via `--shadow-highlight-top`. |
+| `--card-edge-shadow` | `rgba(0, 0, 0, 0.20)` | `rgba(0, 0, 0, 0.50)` | Bottom-edge 1px inset via `inset 0 -1px 0 var(...)`. Light mode tuned softer to avoid hard-border read on cream; dark mode strengthened for visible bottom-edge cue on charcoal. |
+| `--card-ambient-shadow` | `0 8px 20px -4px rgba(0, 0, 0, 0.18)` | `0 8px 24px -4px rgba(0, 0, 0, 0.45)` | Drop shadow with larger blur and less negative spread than Session 4.5 (which used `4px/10px/-4px` — too tight). Light mode lighter alpha for cream substrate; dark mode stronger for atmospheric halo against charcoal. |
+| `--flag-press-shadow` | `rgba(0, 0, 0, 0.15)` | `rgba(0, 0, 0, 0.30)` | Right-of-flag 1px inset via `inset 1px 0 0 var(...)`. Pattern 3 left-edge flag pressed-in detail. Light mode lighter for cream; dark mode stronger for charcoal. |
 
 *Notes:*
 - The four compose alongside (not replacing) `--shadow-level-1`. A canonical card carries: edge highlight + edge shadow + ambient lift + level-1's tight ground + atmospheric halo (+ dark-mode top-edge highlight via `--shadow-highlight-top`).
 - `--flag-press-shadow` is conditional on flag presence — `border-l-transparent` cards omit the press shadow (no flag → no press detail). Pattern 3 flag width canonical: 2px.
-- Pre-Session-4.5 Tier-2 calibration shipped only `shadow-level-1` for card material; Session 4.5 confirmed via rendering verification that level-1 alone reads flat. The four new tokens close the gap.
+- **Why mode-aware here when accent tokens are single-value:** identity tokens (terracotta `--accent`, sage-green `--accent-confirmed`) carry the same hue/lightness across modes because they ARE the same color in either room. Perceptual-composition tokens (these four) carry the same *perceptual signal* across modes — but the values needed to produce that signal differ because cream-substrate vs charcoal-substrate respond to alpha values differently. The architectural-color rule binds identity tokens; perceptual tokens have a separate compatibility rule documented per-token.
+- **Calibration history:** Session 4.5 single-value (failed visual verification); Session 4.6 mode-aware (current). Pre-Session-4.5 Tier-2 calibration shipped only `shadow-level-1` for card material — read as flat panel. Session 4.5 added the four tokens; Session 4.6 mode-tuned them per-substrate.
 
 ### Jewel-set inset ring token (Aesthetic Arc Session 4.5)
 
@@ -2108,14 +2109,16 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --status-info: oklch(0.55 0.08 225);
   --status-info-muted: oklch(0.93 0.03 225);
 
-  /* Card material treatment (Aesthetic Arc Session 4.5).
-     Single value across modes; cards compose all four into a
-     multi-layer box-shadow. See §3 "Card material treatment
-     tokens" + §11 Pattern 2 for composition recipe. */
-  --card-edge-highlight: rgba(255, 240, 220, 0.05);
-  --card-edge-shadow: rgba(0, 0, 0, 0.35);
-  --card-ambient-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.25);
-  --flag-press-shadow: rgba(0, 0, 0, 0.20);
+  /* Card material treatment (Aesthetic Arc Session 4.6 — mode-
+     aware). Light-mode values calibrated for cream substrate
+     (L=0.965 elevated). Dark-mode override below for charcoal
+     substrate (L=0.28 elevated). See §3 "Card material treatment
+     tokens" + §11 Pattern 2 for composition recipe and the
+     Session-4.5→4.6 calibration history. */
+  --card-edge-highlight: rgba(255, 255, 255, 0.45);
+  --card-edge-shadow: rgba(0, 0, 0, 0.20);
+  --card-ambient-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.18);
+  --flag-press-shadow: rgba(0, 0, 0, 0.15);
 
   /* Jewel-set inset ring (Aesthetic Arc Session 4.5) — light
      mode 0.15. Dark mode override 0.30 in [data-mode="dark"]. */
@@ -2230,6 +2233,17 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
      Session 4.5). Doubles to 0.30 alpha because dark substrate
      compresses low-lightness deltas. See §3 jewel-inset block. */
   --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.30);
+
+  /* Card material treatment — dark-mode overrides (Aesthetic Arc
+     Session 4.6). Strengthens light-mode values to carry the same
+     perceptual signal against charcoal substrate. Edge highlight
+     transparent because shadow-level-1 already carries the warm
+     top-edge cue via --shadow-highlight-top. See §3 mode-aware
+     block. */
+  --card-edge-highlight: transparent;
+  --card-edge-shadow: rgba(0, 0, 0, 0.50);
+  --card-ambient-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
+  --flag-press-shadow: rgba(0, 0, 0, 0.30);
 }
 ```
 
@@ -2901,14 +2915,14 @@ The patterns are reference-implementation-driven. Each cites the canonical compo
 **The pattern.** Cards across the platform share consistent material vocabulary so a dispatcher scanning the kanban builds one mental model that applies everywhere a card appears.
 
 **Composition:**
-- **Material chrome (Aesthetic Arc Session 4.5)** — the card composes a multi-layer box-shadow that reads as physical material rather than outlined panel. Required composition (in order):
+- **Material chrome (Aesthetic Arc Session 4.5 + 4.6)** — the card composes a multi-layer box-shadow that reads as physical material rather than outlined panel. Required composition (in order):
   ```
-  inset 0 1px 0 var(--card-edge-highlight)    /* top-edge catch-the-light, 1px warm-cream 5% */
-  inset 0 -1px 0 var(--card-edge-shadow)      /* bottom-edge shadow line, 1px black 35% */
-  var(--card-ambient-shadow)                   /* lift-from-substrate, 0 4px 10px -4px black 25% */
+  inset 0 1px 0 var(--card-edge-highlight)    /* top-edge catch-the-light */
+  inset 0 -1px 0 var(--card-edge-shadow)      /* bottom-edge shadow line */
+  var(--card-ambient-shadow)                   /* lift-from-substrate */
   var(--shadow-level-1)                        /* existing tight ground + atmospheric halo */
   ```
-  Pre-Session-4.5 cards composed `bg-surface-elevated + shadow-level-1` only and read as flat outlined panels. The four-token composition closes the gap. See §3 "Card material treatment tokens" for the canonical token block.
+  The four card-material tokens are **mode-aware** (Session 4.6). Light mode: white-45% top highlight (visible catch-light on cream), black-20% bottom edge (soft hairline), `0 8px 20px -4px black 18%` ambient (soft lift). Dark mode: transparent top highlight (defers to shadow-level-1's existing 3px 90% warm top), black-50% bottom edge (visible on charcoal), `0 8px 24px -4px black 45%` ambient (strong atmospheric halo). Pre-Session-4.5 cards composed `bg-surface-elevated + shadow-level-1` only and read as flat outlined panels. Session 4.5 added the four tokens single-value-across-modes; Session 4.6 mode-tuned them per-substrate after visual verification confirmed single-value failed against actual substrate at both ends. See §3 "Card material treatment tokens" for the canonical mode-aware token table.
 - **Proper-noun text in `font-display`** (Fraunces serif) at proper size — funeral home name as "the engraving," the most important text on the card. The serif treatment marks the proper noun (a person's family, a funeral home name, a cemetery name when proper) as different from the surrounding data; it carries the weight of a name.
 - **Cemetery + city paired with mid-dot separator** — cemetery primary value at `text-content-base`, city in lower value (`text-content-muted`), mid-dot in `text-content-faint`. See Pattern 5 for the hierarchy rule.
 - **Time and counts in `font-mono`** (Geist Mono) — numerals carry tabular alignment + precision register. Numerals at lighter weight than surrounding type label ("15:00 Funeral Home" — the digits read as data, the label as prose).
@@ -2922,7 +2936,7 @@ The patterns are reference-implementation-driven. Each cites the canonical compo
 
 **When NOT to apply.** Hub-page summary cards (those are dashboard widgets — apply Pattern 1 if floating, or hub-card patterns separately). System notifications (those use Alert/Banner primitives).
 
-**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) — post-Aesthetic-Arc-Session-4.5 the canonical example. Material chrome composition (edge highlight + edge shadow + ambient drop + level-1), funeral home name in font-display (Fraunces), times in font-mono, mid-dot hierarchy on cemetery/city + vault/equipment lines, jewel-set hole-dug indicator via `--shadow-jewel-inset`, 2px left-edge flag wired to hole-dug semantic with right-side `--flag-press-shadow`.
+**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) — post-Aesthetic-Arc-Session-4.6 the canonical example. Material chrome composition (mode-aware edge highlight + edge shadow + ambient drop + level-1), funeral home name in font-display (Fraunces), times in font-mono, mid-dot hierarchy on cemetery/city + vault/equipment lines, jewel-set hole-dug indicator via `--shadow-jewel-inset`, 2px left-edge flag wired to hole-dug semantic with right-side `--flag-press-shadow`. Visual fidelity verified in both modes: light-mode cards lift off cream substrate via white catch-light + ambient drop + soft bottom shadow; dark-mode cards lift off charcoal via shadow-level-1's existing warm top-highlight + strong atmospheric ambient + visible bottom-edge shadow.
 
 ### Pattern 3 — Status indicator system (two-channel)
 

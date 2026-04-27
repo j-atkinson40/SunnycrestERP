@@ -116,48 +116,61 @@
   --shadow-level-2: 0 8px 24px var(--shadow-color-base), 0 2px 6px var(--shadow-color-subtle);
   --shadow-level-3: 0 16px 40px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base);
 
-  /* ─── CARD MATERIAL TREATMENT (Aesthetic Arc Session 4.5) ───
+  /* ─── CARD MATERIAL TREATMENT (Aesthetic Arc Session 4.6) ───
    *   DL §11 Pattern 2 card composition tokens. Cards across the
    *   platform compose all four into a multi-layer box-shadow that
    *   reads as physical material rather than outlined panel.
    *
-   *   --card-edge-highlight (top-edge catch-the-light):
-   *     1px inset highlight applied as `inset 0 1px 0 var(...)`.
-   *     Warm-cream tint at 5% alpha. On dark substrate reads as
-   *     focused light pool catching the top edge. On cream
-   *     substrate reads near-imperceptible (intentional — light
-   *     mode lift comes from --card-ambient-shadow instead).
+   *   Session 4.6 — MODE-AWARE values. Session 4.5 shipped single-
+   *   value-across-modes per the architectural-color rule, but
+   *   visual verification showed that approach failed against the
+   *   actual substrate at both ends:
+   *     - Light mode: warm-cream 5% highlight on cream substrate
+   *       is invisible by definition; -4px spread ambient too
+   *       tight to read as "lift"; 0.35 bottom-edge shadow on
+   *       cream reads as a border.
+   *     - Dark mode: 0.35 bottom-edge on charcoal too subtle;
+   *       1px 5% top-edge highlight redundant with shadow-level-1's
+   *       existing 3px 90% top highlight (`--shadow-highlight-top`).
+   *   The architectural-color rule applies to identity-bearing
+   *   tokens (--accent, --accent-confirmed). These shadow-composition
+   *   tokens are PERCEPTUAL — they need different values to PRODUCE
+   *   the same perceptual signal against different substrates. The
+   *   "same physical edge in either room" semantic is preserved by
+   *   tuning values so each mode reads the edge consistently.
    *
-   *   --card-edge-shadow (bottom-edge shadow):
-   *     1px inset shadow applied as `inset 0 -1px 0 var(...)`.
-   *     Pure-black 35% alpha. Reads as "shadow below" on the
-   *     bottom edge in both modes — counterweight to the top
-   *     highlight, completes the lit-from-above register.
+   *   Light mode (root):
+   *     --card-edge-highlight = white-45% (catches actual light on
+   *       cream; visible bright band at top of card; substrate
+   *       L=0.965 + 45% white = visible perceptual lift)
+   *     --card-edge-shadow = black-20% (produces a soft visible
+   *       hairline without reading as a hard border)
+   *     --card-ambient-shadow = 0 8px 20px -4px black-18% (larger
+   *       blur, less negative spread, lower alpha for cream
+   *       substrate; reads as "object lifted off table" not as
+   *       "panel with tight halo")
+   *     --flag-press-shadow = black-15% (light substrate carries
+   *       less press detail than dark)
    *
-   *   --card-ambient-shadow (lift-from-substrate):
-   *     Composite drop shadow with -4px spread (negative spread
-   *     pulls the shadow inward, creating a tighter halo than
-   *     shadow-level-1's atmospheric lift). Pure-black 25%
-   *     in BOTH modes; cream substrate sees gentle gray lift,
-   *     charcoal substrate sees deeper recess shadow.
-   *
-   *   --flag-press-shadow (Pattern 3 flag right-side detail):
-   *     1px right-of-flag inset shadow applied via `inset 1px
-   *     0 0 var(...)`. Pure-black 20% alpha. Reads as "pressed-
-   *     in detail beside the flag" rather than "paint stripe."
-   *     Critical for flag-as-structural register. Conditional
-   *     on flag presence (transparent flag → no press shadow).
-   *
-   *   Single value across modes for all four (architectural-
-   *   color rule per DL §2 — physical edges read the same in
-   *   either room; the substrate around them changes).
+   *   Dark mode (override below):
+   *     --card-edge-highlight = transparent (no-op; shadow-level-1's
+   *       existing 3px 90% top-edge highlight via --shadow-highlight-
+   *       top carries the catch-light register; this token is
+   *       redundant in dark mode)
+   *     --card-edge-shadow = black-50% (charcoal substrate needs
+   *       stronger contrast for visible bottom-edge cue)
+   *     --card-ambient-shadow = 0 8px 24px -4px black-45% (larger
+   *       softer shadow; charcoal needs more atmospheric halo to
+   *       read as physical lift)
+   *     --flag-press-shadow = black-30% (dark substrate amplifies
+   *       contrast; lift alpha to maintain visible press detail)
    *
    *   See DESIGN_LANGUAGE.md §11 Pattern 2 for the composition
    *   recipe and Pattern 3 for the flag press treatment. ─── */
-  --card-edge-highlight: rgba(255, 240, 220, 0.05);
-  --card-edge-shadow: rgba(0, 0, 0, 0.35);
-  --card-ambient-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.25);
-  --flag-press-shadow: rgba(0, 0, 0, 0.20);
+  --card-edge-highlight: rgba(255, 255, 255, 0.45);
+  --card-edge-shadow: rgba(0, 0, 0, 0.20);
+  --card-ambient-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.18);
+  --flag-press-shadow: rgba(0, 0, 0, 0.15);
 
   /* ─── JEWEL-SET INSET RING (Aesthetic Arc Session 4.5) ───
    *   DL §11 Pattern 3 second-channel inset shadow for status
@@ -423,4 +436,13 @@
    *   0.30 alpha doubles the recess depth so the indicator reads
    *   as physical jeweled inlay. Per DL §11 Pattern 3 doc-spec. ─── */
   --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.30);
+
+  /* ─── CARD MATERIAL TREATMENT — dark-mode overrides (Session 4.6) ───
+   *   Strengthens light-mode values to carry the same perceptual
+   *   signal against charcoal substrate. See light-mode block
+   *   comment above for the per-token rationale. ─── */
+  --card-edge-highlight: transparent;
+  --card-edge-shadow: rgba(0, 0, 0, 0.50);
+  --card-ambient-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
+  --flag-press-shadow: rgba(0, 0, 0, 0.30);
 }

@@ -285,9 +285,9 @@ export function DeliveryCard({
         ? "border-l-accent-confirmed"
         : "border-l-transparent"
 
-  // Aesthetic Arc Session 4.5 — Pattern 2 + Pattern 3 composite
-  // box-shadow. Cards now read as physical material objects rather
-  // than outlined panels:
+  // Aesthetic Arc Session 4.5 + 4.6 — Pattern 2 + Pattern 3 composite
+  // box-shadow. Cards read as physical material objects rather than
+  // outlined panels:
   //   • inset 0 1px 0 var(--card-edge-highlight)  → top-edge catch-light
   //   • inset 0 -1px 0 var(--card-edge-shadow)    → bottom-edge shadow
   //   • var(--card-ambient-shadow)                 → lift from substrate
@@ -295,9 +295,21 @@ export function DeliveryCard({
   //                                                  (only when flag exists)
   //   • var(--shadow-level-1)                      → existing material edges
   //
+  // The four material tokens are MODE-AWARE (Session 4.6 calibration
+  // after Session 4.5 single-value-across-modes failed visual
+  // verification). Light mode: white-45% top highlight, black-20%
+  // bottom edge, 8px/20px/-4px black-18% ambient. Dark mode:
+  // transparent top highlight (defers to shadow-level-1's existing
+  // 3px 90% warm top), black-50% bottom edge, 8px/24px/-4px black-45%
+  // ambient. See DL §3 "Card material treatment tokens" + §11
+  // Pattern 2 for the per-token mode-aware values + rationale.
+  //
   // Hover variant lifts level-1 → level-2 (more atmosphere). Edge +
-  // ambient + flag-press components carry through unchanged.
+  // ambient + flag-press components carry through unchanged across
+  // hover state.
   // Pre-Session-4.5: only shadow-level-1, read as flat panel.
+  // Session 4.5: single-value tokens, still flat in light mode.
+  // Session 4.6: mode-aware values, both modes pass visual fidelity.
   const hasFlag = delivery.hole_dug_status !== "no"
   const cardMaterialShadow = [
     hasFlag && "inset 1px 0 0 var(--flag-press-shadow)",
