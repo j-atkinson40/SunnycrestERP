@@ -252,40 +252,40 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
       data-slot="ancillary-pool-pin"
       data-pool-drop-target={showPoolDropFeedback ? "true" : "false"}
       className={cn(
-        // Aesthetic Arc Session 1 Commit D — pin reads as a floating
-        // tablet, not a solid rectangle pasted on the dimmed
-        // backdrop. Pre-Session-1: bg-surface-elevated alone (hard
-        // edges, no elevation, no surface alpha) → read as a "white
-        // box" on the dimmed backdrop, jarring against the cards
-        // floating around it. Post-Session-1:
-        //   • bg-surface-elevated/85 — 15% alpha lets the dimmed
-        //     backdrop bleed through subtly. The pin no longer
-        //     reads as opaque overlay.
-        //   • shadow-level-1 — same elevation token as the
-        //     DeliveryCard / AncillaryCard. Cross-surface material
-        //     consistency (Section 0 Considered Materiality TP1).
-        //   • rounded-md — square-shouldered radii (Section 0
-        //     Architectural Proportions TP2; not pillowy-large).
-        //   • supports-[backdrop-filter]:backdrop-blur-sm — when
-        //     the browser supports it, the pin's surface gets a
-        //     subtle blur of whatever bleeds through. Reads as a
-        //     frosted-glass tablet floating over content rather
-        //     than an opaque overlay. Falls back gracefully on
-        //     browsers without backdrop-filter.
+        // Aesthetic Arc Session 4 — Pattern 1 tablet treatment.
+        // The pin is the FIRST surface in the platform built fully
+        // to Pattern 1 reference. Composition (DL §11 Pattern 1):
+        //   • Frosted-glass surface — bg-surface-elevated/85 +
+        //     backdrop-blur-sm. Dimmed Focus backdrop bleeds
+        //     through with a subtle blur. Pre-Session-1 the pin
+        //     read as opaque "white box"; post-Session-1 it reads
+        //     as a frosted-glass tablet floating over content.
+        //   • Drawn edges — shadow-level-1 carries the token-
+        //     defined edge treatment (top-edge highlight in dark
+        //     mode + soft halo + tight grounding shadow per DL §6).
+        //     Cross-surface consistency: same elevation token as
+        //     DeliveryCard + AncillaryCard. The shadow IS the edge.
+        //   • Square-shouldered radii — rounded-md (8px). Not
+        //     pillowy-large (TP2 Architectural Proportions).
+        //   • Bezel grip (added Session 4) — small top-center pill
+        //     suggesting "tablet identity" (rendered as absolute-
+        //     positioned child below). Visual cue that this surface
+        //     is its own object, not a section embedded in canvas.
+        //     Same affordance as iOS Smart Stack widget bezels.
+        //   • `relative` enables the absolute-positioned bezel
+        //     grip child below.
         // PLATFORM_INTERACTION_MODEL: tablets are the
         // materialization unit — they float, they're individually
-        // present, they don't enclose other content. The pin now
-        // reads as a tablet.
+        // present, they don't enclose other content. Pattern 1
+        // reference component.
         //
         // Aesthetic Arc Session 1.5 — `flex h-full flex-col` →
         // `flex flex-col`. Dropping h-full because the pin's
         // WidgetChrome wrapper is now content-driven height (height:
         // "auto" + maxHeight: 480 in register.ts). With h-full the
         // pin would collapse to 0 because the parent has no fixed
-        // height. PLATFORM_PRODUCT_PRINCIPLES "Widget Content
-        // Sizing" — the pin natural-flows to its content, capped at
-        // maxHeight by WidgetChrome with overflow-y: auto.
-        "flex flex-col",
+        // height. PLATFORM_PRODUCT_PRINCIPLES "Widget Compactness".
+        "relative flex flex-col",
         "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
         "rounded-md shadow-level-1",
         // Subtle dim during refresh — keeps the existing list visible
@@ -305,31 +305,55 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
         "transition-shadow duration-quick ease-settle",
       )}
     >
+      {/* Aesthetic Arc Session 4 — Pattern 1 bezel grip.
+          Small top-center horizontal pill. iOS Smart Stack visual
+          vocabulary: a tablet has a slight visible top-edge cue
+          that distinguishes it from canvas. Subtle (h-0.5 = 2px,
+          w-8 = 32px wide, content-muted at 30% alpha) — present
+          but not announced. aria-hidden because it's a purely
+          visual affordance with no interaction semantic. Padding
+          on the header below uses pt-2.5 to clear the grip without
+          collision. */}
+      <div
+        aria-hidden
+        data-slot="ancillary-pool-pin-bezel-grip"
+        className={cn(
+          "absolute left-1/2 top-1.5 -translate-x-1/2",
+          "h-0.5 w-8 rounded-full",
+          "bg-content-muted/30",
+        )}
+      />
       {/* Header — eyebrow + count badge. Matches DESIGN_LANGUAGE §4
           eyebrow treatment: text-micro uppercase tracking-wider
           text-content-muted. Count chip styling parallels the chat
           unread chip from _shared.tsx IconTooltip badge.
 
-          Aesthetic Arc Session 1 Commit D — header divider softened.
-          Pre-Session-1: hard `border-b border-border-subtle` divider
-          read as a structural rule on a containing-box surface. Post-
-          Session-1: `border-b border-border-subtle/40` — half-strength
-          alpha. The divider whispers "two regions" rather than
-          announcing it (British register). Matches the way
-          DeliveryCard handles internal section transitions
-          (typography-led, no boxed sub-regions). */}
+          Aesthetic Arc Session 4 — Pattern 1 mono label: eyebrow
+          migrates from font-sans → font-mono (Geist Mono). Tablets
+          carry their navigation/identification label in the precision
+          register, not the narrative register. The "Ancillary pool"
+          label is identifying THIS tablet's content — same role as a
+          window-title bar — so it reads as data, not prose. Heading
+          ("Waiting for pairing") stays font-sans (state-phrase prose).
+
+          Aesthetic Arc Session 1 Commit D — header divider softened
+          to /40 alpha. Whispers "two regions" rather than announcing
+          (British register).
+
+          Session 4 — header pt-2.5 (was py-2) to clear the bezel
+          grip above. */}
       <div
         data-slot="ancillary-pool-pin-header"
         className={cn(
           "flex items-baseline justify-between gap-2",
-          "border-b border-border-subtle/40 px-3 py-2",
+          "border-b border-border-subtle/40 px-3 pt-2.5 pb-2",
         )}
       >
         <div>
           <p
             className={cn(
               "text-micro uppercase tracking-wider",
-              "text-content-muted font-sans",
+              "text-content-muted font-mono",
             )}
           >
             Ancillary pool
