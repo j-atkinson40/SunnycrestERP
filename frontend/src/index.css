@@ -330,6 +330,10 @@
     --color-accent-hover: var(--accent-hover);
     --color-accent-muted: var(--accent-muted);
     --color-accent-subtle: var(--accent-subtle);
+    /* Aesthetic Arc Session 4.5 — sage-green for Pattern 3 confirmed
+     * flag state. Distinct from --status-success (alert-green used by
+     * Alert/StatusPill); this is the architectural-stamp register. */
+    --color-accent-confirmed: var(--accent-confirmed);
 
     /* ─── Colors: status (DESIGN_LANGUAGE adds -error + -*-muted
      * alongside the legacy -success/-warning/-info/-danger above) ─── */

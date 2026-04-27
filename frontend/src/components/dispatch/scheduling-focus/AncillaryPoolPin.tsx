@@ -252,40 +252,45 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
       data-slot="ancillary-pool-pin"
       data-pool-drop-target={showPoolDropFeedback ? "true" : "false"}
       className={cn(
-        // Aesthetic Arc Session 4 — Pattern 1 tablet treatment.
-        // The pin is the FIRST surface in the platform built fully
-        // to Pattern 1 reference. Composition (DL §11 Pattern 1):
+        // Aesthetic Arc Session 4.5 — Pattern 1 tablet treatment.
+        // Reference component for Pattern 1 (Tablet) per DL §11.
+        //
+        // Composition (DL §11 Pattern 1):
         //   • Frosted-glass surface — bg-surface-elevated/85 +
         //     backdrop-blur-sm. Dimmed Focus backdrop bleeds
-        //     through with a subtle blur. Pre-Session-1 the pin
-        //     read as opaque "white box"; post-Session-1 it reads
-        //     as a frosted-glass tablet floating over content.
+        //     through with a subtle blur. The pin reads as a
+        //     frosted-glass tablet floating over content, not an
+        //     opaque overlay pasted on the substrate.
         //   • Drawn edges — shadow-level-1 carries the token-
         //     defined edge treatment (top-edge highlight in dark
         //     mode + soft halo + tight grounding shadow per DL §6).
         //     Cross-surface consistency: same elevation token as
-        //     DeliveryCard + AncillaryCard. The shadow IS the edge.
-        //   • Square-shouldered radii — rounded-md (8px). Not
-        //     pillowy-large (TP2 Architectural Proportions).
-        //   • Bezel grip (added Session 4) — small top-center pill
-        //     suggesting "tablet identity" (rendered as absolute-
-        //     positioned child below). Visual cue that this surface
-        //     is its own object, not a section embedded in canvas.
-        //     Same affordance as iOS Smart Stack widget bezels.
-        //   • `relative` enables the absolute-positioned bezel
-        //     grip child below.
-        // PLATFORM_INTERACTION_MODEL: tablets are the
-        // materialization unit — they float, they're individually
-        // present, they don't enclose other content. Pattern 1
-        // reference component.
+        //     DeliveryCard. The shadow IS the edge; no perimeter
+        //     border per DL §6 "Card perimeter: no border."
+        //   • Square-shouldered radii — rounded-md (8px). Section 0
+        //     Architectural Proportions TP2 — not pillowy-large.
+        //   • Bezel with grip indicator — Session 4.5 RESTRUCTURED.
+        //     Pre-Session-4.5: 32×2 horizontal pill at top-center
+        //     (Session 4 deviation from Pattern 1 doc which says
+        //     "left side"). Post-Session-4.5: 28px dedicated LEFT-
+        //     EDGE column with two short vertical grip lines (the
+        //     macOS column-resize-handle vocabulary). Rendered as
+        //     a flex sibling of the content area, not absolute-
+        //     positioned, so the bezel is a structural element of
+        //     the tablet — not decoration on top.
         //
-        // Aesthetic Arc Session 1.5 — `flex h-full flex-col` →
-        // `flex flex-col`. Dropping h-full because the pin's
-        // WidgetChrome wrapper is now content-driven height (height:
-        // "auto" + maxHeight: 480 in register.ts). With h-full the
-        // pin would collapse to 0 because the parent has no fixed
-        // height. PLATFORM_PRODUCT_PRINCIPLES "Widget Compactness".
-        "relative flex flex-col",
+        // Aesthetic Arc Session 4.5 — root flex direction switched
+        // `flex-col` → `flex` (default row). Bezel column becomes
+        // first child; main content (header + list) wrapped in a
+        // flex-1 flex-col sibling.
+        //
+        // overflow-hidden clips the bezel column's right border so
+        // it doesn't poke past the rounded-md corners.
+        //
+        // PLATFORM_INTERACTION_MODEL: tablets are the materialization
+        // unit — they float, they're individually present, they don't
+        // enclose other content. Pattern 1 reference component.
+        "relative flex overflow-hidden",
         "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
         "rounded-md shadow-level-1",
         // Subtle dim during refresh — keeps the existing list visible
@@ -305,24 +310,41 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
         "transition-shadow duration-quick ease-settle",
       )}
     >
-      {/* Aesthetic Arc Session 4 — Pattern 1 bezel grip.
-          Small top-center horizontal pill. iOS Smart Stack visual
-          vocabulary: a tablet has a slight visible top-edge cue
-          that distinguishes it from canvas. Subtle (h-0.5 = 2px,
-          w-8 = 32px wide, content-muted at 30% alpha) — present
-          but not announced. aria-hidden because it's a purely
-          visual affordance with no interaction semantic. Padding
-          on the header below uses pt-2.5 to clear the grip without
-          collision. */}
+      {/* Aesthetic Arc Session 4.5 — Pattern 1 bezel column.
+          28px dedicated left-edge structural column with two short
+          vertical grip lines (macOS column-resize-handle vocabulary,
+          per DL §11 Pattern 1 doc-spec). Two parallel vertical lines:
+          each 12px tall × 2px wide, 2px apart, vertically centered
+          in the bezel column. Subtle muted color at 30% alpha.
+
+          aria-hidden because purely visual affordance — the tablet
+          itself isn't draggable (its CONTENTS are individually
+          draggable as ancillary items). The grip signals "this is
+          a tablet you can grab and arrange," consistent with the
+          Tony Stark / Jarvis interaction model.
+
+          1px right border (border-border-subtle/30) separates the
+          bezel column from the content area. shrink-0 prevents the
+          flex layout from compressing the bezel under content
+          pressure (the bezel is structural, not negotiable). */}
       <div
         aria-hidden
         data-slot="ancillary-pool-pin-bezel-grip"
         className={cn(
-          "absolute left-1/2 top-1.5 -translate-x-1/2",
-          "h-0.5 w-8 rounded-full",
-          "bg-content-muted/30",
+          "flex w-7 shrink-0 items-center justify-center",
+          "border-r border-border-subtle/30",
+          "gap-0.5",
         )}
-      />
+      >
+        <span className="block h-3 w-0.5 rounded-full bg-content-muted/30" />
+        <span className="block h-3 w-0.5 rounded-full bg-content-muted/30" />
+      </div>
+      {/* Content column — wraps header + list. flex-1 fills the
+          remaining horizontal space; min-w-0 allows children to
+          truncate/wrap correctly inside the flex-1 container.
+          flex-col preserves the existing vertical stacking of
+          header above list. */}
+      <div className="flex min-w-0 flex-1 flex-col">
       {/* Header — eyebrow + count badge. Matches DESIGN_LANGUAGE §4
           eyebrow treatment: text-micro uppercase tracking-wider
           text-content-muted. Count chip styling parallels the chat
@@ -340,13 +362,14 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
           to /40 alpha. Whispers "two regions" rather than announcing
           (British register).
 
-          Session 4 — header pt-2.5 (was py-2) to clear the bezel
-          grip above. */}
+          Session 4.5 — header padding restored to py-2 (was pt-2.5
+          pb-2 to clear the old top bezel; new bezel is on the LEFT
+          column so no top clearance needed). */}
       <div
         data-slot="ancillary-pool-pin-header"
         className={cn(
           "flex items-baseline justify-between gap-2",
-          "border-b border-border-subtle/40 px-3 pt-2.5 pb-2",
+          "border-b border-border-subtle/40 px-3 py-2",
         )}
       >
         <div>
@@ -430,6 +453,7 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
           <PoolItem key={d.id} delivery={d} />
         ))}
       </div>
+      </div>{/* /content column (Session 4.5) */}
     </div>
   )
 }

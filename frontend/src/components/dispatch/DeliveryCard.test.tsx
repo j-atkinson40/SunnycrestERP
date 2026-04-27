@@ -335,7 +335,7 @@ describe("DeliveryCard — schedule state (Phase 3.3: no perimeter border)", () 
     expect(card?.className).not.toMatch(/\bborder\b(?!-)/)
   })
 
-  it("card carries canonical elevated + shadow + rounded-md chrome", () => {
+  it("card carries canonical elevated + composite material shadow + rounded-md chrome", () => {
     const { container } = render(
       <Harness>
         <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
@@ -343,8 +343,18 @@ describe("DeliveryCard — schedule state (Phase 3.3: no perimeter border)", () 
     )
     const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
     expect(card?.className).toMatch(/bg-surface-elevated/)
-    expect(card?.className).toMatch(/shadow-level-1/)
     expect(card?.className).toMatch(/rounded-md/)
+    // Aesthetic Arc Session 4.5 — shadow-level-1 no longer a Tailwind
+    // utility on the wrapper. The card composes a multi-layer box-
+    // shadow inline (edge highlight + edge shadow + ambient + flag-
+    // press + level-1) per DL §11 Pattern 2 material treatment.
+    // Asserting via inline style now: verify --shadow-level-1 token
+    // reference is part of the composite, plus the new edge tokens.
+    const inlineShadow = (card as HTMLElement | null)?.style.boxShadow ?? ""
+    expect(inlineShadow).toContain("--shadow-level-1")
+    expect(inlineShadow).toContain("--card-edge-highlight")
+    expect(inlineShadow).toContain("--card-edge-shadow")
+    expect(inlineShadow).toContain("--card-ambient-shadow")
   })
 })
 

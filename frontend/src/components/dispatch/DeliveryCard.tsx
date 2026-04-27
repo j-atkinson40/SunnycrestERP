@@ -36,6 +36,8 @@
  * null-safe.
  */
 
+import { useState } from "react"
+
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { useFocusDndActiveId } from "@/components/focus/FocusDndProvider"
@@ -179,6 +181,7 @@ export function DeliveryCard({
   density = "default",
 }: DeliveryCardProps) {
   const isCompact = density === "compact"
+  const [isHovered, setIsHovered] = useState(false)
   const tc = delivery.type_config ?? {}
   const family = (tc.family_name as string | undefined) ?? ""
   const cemetery = (tc.cemetery_name as string | undefined) ?? ""
@@ -252,28 +255,64 @@ export function DeliveryCard({
     ? { transform: CSS.Translate.toString(transform) }
     : undefined
 
-  // Aesthetic Arc Session 4 — Pattern 3 first channel: left-edge
-  // flag wired to hole-dug semantic. The flag is a 3px-wide
-  // signal-color bar at the card's left edge — the card's primary
-  // status read at a glance, before the dispatcher's eye reaches
-  // the bottom-rail HoleDugBadge for the explicit icon.
+  // Aesthetic Arc Session 4.5 — Pattern 3 first channel: left-edge
+  // flag wired to hole-dug semantic. 2px-wide signal-color bar at
+  // the card's left edge — the card's primary status read at a
+  // glance, before the dispatcher's eye reaches the bottom-rail
+  // HoleDugBadge for the explicit icon.
   //
   // Mapping (DESIGN_LANGUAGE §11 Pattern 3 — two-channel rule):
-  //   unknown → border-l-accent       (terracotta — needs attention)
-  //   yes     → border-l-status-success (green — confirmed)
-  //   no      → border-l-transparent  (no flag — explicit "no hole" is
-  //                                    not an attention state, the
-  //                                    bottom badge carries the read)
+  //   unknown → border-l-accent           (terracotta — needs attention)
+  //   yes     → border-l-accent-confirmed (sage-green — confirmed,
+  //                                        architectural-stamp register;
+  //                                        distinct from --status-success
+  //                                        which drives Alert/StatusPill)
+  //   no      → border-l-transparent      (no flag — explicit "no hole" is
+  //                                        not an attention state, the
+  //                                        bottom badge carries the read)
   //
-  // The two-channel composition: flag (color signal, peripheral
-  // attention) + bottom badge (icon + cycle affordance, deliberate
+  // Pre-Session-4.5: 3px wide, status-success for confirmed.
+  // Session 4.5: 2px canonical (per Pattern 3 doc); accent-confirmed
+  // (per §3 token block + Pattern 3 doc-spec).
+  //
+  // The two-channel composition: flag (color signal + press-shadow
+  // peripheral attention) + bottom badge (jewel-set icon, deliberate
   // interaction). Same data, two reads at different attention scales.
   const flagColorClass =
     delivery.hole_dug_status === "unknown"
       ? "border-l-accent"
       : delivery.hole_dug_status === "yes"
-        ? "border-l-status-success"
+        ? "border-l-accent-confirmed"
         : "border-l-transparent"
+
+  // Aesthetic Arc Session 4.5 — Pattern 2 + Pattern 3 composite
+  // box-shadow. Cards now read as physical material objects rather
+  // than outlined panels:
+  //   • inset 0 1px 0 var(--card-edge-highlight)  → top-edge catch-light
+  //   • inset 0 -1px 0 var(--card-edge-shadow)    → bottom-edge shadow
+  //   • var(--card-ambient-shadow)                 → lift from substrate
+  //   • inset 1px 0 0 var(--flag-press-shadow)    → right-of-flag pressed
+  //                                                  (only when flag exists)
+  //   • var(--shadow-level-1)                      → existing material edges
+  //
+  // Hover variant lifts level-1 → level-2 (more atmosphere). Edge +
+  // ambient + flag-press components carry through unchanged.
+  // Pre-Session-4.5: only shadow-level-1, read as flat panel.
+  const hasFlag = delivery.hole_dug_status !== "no"
+  const cardMaterialShadow = [
+    hasFlag && "inset 1px 0 0 var(--flag-press-shadow)",
+    "inset 0 1px 0 var(--card-edge-highlight)",
+    "inset 0 -1px 0 var(--card-edge-shadow)",
+    "var(--card-ambient-shadow)",
+    "var(--shadow-level-1)",
+  ].filter(Boolean).join(", ")
+  const cardMaterialShadowHover = [
+    hasFlag && "inset 1px 0 0 var(--flag-press-shadow)",
+    "inset 0 1px 0 var(--card-edge-highlight)",
+    "inset 0 -1px 0 var(--card-edge-shadow)",
+    "var(--card-ambient-shadow)",
+    "var(--shadow-level-2)",
+  ].filter(Boolean).join(", ")
 
   // Compose the compact service-time line. Examples (user spec):
   //   "11:00 Graveside"
@@ -298,7 +337,19 @@ export function DeliveryCard({
       data-schedule-state={scheduleFinalized ? "finalized" : "draft"}
       data-dragging={isDragging ? "true" : "false"}
       data-attach-target={showAttachFeedback ? "true" : "false"}
-      style={dragStyle}
+      // Composite shadow applied inline because Tailwind arbitrary-
+      // value classes for 4-5-shadow composites become unreadable.
+      // Hover state tracked via React; transition is GPU-composite-
+      // only (declared in className).
+      style={{
+        ...dragStyle,
+        // Hover OR drag both lift to the level-2 composite (more
+        // atmospheric halo). Idle stays at level-1 composite.
+        boxShadow:
+          isHovered || isDragging ? cardMaterialShadowHover : cardMaterialShadow,
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       aria-label={ariaLabel ?? `Delivery for the ${family || "unknown"} family`}
       {...attributes}
       {...listeners}
@@ -314,25 +365,31 @@ export function DeliveryCard({
         // border: per-card state signal moved entirely to the
         // day-header badge ("Draft" pill). Whole-day state is
         // singular; per-card repetition was noise.
-        "relative rounded-md bg-surface-elevated shadow-level-1",
-        // Aesthetic Arc Session 4 — Pattern 3 left-edge flag.
-        // 3px solid colored border on the left edge, color-mapped
-        // to hole-dug status above. With rounded-md (8px), the flag's
-        // top-left + bottom-left corners follow the radius — the
-        // visual is a tagged-edge accent, not a full-bleed bar.
-        // border-l-transparent (no flag) preserves the original
-        // chrome silhouette when no signal is active.
-        "border-l-[3px]",
+        "relative rounded-md bg-surface-elevated",
+        // Aesthetic Arc Session 4.5 — Pattern 3 left-edge flag.
+        // 2px solid colored border on the left edge (refined from
+        // 3px), color-mapped to hole-dug status above. With rounded-
+        // md (8px), the flag's top-left + bottom-left corners follow
+        // the radius — the visual is a tagged-edge accent, not a
+        // full-bleed bar. border-l-transparent (no flag) preserves
+        // the original chrome silhouette when no signal is active.
+        "border-l-[2px]",
         flagColorClass,
-        // Hover lifts to shadow-level-2 — matches Apple Reminders
-        // "card catches a bit more light on hover." Pure shadow
-        // transition, GPU-composited, no layout cost.
-        "transition-shadow duration-settle ease-settle hover:shadow-level-2",
-        // Drag lift: subtle scale 1.02 + shadow intensify per
+        // Material chrome via composite box-shadow (Pattern 2).
+        // Replaces prior `shadow-level-1` alone — see cardMaterial-
+        // Shadow above for the four-layer composition. Inline
+        // style+hover via JS state because Tailwind multi-line
+        // arbitrary-value box-shadow (4-shadow composite + token
+        // refs) becomes unreadable as a single utility class.
+        // Transition only the shadow property (GPU composite,
+        // no layout cost).
+        "transition-shadow duration-settle ease-settle",
+        // Drag lift: subtle scale 1.02 + opacity dim per
         // PLATFORM_QUALITY_BAR.md §2 ("subtle scale on grab —
-        // 1.02 to 1.04 typical lift; shadow intensification during
-        // interaction — level-1 → level-2").
-        isDragging && "shadow-level-2 opacity-95 scale-[1.02]",
+        // 1.02 to 1.04 typical lift"). Shadow intensification
+        // (level-1 → level-2) is handled by the inline boxShadow
+        // composite above (isDragging gates the level-2 variant).
+        isDragging && "opacity-95 scale-[1.02]",
         // Phase 4.3b.3 — attach-target visual feedback. When an
         // ancillary: drag is active AND the cursor is over a card
         // that can serve as a parent (kanban + assigned), the card
@@ -343,7 +400,9 @@ export function DeliveryCard({
         showAttachFeedback && [
           "ring-2 ring-accent ring-offset-2 ring-offset-surface-base",
           "ring-dashed",
-          "shadow-level-2",
+          // Shadow intensification during attach hover handled by the
+          // inline composite (level-2 variant gated on isHovered too —
+          // attach feedback already implies hover position).
           "bg-accent-subtle/40",
         ],
         "cursor-grab active:cursor-grabbing",
@@ -699,17 +758,18 @@ function HoleDugBadge({
             className={cn(
               "inline-flex h-5 w-5 items-center justify-center rounded-full",
               config.cls,
-              // Aesthetic Arc Session 4 — Pattern 3 jewel-set status
-              // indicator. Inset box-shadow gives the badge a recessed-
-              // ring read — the icon sits in a small bezel cut into
-              // the card surface, not a chip pasted on top. Distinct
-              // from outer shadows (level-1/2/3 = elevation) — inset
-              // shadow = "set into" the surface. Single shadow value
-              // works in both modes; if dark mode needs strengthening
-              // a future session can promote this to a token
-              // (`--shadow-jewel-inset` light/dark) per DL §11
-              // Pattern 3 reference implementation note.
-              "shadow-[inset_0_1px_2px_rgb(0_0_0/0.15)]",
+              // Aesthetic Arc Session 4.5 — Pattern 3 jewel-set status
+              // indicator. Mode-aware inset shadow via `--shadow-jewel-
+              // inset` token (light 0.15 / dark 0.30 — see DL §3 jewel-
+              // inset block + §11 Pattern 3 doc-spec). Reads as physical
+              // recessed ring with the icon "set into" the surface, not
+              // a chip pasted on top. Distinct from outer shadows
+              // (level-1/2/3 = elevation); inset shadow = "set into."
+              // Pre-Session-4.5 was hard-coded inline single-value
+              // 0.15 across modes — Session 4.5 promoted to mode-aware
+              // token because dark substrate compresses low-lightness
+              // deltas (0.15 reads imperceptible against charcoal).
+              "shadow-[var(--shadow-jewel-inset)]",
               onCycle &&
                 "hover:ring-1 hover:ring-accent/40 transition-all duration-quick cursor-pointer",
               !onCycle && "cursor-default",

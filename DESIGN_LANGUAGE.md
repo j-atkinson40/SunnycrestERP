@@ -796,6 +796,37 @@ Not every token has every variant. The table below lists all defined tokens.
 - `shadow-highlight-top` is the top-edge highlight used on elevated surfaces in dark mode per Section 2's "material, not paint" anchor. It's a thin (1px) inset highlight that reads as reflected warm light. Not used in light mode.
 - Shadow composition (blur, offset) is specified separately in Section 6.
 
+### Card material treatment tokens (Aesthetic Arc Session 4.5)
+
+**Rationale:** Pre-Session-4.5, cards composed `bg-surface-elevated + shadow-level-1` and read as flat outlined panels rather than physical material. The four tokens below add the **edge highlights + edge shadows + ambient lift** layer that turns a card into a tactile object on a substrate. Section 11 Pattern 2 documents the composition recipe; these tokens carry the values.
+
+The four tokens are **single-value across modes** (architectural-color rule per §2 — physical edges read identically in either room; the substrate around them changes). Light vs dark perceptual asymmetry is intentional: warm-cream edge-highlight at 5% alpha reads "catching focused light" on charcoal but near-imperceptible on cream — light-mode lift comes primarily from the ambient drop shadow instead.
+
+| Token | Value (single, both modes) | Composition role |
+|---|---|---|
+| `--card-edge-highlight` | `rgba(255, 240, 220, 0.05)` | Top-edge 1px inset highlight via `inset 0 1px 0 var(...)` — catch-the-light cue |
+| `--card-edge-shadow` | `rgba(0, 0, 0, 0.35)` | Bottom-edge 1px inset shadow via `inset 0 -1px 0 var(...)` — shadow-below cue |
+| `--card-ambient-shadow` | `0 4px 10px -4px rgba(0, 0, 0, 0.25)` | Drop shadow with negative spread — tighter halo than `shadow-level-1`, signals lift from substrate |
+| `--flag-press-shadow` | `rgba(0, 0, 0, 0.20)` | Right-of-flag 1px inset via `inset 1px 0 0 var(...)` — Pattern 3 left-edge flag pressed-in detail |
+
+*Notes:*
+- The four compose alongside (not replacing) `--shadow-level-1`. A canonical card carries: edge highlight + edge shadow + ambient lift + level-1's tight ground + atmospheric halo (+ dark-mode top-edge highlight via `--shadow-highlight-top`).
+- `--flag-press-shadow` is conditional on flag presence — `border-l-transparent` cards omit the press shadow (no flag → no press detail). Pattern 3 flag width canonical: 2px.
+- Pre-Session-4.5 Tier-2 calibration shipped only `shadow-level-1` for card material; Session 4.5 confirmed via rendering verification that level-1 alone reads flat. The four new tokens close the gap.
+
+### Jewel-set inset ring token (Aesthetic Arc Session 4.5)
+
+**Rationale:** Pattern 3 second-channel status indicators (HoleDugBadge canonical) need a recessed ring that reads as physical jeweled inlay. Pre-Session-4.5 the inset shadow was inline arbitrary value `[inset_0_1px_2px_rgb(0_0_0/0.15)]` single value; promoted to mode-aware token per Pattern 3 doc-spec.
+
+| Token | Light mode | Dark mode |
+|---|---|---|
+| `--shadow-jewel-inset` | `inset 0 1px 2px rgba(0, 0, 0, 0.15)` | `inset 0 1px 2px rgba(0, 0, 0, 0.30)` |
+
+*Notes:*
+- Dark-mode value strengthens to 0.30 because dark substrate compresses low-lightness deltas — the 0.15 light-mode value reads imperceptible against charcoal.
+- Single composition value (offset + blur don't change across modes; only alpha doubles).
+- Applied via `box-shadow: var(--shadow-jewel-inset)` on the indicator's chip element.
+
 ### Accent tokens
 
 **Rationale:** Deepened terracotta is the only locked accent. A supporting accent (potentially a muted cool note) is deferred per earlier scope decisions. Sections 2 and 3 are authored to accommodate a cool supporting accent in the future if needed; no current tokens depend on one existing.
@@ -806,6 +837,7 @@ Not every token has every variant. The table below lists all defined tokens.
 | `--accent-hover` | `oklch(0.54 0.10 39)` | `oklch(0.54 0.10 39)` |
 | `--accent-muted` | `rgba(156, 86, 64, 0.20)` | `rgba(156, 86, 64, 0.20)` |
 | `--accent-subtle` | `rgba(156, 86, 64, 0.10)` | `rgba(156, 86, 64, 0.10)` |
+| `--accent-confirmed` | `oklch(0.58 0.05 138)` | `oklch(0.58 0.05 138)` |
 
 *Notes:*
 - **Single value across modes.** Per Aesthetic Arc Session 2, `--accent` does not shift across light/dark — the architectural-color rule (§2 cross-mode rule). #9C5640 deepened terracotta reads as the same color in both rooms; the substrate around it changes, the accent itself does not.
@@ -813,7 +845,7 @@ Not every token has every variant. The table below lists all defined tokens.
 - **No `--accent-active`.** The current "active state" semantic in Bridgeable is "this is the currently selected item" (DateBox active, nav active), implemented via the two-token pattern: `--accent-subtle` background + `--accent` border. Not "this button is being pressed right now" (momentary press feedback). If momentary press is needed later, introduce `--accent-active` then; reducing token surface area now prevents ambiguity.
 - **Muted** (`rgba(156, 86, 64, 0.20)`) is the slightly more saturated wash for backgrounds that need to signal accent-adjacency without being accent itself (e.g., an accent-tinted badge background). Alpha allows it to compose with whatever surface it sits on.
 - **Subtle** (`rgba(156, 86, 64, 0.10)`) is the barest accent tint, used for the canonical selected-item background and very quiet hover/active surfaces (e.g., the fill of a hover state on a menu item).
-- **All variants lock the same hue (~39 oklch / red-orange terracotta family). No exceptions.**
+- **All variants lock the same hue (~39 oklch / red-orange terracotta family). No exceptions** — except `--accent-confirmed` (introduced Aesthetic Arc Session 4.5), which is a **distinct hue (~138 olive-green family)** intentionally — the "confirmed" token is the architectural counterpart to terracotta, not a terracotta variant. Hex equivalent `#7d9170`. Reads as "stamped/approved" mark on a document, calmer than `--status-success` (saturated alert-green at hue 135 / chroma 0.12+ used by Alert / StatusPill / Banner primitives). `--accent-confirmed` is scoped to DL §11 Pattern 3 first-channel left-edge flags ("confirmed" state); status-success continues to drive every other success-semantic surface. Single value across modes per the architectural-color rule (same discipline as `--accent`).
 
 ### Status tokens
 
@@ -2056,11 +2088,15 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
 
   /* Accent — deepened terracotta, single value across modes
      (Aesthetic Arc Session 2). `--accent-active` intentionally
-     absent; selected-item state uses --accent-subtle + --accent. */
+     absent; selected-item state uses --accent-subtle + --accent.
+     `--accent-confirmed` (Session 4.5) is the architectural
+     stamped-green counterpart to terracotta — see §3 + §11
+     Pattern 3 first-channel left-edge flag confirmed state. */
   --accent: oklch(0.46 0.10 39);
   --accent-hover: oklch(0.54 0.10 39);
   --accent-muted: rgba(156, 86, 64, 0.20);
   --accent-subtle: rgba(156, 86, 64, 0.10);
+  --accent-confirmed: oklch(0.58 0.05 138);
 
   /* Status */
   --status-error: oklch(0.55 0.18 25);
@@ -2071,6 +2107,19 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --status-success-muted: oklch(0.93 0.04 135);
   --status-info: oklch(0.55 0.08 225);
   --status-info-muted: oklch(0.93 0.03 225);
+
+  /* Card material treatment (Aesthetic Arc Session 4.5).
+     Single value across modes; cards compose all four into a
+     multi-layer box-shadow. See §3 "Card material treatment
+     tokens" + §11 Pattern 2 for composition recipe. */
+  --card-edge-highlight: rgba(255, 240, 220, 0.05);
+  --card-edge-shadow: rgba(0, 0, 0, 0.35);
+  --card-ambient-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.25);
+  --flag-press-shadow: rgba(0, 0, 0, 0.20);
+
+  /* Jewel-set inset ring (Aesthetic Arc Session 4.5) — light
+     mode 0.15. Dark mode override 0.30 in [data-mode="dark"]. */
+  --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.15);
 
   /* ============ ELEVATION SHADOWS ============ */
   --shadow-level-1: 0 2px 8px var(--shadow-color-base);
@@ -2176,6 +2225,11 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --shadow-level-1: 0 1px 3px var(--shadow-color-strong), 0 4px 16px var(--shadow-color-base), inset 0 3px 0 var(--shadow-highlight-top);
   --shadow-level-2: 0 2px 4px var(--shadow-color-strong), 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 3px 0 var(--shadow-highlight-top);
   --shadow-level-3: 0 3px 6px var(--shadow-color-strong), 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 3px 0 var(--shadow-highlight-top);
+
+  /* Jewel-set inset ring — dark-mode override (Aesthetic Arc
+     Session 4.5). Doubles to 0.30 alpha because dark substrate
+     compresses low-lightness deltas. See §3 jewel-inset block. */
+  --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.30);
 }
 ```
 
@@ -2829,10 +2883,10 @@ The patterns are reference-implementation-driven. Each cites the canonical compo
 **The pattern.** Widgets read as summoned material objects floating in workspace, not as static UI containers. Per [PLATFORM_INTERACTION_MODEL.md](PLATFORM_INTERACTION_MODEL.md): tablets are the materialization unit; they float, are individually present, and don't enclose other content as containers.
 
 **Composition:**
-- **Drawn edges** — 1px structural border (`border-border-subtle`), not soft shadow halos. The tablet has a real edge.
+- **Drawn edges** — material composition that reads as physical edges, not soft shadow halos. The tablet has real structure.
 - **Ambient shadow** — `shadow-level-1` multi-layer (Tier-4 calibration: tight grounding shadow + atmospheric halo + dark-mode inset top highlight). Reads as "lit from above" register.
 - **Surface lift** — `bg-surface-elevated` (or `/85` alpha + `backdrop-blur-sm` when sitting over a dimmed-blurred backdrop, e.g. inside Focus). The tablet is material; the substrate behind shows through subtly.
-- **Bezel with grip indicator (left side)** — a structural left-edge zone where the user's eye lands when arranging the tablet. The grip is always visible (subtle), not hover-revealed. It signals "this is a tablet you can grab and arrange," consistent with the Tony Stark / Jarvis interaction model.
+- **Bezel with grip indicator (left side, 28px column)** — a structural left-edge zone where the user's eye lands when arranging the tablet. **28px dedicated column** with a 1px right border (`border-r border-border-subtle/30`) separating it from the content area. **Two short vertical grip lines** centered in the column (each ~12px tall × 2px wide, 2px apart, `bg-content-muted/30`) — the macOS column-resize-handle vocabulary. Always visible (subtle), not hover-revealed. Signals "this is a tablet you can grab and arrange," consistent with the Tony Stark / Jarvis interaction model.
 - **Mono label header** — uppercase eyebrow in `font-mono` (Geist Mono) `text-micro tracking-wider` + a clean h3 subhead in `font-sans` (Geist). The label tells the user what tablet they're looking at without competing with content.
 - **Count chip** in accent (terracotta) when applicable — small `font-mono` numeral on accent surface, jewelry-register signal.
 
@@ -2840,44 +2894,57 @@ The patterns are reference-implementation-driven. Each cites the canonical compo
 
 **When NOT to apply.** Inline content that's part of the page flow (a card on a hub dashboard isn't a tablet — it's a card). Modal dialogs (those carry their own overlay-family chrome). The kanban core itself (it's the work surface, not a tablet floating on the work surface).
 
-**Reference implementation.** [`AncillaryPoolPin`](frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx) — the canonical example post-Aesthetic-Arc-Session-4. Bezel grip on left edge, mono uppercase eyebrow ("ANCILLARY POOL"), terracotta count chip, surface-elevated/85 with backdrop-blur, drawn edge via WidgetChrome wrapper, shadow-level-1 ambient.
+**Reference implementation.** [`AncillaryPoolPin`](frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx) — the canonical example post-Aesthetic-Arc-Session-4.5. **Pre-Session-4.5** the bezel was a single 32×2px horizontal pill at top-center (Session 4 deviation from this Pattern's documented "left side" spec); **Session 4.5** restructures to the 28px left-edge column with two vertical grip lines per the canonical pattern. Mono uppercase eyebrow ("ANCILLARY POOL"), terracotta count chip, surface-elevated/85 with backdrop-blur, shadow-level-1 ambient.
 
 ### Pattern 2 — Card material treatment
 
 **The pattern.** Cards across the platform share consistent material vocabulary so a dispatcher scanning the kanban builds one mental model that applies everywhere a card appears.
 
 **Composition:**
+- **Material chrome (Aesthetic Arc Session 4.5)** — the card composes a multi-layer box-shadow that reads as physical material rather than outlined panel. Required composition (in order):
+  ```
+  inset 0 1px 0 var(--card-edge-highlight)    /* top-edge catch-the-light, 1px warm-cream 5% */
+  inset 0 -1px 0 var(--card-edge-shadow)      /* bottom-edge shadow line, 1px black 35% */
+  var(--card-ambient-shadow)                   /* lift-from-substrate, 0 4px 10px -4px black 25% */
+  var(--shadow-level-1)                        /* existing tight ground + atmospheric halo */
+  ```
+  Pre-Session-4.5 cards composed `bg-surface-elevated + shadow-level-1` only and read as flat outlined panels. The four-token composition closes the gap. See §3 "Card material treatment tokens" for the canonical token block.
 - **Proper-noun text in `font-display`** (Fraunces serif) at proper size — funeral home name as "the engraving," the most important text on the card. The serif treatment marks the proper noun (a person's family, a funeral home name, a cemetery name when proper) as different from the surrounding data; it carries the weight of a name.
 - **Cemetery + city paired with mid-dot separator** — cemetery primary value at `text-content-base`, city in lower value (`text-content-muted`), mid-dot in `text-content-faint`. See Pattern 5 for the hierarchy rule.
 - **Time and counts in `font-mono`** (Geist Mono) — numerals carry tabular alignment + precision register. Numerals at lighter weight than surrounding type label ("15:00 Funeral Home" — the digits read as data, the label as prose).
 - **Vault info with mid-dot separator** — vault type · status, status in lower value, same hierarchy pattern.
 - **Foot-row icons at consistent 14px stroke weight** — quiet color at rest (`text-content-muted`), brighten on hover. Lucide icons platform-canonical.
-- **Jewel-set status indicators** — confirmation marks sit in recessed rings (slight inset shadow), feel like physical jeweled inlays rather than flat circles. See Pattern 3.
-- **Left-edge flags carrying signal meaning** — terracotta accent for needs-attention, success-green for confirmed. See Pattern 3.
+- **Jewel-set status indicators** — confirmation marks sit in recessed rings via `box-shadow: var(--shadow-jewel-inset)`, feel like physical jeweled inlays rather than flat circles. See Pattern 3.
+- **Left-edge flags carrying signal meaning** — 2px wide accent flag with right-side press shadow. See Pattern 3.
 - **Document badges as stamped reference numbers** — corner-mounted, mono numeral, terracotta, like reference marks on a precision instrument (when applicable).
 
 **When to apply.** Any operational card surface — DeliveryCard, AncillaryCard, PeekPanel entity cards, Pulse operational cards, command-bar entity portals.
 
 **When NOT to apply.** Hub-page summary cards (those are dashboard widgets — apply Pattern 1 if floating, or hub-card patterns separately). System notifications (those use Alert/Banner primitives).
 
-**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) — post-Aesthetic-Arc-Session-4 the canonical example. Funeral home name in font-display (Fraunces), times in font-mono, mid-dot hierarchy on cemetery/city + vault/equipment lines, jewel-set hole-dug indicator, left-edge flag wired to hole-dug semantic.
+**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) — post-Aesthetic-Arc-Session-4.5 the canonical example. Material chrome composition (edge highlight + edge shadow + ambient drop + level-1), funeral home name in font-display (Fraunces), times in font-mono, mid-dot hierarchy on cemetery/city + vault/equipment lines, jewel-set hole-dug indicator via `--shadow-jewel-inset`, 2px left-edge flag wired to hole-dug semantic with right-side `--flag-press-shadow`.
 
 ### Pattern 3 — Status indicator system (two-channel)
 
 **The pattern.** Status communicated through dual channels for legibility: a left-edge flag (color signal) and a corner-mounted jewel-set indicator (icon + recessed ring). Same semantic, redundant for scan-and-act surfaces where one channel might be missed.
 
 **Composition:**
-- **Left-edge flag** — 2-3px wide left border. Color carries the signal:
+- **Left-edge flag (2px wide, canonical post-Session-4.5)** — 2px solid left border. Color carries the signal:
   - `border-l-accent` (terracotta) → needs-attention
-  - `border-l-status-success` (green) → confirmed
+  - `border-l-accent-confirmed` (sage-green, `#7d9170` ≈ `oklch(0.58 0.05 138)`) → confirmed
   - `border-l-transparent` (or absent) → neutral
-- **Jewel-set indicator** — bottom-right or icon-row position. Icon inside a recessed ring with `box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15)` (light) / `inset 0 1px 2px rgba(0, 0, 0, 0.30)` (dark). Reads as physical jeweled inlay rather than flat colored dot.
+
+  Pre-Session-4.5: 3px width (range was "2-3px"); `border-l-status-success` for confirmed (saturated alert-green). Post-Session-4.5: 2px canonical; `--accent-confirmed` for confirmed (architectural-stamp register, distinct from status-success). See §3 Accent tokens for the `--accent-confirmed` rationale.
+- **Flag press shadow (Aesthetic Arc Session 4.5)** — when flag is non-transparent, the card carries an additional `inset 1px 0 0 var(--flag-press-shadow)` (1px right-of-flag pressed-in shadow, black 20%). Reads as "pressed-in detail beside the flag" rather than "paint stripe applied to the surface." Critical for flag-as-structural register; without it, the flag reads as paint.
+- **Jewel-set indicator** — bottom-right or icon-row position. Icon inside a recessed ring with `box-shadow: var(--shadow-jewel-inset)` (mode-aware: light 0.15 / dark 0.30 — see §3 jewel-inset block). Reads as physical jeweled inlay rather than flat colored dot.
+
+  Pre-Session-4.5: hard-coded inline arbitrary value `[inset_0_1px_2px_rgb(0_0_0/0.15)]` single value across modes. Post-Session-4.5: `--shadow-jewel-inset` token with mode-aware values per this Pattern's documented spec.
 
 **When to apply.** Any card or row representing operational state where the dispatcher's primary read is "is this thing OK or does it need attention?" Examples: hole-dug status (DeliveryCard), proof-approval status (urn engraving), invoice-overdue status, certificate-pending status.
 
 **When NOT to apply.** Generic interactive elements (those use focus rings + hover states). Status text alone (Alert / Banner primitives). The flag + jewel pattern is for cards/rows; not a global "every status everywhere" rule.
 
-**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) post-Session-4 — left-edge flag wired to hole-dug status (unknown=terracotta, yes=success-green, no=neutral); HoleDugBadge with inset-shadow ring (jewel-set treatment).
+**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) post-Session-4.5 — 2px left-edge flag wired to hole-dug status (unknown=terracotta accent, yes=accent-confirmed sage-green, no=transparent), with right-side flag-press-shadow when flag is non-transparent; HoleDugBadge with `--shadow-jewel-inset` ring (mode-aware jewel-set treatment).
 
 ### Pattern 4 — Numeric mono treatment
 
