@@ -39,7 +39,13 @@ export function StackExpandedOverlay({
 }: StackExpandedOverlayProps) {
   // Phase 4.3b.3 — dispatch by widgetType. The expanded view renders
   // the same widget the StackRail tile shows, just at a larger size.
-  const Renderer = getWidgetRenderer(state.widgetType)
+  //
+  // Widget Library Phase W-1 — Section 12.5: stack-expanded surface
+  // is full reveal of the stack tile (canvas-tier register); pass
+  // surface="focus_canvas". The widget instance carries the same
+  // variant_id as the stack tile (one widget per layout slot;
+  // expanded view re-renders with the canvas-tier surface flag).
+  const Renderer = getWidgetRenderer(state.widgetType, state.variant_id)
   // Esc dismisses.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -88,7 +94,11 @@ export function StackExpandedOverlay({
         }}
         onClick={onDismiss}
       >
-        <Renderer widgetId={widgetId} />
+        <Renderer
+          widgetId={widgetId}
+          variant_id={state.variant_id}
+          surface="focus_canvas"
+        />
       </div>
     </>
   )

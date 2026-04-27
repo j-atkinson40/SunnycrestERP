@@ -123,7 +123,13 @@ export function BottomSheet({ widgets, onDismiss }: BottomSheetProps) {
           {entries.map(([id, state]) => {
             // Phase 4.3b.3 — dispatch by widgetType (registered renderers
             // OR MockSavedViewWidget fallback for back-compat).
-            const Renderer = getWidgetRenderer(state.widgetType)
+            //
+            // Widget Library Phase W-1 — Section 12.5 icon tier
+            // composition: BottomSheet tiles map to Glance variant
+            // (icon-tier preview); expanded view maps to Detail
+            // variant (full reveal). Surface = "focus_stack" for
+            // sheet tiles since they're peer to stack tier.
+            const Renderer = getWidgetRenderer(state.widgetType, state.variant_id)
             return (
               <div
                 key={id}
@@ -147,7 +153,11 @@ export function BottomSheet({ widgets, onDismiss }: BottomSheetProps) {
                   }
                 }}
               >
-                <Renderer widgetId={id} />
+                <Renderer
+                  widgetId={id}
+                  variant_id={state.variant_id}
+                  surface="focus_stack"
+                />
               </div>
             )
           })}
@@ -186,10 +196,22 @@ export function BottomSheet({ widgets, onDismiss }: BottomSheetProps) {
             {(() => {
               // Phase 4.3b.3 — render the expanded widget's registered
               // type (or MockSavedViewWidget fallback).
+              //
+              // Widget Library Phase W-1 — Section 12.5: bottom-sheet
+              // expanded surface is full reveal of the tile content
+              // (canvas-tier register); pass surface="focus_canvas".
+              const expandedState = widgets[expandedWidget]
               const Renderer = getWidgetRenderer(
-                widgets[expandedWidget]?.widgetType,
+                expandedState?.widgetType,
+                expandedState?.variant_id,
               )
-              return <Renderer widgetId={expandedWidget} />
+              return (
+                <Renderer
+                  widgetId={expandedWidget}
+                  variant_id={expandedState?.variant_id}
+                  surface="focus_canvas"
+                />
+              )
             })()}
           </div>
         </>

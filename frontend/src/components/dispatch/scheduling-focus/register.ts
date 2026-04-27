@@ -91,6 +91,16 @@ registerFocus({
       widgets: {
         "ancillary-pool": {
           widgetType: "funeral-scheduling.ancillary-pool",
+          // Widget Library Phase W-1 — Section 12.10 reference:
+          // AncillaryPoolPin declares Glance + Brief + Detail
+          // variants in the backend WIDGET_DEFINITIONS catalog.
+          // Funeral Scheduling Focus seeds the Detail variant
+          // (full scrollable list with drag-source affordance) on
+          // canvas tier per Section 12.5 default. Stack tier
+          // crossfade renders the same instance with surface=
+          // "focus_stack" — the component switches internally on
+          // surface discriminator (Decision 5 + 6).
+          variant_id: "detail",
           position: {
             anchor: "right-rail",
             offsetX: 16,

@@ -276,7 +276,13 @@ export function Canvas() {
             // without an explicit widgetType resolve to MockSavedView
             // Widget per the registry default. New widgets register
             // via side-effect imports at app boot.
-            const Renderer = getWidgetRenderer(state.widgetType)
+            //
+            // Widget Library Phase W-1 — pass variant_id + surface
+            // discriminator to the widget component per Section 12.3
+            // contract. Canvas tier surface is "focus_canvas".
+            // variant_id falls back to undefined for legacy layouts;
+            // widgets that ignore it render their canvas-tier shape.
+            const Renderer = getWidgetRenderer(state.widgetType, state.variant_id)
             return (
               <div key={id} className="pointer-events-auto">
                 <WidgetChrome
@@ -286,7 +292,11 @@ export function Canvas() {
                   canvasHeight={viewport.height}
                   onDismiss={() => removeWidget(id as WidgetId)}
                 >
-                  <Renderer widgetId={id} />
+                  <Renderer
+                    widgetId={id}
+                    variant_id={state.variant_id}
+                    surface="focus_canvas"
+                  />
                 </WidgetChrome>
               </div>
             )

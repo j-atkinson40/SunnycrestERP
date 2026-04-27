@@ -54,13 +54,37 @@
 
 import type { ComponentType } from "react"
 
+import type { VariantId } from "@/components/widgets/types"
+
 import { MockSavedViewWidget } from "./MockSavedViewWidget"
 
 
+/** Widget Library Phase W-1 (DESIGN_LANGUAGE.md §12.3 contract).
+ *
+ *  Pre-W-1 the props carried `widgetId` only. Phase W-1 adds
+ *  `variant_id` (which Glance/Brief/Detail/Deep variant to render)
+ *  + `surface` (discriminator). The component switches internally
+ *  on `variant_id` per Decision 5 — one component per widget,
+ *  internal switch keeps state + data hooks shared across variants.
+ *
+ *  Existing widgets that don't yet handle variants ignore the new
+ *  props during the migration window (Decision 10). Phase W-3
+ *  widget builds adopt the variant-aware shape from inception. */
 export interface WidgetRendererProps {
   /** Stable widget id from `WidgetState`. Useful for telemetry +
    *  per-widget local state keys. */
   widgetId: string
+  /** Phase W-1 — which variant to render. Optional during migration
+   *  window; widgets that ignore it render a single canonical view
+   *  (legacy behavior). */
+  variant_id?: VariantId
+  /** Phase W-1 — surface discriminator. Optional during migration
+   *  window; widgets that ignore it render their canvas-tier shape.
+   *  Canvas dispatch sites pass "focus_canvas"; stack tier passes
+   *  "focus_stack"; bottom sheet passes "focus_stack" + is_active
+   *  state; stack-expanded overlay passes "focus_canvas" (full
+   *  reveal). */
+  surface?: "focus_canvas" | "focus_stack"
 }
 
 
@@ -80,7 +104,13 @@ REGISTRY.set("mock-saved-view", MockSavedViewWidget)
  *
  *  The `widgetType` string convention: dot-namespaced by feature,
  *  e.g. `"funeral-scheduling.ancillary-pool"`. Avoids accidental
- *  collisions across features. */
+ *  collisions across features.
+ *
+ *  Phase W-1 — components receive the extended `WidgetRendererProps`
+ *  (with optional variant_id + surface). One component per widget;
+ *  the component switches internally on variant_id per Section 12.3
+ *  Decision 5. Existing widgets that ignore the new props continue
+ *  to work during the migration window (Decision 10). */
 export function registerWidgetRenderer(
   widgetType: string,
   component: ComponentType<WidgetRendererProps>,
@@ -95,10 +125,20 @@ export function registerWidgetRenderer(
  *  e.g. the registering module failed to load).
  *
  *  Callers (Canvas, BottomSheet, StackRail, StackExpandedOverlay)
- *  invoke this once per render and pass `widgetId` to the resulting
- *  component. */
+ *  invoke this once per render and pass `widgetId` + variant_id +
+ *  surface to the resulting component.
+ *
+ *  Phase W-1 — variant_id parameter is optional + accepted for API
+ *  symmetry with backend. The current registry dispatches by
+ *  widgetType only; per-variant component dispatch (where one
+ *  widget has different React components per variant) is not
+ *  needed because Section 12 Decision 5 mandates one component
+ *  per widget with internal variant_id switch. The optional
+ *  parameter is preserved on the public signature for future
+ *  evolution (e.g. catalog-UI variant preview). */
 export function getWidgetRenderer(
   widgetType: string | undefined,
+  _variant_id?: VariantId,
 ): ComponentType<WidgetRendererProps> {
   if (widgetType === undefined) return MockSavedViewWidget
   return REGISTRY.get(widgetType) ?? MockSavedViewWidget

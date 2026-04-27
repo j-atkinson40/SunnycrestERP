@@ -143,7 +143,15 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
         {entries.map(([id, state], i) => {
           // Phase 4.3b.3 — dispatch by widgetType (registered renderers
           // OR MockSavedViewWidget fallback for back-compat).
-          const Renderer = getWidgetRenderer(state.widgetType)
+          //
+          // Widget Library Phase W-1 — Section 12.5 stack tier composition:
+          // surface = "focus_stack". Variant defaults to Brief at this
+          // tier per Section 12.2 compatibility matrix. Per Decision 5,
+          // widgets switch internally on variant_id; the renderer
+          // receives the same widget instance + variant_id selection
+          // as canvas tier (one widget per layout slot, multiple tiers
+          // render the same instance differently).
+          const Renderer = getWidgetRenderer(state.widgetType, state.variant_id)
           return (
             <div
               key={id}
@@ -182,7 +190,11 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
                 }
               }}
             >
-              <Renderer widgetId={id} />
+              <Renderer
+                widgetId={id}
+                variant_id={state.variant_id}
+                surface="focus_stack"
+              />
             </div>
           )
         })}

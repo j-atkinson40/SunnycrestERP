@@ -122,20 +122,29 @@ export interface WidgetPosition {
 /** Full per-widget state. Session 3 ships with just `position`;
  *  Session 4.3b.3 adds optional `widgetType` for the typed-widget
  *  registry (see `components/focus/canvas/widget-renderers.ts`).
- *  Future sessions may add `isMinimized`, `zIndex`, custom props per
- *  widget type, etc. Nested shape future-proofs without reshaping
- *  consumers.
+ *  Widget Library Phase W-1 (DESIGN_LANGUAGE.md §12.3) adds
+ *  `variant_id` for the per-instance variant selection (Glance /
+ *  Brief / Detail / Deep). Future sessions may add `isMinimized`,
+ *  `zIndex`, custom props per widget type, etc. Nested shape
+ *  future-proofs without reshaping consumers.
  *
  *  `widgetType` is OPTIONAL for back-compat: pre-4.3b.3 layouts that
  *  predate the typed-widget system (test-kanban's mock layout, any
  *  legacy persisted layouts) leave it undefined, which the registry
- *  resolves to `MockSavedViewWidget`. New layouts (the funeral-
- *  scheduling Focus's tenantDefault, future pin systems) set it
- *  explicitly to a registered widget type string like
- *  `"funeral-scheduling.ancillary-pool"`. */
+ *  resolves to `MockSavedViewWidget`.
+ *
+ *  `variant_id` is OPTIONAL for back-compat per Decision 10
+ *  (both contracts coexist 1-2 release windows). When undefined,
+ *  the widget renders its canvas-tier default variant. Phase W-3+
+ *  layouts set explicitly per Section 12 reference implementation
+ *  (e.g. funeral-scheduling Focus tenantDefault sets
+ *  `variant_id: "detail"` on the AncillaryPoolPin instance for
+ *  full scrollable list rendering). */
 export interface WidgetState {
   position: WidgetPosition
   widgetType?: string
+  /** Phase W-1 — Section 12.2 variant selection. */
+  variant_id?: "glance" | "brief" | "detail" | "deep"
 }
 
 export type WidgetId = string
