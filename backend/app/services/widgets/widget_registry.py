@@ -130,6 +130,10 @@ WIDGET_DEFINITIONS: list[dict] = [
         "min_size": "1x1",
         "supported_sizes": ["1x1", "2x1"],
         "required_extension": "npca_audit_prep",
+        # Phase W-1 — NPCA audit prep is funeral-home compliance per
+        # CLAUDE.md §1; flagged in Phase W-1 audit + Section 12.4
+        # 4-axis filter (vertical axis).
+        "required_vertical": ["funeral_home"],
         "category": "production",
         "icon": "CheckSquare",
         "default_enabled": True,
@@ -423,7 +427,122 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_position": 10,
         "required_permission": "admin",
     },
+    # ── Canvas widgets (Widget Library Phase W-1) ─────────────
+    # Per Decision 1 unified contract, canvas widgets enter the
+    # backend catalog with the same WidgetDefinition shape as
+    # dashboard widgets. Section 12.5 composition rules: canvas
+    # widgets render on focus_canvas / focus_stack / pulse_grid /
+    # spaces_pin via the variants[].supported_surfaces declaration.
+    # MockSavedViewWidget stays frontend-only as a placeholder
+    # fallback (not catalog-citizen).
+    {
+        "widget_id": "scheduling.ancillary-pool",
+        "title": "Ancillary Pool",
+        "description": (
+            "Pool of date-less, unassigned ancillary deliveries waiting "
+            "to be paired with a primary delivery. Drag from pool to "
+            "driver lane (standalone) or onto a parent delivery card "
+            "(attached). Reference implementation for Section 12 "
+            "Pattern 1 tablet treatment."
+        ),
+        "page_contexts": ["funeral_scheduling_focus", "pulse"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x2"],
+        "category": "operations",
+        "icon": "Inbox",
+        "default_enabled": True,
+        "default_position": 1,
+        "required_permission": "delivery.view",
+        "required_vertical": ["funeral_home"],
+        "supported_surfaces": [
+            "focus_canvas",
+            "focus_stack",
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+        ],
+        "default_surfaces": ["focus_canvas"],
+        "intelligence_keywords": [
+            "ancillary",
+            "pool",
+            "pairing",
+            "scheduling",
+            "delivery",
+        ],
+        # Per Section 12.10 reference implementation: Glance + Brief +
+        # Detail variants. Glance for sidebar (count chip);
+        # Brief for compact list (top 5 items); Detail for full
+        # scrollable list with drag-source affordance in Focus.
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {"width": 180, "height": 60},
+                "supported_surfaces": ["spaces_pin", "pulse_grid"],
+            },
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 180,
+                    "height": "auto",
+                    "maxHeight": 280,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "focus_stack",
+                    "dashboard_grid",
+                ],
+            },
+            {
+                "variant_id": "detail",
+                "density": "rich",
+                "grid_size": {"cols": 2, "rows": 2},
+                "canvas_size": {
+                    "width": 180,
+                    "height": "auto",
+                    "maxHeight": 480,
+                },
+                "supported_surfaces": [
+                    "focus_canvas",
+                    "pulse_grid",
+                    "dashboard_grid",
+                ],
+            },
+        ],
+        "default_variant_id": "detail",
+    },
 ]
+
+
+def _brief_variant_for_size(default_size: str) -> dict:
+    """Build a single 'brief' variant matching a legacy `default_size`.
+
+    Used by `seed_widget_definitions` to backfill variants on widgets
+    that don't declare them explicitly. Phase W-3 widget builds add
+    additional variants (Glance / Detail / Deep) per Section 12.10.
+    """
+    try:
+        cols, rows = (int(x) for x in (default_size or "1x1").split("x"))
+    except (AttributeError, ValueError):
+        cols, rows = 1, 1
+
+    canvas_width = 280 * cols
+    canvas_height = 200 * rows
+    return {
+        "variant_id": "brief",
+        "density": "focused",
+        "grid_size": {"cols": cols, "rows": rows},
+        "canvas_size": {
+            "width": canvas_width,
+            "height": canvas_height,
+            "maxHeight": canvas_height + 200,
+        },
+        "supported_surfaces": ["dashboard_grid"],
+    }
 
 
 def seed_widget_definitions(db: Session) -> int:
@@ -431,17 +550,29 @@ def seed_widget_definitions(db: Session) -> int:
 
     Behavior:
       - Rows with a new `widget_id` are inserted.
-      - Existing rows are UPDATED on the **system-owned** columns only:
+      - Existing rows are UPDATED on the **system-owned** columns:
         title, description, page_contexts, default_size, supported_sizes,
         min_size, max_size, category, icon, default_enabled,
         default_position, required_extension, required_permission,
-        required_preset.
+        required_preset, variants, default_variant_id, required_vertical,
+        supported_surfaces, default_surfaces, intelligence_keywords.
 
       Per-user layouts live in `user_widget_layouts` and are untouched;
       only the definition metadata is refreshed. This lets V-1c+ extend
       an existing widget's `page_contexts` (e.g. making
       `at_risk_accounts` also appear in `vault_overview`) just by
       shipping new code — no migration required.
+
+    Per Widget Library Phase W-1 (Section 12), every widget must
+    declare `variants` + `default_variant_id` + `required_vertical` +
+    `supported_surfaces` + `default_surfaces` + `intelligence_keywords`.
+    Widgets that don't declare them get sensible defaults backfilled:
+      • variants → single 'brief' variant matching legacy default_size
+      • default_variant_id → 'brief'
+      • required_vertical → ["*"] (cross-vertical, per Decision 9)
+      • supported_surfaces → ["dashboard_grid"] (current rendering target)
+      • default_surfaces → same as supported_surfaces
+      • intelligence_keywords → []
 
     Returns the count of rows inserted OR meaningfully updated.
     """
@@ -453,6 +584,14 @@ def seed_widget_definitions(db: Session) -> int:
         row.setdefault("required_preset", None)
         row.setdefault("min_size", row.get("default_size", "1x1"))
         row.setdefault("max_size", "4x4")
+
+        # Phase W-1 unified contract defaults (Section 12).
+        row.setdefault("variants", [_brief_variant_for_size(row.get("default_size", "1x1"))])
+        row.setdefault("default_variant_id", "brief")
+        row.setdefault("required_vertical", ["*"])
+        row.setdefault("supported_surfaces", ["dashboard_grid"])
+        row.setdefault("default_surfaces", row["supported_surfaces"])
+        row.setdefault("intelligence_keywords", [])
 
         updatable_columns = {
             "title": row["title"],
@@ -469,6 +608,13 @@ def seed_widget_definitions(db: Session) -> int:
             "required_extension": row["required_extension"],
             "required_permission": row["required_permission"],
             "required_preset": row["required_preset"],
+            # Phase W-1 unified contract.
+            "variants": row["variants"],
+            "default_variant_id": row["default_variant_id"],
+            "required_vertical": row["required_vertical"],
+            "supported_surfaces": row["supported_surfaces"],
+            "default_surfaces": row["default_surfaces"],
+            "intelligence_keywords": row["intelligence_keywords"],
         }
         stmt = (
             pg_insert(WidgetDefinition)
