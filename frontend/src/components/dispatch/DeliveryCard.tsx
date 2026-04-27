@@ -377,15 +377,18 @@ export function DeliveryCard({
         // border: per-card state signal moved entirely to the
         // day-header badge ("Draft" pill). Whole-day state is
         // singular; per-card repetition was noise.
-        "relative rounded-md bg-surface-elevated",
-        // Aesthetic Arc Session 4.5 — Pattern 3 left-edge flag.
-        // 2px solid colored border on the left edge (refined from
-        // 3px), color-mapped to hole-dug status above. With rounded-
-        // md (8px), the flag's top-left + bottom-left corners follow
-        // the radius — the visual is a tagged-edge accent, not a
-        // full-bleed bar. border-l-transparent (no flag) preserves
-        // the original chrome silhouette when no signal is active.
-        "border-l-[2px]",
+        "relative rounded-[2px] bg-surface-elevated",
+        // Aesthetic Arc Session 4.7 — Pattern 3 left-edge flag.
+        // 3px solid colored border (refined Session 4.7 from Session
+        // 4.5's 2px after visual verification: 2px on a 178-280px
+        // wide card was perceptually invisible at production density;
+        // 3px reads as a clear signal band). Color-mapped to
+        // hole-dug status above. With rounded-[2px] corners (Session
+        // 4.7 sharpening from rounded-md 8px), the flag reads as an
+        // architectural-edge accent rather than a tagged-edge accent.
+        // border-l-transparent (no flag) preserves the original
+        // chrome silhouette when no signal is active.
+        "border-l-[3px]",
         flagColorClass,
         // Material chrome via composite box-shadow (Pattern 2).
         // Replaces prior `shadow-level-1` alone — see cardMaterial-
@@ -728,20 +731,30 @@ function HoleDugBadge({
   status: HoleDugStatus
   onCycle?: () => void
 }) {
+  // Aesthetic Arc Session 4.7 — Pattern 3 jewel-set badge.
+  // Background uses `--surface-base` (page substrate; substantially
+  // darker than card surface `--surface-elevated`). The ~0.12 OKLCH
+  // lightness delta is enough to read as "well below the surface"
+  // — pre-Session-4.7 the badge bg was status-*-muted which sat
+  // only ~0.04 darker than card; jewel-set effect was imperceptible.
+  // Now badge is unmistakably a darker recessed surface with the
+  // icon as the inlay sitting inside it. Icon color carries the
+  // status semantic (terracotta for unknown/needs-attention,
+  // sage-green-success for confirmed, neutral for explicit no).
   const config = {
     yes: {
       icon: CheckIcon,
-      cls: "bg-status-success-muted text-status-success",
+      cls: "bg-surface-base text-accent-confirmed",
       label: "Hole dug: yes",
     },
     no: {
       icon: MinusIcon,
-      cls: "bg-surface-sunken text-content-muted border border-border-base",
+      cls: "bg-surface-base text-content-muted",
       label: "Hole dug: no",
     },
     unknown: {
       icon: HelpCircleIcon,
-      cls: "bg-status-warning-muted text-status-warning",
+      cls: "bg-surface-base text-accent",
       label: "Hole dug: unknown (not yet confirmed)",
     },
   }[status]

@@ -172,15 +172,54 @@
   --card-ambient-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.18);
   --flag-press-shadow: rgba(0, 0, 0, 0.15);
 
-  /* ─── JEWEL-SET INSET RING (Aesthetic Arc Session 4.5) ───
+  /* ─── WIDGET ELEVATION TIER (Aesthetic Arc Session 4.7) ───
+   *   DL §11 Pattern 1 elevation hierarchy: widgets float MORE
+   *   than core elements per PLATFORM_INTERACTION_MODEL — widgets
+   *   are summoned manipulable tablets ON TOP of the work surface,
+   *   not equivalent to it.
+   *
+   *   Hierarchy from bottom up:
+   *     - Substrate (page background): no shadow
+   *     - Core element (kanban core): no widget-tier shadow, just
+   *       the surface treatment
+   *     - Cards within core (DeliveryCard): --card-ambient-shadow
+   *       (mid-tier lift, 8px/20px or 8px/24px)
+   *     - Widgets (AncillaryPoolPin, future tablets):
+   *       --widget-ambient-shadow (higher-tier lift, 12px+/28-32px)
+   *
+   *   Light-mode: 0 12px 28px -6px rgba(0,0,0,0.25)
+   *   Dark-mode:  0 12px 32px -6px rgba(0,0,0,0.55)  (override below)
+   *
+   *   Wider blur + larger y-offset + stronger alpha than card's
+   *   ambient. Perceptual signal: "this object floats further from
+   *   the work surface than cards do." ─── */
+  --widget-ambient-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.25);
+
+  /* Widget tablet composite — used by AncillaryPoolPin and future
+     Pattern 1 tablets. Composes shadow-level-1 (existing material
+     edges + dark-mode top highlight + atmospheric halo) + the
+     widget-tier ambient lift. Single token for clean Tailwind
+     arbitrary-value usage `shadow-[var(--shadow-widget-tablet)]`. */
+  --shadow-widget-tablet: var(--shadow-level-1), var(--widget-ambient-shadow);
+
+  /* ─── JEWEL-SET INSET RING (Aesthetic Arc Session 4.5 + 4.7) ───
    *   DL §11 Pattern 3 second-channel inset shadow for status
    *   indicators (HoleDugBadge canonical). Reads as physical
    *   recessed ring — icon "set into" surface, not "painted on."
-   *   Light mode at 0.15; dark mode at 0.30 (override below) per
-   *   Pattern 3 doc. Pre-Session-4.5 was hard-coded inline as
+   *
+   *   Session 4.7 strengthening: light-mode 0.15 → 0.25, dark-mode
+   *   0.30 → 0.50. The earlier values were too subtle when paired
+   *   with the Session 4.5 status-*-muted badge backgrounds (only
+   *   0.04 OKLCH delta from card surface). Session 4.7 darkens the
+   *   badge fill itself to bg-surface-base (~0.12 delta below card)
+   *   + strengthens the inset ring on top. Together: visible
+   *   recessed well with icon as inlay.
+   *
+   *   Pre-Session-4.5 was hard-coded inline as
    *   `[inset_0_1px_2px_rgb(0_0_0/0.15)]` single value;
-   *   Session 4.5 promoted to mode-aware token. ─── */
-  --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.15);
+   *   Session 4.5 promoted to mode-aware token; Session 4.7
+   *   strengthened both modes for visual fidelity. ─── */
+  --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 
   /* ─── ACCENT CONFIRMED (Aesthetic Arc Session 4.5) ───
    *   Sage-green for DL §11 Pattern 3 first-channel left-edge
@@ -430,12 +469,12 @@
   --shadow-level-2: 0 2px 4px var(--shadow-color-strong), 0 12px 32px var(--shadow-color-strong), 0 4px 12px var(--shadow-color-base), inset 0 3px 0 var(--shadow-highlight-top);
   --shadow-level-3: 0 3px 6px var(--shadow-color-strong), 0 24px 56px var(--shadow-color-strong), 0 8px 20px var(--shadow-color-strong), inset 0 3px 0 var(--shadow-highlight-top);
 
-  /* ─── JEWEL-SET INSET RING — dark-mode override (Session 4.5) ───
-   *   Dark substrate compresses low-lightness deltas; the 0.15
-   *   light-mode value reads imperceptible against charcoal.
-   *   0.30 alpha doubles the recess depth so the indicator reads
-   *   as physical jeweled inlay. Per DL §11 Pattern 3 doc-spec. ─── */
-  --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.30);
+  /* ─── JEWEL-SET INSET RING — dark-mode override (Session 4.5 + 4.7) ───
+   *   Session 4.7 strengthening 0.30 → 0.50. Dark substrate compresses
+   *   low-lightness deltas. Combined with Session 4.7's darker badge
+   *   fill (bg-surface-base, ~0.12 OKLCH below card), the 0.50 inset
+   *   produces an unmistakable recessed-well effect. ─── */
+  --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.50);
 
   /* ─── CARD MATERIAL TREATMENT — dark-mode overrides (Session 4.6) ───
    *   Strengthens light-mode values to carry the same perceptual
@@ -445,4 +484,9 @@
   --card-edge-shadow: rgba(0, 0, 0, 0.50);
   --card-ambient-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
   --flag-press-shadow: rgba(0, 0, 0, 0.30);
+
+  /* Widget ambient shadow — dark-mode override (Session 4.7).
+     Charcoal substrate needs stronger atmospheric halo; widgets
+     also need MORE lift than cards. 0.55 alpha + 32px blur. */
+  --widget-ambient-shadow: 0 12px 32px -6px rgba(0, 0, 0, 0.55);
 }

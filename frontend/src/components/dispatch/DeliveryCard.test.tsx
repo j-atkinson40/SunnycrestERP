@@ -335,7 +335,7 @@ describe("DeliveryCard — schedule state (Phase 3.3: no perimeter border)", () 
     expect(card?.className).not.toMatch(/\bborder\b(?!-)/)
   })
 
-  it("card carries canonical elevated + composite material shadow + rounded-md chrome", () => {
+  it("card carries canonical elevated + composite material shadow + sharp 2px chrome", () => {
     const { container } = render(
       <Harness>
         <DeliveryCard delivery={makeDelivery()} scheduleFinalized={false} />
@@ -343,7 +343,10 @@ describe("DeliveryCard — schedule state (Phase 3.3: no perimeter border)", () 
     )
     const card = container.querySelector('[data-slot="dispatch-delivery-card"]')
     expect(card?.className).toMatch(/bg-surface-elevated/)
-    expect(card?.className).toMatch(/rounded-md/)
+    // Aesthetic Arc Session 4.7 — corner radius rounded-md (8px)
+    // → rounded-[2px] (architectural register per Section 0
+    // "sharp at architectural scale, soft at touchable").
+    expect(card?.className).toMatch(/rounded-\[2px\]/)
     // Aesthetic Arc Session 4.5 — shadow-level-1 no longer a Tailwind
     // utility on the wrapper. The card composes a multi-layer box-
     // shadow inline (edge highlight + edge shadow + ambient + flag-

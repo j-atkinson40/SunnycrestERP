@@ -562,6 +562,50 @@ Pin auto-sizing height (`height: "auto" + maxHeight: 480` per new "Widget Conten
 
 Extended "Widget Content Sizing" → "Widget Compactness" principle in PRODUCT_PRINCIPLES.md to cover width + chrome containment + boundary affordances. Pin item titles wrap (`line-clamp-2 break-words`). SchedulingKanbanCore root wrapped in `w-fit max-w-full mx-auto` so kanban content-sizes + Finalize aligns to rightmost-lane right edge. Finalize typography bumped (12px font-medium → 14px font-semibold). DateBox visibility restored (transparent + full-strength `border-border-subtle` + `text-[0.8125rem]`). 4 commits: `db0dbe6` → `55e172e` → `895a058` → `785a38d`.
 
+### Session 4.7 — Final Reference Component Locking (✅ Shipped, 2026-04-27)
+
+Closes the three remaining gaps surfaced in user verification of Sessions 4 + 4.5 + 4.6 material work, plus introduces the architectural widget-elevation tier.
+
+**Three gaps closed:**
+
+1. **Left-edge flag width 2px → 3px** (Pattern 3). Visual verification confirmed 2px on production-density cards (178-280px wide) was perceptually invisible. 3px reads as a clear architectural-edge accent. DL §11 Pattern 3 spec updated; calibration history documented.
+
+2. **Jewel-set indicator visibly recessed** (Pattern 3). Pre-Session-4.7 the HoleDugBadge used `bg-status-*-muted` backgrounds (only ~0.04 OKLCH lightness delta from card surface) — the badge looked like a colored chip, not a jeweled inlay. Session 4.7 swaps badge fill to `bg-surface-base` (~0.12 delta below card surface) AND strengthens `--shadow-jewel-inset` (0.15→0.25 light, 0.30→0.50 dark). Together: visible recessed well with icon-as-inlay. Icon color maps to status semantic (`text-accent` for needs-attention, `text-accent-confirmed` for confirmed, `text-content-muted` for explicit no).
+
+3. **Card corner radius `rounded-md` (8px) → `rounded-[2px]`** (Pattern 2 + Pattern 1). Per Section 0 "sharp at architectural scale, soft at touchable" — operational cards + tablet widgets are architectural elements (not touchable affordances). Pre-Session-4.7 8px corners read pillowy; 2px reads architectural. Cross-surface consistency: DeliveryCard + AncillaryPoolPin both use `rounded-[2px]` post-4.7.
+
+**Architectural addition: widget elevation tier.**
+
+Per PLATFORM_INTERACTION_MODEL, widgets are summoned manipulable tablets ON TOP of operations — not equivalent to the work surface. Visual verification confirmed AncillaryPoolPin (Pattern 1 widget) and DeliveryCard (Pattern 2 card-within-core) appeared at similar elevation levels — but they shouldn't. Session 4.7 introduces:
+
+- New `--widget-ambient-shadow` mode-aware token (light `0 12px 28px -6px rgba(0,0,0,0.25)`, dark `0 12px 32px -6px rgba(0,0,0,0.55)`) — wider blur + larger y-offset + stronger alpha than `--card-ambient-shadow`
+- New `--shadow-widget-tablet` composite token (`var(--shadow-level-1), var(--widget-ambient-shadow)`) for clean Tailwind arbitrary-value usage by Pattern 1 tablets
+- AncillaryPoolPin migrates from `shadow-level-1` (card-tier) to `shadow-[var(--shadow-widget-tablet)]` (widget-tier)
+- Documented hierarchy: Substrate → Core element → Cards within core → Widgets (each tier visibly higher than the one below)
+- DL §3 + §11 Pattern 1 fully document the elevation hierarchy + token block
+
+Future floating widgets (drive-time matrix pins, staff availability pins, future Pulse cards) inherit `--shadow-widget-tablet` via Pattern 1 tablet treatment.
+
+**Reference component lock:** DeliveryCard + AncillaryPoolPin become the canonical Pattern 1/2/3 reference implementations with calibration history documented in DL §11 reference-implementation notes. Future Session 5+ component refinement compares against these references rather than re-deriving from Section 0.
+
+**Visual verification (DOM-confirmed both modes):**
+- Card flag: 3px solid terracotta (`oklch(0.46 0.1 39)` for unknown), visibly tagged-edge accent
+- Card corners: 2px architectural radii
+- Card jewel-set badge: bg-surface-base fill (substantially darker than card), `--shadow-jewel-inset` inset (0.25 light / 0.50 dark), terracotta `?` icon as inlay — visibly recessed well
+- Pin: rounded-[2px] + composite `shadow-level-1 + widget-ambient` — visibly more atmospheric halo than cards (wider 32px blur dark / 28px light, deeper 0.55 alpha dark / 0.25 light, larger 12px y-offset)
+
+**Tests + regression:** tsc 0 errors, vitest 527/527 passing, 148/148 dispatch passing, 84/84 dispatch backend (test_dispatch_schedule + test_focus_session). DeliveryCard.test.tsx existing assertions pass without modification (Session 4.7 changes are in inline-style + className; wrapper data attributes preserved).
+
+**Calibration arc complete (Sessions 4 → 4.5 → 4.6 → 4.7):**
+- Session 4: shadow-level-1 only (flat panel)
+- Session 4.5: 4 single-value material tokens (still flat in light mode + 2px flag invisible)
+- Session 4.6: mode-aware material tokens (cards lift correctly in both modes)
+- Session 4.7: 3px flag + 2px corners + visible jewel-set + widget-tier elevation (reference components locked)
+
+**After Session 4.7:** declare aesthetic foundation locked. Next strategic milestone = Widget Library Investigation. Session 5+ component refinement (AncillaryCard internals, Driver column header, Funeral Schedule widget, etc.) compares against the Session 4.7 reference components.
+
+---
+
 ### Session 4 — Material Treatment Patterns + Type System Migration + Dual Reference Components (current)
 
 **Date:** 2026-04-26  

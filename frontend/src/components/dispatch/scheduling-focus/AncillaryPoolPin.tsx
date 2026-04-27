@@ -285,14 +285,38 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
         // flex-1 flex-col sibling.
         //
         // overflow-hidden clips the bezel column's right border so
-        // it doesn't poke past the rounded-md corners.
+        // it doesn't poke past the rounded corners.
+        //
+        // Aesthetic Arc Session 4.7 — corner radius rounded-md (8px)
+        // → rounded-[2px]. Pattern 1 + Section 0 "sharp at
+        // architectural scale": tablets are architectural materialized
+        // objects, not pillowy chips. 2px corners read as carved
+        // precision tablet, not soft toy.
+        //
+        // Aesthetic Arc Session 4.7 — widget elevation tier. Pre-4.7
+        // the pin used `shadow-level-1` (same base as cards' atmospheric
+        // layer). Post-4.7 the pin composes
+        // `var(--widget-ambient-shadow)` IN ADDITION TO shadow-level-1
+        // — wider blur + larger y-offset + stronger alpha. The pin
+        // visibly floats further from the work surface than cards do,
+        // matching PLATFORM_INTERACTION_MODEL: widgets are summoned
+        // tablets ON TOP of operations, not equivalent to the work
+        // surface. See DL §11 Pattern 1 elevation hierarchy.
         //
         // PLATFORM_INTERACTION_MODEL: tablets are the materialization
         // unit — they float, they're individually present, they don't
         // enclose other content. Pattern 1 reference component.
         "relative flex overflow-hidden",
         "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
-        "rounded-md shadow-level-1",
+        "rounded-[2px]",
+        // Multi-layer shadow via the composite `--shadow-widget-tablet`
+        // token (defined in tokens.css). Composes shadow-level-1
+        // (existing material edges + dark-mode top highlight) + the
+        // widget-ambient-shadow (higher-tier lift). Single token
+        // resolves cleanly through Tailwind's arbitrary-value
+        // bracket syntax. See DL §3 widget elevation tier rationale +
+        // §11 Pattern 1 elevation hierarchy.
+        "shadow-[var(--shadow-widget-tablet)]",
         // Subtle dim during refresh — keeps the existing list visible
         // but signals data is in flight.
         poolLoading && "opacity-80",
