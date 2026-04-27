@@ -562,6 +562,52 @@ Pin auto-sizing height (`height: "auto" + maxHeight: 480` per new "Widget Conten
 
 Extended "Widget Content Sizing" → "Widget Compactness" principle in PRODUCT_PRINCIPLES.md to cover width + chrome containment + boundary affordances. Pin item titles wrap (`line-clamp-2 break-words`). SchedulingKanbanCore root wrapped in `w-fit max-w-full mx-auto` so kanban content-sizes + Finalize aligns to rightmost-lane right edge. Finalize typography bumped (12px font-medium → 14px font-semibold). DateBox visibility restored (transparent + full-strength `border-border-subtle` + `text-[0.8125rem]`). 4 commits: `db0dbe6` → `55e172e` → `895a058` → `785a38d`.
 
+### Session 4.8 — Sharp Corner Sweep + Widget Elevation Amplification (✅ Shipped, 2026-04-27)
+
+Closes the two remaining items after Session 4.7 visual verification: DateBox corners not architectural-sharp + AncillaryPoolPin reading as elevated card vs floating tablet. Final aesthetic-foundation calibration before declaring lock.
+
+**Critical methodology learning canonicalized:** Across Sessions 4 → 4.5 → 4.6 → 4.7 each ship was DOM-verified but the user repeatedly verified the rendered output didn't match what DOM-computed values claimed. Session 4.8's investigation found the root cause for the most recent recurrence (pin corners reading soft despite `borderRadius: 2px` in DOM): **the frosted-glass surface treatment fundamentally softens visible edges regardless of border-radius value**. Semi-transparent + blurred fill blends the perimeter into substrate, and DOM-computed-style sampling cannot detect this perceptual softening. **Visual verification at zoom is the canonical methodology**; DOM verification supplementary only. Future Aesthetic Arc sessions: take screenshots at production viewport, inspect at zoom, compare side-by-side against reference components — declare ship only when visually correct, not when DOM-correct.
+
+**Two items addressed:**
+
+**Item 1 — Sharp corner sweep:**
+- DateBox: `rounded-sm` (Tailwind v4 resolved to 6px) → `rounded-[2px]`. Architectural sharp matching cards.
+- DeliveryCard inner body button (focus-ring outline target): `rounded-md` → `rounded-[2px]` for consistency with outer card 2px.
+- SchedulingKanbanCore drag-overlay preview: `rounded-md` → `rounded-[2px]` (preserves card chrome during drag).
+- AncillaryPoolPin: `rounded-[2px]` → `rounded-none` (0px). DOM audit confirmed 2px applied; visual verification revealed the frosted-glass surface treatment (`bg /85` + `backdrop-blur(8px)`) inherently softens any corner. 0px is the irreducible minimum sharpness within Pattern 1's canonical frosted-glass treatment. Pattern 1 vs Pattern 2 corner-spec distinction now explicitly documented in DL §11.
+
+**Pattern 2 explicit surface list locked (DL §11 Pattern 2):**
+- Surfaces inheriting 2px architectural corner: DeliveryCard, AncillaryCard (when refactored), DateBox, future operational cards (Pulse / peek / command-bar / briefing breakdown), DeliveryCard inner button, drag overlay preview
+- Pattern 1 frosted-glass tablets: 0px (different surface treatment requires different corner value to produce equivalent perceptual sharpness)
+- Touchable controls (buttons, inputs, popovers, dialogs): retain their primitive-defined corners (typically `rounded-md`) per Section 0 chef's-knife analogy
+
+**Item 2 — Widget elevation amplification:**
+- Pre-Session-4.8: `--widget-ambient-shadow` was single-shadow (`0 12px 28px -6px black-25%` light / `0 12px 32px -6px black-55%` dark). Read as "elevated card."
+- Session 4.8: layered atmospheric shadow (3 layers per mode) — inner tight halo + mid-distance lift + atmospheric haze:
+  - Light: `0 4px 12px -2px black-10%, 0 16px 32px -4px black-25%, 0 32px 56px -8px black-30%`
+  - Dark: `0 4px 12px -2px black-30%, 0 16px 32px -4px black-55%, 0 32px 56px -8px black-65%`
+- New `--widget-tablet-transform: translateY(-2px)` token applied via inline style on AncillaryPoolPin outer element. Static physical lift offset combined with layered shadow creates "summoned object hovering" register (PLATFORM_INTERACTION_MODEL canonical).
+- AncillaryPoolPin doesn't itself drag (only PoolItem rows drag via dnd-kit) — no transform conflict with drag mechanics.
+
+**Visual verification (post-Session-4.8, both modes, canvas-tier 1400x900):**
+- DARK: Pin corners read sharp (post-rounded-none); pin atmospheric shadow halo extends visibly into charcoal substrate; pin clearly hovers vs cards. DateBoxes architectural. Cards architectural. All three surfaces share architectural-corner family identity.
+- LIGHT: Pin corners sharp; atmospheric shadow halo extends visibly into cream substrate (lighter alpha, but present); pin floats above cards. DateBoxes + cards architectural family.
+- Methodology: visual-first inspection at zoom; DOM verification supplementary only.
+
+**Calibration arc complete (Sessions 4 → 4.5 → 4.6 → 4.7 → 4.8):**
+- S4: shadow-level-1 only
+- S4.5: 4 single-value material tokens
+- S4.6: mode-aware material tokens
+- S4.7: 3px flag + 2px corners + jewel-set bg-surface-base + widget-tier elevation
+- **S4.8: rounded-none on Pattern 1 frosted-glass + layered widget shadow + translateY transform + Pattern 2 surface list lock + visual-verification methodology canonicalization**
+
+**Aesthetic foundation declared LOCKED.** Reference components (DeliveryCard + AncillaryPoolPin + DateBox) calibrated as Pattern 1/2/3 anchors. Subsequent work resumes:
+- Widget Library Investigation (next strategic milestone)
+- Phase 4.4.4 (slide animation + multi-day functional work)
+- Aesthetic Arc Sessions 5-9 component-by-component refinement against the locked references
+
+---
+
 ### Session 4.7 — Final Reference Component Locking (✅ Shipped, 2026-04-27)
 
 Closes the three remaining gaps surfaced in user verification of Sessions 4 + 4.5 + 4.6 material work, plus introduces the architectural widget-elevation tier.

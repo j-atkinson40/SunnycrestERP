@@ -172,7 +172,7 @@
   --card-ambient-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.18);
   --flag-press-shadow: rgba(0, 0, 0, 0.15);
 
-  /* ─── WIDGET ELEVATION TIER (Aesthetic Arc Session 4.7) ───
+  /* ─── WIDGET ELEVATION TIER (Aesthetic Arc Session 4.7 + 4.8) ───
    *   DL §11 Pattern 1 elevation hierarchy: widgets float MORE
    *   than core elements per PLATFORM_INTERACTION_MODEL — widgets
    *   are summoned manipulable tablets ON TOP of the work surface,
@@ -183,23 +183,50 @@
    *     - Core element (kanban core): no widget-tier shadow, just
    *       the surface treatment
    *     - Cards within core (DeliveryCard): --card-ambient-shadow
-   *       (mid-tier lift, 8px/20px or 8px/24px)
+   *       (mid-tier lift, 8px/20-24px)
    *     - Widgets (AncillaryPoolPin, future tablets):
-   *       --widget-ambient-shadow (higher-tier lift, 12px+/28-32px)
+   *       --widget-ambient-shadow (higher-tier lift, layered
+   *       atmospheric shadow + translateY(-2px) transform)
    *
-   *   Light-mode: 0 12px 28px -6px rgba(0,0,0,0.25)
-   *   Dark-mode:  0 12px 32px -6px rgba(0,0,0,0.55)  (override below)
+   *   Session 4.7 → 4.8 calibration: 4.7's single-shadow values
+   *   (12px y-offset, 28-32px blur, 0.25/0.55 alpha) read as
+   *   "elevated card" not "tablet hovering above operations" —
+   *   Pattern 1 + INTERACTION_MODEL spec calls for the latter.
+   *   Session 4.8 introduces:
+   *     1. Layered atmospheric shadow (3 layers per mode):
+   *        inner tight halo + mid-distance lift + atmospheric haze
+   *     2. translateY(-2px) transform via --widget-tablet-transform
+   *        for genuine physical lift offset
+   *   Together: tablet reads as floating object hovering above the
+   *   work surface, not as a card with stronger shadow.
    *
-   *   Wider blur + larger y-offset + stronger alpha than card's
-   *   ambient. Perceptual signal: "this object floats further from
-   *   the work surface than cards do." ─── */
-  --widget-ambient-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.25);
+   *   Light-mode (root):
+   *     Layer 1 (inner tight halo):    0 4px 12px -2px black-10%
+   *     Layer 2 (mid-distance lift):   0 16px 32px -4px black-25%
+   *     Layer 3 (atmospheric haze):    0 32px 56px -8px black-30%
+   *
+   *   Dark-mode (override below):
+   *     Layer 1: 0 4px 12px -2px black-30%
+   *     Layer 2: 0 16px 32px -4px black-55%
+   *     Layer 3: 0 32px 56px -8px black-65%
+   *
+   *   --widget-tablet-transform: translateY(-2px) — applied to the
+   *   widget tablet outer element via inline style. Subtle physical
+   *   offset that combined with the layered shadow creates genuine
+   *   "summoned object hovering" register vs static "elevated card"
+   *   register. ─── */
+  --widget-ambient-shadow:
+    0 4px 12px -2px rgba(0, 0, 0, 0.10),
+    0 16px 32px -4px rgba(0, 0, 0, 0.25),
+    0 32px 56px -8px rgba(0, 0, 0, 0.30);
+  --widget-tablet-transform: translateY(-2px);
 
   /* Widget tablet composite — used by AncillaryPoolPin and future
      Pattern 1 tablets. Composes shadow-level-1 (existing material
      edges + dark-mode top highlight + atmospheric halo) + the
-     widget-tier ambient lift. Single token for clean Tailwind
-     arbitrary-value usage `shadow-[var(--shadow-widget-tablet)]`. */
+     widget-tier layered atmospheric shadow. Single token for clean
+     Tailwind arbitrary-value usage `shadow-[var(--shadow-widget-
+     tablet)]`. */
   --shadow-widget-tablet: var(--shadow-level-1), var(--widget-ambient-shadow);
 
   /* ─── JEWEL-SET INSET RING (Aesthetic Arc Session 4.5 + 4.7) ───
@@ -485,8 +512,15 @@
   --card-ambient-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
   --flag-press-shadow: rgba(0, 0, 0, 0.30);
 
-  /* Widget ambient shadow — dark-mode override (Session 4.7).
-     Charcoal substrate needs stronger atmospheric halo; widgets
-     also need MORE lift than cards. 0.55 alpha + 32px blur. */
-  --widget-ambient-shadow: 0 12px 32px -6px rgba(0, 0, 0, 0.55);
+  /* Widget ambient shadow — dark-mode override (Session 4.7 + 4.8).
+     Session 4.8 layered atmospheric shadow: charcoal substrate
+     amplifies each layer (0.30 / 0.55 / 0.65 alpha). Combined with
+     --widget-tablet-transform: translateY(-2px), the pin reads as
+     floating object hovering above operations rather than elevated
+     card. See §3 widget elevation tier rationale for the calibration
+     history (Session 4.7 single-shadow → 4.8 layered + transform). */
+  --widget-ambient-shadow:
+    0 4px 12px -2px rgba(0, 0, 0, 0.30),
+    0 16px 32px -4px rgba(0, 0, 0, 0.55),
+    0 32px 56px -8px rgba(0, 0, 0, 0.65);
 }

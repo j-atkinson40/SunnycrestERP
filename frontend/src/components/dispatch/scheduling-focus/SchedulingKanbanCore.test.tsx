@@ -605,7 +605,10 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     // Full-strength border (not the /50 alpha modifier on the
     // border itself — the /50 is on the surface token).
     expect(cls).toMatch(/\bborder-border-subtle\b(?!\/)/)
-    expect(cls).toMatch(/rounded-sm/)
+    // Aesthetic Arc Session 4.8 — DateBox corners migrated from
+    // rounded-sm (Tailwind v4 6px) to rounded-[2px] for Pattern 2
+    // canonical architectural-corner spec.
+    expect(cls).toMatch(/rounded-\[2px\]/)
     // Drift guards — these tokens MUST NOT appear at rest.
     expect(cls).not.toMatch(/bg-muted\b/)
     expect(cls).not.toMatch(/rounded-full/)

@@ -1173,7 +1173,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
                       ? "ancillary"
                       : "primary"
                   }
-                  className="scale-[1.02] shadow-level-3 rounded-md w-[220px]"
+                  className="scale-[1.02] shadow-level-3 rounded-[2px] w-[220px]"
                 >
                   {/* Phase 4.3.3 — preview matches the source card
                       type (primary → DeliveryCard; standalone

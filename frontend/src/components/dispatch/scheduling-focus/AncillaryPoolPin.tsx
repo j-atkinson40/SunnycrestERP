@@ -251,6 +251,22 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
       ref={setDropRef}
       data-slot="ancillary-pool-pin"
       data-pool-drop-target={showPoolDropFeedback ? "true" : "false"}
+      // Aesthetic Arc Session 4.8 — Pattern 1 widget tablet
+      // transform. translateY(-2px) creates genuine physical lift
+      // offset combined with the layered atmospheric shadow tokens.
+      // Together: pin reads as floating object hovering above
+      // operations, not as an elevated card. Pre-Session-4.8 the
+      // pin's lift came from shadow alone (single-shadow
+      // --widget-ambient-shadow); Session 4.8 introduces the
+      // transform via --widget-tablet-transform token. See DL §3
+      // widget elevation tier + §11 Pattern 1 for the full
+      // composition rationale. The transform applies to this outer
+      // div (not the WidgetChrome wrapper which positions via its
+      // own translate3d for canvas placement); no conflict with
+      // drag mechanics since the pin itself doesn't drag — only
+      // its CONTENTS (PoolItem rows) drag via dnd-kit. The
+      // 2px upward offset is a static visual cue, not interaction.
+      style={{ transform: "var(--widget-tablet-transform)" }}
       className={cn(
         // Aesthetic Arc Session 4.5 — Pattern 1 tablet treatment.
         // Reference component for Pattern 1 (Tablet) per DL §11.
@@ -308,7 +324,19 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
         // enclose other content. Pattern 1 reference component.
         "relative flex overflow-hidden",
         "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
-        "rounded-[2px]",
+        // Aesthetic Arc Session 4.8 — corner radius rounded-[2px]
+        // → rounded-none (0px). DOM audit confirmed pin's 2px corner
+        // is technically applied, but the frosted-glass surface
+        // treatment (bg /85 + backdrop-blur) inherently softens the
+        // visible perimeter — semi-transparent + blurred fill blends
+        // the edge into the substrate regardless of border-radius
+        // value. 0px maximizes available sharpness within the
+        // frosted-glass canonical Pattern 1 surface treatment.
+        // DateBoxes (solid fill, no frosted-glass) keep 2px because
+        // their fill carries the edge sharpness; the pin's frosted
+        // treatment trades some edge sharpness for the "floating
+        // tablet hovering above operations" register Pattern 1 wants.
+        "rounded-none",
         // Multi-layer shadow via the composite `--shadow-widget-tablet`
         // token (defined in tokens.css). Composes shadow-level-1
         // (existing material edges + dark-mode top highlight) + the

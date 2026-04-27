@@ -452,7 +452,12 @@ export function DeliveryCard({
           // Phase 4.2.1 — density-driven padding. Compact tightens
           // horizontal + vertical rhythm without hiding any content.
           isCompact ? "px-2.5 py-1.5" : "px-3 py-2",
-          "focus-ring-accent outline-none rounded-md",
+          // Aesthetic Arc Session 4.8 — inner body button corner
+          // rounded-md → rounded-[2px] for consistency with outer
+          // card 2px corners (Pattern 2 canonical). Focus-ring
+          // outline now shares the same architectural register as
+          // the card itself.
+          "focus-ring-accent outline-none rounded-[2px]",
         )}
         aria-label={`Edit ${family || "unnamed"} family delivery`}
       >

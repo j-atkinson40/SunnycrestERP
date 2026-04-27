@@ -222,7 +222,14 @@ describe("DateBox rendering", () => {
     expect(cls).toMatch(/bg-surface-elevated\/50/)
     // Full-strength border (no /50 alpha modifier).
     expect(cls).toMatch(/\bborder-border-subtle\b(?!\/)/)
-    expect(cls).toMatch(/rounded-sm/)
+    // Aesthetic Arc Session 4.8 — corner radius rounded-sm
+    // (Tailwind v4 resolved to 6px) → rounded-[2px] for Pattern 2
+    // canonical architectural-corner spec. Solid-fill DateBoxes
+    // (bg-surface-elevated/50) carry the 2px sharp corner cleanly;
+    // shares architectural family with DeliveryCard. Frosted-glass
+    // Pattern 1 tablets use rounded-none — different surface
+    // treatment requires different corner value.
+    expect(cls).toMatch(/rounded-\[2px\]/)
     // Drift guards — these tokens MUST NOT appear at rest.
     expect(cls).not.toMatch(/bg-muted\b/)
     expect(cls).not.toMatch(/rounded-full/)

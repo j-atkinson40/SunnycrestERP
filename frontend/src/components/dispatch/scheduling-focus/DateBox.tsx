@@ -187,7 +187,17 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
               // calibrate to read as peripheral interactive surface
               // comparable to Pin's presence."
               "inline-flex flex-col items-center justify-center",
-              "min-w-[48px] px-2.5 py-1 rounded-sm",
+              // Aesthetic Arc Session 4.8 — corner radius rounded-sm
+              // (6px) → rounded-[2px]. DateBox is a peripheral
+              // architectural surface in Focus chrome (peek/slide
+              // affordance flanking the H2 day label). Per DL §11
+              // Pattern 2 canonical 2px architectural-corner spec —
+              // shares the same architectural register as cards +
+              // tablet widgets. Pre-Session-4.8 was rounded-sm
+              // (Tailwind v4 resolved to 6px) which read as softer/
+              // touchable; 2px reads as carved precision matching
+              // DeliveryCard + AncillaryPoolPin canonical references.
+              "min-w-[48px] px-2.5 py-1 rounded-[2px]",
               // Aesthetic Arc Session 3 — `bg-surface-elevated/50`
               // warm fill at rest. Pin uses `bg-surface-elevated/85`
               // because it's a floating card with backdrop-blur; the

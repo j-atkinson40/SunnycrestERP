@@ -829,25 +829,32 @@ Not every token has every variant. The table below lists all defined tokens.
 - Applied via `box-shadow: var(--shadow-jewel-inset)` on the indicator's chip element. Pattern 3 reference implementation pairs this token with a badge background of `bg-surface-base` (substantially darker than card surface) — the bg darker fill + inset shadow together produce the well effect; either alone is too subtle.
 - Calibration history: Session 4.5 single-value 0.15 (single mode) → mode-aware 0.15/0.30 → Session 4.7 strengthened to 0.25/0.50.
 
-### Widget elevation tier tokens (Aesthetic Arc Session 4.7)
+### Widget elevation tier tokens (Aesthetic Arc Session 4.7 + 4.8)
 
-**Rationale:** Pre-Session-4.7, Pattern 1 tablet widgets (AncillaryPoolPin canonical) used `shadow-level-1` (the same elevation token as cards within the work surface). Visual verification confirmed widgets and cards appeared at similar elevation levels — but Pattern 1 + PLATFORM_INTERACTION_MODEL specify widgets float MORE than core/cards (they're summoned manipulable tablets ON TOP of operations, not equivalent to the work surface). Session 4.7 introduces the widget elevation tier to make the hierarchy visible.
+**Rationale:** Pre-Session-4.7, Pattern 1 tablet widgets (AncillaryPoolPin canonical) used `shadow-level-1` (the same elevation token as cards within the work surface). Visual verification confirmed widgets and cards appeared at similar elevation levels — but Pattern 1 + PLATFORM_INTERACTION_MODEL specify widgets float MORE than core/cards (they're summoned manipulable tablets ON TOP of operations, not equivalent to the work surface). Session 4.7 introduced the widget elevation tier; **Session 4.8 amplified** to make the hierarchy unmistakable.
+
+**Calibration history.** Session 4.7 shipped single-shadow values (light `0 12px 28px -6px black-25%`, dark `0 12px 32px -6px black-55%`). Visual verification confirmed pin still read as "elevated card" not "tablet hovering." Session 4.8 introduces:
+
+1. **Layered atmospheric shadow** — 3 layers per mode (inner tight halo + mid-distance lift + atmospheric haze) instead of single shadow. The layered composition reads as a tablet floating in atmospheric space, not as a card with stronger shadow.
+2. **`translateY(-2px)` transform** via `--widget-tablet-transform` token — applied to the widget tablet outer element. Subtle physical offset combined with layered shadow creates genuine "summoned object hovering" register.
 
 **Elevation hierarchy (bottom up):**
 1. **Substrate** — page background, no shadow
 2. **Core element** — kanban core, primary work surface, no widget-tier lift
 3. **Cards within core** — DeliveryCard, AncillaryCard. `--card-ambient-shadow` (mid-tier, 8/20 light or 8/24 dark, alpha 0.18 / 0.45)
-4. **Widgets** — AncillaryPoolPin, future floating tablets, summoned objects. `--widget-ambient-shadow` (higher-tier, 12/28 light or 12/32 dark, alpha 0.25 / 0.55) plus shadow-level-1's existing material edges, composed via `--shadow-widget-tablet`
+4. **Widgets** — AncillaryPoolPin, future floating tablets, summoned objects. `--widget-ambient-shadow` (higher-tier layered atmospheric shadow) + `--widget-tablet-transform` (translateY(-2px)) plus shadow-level-1's existing material edges, composed via `--shadow-widget-tablet`
 
 | Token | Light mode | Dark mode | Composition role |
 |---|---|---|---|
-| `--widget-ambient-shadow` | `0 12px 28px -6px rgba(0, 0, 0, 0.25)` | `0 12px 32px -6px rgba(0, 0, 0, 0.55)` | Widget-tier ambient lift; wider blur + larger y-offset + stronger alpha than `--card-ambient-shadow` |
+| `--widget-ambient-shadow` | `0 4px 12px -2px black-10%, 0 16px 32px -4px black-25%, 0 32px 56px -8px black-30%` | `0 4px 12px -2px black-30%, 0 16px 32px -4px black-55%, 0 32px 56px -8px black-65%` | Layered atmospheric shadow (3 layers) — inner tight halo + mid-distance lift + atmospheric haze |
+| `--widget-tablet-transform` | `translateY(-2px)` | `translateY(-2px)` | Subtle physical lift offset; combined with layered shadow creates "summoned object hovering" register |
 | `--shadow-widget-tablet` | `var(--shadow-level-1), var(--widget-ambient-shadow)` | (same — composes the mode-aware variants) | Composite token used by Pattern 1 tablets via `shadow-[var(--shadow-widget-tablet)]` |
 
 *Notes:*
-- Mode-aware per-substrate response (same discipline as `--card-ambient-shadow`): light mode lighter alpha for cream substrate; dark mode stronger alpha for charcoal atmospheric halo.
-- `--shadow-widget-tablet` is a syntactic convenience — it composes shadow-level-1 (existing material edges + dark-mode top highlight) + the widget-ambient-shadow into a single token reference for clean Tailwind arbitrary-value usage. Equivalent to spelling them out with comma but more readable.
-- Future floating widgets (drive-time matrix pins, staff availability pins, future Pulse cards) inherit `--shadow-widget-tablet` via Pattern 1 tablet treatment composition.
+- Mode-aware per-substrate response (same discipline as `--card-ambient-shadow`): light mode lighter alphas for cream substrate; dark mode stronger alphas for charcoal atmospheric halo.
+- `--shadow-widget-tablet` is a syntactic convenience — it composes shadow-level-1 (existing material edges + dark-mode top highlight) + the widget-ambient-shadow layers into a single token reference for clean Tailwind arbitrary-value usage.
+- `--widget-tablet-transform` applied via inline `style={{ transform: "var(--widget-tablet-transform)" }}` on the widget outer element. AncillaryPoolPin doesn't itself drag — only its CONTENTS (PoolItem rows) drag via dnd-kit — so the static transform doesn't conflict with drag mechanics. Future widgets that DO drag will need to compose this transform into their drag-position transform string.
+- Future floating widgets (drive-time matrix pins, staff availability pins, future Pulse cards) inherit `--shadow-widget-tablet` + `--widget-tablet-transform` via Pattern 1 tablet treatment composition.
 - The card-tier ambient (`--card-ambient-shadow`) and widget-tier ambient (`--widget-ambient-shadow`) are separate tokens so cards within a widget would render at the card tier, NOT the widget tier — the hierarchy is by surface role, not by nesting.
 
 ### Accent tokens
@@ -2147,13 +2154,18 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
      Session 4.7 strengthening from initial 0.15/0.30. */
   --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 
-  /* Widget elevation tier (Aesthetic Arc Session 4.7).
+  /* Widget elevation tier (Aesthetic Arc Session 4.7 + 4.8).
+     Session 4.8 amplified to layered atmospheric shadow + translateY
+     transform after Session 4.7 single-shadow read as "elevated card."
      Higher-tier lift than --card-ambient-shadow per Pattern 1
      elevation hierarchy (widgets float more than cards). See §3
-     "Widget elevation tier tokens" for full rationale. Light mode
-     here; dark override below. --shadow-widget-tablet is the
-     composite used by Pattern 1 tablets like AncillaryPoolPin. */
-  --widget-ambient-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.25);
+     "Widget elevation tier tokens" for full rationale + calibration
+     history. Light mode here; dark override below. */
+  --widget-ambient-shadow:
+    0 4px 12px -2px rgba(0, 0, 0, 0.10),
+    0 16px 32px -4px rgba(0, 0, 0, 0.25),
+    0 32px 56px -8px rgba(0, 0, 0, 0.30);
+  --widget-tablet-transform: translateY(-2px);
   --shadow-widget-tablet: var(--shadow-level-1), var(--widget-ambient-shadow);
 
   /* ============ ELEVATION SHADOWS ============ */
@@ -2266,10 +2278,15 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
      low-lightness deltas. Session 4.7 lifted from initial 0.30. */
   --shadow-jewel-inset: inset 0 1px 2px rgba(0, 0, 0, 0.50);
 
-  /* Widget elevation tier — dark-mode override (Session 4.7).
-     32px blur + 0.55 alpha for stronger atmospheric halo against
-     charcoal. See §3 widget elevation tier rationale. */
-  --widget-ambient-shadow: 0 12px 32px -6px rgba(0, 0, 0, 0.55);
+  /* Widget elevation tier — dark-mode override (Session 4.7 + 4.8).
+     Session 4.8 layered atmospheric shadow: charcoal substrate
+     amplifies each layer (0.30 / 0.55 / 0.65 alpha). Combined with
+     --widget-tablet-transform: translateY(-2px), the pin reads as
+     floating object hovering above operations. */
+  --widget-ambient-shadow:
+    0 4px 12px -2px rgba(0, 0, 0, 0.30),
+    0 16px 32px -4px rgba(0, 0, 0, 0.55),
+    0 32px 56px -8px rgba(0, 0, 0, 0.65);
 
   /* Card material treatment — dark-mode overrides (Aesthetic Arc
      Session 4.6). Strengthens light-mode values to carry the same
@@ -2937,7 +2954,7 @@ The patterns are reference-implementation-driven. Each cites the canonical compo
 - **Drawn edges** — material composition that reads as physical edges, not soft shadow halos. The tablet has real structure.
 - **Widget-tier elevation (Aesthetic Arc Session 4.7)** — tablets float MORE than core elements per the elevation hierarchy (substrate → core → cards within core → widgets). Composed via `--shadow-widget-tablet` token (`var(--shadow-level-1), var(--widget-ambient-shadow)`). The widget-ambient layer adds wider blur + larger y-offset + stronger alpha than `--card-ambient-shadow`, signaling "this object floats further from the work surface than cards do." See §3 "Widget elevation tier tokens" for the canonical token block + the complete hierarchy.
 - **Surface lift** — `bg-surface-elevated` (or `/85` alpha + `backdrop-blur-sm` when sitting over a dimmed-blurred backdrop, e.g. inside Focus). The tablet is material; the substrate behind shows through subtly.
-- **Sharp architectural corners (Aesthetic Arc Session 4.7)** — `rounded-[2px]` (2px). Pattern 1 tablets are architectural materialized objects per Section 0 ("sharp at architectural scale, soft at touchable"). Pre-Session-4.7 was `rounded-md` (8px) which read pillowy; 2px reads as carved precision tablet.
+- **Sharp architectural corners (Aesthetic Arc Session 4.7 + 4.8)** — `rounded-none` (0px). Pattern 1 tablets are architectural materialized objects per Section 0 ("sharp at architectural scale, soft at touchable"). Calibration history: pre-Session-4.7 was `rounded-md` (8px) which read pillowy → Session 4.7 to `rounded-[2px]` (DOM-verified sharp) → **Session 4.8 visual verification** revealed the 2px corner read SOFT despite DOM-correctness because the frosted-glass surface treatment (bg/85 + backdrop-blur(8px)) fundamentally softens visible edges regardless of border-radius. Session 4.8 locked `rounded-none` as the irreducible-minimum sharpness within the canonical frosted-glass Pattern 1 surface treatment. **This is a Pattern 1 vs Pattern 2 corner distinction**: solid-fill surfaces (Pattern 2 cards, DateBoxes) carry architectural corners at 2px (the fill does the work); frosted-glass tablets (Pattern 1) need 0px because the semi-transparent + blurred fill blends edges into substrate. Same architectural register, different surface treatments require different corner values to produce equivalent perceptual sharpness.
 - **Bezel with grip indicator (left side, 28px column)** — a structural left-edge zone where the user's eye lands when arranging the tablet. **28px dedicated column** with a 1px right border (`border-r border-border-subtle/30`) separating it from the content area. **Two short vertical grip lines** centered in the column (each ~12px tall × 2px wide, 2px apart, `bg-content-muted/30`) — the macOS column-resize-handle vocabulary. Always visible (subtle), not hover-revealed. Signals "this is a tablet you can grab and arrange," consistent with the Tony Stark / Jarvis interaction model.
 - **Mono label header** — uppercase eyebrow in `font-mono` (Geist Mono) `text-micro tracking-wider` + a clean h3 subhead in `font-sans` (Geist). The label tells the user what tablet they're looking at without competing with content.
 - **Count chip** in accent (terracotta) when applicable — small `font-mono` numeral on accent surface, jewelry-register signal.
@@ -2959,7 +2976,19 @@ The patterns are reference-implementation-driven. Each cites the canonical compo
 **The pattern.** Cards across the platform share consistent material vocabulary so a dispatcher scanning the kanban builds one mental model that applies everywhere a card appears.
 
 **Composition:**
-- **Sharp architectural corners (Aesthetic Arc Session 4.7)** — `rounded-[2px]` (2px). Per Section 0 "sharp at architectural scale, soft at touchable" — operational cards are architectural elements (not touchable affordances), so corners are minimal. Pre-Session-4.7 was `rounded-md` (8px) which read pillowy; 2px reads as architectural precision. Cross-surface consistency with Pattern 1 tablet treatment (also 2px corners).
+- **Sharp architectural corners (Aesthetic Arc Session 4.7 + 4.8 surface-list lock)** — `rounded-[2px]` (2px) for solid-fill surfaces. Per Section 0 "sharp at architectural scale, soft at touchable" — operational cards are architectural elements (not touchable affordances). Pre-Session-4.7 was `rounded-md` (8px) which read pillowy; 2px reads as architectural precision.
+
+  **Surfaces inheriting the 2px architectural-corner spec (Session 4.8 explicit list):**
+  - DeliveryCard (Pattern 2 reference — solid `bg-surface-elevated` fill)
+  - AncillaryCard (Pattern 2 inheritor when refactored — Session 5)
+  - DateBox (peripheral interactive surface in Focus chrome — `bg-surface-elevated/50` semi-solid fill, still carries 2px sharply)
+  - Future operational card surfaces (Pulse cards, peek panel entity cards, command-bar entity portals, briefing breakdown cards)
+  - DeliveryCard inner body button (focus-ring outline target — consistency with outer card)
+  - Drag overlay preview (preserves card chrome during drag — same 2px)
+
+  **Surfaces NOT inheriting the 2px spec — Pattern 1 frosted-glass tablets** use `rounded-none` (0px) because frosted-glass surface treatment (bg/85 + backdrop-blur) softens visible edges at any border-radius value. See Pattern 1 corner-spec note for the calibration distinction.
+
+  **Touchable controls (buttons, inputs, popovers, dialogs)** retain their primitive-defined corners (`rounded-md` typical) per Section 0 chef's-knife analogy — touchable affordances are softer than architectural elements. The 2px architectural lock applies to surface-level operational cards, not control-level interactive primitives.
 - **Material chrome (Aesthetic Arc Session 4.5 + 4.6)** — the card composes a multi-layer box-shadow that reads as physical material rather than outlined panel. Required composition (in order):
   ```
   inset 0 1px 0 var(--card-edge-highlight)    /* top-edge catch-the-light */
