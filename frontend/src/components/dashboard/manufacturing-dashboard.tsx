@@ -97,7 +97,7 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
   pending: "bg-status-warning-muted text-status-warning",
   in_progress: "bg-status-info-muted text-status-info",
   ready: "bg-status-success-muted text-status-success",
-  shipped: "bg-brass-subtle text-brass",
+  shipped: "bg-accent-subtle text-accent",
   delivered: "bg-surface-sunken text-content-muted",
 };
 
@@ -346,7 +346,7 @@ export function ManufacturingDashboard() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brass" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" />
       </div>
     );
   }
@@ -425,9 +425,9 @@ export function ManufacturingDashboard() {
       </div>
 
       {/* Snapshot Stats — Phase II Batch 1a: pastel icon backgrounds
-          migrated from bg-{purple,green,blue,amber,red}-50 to brass-subtle
+          migrated from bg-{purple,green,blue,amber,red}-50 to accent-subtle
           + warm status-muted variants. Icons on the stat cards now read
-          as "warm aged-brass detail" per DL §2 meta-anchor, not pastel
+          as "warm terracotta detail" per DL §2 meta-anchor, not pastel
           highlight chrome. NPCA-score traffic-light threshold uses the
           DL status-family palette, auto-mode-switching. */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -435,7 +435,7 @@ export function ManufacturingDashboard() {
           label="Deliveries Today"
           value={stats.deliveriesToday}
           icon={Truck}
-          color="bg-brass-subtle text-brass"
+          color="bg-accent-subtle text-accent"
         />
         {showProduction && (
           <StatCard
@@ -480,7 +480,7 @@ export function ManufacturingDashboard() {
               </CardTitle>
               <Link
                 to="/sales-orders"
-                className="text-body-sm text-brass hover:text-brass-hover hover:underline flex items-center gap-1 focus-ring-brass rounded-sm"
+                className="text-body-sm text-accent hover:text-accent-hover hover:underline flex items-center gap-1 focus-ring-accent rounded-sm"
               >
                 View all <ChevronRight className="h-3.5 w-3.5" />
               </Link>
@@ -601,7 +601,7 @@ export function ManufacturingDashboard() {
                 </CardTitle>
                 <Link
                   to="/production-log"
-                  className="text-body-sm text-brass hover:text-brass-hover hover:underline flex items-center gap-1 focus-ring-brass rounded-sm"
+                  className="text-body-sm text-accent hover:text-accent-hover hover:underline flex items-center gap-1 focus-ring-accent rounded-sm"
                 >
                   Log Entry <Plus className="h-3.5 w-3.5" />
                 </Link>
@@ -664,7 +664,7 @@ export function ManufacturingDashboard() {
                   </CardTitle>
                   <Link
                     to="/announcements"
-                    className="text-body-sm text-brass hover:text-brass-hover hover:underline flex items-center gap-1 focus-ring-brass rounded-sm"
+                    className="text-body-sm text-accent hover:text-accent-hover hover:underline flex items-center gap-1 focus-ring-accent rounded-sm"
                   >
                     View All <ChevronRight className="h-3.5 w-3.5" />
                   </Link>
@@ -727,7 +727,7 @@ export function ManufacturingDashboard() {
               </CardTitle>
               <Link
                 to="/compliance"
-                className="text-body-sm text-brass hover:text-brass-hover hover:underline flex items-center gap-1 focus-ring-brass rounded-sm"
+                className="text-body-sm text-accent hover:text-accent-hover hover:underline flex items-center gap-1 focus-ring-accent rounded-sm"
               >
                 Full Report <ChevronRight className="h-3.5 w-3.5" />
               </Link>

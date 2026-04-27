@@ -18,7 +18,7 @@ export interface PortalBranding {
   display_name: string;
   logo_url: string | null;
   /** Hex string like "#1E40AF". Falls through to the platform
-   *  brass accent if the tenant hasn't set one. Applied as a wash
+   *  accent accent if the tenant hasn't set one. Applied as a wash
    *  — NOT a reskin. See SPACES_ARCHITECTURE.md §10.6. */
   brand_color: string;
   footer_text: string | null;

@@ -90,7 +90,7 @@ export default function WidgetWrapper({
         {onRefresh && (
           <button
             onClick={onRefresh}
-            className="shrink-0 text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-brass rounded"
+            className="shrink-0 text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-accent rounded"
             title="Refresh"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
@@ -101,7 +101,7 @@ export default function WidgetWrapper({
         <div className="relative shrink-0" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-brass rounded"
+            className="text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-accent rounded"
           >
             <MoreHorizontal className="h-4 w-4" />
           </button>
@@ -122,7 +122,7 @@ export default function WidgetWrapper({
                           onSizeChange(s)
                           setMenuOpen(false)
                         }}
-                        className="rounded-sm border border-border-subtle px-1.5 py-0.5 text-caption font-plex-mono text-content-muted hover:bg-brass-subtle focus-ring-brass"
+                        className="rounded-sm border border-border-subtle px-1.5 py-0.5 text-caption font-plex-mono text-content-muted hover:bg-accent-subtle focus-ring-accent"
                       >
                         {s}
                       </button>
@@ -139,7 +139,7 @@ export default function WidgetWrapper({
                     onRemove()
                     setMenuOpen(false)
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-body-sm text-status-error hover:bg-status-error-muted focus-ring-brass"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-body-sm text-status-error hover:bg-status-error-muted focus-ring-accent"
                 >
                   <X className="h-3.5 w-3.5" />
                   Remove widget
@@ -153,7 +153,7 @@ export default function WidgetWrapper({
         {editMode && onRemove && (
           <button
             onClick={onRemove}
-            className="shrink-0 text-content-subtle hover:text-status-error transition-colors duration-quick ease-settle focus-ring-brass rounded"
+            className="shrink-0 text-content-subtle hover:text-status-error transition-colors duration-quick ease-settle focus-ring-accent rounded"
             title="Remove widget"
           >
             <X className="h-4 w-4" />
@@ -171,7 +171,7 @@ export default function WidgetWrapper({
             {onRefresh && (
               <button
                 onClick={onRefresh}
-                className="text-caption text-brass hover:text-brass-hover hover:underline focus-ring-brass rounded"
+                className="text-caption text-accent hover:text-accent-hover hover:underline focus-ring-accent rounded"
               >
                 Try again
               </button>

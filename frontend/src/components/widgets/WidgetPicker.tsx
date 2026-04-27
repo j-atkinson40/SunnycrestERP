@@ -60,7 +60,7 @@ export default function WidgetPicker({
         <h2 className="text-body-sm font-semibold text-content-strong">Add widgets</h2>
         <button
           onClick={onClose}
-          className="text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-brass rounded-sm"
+          className="text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-accent rounded-sm"
           aria-label="Close widget picker"
         >
           <X className="h-5 w-5" />
@@ -90,10 +90,10 @@ export default function WidgetPicker({
           <button
             key={cat.key}
             onClick={() => setCategory(cat.key)}
-            className={`shrink-0 rounded-full px-2.5 py-1 text-caption font-medium transition-colors duration-quick ease-settle focus-ring-brass ${
+            className={`shrink-0 rounded-full px-2.5 py-1 text-caption font-medium transition-colors duration-quick ease-settle focus-ring-accent ${
               category === cat.key
-                ? "bg-brass text-content-on-brass"
-                : "bg-brass-subtle text-content-muted hover:bg-brass-muted"
+                ? "bg-accent text-content-on-accent"
+                : "bg-accent-subtle text-content-muted hover:bg-accent-muted"
             }`}
           >
             {cat.label}
@@ -144,7 +144,7 @@ export default function WidgetPicker({
               {w.is_available ? (
                 <button
                   onClick={() => onAdd(w.widget_id)}
-                  className="shrink-0 flex items-center gap-1 rounded-sm bg-brass px-2.5 py-1.5 text-caption font-medium text-content-on-brass hover:bg-brass-hover transition-colors duration-quick ease-settle focus-ring-brass"
+                  className="shrink-0 flex items-center gap-1 rounded-sm bg-accent px-2.5 py-1.5 text-caption font-medium text-content-on-accent hover:bg-accent-hover transition-colors duration-quick ease-settle focus-ring-accent"
                 >
                   <Plus className="h-3 w-3" />
                   Add

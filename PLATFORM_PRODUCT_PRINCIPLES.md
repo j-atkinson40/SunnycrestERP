@@ -38,6 +38,7 @@ settle it, read here.
 | 2026-04-25 | Added cross-references to the three-layer design thesis canon: `PLATFORM_DESIGN_THESIS.md` (synthesis), `DESIGN_LANGUAGE.md` §0 (Layer 1 — Range Rover visual values), `PLATFORM_INTERACTION_MODEL.md` (Layer 2 — Tony Stark / Jarvis behavior), `PLATFORM_QUALITY_BAR.md` (Layer 3 — Apple Pro era execution). Articulations of interaction model already in this doc (whole-element drag, Cmd+K-outside-Focus, Surface-At-Rest-vs-On-Interaction, The-Platform-Is-Honest) cross-link into the new Interaction Model doc which articulates the broader Layer 2 model they instantiate. |
 | 2026-04-25 (PM) | Added "Widget Content Sizing" principle after "Surface At Rest vs On Interaction." Canvas widgets size to their contents by default — width is layout-constrained, height is content-driven. Empty internal space is decorative chrome and rejected per Section 0 Restraint TP3. New widgets declare `height: "auto"` with optional `maxHeight` cap. AncillaryPoolPin (Aesthetic Arc Session 1.5) is the reference implementation. Existing fixed-height widgets are tech debt to revisit per natural-touch refactor. |
 | 2026-04-25 (PM, late) | Renamed + expanded "Widget Content Sizing" → "Widget Compactness" (Aesthetic Arc Session 1.6). Principle now covers BOTH dimensions + boundary affordances: width sizes to content (text wraps, no ellipsis truncation as default); chrome aligns within surface's effective extent (kanban-level Finalize button aligns to kanban content right edge, not focus-core right edge); applies to non-widget surfaces too via `w-fit max-w-full mx-auto`. Pin item titles now wrap via `line-clamp-2`; SchedulingKanbanCore wraps the whole kanban + header in a content-width centered container so Finalize aligns with rightmost lane. References + exceptions documented. |
+| 2026-04-25 (evening) | Added **"Action-with-content placement canon"** subsection under Widget Compactness (Aesthetic Arc Session 3). Articulates the deeper architectural pattern: when chrome and content have different natural widths, the action belongs WITH the content, not in container chrome that may extend beyond content width. Move actions into a dedicated row anchored to the content itself rather than into a container header that grows independently. Reference implementation: SchedulingKanbanCore Finalize moved from header row to body action row above kanban lanes (header now a symmetric centerpiece: `[date_box] [eyebrow + H2] [date_box]`). Trade-off honestly stated: in narrow-content edge cases the parent's `w-fit` may still grow to chrome's width; the canon delivers the semantic repositioning (action with work surface) CSS-only without JS measurement. Pixel-perfect alignment in all scenarios requires ResizeObserver + JS. Pattern reusable for any surface where chrome and content widths may diverge. |
 
 ---
 
@@ -277,6 +278,99 @@ announce themselves with chrome. A button floating to the right of
 more visual real estate than the work earns. Pulling chrome inside
 content extent says: this surface is exactly as wide as its work.
 
+### Action-with-content placement canon
+
+**When chrome (action buttons, secondary affordances) and content
+(primary work surface) have different natural widths, the action
+belongs WITH the content, not in container chrome that may extend
+beyond content width.**
+
+Container chrome — header rows, footers, sidebars — naturally claims
+the full width of its parent. When the parent's width is determined
+by `max(chrome.max-content, content.max-content)` (the standard
+`w-fit` behavior), and the chrome happens to be wider than the
+content (e.g., a header with flanking date boxes vs a kanban with
+1–2 lanes), the parent grows to accommodate the chrome. An action
+button right-aligned in that chrome ends up sitting past the
+rightmost edge of the actual work content.
+
+The fix is structural, not stylistic: **move the action OUT of the
+container chrome and INTO an action row attached to the content
+itself.** The action row's right alignment is then anchored by the
+content's right edge — which, by construction, equals the rightmost
+content extent.
+
+**The pattern:**
+
+```
+[ container chrome — header row (centerpiece, no actions) ]
+[ action row — anchored to content right edge             ]
+[ content — primary work surface                          ]
+```
+
+vs the antipattern:
+
+```
+[ container chrome — header row [ items ] ........ [ ACTION ] ]
+[ content — primary work surface, may be narrower than chrome ]
+```
+
+In the antipattern, ACTION's right-edge position depends on the
+chrome's natural width, which may exceed content width. In the
+canon, ACTION's right-edge position depends on the content's
+natural width, which is what the user reads as "the right edge of
+the work surface."
+
+**When to apply:**
+
+- The action operates on the content (Finalize a kanban schedule,
+  Save a form, Submit a draft, Toggle a layout). It's part of doing
+  the work, not navigating to it.
+- The chrome's natural width may exceed the content's natural
+  width in some scenarios (narrow content states; flanking
+  affordances in the header).
+- A CSS-only solution is preferred over JS measurement.
+
+**When NOT to apply:**
+
+- The action is genuinely chrome-level (close, settings, mode
+  toggle). These belong in the chrome row.
+- The chrome and content always have matching widths (e.g., a
+  fixed-width sidebar with a fixed-width header). The pattern adds
+  unnecessary nesting.
+- The action is a critical primary affordance that should always
+  be visible (e.g., Cmd+K command bar trigger). Critical
+  affordances may justify chrome-level prominence.
+
+**Section 0 connections:**
+
+- **Compact-to-Contents Canon**: chrome contained within work
+  surface, anchored by the surface itself.
+- **British register**: actions sit with the work, not announced
+  from container chrome.
+- **Detail Concentration**: action's accent jewelry lives at the
+  touchpoint where the user is engaging with content, not floating
+  in chrome real estate.
+
+**Trade-off honestly stated:** in narrow-content edge cases, the
+container's `w-fit` may still grow to chrome's max-content (the
+header itself may still be wider than the content). In those cases
+the action row spans the parent width — which equals the chrome
+width — and Finalize sits at the parent right edge, technically
+past the content's right edge. The pattern doesn't pixel-perfect
+resolve this without JS measurement. What it DOES achieve: the
+SEMANTIC repositioning of the action with the content. The user's
+mental model of "Finalize is part of the kanban work surface" is
+preserved by placement, even when narrow-content scenarios make the
+visual alignment imperfect. Pixel-perfect alignment in all
+scenarios requires ResizeObserver + JS sync; the canon is the
+CSS-only architectural reframing.
+
+This pattern instantiated by Aesthetic Arc Session 3 in
+SchedulingKanbanCore (Finalize moved from header to body action
+row above kanban lanes). Reusable for future widget/surface
+decisions where chrome and content width may diverge.
+
 ### Implementation contract
 
 | Field | Meaning |
@@ -315,10 +409,17 @@ flex layout (`justify-between` etc.).
 - **`SchedulingKanbanCore`** kanban container (`SchedulingKanbanCore
   .tsx`) — wrapped in `w-fit max-w-full mx-auto` (Aesthetic Arc
   Session 1.6) so the surface natural-sizes to lane content + gaps,
-  and centers within the focus-core inner area. Header sits within
-  that same content width, so the Finalize action button's right
-  edge aligns to the rightmost kanban lane's right edge — chrome
-  contained within the work surface, not floating in empty space.
+  and centers within the focus-core inner area. Aesthetic Arc
+  Session 3 applied the **Action-with-content placement canon**
+  (above): Finalize moved out of the header row (which is now a
+  symmetric centerpiece: `[date_box] [eyebrow + H2] [date_box]`)
+  into a dedicated action row directly above the kanban scroll
+  container. The action row spans body width with Finalize right-
+  aligned. Architectural fix delivered CSS-only without JS
+  measurement; in narrow-content edge cases (1–2 lane scenarios)
+  the action row spans parent width = max(header, body), but the
+  semantic placement (Finalize anchored WITH the kanban work
+  surface, not in container chrome) is preserved by construction.
 
 ### Going forward
 

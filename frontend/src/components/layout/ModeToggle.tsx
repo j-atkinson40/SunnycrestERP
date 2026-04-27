@@ -23,7 +23,7 @@
  *     not the state — per WCAG toggle-button recommendation.
  *   - `aria-pressed` reflects current toggle state (true when dark).
  *     Screen readers announce both the available action + current state.
- *   - `focus-ring-brass` utility inherits the current light-mode
+ *   - `focus-ring-accent` utility inherits the current light-mode
  *     WCAG 2.4.7 gap (~1.26:1 on cream — Session 4/Batch 1a finding)
  *     until Session 6 fixes the utility itself. Not a per-component
  *     fix in scope here.
@@ -55,7 +55,7 @@ export function ModeToggle({ className }: ModeToggleProps) {
       aria-pressed={isDark}
       title={label}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center rounded-md text-content-muted transition-colors duration-quick ease-settle hover:bg-brass-subtle hover:text-content-strong focus-ring-brass",
+        "inline-flex h-9 w-9 items-center justify-center rounded-md text-content-muted transition-colors duration-quick ease-settle hover:bg-accent-subtle hover:text-content-strong focus-ring-accent",
         className,
       )}
       data-testid="mode-toggle"

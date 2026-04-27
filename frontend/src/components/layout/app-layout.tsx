@@ -47,7 +47,7 @@ export function AppLayout() {
             <Separator orientation="vertical" className="h-6" />
             <Link
               to="/profile"
-              className="rounded-sm text-body-sm text-content-muted transition-colors duration-quick ease-settle hover:text-content-strong hover:underline underline-offset-2 focus-ring-brass"
+              className="rounded-sm text-body-sm text-content-muted transition-colors duration-quick ease-settle hover:text-content-strong hover:underline underline-offset-2 focus-ring-accent"
             >
               {user?.first_name} {user?.last_name}
             </Link>

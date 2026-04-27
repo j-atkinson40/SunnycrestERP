@@ -249,7 +249,7 @@ export default function ApprovalReview() {
       {/* Back button */}
       <button
         onClick={() => navigate("/agents")}
-        className="flex items-center gap-1 text-body-sm text-content-muted hover:text-content-strong focus-ring-brass rounded-sm"
+        className="flex items-center gap-1 text-body-sm text-content-muted hover:text-content-strong focus-ring-accent rounded-sm"
       >
         <ArrowLeft className="h-4 w-4" /> Back to Agent Dashboard
       </button>
@@ -377,7 +377,7 @@ export default function ApprovalReview() {
                                 {a.description}
                               </p>
                               {a.entity_type && a.entity_id && (
-                                <p className="text-caption text-brass mt-1">
+                                <p className="text-caption text-accent mt-1">
                                   {a.entity_type}: {a.entity_id}
                                 </p>
                               )}
@@ -439,7 +439,7 @@ export default function ApprovalReview() {
               {Object.entries(steps).map(([name, data], i) => (
                 <div key={name}>
                   <button
-                    className="w-full px-6 py-3 flex items-center justify-between hover:bg-brass-subtle/40 text-left focus-ring-brass"
+                    className="w-full px-6 py-3 flex items-center justify-between hover:bg-accent-subtle/40 text-left focus-ring-accent"
                     onClick={() => toggleStep(i)}
                   >
                     <span className="font-medium text-body-sm text-content-base">
@@ -468,7 +468,7 @@ export default function ApprovalReview() {
       {/* Run log */}
       <Card>
         <button
-          className="w-full px-6 py-4 flex items-center justify-between focus-ring-brass"
+          className="w-full px-6 py-4 flex items-center justify-between focus-ring-accent"
           onClick={() => setShowRunLog(!showRunLog)}
         >
           <h2 className="text-h4 font-medium text-content-strong flex items-center gap-2">

@@ -142,7 +142,7 @@ export function NewSpaceDialog({ open, onOpenChange }: Props) {
           <Link
             to="/settings/spaces?new=1"
             onClick={() => onOpenChange(false)}
-            className="text-brass hover:text-brass-hover hover:underline focus-ring-brass"
+            className="text-accent hover:text-accent-hover hover:underline focus-ring-accent"
             data-testid="new-space-more-options"
           >
             More options…

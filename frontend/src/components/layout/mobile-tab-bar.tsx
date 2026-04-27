@@ -104,7 +104,7 @@ export function MobileTabBar() {
             <button
               type="button"
               onClick={handleCloseMore}
-              className="rounded p-2 text-content-muted hover:bg-brass-subtle hover:text-content-strong focus-ring-brass transition-colors duration-quick ease-settle"
+              className="rounded p-2 text-content-muted hover:bg-accent-subtle hover:text-content-strong focus-ring-accent transition-colors duration-quick ease-settle"
               aria-label="Close all sections"
             >
               <X className="size-5" />
@@ -130,10 +130,10 @@ export function MobileTabBar() {
                           onClick={handleCloseMore}
                           className={cn(
                             // Mobile touch targets: min-h-11 (44px) per WCAG AA touch-target + Apple HIG.
-                            "flex items-center gap-3 min-h-11 rounded px-3 py-2.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-brass",
+                            "flex items-center gap-3 min-h-11 rounded px-3 py-2.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-accent",
                             active
                               ? "font-medium"
-                              : "text-content-muted hover:bg-brass-subtle hover:text-content-strong",
+                              : "text-content-muted hover:bg-accent-subtle hover:text-content-strong",
                           )}
                           style={
                             active
@@ -198,7 +198,7 @@ function MobileTab({
         type="button"
         onClick={onClick}
         className={cn(
-          "flex flex-1 flex-col items-center gap-0.5 py-2 min-h-11 text-micro transition-colors duration-quick ease-settle focus-ring-brass",
+          "flex flex-1 flex-col items-center gap-0.5 py-2 min-h-11 text-micro transition-colors duration-quick ease-settle focus-ring-accent",
           active ? "font-medium" : "text-content-muted hover:text-content-strong",
         )}
         style={active ? { color: presetAccent } : undefined}
@@ -214,7 +214,7 @@ function MobileTab({
       to={item.href}
       onClick={onClick}
       className={cn(
-        "flex flex-1 flex-col items-center gap-0.5 py-2 min-h-11 text-micro transition-colors duration-quick ease-settle focus-ring-brass",
+        "flex flex-1 flex-col items-center gap-0.5 py-2 min-h-11 text-micro transition-colors duration-quick ease-settle focus-ring-accent",
         active ? "font-medium" : "text-content-muted hover:text-content-strong",
       )}
       style={active ? { color: presetAccent } : undefined}

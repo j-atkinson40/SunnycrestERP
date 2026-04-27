@@ -8,22 +8,22 @@ import { cn } from "@/lib/utils"
  * Bridgeable Button — Aesthetic Arc Session 2 refresh.
  *
  * Tokens map per DESIGN_LANGUAGE.md:
- *   - Primary (default): aged brass — `bg-brass`, `text-content-on-brass`,
- *     shadow-level-1 (substantial pill feel). Brass is the platform's
+ *   - Primary (default): terracotta — `bg-accent`, `text-content-on-accent`,
+ *     shadow-level-1 (substantial pill feel). Accent is the platform's
  *     primary action signal.
  *   - Secondary: elevated surface — reads as a quiet action on warm cream.
  *   - Outline: transparent + subtle border — toolbar actions.
- *   - Ghost: transparent, brass-subtle on hover — dense contexts.
- *   - Destructive: status-error-muted background + status-error text. Brass
+ *   - Ghost: transparent, accent-subtle on hover — dense contexts.
+ *   - Destructive: status-error-muted background + status-error text. Accent
  *     focus ring still applies (Q4: destructive communicates via color,
- *     focus communicates via brass per DESIGN_LANGUAGE §6).
- *   - Link: text-brass + hover underline, scale suppressed.
+ *     focus communicates via accent per DESIGN_LANGUAGE §6).
+ *   - Link: text-accent + hover underline, scale suppressed.
  *
  * Radius: radius-base (6px) per Q1 decision. `rounded-md` in Tailwind v4
  * resolves to our radius-md (8px); we use `rounded` which maps to our
  * --radius DEFAULT (radius-base = 6px).
  *
- * Focus: brass focus ring via `focus-ring-brass` utility (styles/base.css,
+ * Focus: accent focus ring via `focus-ring-accent` utility (styles/base.css,
  * Session 1). Removes the gray shadcn ring.
  *
  * Motion: `transition-colors duration-quick ease-settle` + `active:scale-[0.97]`
@@ -35,22 +35,22 @@ import { cn } from "@/lib/utils"
  * Use `default` or `sm` for new work; xs sizes are documented legacy.
  */
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center bg-clip-padding font-plex-sans font-medium whitespace-nowrap transition-colors duration-quick ease-settle outline-none select-none focus-ring-brass active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed aria-invalid:border-status-error [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center bg-clip-padding font-plex-sans font-medium whitespace-nowrap transition-colors duration-quick ease-settle outline-none select-none focus-ring-accent active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed aria-invalid:border-status-error [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
         default:
-          "bg-brass text-content-on-brass font-semibold shadow-level-1 hover:bg-brass-hover active:bg-brass-active",
+          "bg-accent text-content-on-accent font-semibold shadow-level-1 hover:bg-accent-hover active:bg-accent-hover",
         secondary:
-          "bg-surface-raised text-content-strong hover:bg-surface-elevated active:bg-brass-subtle aria-expanded:bg-brass-subtle",
+          "bg-surface-raised text-content-strong hover:bg-surface-elevated active:bg-accent-subtle aria-expanded:bg-accent-subtle",
         outline:
-          "border border-border-base bg-transparent text-content-base hover:bg-brass-subtle hover:text-content-strong active:bg-brass-muted aria-expanded:bg-brass-subtle aria-expanded:text-content-strong",
+          "border border-border-base bg-transparent text-content-base hover:bg-accent-subtle hover:text-content-strong active:bg-accent-muted aria-expanded:bg-accent-subtle aria-expanded:text-content-strong",
         ghost:
-          "bg-transparent text-content-base hover:bg-brass-subtle hover:text-content-strong active:bg-brass-muted aria-expanded:bg-brass-subtle aria-expanded:text-content-strong",
+          "bg-transparent text-content-base hover:bg-accent-subtle hover:text-content-strong active:bg-accent-muted aria-expanded:bg-accent-subtle aria-expanded:text-content-strong",
         destructive:
           "bg-status-error-muted text-status-error hover:brightness-95 active:brightness-90",
         link:
-          "text-brass underline-offset-4 hover:underline hover:text-brass-hover active:scale-100",
+          "text-accent underline-offset-4 hover:underline hover:text-accent-hover active:scale-100",
       },
       size: {
         // Substantial default — DESIGN_LANGUAGE §5 py-2.5 px-5 target (~40px).

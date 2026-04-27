@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils"
  * the footer zone still reads distinct from the card body).
  *
  * Interactive card:
- *   <Card className="hover:shadow-level-2 focus-ring-brass ..." tabIndex={0}>
+ *   <Card className="hover:shadow-level-2 focus-ring-accent ..." tabIndex={0}>
  *
  * No `ring-1` anywhere — elevation communicates via surface-lift + shadow
  * composition + (dark mode) 3px top-edge highlight.

@@ -270,7 +270,7 @@ export default function PortalBrandingSettings() {
                   type="button"
                   onClick={() => setBrandColor(swatch)}
                   className={cn(
-                    "h-9 w-9 rounded-full border-2 transition-transform focus-ring-brass",
+                    "h-9 w-9 rounded-full border-2 transition-transform focus-ring-accent",
                     brandColor.toLowerCase() === swatch.toLowerCase()
                       ? "border-content-strong scale-110"
                       : "border-border-subtle hover:scale-105",
@@ -321,7 +321,7 @@ export default function PortalBrandingSettings() {
                     aria-checked={previewMode === "light"}
                     onClick={() => setPreviewMode("light")}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-caption transition-colors duration-quick ease-settle focus-ring-brass",
+                      "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-caption transition-colors duration-quick ease-settle focus-ring-accent",
                       previewMode === "light"
                         ? "bg-surface-raised text-content-strong shadow-level-1"
                         : "text-content-muted hover:text-content-base",
@@ -337,7 +337,7 @@ export default function PortalBrandingSettings() {
                     aria-checked={previewMode === "dark"}
                     onClick={() => setPreviewMode("dark")}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-caption transition-colors duration-quick ease-settle focus-ring-brass",
+                      "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-caption transition-colors duration-quick ease-settle focus-ring-accent",
                       previewMode === "dark"
                         ? "bg-surface-raised text-content-strong shadow-level-1"
                         : "text-content-muted hover:text-content-base",

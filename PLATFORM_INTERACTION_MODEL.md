@@ -112,6 +112,8 @@ A tablet has these properties:
 - **Persists until dismissed.** Doesn't disappear because the user did something else.
 - **Not modal.** Doesn't block. Doesn't require dismissal to proceed elsewhere. The user can ignore it, work past it, or come back.
 
+> **Visual treatment of tablets — Aesthetic Arc Session 4 canon.** The visual + material treatment for tablets is canonicalized in [`DESIGN_LANGUAGE.md` §11 Pattern 1 "Tablet treatment (floating widgets)"](DESIGN_LANGUAGE.md). Composition: drawn edges (1px structural border, not soft halos), ambient `shadow-level-1`, surface lift (`bg-surface-elevated` or `/85` alpha + `backdrop-blur-sm` on dimmed substrates), bezel with grip indicator on the left side (always visible, structural — not hover-revealed), mono label header, terracotta count chip when applicable. The reference implementation is `AncillaryPoolPin` post-Aesthetic-Arc-Session-4. Future widgets adopt the pattern; the canonical component is the source of truth.
+
 This is fundamentally different from modal-dialog software. In modal software, the dialog blocks until dismissed. The user is forced to process it. The cognitive frame is "I am dealing with this thing right now."
 
 Tablets invert that. The user summons the tablet *because they want it now*. They keep it open as long as it's useful. They dismiss it when they're done. The cognitive frame is "I have these tools to hand."
@@ -202,7 +204,7 @@ Shift+Tab walks back into chips. Chip slides back into input as editable text, c
 
 Distinct from commitment chips: **interpretation chips** are lighter-weight, outlined or muted, showing the system's *hypothesis* about what the user is doing without requiring commitment. ([`PLATFORM_ARCHITECTURE.md` §4.8.1](PLATFORM_ARCHITECTURE.md)).
 
-A commitment chip is solid (brass border, full opacity) because the user committed. An interpretation chip is outlined or muted because the system formed a confident hypothesis (~70% confidence threshold) but the user hasn't confirmed.
+A commitment chip is solid (accent border, full opacity) because the user committed. An interpretation chip is outlined or muted because the system formed a confident hypothesis (~70% confidence threshold) but the user hasn't confirmed.
 
 Example: user types *"Ferguson Funeral Home Sacred Heart Cemetery Full Equipment"*. By the time *Full Equipment* is in, the system is confident this is an order — an `[Order]` interpretation chip appears (muted, outlined). The user can click it to see alternative interpretations the system considered, type a contradicting phrase to override, or hit Enter to confirm — at which point the interpretation chip becomes a commitment chip.
 
@@ -338,7 +340,7 @@ Permitted:
 - Quick fades on appear/disappear (200–400ms, ease curves from Layer 3)
 - Drag lifts during active drag (subtle scale 1.02, shadow intensify level-1 → level-2)
 - Crossfades on tier changes (canvas → stack → icon in Focus, asymmetric duration)
-- State change indicators (active flag flips on a date box → brass border applies, no celebration)
+- State change indicators (active flag flips on a date box → accent border applies, no celebration)
 
 The discipline: motion conveys *that something happened*. It doesn't perform *for the user*.
 

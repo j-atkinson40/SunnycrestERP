@@ -42,17 +42,17 @@ export function PortalLayout() {
           pre-existing DriverLayout (h-12 = 48px) which is WCAG 2.2
           Target Size compliant. */}
       {/* Session 4 (M2): fallback for `--portal-brand-fg` routes through
-          DL `content-on-brass` (dark charcoal in dark mode, near-white
+          DL `content-on-accent` (dark charcoal in dark mode, near-white
           in light mode) instead of literal `white`. Matters during
           PortalBrandProvider's initial load + when no tenant brand is
-          set (falls through to accent-brass). Per DL §3, dark-mode
-          brass buttons read as "glowing pill with dark text," not
-          "white text on brass." */}
+          set (falls through to accent-accent). Per DL §3, dark-mode
+          accent buttons read as "glowing pill with dark text," not
+          "white text on accent." */}
       <header
         className="flex h-12 items-center justify-between px-4 shadow-level-1"
         style={{
-          backgroundColor: "var(--portal-brand, var(--accent-brass))",
-          color: "var(--portal-brand-fg, var(--content-on-brass))",
+          backgroundColor: "var(--portal-brand, var(--accent))",
+          color: "var(--portal-brand-fg, var(--content-on-accent))",
         }}
         data-testid="portal-header"
       >
@@ -77,7 +77,7 @@ export function PortalLayout() {
           ) : null}
           {/* Session 4 (m3): focus ring scoped to the brand-colored header
               — uses `--portal-brand-fg` for contrast against the brand
-              background. Still falls back to `--content-on-brass` when
+              background. Still falls back to `--content-on-accent` when
               the provider hasn't populated `--portal-brand-fg` yet. */}
           <button
             type="button"
@@ -85,7 +85,7 @@ export function PortalLayout() {
               logout();
               if (slug) navigate(`/portal/${slug}/login`, { replace: true });
             }}
-            className="text-caption font-medium hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--portal-brand-fg,var(--content-on-brass))]/50 focus-visible:ring-offset-transparent"
+            className="text-caption font-medium hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--portal-brand-fg,var(--content-on-accent))]/50 focus-visible:ring-offset-transparent"
             data-testid="portal-logout"
           >
             Sign Out

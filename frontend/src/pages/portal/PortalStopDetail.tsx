@@ -182,7 +182,7 @@ export default function PortalStopDetail() {
                   href={`https://maps.google.com/?q=${encodeURIComponent(stop.address)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 inline-block text-caption text-brass hover:underline"
+                  className="mt-2 inline-block text-caption text-accent hover:underline"
                 >
                   Open in Maps →
                 </a>

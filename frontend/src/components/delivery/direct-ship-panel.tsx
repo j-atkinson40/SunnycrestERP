@@ -188,7 +188,7 @@ function NeedsOrderingCard({
               type="text"
               value={orderNumber}
               onChange={(e) => setOrderNumber(e.target.value)}
-              className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
+              className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30"
               placeholder="Optional"
             />
           </div>
@@ -198,7 +198,7 @@ function NeedsOrderingCard({
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
+              className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30"
               placeholder="Optional"
             />
           </div>
@@ -472,7 +472,7 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
         </div>
         <button
           onClick={onToggleCollapse}
-          className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+          className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
           aria-label="Collapse direct ship panel"
         >
           <ChevronDown className="h-4 w-4 text-content-muted -rotate-180" aria-hidden="true" />
@@ -560,7 +560,7 @@ export function DirectShipPanel({ collapsed, onToggleCollapse }: DirectShipPanel
               <div className="space-y-1">
                 <button
                   onClick={() => setShowCompleted(!showCompleted)}
-                  className="flex w-full items-center justify-between rounded-lg bg-surface-sunken px-3 py-1.5 text-[11px] font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
+                  className="flex w-full items-center justify-between rounded-lg bg-surface-sunken px-3 py-1.5 text-[11px] font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-accent"
                 >
                   <span>Show completed ({data.completed.length})</span>
                   <span>{showCompleted ? "\u25B4" : "\u25BE"}</span>
@@ -598,7 +598,7 @@ export function DirectShipMobilePill({
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-surface-raised border border-border-base px-4 py-2 shadow-level-2 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-surface-raised border border-border-base px-4 py-2 shadow-level-2 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
     >
       <Mailbox className="h-4 w-4 text-content-muted" aria-hidden="true" />
       <span className="text-xs font-medium text-content-base">Direct Ship</span>
@@ -628,7 +628,7 @@ export function DirectShipDrawer({
           <h3 className="text-sm font-bold text-content-strong">Direct Ship Orders</h3>
           <button
             onClick={onClose}
-            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
             aria-label="Close drawer"
           >
             <X className="h-5 w-5 text-content-muted" aria-hidden="true" />

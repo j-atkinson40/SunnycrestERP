@@ -11,7 +11,7 @@
  *
  * Currently exported:
  *   - IconTooltip: a Lucide icon wrapped in TooltipTrigger +
- *     TooltipContent, with optional `highlight` (text-brass when
+ *     TooltipContent, with optional `highlight` (text-accent when
  *     content is "worth noticing") and optional `badge` (small
  *     count pill, e.g. unread chat count).
  *
@@ -39,7 +39,7 @@ export interface IconTooltipProps {
   label: string
   /** `data-slot` for testability. */
   dataSlot: string
-  /** True = render the icon in `text-brass` (signals "this has
+  /** True = render the icon in `text-accent` (signals "this has
    *  non-empty content worth noticing", e.g. a pending note or
    *  unread chat). False/default = `text-content-muted`. */
   highlight?: boolean
@@ -71,8 +71,8 @@ export function IconTooltip({
             data-slot={dataSlot}
             className={cn(
               "relative inline-flex h-6 w-6 items-center justify-center rounded-sm",
-              "focus-ring-brass outline-none cursor-default",
-              highlight ? "text-brass" : "text-content-muted",
+              "focus-ring-accent outline-none cursor-default",
+              highlight ? "text-accent" : "text-content-muted",
               "hover:bg-surface-sunken transition-colors duration-quick",
             )}
             role="img"
@@ -86,7 +86,7 @@ export function IconTooltip({
                 className={cn(
                   "absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1",
                   "inline-flex items-center justify-center rounded-full",
-                  "bg-brass text-content-on-brass text-[10px] font-medium",
+                  "bg-accent text-content-on-accent text-[10px] font-medium",
                   "font-plex-mono tabular-nums",
                 )}
                 aria-hidden

@@ -64,7 +64,7 @@ These eleven references share an emotional register that Bridgeable adopts as it
 
 ### Critical framing — what the reference family means
 
-The reference family is an **imaginative brief**, not a literal style spec. Bridgeable is not a HUD, not a dashboard cluster, not a vehicle interior, not a leather portfolio app, not a brass-finished skeuomorphic surface. It is digital software for the physical economy. The references articulate the *emotional register* — they are the answer to "what does this product feel like to use?", not "what does this product look like?".
+The reference family is an **imaginative brief**, not a literal style spec. Bridgeable is not a HUD, not a dashboard cluster, not a vehicle interior, not a leather portfolio app, not a accent-finished skeuomorphic surface. It is digital software for the physical economy. The references articulate the *emotional register* — they are the answer to "what does this product feel like to use?", not "what does this product look like?".
 
 **DO translate the reference family into:**
 - Restraint at scale (simplicity that signals resources)
@@ -72,7 +72,7 @@ The reference family is an **imaginative brief**, not a literal style spec. Brid
 - Honest materials at full strength (real type, real shadow, no fake glass, no fake metal, no fake leather)
 - Quietness (calm presence, not engaging)
 - Density permitted (information-dense without clutter)
-- Functional color (brass for action; status colors for communication, not decoration)
+- Functional color (accent for action; status colors for communication, not decoration)
 - Time-resistance (avoid current-decade visual trends — neumorphism in 2020, glassmorphism in 2022, AI gradients in 2024)
 - Heirloom commitment (worth maintaining, not disposable)
 
@@ -97,7 +97,7 @@ The reference family converges on eight qualities. A Bridgeable surface that ach
 
 **3. Architectural confidence.** Proportions matter more than decoration. Spacing, hierarchy, alignment, and type cadence carry the visual weight. When in doubt, make the proportions right rather than adding chrome. A well-proportioned plain surface beats a poorly-proportioned ornamented one every time.
 
-**4. Calm expensiveness.** The simplicity is the flex. The reference family signals expense not through gold and glass but through *what was deliberately left out*. Bridgeable should feel expensive the way a Leica feels expensive — through restraint and resolution, not through ornament. If it looks like a SaaS template with brass buttons, the restraint failed.
+**4. Calm expensiveness.** The simplicity is the flex. The reference family signals expense not through gold and glass but through *what was deliberately left out*. Bridgeable should feel expensive the way a Leica feels expensive — through restraint and resolution, not through ornament. If it looks like a SaaS template with accent buttons, the restraint failed.
 
 **5. Time-resistance.** The platform must look right in 2026 AND in 2036. Avoid visual conventions tied to specific years — gradient meshes (2020s AI), glassmorphism (early 2020s), neumorphism (2020), Material Design soft drop shadows (2010s), iOS 7 thin-everything (2013). The reference family is time-resistant by construction — Leica looked right in 1954, Wegner chairs look right today, Filson briefcases look right after 50 years. Bridgeable inherits that property by referring to that family.
 
@@ -111,9 +111,9 @@ The reference family converges on eight qualities. A Bridgeable surface that ach
 
 The eight qualities answer "what character does Bridgeable have?" These ten principles answer "how does that character translate into actual design decisions?" Each principle takes a Land-Rover-design instinct and articulates how to apply it natively to digital surfaces.
 
-**1. Materials translate as digital materials.** Real wood becomes warm-grained dark surfaces with subtle elevation. Real metal becomes brass accents with appropriate sheen. Real leather becomes warm-tinted neutral surfaces with hint of grain (where grain is *implied* by warmth and texture in the color, not depicted). The principle is "honest digital materials at full strength" — not skeuomorphic textures, but the **digital equivalent of how the vehicle treats real material**. Surfaces that feel substantial and warm, not flat and cheap. Surfaces that have presence without pretending to be physical.
+**1. Materials translate as digital materials.** Real wood becomes warm-grained dark surfaces with subtle elevation. Real metal becomes deepened terracotta accents with appropriate sheen. Real leather becomes warm-tinted neutral surfaces with hint of grain (where grain is *implied* by warmth and texture in the color, not depicted). The principle is "honest digital materials at full strength" — not skeuomorphic textures, but the **digital equivalent of how the vehicle treats real material**. Surfaces that feel substantial and warm, not flat and cheap. Surfaces that have presence without pretending to be physical.
 
-Implementation: `bg-surface-elevated` carries lifted lightness + warmer hue (Section 3). `shadow-level-1` carries warm-tinted soft shadow (Section 6). The brass token retains a single fixed hue across modes (Section 2 cross-mode rule). Together: cards feel material because they elevate with warmth, not because they show fake wood grain.
+Implementation: `bg-surface-elevated` carries lifted lightness + warmer hue (Section 3). `shadow-level-1` carries warm-tinted soft shadow (Section 6). The accent token retains a single fixed hue across modes (Section 2 cross-mode rule). Together: cards feel material because they elevate with warmth, not because they show fake wood grain.
 
 **2. Proportions translate directly.** Range Rover proportions are tall, square, generous, settled. Digital surfaces have the same relationships. Generous spacing. Square-shouldered cards. Flat-roofed elements that don't taper into curved corners. Vertical sides meeting horizontal tops cleanly. A Bridgeable card has the same proportional relationship to its surface that a Range Rover door has to its window — solid, considered, with breathing room. This principle is mostly about spacing and aspect ratios, which are completely medium-independent.
 
@@ -123,11 +123,11 @@ Implementation: Section 5 spacing scale defaults generous (`p-6` cards, `space-1
 
 Implementation: every element on a card must justify its presence in operational terms. "It looks nice" is not a justification. If you can remove an element and the user doesn't notice, the element was decorative — remove it. If you can remove an element and the user can't complete their work, the element was structural — keep it. The dispatcher's `DeliveryCard` (in-register calibration surface, see below) is the canonical reference — title, key facts, status row, nothing else.
 
-**4. Detail concentration translates.** Range Rovers spend their detail budget in *specific places* — door pulls, gear selectors, dial textures, air vent surrounds. The exterior is restrained; **points of human touch are jewelry**. Bridgeable does the same. Platform-wide language is restrained; points of interaction (brass action button, focused input ring, important controls) are crafted with attention disproportionate to surrounding surface. **The user's hand lands on jewelry, even though surrounding surface is calm.** This separates "minimalist" from "minimalist with care."
+**4. Detail concentration translates.** Range Rovers spend their detail budget in *specific places* — door pulls, gear selectors, dial textures, air vent surrounds. The exterior is restrained; **points of human touch are jewelry**. Bridgeable does the same. Platform-wide language is restrained; points of interaction (accent action button, focused input ring, important controls) are crafted with attention disproportionate to surrounding surface. **The user's hand lands on jewelry, even though surrounding surface is calm.** This separates "minimalist" from "minimalist with care."
 
-Implementation: brass primary buttons get the detail budget — the brass token is precisely calibrated, hover/active states are deliberate, focus rings are crafted, the radius is exactly right. The surrounding card chrome is calm — `shadow-level-1`, no perimeter border, generous padding. The composition reads as "calm surface + jewel button" — not as "decorated surface where the button blends in."
+Implementation: accent primary buttons get the detail budget — the accent token is precisely calibrated, hover/active states are deliberate, focus rings are crafted, the radius is exactly right. The surrounding card chrome is calm — `shadow-level-1`, no perimeter border, generous padding. The composition reads as "calm surface + jewel button" — not as "decorated surface where the button blends in."
 
-The principle has a corollary: **don't sprinkle detail evenly across the surface.** A platform with brass borders, brass dividers, brass icons, brass everything reads as decorated. A platform with brass concentrated at action surfaces reads as considered.
+The principle has a corollary: **don't sprinkle detail evenly across the surface.** A platform with accent borders, accent dividers, accent icons, accent everything reads as decorated. A platform with accent concentrated at action surfaces reads as considered.
 
 **5. Quietness translates as sensory quietness.** A Range Rover is *acoustically* quiet — the engineering investment in noise/vibration/harshness is enormous. The digital equivalent is **sensory quietness**: no unnecessary motion, no notification noise, no celebratory feedback, no bouncing animations, no startling color changes, no "great job!" moments. The platform doesn't compete for attention. It's a calm space the operator works inside.
 
@@ -143,11 +143,11 @@ Implementation: every visual decision is checked against "would this date the pl
 
 **8. Commitment frame translates.** Range Rovers are objects you live with — maintain, have a relationship with, part of your life over years. Bridgeable should feel the same. **Not disposable software; an operating environment licensees commit to and grow with.** The aesthetic communicates that. Heavy in the good sense — substantial, made-to-last, worth the relationship. The opposite of disposable consumer apps designed to be light and forgettable.
 
-Implementation: visual weight is permitted — surfaces have presence, type has authority, brass has gravity. The platform doesn't shrink itself to seem unimposing. It carries the weight of the work being done. A licensee who commits to Bridgeable should feel the platform commits back.
+Implementation: visual weight is permitted — surfaces have presence, type has authority, the accent has gravity. The platform doesn't shrink itself to seem unimposing. It carries the weight of the work being done. A licensee who commits to Bridgeable should feel the platform commits back.
 
 **9. British-ness is worth naming.** Range Rover has a specifically *British* sensibility — restrained, understated, slightly reserved, more concerned with rightness than display. American luxury (Cadillac) is about **scale and presence**. German luxury (Mercedes, BMW) is about **engineering visibility**. Italian luxury (Ferrari) is about **emotional theater**. **British luxury (Range Rover, Bentley, Aston Martin) is about not having to prove it.** The thing is good; you'll see if you look closely; we're not going to point at it. This is the right register for operators doing serious work. Not flashy, not theatrical, just correct.
 
-Implementation: the platform never announces its quality. No "premium" badges. No "designed by" signatures. No theatrical onboarding. No look-at-me moments. The quality reveals itself in use — a dispatcher who works in Bridgeable for a week notices the type cadence, the spacing rhythm, the brass weight, the shadow character. They don't get sold those things up front. The platform is good; they'll see if they look closely; we're not going to point at it.
+Implementation: the platform never announces its quality. No "premium" badges. No "designed by" signatures. No theatrical onboarding. No look-at-me moments. The quality reveals itself in use — a dispatcher who works in Bridgeable for a week notices the type cadence, the spacing rhythm, the accent weight, the shadow character. They don't get sold those things up front. The platform is good; they'll see if they look closely; we're not going to point at it.
 
 **10. Reference point outside software entirely.** Most software design happens in dialogue with other software — designers look at Notion, Linear, Figma, Stripe. The result is convergence; software narrows toward a small range of patterns. **Taking the reference point from outside software (vehicle design philosophy from a specific cultural tradition) escapes that convergence.** Design decisions are calibrated against a different, deeper reference. The platform doesn't look like other SaaS — not because differentiation was the goal, but because the optimization axis is different.
 
@@ -172,10 +172,10 @@ Translation principle 4 deserves emphasis because it's the principle most often 
 **The rule:** Identify the points of human touch — the buttons that get clicked, the inputs that get focused, the controls that get operated, the icons that signal state — and concentrate detail there. The surrounding surface must be calm enough that the detail reads as concentrated. If detail is sprinkled everywhere, no element gets to be jewelry.
 
 **What gets the detail budget:**
-- Primary action buttons (brass, with calibrated hover + active states + focus ring)
-- Focused input rings (brass at `--focus-ring-alpha` with the precise glow specification)
+- Primary action buttons (accent, with calibrated hover + active states + focus ring)
+- Focused input rings (accent at `--focus-ring-alpha` with the precise glow specification)
 - Status indicators that carry decision weight (the icon-row hole-dug badge, the chat unread chip, the +N attached-ancillary badge)
-- The brass count chip on the AncillaryPoolPin header
+- The accent count chip on the AncillaryPoolPin header
 - Hover-revealed affordances (eye-icon peek triggers, the dismiss X on cards)
 - The few touchpoints in a complex surface where attention should land
 
@@ -237,7 +237,7 @@ When calibrating a new component, the wrong question is "how does Linear handle 
 2. **What design instinct from the reference family applies here?** Restraint? Material honesty? Detail concentration? Quietness? Architectural proportion?
 3. **If the question must reach for software references, reach for software *outside* the SaaS convergence:** Bloomberg Terminal density, Linear restraint, Apple HIG-tier polish — but check that the reference doesn't itself collapse into SaaS-warm convergence (modern Notion does; mid-period Linear doesn't).
 
-This discipline keeps the optimization axis off the convergence axis. It's why Bridgeable cards don't look like Stripe cards. It's why Bridgeable buttons don't look like shadcn buttons. It's why the brass token sits where it sits.
+This discipline keeps the optimization axis off the convergence axis. It's why Bridgeable cards don't look like Stripe cards. It's why Bridgeable buttons don't look like shadcn buttons. It's why the accent token sits where it sits.
 
 ### The relationship between Section 0 and Section 1
 
@@ -245,7 +245,9 @@ Section 0 defines the **object** — what kind of tool Bridgeable is. Section 1 
 
 A surface that reads as Mediterranean morning (Section 1, light) but as a generic SaaS dashboard (Section 0 violated) has the right warmth but the wrong character. A surface that reads as workshop-tool-grade (Section 0 honored) but as cold lab fluorescence (Section 1 violated) has the right character but the wrong setting. The platform achieves its identity only when both layers are present.
 
-**Mental model:** Picture a Leica M body sitting on a stone table on the Mediterranean garden terrace, morning light catching the brass top plate. The brass is the object's material (Section 0 — what the tool is). The terrace is the setting (Section 1 — where the tool is observed). The morning sun lands on the brass without changing what the brass is. That superposition — same object, two settings — is Bridgeable.
+**Mental model:** Picture a Range Rover Defender pulled up to the Mediterranean terrace at morning, then the same vehicle parked outside the lounge in the evening. The vehicle's paint color — call it a deep terracotta or earthen ochre — is the same architectural color in both rooms. The light around it changes (warm garden sun → warm lounge lamp); the paint itself does not. Section 0 is what the tool is (the vehicle's color and form); Section 1 is where the tool is observed (the terrace, the lounge). The architectural color holds identity in either room. That superposition — same object, two settings — is Bridgeable.
+
+(The previous version of this mental model used a Leica M body's brass top plate as the metaphor — "the brass is the object's material, the morning sun lands on the brass without changing what the brass is." That metaphor served the brass-era spec where the accent was a metal observed under different lights. Aesthetic Arc Session 2 retired brass and locked the accent to single-value deepened terracotta; the Range Rover paint metaphor better captures "architectural color in either room.")
 
 ### The aesthetic test
 
@@ -267,13 +269,13 @@ Codified as the platform's single-rule QA heuristic. Every visual element on Bri
 
 ### Anti-patterns specific to Section 0
 
-Generic-SaaS warm drift. The single most common failure mode in a platform that has the right tokens but the wrong character. Symptoms: warm gray surfaces with rounded-everything corners, brass buttons next to pastel illustrations, restrained typography next to celebratory animations, dim backdrop next to a stock smiling-team-photo. Each individual choice may be on-token; the composite reads as Notion-with-a-different-palette rather than as Bridgeable. Fix: review the eight qualities. Identify which are absent. Pull each toward presence.
+Generic-SaaS warm drift. The single most common failure mode in a platform that has the right tokens but the wrong character. Symptoms: warm gray surfaces with rounded-everything corners, accent buttons next to pastel illustrations, restrained typography next to celebratory animations, dim backdrop next to a stock smiling-team-photo. Each individual choice may be on-token; the composite reads as Notion-with-a-different-palette rather than as Bridgeable. Fix: review the eight qualities. Identify which are absent. Pull each toward presence.
 
-Reference-family literalism. Translating the reference into surface decoration — a leather-grain background because Filson briefcase, a brass radial gradient because Leica top plate, a workshop pegboard pattern because workshop. The references are *imaginative briefs*, not visual specifications. The character translates; the artifacts do not.
+Reference-family literalism. Translating the reference into surface decoration — a leather-grain background because Filson briefcase, a terracotta radial gradient because Leica top plate, a workshop pegboard pattern because workshop. The references are *imaginative briefs*, not visual specifications. The character translates; the artifacts do not.
 
 Trend-tied visual conventions. Anything that places Bridgeable in a specific year — current-decade gradients, glassmorphism panes, neumorphism extrusions, soft-everything Apple consumer aesthetic, theatrical AI aesthetics (purple-to-pink gradients with sparkles). Time-resistance fails if the surface tells you what year it shipped.
 
-Decorative warmth. Warmth used to make surfaces "feel friendly" rather than to express material. Pastel cream backgrounds with no purpose, soft drop shadows on flat content, brass borders on cards that don't need emphasis. The warmth in Bridgeable is materially earned — surfaces are warm because they are observed in warm light, not because warmth is decorative. When warmth is present without justification, the register drifts toward generic-SaaS.
+Decorative warmth. Warmth used to make surfaces "feel friendly" rather than to express material. Pastel cream backgrounds with no purpose, soft drop shadows on flat content, accent borders on cards that don't need emphasis. The warmth in Bridgeable is materially earned — surfaces are warm because they are observed in warm light, not because warmth is decorative. When warmth is present without justification, the register drifts toward generic-SaaS.
 
 Consumer-app maximalism. Rounded-everything (radius >16px on standard surfaces), celebration moments (confetti, animated checkmarks with sparkles, "great job!" copy), illustrative onboarding tours, decorative empty states with cheerful illustrations replacing functional information. These are correct in consumer software; they are wrong in operator software. Bridgeable's users are not customers being delighted; they are operators doing work.
 
@@ -285,11 +287,11 @@ These surfaces serve as in-house calibration points. New surfaces compared again
 
 **In-register surfaces** (achieve all eight qualities, evoke the right character):
 
-- **Funeral Schedule kanban DeliveryCard** (`frontend/src/components/dispatch/DeliveryCard.tsx`). `bg-surface-elevated` + `shadow-level-1`, no perimeter border, restrained typography hierarchy (eyebrow + truncated FH headline + subhead + service-time line + icon-row status). Floats on the lane background as a material object. Brass status indicator (chat unread chip) used as functional emphasis. This is the canonical "card as material" reference for the platform.
+- **Funeral Schedule kanban DeliveryCard** (`frontend/src/components/dispatch/DeliveryCard.tsx`). `bg-surface-elevated` + `shadow-level-1`, no perimeter border, restrained typography hierarchy (eyebrow + truncated FH headline + subhead + service-time line + icon-row status). Floats on the lane background as a material object. Accent status indicator (chat unread chip) used as functional emphasis. This is the canonical "card as material" reference for the platform.
 - **Scheduling Focus core after Phase 4.4.2 container removal** (`frontend/src/components/focus/Focus.tsx`). Content floats directly on dimmed-blurred backdrop. No unifying container. Each child element provides its own visual weight via elevation tokens. "Focus is a mode, not a modal." The aesthetic register is most legible here because nothing decorative is present.
-- **AncillaryPoolPin** (`frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx`). Compact rows with no decorative chrome (Phase 4.3b.3.2 removed the grip icon). Eyebrow + truncated label + subhead per row. Brass count chip on header. Whole-row drag with no handle. Workshop-tool register applied at small scale.
+- **AncillaryPoolPin** (`frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx`). Compact rows with no decorative chrome (Phase 4.3b.3.2 removed the grip icon). Eyebrow + truncated label + subhead per row. Accent count chip on header. Whole-row drag with no handle. Workshop-tool register applied at small scale.
 - **QuickEditDialog** (`frontend/src/components/dispatch/QuickEditDialog.tsx`). Section-grouped form (Assignment / Delivery state) with `text-micro uppercase tracking-wider` eyebrows. Form fields use the canonical input shell. No celebration on save; no decorative chrome. Restrained, considered, operator-grade.
-- **Brass primary buttons platform-wide.** Functional emphasis via the cross-mode brass thread. No icon clutter. Solid surface, contained label. The same button reads as native to both Mediterranean morning and cocktail lounge evening — material continuity across modes.
+- **Accent primary buttons platform-wide.** Functional emphasis via the cross-mode accent thread. No icon clutter. Solid surface, contained label. The same button reads as native to both Mediterranean morning and cocktail lounge evening — material continuity across modes.
 
 **Drift surfaces** (have at least one quality missing; flagged for revisit):
 
@@ -330,9 +332,9 @@ Bridgeable presents in two modes: **light** and **dark**. These are not generic 
 A stone terrace in a European garden, high above the Mediterranean. Clear morning air. Warm sun filtered through olive branches or a stone archway. A cappuccino on a linen-covered table. The light is bright but warm, the air is crisp, and everything has been placed with care. Refined, not rustic. Unhurried, not sleepy.
 
 **Dark mode — cocktail lounge evening.**
-A high-end lounge in low warm light. Deep charcoal surfaces with presence, not absence. Pools of warm light catching the tops of surfaces. Aged brass details. The dark is intimate, considered, and adult. Focused, not gloomy. Weighted, not heavy.
+A high-end lounge in low warm light. Deep charcoal surfaces with presence, not absence. Pools of warm light catching the tops of surfaces. Deepened terracotta details on dark walnut. The dark is intimate, considered, and adult. Focused, not gloomy. Weighted, not heavy.
 
-These two moods are **the same platform observed at two times of day.** The continuity is not visual similarity — morning and evening don't look alike — but material and intent. The same aged brass catches morning sun and evening lamplight. The same restraint governs both. A user who shifts from light to dark should feel they have stayed in the same place as the hour changed, not traveled to a different app.
+These two moods are **the same platform observed at two times of day.** The continuity is not visual similarity — morning and evening don't look alike — but material and intent. The same terracotta catches morning sun and evening lamplight. The same restraint governs both. A user who shifts from light to dark should feel they have stayed in the same place as the hour changed, not traveled to a different app.
 
 ### The meta-anchor: deliberate restraint
 
@@ -358,12 +360,12 @@ Five sensory anchors define light mode. Every downstream decision — color toke
 **2. Clear warm diffuse light.**
 - **Rule:** Shadows are warm-tinted, low-contrast, with slightly more edge definition than a fully diffuse overcast shadow. The mood is "shade under an olive tree on a stone terrace in clear morning air" — not "cloudy overcast" and not "hard noon sun."
 - **Rationale:** Shadows carry most of the atmospheric character of a mode. Cool gray shadows would contradict the warm light. Fully diffuse shadows would read as sleepy or hazy. Hard-edged shadows would read as harsh. The target is clear-but-warm — legible edges, warm tint, restrained contrast.
-- **Implementation:** Shadow color uses a warm hue (same family as brass/surface warmth), low opacity, medium blur, small-to-medium offset. Specific values locked in Section 6.
+- **Implementation:** Shadow color uses a warm hue (same family as accent/surface warmth), low opacity, medium blur, small-to-medium offset. Specific values locked in Section 6.
 
-**3. Aged brass as the primary warm accent.**
-- **Rule:** Primary actions, focus states, emphasis, and active indicators use aged brass. Not bright gold. Not yellow. Aged brass — warm, slightly muted, with the character of worn metal in warm light.
-- **Rationale:** Brass is the material thread that ties morning to evening. The same metal catches morning sun and evening lamplight, which is what makes "same platform, different hour" legible across modes. Brass is also refined rather than rustic — it belongs on a European garden terrace as much as in a cocktail lounge, whereas terracotta would lock the platform into one tier of formality.
-- **Implementation:** Warm hue in the gold-amber family, moderate lightness, moderate chroma. Specific values locked in Section 3. Secondary/supporting accents deferred to Section 3 when palette is specified in context.
+**3. Deepened terracotta as the primary warm accent.**
+- **Rule:** Primary actions, focus states, emphasis, and active indicators use deepened terracotta. Not bright gold. Not yellow. Not red. Deepened terracotta — warm, earthen, architectural, with the weight of fired clay rather than the gleam of metal.
+- **Rationale:** The accent is the material thread that ties morning to evening. The same architectural color reads as itself under garden sun and lounge lamplight — what makes "same platform, different hour" legible across modes. Terracotta is refined rather than rustic in this register: it belongs on the terrace floor as much as on the lounge wall, holding identity in either room without changing value. (Aesthetic Arc Session 2 retired the prior aged-brass accent — brass on warm cream read as "musty wall" rather than as craftsmanship; the yellow chroma fought the substrate's warmth instead of complementing it. See §2 cross-mode rule for the full rationale.)
+- **Implementation:** Warm hue in the deep red-orange / earthen-clay family (oklch hue ~39), moderate lightness, moderate chroma. Specific values locked in Section 3. Secondary/supporting accents deferred to Section 3 when palette is specified in context.
 
 **4. Unhurried motion.**
 - **Rule:** Animations settle rather than snap. The motion character is considered, not snappy. Easing favors ease-out; things arrive gently.
@@ -389,10 +391,10 @@ Five sensory anchors define dark mode. Same derivation principle as light mode.
 - **Rationale:** Cocktail lounge lighting is pooled and directional — table lamps, recessed spots, candle-level warmth on select surfaces. Diffuse overall lighting would read as "office at night," not "lounge." This anchor is what makes the dark feel intimate rather than institutional.
 - **Implementation:** Elevated surfaces use a subtle top-edge highlight and/or a slightly lifted surface color. Non-elevated surfaces do not. The gradient is meaningful (signals elevation), not atmospheric (applied to everything). Specific treatment locked in Section 6.
 
-**3. Aged brass and amber as accent metals.**
-- **Rule:** Accents are the same aged brass as light mode, observed in warm evening light. Active states and emphasis may shade toward amber — the brass glowing rather than reflecting.
-- **Rationale:** Brass continuity across modes is the primary material thread of the platform. Amber is brass catching warm evening light, the same way brass in morning mode catches warm morning light. The metal does not change; the light on it does.
-- **Implementation:** Same base brass hue as light mode, adjusted for lightness against the dark background to maintain legibility and mood. Active states shift hue slightly toward amber. Specific values locked in Section 3.
+**3. Deepened terracotta as the primary warm accent (single value across modes).**
+- **Rule:** Accents are the **same deepened terracotta** as light mode — same hex, same oklch value. Active states (currently-selected items, drop targets) communicate via the two-token pattern: `--accent-subtle` background + `--accent` border. Hover communicates via `--accent-hover` (the brighter terracotta variant).
+- **Rationale:** Single-value-across-modes accent locks the architectural color in either room. The terracotta wall and the terracotta tile floor of the canonical references read as the same color under morning sun or evening lamplight. The substrate around it changes (cream linen → warm charcoal); the accent itself does not. This is a deliberate departure from the prior aged-brass spec, where the accent shifted lightness across modes ("the metal observed under different light"). The new rule is closer to a Range Rover paint color than to a metal-catching-light material — it holds identity regardless of ambient.
+- **Implementation:** `--accent` resolves to the same `oklch(0.46 0.10 39)` value in both modes. Contrast against L=0.16 charcoal is ~3.2:1 (passes WCAG 2.4.7 3:1 for non-text accents). `--content-on-accent` is light cream in BOTH modes (~6.5:1 contrast on accent fill, AAA), making accent buttons read as "warm terracotta button with cream text" universally — not the brass-era asymmetric "glowing pill with dark text" that brass's lighter dark-mode value enabled. Specific values locked in Section 3.
 
 **4. Material, not paint.**
 - **Rule:** Surfaces feel like material — leather, wood, brushed metal, stone in low light — rather than flat paint. Elevation on dark surfaces is communicated through **two cooperating cues**: (1) a **surface-lightness lift with a hue shift toward warmer amber** — cards sit at a higher-lightness, warmer-hue surface value than the page beneath them (the metal of the bar rail feels warmer where the pendant light catches it), and (2) a **wider dim top-edge highlight** that reads as focused light from above (the pendant itself catching the top edge of the material). The platform does not use discrete perimeter borders on elevated cards — edges emerge from the lift + shadow-halo + highlight stack. Borders are used selectively on components where the edge carries structural meaning (inputs, table rules, focus indicators).
@@ -416,34 +418,34 @@ Both moods default to breathing room, but Bridgeable has legitimately dense view
 **Implementation:**
 - Dense views may compress the base spacing scale, but do not abandon it. Compressed spacing is still proportional.
 - Dense views do not add decorative elements to fill perceived emptiness. Empty cells, quiet rows, and calm chrome are correct.
-- Dense views still use the mode's shadow, border, and accent treatments. The brass still appears where brass belongs; it just appears smaller.
+- Dense views still use the mode's shadow, border, and accent treatments. The accent still appears where accent belongs; it just appears smaller.
 - The test: zoom out on a dense view. Does it still read as morning garden (or evening lounge) at a glance? If yes, the mood survived. If it reads as "dashboard" or "data table," the mood was lost to density.
 
-### The aged-brass thread
+### The terracotta thread
 
-**Rule:** Aged brass is the single material that appears in both modes as the primary warm accent. It is the platform's material signature.
+**Rule:** Deepened terracotta is the single architectural color that appears in both modes as the primary warm accent. It is the platform's material signature.
 
-**Rationale:** Without a material thread across modes, light and dark become two unrelated themes. With the brass thread, they become two expressions of the same place. A user moving between modes should feel that the brass is the same brass — the light on it changed, the metal did not. This is the single most important continuity decision in the document.
+**Rationale:** Without a thread across modes, light and dark become two unrelated themes. With the terracotta thread, they become two expressions of the same place. A user moving between modes should feel the accent holds identity in either room — the room's light changed, the architectural color did not. This is the single most important continuity decision in the document.
 
-**Implementation:** The base brass hue is consistent across modes. Lightness and chroma adjust to maintain legibility and mood against each background. Exact values locked in Section 3. The brass is not used decoratively; it marks primary action, focus, and emphasis in both modes. It is the thing the eye goes to, in both morning and evening.
+**Implementation:** `--accent` is one value — `oklch(0.46 0.10 39)` (#9C5640) — used identically in both modes. Hover brightens to `oklch(0.54 0.10 39)` (#B46A4D) in both modes — universal "lift" signal, not asymmetric press-in/glow. The accent is not used decoratively; it marks primary action, focus, and emphasis in both modes. It is the thing the eye goes to, in both morning and evening. Aesthetic Arc Session 2 (April 2026) retired the prior aged-brass thread; see §2 cross-mode rule for the migration rationale.
 
 ### Canonical mood references
 
 Two images serve as the canonical anchors for the two moods. They should be stored in project knowledge alongside this document and referenced whenever this section's prose leaves ambiguity.
 
-**Light mode — `design-ref-light.png`:** A stone terrace in a European garden, high above the Mediterranean. Pergola with climbing bougainvillea, aged brass lantern, terracotta tile floor, warm stone walls, a table set with pale linen, potted olives and herbs, the sea visible beyond a wrought-iron railing. This image is the canonical anchor for the light-mode mood. When a prose rule in this document could be interpreted two ways, default to the interpretation closer to this image.
+**Light mode — `design-ref-light.png`:** A stone terrace in a European garden, high above the Mediterranean. Pergola with climbing bougainvillea, terracotta lantern, terracotta tile floor, warm stone walls, a table set with pale linen, potted olives and herbs, the sea visible beyond a wrought-iron railing. This image is the canonical anchor for the light-mode mood. When a prose rule in this document could be interpreted two ways, default to the interpretation closer to this image.
 
 Specific anchor points in the reference:
 - The linen tablecloth is the closest analog to the base surface color.
-- The aged brass of the lantern and chair frames is the canonical brass hue.
+- The terracotta of the lantern and chair frames is the canonical accent hue.
 - The shadows under the pergola and under the table show the target shadow character: warm, low-contrast, softly edged.
 - The terracotta floor is an example of a warm *structural* material, not a UI accent. It confirms that terracotta belongs to floor/foundation, not to emphasis or action.
 - The sea blue in the distance is a muted atmospheric cool note, deferred for now per Section 3.
 
-**Dark mode — `design-ref-dark.png`:** A high-end cocktail lounge in low warm light. Walnut bar top, aged brass pendants in a row, a warm charcoal textured wall with a brass sun sculpture, leather club chairs, distant city view through mullioned windows. This image is the canonical anchor for the dark-mode mood, with the following correction: our dark mode should feel **cozier** than this image — warmer overall, more absorbed light, smaller implicit scale. The grand lounge in the reference is the direction; a smaller warmer version is the target.
+**Dark mode — `design-ref-dark.png`:** A high-end cocktail lounge in low warm light. Walnut bar top, terracotta pendants in a row, a warm charcoal textured wall with a brass sun sculpture, leather club chairs, distant city view through mullioned windows. This image is the canonical anchor for the dark-mode mood, with the following correction: our dark mode should feel **cozier** than this image — warmer overall, more absorbed light, smaller implicit scale. The grand lounge in the reference is the direction; a smaller warmer version is the target.
 
 Specific anchor points in the reference:
-- The brass pendant lamp interiors and the sun sculpture are the canonical brass-in-evening-light hue. Note that they read as the same metal as the morning-light brass in the light-mode reference.
+- The brass pendant lamp interiors and the sun sculpture in the photograph are the brass-in-evening-light reference for the original aged-brass spec. **Aesthetic Arc Session 2 (April 2026) retired aged-brass; the canonical accent is now deepened terracotta `#9C5640` regardless of what the photograph's metal elements show.** The lounge photograph is still the canonical mood anchor for surface tones, shadow character, and atmosphere — but the accent value is locked independently.
 - The charcoal wall is the direction for the base surface, pulled slightly warmer and browner for the cozy target.
 - The wood of the bar top and the leather of the chairs are examples of the "material, not paint" principle applied at full intensity. UI surfaces should echo this in restraint — they should feel like material without mimicking specific textures.
 - The pools of light from the pendants are the elevation logic: light where attention belongs, warm dark elsewhere.
@@ -463,7 +465,7 @@ Other files in `docs/design-references/` fall into two non-canonical categories:
 
 **Archive** (in the `archive/` subfolder) — historical mockups, superseded designs, work-in-progress captures. Kept for history; not authoritative for anything current.
 
-**Conflict resolution:** when mood anchor and pattern reference disagree, **mood anchor wins** for color, material character, atmosphere, elevation feel, shadow character, and brass hue. **Pattern reference wins** for layout, composition, spacing, radius, and typography hierarchy. This split is non-negotiable: reversing it re-introduces the circular calibration problem.
+**Conflict resolution:** when mood anchor and pattern reference disagree, **mood anchor wins** for color, material character, atmosphere, elevation feel, shadow character, and accent hue. **Pattern reference wins** for layout, composition, spacing, radius, and typography hierarchy. This split is non-negotiable: reversing it re-introduces the circular calibration problem.
 
 ### The calibration chain
 
@@ -528,8 +530,8 @@ Explicit non-corrections (values held against photo deltas with specific rationa
 
 - **`--surface-base` (dark)** L=0.16 held. Photo measured charcoal wall at L=0.21 (bright), but §1 prose specifies "pulled slightly warmer and browner for the cozy target" — cozier = darker + more absorbed. Token sits at the dark "cozy" end of the wall's variance.
 - **`--surface-base` (dark)** hue 59 held. Photo measured h=114 (olive-tinted charcoal), token at h=59 (warmer amber). Direction-correct per §1 "warmer and browner" correction.
-- **Dark brass** (L=0.70) held. Photo's pendant-interior measurement (L=0.80) was of the directly-illuminated bright interior — closer to an active/hover brass state than a base state.
-- **Light brass** held. Measurement unreliable (sampling hit aged-wood frame rather than polished metal).
+- **Dark brass** (L=0.70) held — *obsolete after Aesthetic Arc Session 2.* The brass spec retired entirely; the new accent is single-value deepened terracotta `oklch(0.46 0.10 39)`. Original Tier-5 rationale: photo's pendant-interior measurement (L=0.80) was of the directly-illuminated bright interior — closer to an active/hover brass state than a base state. Retained as historical context.
+- **Light brass** held — *obsolete after Aesthetic Arc Session 2.* Original Tier-5 rationale: measurement unreliable (sampling hit aged-wood frame rather than polished metal). Retained as historical context.
 
 Future calibrations should cite this history when making further adjustments.
 
@@ -549,13 +551,13 @@ Section 1 defines the moods as felt experiences. Section 3 will define exact tok
 
 **Rule:** All color values are expressed in oklch. Hex, rgb, and hsl are not used in tokens. CSS may compile to rgb/hex at the browser level, but the design system authors in oklch exclusively.
 
-**Rationale:** oklch gives us three things the design language needs and that hsl/rgb don't: perceptually uniform lightness (L=0.5 looks equally bright regardless of hue, which is false in hsl), independent hue/chroma/lightness axes (we can adjust one without the others shifting), and a predictable chroma axis that corresponds to how saturated a color actually appears. This matters most for the aged-brass thread — the same brass hue has to work at different lightness values in light and dark modes, and only oklch lets us lock hue while adjusting lightness without the color drifting.
+**Rationale:** oklch gives us three things the design language needs and that hsl/rgb don't: perceptually uniform lightness (L=0.5 looks equally bright regardless of hue, which is false in hsl), independent hue/chroma/lightness axes (we can adjust one without the others shifting), and a predictable chroma axis that corresponds to how saturated a color actually appears. This matters most for the terracotta thread — the same accent hue has to work at different lightness values in light and dark modes, and only oklch lets us lock hue while adjusting lightness without the color drifting.
 
 **Implementation:** All tokens in Section 3 are authored as `oklch(L C H)` values. CSS custom properties use the `oklch()` function directly. Tailwind config references oklch. When communicating colors in documentation or prompts, oklch is the canonical form.
 
 ### The warm-hue family
 
-**Rule:** All surface colors, shadow colors, and neutral tokens sit in a warm hue family — hue angle between **70 and 95** in oklch. This applies in both light and dark modes. Accents may sit outside this range (brass is in this range; a future cool supporting accent would not be); surfaces and their shadows do not.
+**Rule:** All surface colors, shadow colors, and neutral tokens sit in a warm hue family — hue angle between **70 and 95** in oklch. This applies in both light and dark modes. Accents may sit outside this range (the accent sits OUTSIDE this range — see warm-family asymmetry below; a future cool supporting accent would not be); surfaces and their shadows do not.
 
 **Rationale:** Coherence across the platform requires that the backgrounds and shadows share a hue family. If the light-mode background is warm (hue ~85) but the light-mode shadow is neutral gray (hue effectively undefined or cool), the shadow contradicts the mood. Same for dark mode: if the charcoal is warm but the card elevation shadow is cool, the lounge mood breaks. Locking the surface-and-shadow hue family is the single most important coherence rule in the platform — it's what makes morning feel like morning in every corner of the UI, not just on the page background.
 
@@ -564,7 +566,7 @@ Section 1 defines the moods as felt experiences. Section 3 will define exact tok
 - Dark-mode base surface: hue 70–90
 - All shadow colors: hue 60–90
 - All neutral text colors (which are tinted, not pure): hue 70–95
-- Accents are not bound by this rule but brass happens to fall in it (hue ~75–85), which is why brass reads as belonging rather than as an accent bolted onto neutral chrome.
+- Accents are not bound by this rule but accent does NOT fall in this range — terracotta sits at hue ~39 (hue ~75–85), which is why accent reads as a stable counterpoint rather than as an accent bolted onto neutral chrome.
 
 ### Translation rules per anchor
 
@@ -585,15 +587,13 @@ Each anchor from Section 1 translates to oklch ranges. Section 3 picks specific 
 - **Shadow blur:** medium — specific values in Section 6
 - **Verification test:** A shadow should look warm-tinted when isolated on a neutral background. If a card's shadow looks gray when you screenshot it against white, it's wrong.
 
-**Aged brass (both modes, light-mode anchor 3 and dark-mode anchor 3)**
-- **Hue:** 70–78 (narrow, locked across modes; amber-leaning aged brass, not yellow-gold)
-- **Light mode lightness:** 0.62–0.72
-- **Light mode chroma:** 0.10–0.14
-- **Dark mode lightness:** 0.68–0.78
-- **Dark mode chroma:** 0.11–0.15
-- **Active/glowing state (dark mode):** lightness may rise to 0.76–0.82 and chroma to 0.13–0.16. Hue does not shift — active brass glows through lightness and chroma, not through hue change. This is how actual brass glows in warm light: brighter and more intense, not more orange.
-- **Verification test:** The light-mode brass and dark-mode brass, placed side by side, should read as the same metal observed under different light. If they read as two different colors, the hue has drifted. If dark-mode active brass reads as orange or copper, the hue shifted — pull it back to the base brass hue.
-- **Reference correction note:** An earlier draft specified hue 75–85 and a 5° amber shift for active states. After pick-validation, the range tightened to 70–78 (amber-leaning) and the amber shift was replaced with a lightness/chroma lift, because the base brass is already in the amber family and a further amber shift reads as copper rather than glowing brass.
+**Deepened terracotta (both modes, light-mode anchor 3 and dark-mode anchor 3)**
+- **Hue:** 35–43 (narrow, locked across modes; deep red-orange / earthen-clay, NOT amber-yellow)
+- **Lightness:** 0.42–0.50 (single value across modes — the architectural-color rule)
+- **Chroma:** 0.09–0.11 (single value across modes)
+- **Hover state (both modes):** lightness rises to 0.50–0.58 — the universal "lift" signal. Hue does not shift. Chroma may rise minimally; the lift is primarily a lightness step.
+- **Verification test:** The accent placed on cream linen (L=0.94) and on warm charcoal (L=0.16) should read as the same architectural color in two rooms. If light-mode and dark-mode accents look like different colors, the spec has drifted from the locked single-value rule. Contrast against L=0.16 charcoal must clear WCAG 2.4.7 3:1 for non-text accent (~3.2:1 at the locked value); contrast against L=0.94 cream is comfortable (~5:1).
+- **History note (April 2026):** This anchor previously specified aged brass — hue 70–78, lightness shifting 0.62–0.72 (light) → 0.68–0.78 (dark) for "same metal observed under different light." Aesthetic Arc Session 2 retired the brass spec after extended evaluation showed brass-on-warm-cream read as "musty wall" rather than craftsmanship — the yellow chroma fought the substrate's warmth. Deepened terracotta keeps the warmth-and-architectural register without the yellow-chroma issue. The single-value-across-modes rule replaces the "metal observed under two lights" framing with "the architectural color is one thing in either room" — closer to a Range Rover paint color than to brass-on-camera-body. See cross-mode rule below for full context.
 
 **Deep warm cozy charcoal base (dark mode, anchor 1)**
 - **Lightness:** 0.14–0.20
@@ -613,14 +613,14 @@ Each anchor from Section 1 translates to oklch ranges. Section 3 picks specific 
 
 ### Warm-family asymmetry across modes
 
-**Rule:** Light mode's warm family centers on hue 80–92 (warm cream, pale stone, clear morning light). Dark mode's warm family centers on hue 55–75 (lamplight, leather, warm wood, evening amber). The family is warm in both modes but leans noticeably more orange-amber in dark mode. Brass locks to a single hue across modes (per the cross-mode rule below) and sits at the warm edge of the light-mode family and the cooler edge of the dark-mode family — which is why brass reads as native to both.
+**Rule:** Light mode's warm family centers on hue 80–92 (warm cream, pale stone, clear morning light). Dark mode's warm family centers on hue 55–75 (lamplight, leather, warm wood, evening amber). The family is warm in both modes but leans noticeably more orange-amber in dark mode. The accent (deepened terracotta, hue ~39) sits *below* the warm-family range — it's a deliberate architectural color, not a member of the surface-family — and reads as a stable counterpoint to the warm substrate in either mode.
 
-**Rationale:** Symmetric hues across modes produce a dark mode that reads as "daylight dimmed" rather than "evening lamplight." The cozy lounge mood requires that the ambient warmth shift, not just the lightness. Morning sun filtered through garden air has a different color temperature than evening lamps through leather-lined walls. The asymmetry encodes this difference.
+**Rationale:** Symmetric hues across modes produce a dark mode that reads as "daylight dimmed" rather than "evening lamplight." The cozy lounge mood requires that the ambient warmth shift, not just the lightness. Morning sun filtered through garden air has a different color temperature than evening lamps through leather-lined walls. The asymmetry encodes this difference. The accent sits outside this asymmetry deliberately: it is the platform's architectural color, observed against shifting ambient light. Both the cream-linen substrate and the warm-charcoal substrate complement the same terracotta; neither absorbs nor distorts it.
 
 **Implementation:**
-- Non-brass surfaces in light mode use hues in 80–92.
-- Non-brass surfaces in dark mode use hues in 55–75.
-- Brass uses a single fixed hue across modes (locked per the cross-mode rule).
+- Non-accent surfaces in light mode use hues in 80–92.
+- Non-accent surfaces in dark mode use hues in 55–75.
+- Accent uses a single fixed value across modes (locked per the cross-mode rule below).
 - When deriving a new surface color for dark mode, pull its hue toward 55–75 even if the light-mode equivalent is at 85. Do not copy the light-mode hue into dark mode.
 
 ### Shadows persist in dark mode
@@ -635,18 +635,22 @@ Each anchor from Section 1 translates to oklch ranges. Section 3 picks specific 
 - The top-edge highlight (where used on elevated surfaces) is an *additional* cue, not a replacement for the shadow. Elevated surfaces get both: a warm top-edge highlight and a warm soft shadow below.
 - Verification test: screenshot an elevated card on the dark base. Can you see the shadow as a warm slightly-darker patch around and below the card? If the shadow is invisible, opacity is too low. If it reads as gray or black, hue is wrong.
 
-### The aged-brass cross-mode rule
+### The terracotta cross-mode rule
 
-**Rule:** Aged brass is one color, expressed at two lightness values. The hue is locked across modes at a single value: **73** (amber-leaning aged brass). Chroma varies minimally. Only lightness shifts meaningfully, and only enough to maintain legibility against the mode's background. Active/glowing states shift lightness and chroma; they do not shift hue.
+**Rule:** Deepened terracotta is **one color, one value, used identically in both modes**. The full oklch triplet is locked: lightness 0.46, chroma 0.10, hue 39 (`oklch(0.46 0.10 39)` ≈ `#9C5640`). Hover brightens to `oklch(0.54 0.10 39)` (≈ `#B46A4D`) — universal "lift" signal across both modes. Active states (currently-selected items, drop targets) compose via the two-token pattern `bg-accent-subtle` + `border-accent`. The accent does not shift lightness across modes.
 
-**Rationale:** This is what operationalizes the aged-brass thread from Section 1. Without a locked hue, the "same brass in different light" claim collapses — you just have two yellows. With a locked hue and shifting lightness, the brass genuinely behaves like a single metal observed at two times of day. The no-hue-shift rule for active states is important because the locked hue already sits in the amber family; shifting further toward amber produces copper or bronze, not glowing brass.
+**Rationale — the architectural-color rule:** The prior aged-brass spec used a "same metal observed under different light" framing — brass shifted lightness across modes (0.66 light → 0.70 dark) to maintain legibility. That works for a metal that genuinely catches and reflects ambient light. For Bridgeable's register, the closer mental model is **a Range Rover paint color**: it holds its identity in either room. The terracotta wall and the terracotta tile floor of the canonical references (the Mediterranean garden's terracotta lantern + tile, the lounge's terracotta pendants on dark walnut) read as the same color whether observed at morning or evening — because the color *is* the architectural decision, and only the surrounding ambient changes. This framing aligns with the operator-in-calm-room register: the workshop tool's accent is constant across the day; the workshop's light is what shifts. Single-value-across-modes also simplifies the token system (one canonical accent value, not two) and removes any drift risk from per-mode tuning.
+
+**Why brass retired (April 2026):** Aged brass on warm-cream substrate read "musty wall" rather than craftsmanship. Brass's yellow chroma (hue ~73) fought the substrate's warmth (hue ~82) instead of complementing it — adjacent warm-yellow on warm-cream produces a flat, undifferentiated wash rather than the intended jewelry-on-stone composition. Terracotta (hue ~39) sits well below the warm-cream substrate's hue range, providing genuine chromatic contrast without leaving the warm family. The result reads as "earthen architectural detail on warm stone" rather than "yellow detail on yellow stone." Cocktail lounge dark mode also benefits: terracotta against L=0.16 warm charcoal reads with weight and presence; brass against the same substrate read as too-bright glow against too-dim dark. The single-value lock further reinforces the platform's British-register aesthetic — the accent doesn't need to perform differently under different conditions; it is what it is.
 
 **Implementation:**
-- Brass hue is `73` — a single locked value, not a range. This is *the* brass hue of the platform.
-- The light-mode brass token and dark-mode brass token both use hue 73.
-- Lightness and chroma shift per mode within the ranges specified above.
-- Active/glowing states in both modes adjust via lightness and chroma. Hue stays at 73.
-- Any new brass-adjacent accent (e.g., a copper variant, a darkened-brass variant) must also sit at hue 73 unless it is explicitly a different metal — in which case it requires its own accent entry in Section 3, not a brass variant.
+- `--accent` is `oklch(0.46 0.10 39)` — single locked value, not a range. This is *the* accent of the platform.
+- The light-mode `--accent` and dark-mode `--accent` use the same triplet.
+- `--accent-hover` is `oklch(0.54 0.10 39)` — single locked value, both modes. Universal lift on hover.
+- `--accent-muted` and `--accent-subtle` are alpha-composited over the accent base (`rgba(156, 86, 64, 0.20)` and `rgba(156, 86, 64, 0.10)` respectively); no per-mode value.
+- `--content-on-accent` is `oklch(0.98 0.006 82)` (light cream) in **both** modes — the accent is dark enough that cream text reads ~6.5:1 contrast (AAA) universally. This replaces brass-era asymmetric content-on-brass (cream in light, dark charcoal in dark) — symmetric pairing matches the single-value accent.
+- `--accent-active` is **intentionally absent**. The current Bridgeable "active state" semantic is "this is the currently selected item" (DateBox active, nav active), implemented via `bg-accent-subtle` + `border-accent`. Not "this button is being pressed right now." If momentary press feedback is needed later, introduce `--accent-active` then; reducing token surface area now prevents ambiguity (developers using `--accent-active` for selected-item state instead of press state).
+- Any new accent-adjacent variant must justify itself against the single-value rule. Variants of the existing accent (subtle, muted) compose via alpha; new accent values for distinct semantic roles (e.g., a destructive accent, a success accent) get their own token entries in Section 3 and the status-tokens system, not as accent-adjacent variants.
 
 ### Deriving a new color
 
@@ -659,7 +663,7 @@ Is this color a surface? A shadow? An accent? A status indicator? Map it to the 
 Use the anchor's lightness, chroma, and hue ranges as the starting point.
 
 **Step 3: Adjust the minimum necessary axis.**
-If the new color needs to be distinguishable from the anchor (e.g., a new status color distinct from brass), adjust the single axis that carries the distinction and leave the others alone. For semantically distinct colors (error, warning, success), adjust hue. For variants of the same semantic role (hover, active, disabled), adjust lightness.
+If the new color needs to be distinguishable from the anchor (e.g., a new status color distinct from accent), adjust the single axis that carries the distinction and leave the others alone. For semantically distinct colors (error, warning, success), adjust hue. For variants of the same semantic role (hover, active, disabled), adjust lightness.
 
 **Step 4: Verify against both modes.**
 The new color must work in both light and dark modes. If it's a single token, it needs two values (one per mode). Apply the cross-mode consistency principle: lock hue, shift lightness.
@@ -699,9 +703,9 @@ These are the three decisions that everything else in the color system derives f
 | Token | Light mode | Dark mode |
 |---|---|---|
 | **Surface base** | `oklch(0.94 0.018 82)` | `oklch(0.16 0.012 65)` |
-| **Brass (primary accent)** | `oklch(0.66 0.12 73)` | `oklch(0.70 0.13 73)` |
+| **Accent (deepened terracotta, primary accent)** | `oklch(0.46 0.10 39)` | `oklch(0.46 0.10 39)` |
 
-Brass hue locked at **73** across modes. Surface base hue asymmetric across modes (82 in light, 65 in dark) per Section 2's warm-family asymmetry rule.
+Accent locked at **single value** across modes per the cross-mode rule (the architectural-color rule, §2). Surface base hue asymmetric across modes (82 in light, 65 in dark) per Section 2's warm-family asymmetry rule. The accent retired aged-brass in Aesthetic Arc Session 2 (April 2026); see §2 cross-mode rule for the full migration rationale.
 
 ### Semantic token naming convention
 
@@ -709,7 +713,7 @@ Tokens use the pattern `--{role}-{variant}` where role describes what the color 
 
 - **surface** — backgrounds, cards, panels, anything that content sits on
 - **content** — text, icons, anything that sits on a surface
-- **accent** — brass and any future accents, used for emphasis and action
+- **accent** — terracotta and any future accents, used for emphasis and action
 - **border** — lines that separate or outline surfaces
 - **shadow** — shadow colors (not opacities, which are separate)
 - **status** — semantic state colors (error, warning, success, info)
@@ -754,12 +758,12 @@ Not every token has every variant. The table below lists all defined tokens.
 | `--content-base` | `oklch(0.30 0.015 70)` | `oklch(0.90 0.014 75)` |
 | `--content-muted` | `oklch(0.48 0.014 70)` | `oklch(0.72 0.014 70)` |
 | `--content-subtle` | `oklch(0.62 0.012 70)` | `oklch(0.55 0.012 68)` |
-| `--content-on-brass` | `oklch(0.98 0.006 82)` | `oklch(0.18 0.015 60)` |
+| `--content-on-accent` | `oklch(0.98 0.006 82)` | `oklch(0.98 0.006 82)` |
 
 *Notes:*
 - `content-strong` is for headings and critical emphasis. `content-base` is body text.
 - `content-muted` is secondary text (captions, metadata). `content-subtle` is tertiary (placeholder text, disabled states).
-- `content-on-brass` is the color used for text/icons placed *on* brass surfaces (e.g., label on a brass button). Light mode uses near-white with warm tint; dark mode uses the deep warm charcoal family so brass buttons read as "glowing pill with dark text" rather than "bright button with white text."
+- `content-on-accent` is the color used for text/icons placed *on* accent surfaces (e.g., label on a primary terracotta button). **Same value in both modes** (light cream with warm tint) per Aesthetic Arc Session 2 — terracotta at L=0.46 is dark enough that cream text clears WCAG AAA contrast (~6.5:1) symmetrically across both modes. This replaces the brass-era asymmetric pattern (cream in light, dark charcoal in dark for the "glowing pill with dark text" aesthetic) — symmetric pairing matches the single-value-across-modes accent rule.
 
 ### Border tokens
 
@@ -770,11 +774,11 @@ Not every token has every variant. The table below lists all defined tokens.
 | `--border-subtle` | `oklch(0.88 0.012 80) / 0.6` | `oklch(0.35 0.015 65) / 0.5` |
 | `--border-base` | `oklch(0.82 0.015 78) / 0.8` | `oklch(0.42 0.018 68) / 0.7` |
 | `--border-strong` | `oklch(0.70 0.020 76)` | `oklch(0.55 0.025 70)` |
-| `--border-brass` | `oklch(0.66 0.12 73) / 0.7` | `oklch(0.70 0.13 73) / 0.7` |
+| `--border-accent` | `rgba(156, 86, 64, 0.70)` | `rgba(156, 86, 64, 0.70)` |
 
 *Notes:*
 - Borders use alpha compositing (noted with `/ N`) by default so they adapt subtly to the surface they're on.
-- `border-brass` is used sparingly — for focus rings, selected states, and brass-edged emphasis. Not a general-purpose border.
+- `border-accent` is used sparingly — for focus states, selected items, and accent-edged emphasis. Single value across modes per the cross-mode accent rule (§2). Not a general-purpose border.
 - `border-strong` is the only border that uses a solid color (no alpha). Used for table rules, divider lines that need to hold their weight.
 
 ### Shadow tokens
@@ -794,31 +798,30 @@ Not every token has every variant. The table below lists all defined tokens.
 
 ### Accent tokens
 
-**Rationale:** Brass is the only locked accent. A supporting accent (potentially a muted cool note) is deferred per earlier scope decisions. Sections 2 and 3 are authored to accommodate a cool supporting accent in the future if needed; no current tokens depend on one existing.
+**Rationale:** Deepened terracotta is the only locked accent. A supporting accent (potentially a muted cool note) is deferred per earlier scope decisions. Sections 2 and 3 are authored to accommodate a cool supporting accent in the future if needed; no current tokens depend on one existing.
 
 | Token | Light mode | Dark mode |
 |---|---|---|
-| `--accent-brass` | `oklch(0.66 0.12 73)` | `oklch(0.70 0.13 73)` |
-| `--accent-brass-hover` | `oklch(0.62 0.13 73)` | `oklch(0.74 0.13 73)` |
-| `--accent-brass-active` | `oklch(0.58 0.13 73)` | `oklch(0.78 0.14 73)` |
-| `--accent-brass-muted` | `oklch(0.85 0.05 73) / 0.8` | `oklch(0.35 0.06 73) / 0.8` |
-| `--accent-brass-subtle` | `oklch(0.92 0.025 73) / 0.6` | `oklch(0.26 0.04 73) / 0.6` |
+| `--accent` | `oklch(0.46 0.10 39)` | `oklch(0.46 0.10 39)` |
+| `--accent-hover` | `oklch(0.54 0.10 39)` | `oklch(0.54 0.10 39)` |
+| `--accent-muted` | `rgba(156, 86, 64, 0.20)` | `rgba(156, 86, 64, 0.20)` |
+| `--accent-subtle` | `rgba(156, 86, 64, 0.10)` | `rgba(156, 86, 64, 0.10)` |
 
 *Notes:*
-- **Light mode hover** darkens and slightly saturates (press-in feel).
-- **Dark mode hover** lightens (glow feel) — opposite direction because the interactive affordance in each mode is different.
-- **Active** is the fully pressed/engaged state: even darker in light mode, even brighter in dark mode.
-- **Muted** is brass at low chroma for backgrounds that need to signal brass-adjacency without being brass itself (e.g., a brass-tinted badge background, the background of a selected row). Alpha allows it to compose with whatever surface it sits on.
-- **Subtle** is the barest brass tint, used for very quiet brass signals (e.g., the fill of a hover state on a menu item).
-- All variants lock hue to 73. No exceptions.
+- **Single value across modes.** Per Aesthetic Arc Session 2, `--accent` does not shift across light/dark — the architectural-color rule (§2 cross-mode rule). #9C5640 deepened terracotta reads as the same color in both rooms; the substrate around it changes, the accent itself does not.
+- **Hover universally brightens.** `--accent-hover` is `#B46A4D` (~L 0.54) in both modes. The "lift signal" semantic replaces the brass-era asymmetric press-in (light) / glow (dark) pattern. Universal lift matches the Apple Pro era execution standard reference (Linear, Stripe, Pro apps universally use lift on hover).
+- **No `--accent-active`.** The current "active state" semantic in Bridgeable is "this is the currently selected item" (DateBox active, nav active), implemented via the two-token pattern: `--accent-subtle` background + `--accent` border. Not "this button is being pressed right now" (momentary press feedback). If momentary press is needed later, introduce `--accent-active` then; reducing token surface area now prevents ambiguity.
+- **Muted** (`rgba(156, 86, 64, 0.20)`) is the slightly more saturated wash for backgrounds that need to signal accent-adjacency without being accent itself (e.g., an accent-tinted badge background). Alpha allows it to compose with whatever surface it sits on.
+- **Subtle** (`rgba(156, 86, 64, 0.10)`) is the barest accent tint, used for the canonical selected-item background and very quiet hover/active surfaces (e.g., the fill of a hover state on a menu item).
+- **All variants lock the same hue (~39 oklch / red-orange terracotta family). No exceptions.**
 
 ### Status tokens
 
-**Rationale:** Status colors (error, warning, success, info) are derived per Section 2's "Deriving a new color" procedure. They must feel native to the platform's warm family — not bolted-on generic red/yellow/green/blue. Each status hue is chosen to be distinguishable from the others and from brass while sitting within the platform's overall warmth.
+**Rationale:** Status colors (error, warning, success, info) are derived per Section 2's "Deriving a new color" procedure. They must feel native to the platform's warm family — not bolted-on generic red/yellow/green/blue. Each status hue is chosen to be distinguishable from the others and from accent while sitting within the platform's overall warmth.
 
 Derivation approach:
-- **Error (red)** — hue in the warm-red family (20–30), distinct from brass (73). Chroma moderate-high for urgency.
-- **Warning (amber)** — hue adjacent to brass (60–65). Distinguishable from brass but clearly in the same warm family.
+- **Error (red)** — hue in the warm-red family (20–30), distinct from accent (hue 39). Chroma moderate-high for urgency.
+- **Warning (amber)** — hue adjacent to the warm-cream substrate range (60–65). Distinguishable from accent but clearly in the same warm family.
 - **Success (green)** — hue in the warm-olive-green family (130–140), pulling slightly yellow rather than blue-green. This ties to the living-green garden anchor from the light-mode reference.
 - **Info (blue-gray)** — hue in the muted-Mediterranean range (220–230), low chroma to stay restrained. This is also the place where the deferred "cool supporting accent" partially appears, as an informational cue rather than a structural accent.
 
@@ -835,7 +838,7 @@ Derivation approach:
 
 *Notes:*
 - Status `muted` variants are backgrounds for status callouts (the yellow tint behind a warning message). Status `base` is the foreground (border, icon, bold text).
-- Warning is close to brass hue (65 vs 73) but meaningfully different. The 8° gap is enough that they don't confuse; use warning for *transient* state signals (form validation, inline warnings) and brass for *affordance* (actionable emphasis). They should not appear adjacent in the same component.
+- Warning is close to accent hue (65 vs 73) but meaningfully different. The 8° gap is enough that they don't confuse; use warning for *transient* state signals (form validation, inline warnings) and accent for *affordance* (actionable emphasis). They should not appear adjacent in the same component.
 - Info chroma is noticeably lower than the others. This is deliberate — info is the coolest color in the system and needs restraint to avoid reading as out-of-place against the warm platform.
 - Success hue (135) is yellow-green, not blue-green. This matches the olive/garden green of the light-mode reference and reads as organic rather than synthetic.
 - **Aesthetic Arc Session 4 (M1) adjustment — dark-mode `status-*-muted` backgrounds.** Pre-Session-4 dark-mode muted lightness values were 0.28/0.30 with chroma 0.05–0.08. That placed `text-status-{X}` on `bg-status-{X}-muted` at 3.83–4.32:1 — below WCAG AA 4.5:1 for body text. Current values (L 0.22/0.24, chroma eased) clear 5.0–5.4:1. Visually aligns with Section 2 dark-mode anchor "concentrated warm light pools" — status callouts read as lamplight at low angle rather than a washed-out tinted rectangle.
@@ -857,25 +860,27 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --content-base: oklch(0.30 0.015 70);
   --content-muted: oklch(0.48 0.014 70);
   --content-subtle: oklch(0.62 0.012 70);
-  --content-on-brass: oklch(0.98 0.006 82);
+  --content-on-accent: oklch(0.98 0.006 82);
 
   /* Borders */
   --border-subtle: oklch(0.88 0.012 80 / 0.6);
   --border-base: oklch(0.82 0.015 78 / 0.8);
   --border-strong: oklch(0.70 0.020 76);
-  --border-brass: oklch(0.66 0.12 73 / 0.7);
+  --border-accent: rgba(156, 86, 64, 0.70);
 
   /* Shadows */
   --shadow-color-subtle: oklch(0.40 0.045 78 / 0.06);
   --shadow-color-base: oklch(0.40 0.045 78 / 0.10);
   --shadow-color-strong: oklch(0.37 0.050 75 / 0.16);
 
-  /* Accents */
-  --accent-brass: oklch(0.66 0.12 73);
-  --accent-brass-hover: oklch(0.62 0.13 73);
-  --accent-brass-active: oklch(0.58 0.13 73);
-  --accent-brass-muted: oklch(0.85 0.05 73 / 0.8);
-  --accent-brass-subtle: oklch(0.92 0.025 73 / 0.6);
+  /* Accent — deepened terracotta, single value across modes
+     (Aesthetic Arc Session 2, April 2026 — see §2 cross-mode rule).
+     `--accent-active` intentionally absent; selected-item state
+     uses `--accent-subtle` background + `--accent` border. */
+  --accent: oklch(0.46 0.10 39);
+  --accent-hover: oklch(0.54 0.10 39);
+  --accent-muted: rgba(156, 86, 64, 0.20);
+  --accent-subtle: rgba(156, 86, 64, 0.10);
 
   /* Status */
   --status-error: oklch(0.55 0.18 25);
@@ -888,8 +893,8 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --status-info-muted: oklch(0.93 0.03 225);
 
   /* Focus ring alpha — default (Session 4, m2).
-     Composed into the brass focus ring via
-     `color-mix(in oklch, var(--accent-brass) calc(var(--focus-ring-alpha) * 100%), transparent)`. */
+     Composed into the accent focus ring via
+     `color-mix(in oklch, var(--accent) calc(var(--focus-ring-alpha) * 100%), transparent)`. */
   --focus-ring-alpha: 0.40;
 }
 
@@ -905,18 +910,22 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --surface-raised: oklch(0.32 0.016 85);
   --surface-sunken: oklch(0.13 0.010 55);
 
-  /* Content */
+  /* Content — `--content-on-accent` flipped to LIGHT cream in dark mode
+     (was dark charcoal pre-Session-2 for the brass-era "glowing pill
+     with dark text" aesthetic). Terracotta at L=0.46 is dark enough
+     that cream text clears WCAG AAA in both modes — symmetric pairing
+     matches the single-value-across-modes accent rule. */
   --content-strong: oklch(0.96 0.012 80);
   --content-base: oklch(0.90 0.014 75);
   --content-muted: oklch(0.72 0.014 70);
   --content-subtle: oklch(0.55 0.012 68);
-  --content-on-brass: oklch(0.18 0.015 60);
+  --content-on-accent: oklch(0.98 0.006 82);
 
   /* Borders */
   --border-subtle: oklch(0.35 0.015 65 / 0.5);
   --border-base: oklch(0.42 0.018 68 / 0.7);
   --border-strong: oklch(0.55 0.025 70);
-  --border-brass: oklch(0.70 0.13 73 / 0.7);
+  --border-accent: rgba(156, 86, 64, 0.70);
 
   /* Shadows — Tier-4 correction (April 2026):
      --shadow-highlight-top calibrated to reference measurement.
@@ -928,12 +937,13 @@ The final CSS variables for implementation. Sonnet uses these exact names.
   --shadow-color-strong: oklch(0.08 0.020 65 / 0.55);
   --shadow-highlight-top: oklch(0.32 0.010 61 / 0.9);
 
-  /* Accents */
-  --accent-brass: oklch(0.70 0.13 73);
-  --accent-brass-hover: oklch(0.74 0.13 73);
-  --accent-brass-active: oklch(0.78 0.14 73);
-  --accent-brass-muted: oklch(0.35 0.06 73 / 0.8);
-  --accent-brass-subtle: oklch(0.26 0.04 73 / 0.6);
+  /* Accent — single value across modes (same as light mode).
+     Aesthetic Arc Session 2: brass retired, terracotta locked
+     across both modes per the architectural-color rule. */
+  --accent: oklch(0.46 0.10 39);
+  --accent-hover: oklch(0.54 0.10 39);
+  --accent-muted: rgba(156, 86, 64, 0.20);
+  --accent-subtle: rgba(156, 86, 64, 0.10);
 
   /* Status (Session 4 M1: muted backgrounds tightened for WCAG AA) */
   --status-error: oklch(0.68 0.17 25);
@@ -968,41 +978,61 @@ Typography carries as much mood as color. The wrong typeface on the right palett
 
 ### Typeface family
 
-Bridgeable uses the **IBM Plex** family across sans, serif, and monospace. One family, three faces, unified by a single designer's voice.
+> **Aesthetic Arc Session 4 update (April 26, 2026).** The platform's typeface family migrated from **IBM Plex** to **Fraunces (display) + Geist (body) + Geist Mono (data)**. Rationale: the previous "single-family" Plex coherence prioritized unification over role-specific voice. Session 4's three-family approach gives each role the typeface that best carries its register: Fraunces serif as "engraving" for proper nouns + display, Geist as modern restrained sans for body + UI, Geist Mono as precision register for data. Sections below updated to reflect the new families; the rationale narrative threading "single-designer-voice" is retired in favor of role-specific voice. Migration shape: atomic swap, no transitional alias period. The 19 prior `font-plex-serif` utility uses became `font-display`; the 44 `font-plex-mono` uses became `font-mono`; the 55 `font-plex-sans` uses split between `font-sans` (default Geist) and `font-display` (Fraunces) per content semantics — proper nouns + display moments to Fraunces, body/labels/controls to Geist.
 
-**Rationale:** Humanist sans-serifs carry warmth in their letterforms that geometric sans-serifs don't. Plex Sans specifically has a slight mechanical-but-warm character — the letterforms read as designed metal rather than drawn ink, which reinforces the "material, not paint" anchor from Section 1. Using one family across all three faces (Sans, Serif, Mono) produces coherence without effort: a case number in Plex Mono sits naturally next to a heading in Plex Sans next to a decedent name in Plex Serif, because they share proportion, stroke philosophy, and spacing rhythm. This is the single-designer-voice principle and it matters more than picking the "best" sans and the "best" serif and the "best" mono separately.
+Bridgeable uses **three coordinated typefaces**, one per role:
+
+- **Fraunces** — humanist serif. Used for: proper nouns (funeral home names, family names, decedent names), H1/H2 page headings, large display numerals (dashboard stats, agent card counts), card titles when they ARE proper nouns. Carries the "engraving" register — a name rendered in Fraunces has the weight of a name, not a form-field value.
+- **Geist** — clean modern sans. Used for: body prose, labels, button text, controls, descriptions, secondary text. The default. Geist's restrained letterforms read as considered modern UI without the mechanical character of Plex; aligns with Apple Pro era (Layer 3) execution standard's "type meticulously chosen" discipline.
+- **Geist Mono** — precision monospace. Used for: all numerals (times, counts, dates in compact form, reference numbers), eyebrow uppercase tracking, technical data values, code blocks, tabular alignments. The mono register is the platform's vocabulary layer for "this is data, this is precise." See Pattern 4 in Section 11.
+
+**Rationale (post-migration):** Fraunces, Geist, and Geist Mono are coordinated by intent rather than by shared designer. Fraunces's humanist serif carries the gravitas-moment weight Plex Serif used to (proper nouns, display titles) but with sharper, more contemporary letterforms. Geist's modern restrained sans replaces Plex Sans's mechanical-but-warm character with cleaner, more Apple-Pro-era letterforms — better fit for the Layer 3 execution bar. Geist Mono replaces Plex Mono with a sibling face — same designer-system as Geist, so eyebrow + body + numerals all coordinate. The role-specific approach trades the "single designer's voice" coherence Plex offered for stronger role-fit per surface; the platform's shared design DNA carries through Section 0 (visual values) + Section 11 (treatment patterns) rather than through typeface family alone.
 
 **Implementation:**
-- **IBM Plex Sans** — primary UI typeface. Body text, labels, navigation, most headings.
-- **IBM Plex Serif** — display typeface, used for gravitas moments only (see rules below).
-- **IBM Plex Mono** — structured data. Case IDs, order numbers, timestamps, step identifiers, code, tabular numbers where alignment matters.
-- **Loading:** Self-host via `@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-serif`, `@fontsource/ibm-plex-mono`. Subset to Latin. Preload the three primary weights (400, 500, 600 for Sans; 500 for Serif display; 400 for Mono). Avoid the Google Fonts CDN because of third-party latency.
+- **Fraunces** — `--font-fraunces`, exposed as `font-display` Tailwind utility. Variable font (weights 100–900). Used at 500 (medium) for proper-noun text in cards; 500–600 for display headings.
+- **Geist** — `--font-geist`, exposed as `font-sans` Tailwind utility (the default; setting `--font-sans` to Geist makes any unprefixed text node resolve to Geist). Variable font (weights 100–900). Used at 400 / 500 / 600 per the existing weight discipline.
+- **Geist Mono** — `--font-geist-mono`, exposed as `font-mono` Tailwind utility. Variable font (weights 100–900). Used at 400 for data, 500 for emphasized data. Tabular figures by default.
+- **Loading:** Self-hosted via `@fontsource-variable/fraunces`, `@fontsource-variable/geist`, `@fontsource-variable/geist-mono`. Subset to Latin. Variable fonts ship a single file per family covering all weights. Preload not strictly required for variable fonts at our scale (~100KB combined gzipped); deferred to natural-touch refactor if FOUC surfaces.
+
+**Legacy IBM Plex tokens retained for one-release grace.** `--font-plex-sans` / `--font-plex-serif` / `--font-plex-mono` continue to exist in tokens.css but are aliased to the new families:
+- `--font-plex-sans` → `var(--font-geist)`
+- `--font-plex-serif` → `var(--font-fraunces)`
+- `--font-plex-mono` → `var(--font-geist-mono)`
+
+Aliases prevent breakage during the migration window. Codebase sweep replaces all `font-plex-*` utility uses; aliases will retire when zero references remain (target: end of Aesthetic Arc).
 
 ### When to use each face
 
-**Plex Sans** is the default. Use it for everything unless a rule below specifies otherwise.
+**Geist (sans)** is the default. Use it for everything unless a rule below specifies otherwise. Tailwind utility: `font-sans` (or unprefixed — the default font-family).
 
-**Plex Serif** appears only in gravitas moments. It is not decorative; it carries specific semantic weight. Serif is correct for:
-- **Decedent names** on case detail pages (funeral home vertical). A decedent's name is not a form field value — it carries the weight of a person. Rendering it in serif acknowledges that.
-- **Primary page titles on high-stakes pages.** The top of a case detail, a vault order, a signed certificate. Serif signals "this is the thing."
-- **Signature moments on marketing and portal surfaces.** Welcome messages, farewell messages, gratitude language on family portals.
+**Fraunces (display, serif)** is used for:
+- **Proper nouns on operational cards.** Funeral home names, family names, decedent names, cemetery names *when proper*. Renders the proper noun as an "engraving" — different from surrounding data, weighted with the noun's significance. See Section 11 Pattern 2.
+- **H1 / H2 page headings.** Page-level titles on hub surfaces, settings pages, focus surfaces. The serif treatment marks the page-level anchor; the rest of the page is Geist body.
+- **Day-switcher labels** (Funeral Scheduling Focus). The day label "Today, April 25" carries the H3 weight and the popover-trigger semantics; Fraunces gives it presence at the center of the switcher.
+- **Card titles when they ARE proper nouns** — see Pattern 2.
+- **Large display numerals** — dashboard stats, agent card counts, hero numbers. The `text-display` and `text-h1` numerals at scale read with Fraunces's serif character; this is the one mono-rule exception (large display numerals favor display serif over mono per established hub patterns).
+- **Signature moments on marketing and portal surfaces** (welcome messages, gratitude language).
 - **Quoted language.** Pull-quotes, testimonials, memorial language.
 
-Serif is wrong for:
-- Dashboard metrics (those are data, not gravitas).
-- Navigation, buttons, form labels, or any UI chrome.
-- Marketing headlines that are selling a product rather than honoring a moment.
-- Long-form body text (Plex Serif is a display serif; extended reading should stay in Plex Sans).
+Tailwind utility: `font-display`.
 
-**Plex Mono** is used for structured data that benefits from fixed-width alignment:
-- Case numbers (`FC-2026-0001`), order numbers, invoice numbers, migration names (`fh_02_cross_tenant`).
-- Timestamps and durations where alignment aids scanning.
-- Code blocks, command-bar input, any literal system language.
-- Columns of numbers in tables where decimal alignment matters.
+Fraunces is wrong for:
+- Dashboard data (that's mono — see Pattern 4). Times, counts, reference numbers stay mono regardless of placement.
+- Navigation, buttons, form labels, controls (all stay sans).
+- Long-form body text (Fraunces is a display serif; extended reading should stay in Geist sans).
+- Marketing headlines selling a product (those go to body sans + bold weight rather than serif).
+
+**Geist Mono** is used for structured data + the precision register:
+- **All numerals** — times (`15:00`, `ETA 17:00`), counts (`3`, `+1`), dates in compact form (`Apr 25`, `Apr 27`), reference numbers (`FC-2026-0001`), migration names (`fh_02_cross_tenant`).
+- **Eyebrow uppercase tracking** — `text-micro uppercase tracking-wider` labels. Even though eyebrows are text not numbers, the precision register fits — eyebrows signal "this is a labeled section, here's what it is."
+- **Code blocks, command-bar input, technical literal system language.**
+- **Columns of numbers in tables** where decimal alignment matters (tabular figures).
+
+Tailwind utility: `font-mono`.
 
 Mono is wrong for:
-- Regular numbers in prose or body text.
-- Phone numbers, addresses, dates (these read more naturally in Sans).
+- Regular numbers in prose ("there are three drivers" — the number is part of the sentence, font-sans).
+- Phone numbers, addresses, long-form dates ("April 25, 2026") — these read more naturally in sans.
 - Decorative use where the typewriter feel is aesthetic rather than functional.
 
 ### Type scale
@@ -1034,7 +1064,7 @@ Bridgeable uses **three weights only**: Regular (400), Medium (500), Semibold (6
 **Weight rules:**
 - **Regular (400)** — body text, UI labels, form input values, navigation items, secondary text, captions.
 - **Medium (500)** — headings (H1 through H4), primary action labels on buttons, active navigation, table column headers, card titles, emphasized inline text.
-- **Semibold (600)** — reserved for critical emphasis only. Primary page titles on high-stakes pages (when paired with Plex Serif Semibold), brass buttons that represent the primary action on a screen, status labels that require attention (errors, warnings in active state).
+- **Semibold (600)** — reserved for critical emphasis only. Primary page titles on high-stakes pages (when paired with Plex Serif Semibold), accent buttons that represent the primary action on a screen, status labels that require attention (errors, warnings in active state).
 
 **Rationale:** Fewer weights produces more consistent hierarchy. Three weights is enough to create clear emphasis without inviting weight-soup (the UI problem where every element has been bolded to "emphasize" it, producing a page where nothing emphasizes anything). The discipline is hard but the payoff is a platform that reads as considered rather than urgent.
 
@@ -1046,21 +1076,25 @@ The type scale pairs with weights in specific combinations. Deviation from these
 
 | Role | Size token | Face | Weight | Notes |
 |---|---|---|---|---|
-| Display page title | `text-display` | Plex Serif | 500 | Case detail, vault order, signature pages |
-| Primary page title | `text-h1` | Plex Sans | 500 | Standard page titles |
-| Section heading | `text-h2` | Plex Sans | 500 | Section breaks within a page |
-| Subsection heading | `text-h3` | Plex Sans | 500 | Card titles, form section headers |
-| Compact heading | `text-h4` | Plex Sans | 500 | Small headers, labels, list item titles |
-| Body default | `text-body` | Plex Sans | 400 | Paragraphs, descriptions, most content |
-| Body emphasis | `text-body` | Plex Sans | 500 | Emphasized inline text (use sparingly) |
-| Body secondary | `text-body-sm` | Plex Sans | 400 | Helper text, metadata in body context |
-| UI label | `text-body-sm` | Plex Sans | 500 | Form labels, button text, navigation |
-| Primary action button | `text-body-sm` | Plex Sans | 600 | Brass buttons representing the primary screen action |
-| Caption | `text-caption` | Plex Sans | 400 | Timestamps, author attribution, metadata |
-| Caption emphasis | `text-caption` | Plex Sans | 500 | Metadata requiring attention |
-| Data — identifier | varies | Plex Mono | 400 | Case numbers, IDs, migration names |
-| Data — timestamp | `text-caption` | Plex Mono | 400 | Timestamps in tabular context |
-| Data — code | `text-body-sm` | Plex Mono | 400 | Code blocks, command-bar input |
+| Display page title | `text-display` | Fraunces (`font-display`) | 500 | Case detail, vault order, signature pages |
+| Primary page title | `text-h1` | Fraunces (`font-display`) | 500 | Standard page titles |
+| Section heading | `text-h2` | Fraunces (`font-display`) | 500 | Section breaks within a page |
+| Subsection heading | `text-h3` | Fraunces (`font-display`) | 500 | Card titles, form section headers, day-switcher label |
+| Compact heading | `text-h4` | Geist (`font-sans`) | 500 | Small headers, labels, list item titles |
+| Proper noun on card | `text-body-sm` | Fraunces (`font-display`) | 500 | Funeral home / family / decedent names — the "engraving" treatment per Pattern 2 |
+| Body default | `text-body` | Geist (`font-sans`) | 400 | Paragraphs, descriptions, most content |
+| Body emphasis | `text-body` | Geist (`font-sans`) | 500 | Emphasized inline text (use sparingly) |
+| Body secondary | `text-body-sm` | Geist (`font-sans`) | 400 | Helper text, metadata in body context |
+| UI label | `text-body-sm` | Geist (`font-sans`) | 500 | Form labels, button text, navigation |
+| Primary action button | `text-body-sm` | Geist (`font-sans`) | 600 | Accent buttons representing the primary screen action |
+| Caption | `text-caption` | Geist (`font-sans`) | 400 | Timestamps in prose, author attribution |
+| Caption emphasis | `text-caption` | Geist (`font-sans`) | 500 | Metadata requiring attention |
+| Data — identifier | varies | Geist Mono (`font-mono`) | 400 | Case numbers, IDs, migration names |
+| Data — time | `text-body-sm` or `text-caption` | Geist Mono (`font-mono`) | 400 | Times, ETAs, durations |
+| Data — count | varies | Geist Mono (`font-mono`) | 400 | Counts on chips, badge numerals |
+| Data — date compact | `text-caption` or `text-[0.8125rem]` | Geist Mono (`font-mono`) | 400 | Date boxes (Apr 25), tabular date strings |
+| Data — code | `text-body-sm` | Geist Mono (`font-mono`) | 400 | Code blocks, command-bar input |
+| Eyebrow uppercase | `text-micro` | Geist Mono (`font-mono`) | 400–500 | Section labels (`SCHEDULING`, `ANCILLARY POOL`); precision register applies to text labels too per Pattern 4 |
 
 ### Paragraph rules
 
@@ -1086,7 +1120,7 @@ Plex Mono is inherently tabular — all characters are fixed-width — so numeri
 
 ### Text color
 
-Text colors are defined in Section 3 (`content-strong`, `content-base`, `content-muted`, `content-subtle`, `content-on-brass`). Typography does not redefine them; it specifies *when* each is used.
+Text colors are defined in Section 3 (`content-strong`, `content-base`, `content-muted`, `content-subtle`, `content-on-accent`). Typography does not redefine them; it specifies *when* each is used.
 
 **Content-strong** — headings, display text, primary page titles, critical emphasis. The darkest content color in each mode.
 
@@ -1096,7 +1130,7 @@ Text colors are defined in Section 3 (`content-strong`, `content-base`, `content
 
 **Content-subtle** — tertiary information: placeholder text, disabled state, timestamps in de-emphasized contexts, informational background.
 
-**Content-on-brass** — text rendered *on* brass surfaces (buttons, brass-filled badges). Never used for text rendered on any other surface.
+**Content-on-accent** — text rendered *on* accent surfaces (buttons, accent-filled badges). Never used for text rendered on any other surface.
 
 ### Dark-mode typography adjustments
 
@@ -1337,7 +1371,7 @@ Borders in Bridgeable are subtle by default. Structural hierarchy comes from ele
 - Surfaces use `--border-subtle` when a border is needed at all.
 - Interactive elements (inputs, dropdowns) use `--border-base` for visible definition.
 - `--border-strong` is reserved for content that needs to hold its weight (table column rules, section dividers that carry real structural meaning).
-- `--border-brass` is used for focus states and selected states only. Not a general-purpose border.
+- `--border-accent` is used for focus states and selected states only. Not a general-purpose border.
 
 **Card perimeter: no border.**
 Cards in this platform do not carry a discrete perimeter border. Card edges emerge from the composition of (a) **surface lightness + hue lift** (`--surface-elevated` at the warmer-amber hue per §3 dark-mode progression), (b) **shadow halo** (the soft atmospheric shadow that darkens the page surface just outside the card), and (c) **top-edge highlight** in dark mode (the 3px inset catching implied lamplight on the top edge). This three-mechanism stack delivers the "material, not paint" anchor (§1 dark-mode anchor 4) without the line-drawn outline that a perimeter border would imply. A painted outline suggests "this is a drawn shape on a surface"; the composition suggests "this is a material object sitting on another surface."
@@ -1350,9 +1384,9 @@ The canonical reference (`docs/design-references/IMG_6085.jpg` dark, `IMG_6084.j
 Dialogs, popovers, dropdown menus, and slide-overs do not carry a perimeter border either. Same rationale as cards: the shadow + surface composition carries the elevation signal; a border would over-specify.
 
 **Where borders DO apply:**
-- **Inputs, textareas, select triggers**: need a definite interactable-edge signal. Use `--border-base` (solid, visible); transitions to `--border-brass` on focus.
+- **Inputs, textareas, select triggers**: need a definite interactable-edge signal. Use `--border-base` (solid, visible); transitions to `--border-accent` on focus.
 - **Table column/row rules**: structural dividers inside a table. Use `--border-subtle` for light rules, `--border-base` for column separators that need weight.
-- **Focus indicators**: brass focus rings via the `.focus-ring-brass` utility (separate from border; uses `box-shadow` ring composition per Focus states section).
+- **Focus indicators**: accent focus rings via the `.focus-ring-accent` utility (separate from border; uses `box-shadow` ring composition per Focus states section).
 - **Explicit status-bordered callouts**: Alert / StatusPill / Badge status variants may use `border-status-*` colors as part of their status-family expression. These are component-specific, not a general surface-edge rule.
 - **Section dividers inside cards**: `border-t border-border-subtle` on CardFooter separates the footer zone from the card body. This is an INTERNAL divider (one line inside a surface), not a perimeter outline.
 
@@ -1362,7 +1396,7 @@ Dialogs, popovers, dropdown menus, and slide-overs do not carry a perimeter bord
 - Overlay perimeters (canonical rule above).
 - Row items in lists — rely on row padding + horizontal divider `border-b border-border-subtle` where rules are needed.
 - Badge/pill primitives — they use `bg-*-muted` color fill; adding a border would conflict with the pill shape's visual weight.
-- Buttons — the button has its own chrome (background + text color + shadow on hover). A perimeter border on brass primary would be visually redundant.
+- Buttons — the button has its own chrome (background + text color + shadow on hover). A perimeter border on accent primary would be visually redundant.
 
 **Border radius scale:**
 
@@ -1380,19 +1414,19 @@ Dialogs, popovers, dropdown menus, and slide-overs do not carry a perimeter bord
 
 ### Focus states
 
-Focus indicators must be visible, substantial, and on-brand. They use brass for recognition — the focus ring is *the* brass signal for "this element has your attention."
+Focus indicators must be visible, substantial, and on-brand. They use the accent for recognition — the focus ring is *the* accent signal for "this element has your attention."
 
 **Focus ring specification:**
-- **Color:** `--accent-brass` with 40% opacity for the ring itself.
+- **Color:** `--accent` with 40% opacity for the ring itself.
 - **Width:** 3px outside the element.
 - **Offset:** 2px from the element edge.
-- **Composition:** `box-shadow: 0 0 0 2px var(--surface-base), 0 0 0 5px color-mix(in oklch, var(--accent-brass) 40%, transparent)`. The first shadow creates a gap between the element and the ring; the second shadow is the ring itself.
+- **Composition:** `box-shadow: 0 0 0 2px var(--surface-base), 0 0 0 5px color-mix(in oklch, var(--accent) 40%, transparent)`. The first shadow creates a gap between the element and the ring; the second shadow is the ring itself.
 - **Radius:** Matches the element's own radius.
 - **Transition:** Fades in with `duration-quick` and `ease-settle`.
 
-**Rule:** Every focusable element must have a visible focus state. Removing focus rings for aesthetic reasons is forbidden. A focus state may be styled to match the component (e.g., a button's focus ring might be slightly tighter), but it must always be visible and must always use brass.
+**Rule:** Every focusable element must have a visible focus state. Removing focus rings for aesthetic reasons is forbidden. A focus state may be styled to match the component (e.g., a button's focus ring might be slightly tighter), but it must always be visible and must always use accent.
 
-**Rationale:** Focus states are an accessibility floor (WCAG 2.4.7) and also a platform signal — the brass focus ring is the platform saying "I see you." Generic outline focus rings read as browser-default; branded focus rings read as "this app was designed."
+**Rationale:** Focus states are an accessibility floor (WCAG 2.4.7) and also a platform signal — the accent focus ring is the platform saying "I see you." Generic outline focus rings read as browser-default; branded focus rings read as "this app was designed."
 
 ### Motion timing scale
 
@@ -1518,7 +1552,7 @@ padding: var(--space-4) var(--space-5);
 background: var(--surface-raised);
 border-radius: var(--radius-lg);
 box-shadow: var(--shadow-level-3);
-border: 1px solid var(--border-brass); /* Brass edge signals primary interaction surface */
+border: 1px solid var(--border-accent); /* Accent edge signals primary interaction surface */
 padding: var(--space-4);
 ```
 
@@ -1592,11 +1626,11 @@ Icons inherit color from their context via `currentColor` (Lucide's default beha
 **Default icon colors:**
 - Icons in body text or default UI → `content-base`
 - Icons in muted contexts (captions, helper text) → `content-muted`
-- Icons in primary actions (brass buttons) → `content-on-brass`
-- Icons in brass-accented contexts (selected states, focused items) → `accent-brass`
+- Icons in primary actions (accent buttons) → `content-on-accent`
+- Icons in accent-tinted contexts (selected states, focused items) → `accent`
 - Icons communicating status → the corresponding status color (`status-error`, `status-warning`, `status-success`, `status-info`)
 
-**Rule:** Icons do not use decorative colors. An icon is colored by what it *means*, not by what would look pretty. A status icon is colored by status semantics; a navigation icon is colored by whether the item is active; a brass icon indicates primary action or active focus. Arbitrary color choice on icons produces the "which icon is colored and why" confusion that degrades UI legibility.
+**Rule:** Icons do not use decorative colors. An icon is colored by what it *means*, not by what would look pretty. A status icon is colored by status semantics; a navigation icon is colored by whether the item is active; an accent icon indicates primary action or active focus. Arbitrary color choice on icons produces the "which icon is colored and why" confusion that degrades UI legibility.
 
 ### Icon usage patterns
 
@@ -1609,7 +1643,7 @@ Icons inherit color from their context via `currentColor` (Lucide's default beha
 </Button>
 ```
 
-**Navigation items:** Icons appear before labels with `space-3` (12px) gap. Active navigation items use brass color for both icon and label; inactive items use `content-muted` for the icon and `content-base` for the label.
+**Navigation items:** Icons appear before labels with `space-3` (12px) gap. Active navigation items use accent color for both icon and label; inactive items use `content-muted` for the icon and `content-base` for the label.
 
 **Form field adornments:** Icons inside input fields (search icons, status indicators, unit markers) use `icon-sm` (14px) and `content-muted`. They sit with `space-3` (12px) padding from the field edge.
 
@@ -1634,7 +1668,7 @@ For recurring Bridgeable concepts, use these specific Lucide icons to avoid drif
 | Case (funeral home) | `FileText` | A case is fundamentally a document-rooted entity. |
 | Cemetery | `Trees` | Evokes the physical location; more specific than a generic "location" pin. |
 | Tenant | `Building2` | Organizations as buildings; consistent with industry conventions. |
-| Workflow step | `Circle` (completed: `CheckCircle2`, active: `Circle` with brass ring, pending: `Circle` muted) | The step progression pattern. |
+| Workflow step | `Circle` (completed: `CheckCircle2`, active: `Circle` with accent ring, pending: `Circle` muted) | The step progression pattern. |
 | Approve / confirm | `Check` | Universal completion indicator. |
 | Reject / cancel | `X` | Universal negation. |
 | Edit | `PenLine` | More specific than a generic pencil; signals content editing. |
@@ -1681,7 +1715,7 @@ Bridgeable uses real imagery sparingly. The platform is utility software; imager
 
 **Avatars:**
 - Square source images rendered as circles (`radius-full`).
-- Fallback: initials on a `accent-brass-muted` background with `content-on-brass` text color.
+- Fallback: initials on a `accent-accent-muted` background with `content-on-accent` text color.
 - Sizes: `avatar-sm` (24px), `avatar-base` (32px), `avatar-md` (40px), `avatar-lg` (56px), `avatar-xl` (80px).
 
 **Tenant logos:**
@@ -1705,7 +1739,7 @@ Bridgeable uses real imagery sparingly. The platform is utility software; imager
 - Product and marketing imagery loads at 2x pixel density (retina) with appropriate srcsets for smaller viewports.
 - All `<img>` elements include meaningful `alt` text; decorative images use `alt=""` explicitly.
 - Images above the fold use `loading="eager"`; images below use `loading="lazy"`.
-- Avatars have a placeholder fallback that renders immediately while the image loads (initials on brass-muted background) — never blank circles.
+- Avatars have a placeholder fallback that renders immediately while the image loads (initials on accent-muted background) — never blank circles.
 
 ### Anti-patterns
 
@@ -1736,7 +1770,7 @@ Per Section 3, the content color tokens were designed with contrast ratios in mi
 **Body text:**
 - `content-base` on `surface-base` — must meet 4.5:1 (AA body text)
 - `content-base` on `surface-elevated` — must meet 4.5:1
-- `content-base` on `accent-brass` — addressed by the dedicated `content-on-brass` token
+- `content-base` on `accent` — addressed by the dedicated `content-on-accent` token
 
 **Large text (18pt+ or 14pt+ bold):**
 - `content-muted` on `surface-base` — must meet 3:1 (AA large text)
@@ -1754,16 +1788,16 @@ Per Section 3, the content color tokens were designed with contrast ratios in mi
 
 ### Focus indication
 
-Per Section 6, every focusable element has a visible focus state using the brass focus ring. This is the single most important accessibility rule in the platform and the one most often violated in SaaS UI.
+Per Section 6, every focusable element has a visible focus state using the accent focus ring. This is the single most important accessibility rule in the platform and the one most often violated in SaaS UI.
 
 **Requirements:**
 - Every interactive element (buttons, links, inputs, checkboxes, radios, custom controls) must have a visible focus state.
 - The focus state must meet 3:1 contrast against the adjacent background.
-- The focus ring must not be removed via `outline: none` without providing an equivalent replacement (which Bridgeable's brass focus ring satisfies).
+- The focus ring must not be removed via `outline: none` without providing an equivalent replacement (which Bridgeable's accent focus ring satisfies).
 - Focus state must be visible via keyboard navigation, not just mouse clicks.
 - Focus moves in a logical order — roughly top-to-bottom, left-to-right for LTR content — and never traps the user in a sub-region without an escape path.
 
-**Rule:** If Sonnet writes `outline: none` in any component, the very next rules must define the brass focus ring. Removing focus rings for aesthetics is a violation regardless of how the design is styled otherwise.
+**Rule:** If Sonnet writes `outline: none` in any component, the very next rules must define the accent focus ring. Removing focus rings for aesthetics is a violation regardless of how the design is styled otherwise.
 
 ### Keyboard navigation
 
@@ -1852,7 +1886,7 @@ Every shipped component is verified against:
 1. **Automated contrast checking** — all color pairings meet required ratios.
 2. **Keyboard-only navigation** — the component is fully usable without a mouse.
 3. **Screen reader testing** — VoiceOver (macOS), NVDA (Windows), or equivalent announces the component correctly.
-4. **Focus visibility** — the brass focus ring appears on every focusable element.
+4. **Focus visibility** — the accent focus ring appears on every focusable element.
 5. **Reduced motion** — component degrades correctly when `prefers-reduced-motion: reduce` is set.
 6. **Zoom test** — component functions at 200% browser zoom.
 
@@ -1959,7 +1993,7 @@ if (savedMode) {
 Accessibility rules for the toggle:
 - `aria-label` describes the *action* ("Switch to dark mode"), not the state ("Dark mode: off"). Per WCAG recommendation for toggle buttons.
 - `aria-pressed` reflects the *current* toggle state (`true` when dark, `false` when light). Screen readers announce both the available action and the current state.
-- `focus-ring-brass` utility for keyboard focus (see Section 6 focus-state spec).
+- `focus-ring-accent` utility for keyboard focus (see Section 6 focus-state spec).
 
 Runtime wiring: the toggle consumes `useMode()` from `lib/theme-mode.ts`, which returns `{mode, toggle}` and delegates to `useThemeMode` (the underlying `[mode, setter]` tuple). Shared state — no duplication.
 
@@ -1978,7 +2012,7 @@ function ModeToggle() {
       aria-label={`Switch to ${next} mode`}
       aria-pressed={isDark}
       title={`Switch to ${next} mode`}
-      className="... focus-ring-brass"
+      className="... focus-ring-accent"
     >
       <Icon aria-hidden="true" />
     </button>
@@ -2007,25 +2041,26 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --content-base: oklch(0.30 0.015 70);
   --content-muted: oklch(0.48 0.014 70);
   --content-subtle: oklch(0.62 0.012 70);
-  --content-on-brass: oklch(0.98 0.006 82);
+  --content-on-accent: oklch(0.98 0.006 82);
 
   /* Borders */
   --border-subtle: oklch(0.88 0.012 80 / 0.6);
   --border-base: oklch(0.82 0.015 78 / 0.8);
   --border-strong: oklch(0.70 0.020 76);
-  --border-brass: oklch(0.66 0.12 73 / 0.7);
+  --border-accent: rgba(156, 86, 64, 0.70);
 
   /* Shadows */
   --shadow-color-subtle: oklch(0.40 0.045 78 / 0.06);
   --shadow-color-base: oklch(0.40 0.045 78 / 0.10);
   --shadow-color-strong: oklch(0.37 0.050 75 / 0.16);
 
-  /* Accents */
-  --accent-brass: oklch(0.66 0.12 73);
-  --accent-brass-hover: oklch(0.62 0.13 73);
-  --accent-brass-active: oklch(0.58 0.13 73);
-  --accent-brass-muted: oklch(0.85 0.05 73 / 0.8);
-  --accent-brass-subtle: oklch(0.92 0.025 73 / 0.6);
+  /* Accent — deepened terracotta, single value across modes
+     (Aesthetic Arc Session 2). `--accent-active` intentionally
+     absent; selected-item state uses --accent-subtle + --accent. */
+  --accent: oklch(0.46 0.10 39);
+  --accent-hover: oklch(0.54 0.10 39);
+  --accent-muted: rgba(156, 86, 64, 0.20);
+  --accent-subtle: rgba(156, 86, 64, 0.10);
 
   /* Status */
   --status-error: oklch(0.55 0.18 25);
@@ -2097,18 +2132,21 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --surface-raised: oklch(0.32 0.016 85);
   --surface-sunken: oklch(0.13 0.010 55);
 
-  /* Content */
+  /* Content — `--content-on-accent` symmetric with light mode (cream)
+     per Aesthetic Arc Session 2. Was dark charcoal pre-Session-2 for
+     the brass-era "glowing pill with dark text" aesthetic; now light
+     cream both modes (terracotta dark enough for AAA cream contrast). */
   --content-strong: oklch(0.96 0.012 80);
   --content-base: oklch(0.90 0.014 75);
   --content-muted: oklch(0.72 0.014 70);
   --content-subtle: oklch(0.55 0.012 68);
-  --content-on-brass: oklch(0.18 0.015 60);
+  --content-on-accent: oklch(0.98 0.006 82);
 
   /* Borders */
   --border-subtle: oklch(0.35 0.015 65 / 0.5);
   --border-base: oklch(0.42 0.018 68 / 0.7);
   --border-strong: oklch(0.55 0.025 70);
-  --border-brass: oklch(0.70 0.13 73 / 0.7);
+  --border-accent: rgba(156, 86, 64, 0.70);
 
   /* Shadows — Tier-4 correction (April 2026):
      --shadow-highlight-top calibrated to reference measurement. */
@@ -2117,12 +2155,11 @@ The complete token definitions from Section 3, plus the tokens introduced in Sec
   --shadow-color-strong: oklch(0.08 0.020 65 / 0.55);
   --shadow-highlight-top: oklch(0.32 0.010 61 / 0.9);
 
-  /* Accents */
-  --accent-brass: oklch(0.70 0.13 73);
-  --accent-brass-hover: oklch(0.74 0.13 73);
-  --accent-brass-active: oklch(0.78 0.14 73);
-  --accent-brass-muted: oklch(0.35 0.06 73 / 0.8);
-  --accent-brass-subtle: oklch(0.26 0.04 73 / 0.6);
+  /* Accent — single value across modes per the cross-mode rule. */
+  --accent: oklch(0.46 0.10 39);
+  --accent-hover: oklch(0.54 0.10 39);
+  --accent-muted: rgba(156, 86, 64, 0.20);
+  --accent-subtle: rgba(156, 86, 64, 0.10);
 
   /* Status */
   --status-error: oklch(0.68 0.17 25);
@@ -2177,20 +2214,20 @@ export default {
           base: 'var(--content-base)',
           muted: 'var(--content-muted)',
           subtle: 'var(--content-subtle)',
-          'on-brass': 'var(--content-on-brass)',
+          'on-accent': 'var(--content-on-accent)',
         },
         border: {
           subtle: 'var(--border-subtle)',
           base: 'var(--border-base)',
           strong: 'var(--border-strong)',
-          brass: 'var(--border-brass)',
+          accent: 'var(--border-accent)',
         },
-        brass: {
-          DEFAULT: 'var(--accent-brass)',
-          hover: 'var(--accent-brass-hover)',
-          active: 'var(--accent-brass-active)',
-          muted: 'var(--accent-brass-muted)',
-          subtle: 'var(--accent-brass-subtle)',
+        accent: {
+          DEFAULT: 'var(--accent)',
+          hover: 'var(--accent-hover)',
+          active: 'var(--accent-hover)',
+          muted: 'var(--accent-muted)',
+          subtle: 'var(--accent-subtle)',
         },
         status: {
           error: 'var(--status-error)',
@@ -2336,12 +2373,12 @@ button {
   }
 }
 
-/* Focus-visible default (components override with the brass ring) */
+/* Focus-visible default (components override with the accent ring) */
 :focus-visible {
   outline: none;
   box-shadow:
     0 0 0 2px var(--surface-base),
-    0 0 0 5px color-mix(in oklch, var(--accent-brass) 40%, transparent);
+    0 0 0 5px color-mix(in oklch, var(--accent) 40%, transparent);
   transition: box-shadow var(--duration-quick) var(--ease-settle);
 }
 ```
@@ -2359,8 +2396,8 @@ function PrimaryButton({ children, ...props }) {
       className="
         inline-flex items-center gap-2
         px-5 py-2.5
-        bg-brass hover:bg-brass-hover active:bg-brass-active
-        text-content-on-brass
+        bg-accent hover:bg-accent-hover
+        text-content-on-accent
         font-medium text-body-sm
         rounded
         shadow-level-1
@@ -2421,7 +2458,7 @@ function Input({ label, error, id, ...props }) {
           rounded
           text-body text-content-strong
           transition-colors duration-quick ease-settle
-          focus-visible:outline-none focus-visible:border-brass
+          focus-visible:outline-none focus-visible:border-accent
         "
         {...props}
       />
@@ -2499,12 +2536,12 @@ A few patterns warrant custom utilities in `utilities.css`:
     box-shadow: var(--shadow-level-1);
   }
 
-  /* Brass focus ring — explicit utility for custom controls */
-  .focus-ring-brass:focus-visible {
+  /* Accent focus ring — explicit utility for custom controls */
+  .focus-ring-accent:focus-visible {
     outline: none;
     box-shadow:
       0 0 0 2px var(--surface-base),
-      0 0 0 5px color-mix(in oklch, var(--accent-brass) 40%, transparent);
+      0 0 0 5px color-mix(in oklch, var(--accent) 40%, transparent);
     transition: box-shadow var(--duration-quick) var(--ease-settle);
   }
 }
@@ -2603,19 +2640,19 @@ Anti-patterns are organized by what they break. Each entry names the violation, 
 
 These are the highest-altitude failures — the surface may pass every individual rule (tokens correct, spacing on-scale, type within the system) yet still feel wrong because the *register* drifted. When these fail, the platform reads as "warm SaaS" or "consumer app" rather than as Bridgeable.
 
-**Generic-SaaS warm drift.** Violates the eight qualities (Section 0) collectively. Symptoms: warm gray surfaces with rounded-everything corners, brass buttons next to pastel illustrations, restrained typography next to celebratory animations, dim backdrop next to a stock smiling-team photo. Each individual choice may be on-token; the composite reads as Notion-with-a-different-palette rather than as Bridgeable. Fix: review the eight qualities. Identify which are absent. Pull each toward presence.
+**Generic-SaaS warm drift.** Violates the eight qualities (Section 0) collectively. Symptoms: warm gray surfaces with rounded-everything corners, accent buttons next to pastel illustrations, restrained typography next to celebratory animations, dim backdrop next to a stock smiling-team photo. Each individual choice may be on-token; the composite reads as Notion-with-a-different-palette rather than as Bridgeable. Fix: review the eight qualities. Identify which are absent. Pull each toward presence.
 
-**Reference-family literalism.** Violates Section 0's "DO NOT translate" list. Translating the imaginative brief into surface decoration — leather-grain backgrounds because Filson, brass radial gradients because Leica top plate, workshop pegboard patterns because workshop. The references are imaginative briefs, not visual specifications. Character translates; artifacts do not.
+**Reference-family literalism.** Violates Section 0's "DO NOT translate" list. Translating the imaginative brief into surface decoration — leather-grain backgrounds because Filson, terracotta radial gradients because Leica top plate, workshop pegboard patterns because workshop. The references are imaginative briefs, not visual specifications. Character translates; artifacts do not.
 
 **Trend-tied visual conventions.** Violates time-resistance (Section 0 quality 5). Anything that places Bridgeable in a specific year — current-decade gradient meshes, glassmorphism panes, neumorphism extrusions, soft-everything Apple consumer aesthetic, AI-aesthetic purple-to-pink-with-sparkles. Time-resistance fails if a screenshot tells you what year it shipped.
 
-**Decorative warmth.** Violates Section 0's considered-materiality quality. Warmth used to make surfaces "feel friendly" rather than to express material. Pastel cream backgrounds with no purpose, soft drop shadows on flat content, brass borders on cards that don't need emphasis. Bridgeable warmth is materially earned — surfaces are warm because observed in warm light, not because warmth is decorative.
+**Decorative warmth.** Violates Section 0's considered-materiality quality. Warmth used to make surfaces "feel friendly" rather than to express material. Pastel cream backgrounds with no purpose, soft drop shadows on flat content, accent borders on cards that don't need emphasis. Bridgeable warmth is materially earned — surfaces are warm because observed in warm light, not because warmth is decorative.
 
 **Consumer-app maximalism.** Violates Section 0's workshop-tool-grade quality. Rounded-everything (radius >16px on standard surfaces), celebration moments (confetti, animated checkmarks with sparkles, "great job!" copy), illustrative onboarding tours, decorative empty states with cheerful illustrations replacing functional information. Correct in consumer software; wrong in operator software.
 
 **Workshop aesthetic without workshop discipline.** Violates Section 0's calm-expensiveness quality combined with Section 1's deliberate-restraint. Information density without legibility — Bloomberg Terminal aesthetic without Bloomberg's decades of typography discipline. Density requires *more* design, not less. If a dense view is hard to scan, density became clutter.
 
-When any of the above fires, refer to the **in-register calibration surfaces** named in Section 0 (DeliveryCard, post-4.4.2 Focus core, AncillaryPoolPin, QuickEditDialog, brass primary buttons). Pull the failing surface toward those references rather than toward generic SaaS conventions.
+When any of the above fires, refer to the **in-register calibration surfaces** named in Section 0 (DeliveryCard, post-4.4.2 Focus core, AncillaryPoolPin, QuickEditDialog, accent primary buttons). Pull the failing surface toward those references rather than toward generic SaaS conventions.
 
 ### Anti-patterns that break the warm-hue coherence
 
@@ -2627,15 +2664,17 @@ When any of the above fires, refer to the **in-register calibration surfaces** n
 
 **Decorative color for its own sake.** Violates deliberate restraint (Section 1 meta-anchor). A button colored blue because blue looks friendly, an icon colored green because green looks fresh, a background tinted purple because purple looks sophisticated. Every color decision must be justified by what it communicates, not by aesthetic appeal in isolation.
 
-### Anti-patterns that break the brass thread
+### Anti-patterns that break the accent thread
 
-**Multiple accent colors competing for primary emphasis.** Violates the aged-brass cross-mode rule (Section 2). Brass is *the* primary accent. If another color is competing for primary emphasis — a blue "Save" button next to a brass "Approve" button, for example — one of them is miscast. Brass marks primary action, focus, and emphasis. A secondary accent may exist but it does not compete for primary attention.
+**Multiple accent colors competing for primary emphasis.** Violates the cross-mode accent rule (Section 2). Deepened terracotta is *the* primary accent. If another color is competing for primary emphasis — a blue "Save" button next to a terracotta "Approve" button, for example — one of them is miscast. The accent marks primary action, focus, and emphasis. A secondary accent may exist but it does not compete for primary attention.
 
-**Brass that shifts hue across modes.** Violates the locked brass hue (Section 2). If the light-mode brass and dark-mode brass read as different metals (one more yellow, one more orange), the hue has drifted. Both must sit at hue 73. Only lightness and chroma adjust across modes.
+**Accent that shifts value across modes.** Violates the architectural-color rule (Section 2). The accent is single-value: `oklch(0.46 0.10 39)` in BOTH light and dark modes. If the light-mode accent and dark-mode accent read as different colors, someone has accidentally restored the brass-era asymmetric pattern. Both must sit at the locked oklch triplet.
 
-**Brass for active states via hue shift toward orange/copper.** Violates the no-hue-shift active-state rule (Section 2). Active brass in dark mode glows via lightness and chroma. Pushing the hue toward orange produces copper, not glowing brass.
+**Hover that darkens instead of brightens.** Violates the universal lift rule (Section 2). `--accent-hover` is `oklch(0.54 0.10 39)` — brighter than the base accent — in both modes. The brass-era asymmetric pattern (light mode darkens for press-in, dark mode brightens for glow) is retired; hover universally brightens as a "lift signal" matching Apple Pro era execution standards (Linear, Stripe, Pro apps).
 
-**Brass used decoratively.** Violates deliberate restraint. Brass marks primary action, focus, emphasis, or the brass-muted backgrounds derived from it. Brass sprinkled through a UI for visual warmth — a brass border here, a brass divider there — dilutes the meaning of brass. When brass appears, the eye should go there. Decorative brass stops being signal and becomes noise.
+**Active state styled as button-press rather than selected-item.** Violates the two-token active-state pattern (Section 2). Active state in Bridgeable means "this is the currently selected item" (DateBox active, nav active, drop target). Implement via `bg-accent-subtle` background + `border-accent` border. NOT via a darker/brighter accent fill — there is no `--accent-active` token. If momentary press feedback is later needed, that introduces a new `--accent-active` token; until then, do not invent one.
+
+**Accent used decoratively.** Violates deliberate restraint. The accent marks primary action, focus, emphasis, or the accent-muted backgrounds derived from it. Accent sprinkled through a UI for visual warmth — an accent border here, an accent divider there — dilutes the meaning of the accent. When accent appears, the eye should go there. Decorative accent stops being signal and becomes noise.
 
 ### Anti-patterns that break deliberate restraint
 
@@ -2774,6 +2813,168 @@ If any answer puts the image inside the implementation chain, it cannot be used 
 - New anti-patterns discovered through shipped experience belong here.
 - Anti-patterns that turn out to have legitimate exceptions should be updated with the exception noted, not removed.
 - This section grows as the platform grows; it's the accumulated diagnostic wisdom of the design language.
+
+---
+
+## Section 11 — Material Treatment Patterns
+
+Eight canonical material treatment patterns. Established Aesthetic Arc Session 4 (April 26, 2026) as the platform's reference vocabulary for all surfaces beyond the foundational tokens. Where Sections 1–6 specify *substrate* (color, type, surface, motion), Section 11 specifies *treatment* (how those tokens compose into a card, a tablet, a status indicator, a switcher).
+
+These patterns answer: "you have the tokens — now what does a *card* look like? What does a *floating tablet* look like? How do *status indicators* compose?" Section 0 governs *what* the platform feels like; Section 11 governs *how* recurring surface roles materialize that feel.
+
+The patterns are reference-implementation-driven. Each cites the canonical component (`DeliveryCard`, `AncillaryPoolPin`, etc.) where the pattern is realized. Future surfaces matching the role apply the pattern; the canonical component is the source of truth for "what this looks like in code."
+
+### Pattern 1 — Tablet treatment (floating widgets)
+
+**The pattern.** Widgets read as summoned material objects floating in workspace, not as static UI containers. Per [PLATFORM_INTERACTION_MODEL.md](PLATFORM_INTERACTION_MODEL.md): tablets are the materialization unit; they float, are individually present, and don't enclose other content as containers.
+
+**Composition:**
+- **Drawn edges** — 1px structural border (`border-border-subtle`), not soft shadow halos. The tablet has a real edge.
+- **Ambient shadow** — `shadow-level-1` multi-layer (Tier-4 calibration: tight grounding shadow + atmospheric halo + dark-mode inset top highlight). Reads as "lit from above" register.
+- **Surface lift** — `bg-surface-elevated` (or `/85` alpha + `backdrop-blur-sm` when sitting over a dimmed-blurred backdrop, e.g. inside Focus). The tablet is material; the substrate behind shows through subtly.
+- **Bezel with grip indicator (left side)** — a structural left-edge zone where the user's eye lands when arranging the tablet. The grip is always visible (subtle), not hover-revealed. It signals "this is a tablet you can grab and arrange," consistent with the Tony Stark / Jarvis interaction model.
+- **Mono label header** — uppercase eyebrow in `font-mono` (Geist Mono) `text-micro tracking-wider` + a clean h3 subhead in `font-sans` (Geist). The label tells the user what tablet they're looking at without competing with content.
+- **Count chip** in accent (terracotta) when applicable — small `font-mono` numeral on accent surface, jewelry-register signal.
+
+**When to apply.** Any Canvas widget per the widget framework (`focus-registry.ts` + `widget-renderers.ts`). Future Pulse surface widgets, AncillaryPoolPin, drive-time matrix pins, staff availability pins. The tablet pattern is what makes the workspace feel like a workshop with tools-to-hand rather than a page with embedded panels.
+
+**When NOT to apply.** Inline content that's part of the page flow (a card on a hub dashboard isn't a tablet — it's a card). Modal dialogs (those carry their own overlay-family chrome). The kanban core itself (it's the work surface, not a tablet floating on the work surface).
+
+**Reference implementation.** [`AncillaryPoolPin`](frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx) — the canonical example post-Aesthetic-Arc-Session-4. Bezel grip on left edge, mono uppercase eyebrow ("ANCILLARY POOL"), terracotta count chip, surface-elevated/85 with backdrop-blur, drawn edge via WidgetChrome wrapper, shadow-level-1 ambient.
+
+### Pattern 2 — Card material treatment
+
+**The pattern.** Cards across the platform share consistent material vocabulary so a dispatcher scanning the kanban builds one mental model that applies everywhere a card appears.
+
+**Composition:**
+- **Proper-noun text in `font-display`** (Fraunces serif) at proper size — funeral home name as "the engraving," the most important text on the card. The serif treatment marks the proper noun (a person's family, a funeral home name, a cemetery name when proper) as different from the surrounding data; it carries the weight of a name.
+- **Cemetery + city paired with mid-dot separator** — cemetery primary value at `text-content-base`, city in lower value (`text-content-muted`), mid-dot in `text-content-faint`. See Pattern 5 for the hierarchy rule.
+- **Time and counts in `font-mono`** (Geist Mono) — numerals carry tabular alignment + precision register. Numerals at lighter weight than surrounding type label ("15:00 Funeral Home" — the digits read as data, the label as prose).
+- **Vault info with mid-dot separator** — vault type · status, status in lower value, same hierarchy pattern.
+- **Foot-row icons at consistent 14px stroke weight** — quiet color at rest (`text-content-muted`), brighten on hover. Lucide icons platform-canonical.
+- **Jewel-set status indicators** — confirmation marks sit in recessed rings (slight inset shadow), feel like physical jeweled inlays rather than flat circles. See Pattern 3.
+- **Left-edge flags carrying signal meaning** — terracotta accent for needs-attention, success-green for confirmed. See Pattern 3.
+- **Document badges as stamped reference numbers** — corner-mounted, mono numeral, terracotta, like reference marks on a precision instrument (when applicable).
+
+**When to apply.** Any operational card surface — DeliveryCard, AncillaryCard, PeekPanel entity cards, Pulse operational cards, command-bar entity portals.
+
+**When NOT to apply.** Hub-page summary cards (those are dashboard widgets — apply Pattern 1 if floating, or hub-card patterns separately). System notifications (those use Alert/Banner primitives).
+
+**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) — post-Aesthetic-Arc-Session-4 the canonical example. Funeral home name in font-display (Fraunces), times in font-mono, mid-dot hierarchy on cemetery/city + vault/equipment lines, jewel-set hole-dug indicator, left-edge flag wired to hole-dug semantic.
+
+### Pattern 3 — Status indicator system (two-channel)
+
+**The pattern.** Status communicated through dual channels for legibility: a left-edge flag (color signal) and a corner-mounted jewel-set indicator (icon + recessed ring). Same semantic, redundant for scan-and-act surfaces where one channel might be missed.
+
+**Composition:**
+- **Left-edge flag** — 2-3px wide left border. Color carries the signal:
+  - `border-l-accent` (terracotta) → needs-attention
+  - `border-l-status-success` (green) → confirmed
+  - `border-l-transparent` (or absent) → neutral
+- **Jewel-set indicator** — bottom-right or icon-row position. Icon inside a recessed ring with `box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15)` (light) / `inset 0 1px 2px rgba(0, 0, 0, 0.30)` (dark). Reads as physical jeweled inlay rather than flat colored dot.
+
+**When to apply.** Any card or row representing operational state where the dispatcher's primary read is "is this thing OK or does it need attention?" Examples: hole-dug status (DeliveryCard), proof-approval status (urn engraving), invoice-overdue status, certificate-pending status.
+
+**When NOT to apply.** Generic interactive elements (those use focus rings + hover states). Status text alone (Alert / Banner primitives). The flag + jewel pattern is for cards/rows; not a global "every status everywhere" rule.
+
+**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) post-Session-4 — left-edge flag wired to hole-dug status (unknown=terracotta, yes=success-green, no=neutral); HoleDugBadge with inset-shadow ring (jewel-set treatment).
+
+### Pattern 4 — Numeric mono treatment
+
+**The pattern.** All numeric data values use `font-mono` (Geist Mono). Numerals lighter weight than surrounding type labels for hierarchy.
+
+**Why the precision register matters.** A time, a count, a reference number is *data* — it has structure, it's read precisely, it benefits from tabular alignment when stacked. Putting numerals in mono signals "this is data, this is precise" — different from prose. The mono register is a vocabulary layer; the user develops a stable read of "mono = data" across the platform.
+
+**Composition:**
+- **Times** — `15:00`, `ETA 17:00`, `Start 6:30am`. Always `font-mono tabular-nums`.
+- **Counts** — `3`, `+1`, `0`. Always `font-mono`.
+- **Reference numbers** — document badges, case numbers (`FC-2026-0001`), invoice numbers. Always `font-mono`.
+- **Compact dates** — `Apr 25`, `Apr 27`. Always `font-mono` when in tabular/eyebrow contexts. (Long-form dates in body prose may stay sans — judgment call.)
+- **Weight discipline** — numerals at 400 (regular) when paired with 500 (medium) labels. The label is the noun, the data is the value; visual weight reflects that.
+
+**When to apply.** Times, counts, reference numbers, dates in compact form, technical data values. Eyebrow uppercase labels (precision register fits even though they're not numbers — see Pattern 1's mono label header).
+
+**When NOT to apply.** Numbers in prose ("there are three drivers" → font-sans, not font-mono — the number is part of the sentence, not data). Phone numbers and addresses (those read more naturally in font-sans).
+
+**Reference implementation.** Times across DeliveryCard (`15:00 Church · ETA 17:00`), count chips on AncillaryPoolPin (terracotta count chip), date boxes in scheduling switcher (`Apr 24` / `Apr 26`).
+
+### Pattern 5 — Mid-dot separators with hierarchy
+
+**The pattern.** Compress related-but-different-priority data into a single line with mid-dot separators (` · `), assigning value hierarchy via color tokens.
+
+**Composition:**
+- Mid-dot character: `·` (U+00B7 middle dot) wrapped in `text-content-faint` (or `text-content-muted` if `--content-faint` token absent — substrate dependent)
+- Primary value: `text-content-strong` or `text-content-base`
+- Secondary values: `text-content-muted`
+- Tertiary values: `text-content-muted` or `text-content-faint`
+- Spacing: ` · ` (space, mid-dot, space) — narrow but readable
+
+**Why this pattern works.** Lines like "Cemetery · City · Vault" carry related data with different operational priority. The dispatcher cares MOST about cemetery (where), then city (which one if disambiguation needed), then vault (specifics). Visual hierarchy via color (not size) keeps the line scannable while the order of importance reads at a glance.
+
+**When to apply.** Multi-value lines on cards where values are related but ranked. Examples: "Cemetery · City" on DeliveryCard, "Vault · Equipment" on DeliveryCard, "Customer · Order #" on operational cards, "Family · Date" on case lists.
+
+**When NOT to apply.** Two-value pairs that are equally weighted (use commas or layout). Three-plus-value lists where order isn't meaningful (use tags or chips). Decorative chrome ("Fast · Reliable · Honest" marketing copy doesn't belong here).
+
+**Reference implementation.** [`DeliveryCard`](frontend/src/components/dispatch/DeliveryCard.tsx) — cemetery + city, vault + equipment, time + location + ETA all use the pattern.
+
+### Pattern 6 — Day switcher with anchor hierarchy
+
+**The pattern.** Multi-day navigation with a dominant center day and smaller satellite peek/slide affordances flanking it.
+
+**Composition:**
+- **Eyebrow above center** — `font-mono text-micro uppercase tracking-wider text-content-muted` ("SCHEDULING" or similar surface label).
+- **Center day in `font-display`** (Fraunces serif) at H3 size, clickable as the popover trigger for any-day jump. Architectural weight at the center.
+- **Flanking date boxes at smaller scale** — peek/slide affordances per Phase 4.4.3. Subtler treatment than center: small footprint, transparent surface, full-strength border (per Aesthetic Arc Session 1.6 calibration), `font-mono` date numerals at 13px, eyebrow weekday at micro tracking-wider.
+- **Active state on satellites** — brass jewelry: `border-accent` + `bg-accent-subtle/50` (cross-surface vocabulary with PoolItem hover + DeliveryCard attach feedback).
+
+**When to apply.** Multi-day or multi-period navigation surfaces. Funeral Scheduling Focus header (canonical), future scheduling boards, calendar pickers in compact form.
+
+**When NOT to apply.** Single-period surfaces (no flanking needed). Date pickers proper (those use the standard Calendar primitive). Generic timeline / activity feeds (different mental model — show all, no center).
+
+**Reference implementation.** [`SchedulingKanbanCore`](frontend/src/components/dispatch/scheduling-focus/SchedulingKanbanCore.tsx) header — eyebrow + center H2 with chevron + flanking DateBoxes. Pattern established Phase 4.4.3 (Aesthetic Arc Session 0); refined through Sessions 1, 1.5, 1.6.
+
+### Pattern 7 — Column header treatment
+
+**The pattern.** Column headers (kanban driver lanes, Unassigned column, future grouped surfaces) share consistent visual vocabulary so the user reads "this is a column" identically across columns.
+
+**Composition:**
+- **Column name in `font-sans`** (Geist) at appropriate weight — typically `text-body-sm font-medium text-content-strong`.
+- **Hairline divider underneath** — 1px `border-base` or `border-subtle`, full column width.
+- **Count in `font-mono`** — small numeral, `text-caption text-content-muted` (or `text-content-subtle` when count is zero).
+- **"Unassigned" italic in accent color** — terracotta italic (subtle but signals "this is the one that's different from the regular driver columns"). Optional sub-label "needs driver" in `font-mono text-micro uppercase tracking-wider text-content-muted` right-aligned ("stamped-metal label" register).
+
+**When to apply.** Any column header in a multi-column layout where columns are peers but might include a "special" column (Unassigned, Backlog, etc).
+
+**When NOT to apply.** Table column headers (those use the Table primitive's existing treatment). Section headers in single-column layouts (those are Section primitives, not column headers).
+
+**Reference implementation.** [`SchedulingKanbanCore`](frontend/src/components/dispatch/scheduling-focus/SchedulingKanbanCore.tsx) `SchedulingLane` — driver lane headers + Unassigned lane header. Refinement to apply Pattern 7 fully scheduled for Aesthetic Arc Session 5.
+
+### Pattern 8 — Schedule status with jewel-style indicators
+
+**The pattern.** Status notes attached to a scheduling state ("Schedule finalized at 2pm", "Drag-rearrange will revert to draft", etc.) use jewel-style indicators with interactive consequence affordance.
+
+**Composition:**
+- **Jewel-set status mark** — small icon (CheckCircle, AlertCircle) in a recessed ring with faint glow (`box-shadow: inset 0 1px 2px ... + 0 0 8px var(--status-success)/20%`). Color matches semantic (success-green, warning-amber, accent-terracotta).
+- **Status text in `font-sans`** body weight — readable, not decorative.
+- **Interactive consequences underlined dotted in accent** — when text describes a consequence ("…will revert to draft"), the consequence span carries `border-bottom: 1px dotted var(--accent)` or `text-decoration: dotted underline accent` to signal "this is interactive — the action it describes is real."
+
+**When to apply.** Status notes on scheduling surfaces (finalize banner, draft banner, revert warning). Future state-machine annotations on workflow surfaces.
+
+**When NOT to apply.** Generic Alert / Banner patterns (those use the Alert primitive). Inline status pills (those use StatusPill).
+
+**Reference implementation.** [`SchedulingKanbanCore`](frontend/src/components/dispatch/scheduling-focus/SchedulingKanbanCore.tsx) finalize-status note ("Schedule finalized. Drag-rearrange will revert to draft.") — initial implementation Phase 3 / Session 1; full Pattern 8 application scheduled for Aesthetic Arc Session 5+.
+
+### Cross-references
+
+These patterns compose. A DeliveryCard applies Patterns 2 (card material), 3 (status two-channel), 4 (numeric mono), and 5 (mid-dot hierarchy). An AncillaryPoolPin applies Patterns 1 (tablet) and 4 (mono labels + count chip). A SchedulingKanbanCore header applies Patterns 6 (day switcher) and 7 (column header) and (in the finalize note) Pattern 8.
+
+When designing a new surface:
+1. Identify the surface's role (card? tablet? column header? status note?).
+2. Apply the relevant pattern from this section.
+3. Verify against Section 0 thesis tests (would the same team have made this?).
+4. Verify against Section 11's "When NOT to apply" guards — patterns are meant for specific roles, not general aesthetic decoration.
+
+When the platform's design vocabulary needs a new pattern (a role not covered by the eight above), add a new pattern to this section in a numbered slot. Document role, composition, when-to-apply, when-not-to-apply, and reference implementation. Patterns are the platform's shared design DNA at the surface-treatment layer; growing the pattern library is how the platform's vocabulary deepens.
 
 ---
 

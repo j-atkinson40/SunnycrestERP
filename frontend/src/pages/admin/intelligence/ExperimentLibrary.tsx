@@ -276,7 +276,7 @@ export function CreateExperimentLink({
       to={`/vault/intelligence/experiments/new?${qs.toString()}`}
       className={
         className ||
-        "inline-flex h-7 items-center rounded-md border border-input bg-background px-2 text-xs hover:bg-accent"
+        "inline-flex h-7 items-center rounded-md border border-input bg-background px-2 text-xs hover:bg-accent-subtle"
       }
       data-testid="create-experiment-link"
     >

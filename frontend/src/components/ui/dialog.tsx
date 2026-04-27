@@ -19,7 +19,7 @@ import { XIcon } from "lucide-react"
  *     default — 24px).
  *   - Default size: max-w-sm preserved per Q3 (per-page sizing via
  *     className override across 58 existing call sites).
- *   - Close button: Ghost variant inherits the refreshed brass focus
+ *   - Close button: Ghost variant inherits the refreshed accent focus
  *     treatment.
  *
  * Motion:
@@ -174,7 +174,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "text-body-sm text-content-muted *:[a]:underline *:[a]:underline-offset-3 *:[a]:text-brass *:[a]:hover:text-brass-hover",
+        "text-body-sm text-content-muted *:[a]:underline *:[a]:underline-offset-3 *:[a]:text-accent *:[a]:hover:text-accent-hover",
         className
       )}
       {...props}

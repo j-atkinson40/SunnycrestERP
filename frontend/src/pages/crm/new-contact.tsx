@@ -220,7 +220,7 @@ export default function NewContactPage() {
                     <button
                       key={c.id}
                       type="button"
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                      className="block w-full px-3 py-2 text-left text-sm hover:bg-accent-subtle"
                       onClick={() => {
                         setSelectedCompany(c);
                         setCompanyOptions([]);

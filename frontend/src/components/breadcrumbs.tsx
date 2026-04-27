@@ -76,7 +76,7 @@ export function Breadcrumbs() {
     <nav className="flex items-center gap-1 font-plex-sans text-body-sm text-content-muted mb-4">
       <Link
         to="/dashboard"
-        className="rounded-sm transition-colors duration-quick ease-settle hover:text-content-strong focus-ring-brass"
+        className="rounded-sm transition-colors duration-quick ease-settle hover:text-content-strong focus-ring-accent"
         aria-label="Home"
       >
         <Home className="size-3.5" />
@@ -87,7 +87,7 @@ export function Breadcrumbs() {
           {crumb.href ? (
             <Link
               to={crumb.href}
-              className="rounded-sm transition-colors duration-quick ease-settle hover:text-content-strong hover:underline underline-offset-2 focus-ring-brass"
+              className="rounded-sm transition-colors duration-quick ease-settle hover:text-content-strong hover:underline underline-offset-2 focus-ring-accent"
             >
               {crumb.label}
             </Link>

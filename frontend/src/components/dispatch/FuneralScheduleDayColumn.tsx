@@ -18,7 +18,7 @@
  *     Plex Sans, weight-medium) + right-aligned action/attribution.
  *     Row 2 = date · state-pill. Same slot for Finalize action and
  *     Finalized-by attribution; only color differentiates semantic.
- *   - Drop-target highlight: brass ring appears on the lane ONLY
+ *   - Drop-target highlight: accent ring appears on the lane ONLY
  *     during an active drag (the lane has no background by default,
  *     so ring + offset is what signals "drop here" without
  *     introducing chrome in the resting state).
@@ -229,8 +229,8 @@ export function FuneralScheduleDayColumn({
 
           {/* Action / attribution slot — same position regardless of
               schedule state; only the color + text differentiate
-              semantic. Draft → brass action; Finalized → muted
-              success attribution; not_created → brass "open
+              semantic. Draft → accent action; Finalized → muted
+              success attribution; not_created → accent "open
               scheduling" action. */}
           <div className="flex flex-none items-center text-caption leading-normal">
             {finalized && schedule.finalized_at && (
@@ -253,11 +253,11 @@ export function FuneralScheduleDayColumn({
                 data-slot="dispatch-day-finalize-btn"
                 className={cn(
                   "inline-flex items-center gap-1 rounded-sm px-1.5 py-1 -mx-1.5",
-                  "text-caption font-medium text-brass hover:text-brass-hover",
+                  "text-caption font-medium text-accent hover:text-accent-hover",
                   "transition-colors duration-quick ease-settle",
-                  "focus-ring-brass outline-none",
+                  "focus-ring-accent outline-none",
                   "disabled:opacity-60 disabled:cursor-not-allowed",
-                  "hover:bg-brass-subtle/40",
+                  "hover:bg-accent-subtle/40",
                 )}
                 aria-label={`Finalize schedule for ${dayLabel}`}
               >
@@ -273,10 +273,10 @@ export function FuneralScheduleDayColumn({
                 data-slot="dispatch-day-open-scheduling-btn"
                 className={cn(
                   "inline-flex items-center gap-1 rounded-sm px-1.5 py-1 -mx-1.5",
-                  "text-caption font-medium text-brass hover:text-brass-hover",
+                  "text-caption font-medium text-accent hover:text-accent-hover",
                   "transition-colors duration-quick ease-settle",
-                  "focus-ring-brass outline-none",
-                  "hover:bg-brass-subtle/40",
+                  "focus-ring-accent outline-none",
+                  "hover:bg-accent-subtle/40",
                 )}
               >
                 No schedule yet — open scheduling →
@@ -507,12 +507,12 @@ function DriverLane({
         // typography header + card stack. Rely on card shadows +
         // page background for visual weight.
         "transition-[box-shadow] duration-quick ease-settle",
-        // Drop target affordance — brass ring appears only during
+        // Drop target affordance — accent ring appears only during
         // an active drag. Surfaces against the page without
         // introducing resting-state chrome.
         isOver && [
           "rounded-md",
-          "ring-2 ring-brass ring-offset-4 ring-offset-surface-base",
+          "ring-2 ring-accent ring-offset-4 ring-offset-surface-base",
         ],
       )}
     >
@@ -603,7 +603,7 @@ function DriverLane({
                 <div
                   data-slot="dispatch-ancillary-expanded"
                   className={cn(
-                    "mt-1.5 ml-4 space-y-1 rounded-md border-l-2 border-brass/40",
+                    "mt-1.5 ml-4 space-y-1 rounded-md border-l-2 border-accent/40",
                     "bg-surface-sunken/60 px-3 py-2",
                   )}
                 >
@@ -620,7 +620,7 @@ function DriverLane({
                         className={cn(
                           "w-full text-left text-caption",
                           "text-content-base hover:text-content-strong",
-                          "focus-ring-brass outline-none rounded",
+                          "focus-ring-accent outline-none rounded",
                           "px-1 py-0.5",
                         )}
                       >

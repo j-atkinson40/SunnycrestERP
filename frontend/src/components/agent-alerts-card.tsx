@@ -101,7 +101,7 @@ export function AgentAlertsCard() {
           </h3>
           <button
             onClick={() => navigate("/alerts")}
-            className="rounded-sm text-caption text-content-muted transition-colors duration-quick ease-settle hover:text-content-strong focus-ring-brass flex items-center gap-0.5"
+            className="rounded-sm text-caption text-content-muted transition-colors duration-quick ease-settle hover:text-content-strong focus-ring-accent flex items-center gap-0.5"
           >
             View all <ChevronRight className="h-3 w-3" />
           </button>
@@ -140,7 +140,7 @@ export function AgentAlertsCard() {
                       {alert.severity === "info" && (
                         <button
                           onClick={() => handleResolve(alert.id)}
-                          className="rounded-sm text-caption text-content-muted transition-colors duration-quick ease-settle hover:text-content-strong focus-ring-brass"
+                          className="rounded-sm text-caption text-content-muted transition-colors duration-quick ease-settle hover:text-content-strong focus-ring-accent"
                         >
                           Dismiss
                         </button>

@@ -450,7 +450,7 @@ export default function SeasonalTemplatesSettings() {
           {templates.map((t) => (
             <label
               key={t.id}
-              className="flex items-center justify-between rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-accent"
+              className="flex items-center justify-between rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-accent-subtle"
             >
               <span>{t.display_label}</span>
               <div className="flex items-center gap-2">

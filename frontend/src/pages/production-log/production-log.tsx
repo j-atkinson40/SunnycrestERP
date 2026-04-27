@@ -399,7 +399,7 @@ export default function ProductionLogPage() {
                     filteredProducts.map((p) => (
                       <button
                         key={p.id}
-                        className="flex w-full items-center px-3 py-2 text-sm hover:bg-accent text-left"
+                        className="flex w-full items-center px-3 py-2 text-sm hover:bg-accent-subtle text-left"
                         onClick={() => {
                           setSelectedProduct(p);
                           setProductSearch(p.name);

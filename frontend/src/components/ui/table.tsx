@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils"
  *   - Header: border-b border-border-subtle; cells text-content-strong
  *     font-medium uppercase tracking-wider at text-caption — matches
  *     the sidebar section-eyebrow pattern for tabular heading voice.
- *   - Row: border-b border-border-subtle; hover bg-brass-subtle/60;
- *     selected bg-brass-muted — consistent with dropdown-item hover
+ *   - Row: border-b border-border-subtle; hover bg-accent-subtle/60;
+ *     selected bg-accent-muted — consistent with dropdown-item hover
  *     pattern from Session 2.
  *   - Cell padding: p-3 (12px) default matching §5 "table cell py-3 px-4"
  *     generous-default; pages can override with className.
@@ -80,7 +80,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b border-border-subtle transition-colors duration-quick ease-settle hover:bg-brass-subtle/60 data-[state=selected]:bg-brass-muted",
+        "border-b border-border-subtle transition-colors duration-quick ease-settle hover:bg-accent-subtle/60 data-[state=selected]:bg-accent-muted",
         className
       )}
       {...props}

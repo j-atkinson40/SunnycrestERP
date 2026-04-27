@@ -254,7 +254,7 @@ export function Sidebar() {
       <div className="flex h-14 shrink-0 items-center border-b border-border-subtle px-5">
         <Link
           to="/"
-          className="truncate text-h4 font-medium text-content-strong focus-ring-brass rounded-sm"
+          className="truncate text-h4 font-medium text-content-strong focus-ring-accent rounded-sm"
         >
           {company?.name || (import.meta.env.VITE_APP_NAME || "Bridgeable")}
         </Link>
@@ -273,7 +273,7 @@ export function Sidebar() {
           className={cn(
             "flex w-full items-center gap-2 rounded border border-border-base bg-surface-raised py-1.5 pl-3 pr-2 text-body-sm",
             "text-content-muted hover:border-border-strong hover:text-content-base",
-            "transition-colors duration-quick ease-settle cursor-pointer focus-ring-brass",
+            "transition-colors duration-quick ease-settle cursor-pointer focus-ring-accent",
           )}
         >
           <Sparkles className="size-4 shrink-0 text-content-subtle" />
@@ -356,7 +356,7 @@ function SidebarSection({
             className={cn(
               "flex w-full items-center justify-between rounded-sm px-2 py-1",
               "text-micro font-semibold uppercase tracking-wider",
-              "text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-brass",
+              "text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-accent",
             )}
           >
             {section.title}
@@ -516,11 +516,11 @@ function SidebarItem({
           type="button"
           onClick={() => setExpanded(!expanded)}
           className={cn(
-            "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-brass",
+            "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-accent",
             "border-l-2 border-transparent",
             parentActive
               ? "font-medium text-content-strong"
-              : "text-content-muted hover:bg-brass-subtle hover:text-content-strong",
+              : "text-content-muted hover:bg-accent-subtle hover:text-content-strong",
           )}
           style={parentActive ? { borderLeftColor: presetAccent, backgroundColor: `${presetAccent}12` } : undefined}
         >
@@ -558,11 +558,11 @@ function SidebarItem({
     <Link
       to={item.href}
       className={cn(
-        "flex items-center gap-2.5 rounded px-2.5 py-1.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-brass",
+        "flex items-center gap-2.5 rounded px-2.5 py-1.5 text-body-sm transition-colors duration-quick ease-settle focus-ring-accent",
         "border-l-2 border-transparent",
         active
           ? "font-medium text-content-strong"
-          : "text-content-muted hover:bg-brass-subtle hover:text-content-strong",
+          : "text-content-muted hover:bg-accent-subtle hover:text-content-strong",
       )}
       style={activeStyle}
     >
@@ -577,7 +577,7 @@ function SidebarItem({
         <span
           className={cn(
             "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-micro font-medium font-plex-mono",
-            "bg-brass-muted text-content-on-brass",
+            "bg-accent-muted text-content-on-accent",
           )}
         >
           {item.badge}

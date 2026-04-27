@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 /**
  * Bridgeable Switch — Aesthetic Arc Session 3 refresh.
  *
- * Checked state = brass (primary affordance). Unchecked state =
+ * Checked state = accent (primary affordance). Unchecked state =
  * surface-sunken (recessed). Thumb = surface-raised with
- * shadow-level-1 for pressable material feel. Focus ring = brass.
+ * shadow-level-1 for pressable material feel. Focus ring = accent.
  */
 function Switch({
   className,
@@ -17,9 +17,9 @@ function Switch({
     <SwitchPrimitive.Root
       className={cn(
         "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-quick ease-settle",
-        "focus-ring-brass",
+        "focus-ring-accent",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        "data-[checked]:bg-brass data-[unchecked]:bg-surface-sunken data-[unchecked]:ring-1 data-[unchecked]:ring-border-base",
+        "data-[checked]:bg-accent data-[unchecked]:bg-surface-sunken data-[unchecked]:ring-1 data-[unchecked]:ring-border-base",
         className,
       )}
       {...props}

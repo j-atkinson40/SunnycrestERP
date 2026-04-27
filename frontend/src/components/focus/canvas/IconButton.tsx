@@ -4,7 +4,7 @@
  *
  * Position: bottom-right, respecting iOS safe-area inset. Size
  * 56×56px (iOS 44pt HIG minimum × comfortable cursor target).
- * Brass accent + shadow-level-2 + widget-count badge top-right.
+ * Accent accent + shadow-level-2 + widget-count badge top-right.
  *
  * Only renders when there are widgets to stack. Empty stack = no
  * icon (per user spec: don't clutter with empty affordance).
@@ -37,16 +37,16 @@ export function IconButton({ widgetCount, onOpen }: IconButtonProps) {
         // for non-iOS browsers via max().
         "bottom-[max(1rem,env(safe-area-inset-bottom))]",
         "flex h-14 w-14 items-center justify-center rounded-full",
-        "bg-brass text-content-on-brass",
+        "bg-accent text-content-on-accent",
         "shadow-level-2 hover:shadow-level-3",
         "transition-[transform,box-shadow] duration-quick ease-settle",
         "hover:scale-105 active:scale-95",
-        "focus-ring-brass",
+        "focus-ring-accent",
       )}
       style={{ zIndex: "var(--z-focus)" }}
     >
       <Layers className="h-6 w-6" />
-      {/* Widget-count badge — small brass-muted circle top-right
+      {/* Widget-count badge — small accent-muted circle top-right
           with number in contrasting color. Shown only when there's
           more than one widget; single widget is self-evident. */}
       {widgetCount > 1 && (

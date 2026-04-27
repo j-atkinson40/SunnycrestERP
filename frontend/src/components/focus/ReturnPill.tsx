@@ -7,7 +7,7 @@
  *
  * Session 4 adds:
  *   - 15-second countdown (via useReturnPillCountdown)
- *   - Countdown bar (2px tall, brass) at bottom of pill
+ *   - Countdown bar (2px tall, accent) at bottom of pill
  *   - Hover pauses countdown; mouse-leave resumes
  *   - Tab visibility return re-arms to full 15s
  *   - onExpire auto-dismisses the pill
@@ -88,12 +88,12 @@ export function ReturnPill() {
           className={cn(
             "flex items-center gap-2 rounded-full px-2 py-1",
             "text-body-sm text-content-base",
-            "hover:bg-brass-subtle focus-ring-brass",
+            "hover:bg-accent-subtle focus-ring-accent",
             "transition-colors duration-quick",
           )}
           aria-label={`Return to ${target.id}`}
         >
-          <ArrowLeft className="h-4 w-4 text-brass" />
+          <ArrowLeft className="h-4 w-4 text-accent" />
           <span className="font-plex-sans">
             Return to{" "}
             <span className="font-medium text-content-strong">
@@ -107,7 +107,7 @@ export function ReturnPill() {
           className={cn(
             "flex h-6 w-6 items-center justify-center rounded-full",
             "text-content-muted",
-            "hover:bg-brass-subtle hover:text-content-strong focus-ring-brass",
+            "hover:bg-accent-subtle hover:text-content-strong focus-ring-accent",
             "transition-colors duration-quick",
           )}
           aria-label="Dismiss return pill"
@@ -115,7 +115,7 @@ export function ReturnPill() {
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {/* Countdown bar — 2px tall, brass, animates width over the
+      {/* Countdown bar — 2px tall, accent, animates width over the
           tick interval. cubic-bezier(0.32, 0.72, 0, 1) gives a
           gentle spring-decay feel without a physics library. */}
       <div
@@ -126,7 +126,7 @@ export function ReturnPill() {
         <div
           data-slot="focus-return-pill-countdown-bar"
           data-testid="focus-return-pill-countdown-bar"
-          className="h-full bg-brass"
+          className="h-full bg-accent"
           style={{
             width: `${barWidthPct}%`,
             transition: "width 100ms cubic-bezier(0.32, 0.72, 0, 1)",

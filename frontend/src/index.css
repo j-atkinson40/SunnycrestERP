@@ -8,7 +8,7 @@
 
 /* ============================================================
  * Aesthetic Arc Session 1 — DESIGN_LANGUAGE.md token foundation.
- * Loads Plex fonts + DESIGN_LANGUAGE tokens + brass focus utility.
+ * Loads Plex fonts + DESIGN_LANGUAGE tokens + accent focus utility.
  * See frontend/src/styles/globals.css for the bundle entry point
  * and DESIGN_LANGUAGE.md for the source of truth on values.
  *
@@ -19,8 +19,8 @@
  * --border / --input / --ring / --sidebar* / --chart-*. Those
  * stay alive untouched so existing shadcn components keep
  * working. DESIGN_LANGUAGE tokens from globals.css (--surface-*,
- * --content-*, --border-subtle/base/strong/brass, --accent-brass*,
- * --shadow-color-*, --shadow-level-*, --accent-brass*, --radius-base,
+ * --content-*, --border-subtle/base/strong/accent, --accent*,
+ * --shadow-color-*, --shadow-level-*, --radius-base,
  * --radius-full, --duration-*, --ease-*, --max-w-*,
  * --font-plex-*) live alongside them. Sessions 2-3 migrate
  * components to DESIGN_LANGUAGE tokens; a final cleanup session
@@ -66,26 +66,29 @@
     --card-foreground: var(--content-base);
     --popover: var(--surface-raised);
     --popover-foreground: var(--content-base);
-    --primary: var(--accent-brass);
-    --primary-foreground: var(--content-on-brass);
+    --primary: var(--accent);
+    --primary-foreground: var(--content-on-accent);
     --secondary: var(--surface-elevated);
     --secondary-foreground: var(--content-strong);
     --muted: var(--surface-sunken);
     --muted-foreground: var(--content-muted);
-    --accent: var(--accent-brass-subtle);
-    --accent-foreground: var(--content-strong);
+    /* --accent NOT aliased here. The DL token --accent (strong terracotta,
+     * defined in tokens.css) is the platform's primary accent.
+     * The shadcn convention of "accent = subtle hover surface" is
+     * served by --accent-subtle in DL; shadcn primitive components
+     * using `bg-accent` for menu/dropdown hover backgrounds were
+     * migrated to `bg-accent-subtle` in Aesthetic Arc Session 2. */
+    --accent-foreground: var(--content-on-accent);
     --destructive: var(--status-error);
     --border: var(--border-subtle);
     --input: var(--border-base);
-    /* --ring NOT aliased to brass. Brass solid (--accent-brass) at
-     * lightness 0.66 vs cream surface (0.94) is ~2.1:1 contrast,
-     * FAILS WCAG 2.4.7 3:1 for focus indicators. Shadcn's `ring-ring`
-     * utility uses solid color; our `.focus-ring-brass` utility uses
-     * 40% alpha (also fails light-mode 3:1 — separate known issue
-     * for Session 6). Keeping --ring as a neutral dark gray at
-     * oklch(0.48 0 0) — verified at 4.26:1 against cream. Components
-     * opting INTO the brass focus ring use the `.focus-ring-brass`
-     * utility class; shadcn fallback stays neutral. */
+    /* --ring NOT aliased to --accent. Accent (terracotta) at
+     * lightness 0.46 vs cream surface (0.94) is high contrast for
+     * a fill but the focus-ring composition still uses 40% alpha,
+     * so it doesn't reliably clear WCAG 2.4.7 3:1 on every surface.
+     * Components opting INTO the accent focus ring use the
+     * `.focus-ring-accent` utility class; shadcn fallback stays
+     * neutral at oklch(0.48 0 0) — verified at 4.26:1 against cream. */
     --ring: oklch(0.48 0 0);
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
@@ -128,12 +131,12 @@
      * catches admin-sidebar.tsx and any third-party consumer. */
     --sidebar: var(--surface-sunken);
     --sidebar-foreground: var(--content-base);
-    --sidebar-primary: var(--accent-brass);
-    --sidebar-primary-foreground: var(--content-on-brass);
-    --sidebar-accent: var(--accent-brass-subtle);
+    --sidebar-primary: var(--accent);
+    --sidebar-primary-foreground: var(--content-on-accent);
+    --sidebar-accent: var(--accent-subtle);
     --sidebar-accent-foreground: var(--content-strong);
     --sidebar-border: var(--border-subtle);
-    --sidebar-ring: var(--accent-brass);
+    --sidebar-ring: var(--accent);
 }
 
 /* The .dark class block is legacy shadcn convention. Runtime mode
@@ -143,9 +146,14 @@
  * if a future test or third-party component adds .dark, the
  * aliased shadcn tokens resolve through DESIGN_LANGUAGE tokens
  * consistent with the :root block above. The DL tokens themselves
- * (--surface-base, --content-base, --accent-brass, etc.) mode-switch
+ * (--surface-base, --content-base, --accent, etc.) mode-switch
  * via [data-mode="dark"] in tokens.css, so both .dark and
- * [data-mode="dark"] paths converge on the dark DL values. */
+ * [data-mode="dark"] paths converge on the dark DL values.
+ *
+ * Note: --accent itself is single-value across modes per Aesthetic
+ * Arc Session 2 (deepened terracotta, the architectural-color rule).
+ * Only --content-on-accent flips by mode (cream in BOTH modes —
+ * symmetric per Session 2 spec). */
 .dark {
     --background: var(--surface-base);
     --foreground: var(--content-base);
@@ -153,14 +161,14 @@
     --card-foreground: var(--content-base);
     --popover: var(--surface-raised);
     --popover-foreground: var(--content-base);
-    --primary: var(--accent-brass);
-    --primary-foreground: var(--content-on-brass);
+    --primary: var(--accent);
+    --primary-foreground: var(--content-on-accent);
     --secondary: var(--surface-elevated);
     --secondary-foreground: var(--content-strong);
     --muted: var(--surface-sunken);
     --muted-foreground: var(--content-muted);
-    --accent: var(--accent-brass-subtle);
-    --accent-foreground: var(--content-strong);
+    /* --accent NOT aliased — see :root block rationale */
+    --accent-foreground: var(--content-on-accent);
     --destructive: var(--status-error);
     --border: var(--border-subtle);
     --input: var(--border-base);
@@ -173,12 +181,12 @@
     --chart-5: oklch(0.424 0.199 265.638);
     --sidebar: var(--surface-sunken);
     --sidebar-foreground: var(--content-base);
-    --sidebar-primary: var(--accent-brass);
-    --sidebar-primary-foreground: var(--content-on-brass);
-    --sidebar-accent: var(--accent-brass-subtle);
+    --sidebar-primary: var(--accent);
+    --sidebar-primary-foreground: var(--content-on-accent);
+    --sidebar-accent: var(--accent-subtle);
     --sidebar-accent-foreground: var(--content-strong);
     --sidebar-border: var(--border-subtle);
-    --sidebar-ring: var(--accent-brass);
+    --sidebar-ring: var(--accent);
 }
 
 @theme inline {
@@ -208,8 +216,10 @@
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
+    /* --color-accent + --color-accent-foreground bound below in the
+     * Aesthetic Arc Session 2 accent block (was duplicated here from
+     * the original shadcn bindings; consolidated in Session 2). */
     --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
     --color-muted: var(--muted);
     --color-secondary-foreground: var(--secondary-foreground);
@@ -293,21 +303,24 @@
     --color-content-base: var(--content-base);
     --color-content-muted: var(--content-muted);
     --color-content-subtle: var(--content-subtle);
-    --color-content-on-brass: var(--content-on-brass);
+    --color-content-on-accent: var(--content-on-accent);
 
     /* ─── Colors: borders (additive names; existing --color-border
      * for shadcn stays intact) ─── */
     --color-border-subtle: var(--border-subtle);
     --color-border-base: var(--border-base);
     --color-border-strong: var(--border-strong);
-    --color-border-brass: var(--border-brass);
+    --color-border-accent: var(--border-accent);
 
-    /* ─── Colors: brass accent (DEFAULT enables bare `bg-brass`) ─── */
-    --color-brass: var(--accent-brass);
-    --color-brass-hover: var(--accent-brass-hover);
-    --color-brass-active: var(--accent-brass-active);
-    --color-brass-muted: var(--accent-brass-muted);
-    --color-brass-subtle: var(--accent-brass-subtle);
+    /* ─── Colors: accent (DEFAULT enables bare `bg-accent`) ───
+     * Aesthetic Arc Session 2: deepened terracotta replaces brass.
+     * Single value across modes (the "architectural color in either
+     * room" rule). --accent-active intentionally absent — see
+     * tokens.css. */
+    --color-accent: var(--accent);
+    --color-accent-hover: var(--accent-hover);
+    --color-accent-muted: var(--accent-muted);
+    --color-accent-subtle: var(--accent-subtle);
 
     /* ─── Colors: status (DESIGN_LANGUAGE adds -error + -*-muted
      * alongside the legacy -success/-warning/-info/-danger above) ─── */

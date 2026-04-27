@@ -27,14 +27,14 @@ export default class WidgetErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       // Aesthetic Arc Session 3 refresh — DESIGN_LANGUAGE status-error
-      // family for the failure indicator; brass focus ring on retry.
+      // family for the failure indicator; accent focus ring on retry.
       return (
         <div className="flex flex-col items-center justify-center gap-2 p-4 text-center font-plex-sans text-body-sm text-content-muted">
           <AlertCircle className="h-5 w-5 text-status-error" />
           <p>Widget failed to load</p>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            className="rounded-sm text-caption text-brass transition-colors duration-quick ease-settle hover:text-brass-hover hover:underline focus-ring-brass"
+            className="rounded-sm text-caption text-accent transition-colors duration-quick ease-settle hover:text-accent-hover hover:underline focus-ring-accent"
           >
             Try again
           </button>

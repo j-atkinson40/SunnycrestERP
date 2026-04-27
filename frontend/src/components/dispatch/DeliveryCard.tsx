@@ -304,18 +304,18 @@ export function DeliveryCard({
         // Phase 4.3b.3 — attach-target visual feedback. When an
         // ancillary: drag is active AND the cursor is over a card
         // that can serve as a parent (kanban + assigned), the card
-        // gets a brass dashed outline + brass-subtle wash. Matches
-        // the lane-droppable brass-ring convention from Scheduling
+        // gets a accent dashed outline + accent-subtle wash. Matches
+        // the lane-droppable accent-ring convention from Scheduling
         // Lane (§4.2 onwards). data-attach-target is the testable
         // signal for the visual feedback gate.
         showAttachFeedback && [
-          "ring-2 ring-brass ring-offset-2 ring-offset-surface-base",
+          "ring-2 ring-accent ring-offset-2 ring-offset-surface-base",
           "ring-dashed",
           "shadow-level-2",
-          "bg-brass-subtle/40",
+          "bg-accent-subtle/40",
         ],
         "cursor-grab active:cursor-grabbing",
-        "focus-ring-brass outline-none",
+        "focus-ring-accent outline-none",
       )}
       role="button"
       tabIndex={0}
@@ -346,7 +346,7 @@ export function DeliveryCard({
           // Phase 4.2.1 — density-driven padding. Compact tightens
           // horizontal + vertical rhythm without hiding any content.
           isCompact ? "px-2.5 py-1.5" : "px-3 py-2",
-          "focus-ring-brass outline-none rounded-md",
+          "focus-ring-accent outline-none rounded-md",
         )}
         aria-label={`Edit ${family || "unnamed"} family delivery`}
       >
@@ -471,7 +471,7 @@ export function DeliveryCard({
           {/* Phase 4.3.3.1 — helper indicator. Shows when the delivery
               has a helper_user_id; tooltip surfaces the helper's name
               from the denormalized helper_user_name field on the DTO.
-              Highlight (text-brass) per IconTooltip convention because
+              Highlight (text-accent) per IconTooltip convention because
               "this delivery has a second person" is information worth
               noticing. Falls back to "Helper: assigned" when the name
               didn't resolve (defensive — backend may have lost the
@@ -530,7 +530,7 @@ export function DeliveryCard({
                     className={cn(
                       "relative inline-flex h-6 w-6 items-center justify-center rounded-sm",
                       "text-content-muted hover:bg-surface-sunken transition-colors duration-quick",
-                      "focus-ring-brass outline-none cursor-pointer",
+                      "focus-ring-accent outline-none cursor-pointer",
                     )}
                     aria-label={`${ancillaryCount} ancillary ${
                       ancillaryCount === 1 ? "item" : "items"
@@ -545,7 +545,7 @@ export function DeliveryCard({
                       className={cn(
                         "absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1",
                         "inline-flex items-center justify-center rounded-full",
-                        "bg-brass text-content-on-brass text-[10px] font-medium",
+                        "bg-accent text-content-on-accent text-[10px] font-medium",
                         "font-plex-mono tabular-nums",
                       )}
                       aria-hidden
@@ -587,7 +587,7 @@ export function DeliveryCard({
 //
 // Tiny wrapper — a Lucide icon inside a TooltipTrigger that opens the
 // canonical Tooltip primitive. Used for family / section / note /
-// chat affordances. `highlight` bumps the icon to text-brass to signal
+// chat affordances. `highlight` bumps the icon to text-accent to signal
 // "this has non-empty content worth noticing" (distinct from the
 // always-present family + section which render in content-muted).
 
@@ -657,9 +657,9 @@ function HoleDugBadge({
               "inline-flex h-5 w-5 items-center justify-center rounded-full",
               config.cls,
               onCycle &&
-                "hover:ring-1 hover:ring-brass/40 transition-all duration-quick cursor-pointer",
+                "hover:ring-1 hover:ring-accent/40 transition-all duration-quick cursor-pointer",
               !onCycle && "cursor-default",
-              "focus-ring-brass outline-none",
+              "focus-ring-accent outline-none",
             )}
             aria-label={config.label}
             {...clickProps}

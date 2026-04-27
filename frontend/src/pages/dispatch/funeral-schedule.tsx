@@ -847,9 +847,9 @@ export default function FuneralSchedulePage() {
               className={cn(
                 "inline-flex items-center gap-1.5 rounded px-2.5 py-1",
                 "text-caption font-medium",
-                "focus-ring-brass outline-none transition-colors duration-quick",
+                "focus-ring-accent outline-none transition-colors duration-quick",
                 viewMode === "single"
-                  ? "bg-brass text-content-on-brass"
+                  ? "bg-accent text-content-on-accent"
                   : "text-content-muted hover:text-content-strong",
               )}
             >
@@ -865,9 +865,9 @@ export default function FuneralSchedulePage() {
               className={cn(
                 "inline-flex items-center gap-1.5 rounded px-2.5 py-1",
                 "text-caption font-medium",
-                "focus-ring-brass outline-none transition-colors duration-quick",
+                "focus-ring-accent outline-none transition-colors duration-quick",
                 viewMode === "all"
-                  ? "bg-brass text-content-on-brass"
+                  ? "bg-accent text-content-on-accent"
                   : "text-content-muted hover:text-content-strong",
               )}
             >
@@ -938,7 +938,7 @@ export default function FuneralSchedulePage() {
                   className={cn(
                     "inline-flex h-6 w-6 items-center justify-center rounded-sm",
                     "text-content-muted hover:text-content-strong",
-                    "focus-ring-brass outline-none",
+                    "focus-ring-accent outline-none",
                     "disabled:opacity-40 disabled:cursor-not-allowed",
                   )}
                 >
@@ -957,9 +957,9 @@ export default function FuneralSchedulePage() {
                     className={cn(
                       "h-2 w-2 rounded-full transition-colors duration-quick ease-settle",
                       idx === activeDayIndex
-                        ? "bg-brass"
+                        ? "bg-accent"
                         : "bg-border-subtle hover:bg-content-muted",
-                      "focus-ring-brass outline-none",
+                      "focus-ring-accent outline-none",
                     )}
                   />
                 ))}
@@ -971,7 +971,7 @@ export default function FuneralSchedulePage() {
                   className={cn(
                     "inline-flex h-6 w-6 items-center justify-center rounded-sm",
                     "text-content-muted hover:text-content-strong",
-                    "focus-ring-brass outline-none",
+                    "focus-ring-accent outline-none",
                     "disabled:opacity-40 disabled:cursor-not-allowed",
                   )}
                 >

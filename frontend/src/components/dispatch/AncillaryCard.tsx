@@ -134,7 +134,7 @@ export function AncillaryCard({
         // Drag lift per PQB §2 (same physics as DeliveryCard).
         isDragging && "shadow-level-2 opacity-95 scale-[1.02]",
         "cursor-grab active:cursor-grabbing",
-        "focus-ring-brass outline-none",
+        "focus-ring-accent outline-none",
       )}
       role="button"
       tabIndex={0}
@@ -153,7 +153,7 @@ export function AncillaryCard({
           // body is naturally shorter; we match the horizontal
           // padding so primary + ancillary line up flush in lane.
           "px-2.5 py-1.5",
-          "focus-ring-brass outline-none rounded-md",
+          "focus-ring-accent outline-none rounded-md",
         )}
         aria-label={`Edit ${label} ancillary`}
       >

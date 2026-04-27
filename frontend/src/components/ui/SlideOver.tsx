@@ -12,7 +12,7 @@
 //   - bg-surface-base on footer (sunken feel against raised body,
 //     matching Card + Dialog footer convention)
 //   - text-content-strong title, text-content-muted close icon
-//   - ghost button treatment for the close — brass focus ring inherits
+//   - ghost button treatment for the close — accent focus ring inherits
 //   - bg-black/40 backdrop per DESIGN_LANGUAGE §9 canonical form
 //   - duration-arrive ease-settle motion per §6 "Side panel opening"
 
@@ -92,7 +92,7 @@ export function SlideOver({
           </h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded text-content-muted hover:text-content-strong hover:bg-brass-subtle focus-ring-brass transition-colors duration-quick ease-settle"
+            className="p-1.5 rounded text-content-muted hover:text-content-strong hover:bg-accent-subtle focus-ring-accent transition-colors duration-quick ease-settle"
             aria-label="Close"
           >
             <X className="h-4 w-4" />

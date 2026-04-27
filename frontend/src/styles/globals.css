@@ -14,8 +14,8 @@
  *      [data-mode="dark"]. Safe to load after fonts since the
  *      --font-plex-* variables reference font families already
  *      declared.
- *   3. base.css — reduced-motion + brass focus-visible utility.
- *      Loads after tokens because it references --accent-brass
+ *   3. base.css — reduced-motion + accent focus-visible utility.
+ *      Loads after tokens because it references --accent
  *      and --surface-base.
  * ============================================================ */
 

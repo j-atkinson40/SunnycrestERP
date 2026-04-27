@@ -288,10 +288,10 @@ export function DotNav() {
                 // explicit 0.6 so the active/inactive delta is
                 // readable even when both dots share the fallback
                 // colored-dot rendering (user-created spaces).
-                "inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors duration-quick ease-settle focus-ring-brass",
+                "inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors duration-quick ease-settle focus-ring-accent",
                 active
                   ? "border-[color:var(--space-accent,var(--preset-accent))] bg-[color:var(--space-accent-light,transparent)] ring-2 ring-offset-1 ring-offset-surface-sunken ring-[color:var(--space-accent,var(--preset-accent))]"
-                  : "border-transparent text-content-muted opacity-60 hover:opacity-100 hover:bg-brass-subtle hover:text-content-strong",
+                  : "border-transparent text-content-muted opacity-60 hover:opacity-100 hover:bg-accent-subtle hover:text-content-strong",
               )}
               data-testid="dot-nav-dot"
               data-space-id={space.space_id}
@@ -307,7 +307,7 @@ export function DotNav() {
           onClick={() => setCreatorOpen(true)}
           title="Add a new space"
           aria-label="Add a new space"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-border-base text-content-muted transition-colors duration-quick ease-settle hover:border-solid hover:border-brass hover:text-content-strong focus-ring-brass"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-border-base text-content-muted transition-colors duration-quick ease-settle hover:border-solid hover:border-accent hover:text-content-strong focus-ring-accent"
           data-testid="dot-nav-add"
         >
           <Plus className="h-3.5 w-3.5" />

@@ -1,14 +1,20 @@
 /* ============================================================
- * Aesthetic Arc Session 1 — Base styles (reduced-motion + brass
+ * Aesthetic Arc Session 1 — Base styles (reduced-motion + accent
  * focus-visible utility class).
  *
  * SCOPED NOT GLOBAL: per the audit-approved migration approach,
  * this session does NOT replace the existing global
  * `:focus-visible` treatment (`outline-ring/50` in index.css).
- * Instead, the brass focus ring is exposed as a reusable
- * utility class `.focus-ring-brass` that Sessions 2-3 apply to
+ * Instead, the accent focus ring is exposed as a reusable
+ * utility class `.focus-ring-accent` that Sessions 2-3 apply to
  * refreshed components. Non-refreshed components keep the
  * existing gray ring during the transition.
+ *
+ * Aesthetic Arc Session 2 (April 2026): brass → accent rename.
+ * `.focus-ring-brass` retired; `.focus-ring-accent` is the new
+ * utility name. Composition unchanged (2px gap-ring + 5px outer
+ * ring at --focus-ring-alpha); only the accent token resolves
+ * to deepened terracotta now.
  *
  * Dark-mode font smoothing (Section 4) is applied globally
  * because it's subtle and safe: enables antialiasing in dark
@@ -40,17 +46,22 @@
   }
 }
 
-/* ─── BRASS FOCUS-VISIBLE UTILITY (opt-in class) ─── */
+/* ─── ACCENT FOCUS-VISIBLE UTILITY (opt-in class) ─── */
 
 /* Apply this class to interactive elements that should use the
- * DESIGN_LANGUAGE brass focus ring. Composition per Section 6:
+ * DESIGN_LANGUAGE accent focus ring. Composition per Section 6:
  *   - 2px inner ring matching the surface (creates a gap)
- *   - 3px outer brass ring at alpha per --focus-ring-alpha (Session 4, m2)
+ *   - 3px outer accent ring at alpha per --focus-ring-alpha (Session 4, m2)
  *     • Light mode: 0.40 (DL §6 spec)
  *     • Dark mode:  0.48 (tokens.css override — lifts contrast on
  *       raised surfaces where 0.40 was ~3.00:1 at WCAG 2.4.7 edge)
  *   - matches element radius inherently
  *   - fades in with `duration-quick` + `ease-settle`
+ *
+ * Aesthetic Arc Session 2: renamed from `.focus-ring-brass` →
+ * `.focus-ring-accent` alongside the brass → accent token rename.
+ * Composition unchanged; the `--accent` token now resolves to
+ * deepened terracotta (single value across modes).
  *
  * Sessions 2-3 apply this class to refreshed components. Global
  * `* { outline-ring/50 }` from index.css keeps firing for
@@ -61,11 +72,11 @@
  * surface — Session 6 revisit.
  */
 
-.focus-ring-brass:focus-visible {
+.focus-ring-accent:focus-visible {
   outline: none;
   box-shadow:
     0 0 0 2px var(--surface-base),
-    0 0 0 5px color-mix(in oklch, var(--accent-brass) calc(var(--focus-ring-alpha, 0.40) * 100%), transparent);
+    0 0 0 5px color-mix(in oklch, var(--accent) calc(var(--focus-ring-alpha, 0.40) * 100%), transparent);
   transition: box-shadow var(--duration-quick) var(--ease-settle);
 }
 

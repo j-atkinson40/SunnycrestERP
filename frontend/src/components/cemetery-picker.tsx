@@ -300,7 +300,7 @@ export function CemeteryPicker({
                   <button
                     key={s.cemetery_id}
                     type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent-subtle"
                     onClick={() => handleSelect(s.cemetery_id, s.cemetery_name)}
                   >
                     <div className="font-medium">{s.cemetery_name}</div>
@@ -315,7 +315,7 @@ export function CemeteryPicker({
                   <button
                     key={s.cemetery_id}
                     type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent-subtle"
                     onClick={() => handleSelect(s.cemetery_id, s.cemetery_name)}
                   >
                     <div className="flex items-center justify-between">
@@ -354,7 +354,7 @@ export function CemeteryPicker({
                   <button
                     key={c.id}
                     type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent-subtle"
                     onClick={() => handleSelect(c.id, c.name)}
                   >
                     <div>{c.name}</div>
@@ -365,7 +365,7 @@ export function CemeteryPicker({
               {notFound && (
                 <button
                   type="button"
-                  className="w-full text-left px-3 py-2 text-sm text-blue-600 hover:bg-accent flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 text-sm text-blue-600 hover:bg-accent-subtle flex items-center gap-2"
                   onClick={() => handleCreateInline(searchText)}
                 >
                   <Plus className="h-3.5 w-3.5" />

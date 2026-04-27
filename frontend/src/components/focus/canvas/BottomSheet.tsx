@@ -133,7 +133,7 @@ export function BottomSheet({ widgets, onDismiss }: BottomSheetProps) {
                   "mb-3 cursor-pointer overflow-hidden",
                   "rounded-md border border-border-subtle bg-surface-elevated",
                   "transition-transform duration-quick ease-settle",
-                  "hover:bg-brass-subtle/20 active:scale-[0.98]",
+                  "hover:bg-accent-subtle/20 active:scale-[0.98]",
                 )}
                 style={{ height: state.position.height }}
                 role="button"

@@ -188,7 +188,7 @@ export function CemeteryNameAutocomplete({
                   key={r.cemetery_id ?? r.name}
                   type="button"
                   onClick={() => handleSelect(r)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start gap-2"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent-subtle flex items-start gap-2"
                 >
                   <Check className="h-3.5 w-3.5 text-green-600 shrink-0 mt-0.5" />
                   <div>
@@ -221,7 +221,7 @@ export function CemeteryNameAutocomplete({
                   key={r.place_id ?? r.name}
                   type="button"
                   onClick={() => handleSelect(r)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent-subtle"
                 >
                   <div className="font-medium">{r.name}</div>
                   {(r.city || r.county || r.state) && (
@@ -256,7 +256,7 @@ export function CemeteryNameAutocomplete({
                     source: "manual",
                   })
                 }
-                className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-accent"
+                className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-accent-subtle"
               >
                 Use &ldquo;{value.trim()}&rdquo; as entered
               </button>

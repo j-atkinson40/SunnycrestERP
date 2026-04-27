@@ -75,7 +75,7 @@ export function KBCoachingBanner({ onNavigate }: { onNavigate?: (section: string
     <div className="relative rounded-md border border-border-subtle bg-status-info-muted p-5 font-plex-sans">
       <button
         onClick={() => setDismissed(true)}
-        className="absolute top-3 right-3 p-1 rounded text-content-muted transition-colors duration-quick ease-settle hover:bg-brass-subtle hover:text-content-strong focus-ring-brass"
+        className="absolute top-3 right-3 p-1 rounded text-content-muted transition-colors duration-quick ease-settle hover:bg-accent-subtle hover:text-content-strong focus-ring-accent"
         aria-label="Dismiss coaching banner"
       >
         <X className="h-4 w-4" />

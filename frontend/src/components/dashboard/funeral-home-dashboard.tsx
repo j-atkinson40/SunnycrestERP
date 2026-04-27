@@ -167,7 +167,7 @@ function buildAttentionGroups(data: FHDashboardData): AttentionGroup[] {
       key: "cremation_auth",
       label: "Awaiting Cremation Authorization",
       cases: na.awaiting_cremation_auth,
-      color: "text-brass bg-brass-subtle",
+      color: "text-accent bg-accent-subtle",
     });
   }
   if (na.invoice_not_sent.length > 0) {
@@ -316,16 +316,16 @@ export function FuneralHomeDashboard() {
   return (
     <div className="space-y-6">
       {/* Onboarding Banner — Phase II Batch 1a: stone-palette swapped
-          for brass per DL material-thread anchor. */}
+          for accent per DL material-thread anchor. */}
       {onboardingPercent !== null && onboardingPercent < 100 && (
         <Link
           to="/onboarding"
-          className="block rounded-xl border-2 border-brass/20 bg-gradient-to-r from-brass-subtle to-brass-muted/40 p-5 transition-all duration-settle ease-settle hover:border-brass/40 hover:shadow-level-1 focus-ring-brass"
+          className="block rounded-xl border-2 border-accent/20 bg-gradient-to-r from-accent-subtle to-accent-muted/40 p-5 transition-all duration-settle ease-settle hover:border-accent/40 hover:shadow-level-1 focus-ring-accent"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brass-muted">
-                <Rocket className="h-6 w-6 text-brass" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-muted">
+                <Rocket className="h-6 w-6 text-accent" />
               </div>
               <div>
                 <h2 className="text-h4 font-medium text-content-strong">
@@ -343,9 +343,9 @@ export function FuneralHomeDashboard() {
             <div className="flex items-center gap-4">
               {onboardingTotal > 0 && (
                 <div className="hidden sm:flex items-center gap-2">
-                  <div className="h-2 w-32 overflow-hidden rounded-full bg-brass-subtle">
+                  <div className="h-2 w-32 overflow-hidden rounded-full bg-accent-subtle">
                     <div
-                      className="h-full rounded-full bg-brass transition-all duration-settle ease-settle"
+                      className="h-full rounded-full bg-accent transition-all duration-settle ease-settle"
                       style={{ width: `${onboardingPercent}%` }}
                     />
                   </div>
@@ -354,7 +354,7 @@ export function FuneralHomeDashboard() {
                   </span>
                 </div>
               )}
-              <div className="flex items-center gap-1 text-body-sm font-medium text-brass">
+              <div className="flex items-center gap-1 text-body-sm font-medium text-accent">
                 Continue setup
                 <ArrowRight className="h-4 w-4" />
               </div>
@@ -373,13 +373,13 @@ export function FuneralHomeDashboard() {
 
       {/* Top Row — Stat Cards. Phase II Batch 1a: stat card icon
           backgrounds migrated from pastel Tailwind palettes to DL
-          brass + status tokens. */}
+          accent + status tokens. */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Active Cases"
           value={activeCases.length}
           icon={Briefcase}
-          color="bg-brass-subtle text-brass"
+          color="bg-accent-subtle text-accent"
         />
         <StatCard
           label="Services Today"
@@ -391,7 +391,7 @@ export function FuneralHomeDashboard() {
           label="Vault Deliveries Today"
           value={deliveriesToday}
           icon={Package}
-          color="bg-brass-muted text-brass"
+          color="bg-accent-muted text-accent"
         />
         <StatCard
           label="Outstanding Invoices"

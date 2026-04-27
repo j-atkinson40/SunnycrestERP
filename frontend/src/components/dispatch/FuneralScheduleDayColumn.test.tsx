@@ -125,7 +125,7 @@ describe("FuneralScheduleDayColumn — header rendering", () => {
     // the attribution slot, not a right-aligned primary Button.
     // The attribution slot (parent div) carries text-caption; the
     // button's ONLY distinguishing class from the finalized
-    // attribution span is color — text-brass (draft, action) vs
+    // attribution span is color — text-accent (draft, action) vs
     // text-status-success (finalized, muted). Color differentiates;
     // slot + typography are shared.
     const { container } = render(
@@ -141,8 +141,8 @@ describe("FuneralScheduleDayColumn — header rendering", () => {
       '[data-slot="dispatch-day-finalize-btn"]',
     ) as HTMLElement
     expect(btn).toBeInTheDocument()
-    // Action color — brass (draft = clickable).
-    expect(btn.className).toMatch(/text-brass/)
+    // Action color — accent (draft = clickable).
+    expect(btn.className).toMatch(/text-accent/)
     // Typography inherits from parent slot (text-caption). Assert the
     // parent carries it — the button shares the same visual weight as
     // the finalized attribution rendered in the same slot.

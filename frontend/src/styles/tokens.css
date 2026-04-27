@@ -9,11 +9,11 @@
  *
  * Token families (copied from DESIGN_LANGUAGE §3 + §9):
  *   --surface-{base,elevated,raised,sunken}
- *   --content-{strong,base,muted,subtle,on-brass}
- *   --border-{subtle,base,strong,brass}
+ *   --content-{strong,base,muted,subtle,on-accent}
+ *   --border-{subtle,base,strong,accent}
  *   --shadow-color-{subtle,base,strong} + --shadow-highlight-top (dark only)
  *   --shadow-level-{1,2,3} (composed from color + highlight)
- *   --accent-brass{,-hover,-active,-muted,-subtle}
+ *   --accent{,-hover,-muted,-subtle}
  *   --status-{error,warning,success,info}{,-muted}
  *   --font-plex-{sans,serif,mono} (session-1 additive names; post
  *     session-2, --font-sans itself in index.css points at
@@ -28,6 +28,15 @@
  * Mode switching: light mode is default at :root; dark mode
  * activates via `[data-mode="dark"]` on the <html> element.
  * See frontend/src/lib/theme-mode.ts for the runtime API.
+ *
+ * Aesthetic Arc Session 2 (April 2026) — brass → accent rename.
+ * Accent is now deepened terracotta (#9C5640), single value
+ * across light + dark modes. Replaces brass (oklch hue 73, lightness-
+ * shift across modes). See DESIGN_LANGUAGE.md §2 for the
+ * "architectural color in either room" rationale; § 3 for the
+ * locked token values. Brass tokens retired in this rename;
+ * `--accent-brass-*` → `--accent-*`, `--border-brass` →
+ * `--border-accent`, `--content-on-brass` → `--content-on-accent`.
  * ============================================================ */
 
 :root {
@@ -47,13 +56,13 @@
   --content-base: oklch(0.30 0.015 70);
   --content-muted: oklch(0.48 0.014 70);
   --content-subtle: oklch(0.62 0.012 70);
-  --content-on-brass: oklch(0.98 0.006 82);
+  --content-on-accent: oklch(0.98 0.006 82);
 
   /* ─── COLORS — BORDERS ─── */
   --border-subtle: oklch(0.88 0.012 80 / 0.6);
   --border-base: oklch(0.82 0.015 78 / 0.8);
   --border-strong: oklch(0.70 0.020 76);
-  --border-brass: oklch(0.66 0.12 73 / 0.7);
+  --border-accent: rgba(156, 86, 64, 0.70);
 
   /* ─── COLORS — SHADOWS ───
    *   Tier-5 (April 2026): shadows calibrated against design-ref-
@@ -66,12 +75,22 @@
   --shadow-color-base: oklch(0.40 0.045 78 / 0.10);
   --shadow-color-strong: oklch(0.37 0.050 75 / 0.16);
 
-  /* ─── COLORS — ACCENTS (brass) ─── */
-  --accent-brass: oklch(0.66 0.12 73);
-  --accent-brass-hover: oklch(0.62 0.13 73);
-  --accent-brass-active: oklch(0.58 0.13 73);
-  --accent-brass-muted: oklch(0.85 0.05 73 / 0.8);
-  --accent-brass-subtle: oklch(0.92 0.025 73 / 0.6);
+  /* ─── COLORS — ACCENT (deepened terracotta) ───
+   *   Aesthetic Arc Session 2 (April 2026): brass retires; accent is now
+   *   deepened terracotta (#9C5640). Single value across light + dark
+   *   modes — the "architectural color in either room" rule (DL §2).
+   *   Hover brightens (#B46A4D, ~L 0.54) — universal lift signal in both
+   *   modes (replaces brass's asymmetric press-in/glow).
+   *   --accent-active intentionally absent: current Bridgeable
+   *   "active state" semantic is "this is the currently selected item"
+   *   (DateBox active, nav active) implemented via --accent-subtle
+   *   background + --accent border. Not "this button is being pressed
+   *   right now." If momentary press feedback is needed later,
+   *   introduce --accent-active then. */
+  --accent: oklch(0.46 0.10 39);
+  --accent-hover: oklch(0.54 0.10 39);
+  --accent-muted: rgba(156, 86, 64, 0.20);
+  --accent-subtle: rgba(156, 86, 64, 0.10);
 
   /* ─── COLORS — STATUS (replaces legacy hex values; drift accepted) ─── */
   --status-error: oklch(0.55 0.18 25);
@@ -84,7 +103,7 @@
   --status-info-muted: oklch(0.93 0.03 225);
 
   /* ─── FOCUS RING ALPHA (Session 4, m2)
-   *   Composable token so the .focus-ring-brass utility can scale the
+   *   Composable token so the .focus-ring-accent utility can scale the
    *   ring opacity per mode. Light-mode default matches DESIGN_LANGUAGE
    *   §6 spec (40%); dark-mode override (0.48) lifts contrast against
    *   `--surface-raised` — dark-mode focus rings on modals/dropdowns
@@ -214,18 +233,24 @@
   --surface-raised: oklch(0.32 0.016 85);
   --surface-sunken: oklch(0.13 0.010 55);
 
-  /* ─── COLORS — CONTENT ─── */
+  /* ─── COLORS — CONTENT ───
+   *   --content-on-accent: light cream in BOTH modes (Aesthetic Arc
+   *   Session 2). Replaces brass's asymmetric pattern (light cream in
+   *   light, dark charcoal in dark — the "glowing pill with dark text"
+   *   aesthetic). Terracotta at L=0.46 is darker than brass; cream
+   *   text on terracotta clears WCAG AAA in both modes (~6.5:1) and
+   *   pairs naturally with the deeper accent. */
   --content-strong: oklch(0.96 0.012 80);
   --content-base: oklch(0.90 0.014 75);
   --content-muted: oklch(0.72 0.014 70);
   --content-subtle: oklch(0.55 0.012 68);
-  --content-on-brass: oklch(0.18 0.015 60);
+  --content-on-accent: oklch(0.98 0.006 82);
 
   /* ─── COLORS — BORDERS ─── */
   --border-subtle: oklch(0.35 0.015 65 / 0.5);
   --border-base: oklch(0.42 0.018 68 / 0.7);
   --border-strong: oklch(0.55 0.025 70);
-  --border-brass: oklch(0.70 0.13 73 / 0.7);
+  --border-accent: rgba(156, 86, 64, 0.70);
 
   /* ─── COLORS — SHADOWS (persist in dark mode + top-edge highlight) ───
    *   Tier-2 three-layer shadow architecture RETAINED (tight ground +
@@ -246,12 +271,15 @@
   --shadow-color-strong: oklch(0.08 0.020 65 / 0.55);
   --shadow-highlight-top: oklch(0.32 0.010 61 / 0.9);
 
-  /* ─── COLORS — ACCENTS (brass — hue locked at 73, lightness/chroma lift) ─── */
-  --accent-brass: oklch(0.70 0.13 73);
-  --accent-brass-hover: oklch(0.74 0.13 73);
-  --accent-brass-active: oklch(0.78 0.14 73);
-  --accent-brass-muted: oklch(0.35 0.06 73 / 0.8);
-  --accent-brass-subtle: oklch(0.26 0.04 73 / 0.6);
+  /* ─── COLORS — ACCENT (deepened terracotta — single value across modes) ───
+   *   Aesthetic Arc Session 2 (April 2026): no lightness shift across
+   *   modes. The architectural color holds identity in either room.
+   *   Reads as ~3.2:1 against L=0.16 charcoal (passes WCAG 2.4.7 3:1
+   *   for non-text accent). Hover brightens — universal lift signal. */
+  --accent: oklch(0.46 0.10 39);
+  --accent-hover: oklch(0.54 0.10 39);
+  --accent-muted: rgba(156, 86, 64, 0.20);
+  --accent-subtle: rgba(156, 86, 64, 0.10);
 
   /* ─── COLORS — STATUS
    *   Session 4 (M1): status-muted backgrounds lowered (lightness

@@ -22,12 +22,12 @@ import { cn } from "@/lib/utils"
  *     workflow/order/case state rendering.
  *
  * Variants:
- *   - default   — brass-muted background + on-brass text (neutral
+ *   - default   — accent-muted background + on-accent text (neutral
  *                 emphasis, e.g., count badge)
  *   - secondary — surface-raised background (quiet emphasis)
  *   - outline   — transparent + border
- *   - ghost     — transparent, brass-subtle on hover
- *   - link      — brass text with hover underline
+ *   - ghost     — transparent, accent-subtle on hover
+ *   - link      — accent text with hover underline
  *   - info      — status-info muted/saturation pair
  *   - success   — status-success muted/saturation pair
  *   - warning   — status-warning muted/saturation pair
@@ -37,22 +37,22 @@ import { cn } from "@/lib/utils"
  *                   legacy; prefer `error`.
  *
  * Radius: rounded-sm (4px per DESIGN_LANGUAGE §6 badges/small-pills).
- * Focus: brass focus ring (when badge is rendered as interactive).
+ * Focus: accent focus ring (when badge is rendered as interactive).
  */
 const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-sm border border-transparent bg-clip-padding px-2 py-0.5 font-plex-sans text-micro font-medium whitespace-nowrap transition-colors duration-quick ease-settle focus-ring-brass has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-status-error aria-invalid:ring-status-error/20 [&>svg]:pointer-events-none [&>svg]:size-3!",
+  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-sm border border-transparent bg-clip-padding px-2 py-0.5 font-plex-sans text-micro font-medium whitespace-nowrap transition-colors duration-quick ease-settle focus-ring-accent has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-status-error aria-invalid:ring-status-error/20 [&>svg]:pointer-events-none [&>svg]:size-3!",
   {
     variants: {
       variant: {
         default:
-          "bg-brass-muted text-content-on-brass [a]:hover:brightness-95",
+          "bg-accent-muted text-content-on-accent [a]:hover:brightness-95",
         secondary:
           "bg-surface-raised text-content-strong border-border-subtle [a]:hover:bg-surface-elevated",
         outline:
-          "border-border-base text-content-base [a]:hover:bg-brass-subtle [a]:hover:text-content-strong",
+          "border-border-base text-content-base [a]:hover:bg-accent-subtle [a]:hover:text-content-strong",
         ghost:
-          "text-content-muted hover:bg-brass-subtle hover:text-content-strong",
-        link: "text-brass underline-offset-4 hover:underline hover:text-brass-hover",
+          "text-content-muted hover:bg-accent-subtle hover:text-content-strong",
+        link: "text-accent underline-offset-4 hover:underline hover:text-accent-hover",
         // Status variants (new Session 3)
         info: "bg-status-info-muted text-status-info [a]:hover:brightness-95",
         success:

@@ -276,7 +276,7 @@ export function SpaceEditorDialog({ spaceId, open, onOpenChange }: Props) {
             <Link
               to={`/settings/spaces#pins-${space.space_id}`}
               onClick={() => onOpenChange(false)}
-              className="text-brass hover:text-brass-hover hover:underline focus-ring-brass"
+              className="text-accent hover:text-accent-hover hover:underline focus-ring-accent"
               data-testid="edit-space-manage-pins"
             >
               Manage all pins, move items between spaces, import templates…

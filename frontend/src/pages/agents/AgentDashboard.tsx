@@ -222,7 +222,7 @@ export default function AgentDashboard() {
                 id="jobType"
                 value={jobType}
                 onChange={(e) => setJobType(e.target.value)}
-                className="h-10 min-w-[220px] rounded-sm border border-border-base bg-surface-raised px-3 text-body-sm text-content-base focus-visible:outline-none focus-visible:border-brass focus-visible:ring-2 focus-visible:ring-brass/30 transition-colors duration-quick ease-settle"
+                className="h-10 min-w-[220px] rounded-sm border border-border-base bg-surface-raised px-3 text-body-sm text-content-base focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 transition-colors duration-quick ease-settle"
               >
                 {JOB_TYPE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -255,7 +255,7 @@ export default function AgentDashboard() {
                 id="dryRun"
                 checked={dryRun}
                 onChange={(e) => setDryRun(e.target.checked)}
-                className="h-4 w-4 accent-brass"
+                className="h-4 w-4 accent-accent"
               />
               <Label
                 htmlFor="dryRun"
@@ -325,7 +325,7 @@ export default function AgentDashboard() {
                     {jobs.map((job) => (
                       <tr
                         key={job.id}
-                        className="border-b border-border-subtle hover:bg-brass-subtle/40"
+                        className="border-b border-border-subtle hover:bg-accent-subtle/40"
                       >
                         <td className="px-4 py-3 font-medium text-content-base">
                           {getJobLabel(job.job_type)}

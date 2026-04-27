@@ -125,8 +125,8 @@ The rejections are as important as what each layer endorses. A reference frame t
 
 ### Layer 1 rejects (already canonical in DESIGN_LANGUAGE §0)
 
-- **Generic-SaaS warm drift.** Warm gray + rounded corners + brass-on-pastel composition that reads as Notion-with-a-different-palette.
-- **Reference-family literalism.** Leather-grain backgrounds, brass radial gradients, pegboard textures — translating the reference into surface decoration rather than emotional register.
+- **Generic-SaaS warm drift.** Warm gray + rounded corners + accent-on-pastel composition that reads as Notion-with-a-different-palette.
+- **Reference-family literalism.** Leather-grain backgrounds, terracotta radial gradients, pegboard textures — translating the reference into surface decoration rather than emotional register.
 - **Trend-tied visual conventions.** Glassmorphism, neumorphism, AI-aesthetic gradients. Anything that pegs the platform to a specific year.
 - **Decorative warmth.** Warmth used to feel friendly rather than to express material.
 - **Consumer-app maximalism.** Rounded-everything, celebration animations, illustrative onboarding, decorative empty states.
@@ -300,7 +300,7 @@ The three layers are at different maturity levels in the codebase as of April 20
 
 | Layer | Doc maturity | Implementation maturity |
 |---|---|---|
-| 1 — Range Rover | Canonical (DESIGN_LANGUAGE §0, April 25 2026) | Substantial. Aesthetic Arc Phases I + II Batch 0 + 1a shipped. Token system mature. Calibration surfaces (DeliveryCard, AncillaryPoolPin, Focus core, brass primary buttons) are in-register reference points |
+| 1 — Range Rover | Canonical (DESIGN_LANGUAGE §0, April 25 2026) | Substantial. Aesthetic Arc Phases I + II Batch 0 + 1a shipped. Token system mature. Calibration surfaces (DeliveryCard, AncillaryPoolPin, Focus core, accent primary buttons) are in-register reference points |
 | 2 — Tony Stark | Canonical (PLATFORM_INTERACTION_MODEL.md, April 25 2026) | Partial. Command bar, Focus primitive, three primitives architecture all built. Spatial workspace with multi-tablet arrangement is post-September. Voice/text invocation works for command bar; broader spatial summoning is aspirational |
 | 3 — Apple Pro | Canonical (PLATFORM_QUALITY_BAR.md, escalated April 22 2026, Apple Pro era reference articulated April 25 2026) | Substantial on shipped surfaces. Full coverage requires natural-touch refactor of legacy pages (~213 pages still on shadcn defaults pre-batch-1) |
 

@@ -346,7 +346,7 @@ class ErrorBoundary extends Component<
               </pre>
               <button
                 onClick={() => window.location.reload()}
-                className="mt-4 inline-flex items-center rounded bg-brass px-5 py-2.5 font-plex-sans text-body-sm font-semibold text-content-on-brass shadow-level-1 transition-colors duration-quick ease-settle hover:bg-brass-hover active:bg-brass-active focus-ring-brass"
+                className="mt-4 inline-flex items-center rounded bg-accent px-5 py-2.5 font-plex-sans text-body-sm font-semibold text-content-on-accent shadow-level-1 transition-colors duration-quick ease-settle hover:bg-accent-hover active:bg-accent-hover focus-ring-accent"
               >
                 Reload page
               </button>

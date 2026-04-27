@@ -215,7 +215,7 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
 
   // Phase B Session 4.4.3 — adjacent-day peek/slide state. Each date
   // box (today / day-after) toggles its own boolean. Phase 4.4.3 is
-  // state-tracking only; visual feedback is the brass-on-active
+  // state-tracking only; visual feedback is the accent-on-active
   // affordance on the box. Phase 4.4.4 wires these flags to the
   // multi-day rendering + slide animation. Both can be active
   // independently (allowing a future 3-day expanded view) — the
@@ -893,8 +893,32 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
       // the work surface, not floating in empty space past it.
       className="flex h-full flex-col gap-3 w-fit max-w-full mx-auto"
     >
-      {/* Header — Aesthetic Arc Session 1 (Phase 4.4.4-pre):
-          [today_box] [eyebrow + H2 (clickable) + finalize-status] [day_after_box]   [Finalize]
+      {/* Header — Aesthetic Arc Session 3 (April 2026):
+          [today_box] [eyebrow + H2 (clickable) + finalize-status] [day_after_box]
+
+          Symmetric centerpiece. Date boxes flank the H2 cluster as
+          peek/slide affordance (Phase 4.4.4 wires the slide
+          animation). The H2 itself is the popover trigger for any-
+          day jump. DaySelectorPopover wraps the H2 button-trigger.
+
+          Aesthetic Arc Session 3 ARCHITECTURAL CHANGE: Finalize moved
+          out of the header and into a body-aligned action row above
+          the kanban lanes (see below). Rationale: Section 0 Compact-
+          to-Contents Canon — when chrome (action buttons) and content
+          (kanban work surface) have different natural widths, the
+          action belongs WITH the content, not in container chrome
+          that may extend beyond content width. The pre-Session-3
+          architecture used `w-fit max-w-full` on the outer container
+          which sized to max(header.max-content, body.max-content) —
+          when narrow-lane scenarios (1-2 lanes) made body narrower
+          than header, the container grew to header width and Finalize
+          extended past the rightmost lane right edge. Moving Finalize
+          into the body wrapper makes alignment correct by
+          construction: Finalize sits on a row whose width = body
+          width = lanes max-content width. CSS-only, no
+          ResizeObserver required. See PLATFORM_PRODUCT_PRINCIPLES
+          "Action-with-content placement canon" for the broader
+          pattern this instantiates.
 
           Aesthetic Arc Session 1 changes vs Phase 4.4.3:
           - Close button REMOVED entirely (Section 0 Restraint
@@ -903,134 +927,62 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
             says trust the user with platform conventions).
           - Header vertical rhythm tightened: gap-4 → gap-3 between
             header + body (Quietness — chrome subordinate to
-            kanban primary work surface).
-          - Finalize button subordinated in Commit B (brass-jewelry
-            register without dominance — see step B for treatment).
-
-          Date boxes flank the H2 cluster as primary peek/slide
-          affordance (Phase 4.4.4 wires the slide animation). The H2
-          itself is the popover trigger for any-day jump.
-          The DaySelectorPopover wraps the H2 button, owning the
-          popover open state + click-outside dismissal. */}
+            kanban primary work surface). */}
       <header
         data-slot="scheduling-focus-header"
-        className="flex items-center justify-between gap-4"
+        className="flex items-center justify-center gap-4"
       >
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          {/* Today date box — peek the day before centerDate. */}
-          <DateBox
-            date={addDays(targetDate, -1)}
-            active={prevExpanded}
-            onClick={() => setPrevExpanded((v) => !v)}
-            ariaLabel={`Peek ${formatDayLabel(
-              addDays(targetDate, -1),
-              tenantTime.local_date,
-            )}`}
+        {/* Today date box — peek the day before centerDate. */}
+        <DateBox
+          date={addDays(targetDate, -1)}
+          active={prevExpanded}
+          onClick={() => setPrevExpanded((v) => !v)}
+          ariaLabel={`Peek ${formatDayLabel(
+            addDays(targetDate, -1),
+            tenantTime.local_date,
+          )}`}
+        />
+
+        {/* Center cluster — eyebrow + H2 (popover trigger) + finalize-
+            status alert. min-w-0 keeps the H2 truncation working
+            when the dayLabel is long (e.g. "Wednesday, December 31").
+
+            Aesthetic Arc Session 1: H2 sized down from text-h2 to
+            text-h3 — the day label is important but doesn't need
+            to dominate. Section 0 British register: "the thing is
+            good; you'll see if you look closely; we're not going
+            to point at it." */}
+        <div className="min-w-0 flex-shrink text-center">
+          <p className="text-micro uppercase tracking-wider text-content-muted">
+            Scheduling
+          </p>
+          <DaySelectorPopover
+            targetDate={targetDate}
+            todayIso={tenantTime.local_date}
+            open={daySelectorOpen}
+            onToggle={() => setDaySelectorOpen((v) => !v)}
+            onSelect={handleSelectDay}
+            onDismiss={() => setDaySelectorOpen(false)}
+            dayLabel={dayLabel}
           />
-
-          {/* Center cluster — eyebrow + H2 (popover trigger) + finalize-
-              status alert. min-w-0 keeps the H2 truncation working
-              when the dayLabel is long (e.g. "Wednesday, December 31").
-
-              Aesthetic Arc Session 1: H2 sized down from text-h2 to
-              text-h3 — the day label is important but doesn't need
-              to dominate. Section 0 British register: "the thing is
-              good; you'll see if you look closely; we're not going
-              to point at it." */}
-          <div className="min-w-0 flex-shrink">
-            <p className="text-micro uppercase tracking-wider text-content-muted">
-              Scheduling
+          {isFinalized && schedule?.finalized_at && (
+            <p className="mt-1 flex items-center justify-center gap-1 text-caption text-status-success">
+              <CheckCircle2Icon className="h-3.5 w-3.5" aria-hidden />
+              Schedule finalized. Drag-rearrange will revert to draft.
             </p>
-            <DaySelectorPopover
-              targetDate={targetDate}
-              todayIso={tenantTime.local_date}
-              open={daySelectorOpen}
-              onToggle={() => setDaySelectorOpen((v) => !v)}
-              onSelect={handleSelectDay}
-              onDismiss={() => setDaySelectorOpen(false)}
-              dayLabel={dayLabel}
-            />
-            {isFinalized && schedule?.finalized_at && (
-              <p className="mt-1 flex items-center gap-1 text-caption text-status-success">
-                <CheckCircle2Icon className="h-3.5 w-3.5" aria-hidden />
-                Schedule finalized. Drag-rearrange will revert to draft.
-              </p>
-            )}
-          </div>
-
-          {/* Day-after date box — peek the day after centerDate. */}
-          <DateBox
-            date={addDays(targetDate, 1)}
-            active={nextExpanded}
-            onClick={() => setNextExpanded((v) => !v)}
-            ariaLabel={`Peek ${formatDayLabel(
-              addDays(targetDate, 1),
-              tenantTime.local_date,
-            )}`}
-          />
-        </div>
-
-        <div className="flex flex-none items-center gap-2">
-          {!isFinalized && (
-            // Aesthetic Arc Session 1.5 Commit B — Finalize as text-
-            // link, not a bordered button. Pre-Session-1.5 was
-            // brass-bordered button (~80-130px wide); Session 1.5
-            // drops the border entirely, yielding a brass-text link
-            // (~50-60px wide). Section 0 Detail Concentration TP4 —
-            // brass jewelry stays at the touchpoint (the text +
-            // hover state) without the surrounding button-chrome
-            // claiming horizontal real estate.
-            //
-            // The text-link treatment is consistent with how Cmd+K
-            // outside Focus (`PLATFORM_PRODUCT_PRINCIPLES.md`)
-            // describes the right surface for occasional state-
-            // change actions: a quiet path to a real action,
-            // weighted appropriately to the action's frequency. The
-            // dispatcher hits Finalize once per day; the button
-            // doesn't need to compete for attention.
-            //
-            // Native button retained for accessibility (focus ring,
-            // keyboard nav, role=button) — only the visual treatment
-            // becomes link-like.
-            <button
-              type="button"
-              onClick={handleFinalize}
-              disabled={finalizing || loading || deliveries.length === 0}
-              data-slot="scheduling-focus-finalize"
-              className={cn(
-                "inline-flex items-center gap-1",
-                "px-1.5 py-1 -my-1 rounded-sm",
-                // Aesthetic Arc Session 1.6 — typography bumped from
-                // text-[0.75rem] font-medium → text-[0.875rem]
-                // font-semibold for more distinctness per user spec
-                // ("font needs to be more distinct and it needs to be
-                // slightly bigger"). 14px semibold is heavier than
-                // the eyebrow + date box content, but still
-                // subordinate to the H2 day label (16px medium). The
-                // brass color carries the jewelry signal; the
-                // semibold weight gives the link real-action presence
-                // without adding chrome.
-                //
-                // tailwind-merge collapses `text-caption text-brass`
-                // because both are text-* utilities; use the arbitrary
-                // pixel size so size + color survive merge separately
-                // (same workaround the platform uses elsewhere when
-                // semantic size + color tokens collide).
-                "text-[0.875rem] leading-tight font-semibold",
-                "text-brass hover:text-brass-hover",
-                "hover:bg-brass-subtle/30",
-                "transition-colors duration-quick ease-settle",
-                "focus-ring-brass outline-none",
-                "disabled:text-content-muted disabled:hover:bg-transparent",
-                "disabled:cursor-not-allowed",
-                !((finalizing || loading || deliveries.length === 0)) &&
-                  "cursor-pointer",
-              )}
-            >
-              {finalizing ? "Finalizing…" : "Finalize"}
-            </button>
           )}
         </div>
+
+        {/* Day-after date box — peek the day after centerDate. */}
+        <DateBox
+          date={addDays(targetDate, 1)}
+          active={nextExpanded}
+          onClick={() => setNextExpanded((v) => !v)}
+          ariaLabel={`Peek ${formatDayLabel(
+            addDays(targetDate, 1),
+            tenantTime.local_date,
+          )}`}
+        />
       </header>
 
       {/* Body — kanban. Unassigned leftmost; drivers alphabetical. */}
@@ -1061,6 +1013,58 @@ export function SchedulingKanbanCore({ focusId }: SchedulingKanbanCoreProps) {
         // (still portaled to body to escape the Focus positioner's
         // transform-translate3d containing block per Phase 4.2.3).
         <>
+          {/* Aesthetic Arc Session 3 — Finalize action row.
+              Sits above the kanban scroll container, spans parent
+              (body) width, Finalize right-aligned. Section 0
+              Compact-to-Contents Canon: Finalize is an action ON
+              the kanban work surface, anchored WITH it rather than
+              floating in header chrome that may extend beyond
+              content width. See PLATFORM_PRODUCT_PRINCIPLES "Action-
+              with-content placement canon" for the broader pattern.
+              Render only when not finalized — finalized schedules
+              show the status alert in the header centerpiece, no
+              action affordance needed. */}
+          {!isFinalized && (
+            <div
+              data-slot="scheduling-focus-action-row"
+              className="flex flex-none justify-end items-center"
+            >
+              <button
+                type="button"
+                onClick={handleFinalize}
+                disabled={finalizing || loading || deliveries.length === 0}
+                data-slot="scheduling-focus-finalize"
+                className={cn(
+                  "inline-flex items-center gap-1",
+                  "px-1.5 py-1 -my-1 rounded-sm",
+                  // Aesthetic Arc Session 3 typography (per Item 3 spec):
+                  // 14px font-semibold link in accent color. The accent
+                  // color carries the jewelry signal; semibold weight
+                  // gives the link real-action presence without adding
+                  // chrome.
+                  //
+                  // tailwind-merge: with the Session 2 cn() extension
+                  // registering --text-* and --color-* namespaces
+                  // separately, `text-body-sm text-accent` no longer
+                  // collides; both classes survive merge. (Pre-Session-2
+                  // workaround used arbitrary pixel size to bypass the
+                  // merge collision; that workaround is no longer
+                  // needed.)
+                  "text-body-sm leading-tight font-semibold tracking-tight",
+                  "text-accent hover:text-accent-hover",
+                  "hover:bg-accent-subtle/30",
+                  "transition-colors duration-quick ease-settle",
+                  "focus-ring-accent outline-none",
+                  "disabled:text-content-muted disabled:hover:bg-transparent",
+                  "disabled:cursor-not-allowed",
+                  !((finalizing || loading || deliveries.length === 0)) &&
+                    "cursor-pointer",
+                )}
+              >
+                {finalizing ? "Finalizing…" : "Finalize"}
+              </button>
+            </div>
+          )}
           <div
             data-slot="scheduling-focus-kanban"
             className={cn(
@@ -1290,12 +1294,12 @@ function SchedulingLane({
         // canonical pattern — each card is its own material object
         // on the Focus Popup surface.
         "flex-none w-[220px] flex flex-col",
-        // Drop-target affordance — brass ring on active drag. No
+        // Drop-target affordance — accent ring on active drag. No
         // resting-state chrome per Phase 3.3.
         "transition-[box-shadow] duration-quick ease-settle",
         isOver && [
           "rounded-md",
-          "ring-2 ring-brass ring-offset-4 ring-offset-surface-raised",
+          "ring-2 ring-accent ring-offset-4 ring-offset-surface-raised",
         ],
       )}
     >
@@ -1366,8 +1370,8 @@ function SchedulingLane({
               "flex h-16 items-center justify-center",
               "rounded-md border border-dashed border-border-subtle/40",
               "text-caption text-content-subtle italic",
-              // Brass tint on drop hover to reinforce the lane ring.
-              "data-[drop-over=true]:border-brass/40",
+              // Accent tint on drop hover to reinforce the lane ring.
+              "data-[drop-over=true]:border-accent/40",
             )}
             data-drop-over={isOver ? "true" : "false"}
           >
@@ -1428,7 +1432,7 @@ function SchedulingLane({
                 <div
                   data-slot="dispatch-ancillary-expanded"
                   className={cn(
-                    "mt-1.5 ml-4 space-y-1 rounded-md border-l-2 border-brass/40",
+                    "mt-1.5 ml-4 space-y-1 rounded-md border-l-2 border-accent/40",
                     "bg-surface-sunken/60 px-3 py-2",
                   )}
                 >
@@ -1567,11 +1571,11 @@ function DaySelectorPopover({
           "text-h3 font-medium leading-none text-content-strong",
           "font-plex-sans tracking-tight",
           // Subtle hover affordance — text shifts slightly toward
-          // brass family. Restraint over loud color flip.
-          "hover:text-brass-hover transition-colors duration-quick ease-settle",
-          // Brass focus ring + slight padding so the ring has room
+          // accent family. Restraint over loud color flip.
+          "hover:text-accent-hover transition-colors duration-quick ease-settle",
+          // Accent focus ring + slight padding so the ring has room
           // to render around the heading without cropping.
-          "focus-ring-brass outline-none rounded-sm px-1 -mx-1",
+          "focus-ring-accent outline-none rounded-sm px-1 -mx-1",
         )}
       >
         <span>{dayLabel}</span>
@@ -1606,9 +1610,9 @@ function DaySelectorPopover({
                 onClick={() => onSelect(opt.iso)}
                 className={cn(
                   "w-full text-left px-3 py-1.5 text-body-sm",
-                  "hover:bg-brass-subtle/40 transition-colors duration-quick",
-                  "focus-ring-brass outline-none",
-                  active && "bg-brass-subtle text-content-strong",
+                  "hover:bg-accent-subtle/40 transition-colors duration-quick",
+                  "focus-ring-accent outline-none",
+                  active && "bg-accent-subtle text-content-strong",
                 )}
               >
                 {opt.label}
@@ -1688,7 +1692,7 @@ function DrawerAncillaryItem({
       className={cn(
         "w-full text-left text-caption",
         "text-content-base hover:text-content-strong",
-        "focus-ring-brass outline-none rounded",
+        "focus-ring-accent outline-none rounded",
         "px-1 py-0.5",
         "cursor-grab active:cursor-grabbing",
         // Phase 4.3b.4 drag lift — subtle scale + opacity dim per
@@ -1696,7 +1700,7 @@ function DrawerAncillaryItem({
         // DeliveryCard (1.01 vs 1.02) because drawer items are
         // already compact + indented; bigger scale would feel
         // disproportionate.
-        isDragging && "opacity-95 scale-[1.01] bg-brass-subtle/60",
+        isDragging && "opacity-95 scale-[1.01] bg-accent-subtle/60",
       )}
     >
       <span className="font-medium">{family}</span>

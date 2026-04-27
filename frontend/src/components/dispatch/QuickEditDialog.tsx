@@ -12,7 +12,7 @@
  * Uses the shared Dialog primitive from `ui/dialog.tsx` (the
  * platform overlay family from Aesthetic Arc Session 2). Stays
  * inside the overlay composition discipline: backdrop blur + level-2
- * shadow + brass focus rings.
+ * shadow + accent focus rings.
  *
  * Fields:
  *   - service_time — free-text time field (e.g. "10:00", "11:30"),
@@ -322,7 +322,7 @@ export function QuickEditDialog({
                     "w-full rounded border border-border-base",
                     "bg-surface-raised px-4 py-2.5",
                     "text-body text-content-base font-plex-sans",
-                    "focus:border-brass focus:ring-2 focus:ring-brass/30",
+                    "focus:border-accent focus:ring-2 focus:ring-accent/30",
                     "outline-none",
                   )}
                 >
@@ -357,7 +357,7 @@ export function QuickEditDialog({
                     "w-full rounded border border-border-base",
                     "bg-surface-raised px-4 py-2.5",
                     "text-body text-content-base font-plex-sans",
-                    "focus:border-brass focus:ring-2 focus:ring-brass/30",
+                    "focus:border-accent focus:ring-2 focus:ring-accent/30",
                     "outline-none",
                   )}
                 >
@@ -515,9 +515,9 @@ export function QuickEditDialog({
                         className={cn(
                           "flex-1 rounded px-2 py-1.5 text-body-sm transition-colors duration-quick",
                           selected
-                            ? "bg-brass text-content-on-brass font-medium"
+                            ? "bg-accent text-content-on-accent font-medium"
                             : "text-content-muted hover:text-content-strong hover:bg-surface-sunken",
-                          "focus-ring-brass outline-none",
+                          "focus-ring-accent outline-none",
                         )}
                       >
                         {label}

@@ -8,7 +8,7 @@ Companion arc to the Workflow Arc. Where Workflow Arc ships functional capabilit
 
 ## Purpose and scope
 
-Bridgeable's design language is **not** a theme — it's the platform's identity expressed visually. Two moods (Mediterranean garden morning and cocktail lounge evening), one material thread (aged brass across both), and an underlying meta-anchor of deliberate restraint.
+Bridgeable's design language is **not** a theme — it's the platform's identity expressed visually. Two moods (Mediterranean garden morning and cocktail lounge evening), one architectural color thread (deepened terracotta `#9C5640`, single value across both modes — see DESIGN_LANGUAGE §2 cross-mode rule), and an underlying meta-anchor of deliberate restraint.
 
 The Aesthetic Arc's job is to take DESIGN_LANGUAGE.md from document to shipped surface. Six sessions. Each session is infrastructure, visual, or verification — distinct from the others so scope stays clean and regressions stay localized.
 
@@ -56,7 +56,7 @@ Phase I shipped primitive-level aesthetic (4 sessions). Platform-wide page-level
 | Session | Status | Scope |
 |---|---|---|
 | 5 — Motion pass | ⬜ Queued | Apply `ease-settle` / `ease-gentle` + named durations consistently. Hover, focus, modal/dropdown entrances, toast arrivals. |
-| 6 — Accessibility + QA across all surfaces | ⬜ Queued | Full WCAG 2.2 AA verification. Contrast automation. Keyboard navigation. Reduced-motion spot checks. Screen reader pass. Long-tail focus-ring-brass light-mode alpha fix. |
+| 6 — Accessibility + QA across all surfaces | ⬜ Queued | Full WCAG 2.2 AA verification. Contrast automation. Keyboard navigation. Reduced-motion spot checks. Screen reader pass. Long-tail focus-ring-accent light-mode alpha fix. |
 
 ---
 
@@ -543,6 +543,70 @@ Closes user-reported scheduling board bugs surfaced post-Batch-1a visual verific
 ### Ready for Batch 1c-i
 
 Order Station (`pages/orders/order-station.tsx`) standalone — large file with both dark-mode rendering issues + emoji. Split into its own sub-batch since order-station has different concerns than the scheduling-family (no DnD, different data shape). LOC estimate: ~300-400.
+
+---
+
+## Dispatch-Focus Aesthetic Arc (Sessions 1 / 1.5 / 1.6 / 4)
+
+Distinct from the platform-wide Phase I/II/III arc above, this thread tracks the dispatch-focus surface specifically (Funeral Scheduling Focus + DeliveryCard + AncillaryPoolPin + DateBox header). Sessions are numbered by their commit-message/CLAUDE.md taxonomy. The Dispatch-Focus arc uses the platform tokens (Phase I primitives) but applies them deeper to the Focus dispatch experience as the canonical reference for September Wilbert demo.
+
+### Session 1 — Focus Chrome Restraint (✅ Shipped, 2026-04-25)
+
+Removed Close button (Section 0 Restraint TP3 — backdrop click + Esc dismiss; the button was decorative). Subordinated Finalize button (solid brass primary → brass-bordered transparent fill). Reduced header prominence (text-h2 → text-h3, gap-4 → gap-3). Centered kanban via canvas tier when pin fits (CANVAS_RESERVED_MARGIN bumped 100→220, pin width narrowed 260→180). Pin background harmonized as floating tablet (bg-surface-elevated/85 + backdrop-blur-sm + shadow-level-1). 4 commits: `42164d5` → `4f37aca` → `3945163` → `61e6ae4` → `014f44d`.
+
+### Session 1.5 — Widget Sizing + Header Refinement (✅ Shipped, 2026-04-25 PM)
+
+Pin auto-sizing height (`height: "auto" + maxHeight: 480` per new "Widget Content Sizing" principle in PLATFORM_PRODUCT_PRINCIPLES.md). Finalize as text-link (no border, no fill, brass text only — 55×23px, was 130×32px solid brass button). DateBox quieter (transparent surface + `border-border-subtle/50` + `text-[0.75rem]`). 3 commits: `f9fad0e` → `2b1d455` → `47fc9bc`.
+
+### Session 1.6 — Compactness Canon + Refinement (✅ Shipped, 2026-04-26)
+
+Extended "Widget Content Sizing" → "Widget Compactness" principle in PRODUCT_PRINCIPLES.md to cover width + chrome containment + boundary affordances. Pin item titles wrap (`line-clamp-2 break-words`). SchedulingKanbanCore root wrapped in `w-fit max-w-full mx-auto` so kanban content-sizes + Finalize aligns to rightmost-lane right edge. Finalize typography bumped (12px font-medium → 14px font-semibold). DateBox visibility restored (transparent + full-strength `border-border-subtle` + `text-[0.8125rem]`). 4 commits: `db0dbe6` → `55e172e` → `895a058` → `785a38d`.
+
+### Session 4 — Material Treatment Patterns + Type System Migration + Dual Reference Components (current)
+
+**Date:** 2026-04-26  
+**Scope:** Foundational session establishing platform-wide design vocabulary at the surface-treatment layer + replacing the IBM Plex typeface family with Fraunces (display) + Geist (body) + Geist Mono (data) + delivering two canonical reference components (DeliveryCard + AncillaryPoolPin) that realize the new patterns.
+
+**Three foundational artifacts:**
+
+1. **DESIGN_LANGUAGE.md Section 11 — Material Treatment Patterns (NEW)**. Eight canonical patterns:
+   - Pattern 1 — Tablet treatment (floating widgets) — drawn edges, ambient shadow, surface lift, bezel + grip indicator (left side, always visible), mono label header, terracotta count chip
+   - Pattern 2 — Card material treatment — Fraunces engraving on proper nouns, mono numerals, mid-dot hierarchy, jewel-set status indicators, left-edge flags, document badges
+   - Pattern 3 — Status indicator system (two-channel) — left-edge flag (color signal) + jewel-set indicator (recessed ring with inset shadow)
+   - Pattern 4 — Numeric mono treatment — all numerals in Geist Mono, eyebrow uppercase tracking included
+   - Pattern 5 — Mid-dot separators with hierarchy — primary value strong, secondary muted, tertiary faint
+   - Pattern 6 — Day switcher with anchor hierarchy — eyebrow + center Fraunces day + flanking peek/slide DateBoxes
+   - Pattern 7 — Column header treatment — name + hairline divider + mono count + accent italic for "different" columns
+   - Pattern 8 — Schedule status with jewel-style indicators — status mark + recessed ring + interactive-consequence dotted underline
+
+   Each pattern documented with composition, when-to-apply, when-NOT-to-apply, reference implementation. Pattern library cross-referenced from Section 0 + Section 3 + INTERACTION_MODEL Pattern 1 reference.
+
+2. **Section 4 typeface migration**. IBM Plex → Fraunces / Geist / Geist Mono. Atomic swap with one-release legacy alias retention (`--font-plex-sans` → `var(--font-geist)` etc.) for migration-window safety. Section 4 narrative updated: prior single-family Plex coherence retired in favor of role-specific voice (Fraunces engraving + Geist restrained + Geist Mono precision). Size-weight pairings table revised. "When to use each face" rules revised. Existing weight discipline (3 weights only — Regular/Medium/Semibold) preserved across all three families.
+
+3. **PLATFORM_INTERACTION_MODEL.md tablet pattern formalized**. The "Materialization unit — floating tablets" section gains a callout block referencing Section 11 Pattern 1 as the canonical visual treatment. Reference implementation: AncillaryPoolPin post-Session-4.
+
+**Type system migration shape:**
+- `@fontsource-variable/fraunces` + `@fontsource-variable/geist` + `@fontsource-variable/geist-mono` packages installed
+- `tokens.css` adds `--font-fraunces` / `--font-geist` / `--font-geist-mono` family tokens + role aliases (`--font-display`, default `--font-sans` → Geist, default `--font-mono` → Geist Mono)
+- `index.css` `@theme inline` block exposes `font-display` / `font-sans` / `font-mono` Tailwind utilities + retains `font-plex-*` aliases pointing at new families during migration window
+- Codebase sweep: 118 `font-plex-*` utility usages across 67 files migrated per locked semantic mapping (proper nouns + display → font-display Fraunces; body/labels/controls → font-sans Geist; numerals + eyebrows → font-mono Geist Mono)
+
+**Reference components shipped:**
+
+- **DeliveryCard** — Patterns 2 + 3 + 4 + 5 applied. Funeral home name in Fraunces (engraving register), times in Geist Mono with tabular alignment, mid-dot hierarchy on cemetery/city + vault/equipment, jewel-set hole-dug indicator with inset-shadow recessed ring, left-edge flag wired to hole-dug semantic (unknown=terracotta-attention, yes=success-green, no=neutral). The canonical card reference for the platform.
+
+- **AncillaryPoolPin** — Pattern 1 applied fully. Drawn edges via WidgetChrome's existing border, ambient shadow (Tier-4 multi-layer), surface lift (`bg-surface-elevated/85` + `backdrop-blur-sm`), bezel + grip indicator on left edge (always visible structural element), mono label header (`ANCILLARY POOL` text-micro uppercase tracking-wider Geist Mono), brass count chip with Geist Mono numeral. The canonical floating-tablet reference.
+
+**Phased rollout for subsequent Aesthetic Arc sessions:**
+- Session 5: AncillaryCard internals (Pattern 2 inheritance) + Driver column header refinement (Pattern 7 full application)
+- Session 6: Funeral Schedule Monitor widget — Pattern 1 (tablet) + Pattern 2 (card) + Pattern 3 (status) integration  
+- Session 7: Command bar entity cards — Pattern 1 + Pattern 2
+- Session 8: QuickEdit + dialog patterns — material treatment for input affordances
+- Session 9: Pulse dashboards (when built) — apply patterns from inception
+
+Each subsequent session is bounded; Session 4 establishes the canonical reference; everything else compounds against it.
+
+**Cross-arc context:** This dispatch-focus Session 4 lands during platform-wide Phase II Batch 1b queue. The pattern library + type migration are platform-wide; the reference components are dispatch-scoped. Phase II batches continue independently against the same Section 0 + new Section 11 vocabulary.
 
 ---
 

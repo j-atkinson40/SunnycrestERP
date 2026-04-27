@@ -10,7 +10,7 @@ import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
  * Bridgeable Select — Aesthetic Arc Session 2 refresh.
  *
  * Trigger: same shell as Input (surface-raised, border-base, radius-base,
- * brass focus border). Size `default` (h-10) + `sm` (h-8).
+ * accent focus border). Size `default` (h-10) + `sm` (h-8).
  *
  * Content popup: overlay family per DESIGN_LANGUAGE §6 —
  *   - bg-surface-raised (level-2 elevated)
@@ -22,9 +22,9 @@ import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
  *   - duration-settle + ease-settle opening / duration-quick + ease-gentle
  *     closing per §6 motion patterns
  *
- * Items: rounded-sm + bg-brass-subtle on hover/focus (§3 brass-subtle
- * = "barest brass tint, for very quiet brass signals"). Selected items
- * use bg-brass-muted + text-brass for check indicator.
+ * Items: rounded-sm + bg-accent-subtle on hover/focus (§3 accent-subtle
+ * = "barest accent tint, for very quiet accent signals"). Selected items
+ * use bg-accent-muted + text-accent for check indicator.
  */
 
 const Select = SelectPrimitive.Root
@@ -62,7 +62,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "flex w-fit items-center justify-between gap-2 rounded border border-border-base bg-surface-raised font-plex-sans text-body-sm text-content-strong whitespace-nowrap outline-none select-none transition-colors duration-quick ease-settle hover:border-border-strong focus-visible:border-brass focus-visible:ring-2 focus-visible:ring-brass/30 disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-content-subtle disabled:opacity-60 aria-invalid:border-status-error aria-invalid:ring-2 aria-invalid:ring-status-error/20 data-placeholder:text-content-subtle data-[size=default]:h-10 data-[size=default]:px-4 data-[size=default]:py-2.5 data-[size=sm]:h-8 data-[size=sm]:px-3 data-[size=sm]:py-2 data-[size=sm]:rounded *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex w-fit items-center justify-between gap-2 rounded border border-border-base bg-surface-raised font-plex-sans text-body-sm text-content-strong whitespace-nowrap outline-none select-none transition-colors duration-quick ease-settle hover:border-border-strong focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-content-subtle disabled:opacity-60 aria-invalid:border-status-error aria-invalid:ring-2 aria-invalid:ring-status-error/20 data-placeholder:text-content-subtle data-[size=default]:h-10 data-[size=default]:px-4 data-[size=default]:py-2.5 data-[size=sm]:h-8 data-[size=sm]:px-3 data-[size=sm]:py-2 data-[size=sm]:rounded *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -144,7 +144,7 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-body-sm text-content-base outline-hidden select-none transition-colors duration-instant ease-settle focus:bg-brass-subtle focus:text-content-strong data-[highlighted]:bg-brass-subtle data-[highlighted]:text-content-strong data-[variant=destructive]:text-status-error data-[variant=destructive]:focus:bg-status-error-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-body-sm text-content-base outline-hidden select-none transition-colors duration-instant ease-settle focus:bg-accent-subtle focus:text-content-strong data-[highlighted]:bg-accent-subtle data-[highlighted]:text-content-strong data-[variant=destructive]:text-status-error data-[variant=destructive]:focus:bg-status-error-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className
       )}
       {...props}
@@ -154,7 +154,7 @@ function SelectItem({
       </SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator
         render={
-          <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center text-brass" />
+          <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center text-accent" />
         }
       >
         <CheckIcon className="pointer-events-none" />

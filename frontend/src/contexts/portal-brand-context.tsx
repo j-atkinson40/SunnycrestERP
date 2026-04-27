@@ -16,7 +16,7 @@
  *     - Status colors (--status-success / -error / etc.) — always
  *       DESIGN_LANGUAGE tokens
  *     - Typography (stays IBM Plex Sans)
- *     - Surface tokens (stay brass-themed — the wash sits on top)
+ *     - Surface tokens (stay accent-themed — the wash sits on top)
  *     - Border radius / motion curves — DESIGN_LANGUAGE
  *     - Shadow system — DESIGN_LANGUAGE
  *

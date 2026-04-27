@@ -299,7 +299,7 @@ export function WidgetChrome({
             "group-data-[chrome-active=true]:opacity-0",
             "group-data-[chrome-active=true]:pointer-events-none",
             "hover:bg-status-error-muted hover:text-status-error",
-            "focus-ring-brass",
+            "focus-ring-accent",
             "cursor-pointer",
           )}
         >

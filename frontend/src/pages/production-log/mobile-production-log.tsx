@@ -309,7 +309,7 @@ export default function MobileProductionLogPage() {
                   )}
                   <button
                     onClick={() => selectProduct(p)}
-                    className="w-full rounded-lg border p-4 text-left transition-colors hover:bg-accent active:bg-accent"
+                    className="w-full rounded-lg border p-4 text-left transition-colors hover:bg-accent-subtle active:bg-accent-subtle"
                   >
                     <span className="text-base font-medium">{p.name}</span>
                     {p.category_name && (

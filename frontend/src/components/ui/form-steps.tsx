@@ -7,13 +7,13 @@
  * their own.
  *
  * Tokens per DESIGN_LANGUAGE.md §3 + §6 + motion §6:
- *   - Completed step: brass dot + brass connector line; text content-strong
- *   - Current step: filled brass dot with brass ring; text content-strong
+ *   - Completed step: accent dot + accent connector line; text content-strong
+ *   - Current step: filled accent dot with accent ring; text content-strong
  *     font-medium
  *   - Upcoming step: hollow surface-sunken dot with border-base; text
  *     content-subtle
  *   - Error step: status-error dot + text
- *   - Connector line between steps: border-brass for completed segment,
+ *   - Connector line between steps: border-accent for completed segment,
  *     border-border-subtle for incomplete
  *   - Transitions on state change: duration-settle ease-settle
  *     (DESIGN_LANGUAGE §6 — "step state changes animate smoothly")
@@ -150,9 +150,9 @@ function StepIndicator({
 
   const styles: Record<FormStepState, string> = {
     completed:
-      "bg-brass text-content-on-brass border-2 border-brass",
+      "bg-accent text-content-on-accent border-2 border-accent",
     current:
-      "bg-brass text-content-on-brass border-2 border-brass ring-2 ring-brass/30",
+      "bg-accent text-content-on-accent border-2 border-accent ring-2 ring-accent/30",
     upcoming:
       "bg-surface-sunken text-content-subtle border-2 border-border-base",
     error:
@@ -219,7 +219,7 @@ function StepConnector({ state }: { state: FormStepState }) {
     <span
       className={cn(
         "mx-3 h-px flex-1 transition-colors duration-settle ease-settle",
-        state === "completed" ? "bg-brass" : "bg-border-subtle",
+        state === "completed" ? "bg-accent" : "bg-border-subtle",
       )}
       aria-hidden="true"
     />

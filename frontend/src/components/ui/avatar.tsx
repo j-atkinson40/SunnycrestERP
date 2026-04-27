@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils"
  * Bridgeable Avatar — Aesthetic Arc Session 3 refresh.
  *
  * Per DESIGN_LANGUAGE.md §7 Imagery: "Fallback: initials on a
- * accent-brass-muted background with content-on-brass text color."
- * AvatarBadge (status dot / presence indicator) defaults to brass;
+ * accent-accent-muted background with content-on-accent text color."
+ * AvatarBadge (status dot / presence indicator) defaults to accent;
  * pages can override via className for status-specific presence
  * (e.g., `bg-status-success` for "online" semantics).
  *
@@ -57,7 +57,7 @@ function AvatarFallback({
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
       className={cn(
-        "flex size-full items-center justify-center rounded-full bg-brass-muted font-plex-sans text-body-sm font-medium text-content-on-brass group-data-[size=sm]/avatar:text-caption",
+        "flex size-full items-center justify-center rounded-full bg-accent-muted font-plex-sans text-body-sm font-medium text-content-on-accent group-data-[size=sm]/avatar:text-caption",
         className
       )}
       {...props}
@@ -70,7 +70,7 @@ function AvatarBadge({ className, ...props }: React.ComponentProps<"span">) {
     <span
       data-slot="avatar-badge"
       className={cn(
-        "absolute right-0 bottom-0 z-10 inline-flex items-center justify-center rounded-full bg-brass text-content-on-brass ring-2 ring-surface-base select-none",
+        "absolute right-0 bottom-0 z-10 inline-flex items-center justify-center rounded-full bg-accent text-content-on-accent ring-2 ring-surface-base select-none",
         "group-data-[size=sm]/avatar:size-2 group-data-[size=sm]/avatar:[&>svg]:hidden",
         "group-data-[size=default]/avatar:size-2.5 group-data-[size=default]/avatar:[&>svg]:size-2",
         "group-data-[size=lg]/avatar:size-3 group-data-[size=lg]/avatar:[&>svg]:size-2",

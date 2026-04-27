@@ -21,7 +21,7 @@
  * PLATFORM_QUALITY_BAR.md 'Almost But Not Quite' for 3.7).
  *
  * Dots indicator column to the left of the rail — one dot per
- * widget; active dot filled brass, inactive outlined subtle.
+ * widget; active dot filled accent, inactive outlined subtle.
  * IntersectionObserver on each widget tile reports visibility so
  * the active-dot state tracks the scroll position. The observer's
  * `root` is the rail scroll container (not the viewport) so
@@ -114,9 +114,9 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
               className={cn(
                 "h-2 w-2 rounded-full transition-colors duration-quick ease-settle",
                 i === activeIndex
-                  ? "bg-brass"
+                  ? "bg-accent"
                   : "bg-border-subtle hover:bg-content-muted",
-                "focus-ring-brass",
+                "focus-ring-accent",
               )}
             />
           ))}
@@ -163,7 +163,7 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
                 "snap-start cursor-pointer",
                 "border-b border-border-subtle/60 last:border-b-0",
                 "transition-transform duration-quick ease-settle",
-                "hover:bg-brass-subtle/20 active:scale-[0.98]",
+                "hover:bg-accent-subtle/20 active:scale-[0.98]",
               )}
               style={{
                 height: "100%",

@@ -117,7 +117,7 @@ function MoveDropdown({
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="text-[10px] text-content-subtle hover:text-content-base underline focus-ring-brass"
+        className="text-[10px] text-content-subtle hover:text-content-base underline focus-ring-accent"
       >
         Move
       </button>
@@ -130,7 +130,7 @@ function MoveDropdown({
                 onMove(d);
                 setOpen(false);
               }}
-              className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-brass-subtle focus-ring-brass"
+              className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-accent-subtle focus-ring-accent"
             >
               {formatDayLabel(d)} ({formatShortDate(d)})
             </button>
@@ -183,7 +183,7 @@ function NeedsActionCard({
         <div className="relative">
           <button
             onClick={() => setShowDriverDropdown(!showDriverDropdown)}
-            className="flex items-center gap-1 rounded border border-border-base bg-surface-sunken px-2.5 py-1 text-xs font-medium text-content-base transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+            className="flex items-center gap-1 rounded border border-border-base bg-surface-sunken px-2.5 py-1 text-xs font-medium text-content-base transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
           >
             Assign to Driver
             <ChevronDown className="h-3 w-3" aria-hidden="true" />
@@ -200,7 +200,7 @@ function NeedsActionCard({
                       onAssign(card.delivery_id, d.driver_id);
                       setShowDriverDropdown(false);
                     }}
-                    className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-brass-subtle focus-ring-brass"
+                    className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-accent-subtle focus-ring-accent"
                   >
                     {d.name}
                   </button>
@@ -211,7 +211,7 @@ function NeedsActionCard({
         </div>
         <button
           onClick={() => onMarkPickup(card.delivery_id)}
-          className="rounded border border-border-base bg-surface-sunken px-2.5 py-1 text-xs font-medium text-content-base transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+          className="rounded border border-border-base bg-surface-sunken px-2.5 py-1 text-xs font-medium text-content-base transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
         >
           Mark as Pickup
         </button>
@@ -388,7 +388,7 @@ function AssignedCard({
           <div className="relative">
             <button
               onClick={() => setShowReassign(!showReassign)}
-              className="text-[10px] text-content-subtle hover:text-content-base underline focus-ring-brass"
+              className="text-[10px] text-content-subtle hover:text-content-base underline focus-ring-accent"
             >
               Reassign
             </button>
@@ -401,7 +401,7 @@ function AssignedCard({
                       onReassign(card.delivery_id, d.driver_id);
                       setShowReassign(false);
                     }}
-                    className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-brass-subtle focus-ring-brass"
+                    className="block w-full px-3 py-2 text-left text-xs text-content-base hover:bg-accent-subtle focus-ring-accent"
                   >
                     {d.name}
                   </button>
@@ -445,7 +445,7 @@ function MarkPickupInline({
           type="time"
           value={time}
           onChange={(e) => setTime(e.target.value)}
-          className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
+          className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30"
         />
       </div>
       <div className="space-y-1.5">
@@ -454,7 +454,7 @@ function MarkPickupInline({
           type="text"
           value={contact}
           onChange={(e) => setContact(e.target.value)}
-          className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
+          className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30"
         />
       </div>
       <div className="flex gap-2 pt-1">
@@ -557,7 +557,7 @@ function FloatingCard({
           <select
             value={selectedDriver}
             onChange={(e) => setSelectedDriver(e.target.value)}
-            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
+            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30"
           >
             <option value="">Select driver...</option>
             {drivers.map((d) => (
@@ -569,7 +569,7 @@ function FloatingCard({
           <select
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
+            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30"
           >
             {windowDates.map((d) => (
               <option key={d} value={d}>
@@ -608,7 +608,7 @@ function FloatingCard({
           <select
             value={pickupDate}
             onChange={(e) => setPickupDate(e.target.value)}
-            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
+            className="block w-full rounded border border-border-base bg-surface-raised px-2 py-1 text-xs text-content-base focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30"
           >
             {windowDates.map((d) => (
               <option key={d} value={d}>
@@ -865,7 +865,7 @@ export function AncillaryPanel({
           )}
           <button
             onClick={onToggleCollapse}
-            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
             aria-label="Collapse ancillary panel"
           >
             <ChevronDown className="h-4 w-4 text-content-muted rotate-90" aria-hidden="true" />
@@ -990,7 +990,7 @@ export function AncillaryPanel({
               <div className="space-y-1">
                 <button
                   onClick={() => setShowCompleted(!showCompleted)}
-                  className="flex w-full items-center justify-between rounded-lg bg-surface-sunken px-3 py-1.5 text-[11px] font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
+                  className="flex w-full items-center justify-between rounded-lg bg-surface-sunken px-3 py-1.5 text-[11px] font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-accent"
                 >
                   <span>Show completed ({data!.completed.length})</span>
                   <span>{showCompleted ? "\u25B4" : "\u25BE"}</span>
@@ -1043,7 +1043,7 @@ export function AncillaryPanel({
                   <div className="space-y-1">
                     <button
                       onClick={() => setShowFloatingCompleted(!showFloatingCompleted)}
-                      className="flex w-full items-center justify-between rounded-lg bg-status-warning-muted px-3 py-1.5 text-[11px] font-medium text-status-warning transition-colors duration-quick ease-settle hover:brightness-95 focus-ring-brass"
+                      className="flex w-full items-center justify-between rounded-lg bg-status-warning-muted px-3 py-1.5 text-[11px] font-medium text-status-warning transition-colors duration-quick ease-settle hover:brightness-95 focus-ring-accent"
                     >
                       <span>Completed floating ({data!.floating_completed.length})</span>
                       <span>{showFloatingCompleted ? "\u25B4" : "\u25BE"}</span>
@@ -1087,7 +1087,7 @@ export function AncillaryMobilePill({
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-surface-raised border border-border-base px-4 py-2 shadow-level-2 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+      className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-surface-raised border border-border-base px-4 py-2 shadow-level-2 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
     >
       <Package className="h-4 w-4 text-content-muted" aria-hidden="true" />
       <span className="text-xs font-medium text-content-base">Ancillary</span>
@@ -1126,7 +1126,7 @@ export function AncillaryDrawer({
           <h3 className="text-sm font-bold text-content-strong">Ancillary Orders</h3>
           <button
             onClick={onClose}
-            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+            className="rounded p-1 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
             aria-label="Close drawer"
           >
             <X className="h-5 w-5 text-content-muted" aria-hidden="true" />

@@ -82,7 +82,7 @@ export default function OperationsBoardDesktop() {
           {/* Refresh all */}
           <button
             onClick={dashboard.reload}
-            className="flex items-center gap-1.5 rounded-sm border border-border-subtle px-3 py-1.5 text-body-sm text-content-base hover:bg-brass-subtle transition-colors duration-quick ease-settle focus-ring-brass"
+            className="flex items-center gap-1.5 rounded-sm border border-border-subtle px-3 py-1.5 text-body-sm text-content-base hover:bg-accent-subtle transition-colors duration-quick ease-settle focus-ring-accent"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh all
@@ -91,10 +91,10 @@ export default function OperationsBoardDesktop() {
           {/* Customize / Done */}
           <button
             onClick={handleToggleEdit}
-            className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-body-sm font-medium transition-colors duration-quick ease-settle focus-ring-brass ${
+            className={`flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-body-sm font-medium transition-colors duration-quick ease-settle focus-ring-accent ${
               dashboard.editMode
-                ? "bg-status-warning text-content-on-brass hover:bg-status-warning/90"
-                : "bg-brass text-content-on-brass hover:bg-brass-hover"
+                ? "bg-status-warning text-content-on-accent hover:bg-status-warning/90"
+                : "bg-accent text-content-on-accent hover:bg-accent-hover"
             }`}
           >
             {dashboard.editMode ? (
@@ -120,7 +120,7 @@ export default function OperationsBoardDesktop() {
           </p>
           <button
             onClick={dashboard.resetLayout}
-            className="flex items-center gap-1 text-caption text-status-warning hover:text-status-warning/80 focus-ring-brass rounded-sm"
+            className="flex items-center gap-1 text-caption text-status-warning hover:text-status-warning/80 focus-ring-accent rounded-sm"
           >
             <RotateCcw className="h-3 w-3" />
             Reset to default

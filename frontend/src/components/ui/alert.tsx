@@ -23,7 +23,7 @@
  *     one notch via opacity.
  *   - Neutral variant uses `bg-surface-elevated` + `text-content-base`
  *     + `border border-border-subtle`.
- *   - Dismiss button is Ghost-ish (transparent + brass-subtle hover)
+ *   - Dismiss button is Ghost-ish (transparent + accent-subtle hover)
  *     via inline className to avoid a full Button dependency + fit the
  *     compact Alert header height.
  *
@@ -132,7 +132,7 @@ function Alert({
           type="button"
           onClick={onDismiss}
           aria-label={dismissLabel}
-          className="-my-1 -mr-1 rounded-sm p-1 text-current opacity-70 hover:bg-brass-subtle hover:opacity-100 focus-ring-brass transition-opacity duration-quick ease-settle"
+          className="-my-1 -mr-1 rounded-sm p-1 text-current opacity-70 hover:bg-accent-subtle hover:opacity-100 focus-ring-accent transition-opacity duration-quick ease-settle"
         >
           <X className="h-4 w-4" />
         </button>

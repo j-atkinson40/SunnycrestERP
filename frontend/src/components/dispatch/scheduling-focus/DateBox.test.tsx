@@ -132,8 +132,8 @@ describe("DateBox rendering", () => {
     ) as HTMLElement
     expect(box.getAttribute("data-active")).toBe("true")
     expect(box.getAttribute("aria-pressed")).toBe("true")
-    // Active-state visual chrome includes brass border (jewelry on).
-    expect(box.className).toMatch(/border-brass/)
+    // Active-state visual chrome includes accent border (jewelry on).
+    expect(box.className).toMatch(/border-accent/)
   })
 
   it("calls onClick when the box is clicked", async () => {
@@ -185,21 +185,27 @@ describe("DateBox rendering", () => {
     })
   })
 
-  it("calibration: transparent surface + full-strength border + sharp corners (Aesthetic Arc Session 1.6)", () => {
+  it("calibration: subtle warm fill + full-strength border + sharp corners (Aesthetic Arc Session 3)", () => {
     // Aesthetic-coherence regression. Calibration journey across
     // sessions:
-    //   Pre-Session-1.5: bg-surface-elevated + full-strength
-    //     border. Read as primary-nav weight, competing with H2.
+    //   Pre-Session-1.5: bg-surface-elevated full-opacity + full-
+    //     strength border. Read as primary-nav weight, competing
+    //     with H2.
     //   Session 1.5: TRANSPARENT + half-strength /50 border.
     //     Overcorrected — boxes barely visible.
-    //   Session 1.6 (current): transparent + FULL-strength border.
-    //     Middle ground per user spec ("1px border at warm-gray,
-    //     not transparent").
-    // The box should read as a discoverable peek affordance,
-    // distinct from but quieter than H2 day label. Active state
-    // still applies brass jewelry (separate test below). If a
-    // future refactor drifts to bg-muted, rounded-full, or
-    // restores the elevated surface at rest, this test fails.
+    //   Session 1.6: TRANSPARENT + full-strength border. Better
+    //     than 1.5 but still read as faint outline against the
+    //     dimmed/blurred Focus substrate.
+    //   Session 3 (current): bg-surface-elevated/50 warm fill +
+    //     full-strength border. The fill establishes "interactive
+    //     surface" presence comparable to AncillaryPoolPin (which
+    //     uses bg-surface-elevated/85 because it's a floating card;
+    //     DateBox is INLINE chrome so /50 is the right register).
+    // The box reads as a discoverable peek affordance, subordinate
+    // to H2 day label. Active state still applies accent jewelry
+    // (separate test below). If a future refactor restores the
+    // transparent rest state, drifts to bg-muted, or rounds to
+    // rounded-full, this test fails.
     const { container } = render(
       <Harness>
         <DateBox date="2026-04-25" active={false} onClick={() => {}} />
@@ -209,11 +215,12 @@ describe("DateBox rendering", () => {
       '[data-slot="scheduling-focus-date-box"]',
     ) as HTMLElement
     const cls = box.className
-    // No surface fill at rest — transparent against the dimmed
-    // backdrop.
-    expect(cls).not.toMatch(/bg-surface-elevated/)
-    // Full-strength border (no /50 alpha modifier — Session 1.5's
-    // half-strength was undercorrection per user feedback).
+    // Subtle warm fill at rest — surface-elevated at /50 alpha.
+    // Quieter than Pin's /85, more present than Session 1.6's
+    // transparent. Section 0 Detail Concentration: peripheral
+    // interactive surface, jewelry only at active state.
+    expect(cls).toMatch(/bg-surface-elevated\/50/)
+    // Full-strength border (no /50 alpha modifier).
     expect(cls).toMatch(/\bborder-border-subtle\b(?!\/)/)
     expect(cls).toMatch(/rounded-sm/)
     // Drift guards — these tokens MUST NOT appear at rest.
@@ -222,7 +229,7 @@ describe("DateBox rendering", () => {
     expect(cls).not.toMatch(/shadow-md/)
   })
 
-  it("active state composition uses brass border + brass-subtle wash (jewelry on)", () => {
+  it("active state composition uses accent border + accent-subtle wash (jewelry on)", () => {
     const { container } = render(
       <Harness>
         <DateBox date="2026-04-25" active={true} onClick={() => {}} />
@@ -232,12 +239,12 @@ describe("DateBox rendering", () => {
       '[data-slot="scheduling-focus-date-box"]',
     ) as HTMLElement
     const cls = box.className
-    // Brass border is the jewelry signal — Detail Concentration
+    // Accent border is the jewelry signal — Detail Concentration
     // Translation Principle 4.
-    expect(cls).toMatch(/border-brass/)
-    // brass-subtle wash + brass border — same composition the
+    expect(cls).toMatch(/border-accent/)
+    // accent-subtle wash + accent border — same composition the
     // AncillaryPoolPin uses for its active drop-target chrome
     // (cross-surface vocabulary consistency).
-    expect(cls).toMatch(/brass-subtle/)
+    expect(cls).toMatch(/accent-subtle/)
   })
 })

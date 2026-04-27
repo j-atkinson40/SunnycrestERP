@@ -488,7 +488,7 @@ export default function SchedulingBoardPage() {
             {!isDefaultView && (
               <button
                 onClick={goToday}
-                className="flex items-center gap-1.5 rounded-full border border-status-info bg-status-info-muted px-3 py-1.5 text-xs font-medium text-status-info transition-colors duration-quick ease-settle hover:brightness-95 focus-ring-brass"
+                className="flex items-center gap-1.5 rounded-full border border-status-info bg-status-info-muted px-3 py-1.5 text-xs font-medium text-status-info transition-colors duration-quick ease-settle hover:brightness-95 focus-ring-accent"
               >
                 <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
                 Back to today
@@ -498,7 +498,7 @@ export default function SchedulingBoardPage() {
             {/* Navigation arrows + date picker */}
             <button
               onClick={goPrev}
-              className="rounded-md border border-border-base px-2.5 py-1.5 text-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
+              className="rounded-md border border-border-base px-2.5 py-1.5 text-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-accent"
               aria-label="Previous delivery day"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -507,11 +507,11 @@ export default function SchedulingBoardPage() {
               type="date"
               value={primaryDate}
               onChange={handleDateChange}
-              className="rounded-md border border-border-base bg-surface-raised px-3 py-1.5 text-sm text-content-base focus-visible:border-brass focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brass/30"
+              className="rounded-md border border-border-base bg-surface-raised px-3 py-1.5 text-sm text-content-base focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30"
             />
             <button
               onClick={goNext}
-              className="rounded-md border border-border-base px-2.5 py-1.5 text-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
+              className="rounded-md border border-border-base px-2.5 py-1.5 text-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-accent"
               aria-label="Next delivery day"
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -524,7 +524,7 @@ export default function SchedulingBoardPage() {
                   toggleCollapse("ancillary");
                   if (directShipCollapsed) toggleCollapse("direct_ship");
                 }}
-                className="flex items-center gap-1.5 rounded-md border border-border-base bg-surface-raised px-3 py-1.5 text-xs font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
+                className="flex items-center gap-1.5 rounded-md border border-border-base bg-surface-raised px-3 py-1.5 text-xs font-medium text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-accent"
               >
                 <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Ancillary</span>
@@ -611,7 +611,7 @@ export default function SchedulingBoardPage() {
           ) : (
             <button
               onClick={() => toggleCollapse("ancillary")}
-              className="flex items-center justify-between border-b border-border-subtle px-4 py-2 text-xs text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
+              className="flex items-center justify-between border-b border-border-subtle px-4 py-2 text-xs text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-accent"
             >
               <span className="flex items-center gap-1.5 font-medium">
                 <Package className="h-3.5 w-3.5" aria-hidden="true" />
@@ -641,7 +641,7 @@ export default function SchedulingBoardPage() {
           ) : (
             <button
               onClick={() => toggleCollapse("direct_ship")}
-              className="flex items-center justify-between border-b border-border-subtle px-4 py-2 text-xs text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-brass"
+              className="flex items-center justify-between border-b border-border-subtle px-4 py-2 text-xs text-content-muted transition-colors duration-quick ease-settle hover:bg-surface-elevated hover:text-content-strong focus-ring-accent"
             >
               <span className="flex items-center gap-1.5 font-medium">
                 <Mailbox className="h-3.5 w-3.5" aria-hidden="true" />

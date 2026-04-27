@@ -14,7 +14,7 @@
  *   - Clear command bar learning history (privacy action)
  *
  * Uses Aesthetic Arc Session 3 primitives strictly — FormSection,
- * Alert, StatusPill, Tooltip, Popover, Button variants, brass focus.
+ * Alert, StatusPill, Tooltip, Popover, Button variants, accent focus.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -537,10 +537,10 @@ function SpacesSidebar({
               onReorder(next);
             }}
             className={cn(
-              "group flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-body-sm transition-colors focus-ring-brass",
+              "group flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-body-sm transition-colors focus-ring-accent",
               active
                 ? "border-[color:var(--space-accent,var(--preset-accent))] bg-surface-raised font-medium text-content-strong shadow-level-1"
-                : "border-transparent text-content-muted hover:bg-brass-subtle hover:text-content-strong",
+                : "border-transparent text-content-muted hover:bg-accent-subtle hover:text-content-strong",
               draggingId === s.space_id && "opacity-40",
             )}
             data-testid={`sidebar-space-${s.space_id}`}
@@ -953,7 +953,7 @@ function PinRowEditor({
                   onMove(s.space_id);
                   setMoveOpen(false);
                 }}
-                className="block w-full rounded-sm px-2 py-1.5 text-left text-body-sm hover:bg-brass-subtle focus-ring-brass"
+                className="block w-full rounded-sm px-2 py-1.5 text-left text-body-sm hover:bg-accent-subtle focus-ring-accent"
               >
                 {s.name}
               </button>
@@ -1014,8 +1014,8 @@ function IconPicker({
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-md border border-transparent hover:bg-brass-subtle focus-ring-brass",
-                  value === c.value && "border-brass bg-brass-subtle",
+                  "flex h-9 w-9 items-center justify-center rounded-md border border-transparent hover:bg-accent-subtle focus-ring-accent",
+                  value === c.value && "border-accent bg-accent-subtle",
                 )}
                 title={c.label}
                 aria-label={c.label}
@@ -1051,7 +1051,7 @@ function AccentPicker({
             type="button"
             onClick={() => onChange(a.value)}
             className={cn(
-              "h-7 w-7 rounded-full border-2 transition-transform focus-ring-brass",
+              "h-7 w-7 rounded-full border-2 transition-transform focus-ring-accent",
               active
                 ? "border-content-strong scale-110"
                 : "border-border-subtle hover:scale-105",

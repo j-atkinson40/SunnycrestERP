@@ -176,7 +176,7 @@ export function NotificationDropdown() {
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllAsRead}
-                  className="flex items-center gap-1 rounded-sm text-caption text-content-muted transition-colors duration-quick ease-settle hover:text-brass focus-ring-brass"
+                  className="flex items-center gap-1 rounded-sm text-caption text-content-muted transition-colors duration-quick ease-settle hover:text-accent focus-ring-accent"
                 >
                   <CheckCheck className="size-3" />
                   Mark all read
@@ -200,8 +200,8 @@ export function NotificationDropdown() {
                     key={notification.id}
                     onClick={() => handleNotificationClick(notification)}
                     className={cn(
-                      "flex cursor-pointer items-start gap-2 border-b border-border-subtle px-3 py-2.5 transition-colors duration-quick ease-settle last:border-b-0 hover:bg-brass-subtle",
-                      !notification.is_read && "bg-brass-subtle/60"
+                      "flex cursor-pointer items-start gap-2 border-b border-border-subtle px-3 py-2.5 transition-colors duration-quick ease-settle last:border-b-0 hover:bg-accent-subtle",
+                      !notification.is_read && "bg-accent-subtle/60"
                     )}
                   >
                     <div className="mt-0.5">
@@ -220,7 +220,7 @@ export function NotificationDropdown() {
                           {notification.title}
                         </span>
                         {!notification.is_read && (
-                          <span className="size-1.5 shrink-0 rounded-full bg-brass" />
+                          <span className="size-1.5 shrink-0 rounded-full bg-accent" />
                         )}
                       </div>
                       <p className="truncate text-caption text-content-muted">
@@ -233,7 +233,7 @@ export function NotificationDropdown() {
                     {!notification.is_read && (
                       <button
                         onClick={(e) => handleMarkAsRead(e, notification)}
-                        className="mt-0.5 shrink-0 rounded-sm p-1 text-content-muted transition-colors duration-quick ease-settle hover:text-brass focus-ring-brass"
+                        className="mt-0.5 shrink-0 rounded-sm p-1 text-content-muted transition-colors duration-quick ease-settle hover:text-accent focus-ring-accent"
                         title="Mark as read"
                       >
                         <Check className="size-3.5" />
@@ -252,7 +252,7 @@ export function NotificationDropdown() {
                     setOpen(false);
                     navigate("/vault/notifications");
                   }}
-                  className="w-full px-3 py-2 text-center text-body-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-brass-subtle hover:text-content-strong focus-ring-brass rounded-b-md"
+                  className="w-full px-3 py-2 text-center text-body-sm text-content-muted transition-colors duration-quick ease-settle hover:bg-accent-subtle hover:text-content-strong focus-ring-accent rounded-b-md"
                 >
                   View all notifications
                 </button>

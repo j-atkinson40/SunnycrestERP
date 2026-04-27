@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
  *   - border border-border-subtle + rounded-md
  *   - shadow-level-2
  *   - duration-settle ease-settle open / duration-quick ease-gentle close
- *   - brass focus ring on the trigger; content has no outer ring (it's
+ *   - accent focus ring on the trigger; content has no outer ring (it's
  *     the triggered surface)
  *
  * Usage:

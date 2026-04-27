@@ -95,7 +95,7 @@ export default function PortalDriverRoute() {
               onClick={() =>
                 navigate(`/portal/${slug}/driver/stops/${stop.id}`)
               }
-              className="block w-full rounded-md border border-border-subtle bg-surface-raised p-4 text-left shadow-level-1 transition-colors hover:bg-brass-subtle focus-ring-brass min-h-[88px]"
+              className="block w-full rounded-md border border-border-subtle bg-surface-raised p-4 text-left shadow-level-1 transition-colors hover:bg-accent-subtle focus-ring-accent min-h-[88px]"
               data-testid={`portal-stop-${stop.id}`}
             >
               <div className="flex items-start justify-between gap-2">

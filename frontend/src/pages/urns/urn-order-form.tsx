@@ -144,8 +144,8 @@ export default function UrnOrderForm() {
               {searchResults.map((p) => (
                 <div
                   key={p.id}
-                  className={`flex cursor-pointer items-center justify-between rounded-lg border p-3 transition hover:bg-accent ${
-                    selectedProduct?.id === p.id ? "border-primary bg-accent" : ""
+                  className={`flex cursor-pointer items-center justify-between rounded-lg border p-3 transition hover:bg-accent-subtle ${
+                    selectedProduct?.id === p.id ? "border-accent bg-accent-subtle" : ""
                   }`}
                   onClick={() => {
                     setSelectedProduct(p)

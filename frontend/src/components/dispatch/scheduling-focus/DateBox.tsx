@@ -34,10 +34,10 @@
  * Nothing else. No icons, no badges, no decorative chrome.
  *
  * DETAIL CONCENTRATION (Translation Principle 4). The active state
- * is jewelry. Brass border + brass-subtle wash signals "this day is
+ * is jewelry. Accent border + accent-subtle wash signals "this day is
  * selected, the affordance has been engaged." At rest, calm. On
- * hover, subtle warming (`bg-brass-subtle/30`). On active, the
- * brass border lights up (`border-brass`) — same composition the
+ * hover, subtle warming (`bg-accent-subtle/30`). On active, the
+ * accent border lights up (`border-accent`) — same composition the
  * AncillaryPoolPin uses for active drop-target feedback (Phase
  * 4.3b.4) for cross-surface consistency.
  *
@@ -53,7 +53,7 @@
  * The aesthetic test: would these flank a DeliveryCard floating on
  * the kanban lane, look like the same team made both? Yes — same
  * surface family (bg-surface-elevated), same restraint (no
- * decorative chrome), same brass-as-jewelry vocabulary (functional
+ * decorative chrome), same accent-as-jewelry vocabulary (functional
  * emphasis only on engaged state).
  */
 
@@ -179,43 +179,48 @@ export function DateBox({ date, active, onClick, ariaLabel }: DateBoxProps) {
             aria-pressed={active}
             className={cn(
               // Architectural proportions — square-shouldered, sharp
-              // corners. Aesthetic Arc Session 1.6 calibrates the
-              // middle ground between Session 1's prominent surface-
-              // elevated treatment and Session 1.5's nearly-invisible
-              // transparent + half-border. User feedback: "date
-              // boxes are barely visible now so they need more
-              // work" + "1px border at warm-gray, not transparent."
-              // Result: transparent surface (no fill) + FULL-strength
-              // border-border-subtle + slightly larger type +
-              // bumped-back padding. Discoverable affordance,
-              // subordinate to H2 day label.
+              // corners. Aesthetic Arc Session 3 (April 2026) restores
+              // a subtle warm fill at rest — Session 1.6's transparent
+              // + border-only treatment read as "barely visible
+              // outline" against the dimmed/blurred Focus substrate.
+              // User feedback: "date boxes are too quiet at rest,
+              // calibrate to read as peripheral interactive surface
+              // comparable to Pin's presence."
               "inline-flex flex-col items-center justify-center",
               "min-w-[48px] px-2.5 py-1 rounded-sm",
-              // Aesthetic Arc Session 1.6 — full-strength border at
-              // rest (was /50 half-strength in Session 1.5). User
-              // explicitly asked for "1px border at warm-gray, not
-              // transparent." The border restores presence without
-              // committing to a surface fill — the box reads as a
-              // discoverable peek affordance, distinct from but
-              // quieter than the H2 day label.
+              // Aesthetic Arc Session 3 — `bg-surface-elevated/50`
+              // warm fill at rest. Pin uses `bg-surface-elevated/85`
+              // because it's a floating card with backdrop-blur; the
+              // DateBox is INLINE header chrome, not a card, so /50
+              // is the right register: visible warmer-than-substrate
+              // fill that establishes "interactive surface" without
+              // claiming card-level presence. Border at full strength
+              // (Session 1.6 calibration) layered on top defines the
+              // edge.
+              //
+              // Section 0 Detail Concentration: quiet but present at
+              // rest, jewelry only at active state. The fill makes the
+              // box discoverable; the H2 day label remains the
+              // dominant element in the header hierarchy.
+              "bg-surface-elevated/50",
               "border border-border-subtle",
-              // Hover — subtle brass warming. Bumped opacity slightly
+              // Hover — subtle accent warming. Bumped opacity slightly
               // (/20 → /30) for clearer interactive feedback at the
               // new visibility level.
-              "hover:bg-brass-subtle/30",
+              "hover:bg-accent-subtle/30",
               // Quietness — motion is purposeful, no bounce. Same
               // tokens as the rest of the platform's hover transitions.
               "transition-colors duration-quick ease-settle",
-              // Brass focus ring — platform-wide convention for
+              // Accent focus ring — platform-wide convention for
               // interactive non-input elements (DESIGN_LANGUAGE §6
               // focus indicators).
-              "focus-ring-brass outline-none",
-              // Active state — jewelry on. Brass border + brass-
+              "focus-ring-accent outline-none",
+              // Active state — jewelry on. Accent border + accent-
               // subtle wash. Same composition as AncillaryPoolPin
-              // active drop-target + Finalize button at-rest brass
+              // active drop-target + Finalize button at-rest accent
               // text. Cross-surface vocabulary consistency.
               active && [
-                "border-brass bg-brass-subtle/50",
+                "border-accent bg-accent-subtle/50",
               ],
             )}
           >

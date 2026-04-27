@@ -104,7 +104,7 @@ function OrderCard({ card, config, index, panelPrefix }: OrderCardProps) {
           {...provided.dragHandleProps}
           className={cn(
             "rounded-lg border bg-surface-elevated p-3 shadow-sm transition-shadow",
-            snapshot.isDragging && "shadow-lg ring-2 ring-brass",
+            snapshot.isDragging && "shadow-lg ring-2 ring-accent",
             card.is_critical && "border-status-error bg-status-error-muted",
             card.is_warning &&
               !card.is_critical &&
@@ -410,7 +410,7 @@ export function KanbanPanel({
         {collapsible && (
           <button
             onClick={onToggleCollapse}
-            className="rounded p-0.5 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-brass"
+            className="rounded p-0.5 transition-colors duration-quick ease-settle hover:bg-surface-elevated focus-ring-accent"
             aria-label={collapsed ? "Expand panel" : "Collapse panel"}
           >
             <ChevronRight
@@ -439,7 +439,7 @@ export function KanbanPanel({
               className={cn(
                 "text-sm font-medium",
                 isToday
-                  ? "text-brass"
+                  ? "text-accent"
                   : isOptionalDay && isEmpty
                     ? "text-content-subtle"
                     : "text-content-base",
@@ -563,8 +563,8 @@ export function KanbanPanel({
   }
 
   // ── Full Kanban board ──
-  // Phase II Batch 1b — droppable-over indigo → brass-subtle per
-  // approved platform interaction language. Brass is the consistent
+  // Phase II Batch 1b — droppable-over indigo → accent-subtle per
+  // approved platform interaction language. Accent is the consistent
   // "active surface" signal across focus rings, hover states, and
   // now DnD drop zones.
   return (
@@ -599,7 +599,7 @@ export function KanbanPanel({
                     className={cn(
                       "flex min-h-[120px] flex-1 flex-col gap-2 rounded-b-lg border border-t-0 p-2 transition-colors",
                       snapshot.isDraggingOver
-                        ? "border-brass bg-brass-subtle"
+                        ? "border-accent bg-accent-subtle"
                         : "border-border-subtle bg-surface-elevated",
                     )}
                   >
@@ -666,7 +666,7 @@ export function KanbanPanel({
                         className={cn(
                           "flex min-h-[120px] flex-1 flex-col gap-2 rounded-b-lg border border-t-0 p-2 transition-colors",
                           snapshot.isDraggingOver
-                            ? "border-brass bg-brass-subtle"
+                            ? "border-accent bg-accent-subtle"
                             : "border-border-subtle bg-surface-elevated",
                         )}
                       >

@@ -154,11 +154,11 @@ function PoolItem({ delivery }: PoolItemProps) {
         "relative px-3 py-2",
         "border-b border-border-subtle/30 last:border-b-0",
         "transition-colors duration-quick ease-settle",
-        "hover:bg-brass-subtle/40 cursor-grab active:cursor-grabbing",
-        "focus-ring-brass outline-none",
+        "hover:bg-accent-subtle/40 cursor-grab active:cursor-grabbing",
+        "focus-ring-accent outline-none",
         // Drag lift per PQB §2 (subtle scale + opacity dim per the
         // canonical drag-source contract).
-        isDragging && "opacity-95 scale-[1.02] bg-brass-subtle/60",
+        isDragging && "opacity-95 scale-[1.02] bg-accent-subtle/60",
       )}
       role="button"
       tabIndex={0}
@@ -227,8 +227,8 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
   //   - Pool item from this same pin → no-op (already in pool)
   // SchedulingKanbanCore's onDragEnd handler routes by `over.id ===
   // ANCILLARY_POOL_DROPPABLE_ID`. Visual feedback below mirrors the
-  // delivery-as-parent droppable pattern: brass dashed outline +
-  // brass-subtle wash, gated on active drag being an ancillary
+  // delivery-as-parent droppable pattern: accent dashed outline +
+  // accent-subtle wash, gated on active drag being an ancillary
   // (delivery: + widget: drags don't trigger pin feedback).
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: ANCILLARY_POOL_DROPPABLE_ID,
@@ -291,16 +291,16 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
         // Subtle dim during refresh — keeps the existing list visible
         // but signals data is in flight.
         poolLoading && "opacity-80",
-        // Phase 4.3b.4 — drop-target visual feedback. Brass dashed
-        // outline + brass-subtle wash matching DeliveryCard's parent-
+        // Phase 4.3b.4 — drop-target visual feedback. Accent dashed
+        // outline + accent-subtle wash matching DeliveryCard's parent-
         // drop pattern (Phase 4.3b.3) for consistency across all
-        // ancillary drop surfaces (lane = solid brass ring;
-        // parent card = dashed brass ring; pin = dashed brass
-        // ring). Same DESIGN_LANGUAGE §6 brass family across the
+        // ancillary drop surfaces (lane = solid accent ring;
+        // parent card = dashed accent ring; pin = dashed accent
+        // ring). Same DESIGN_LANGUAGE §6 accent family across the
         // platform's ancillary-drag affordances.
         showPoolDropFeedback && [
-          "ring-2 ring-brass ring-dashed ring-offset-2 ring-offset-surface-base",
-          "bg-brass-subtle/40",
+          "ring-2 ring-accent ring-dashed ring-offset-2 ring-offset-surface-base",
+          "bg-accent-subtle/40",
         ],
         "transition-shadow duration-quick ease-settle",
       )}
@@ -349,7 +349,7 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
             className={cn(
               "inline-flex items-center justify-center",
               "min-w-[20px] h-5 px-1.5 rounded-full",
-              "bg-brass text-content-on-brass text-caption font-medium",
+              "bg-accent text-content-on-accent text-caption font-medium",
               "font-plex-mono tabular-nums",
             )}
             aria-label={`${poolAncillaries.length} pool ${

@@ -277,7 +277,7 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     })
   })
 
-  it("header shows day label + day selector + Finalize button (Close removed in Aesthetic Arc Session 1)", async () => {
+  it("header centers day label + day selector; Finalize lives in body action row (Aesthetic Arc Session 3 — Compact-to-Contents)", async () => {
     render(
       <Harness>
         <SchedulingKanbanCore focusId="funeral-scheduling" config={config} />
@@ -289,10 +289,29 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     expect(
       document.querySelector('[data-slot="scheduling-focus-day-selector"]'),
     ).toBeInTheDocument()
-    const finalize = document.querySelector(
-      '[data-slot="scheduling-focus-finalize"]',
-    ) as HTMLElement
-    expect(finalize).toBeInTheDocument()
+    // Aesthetic Arc Session 3 — Finalize moved out of header into a
+    // body-aligned action row above the kanban lanes. Action row
+    // render is gated on `!loading && !error`; wait for it.
+    const finalize = await waitFor(() => {
+      const el = document.querySelector(
+        '[data-slot="scheduling-focus-finalize"]',
+      ) as HTMLElement | null
+      expect(el).toBeInTheDocument()
+      return el!
+    })
+    // Action row wraps the Finalize button — architectural marker
+    // per Session 3 Compact-to-Contents Canon (Finalize anchored
+    // WITH the kanban work surface, not in header chrome).
+    const actionRow = document.querySelector(
+      '[data-slot="scheduling-focus-action-row"]',
+    )
+    expect(actionRow).toBeInTheDocument()
+    expect(actionRow?.contains(finalize)).toBe(true)
+    // Header should NOT contain Finalize anymore.
+    const header = document.querySelector(
+      '[data-slot="scheduling-focus-header"]',
+    )
+    expect(header?.contains(finalize)).toBe(false)
     // Aesthetic Arc Session 1.5 Commit B — Finalize button text
     // shortened "Finalize Tomorrow" → "Finalize". The day context
     // is already in the H2 label; repeating it was redundant
@@ -551,15 +570,21 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
     })
   })
 
-  it("DateBox: transparent surface + full-strength border at rest (Aesthetic Arc Session 1.6 calibration)", async () => {
+  it("DateBox: subtle warm fill (/50) + full-strength border at rest (Aesthetic Arc Session 3 calibration)", async () => {
     // Aesthetic-coherence regression. Calibration journey:
-    //   Pre-Session-1.5: bg-surface-elevated + full-strength border
-    //     (too prominent).
+    //   Pre-Session-1.5: bg-surface-elevated full-opacity + full-
+    //     strength border (too prominent — read as primary nav
+    //     weight, competing with H2).
     //   Session 1.5: transparent + half-strength /50 border (too
     //     quiet — barely visible).
-    //   Session 1.6: transparent + FULL-strength border (middle
-    //     ground per user spec: "1px border at warm-gray, not
-    //     transparent").
+    //   Session 1.6: transparent + FULL-strength border (better, but
+    //     still read as faint outline against the dimmed/blurred
+    //     Focus substrate).
+    //   Session 3 (current): bg-surface-elevated/50 warm fill + full-
+    //     strength border. Pin uses /85 (it's a floating card with
+    //     backdrop-blur); DateBox is INLINE chrome so /50 is the
+    //     right register — visible as interactive surface, quieter
+    //     than Pin, still subordinate to H2 day label.
     // Active state separately tested elsewhere. Drift guards
     // preserved against bg-muted / rounded-full / shadow-md.
     render(
@@ -575,9 +600,10 @@ describe("SchedulingKanbanCore — structure + data flow", () => {
       return node!
     })
     const cls = box.className
-    // No surface fill at rest.
-    expect(cls).not.toMatch(/bg-surface-elevated/)
-    // Full-strength border (not the /50 alpha modifier).
+    // Subtle warm fill at rest — surface-elevated at /50 alpha.
+    expect(cls).toMatch(/bg-surface-elevated\/50/)
+    // Full-strength border (not the /50 alpha modifier on the
+    // border itself — the /50 is on the surface token).
     expect(cls).toMatch(/\bborder-border-subtle\b(?!\/)/)
     expect(cls).toMatch(/rounded-sm/)
     // Drift guards — these tokens MUST NOT appear at rest.
