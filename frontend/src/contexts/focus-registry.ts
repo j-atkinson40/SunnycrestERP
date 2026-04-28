@@ -145,6 +145,19 @@ export interface WidgetState {
   widgetType?: string
   /** Phase W-1 — Section 12.2 variant selection. */
   variant_id?: "glance" | "brief" | "detail" | "deep"
+  /** Phase W-3b — per-instance widget configuration.
+   *
+   *  Loose `Record<string, unknown>` at the framework boundary.
+   *  Widgets narrow internally per their `WidgetDefinition.config_schema`.
+   *  Examples:
+   *    - `saved_view` widget on canvas: `{view_id: string}`
+   *    - `today` widget: undefined (no per-instance config)
+   *
+   *  Persisted in `focus_sessions.layout_state` JSONB alongside
+   *  position + widgetType + variant_id. Dispatch sites (Canvas,
+   *  StackRail, BottomSheet, StackExpandedOverlay) pass it through
+   *  to the widget component via `WidgetRendererProps.config`. */
+  config?: Record<string, unknown>
 }
 
 export type WidgetId = string

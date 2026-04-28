@@ -59,7 +59,7 @@ import type { VariantId } from "@/components/widgets/types"
 import { MockSavedViewWidget } from "./MockSavedViewWidget"
 
 
-/** Widget Library Phase W-1 (DESIGN_LANGUAGE.md §12.3 contract).
+/** Widget Library Phase W-1 + W-3b (DESIGN_LANGUAGE.md §12.3 contract).
  *
  *  Pre-W-1 the props carried `widgetId` only. Phase W-1 adds
  *  `variant_id` (which Glance/Brief/Detail/Deep variant to render)
@@ -67,8 +67,16 @@ import { MockSavedViewWidget } from "./MockSavedViewWidget"
  *  on `variant_id` per Decision 5 — one component per widget,
  *  internal switch keeps state + data hooks shared across variants.
  *
- *  Existing widgets that don't yet handle variants ignore the new
- *  props during the migration window (Decision 10). Phase W-3
+ *  Phase W-3b (April 2026) adds `config` — per-instance widget
+ *  configuration. Phase W-2 stored `PinConfig.config` in the Spaces
+ *  pin record + surfaced it on `ResolvedPin.config`, but the prop
+ *  pass-through to widget components was never plumbed through the
+ *  dispatch sites — a latent W-2 gap closed in Phase W-3b Commit 0.
+ *  The `saved_view` widget (Phase W-3b Commit 1) requires config
+ *  (`{view_id}`) to render anything; this prop closes the plumbing.
+ *
+ *  Existing widgets that don't yet handle variants/config ignore the
+ *  new props during the migration window (Decision 10). Phase W-3
  *  widget builds adopt the variant-aware shape from inception. */
 export interface WidgetRendererProps {
   /** Stable widget id from `WidgetState`. Useful for telemetry +
@@ -83,8 +91,34 @@ export interface WidgetRendererProps {
    *  Canvas dispatch sites pass "focus_canvas"; stack tier passes
    *  "focus_stack"; bottom sheet passes "focus_stack" + is_active
    *  state; stack-expanded overlay passes "focus_canvas" (full
-   *  reveal). */
-  surface?: "focus_canvas" | "focus_stack"
+   *  reveal); Phase W-2 PinnedSection passes "spaces_pin" for
+   *  sidebar Glance rendering. */
+  surface?:
+    | "focus_canvas"
+    | "focus_stack"
+    | "spaces_pin"
+    // Phase W-4a Commit 5 — Pulse surface dispatches widget pieces
+    // through the same registry. Renderers may inspect `surface` to
+    // adjust internal density (e.g., a widget that's denser on
+    // pulse_grid than focus_canvas). Existing widgets that ignore
+    // `surface` continue to render their canvas-tier shape.
+    | "pulse_grid"
+  /** Phase W-3b — per-instance widget configuration.
+   *
+   *  Sourced from `PinConfig.config` (Spaces pins) or `WidgetState.config`
+   *  (Focus canvas widgets) or `WidgetLayoutItem.config` (dashboard
+   *  grid widgets). Every dispatch site passes through transparently.
+   *
+   *  Shape is widget-defined per `WidgetDefinition.config_schema`.
+   *  Widgets that don't declare a config schema receive `undefined`
+   *  and ignore the prop. Examples:
+   *    - `today` widget: undefined (no per-instance config)
+   *    - `saved_view` widget: `{view_id: string}` (which saved view)
+   *
+   *  Optional + loose-typed (`Record<string, unknown>`) at the
+   *  framework boundary; widget components narrow internally via
+   *  type assertions or runtime validation. */
+  config?: Record<string, unknown>
 }
 
 

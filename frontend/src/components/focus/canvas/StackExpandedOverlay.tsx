@@ -98,6 +98,7 @@ export function StackExpandedOverlay({
           widgetId={widgetId}
           variant_id={state.variant_id}
           surface="focus_canvas"
+          config={state.config}
         />
       </div>
     </>

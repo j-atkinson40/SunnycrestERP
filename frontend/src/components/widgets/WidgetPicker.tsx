@@ -2,6 +2,14 @@
 // Phase II Batch 1a — migrated from hardcoded Tailwind greys/blues to
 // DESIGN_LANGUAGE tokens. Matches DL §6 slide-over pattern + uses refreshed
 // Input primitive (Session 2) + Badge primitive (Session 3 via status tokens).
+//
+// Widget Library Phase W-2 — added optional `destination` prop. When
+// `destination="sidebar"`, the picker filters to widgets that support
+// the `spaces_pin` surface and changes the primary CTA label to
+// "Pin to sidebar" (the parent supplies the actual onAdd handler that
+// pins to the active space). Default destination remains "dashboard"
+// for back-compat with all existing callers (Operations Board, Vault
+// Overview, etc.).
 
 import { useState, useMemo } from "react"
 import { X, Search, Plus, Lock } from "lucide-react"
@@ -13,6 +21,14 @@ interface WidgetPickerProps {
   currentWidgetIds: string[]
   onAdd: (widgetId: string) => void
   onClose: () => void
+  /** Widget Library Phase W-2 — destination discriminator. "dashboard"
+   *  (default) preserves the existing add-to-grid flow. "sidebar"
+   *  filters to widgets that declare `spaces_pin` in
+   *  supported_surfaces and labels the primary CTA "Pin to sidebar"
+   *  so the user understands the destination. The actual pin-to-
+   *  active-space mutation is the parent's responsibility (passed
+   *  via onAdd). */
+  destination?: "dashboard" | "sidebar"
 }
 
 const CATEGORIES = [
@@ -30,6 +46,7 @@ export default function WidgetPicker({
   currentWidgetIds,
   onAdd,
   onClose,
+  destination = "dashboard",
 }: WidgetPickerProps) {
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("all")
@@ -40,6 +57,16 @@ export default function WidgetPicker({
     return available.filter((w) => {
       // Exclude already added
       if (currentSet.has(w.widget_id)) return false
+      // Widget Library Phase W-2 — sidebar destination filters to
+      // widgets that support the spaces_pin surface. Per DESIGN_LANGUAGE
+      // §12.5 composition rules, only widgets declaring spaces_pin are
+      // valid sidebar pins. Widgets without it stay in the picker for
+      // dashboard destination but are hidden in sidebar destination.
+      if (
+        destination === "sidebar" &&
+        !(w.supported_surfaces ?? []).includes("spaces_pin")
+      )
+        return false
       // Search filter
       if (
         search &&
@@ -51,13 +78,15 @@ export default function WidgetPicker({
       if (category !== "all" && w.category !== category) return false
       return true
     })
-  }, [available, currentSet, search, category])
+  }, [available, currentSet, search, category, destination])
 
   return (
     <div className="fixed inset-y-0 right-0 z-50 w-80 bg-surface-raised shadow-level-3 border-l border-border-subtle flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-        <h2 className="text-body-sm font-semibold text-content-strong">Add widgets</h2>
+        <h2 className="text-body-sm font-semibold text-content-strong">
+          {destination === "sidebar" ? "Pin widget to sidebar" : "Add widgets"}
+        </h2>
         <button
           onClick={onClose}
           className="text-content-subtle hover:text-content-muted transition-colors duration-quick ease-settle focus-ring-accent rounded-sm"
@@ -105,7 +134,11 @@ export default function WidgetPicker({
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
         {filtered.length === 0 && (
           <p className="text-center text-body-sm text-content-subtle py-8">
-            {search ? "No matching widgets" : "All widgets added"}
+            {search
+              ? "No matching widgets"
+              : destination === "sidebar"
+              ? "No widgets available to pin to sidebar"
+              : "All widgets added"}
           </p>
         )}
         {filtered.map((w) => (
@@ -162,7 +195,7 @@ export default function WidgetPicker({
                   className="shrink-0 flex items-center gap-1 rounded-sm bg-accent px-2.5 py-1.5 text-caption font-medium text-content-on-accent hover:bg-accent-hover transition-colors duration-quick ease-settle focus-ring-accent"
                 >
                   <Plus className="h-3 w-3" />
-                  Add
+                  {destination === "sidebar" ? "Pin" : "Add"}
                 </button>
               ) : (
                 <span className="shrink-0 text-micro text-content-subtle px-2 py-1">

@@ -96,6 +96,12 @@ function SortableWidget({
             // Phase W-1 unified contract.
             variant_id: item.variant_id,
             surface: "dashboard_grid" as const,
+            // Phase W-3b — per-instance widget configuration. Sourced
+            // from `WidgetLayoutItem.config` (persisted via dashboard
+            // layout API). Widgets that don't declare a config schema
+            // ignore this prop. saved_view widget reads
+            // `config.view_id` to decide which view to render.
+            config: item.config,
           } as Record<string, unknown>)}
         />
       </WidgetErrorBoundary>

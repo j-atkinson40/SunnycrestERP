@@ -157,6 +157,7 @@ export function BottomSheet({ widgets, onDismiss }: BottomSheetProps) {
                   widgetId={id}
                   variant_id={state.variant_id}
                   surface="focus_stack"
+                  config={state.config}
                 />
               </div>
             )
@@ -210,6 +211,7 @@ export function BottomSheet({ widgets, onDismiss }: BottomSheetProps) {
                   widgetId={expandedWidget}
                   variant_id={expandedState?.variant_id}
                   surface="focus_canvas"
+                  config={expandedState?.config}
                 />
               )
             })()}

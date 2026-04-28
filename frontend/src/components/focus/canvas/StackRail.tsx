@@ -194,6 +194,7 @@ export function StackRail({ widgets, onExpandWidget }: StackRailProps) {
                 widgetId={id}
                 variant_id={state.variant_id}
                 surface="focus_stack"
+                config={state.config}
               />
             </div>
           )
