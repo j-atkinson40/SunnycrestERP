@@ -1,5 +1,6 @@
 /**
- * PulseLayer — Phase W-4a Commit 5.
+ * PulseLayer — Phase W-4a Commit 5
+ * (extended Step 6 Commit 1 with viewport-fit cell sizing).
  *
  * Renders one of the four Pulse layers (Personal / Operational /
  * Anomaly / Activity) per BRIDGEABLE_MASTER §3.26.2.3.
@@ -19,6 +20,22 @@
  * "All clear", "Quiet day so far." Operational layer surfaces a
  * more action-oriented advisory pointing at /onboarding/operator-
  * profile when work_areas not set (D4 fallback).
+ *
+ * Viewport-fit grid sizing (Phase W-4a Step 6 Commit 1, May 2026)
+ * ──────────────────────────────────────────────────────────────
+ * Per DESIGN_LANGUAGE §13.3.4. PulseLayer's grid uses
+ * `grid-template-rows: repeat(N, var(--pulse-cell-height))` where
+ * N = the layer's row count under tetris packing + the cell height
+ * is the surface-owner-solved variable PulseSurface puts on its
+ * root. Replaces the pre-Step-6 fixed `auto-rows-[80px]` pattern.
+ *
+ * 300-400 ms ease-out CSS transition on `grid-template-rows` smooths
+ * cell-height recomputation when composition shape changes (piece
+ * dismiss, viewport resize, late-arriving composition).
+ *
+ * Tier-based column count + container-query density tiers land in
+ * Commit 2; mobile-fallback + tier-three threshold scroll mode in
+ * Commit 3.
  */
 
 import { PulsePiece } from "@/components/spaces/PulsePiece"
@@ -50,6 +67,79 @@ export interface PulseLayerProps {
 function _hasBrassThread(layer: LayerName): boolean {
   return layer === "operational"
 }
+
+
+/** Compute this layer's row count under tetris packing.
+ *
+ * Mirrors `computeLayerRowCount` in PulseSurface — kept duplicated
+ * for now because PulseSurface needs an aggregate measurement to
+ * solve cell_height, and PulseLayer needs the same per-layer count
+ * to render the right number of grid rows. Future cleanup: hoist to
+ * a shared util in `viewport-fit-constants.ts`. For Commit 1 the
+ * duplication is bounded (~30 LOC) + keeps both consumers
+ * self-contained.
+ *
+ * Algorithm: dense-flow placement, same as CSS Grid `auto-flow: row
+ * dense`. Returns 0 for empty layers.
+ */
+function computeLayerRowCount(
+  items: LayerContent["items"],
+  filtered_ids: Set<string>,
+  column_count: number,
+): number {
+  const visible = items.filter((it) => !filtered_ids.has(it.item_id))
+  if (visible.length === 0) return 0
+
+  const occupied: boolean[][] = []
+  function ensureRow(row: number) {
+    while (occupied.length <= row) {
+      occupied.push(new Array(column_count).fill(false))
+    }
+  }
+  function fits(start_row: number, start_col: number, cols: number, rows: number): boolean {
+    if (start_col + cols > column_count) return false
+    for (let r = start_row; r < start_row + rows; r++) {
+      ensureRow(r)
+      for (let c = start_col; c < start_col + cols; c++) {
+        if (occupied[r][c]) return false
+      }
+    }
+    return true
+  }
+  function place(start_row: number, start_col: number, cols: number, rows: number) {
+    for (let r = start_row; r < start_row + rows; r++) {
+      ensureRow(r)
+      for (let c = start_col; c < start_col + cols; c++) {
+        occupied[r][c] = true
+      }
+    }
+  }
+  for (const item of visible) {
+    const cols = Math.min(Math.max(1, item.cols ?? 1), column_count)
+    const rows = Math.max(1, item.rows ?? 1)
+    let placed = false
+    let r = 0
+    while (!placed) {
+      ensureRow(r)
+      for (let c = 0; c <= column_count - cols; c++) {
+        if (fits(r, c, cols, rows)) {
+          place(r, c, cols, rows)
+          placed = true
+          break
+        }
+      }
+      if (!placed) r++
+    }
+  }
+  return occupied.length
+}
+
+
+/** Column count per §13.3.1 viewport tier. Commit 1 uses desktop
+ *  (6 cols) as the canonical assumption for row-count packing.
+ *  Tier-based dispatch lands in Commit 2 — at that point this
+ *  helper accepts a tier param. */
+const COMMIT_1_COLUMN_COUNT = 6
 
 
 export function PulseLayer({
@@ -96,10 +186,21 @@ export function PulseLayer({
     )
   }
 
+  // Phase W-4a Step 6 Commit 1 — compute this layer's row count
+  // (visible items only, post-dismissal filter). Drives explicit
+  // grid-template-rows below so the grid produces exactly N rows of
+  // var(--pulse-cell-height).
+  const layerRowCount = computeLayerRowCount(
+    layer.items,
+    dismissedItemIds,
+    COMMIT_1_COLUMN_COUNT,
+  )
+
   return (
     <section
       data-slot="pulse-layer"
       data-layer={layer.layer}
+      data-row-count={layerRowCount}
       className={cn(
         "w-full",
         // §13.3.2 — brass-thread above Operational layer. Subtle:
@@ -113,19 +214,27 @@ export function PulseLayer({
     >
       <div
         data-slot="pulse-layer-grid"
+        // Per §13.3.4 Step 7: grid-template-rows uses an explicit
+        // row count × the surface-owner-solved cell height. Replaces
+        // the pre-Step-6 fixed `auto-rows-[80px]`. The transition is
+        // applied via inline style (Tailwind doesn't have a built-in
+        // utility for transitioning grid-template-rows with a custom
+        // cubic-bezier).
+        style={{
+          gridTemplateRows: `repeat(${layerRowCount}, var(--pulse-cell-height, 80px))`,
+          // Per §13.3.2 amendment: 300ms ease-out transition on
+          // grid-template-rows when cell-height recomputes. Smooth
+          // visual handoff during composition changes / viewport
+          // resize / banner dismiss. Falls back to 80px when
+          // --pulse-cell-height is unset (initial mount before
+          // PulseSurface wires the variable).
+          transition:
+            "grid-template-rows 350ms cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
         className={cn(
           // Tetris layout per §13.3.1 + D2 (custom CSS Grid via
-          // WidgetGrid pattern). Auto-fit columns + auto-rows
-          // give breathing-room composition; pieces flow into
-          // available space sized to their cols/rows hints.
-          //
-          // Min-width 160px on each grid column means a 1×1 piece
-          // (Glance) is roughly 160px wide; 2-col pieces span
-          // 320px+ etc. Auto-rows 80px gives ~80px row height,
-          // matching the canonical Pattern 1 sidebar Glance height
-          // (60px) with a touch of internal padding budget. A
-          // Detail piece (2×2) is ~320px × ~160px — enough for
-          // vault_schedule's kanban-shaped Detail variant content.
+          // WidgetGrid pattern). Auto-fit columns; rows now follow
+          // the surface-fit math (§13.3.4 cell_height variable).
           //
           // `grid-flow-row-dense` (Phase W-4a Step 2.C, April 2026):
           // smaller pieces (e.g. today widget Glance 1×1) backfill
@@ -135,9 +244,13 @@ export function PulseLayer({
           // before emission); dense flow only changes _which empty
           // cell_ each smaller piece lands in, not the order pieces
           // are placed.
+          //
+          // Tier-based column count (Commit 2) replaces the auto-fit
+          // pattern with `grid-cols-{tier}` where tier ∈ 2/4/6.
+          // Commit 1 keeps auto-fit + minmax(160px, 1fr) so the page
+          // doesn't blow up before tier dispatch lands.
           "grid grid-flow-row-dense",
           "grid-cols-[repeat(auto-fit,minmax(160px,1fr))]",
-          "auto-rows-[80px]",
           "gap-3",
         )}
       >

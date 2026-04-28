@@ -823,7 +823,7 @@ describe("TestVisualChrome", () => {
     expect(stream.className).toMatch(/before:h-px/)
   })
 
-  it("layer grid uses CSS Grid with auto-fit + auto-rows for tetris layout", async () => {
+  it("layer grid uses CSS Grid with auto-fit cols + viewport-fit rows for tetris layout", async () => {
     mockComposition = makeComposition({
       layers: [
         makeLayer("personal"),
@@ -839,10 +839,16 @@ describe("TestVisualChrome", () => {
     ) as HTMLElement
     expect(grid).toBeInTheDocument()
     expect(grid.className).toMatch(/grid/)
-    // Grid auto-fit columns + auto-rows per §13.3.1 breathing-room
-    // composition rule
+    // Grid auto-fit columns per §13.3.1 breathing-room composition.
     expect(grid.className).toMatch(/auto-fit/)
-    expect(grid.className).toMatch(/auto-rows/)
+    // Phase W-4a Step 6 Commit 1: row sizing moved from
+    // `auto-rows-[80px]` className to inline
+    // `grid-template-rows: repeat(N, var(--pulse-cell-height, 80px))`
+    // so each layer renders exactly N rows of the surface-owner-solved
+    // cell height.
+    const styleAttr = grid.getAttribute("style") ?? ""
+    expect(styleAttr).toContain("grid-template-rows")
+    expect(styleAttr).toContain("var(--pulse-cell-height")
   })
 
   it("layer grid uses grid-flow-row-dense (Step 2.C — backfills empty cells)", async () => {
