@@ -234,6 +234,18 @@ export function PulsePiece({
       style={{
         gridColumn: `span ${item.cols}`,
         gridRow: `span ${item.rows}`,
+        // Phase W-4a Step 6 Commit 2 — container establishment per
+        // DESIGN_LANGUAGE §13.4.1. Each piece becomes a query container
+        // named "piece" so opt-in widgets (anomalies / line_status /
+        // today, more in Commit 5) can dispatch density tiers via
+        // `@container piece (max-height: 120px)` etc. `container-type:
+        // size` (not `inline-size`) is required because the canon
+        // density thresholds are in terms of cell HEIGHT (80 / 100 /
+        // 120 px). Block-axis containment is safe here because each
+        // piece has a definite block-size from the parent grid's
+        // `grid-row: span N × var(--pulse-cell-height)`.
+        containerType: "size",
+        containerName: "piece",
       }}
       className={cn(
         "group relative",

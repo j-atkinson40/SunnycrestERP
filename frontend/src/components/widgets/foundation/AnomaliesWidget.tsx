@@ -276,129 +276,219 @@ function AnomaliesBriefCard({
   const totalUnresolved = data?.total_unresolved ?? 0
   const criticalCount = data?.critical_count ?? 0
 
-  // Pulse compaction (DESIGN_LANGUAGE §13.4.1 amendment): when this
-  // widget renders inside the Pulse tetris grid, the Brief variant's
-  // 4-row body (~340px intrinsic) doesn't fit 2x1=80px grid cells.
-  // Compact to header summary + footer link only — full row rendering
-  // available in Detail variant or on dashboard surfaces.
+  // Phase W-4a Step 6 Commit 2 — when this widget renders inside
+  // the Pulse tetris grid, opt INTO §13.4.1 density tiers via three
+  // nested density-variant divs + container-query CSS in
+  // `frontend/src/styles/pulse-density.css`. Supersedes the Step 2.D
+  // single-tier `surface === "pulse_grid"` compaction (which was
+  // structurally equivalent to the new "compact" tier — Step 2.D's
+  // pre-canon stopgap becomes Commit 2's middle density tier).
+  //
+  // For non-Pulse surfaces (dashboard / focus_canvas), no density
+  // dispatch — render full Brief content as before.
   const isPulse = surface === "pulse_grid"
 
+  if (isPulse) {
+    return (
+      <div
+        data-slot="anomalies-widget"
+        data-variant="brief"
+        data-surface="pulse_grid"
+        className={cn("h-full", isLoading && "opacity-80")}
+      >
+        {/* Default tier (≥ 121 px) — full content: header + body + footer */}
+        <div
+          data-slot="anomalies-widget-pulse-default"
+          className="anomalies-widget-pulse-default flex-col h-full"
+        >
+          <AnomaliesBriefHeader
+            totalUnresolved={totalUnresolved}
+            criticalCount={criticalCount}
+          />
+          <div data-slot="anomalies-widget-body" className="flex-1">
+            {!isLoading && items.length === 0 && (
+              <div
+                data-slot="anomalies-widget-empty"
+                className="flex flex-col items-center justify-center gap-2 px-4 py-6 text-center"
+              >
+                <CheckCircle2
+                  className="h-6 w-6 text-status-success"
+                  aria-hidden
+                />
+                <p className="text-caption text-content-muted font-sans leading-tight">
+                  All clear
+                </p>
+              </div>
+            )}
+            {items.length > 0 && (
+              <ul
+                data-slot="anomalies-widget-rows"
+                className="space-y-1 px-2 py-2"
+              >
+                {items.map((anomaly) => (
+                  <AnomalyRow
+                    key={anomaly.id}
+                    anomaly={anomaly}
+                    onInvestigate={() => onInvestigate(anomaly)}
+                    onAcknowledge={() => onAcknowledge(anomaly)}
+                    isAcknowledging={acknowledgingIds.has(anomaly.id)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+          {totalUnresolved > items.length && (
+            <div
+              data-slot="anomalies-widget-footer"
+              className="border-t border-border-subtle/40 px-4 py-2"
+            >
+              <button
+                onClick={onViewAll}
+                className={cn(
+                  "text-caption text-accent font-sans",
+                  "hover:text-accent-hover",
+                  "transition-colors duration-quick ease-settle",
+                  "focus-ring-accent outline-none rounded-sm",
+                )}
+                data-slot="anomalies-widget-view-all"
+              >
+                View all {totalUnresolved} →
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Compact tier (101–120 px) — header + footer only */}
+        <div
+          data-slot="anomalies-widget-pulse-compact"
+          className="anomalies-widget-pulse-compact flex-col h-full"
+        >
+          <AnomaliesBriefHeader
+            totalUnresolved={totalUnresolved}
+            criticalCount={criticalCount}
+          />
+          {totalUnresolved > 0 && (
+            <div
+              data-slot="anomalies-widget-footer"
+              className="px-4 py-2 mt-auto"
+            >
+              <button
+                onClick={onViewAll}
+                className={cn(
+                  "text-caption text-accent font-sans",
+                  "hover:text-accent-hover",
+                  "transition-colors duration-quick ease-settle",
+                  "focus-ring-accent outline-none rounded-sm",
+                )}
+                data-slot="anomalies-widget-view-all"
+              >
+                Investigate {totalUnresolved} →
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Ultra-compact tier (80–100 px) — single dense line */}
+        <button
+          type="button"
+          onClick={onViewAll}
+          data-slot="anomalies-widget-pulse-ultra-compact"
+          className={cn(
+            "anomalies-widget-pulse-ultra-compact items-center h-full w-full px-3 gap-2",
+            "text-left text-body-sm",
+            "hover:bg-accent-subtle/30",
+            "focus-ring-accent outline-none rounded-sm",
+            "transition-colors duration-quick ease-settle",
+          )}
+        >
+          {criticalCount > 0 ? (
+            <AlertCircle
+              className="h-4 w-4 shrink-0 text-status-error"
+              aria-hidden
+            />
+          ) : totalUnresolved > 0 ? (
+            <AlertTriangle
+              className="h-4 w-4 shrink-0 text-status-warning"
+              aria-hidden
+            />
+          ) : (
+            <CheckCircle2
+              className="h-4 w-4 shrink-0 text-status-success"
+              aria-hidden
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate text-content-strong font-medium">
+            {totalUnresolved === 0
+              ? "All clear"
+              : criticalCount > 0
+              ? `${totalUnresolved} unresolved · ${criticalCount} critical`
+              : `${totalUnresolved} unresolved`}
+          </span>
+          {totalUnresolved > 0 && (
+            <span
+              aria-hidden
+              className="shrink-0 text-accent text-caption"
+            >
+              →
+            </span>
+          )}
+        </button>
+      </div>
+    )
+  }
+
+  // Non-Pulse surfaces (dashboard / focus_canvas) — render the full
+  // Brief without density dispatch.
   return (
     <div
       data-slot="anomalies-widget"
       data-variant="brief"
       data-surface={surface ?? "default"}
-      className={cn(
-        "flex flex-col h-full",
-        isLoading && "opacity-80",
-        // In Pulse, render as a single dense row (header + count
-        // badge + inline View-all CTA) rather than vertical stack.
-        isPulse && "anomalies-widget-pulse-compact",
-      )}
+      className={cn("flex flex-col h-full", isLoading && "opacity-80")}
     >
-      <div
-        data-slot="anomalies-widget-header"
-        className={cn(
-          "flex items-baseline justify-between gap-2",
-          "border-b border-border-subtle/40 px-4 py-3",
+      <AnomaliesBriefHeader
+        totalUnresolved={totalUnresolved}
+        criticalCount={criticalCount}
+      />
+      <div data-slot="anomalies-widget-body" className="flex-1">
+        {!isLoading && items.length === 0 && (
+          <div
+            data-slot="anomalies-widget-empty"
+            className="flex flex-col items-center justify-center gap-2 px-4 py-6 text-center"
+          >
+            <CheckCircle2
+              className="h-6 w-6 text-status-success"
+              aria-hidden
+            />
+            <p className="text-caption text-content-muted font-sans leading-tight">
+              All clear
+            </p>
+            <p className="text-micro text-content-subtle font-sans leading-tight">
+              No unresolved anomalies right now.
+            </p>
+          </div>
         )}
-      >
-        <div className="min-w-0 flex-1">
-          <p
-            className={cn(
-              "text-micro uppercase tracking-wider",
-              "text-content-muted font-mono",
-            )}
+        {items.length > 0 && (
+          <ul
+            data-slot="anomalies-widget-rows"
+            className="space-y-1 px-2 py-2"
           >
-            Anomalies
-          </p>
-          <h3
-            className={cn(
-              "mt-0.5 text-body-sm font-medium leading-tight",
-              "text-content-strong font-sans",
-            )}
-          >
-            {totalUnresolved === 0
-              ? "All clear"
-              : criticalCount > 0
-              ? `${criticalCount} critical · ${totalUnresolved} total`
-              : `${totalUnresolved} unresolved`}
-          </h3>
-        </div>
-        {totalUnresolved > 0 && (
-          <span
-            data-slot="anomalies-widget-count"
-            className={cn(
-              "inline-flex items-center justify-center",
-              "min-w-[20px] h-5 px-1.5 rounded-full",
-              "text-caption font-medium font-mono tabular-nums shrink-0",
-              criticalCount > 0
-                ? "bg-status-error text-content-on-accent"
-                : "bg-accent-muted text-content-muted",
-            )}
-          >
-            {totalUnresolved}
-          </span>
+            {items.map((anomaly) => (
+              <AnomalyRow
+                key={anomaly.id}
+                anomaly={anomaly}
+                onInvestigate={() => onInvestigate(anomaly)}
+                onAcknowledge={() => onAcknowledge(anomaly)}
+                isAcknowledging={acknowledgingIds.has(anomaly.id)}
+              />
+            ))}
+          </ul>
         )}
       </div>
-
-      {/* Pulse compact: skip the 4-row body. Header carries the
-          count + critical breakdown; the footer link routes to full
-          investigation. Per §13.4.1 amendment. */}
-      {!isPulse && (
-        <div data-slot="anomalies-widget-body" className="flex-1">
-          {!isLoading && items.length === 0 && (
-            <div
-              data-slot="anomalies-widget-empty"
-              className="flex flex-col items-center justify-center gap-2 px-4 py-6 text-center"
-            >
-              <CheckCircle2
-                className="h-6 w-6 text-status-success"
-                aria-hidden
-              />
-              <p className="text-caption text-content-muted font-sans leading-tight">
-                All clear
-              </p>
-              <p className="text-micro text-content-subtle font-sans leading-tight">
-                No unresolved anomalies right now.
-              </p>
-            </div>
-          )}
-          {items.length > 0 && (
-            <ul
-              data-slot="anomalies-widget-rows"
-              className="space-y-1 px-2 py-2"
-            >
-              {items.map((anomaly) => (
-                <AnomalyRow
-                  key={anomaly.id}
-                  anomaly={anomaly}
-                  onInvestigate={() => onInvestigate(anomaly)}
-                  onAcknowledge={() => onAcknowledge(anomaly)}
-                  isAcknowledging={acknowledgingIds.has(anomaly.id)}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Footer: in Pulse (compact), ALWAYS render the navigation
-          affordance when totalUnresolved > 0 — the footer IS the
-          interaction surface in compact mode (no rows above it).
-          In dashboard mode, footer surfaces only when the body shows
-          a partial slice. */}
-      {((isPulse && totalUnresolved > 0) ||
-        (!isPulse && totalUnresolved > items.length)) && (
+      {totalUnresolved > items.length && (
         <div
           data-slot="anomalies-widget-footer"
-          className={cn(
-            "px-4 py-2",
-            // Brass-thread separator only in non-Pulse (with rows
-            // above). In Pulse compact, the header's bottom border
-            // already separates from the footer.
-            !isPulse && "border-t border-border-subtle/40",
-          )}
+          className="px-4 py-2 border-t border-border-subtle/40"
         >
           <button
             onClick={onViewAll}
@@ -410,11 +500,69 @@ function AnomaliesBriefCard({
             )}
             data-slot="anomalies-widget-view-all"
           >
-            {isPulse
-              ? `Investigate ${totalUnresolved} →`
-              : `View all ${totalUnresolved} →`}
+            View all {totalUnresolved} →
           </button>
         </div>
+      )}
+    </div>
+  )
+}
+
+
+/** Shared header for AnomaliesWidget Brief — same shape across
+ *  density tiers (default + compact). Ultra-compact uses an
+ *  inline single-line layout instead. */
+function AnomaliesBriefHeader({
+  totalUnresolved,
+  criticalCount,
+}: {
+  totalUnresolved: number
+  criticalCount: number
+}) {
+  return (
+    <div
+      data-slot="anomalies-widget-header"
+      className={cn(
+        "flex items-baseline justify-between gap-2",
+        "border-b border-border-subtle/40 px-4 py-3",
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <p
+          className={cn(
+            "text-micro uppercase tracking-wider",
+            "text-content-muted font-mono",
+          )}
+        >
+          Anomalies
+        </p>
+        <h3
+          className={cn(
+            "mt-0.5 text-body-sm font-medium leading-tight",
+            "text-content-strong font-sans",
+          )}
+        >
+          {totalUnresolved === 0
+            ? "All clear"
+            : criticalCount > 0
+            ? `${criticalCount} critical · ${totalUnresolved} total`
+            : `${totalUnresolved} unresolved`}
+        </h3>
+      </div>
+      {totalUnresolved > 0 && (
+        <span
+          data-slot="anomalies-widget-count"
+          className={cn(
+            "inline-flex items-center justify-center",
+            "min-w-[20px] h-5 px-1.5 rounded-full",
+            "text-caption font-medium font-mono tabular-nums shrink-0",
+            criticalCount > 0
+              ? "bg-status-error text-content-on-accent"
+              : "bg-accent-muted text-content-muted",
+          )}
+        >
+          {totalUnresolved}
+        </span>
       )}
     </div>
   )

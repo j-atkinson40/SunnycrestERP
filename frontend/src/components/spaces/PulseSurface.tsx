@@ -52,13 +52,15 @@ import { InlineError } from "@/components/ui/inline-error"
 import { SkeletonLines } from "@/components/ui/skeleton"
 import { PulseFirstLoginBanner } from "@/components/spaces/PulseFirstLoginBanner"
 import { PulseLayer } from "@/components/spaces/PulseLayer"
+import { computeLayerRowCount } from "@/components/spaces/utils/layer-row-count"
 import { useOnboardingTouch } from "@/hooks/useOnboardingTouch"
 import { usePulseComposition } from "@/hooks/usePulseComposition"
 import {
   type LayerMeasurement,
+  useViewportDimensions,
   useViewportFitMath,
 } from "@/hooks/useViewportFitMath"
-import type { LayerContent, LayerName } from "@/types/pulse"
+import type { LayerName } from "@/types/pulse"
 import { cn } from "@/lib/utils"
 
 
@@ -70,86 +72,6 @@ const LAYER_ORDER: LayerName[] = [
   "anomaly",
   "activity",
 ]
-
-
-/**
- * Walk a layer's items, return the row count it consumes under
- * tetris packing with the given column count. Per §13.3.4 Step 3.
- *
- * Algorithm: simulate dense-flow placement. Track per-row occupied
- * cell mask; for each piece (in priority order), find the lowest
- * row + leftmost column where its `cols × rows` span fits without
- * overlap. The maximum row index reached + 1 is the layer's row
- * count.
- *
- * Commit 1 simplification: column count from §13.3.1 desktop tier
- * (6 cols). Tier-based dispatch lands in Commit 2 — tablet (4 cols)
- * + mobile (2 cols, but mobile dispatches to scroll mode in
- * Commit 3 anyway).
- *
- * Empty layer → 0 rows (caller skips the layer or renders advisory).
- */
-function computeLayerRowCount(
-  items: LayerContent["items"],
-  filtered_ids: Set<string>,
-  column_count: number,
-): number {
-  const visible = items.filter((it) => !filtered_ids.has(it.item_id))
-  if (visible.length === 0) return 0
-
-  // Bitmap of occupied cells, one row at a time. Grows as needed.
-  const occupied: boolean[][] = []
-
-  function ensureRow(row: number) {
-    while (occupied.length <= row) {
-      occupied.push(new Array(column_count).fill(false))
-    }
-  }
-
-  function fits(start_row: number, start_col: number, cols: number, rows: number): boolean {
-    if (start_col + cols > column_count) return false
-    for (let r = start_row; r < start_row + rows; r++) {
-      ensureRow(r)
-      for (let c = start_col; c < start_col + cols; c++) {
-        if (occupied[r][c]) return false
-      }
-    }
-    return true
-  }
-
-  function place(start_row: number, start_col: number, cols: number, rows: number) {
-    for (let r = start_row; r < start_row + rows; r++) {
-      ensureRow(r)
-      for (let c = start_col; c < start_col + cols; c++) {
-        occupied[r][c] = true
-      }
-    }
-  }
-
-  // Dense flow: for each piece, find the first cell (row-major) where
-  // its span fits. Same algorithm CSS Grid `auto-flow: row dense`
-  // uses.
-  for (const item of visible) {
-    const cols = Math.min(Math.max(1, item.cols ?? 1), column_count)
-    const rows = Math.max(1, item.rows ?? 1)
-
-    let placed = false
-    let r = 0
-    while (!placed) {
-      ensureRow(r)
-      for (let c = 0; c <= column_count - cols; c++) {
-        if (fits(r, c, cols, rows)) {
-          place(r, c, cols, rows)
-          placed = true
-          break
-        }
-      }
-      if (!placed) r++
-    }
-  }
-
-  return occupied.length
-}
 
 
 export function PulseSurface() {
@@ -166,10 +88,18 @@ export function PulseSurface() {
     composition?.metadata.vertical_default_applied && onboarding.shouldShow
   )
 
+  // Phase W-4a Step 6 Commit 2: tier detection runs BEFORE the
+  // measurement walk so per-layer tetris packing uses the right
+  // column count for the current viewport. PulseLayer + the
+  // measurement walk + the math hook all see the same column_count
+  // on every render via this single call.
+  const dimensions = useViewportDimensions()
+  const column_count = dimensions.column_count
+
   // Compute LayerMeasurement from the active composition. Re-runs
-  // when composition or dismissals change. Empty composition (loading
-  // / error) produces a zeroed measurement — math hook handles
-  // gracefully.
+  // when composition / dismissals / column_count change. Empty
+  // composition (loading / error) produces a zeroed measurement —
+  // math hook handles gracefully.
   const measurement = useMemo<LayerMeasurement>(() => {
     if (!composition) {
       return {
@@ -183,9 +113,6 @@ export function PulseSurface() {
     let total_row_count = 0
     let empty_with_advisory_layer_count = 0
     let has_operational_layer = false
-    // Commit 1 hard-codes 6 cols (desktop tier per §13.3.1). Commit 2
-    // wires tier-based via `viewportFit.tier`.
-    const column_count = 6
     for (const lc of composition.layers) {
       const rows = computeLayerRowCount(
         lc.items,
@@ -206,7 +133,7 @@ export function PulseSurface() {
       empty_with_advisory_layer_count,
       has_operational_layer,
     }
-  }, [composition, dismissedItemIds])
+  }, [composition, dismissedItemIds, column_count])
 
   const viewportFit = useViewportFitMath({
     measurement,
@@ -275,6 +202,7 @@ export function PulseSurface() {
       // as data attrs (test observability) + CSS variables (child
       // consumption). See §13.3.4.
       data-viewport-tier={viewportFit.tier}
+      data-column-count={viewportFit.column_count}
       data-tier-three-breached={
         viewportFit.tier_three_threshold_breached ? "true" : "false"
       }
@@ -282,6 +210,7 @@ export function PulseSurface() {
         {
           "--pulse-content-height": `${viewportFit.available_pulse_height}px`,
           "--pulse-cell-height": `${viewportFit.cell_height}px`,
+          "--pulse-column-count": viewportFit.column_count.toString(),
           "--pulse-scale": viewportFit.pulse_scale.toString(),
         } as React.CSSProperties
       }

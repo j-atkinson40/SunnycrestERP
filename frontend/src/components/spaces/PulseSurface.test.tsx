@@ -823,7 +823,7 @@ describe("TestVisualChrome", () => {
     expect(stream.className).toMatch(/before:h-px/)
   })
 
-  it("layer grid uses CSS Grid with auto-fit cols + viewport-fit rows for tetris layout", async () => {
+  it("layer grid uses tier-resolved cols + viewport-fit rows for tetris layout", async () => {
     mockComposition = makeComposition({
       layers: [
         makeLayer("personal"),
@@ -839,14 +839,16 @@ describe("TestVisualChrome", () => {
     ) as HTMLElement
     expect(grid).toBeInTheDocument()
     expect(grid.className).toMatch(/grid/)
-    // Grid auto-fit columns per §13.3.1 breathing-room composition.
-    expect(grid.className).toMatch(/auto-fit/)
-    // Phase W-4a Step 6 Commit 1: row sizing moved from
-    // `auto-rows-[80px]` className to inline
-    // `grid-template-rows: repeat(N, var(--pulse-cell-height, 80px))`
-    // so each layer renders exactly N rows of the surface-owner-solved
-    // cell height.
+    expect(grid.className).toMatch(/grid-flow-row-dense/)
+    // Phase W-4a Step 6 Commit 2: column sizing moved from Commit 1's
+    // `repeat(auto-fit, minmax(160px, 1fr))` Tailwind utility to inline
+    // `grid-template-columns: repeat(var(--pulse-column-count), minmax(0, 1fr))`
+    // so the tier-resolved column count drives the grid (mobile=2 /
+    // tablet=4 / desktop=6). Row sizing stays from Commit 1 — inline
+    // `grid-template-rows: repeat(N, var(--pulse-cell-height, 80px))`.
     const styleAttr = grid.getAttribute("style") ?? ""
+    expect(styleAttr).toContain("grid-template-columns")
+    expect(styleAttr).toContain("var(--pulse-column-count")
     expect(styleAttr).toContain("grid-template-rows")
     expect(styleAttr).toContain("var(--pulse-cell-height")
   })

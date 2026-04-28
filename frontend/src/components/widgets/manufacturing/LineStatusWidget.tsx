@@ -154,6 +154,7 @@ function LineStatusBrief({
   data,
   isLoading,
   error,
+  surface,
 }: VariantProps) {
   const navigate = useNavigate()
 
@@ -208,6 +209,160 @@ function LineStatusBrief({
     )
   }
 
+  // Phase W-4a Step 6 Commit 2 — opt INTO §13.4.1 density tiers in
+  // the Pulse surface. Three nested density variants + container-
+  // query CSS in `pulse-density.css` dispatches which one displays.
+  const isPulse = surface === "pulse_grid"
+  const attentionLines = data.lines.filter(
+    (ln) => ln.status === "behind" || ln.status === "blocked",
+  ).length
+  const idleLines = data.lines.filter((ln) => ln.status === "idle").length
+  const onTrackLines = data.lines.filter(
+    (ln) => ln.status === "on_track",
+  ).length
+
+  if (isPulse) {
+    return (
+      <div
+        data-slot="line-status-widget"
+        data-variant="brief"
+        data-surface="pulse_grid"
+        data-attention={data.any_attention_needed ? "true" : "false"}
+        className="h-full"
+      >
+        {/* Default tier (≥ 121 px) — full content with rows */}
+        <div
+          data-slot="line-status-widget-pulse-default"
+          className="line-status-widget-pulse-default flex-col h-full p-4 gap-2"
+        >
+          <LineStatusBriefHeader totalActiveLines={data.total_active_lines} />
+          <ul className="space-y-1.5 flex-1 min-h-0 overflow-y-auto">
+            {data.lines.map((ln) => (
+              <li
+                key={ln.line_key}
+                data-slot="line-status-row"
+                data-line-key={ln.line_key}
+                data-status={ln.status}
+                className={cn(
+                  "flex items-center gap-2 px-2 py-1.5 rounded-sm",
+                  statusBgClass(ln.status),
+                )}
+              >
+                <StatusIcon
+                  status={ln.status}
+                  className="h-4 w-4 flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-body-sm font-medium text-content-strong font-sans truncate">
+                    {ln.display_name}
+                  </div>
+                  <div className="text-caption text-content-muted font-sans truncate">
+                    {ln.headline}
+                  </div>
+                </div>
+                {ln.navigation_target ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(ln.navigation_target as string)
+                    }
+                    className={cn(
+                      "text-caption text-accent font-sans flex-shrink-0",
+                      "hover:text-accent-hover",
+                      "focus-ring-accent outline-none rounded-sm",
+                      "transition-colors duration-quick ease-settle",
+                    )}
+                    aria-label={`View ${ln.display_name} schedule`}
+                    data-slot="line-status-row-cta"
+                  >
+                    →
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Compact tier (101–120 px) — header + condensed status pills */}
+        <div
+          data-slot="line-status-widget-pulse-compact"
+          className="line-status-widget-pulse-compact flex-col h-full p-4 gap-2"
+        >
+          <LineStatusBriefHeader totalActiveLines={data.total_active_lines} />
+          <ul className="space-y-1 flex-1 min-h-0 overflow-hidden">
+            {data.lines.slice(0, 3).map((ln) => (
+              <li
+                key={ln.line_key}
+                data-slot="line-status-row"
+                data-line-key={ln.line_key}
+                data-status={ln.status}
+                className={cn(
+                  "flex items-center gap-2 px-2 py-1 rounded-sm",
+                  statusBgClass(ln.status),
+                )}
+              >
+                <StatusIcon
+                  status={ln.status}
+                  className="h-3.5 w-3.5 flex-shrink-0"
+                />
+                <span className="text-caption text-content-strong font-sans truncate flex-1">
+                  {ln.display_name}
+                </span>
+                <span className="text-micro text-content-muted font-mono shrink-0">
+                  {ln.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Ultra-compact tier (80–100 px) — single dense readout */}
+        <button
+          type="button"
+          onClick={() => {
+            const target = data.lines.find((ln) => ln.navigation_target)
+            if (target?.navigation_target) {
+              navigate(target.navigation_target as string)
+            }
+          }}
+          data-slot="line-status-widget-pulse-ultra-compact"
+          className={cn(
+            "line-status-widget-pulse-ultra-compact items-center h-full w-full px-3 gap-2",
+            "text-left text-body-sm",
+            "hover:bg-accent-subtle/30",
+            "focus-ring-accent outline-none rounded-sm",
+            "transition-colors duration-quick ease-settle",
+          )}
+        >
+          <Activity
+            className={cn(
+              "h-4 w-4 shrink-0",
+              data.any_attention_needed
+                ? "text-status-warning"
+                : "text-accent",
+            )}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1 truncate text-content-strong font-medium">
+            {data.total_active_lines}{" "}
+            {data.total_active_lines === 1 ? "line" : "lines"}
+            {attentionLines > 0
+              ? ` · ${attentionLines} attention`
+              : onTrackLines > 0
+              ? ` · ${onTrackLines} on track`
+              : idleLines > 0
+              ? ` · ${idleLines} idle`
+              : ""}
+          </span>
+          <span aria-hidden className="shrink-0 text-accent text-caption">
+            →
+          </span>
+        </button>
+      </div>
+    )
+  }
+
+  // Non-Pulse surfaces — full Brief without density dispatch.
   return (
     <div
       data-slot="line-status-widget"
@@ -215,17 +370,7 @@ function LineStatusBrief({
       data-attention={data.any_attention_needed ? "true" : "false"}
       className="flex flex-col h-full p-4 gap-2"
     >
-      <div className="flex items-center gap-2">
-        <Activity className="h-4 w-4 text-accent" aria-hidden />
-        <h3 className="text-body-sm font-medium text-content-strong font-sans flex-1">
-          Line status
-        </h3>
-        <span className="text-caption text-content-muted font-plex-mono">
-          {data.total_active_lines}{" "}
-          {data.total_active_lines === 1 ? "line" : "lines"}
-        </span>
-      </div>
-
+      <LineStatusBriefHeader totalActiveLines={data.total_active_lines} />
       <ul className="space-y-1.5 flex-1 min-h-0 overflow-y-auto">
         {data.lines.map((ln) => (
           <li
@@ -268,6 +413,26 @@ function LineStatusBrief({
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+
+function LineStatusBriefHeader({
+  totalActiveLines,
+}: {
+  totalActiveLines: number
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Activity className="h-4 w-4 text-accent" aria-hidden />
+      <h3 className="text-body-sm font-medium text-content-strong font-sans flex-1">
+        Line status
+      </h3>
+      <span className="text-caption text-content-muted font-plex-mono">
+        {totalActiveLines}{" "}
+        {totalActiveLines === 1 ? "line" : "lines"}
+      </span>
     </div>
   )
 }
@@ -450,6 +615,7 @@ interface VariantProps {
   data: LineStatusData | null
   isLoading: boolean
   error: string | null
+  surface?: LineStatusWidgetProps["surface"]
 }
 
 
@@ -486,7 +652,12 @@ export function LineStatusWidget(props: LineStatusWidgetProps) {
   // declare Glance or Deep variants per §12.10; defensive fallback
   // ensures any unexpected variant_id renders meaningful content.
   return (
-    <LineStatusBrief data={data} isLoading={isLoading} error={error} />
+    <LineStatusBrief
+      data={data}
+      isLoading={isLoading}
+      error={error}
+      surface={props.surface}
+    />
   )
 }
 

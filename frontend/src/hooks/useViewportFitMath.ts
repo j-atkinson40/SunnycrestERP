@@ -74,10 +74,16 @@ export interface ViewportFitMath {
   /** Step 1 result. Available height for Pulse content within the
    *  AppLayout chrome budget. */
   available_pulse_height: number
-  /** Step 2 result. Current viewport tier. Column-count work is in
-   *  Commit 2; Commit 1 surfaces the tier so PulseSurface can attach
-   *  it as a data-attribute for tests + future Commit 2 work. */
+  /** Step 2 result. Current viewport tier. */
   tier: ViewportTier
+  /** Step 2 result (Commit 2). Tier-resolved column count per
+   *  §13.3.1: mobile=2 / tablet=4 / desktop=6. PulseSurface writes
+   *  this to `--pulse-column-count` on its root; PulseLayer's
+   *  `grid-template-columns: repeat(var(--pulse-column-count), 1fr)`
+   *  consumes it. Tetris packing in `computeLayerRowCount` also
+   *  consumes it (a piece's `cols` count clamps to the tier's
+   *  column count). */
+  column_count: number
   /** Step 4 result. Cell height that makes the composition fit the
    *  viewport. May be 0 when caller has no populated layers. */
   cell_height: number
@@ -110,6 +116,17 @@ function getViewportTier(viewport_width: number): ViewportTier {
   if (viewport_width < MOBILE_BREAKPOINT) return "mobile"
   if (viewport_width < TABLET_BREAKPOINT) return "tablet"
   return "desktop"
+}
+
+
+/** §13.3.1 tier → column count mapping. Mobile = 2, tablet = 4,
+ *  desktop = 6. Single source of truth for the dispatch — both
+ *  PulseSurface (writes the CSS variable) and `computeLayerRowCount`
+ *  (clamps piece cols to fit the tier) consume this. */
+function getColumnCountForTier(tier: ViewportTier): number {
+  if (tier === "mobile") return 2
+  if (tier === "tablet") return 4
+  return 6
 }
 
 
@@ -185,37 +202,28 @@ function computePulseScale(available_pulse_height: number): number {
 
 
 /**
- * Subscribes to viewport resize via a debounced window listener.
- * Returns the full §13.3.4 math result plus the raw viewport
- * dimensions for downstream consumers.
+ * Tiny standalone primitive that owns the debounced window-resize
+ * subscription. Returns viewport dimensions + tier + tier-resolved
+ * column count.
  *
- * Callers (PulseSurface) typically write the result to inline CSS
- * variables on the surface root:
+ * Phase W-4a Step 6 Commit 2 extracted this from `useViewportFitMath`
+ * so callers (PulseSurface) can compute layer-row-count walks
+ * tier-aware BEFORE feeding the result back into `useViewportFitMath`.
+ * Without this split, PulseSurface would hit a chicken-and-egg —
+ * measurement needs column_count, but column_count was previously
+ * only available as the math hook's output.
  *
- *   <div style={{
- *     "--pulse-content-height": `${math.available_pulse_height}px`,
- *     "--pulse-cell-height":    `${math.cell_height}px`,
- *     "--pulse-scale":          math.pulse_scale,
- *   }}>
- *
- * Children (PulseLayer, PulsePiece, widget renderers) consume the
- * variables via `var(--pulse-cell-height)` etc. — no React context
- * threading needed.
- *
- * SSR safety: when `window` is undefined (test fixtures, SSR
- * pre-hydration), returns conservative defaults (desktop tier,
- * 900 baseline) so initial render doesn't blank.
+ * SSR safety: returns desktop defaults (1440 × 900) when `window`
+ * is undefined.
  */
-export function useViewportFitMath(
-  input: UseViewportFitMathInput,
-): ViewportFitMath {
-  const { measurement, banner_visible } = input
-
+export function useViewportDimensions(): {
+  width: number
+  height: number
+  tier: ViewportTier
+  column_count: number
+} {
   const [viewport, setViewport] = useState(() => {
     if (typeof window === "undefined") {
-      // SSR / jsdom-without-real-resize fallback. Use baseline
-      // assumptions so the math produces reasonable values for
-      // initial paint.
       return { width: 1440, height: 900 }
     }
     return { width: window.innerWidth, height: window.innerHeight }
@@ -243,11 +251,46 @@ export function useViewportFitMath(
     }
   }, [])
 
+  const tier = getViewportTier(viewport.width)
+  const column_count = getColumnCountForTier(tier)
+  return { width: viewport.width, height: viewport.height, tier, column_count }
+}
+
+
+/**
+ * Subscribes to viewport resize via a debounced window listener.
+ * Returns the full §13.3.4 math result plus the raw viewport
+ * dimensions for downstream consumers.
+ *
+ * Callers (PulseSurface) typically write the result to inline CSS
+ * variables on the surface root:
+ *
+ *   <div style={{
+ *     "--pulse-content-height": `${math.available_pulse_height}px`,
+ *     "--pulse-cell-height":    `${math.cell_height}px`,
+ *     "--pulse-scale":          math.pulse_scale,
+ *     "--pulse-column-count":   math.column_count,
+ *   }}>
+ *
+ * Children (PulseLayer, PulsePiece, widget renderers) consume the
+ * variables via `var(--pulse-cell-height)` etc. — no React context
+ * threading needed.
+ *
+ * SSR safety: when `window` is undefined (test fixtures, SSR
+ * pre-hydration), returns conservative defaults (desktop tier,
+ * 900 baseline) so initial render doesn't blank.
+ */
+export function useViewportFitMath(
+  input: UseViewportFitMathInput,
+): ViewportFitMath {
+  const { measurement, banner_visible } = input
+  const viewport = useViewportDimensions()
+
   return useMemo<ViewportFitMath>(() => {
-    const tier = getViewportTier(viewport.width)
+    const { tier, column_count, width, height } = viewport
     const available_pulse_height = computeAvailablePulseHeight(
-      viewport.height,
-      viewport.width,
+      height,
+      width,
       banner_visible,
       measurement.empty_with_advisory_layer_count,
       measurement.has_operational_layer,
@@ -267,15 +310,15 @@ export function useViewportFitMath(
     return {
       available_pulse_height,
       tier,
+      column_count,
       cell_height,
       tier_three_threshold_breached,
       pulse_scale,
-      viewport_height: viewport.height,
-      viewport_width: viewport.width,
+      viewport_height: height,
+      viewport_width: width,
     }
   }, [
-    viewport.width,
-    viewport.height,
+    viewport,
     banner_visible,
     measurement.populated_layer_count,
     measurement.total_row_count,
@@ -298,5 +341,6 @@ export const __viewport_fit_internals = {
   solveCellHeight,
   computePulseScale,
   getViewportTier,
+  getColumnCountForTier,
   isMobileTabBarVisible,
 }

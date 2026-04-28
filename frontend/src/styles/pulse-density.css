@@ -1,0 +1,112 @@
+/* ============================================================
+ * Pulse density-tier dispatch — Phase W-4a Step 6 Commit 2.
+ *
+ * Per DESIGN_LANGUAGE.md §13.4.1:
+ *   • Default tier  ≥ 121 px cell height — full content
+ *   • Compact tier  101–120 px — header + footer only
+ *   • Ultra-compact 80–100 px — single-line dense
+ *   • <80 px → §13.3.4 dispatches to scroll mode (Commit 3)
+ *
+ * Container establishment lives on `<PulsePiece>` via inline
+ * `containerType: "size"; containerName: "piece"`. Each piece is
+ * a query container; widgets opt INTO density tiers by rendering
+ * three nested divs with the canonical class names below + relying
+ * on the @container rules in this file to dispatch which tier
+ * displays at each cell-height range.
+ *
+ * Per-widget density tier opt-in (§13.4.1 line 4210). Most widgets
+ * render the same content at all densities (just smaller spacing /
+ * font via --pulse-scale). Widgets with structurally distinct
+ * compact modes opt in by emitting these classes; widgets without
+ * the classes fall back to default rendering at all cell sizes.
+ *
+ * Naming convention: `<widget-key>-widget-pulse-{default,compact,
+ * ultra-compact}`. Default visible by default; compact + ultra-
+ * compact hidden. Container queries flip displays at the canonical
+ * thresholds.
+ *
+ * ── Dispatch logic ─────────────────────────────────────────────
+ *
+ * At cell ≥ 121 px:
+ *   No @container rule fires. Default-visible / compact-hidden /
+ *   ultra-compact-hidden classes hold.
+ *
+ * At cell 101–120 px (compact tier):
+ *   `@container piece (max-height: 120px)` matches.
+ *   default → display: none (override base)
+ *   compact → display: flex (override base)
+ *   ultra-compact → still hidden (matches the 120px-rule by inheritance,
+ *     but a 100px rule below would also trigger; here it stays hidden).
+ *
+ * At cell 80–100 px (ultra-compact tier):
+ *   Both `(max-height: 120px)` AND `(max-height: 100px)` match.
+ *   Cascade: 100px rule comes after 120px rule, so its compact:none
+ *   wins over the prior compact:flex. Ultra-compact:flex wins via
+ *   the 100px rule.
+ *
+ * Below 80 px:
+ *   Pulse dispatches to natural-height scroll mode at the surface
+ *   level (Commit 3). Container queries continue to fire
+ *   (ultra-compact stays visible), but the overall layout switches
+ *   away from viewport-fit.
+ * ============================================================ */
+
+
+/* ── Default visibility ───────────────────────────────────────
+ * Every widget that opts INTO density tiers declares all three
+ * variants. By default, default-tier shows; compact + ultra-compact
+ * are hidden. Container queries below override. */
+.anomalies-widget-pulse-default,
+.line-status-widget-pulse-default,
+.today-widget-pulse-default {
+  display: flex;
+}
+
+.anomalies-widget-pulse-compact,
+.line-status-widget-pulse-compact,
+.today-widget-pulse-compact,
+.anomalies-widget-pulse-ultra-compact,
+.line-status-widget-pulse-ultra-compact,
+.today-widget-pulse-ultra-compact {
+  display: none;
+}
+
+
+/* ── Compact tier: 101–120 px ─────────────────────────────────
+ * Cell height drops below 121 px. Default content too dense to
+ * read; switch to header + footer only. */
+@container piece (max-height: 120px) {
+  .anomalies-widget-pulse-default,
+  .line-status-widget-pulse-default,
+  .today-widget-pulse-default {
+    display: none;
+  }
+
+  .anomalies-widget-pulse-compact,
+  .line-status-widget-pulse-compact,
+  .today-widget-pulse-compact {
+    display: flex;
+  }
+}
+
+
+/* ── Ultra-compact tier: 80–100 px ────────────────────────────
+ * Cell height drops below 101 px. Even the compact (header +
+ * footer) is too tall; switch to single-line dense readout.
+ *
+ * Both rules apply at this size — cascade order resolves: the
+ * (max-height: 100px) rule comes after (max-height: 120px), so
+ * the compact:none here overrides the compact:flex above. */
+@container piece (max-height: 100px) {
+  .anomalies-widget-pulse-compact,
+  .line-status-widget-pulse-compact,
+  .today-widget-pulse-compact {
+    display: none;
+  }
+
+  .anomalies-widget-pulse-ultra-compact,
+  .line-status-widget-pulse-ultra-compact,
+  .today-widget-pulse-ultra-compact {
+    display: flex;
+  }
+}

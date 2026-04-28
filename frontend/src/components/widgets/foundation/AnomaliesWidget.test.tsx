@@ -143,11 +143,14 @@ describe("AnomaliesWidget — Brief variant (default)", () => {
     ).toBeNull()
   })
 
-  it("Brief in pulse_grid compacts to header + footer (no rows)", () => {
-    // DESIGN_LANGUAGE §13.4.1 amendment (Phase W-4a Step 2.D):
-    // Pulse honors grid cell size constraints — Brief in pulse_grid
-    // compacts to header + footer when content density exceeds cell
-    // height. Dashboard surfaces render full Brief with rows.
+  it("Brief in pulse_grid renders three §13.4.1 density tiers with canonical class names", () => {
+    // Phase W-4a Step 6 Commit 2 — supersedes Step 2.D's single-tier
+    // compaction. Pulse-surface Brief opts INTO §13.4.1 density tiers:
+    // three nested density variants (default / compact /
+    // ultra-compact) render in DOM simultaneously; @container query
+    // CSS in pulse-density.css dispatches which one displays at each
+    // cell-height range. jsdom doesn't compute @container matches, so
+    // we assert STRUCTURAL presence + content shape per tier.
     mockData = {
       anomalies: [
         makeAnomaly({ id: "1" }),
@@ -163,25 +166,28 @@ describe("AnomaliesWidget — Brief variant (default)", () => {
       '[data-slot="anomalies-widget"][data-variant="brief"]',
     )
     expect(widget?.getAttribute("data-surface")).toBe("pulse_grid")
-    // Header survives (count + critical breakdown).
-    expect(
-      document.querySelector('[data-slot="anomalies-widget-header"]'),
-    ).toBeInTheDocument()
-    expect(widget?.textContent).toContain("12 critical")
-    expect(widget?.textContent).toContain("264")
-    // Body / rows DO NOT render in compact mode.
-    expect(
-      document.querySelector('[data-slot="anomalies-widget-body"]'),
-    ).toBeNull()
-    expect(
-      document.querySelector('[data-slot="anomalies-widget-rows"]'),
-    ).toBeNull()
-    // Footer renders the navigation affordance with Pulse copy.
-    const footer = document.querySelector(
-      '[data-slot="anomalies-widget-footer"]',
+    // All three density tiers render with canonical class names.
+    const defaultTier = document.querySelector(
+      ".anomalies-widget-pulse-default",
     )
-    expect(footer).toBeInTheDocument()
-    expect(footer?.textContent).toContain("Investigate 264 →")
+    const compactTier = document.querySelector(
+      ".anomalies-widget-pulse-compact",
+    )
+    const ultraTier = document.querySelector(
+      ".anomalies-widget-pulse-ultra-compact",
+    )
+    expect(defaultTier).toBeInTheDocument()
+    expect(compactTier).toBeInTheDocument()
+    expect(ultraTier).toBeInTheDocument()
+    // Default tier contains the full body (rows + count breakdown).
+    expect(defaultTier?.textContent).toContain("12 critical")
+    expect(defaultTier?.querySelector('[data-slot="anomalies-widget-body"]'))
+      .toBeInTheDocument()
+    // Compact tier contains the "Investigate N →" footer copy.
+    expect(compactTier?.textContent).toContain("Investigate 264 →")
+    // Ultra-compact tier renders the single-line dense readout.
+    expect(ultraTier?.textContent).toContain("264 unresolved")
+    expect(ultraTier?.textContent).toContain("12 critical")
   })
 
   it("Brief in dashboard_grid renders full 4-row body (no compaction)", () => {
