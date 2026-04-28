@@ -185,7 +185,7 @@ function SavedViewDeepTablet({ view_id }: VariantProps) {
 export interface SavedViewWidgetProps {
   widgetId?: string
   variant_id?: VariantId
-  surface?: "focus_canvas" | "focus_stack" | "spaces_pin"
+  surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
   config?: Record<string, unknown>
 }
 

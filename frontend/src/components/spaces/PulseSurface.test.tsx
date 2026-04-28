@@ -14,7 +14,7 @@
  *     on intelligence stream pieces
  */
 
-import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import { render, waitFor, fireEvent } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import {
   afterEach,
@@ -53,8 +53,8 @@ vi.mock("@/hooks/usePulseComposition", () => ({
 }))
 
 
-const mockRecordDismiss = vi.fn(async () => {})
-const mockRecordNavigation = vi.fn(async () => {})
+const mockRecordDismiss = vi.fn(async (..._args: unknown[]) => {})
+const mockRecordNavigation = vi.fn(async (..._args: unknown[]) => {})
 vi.mock("@/services/pulse-service", () => ({
   recordDismiss: (...args: unknown[]) => mockRecordDismiss(...args),
   recordNavigation: (...args: unknown[]) => mockRecordNavigation(...args),
@@ -88,7 +88,7 @@ const mockUseOnboardingTouch = vi.fn(() => ({
   dismiss: vi.fn(),
 }))
 vi.mock("@/hooks/useOnboardingTouch", () => ({
-  useOnboardingTouch: (key: string) => mockUseOnboardingTouch(),
+  useOnboardingTouch: (_key: string) => mockUseOnboardingTouch(),
 }))
 
 

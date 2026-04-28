@@ -604,7 +604,7 @@ function RecentActivityDetailCard({
 export interface RecentActivityWidgetProps {
   widgetId?: string
   variant_id?: VariantId
-  surface?: "focus_canvas" | "focus_stack" | "spaces_pin"
+  surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
 }
 
 

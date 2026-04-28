@@ -228,7 +228,7 @@ export interface AncillaryPoolPinProps {
    *  variant_id (sidebar pins always use Glance per §12.2). When
    *  surface is unset OR focus_canvas/focus_stack, variant_id chooses
    *  the rendering path. */
-  surface?: "focus_canvas" | "focus_stack" | "spaces_pin"
+  surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
 }
 
 

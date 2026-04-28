@@ -152,7 +152,7 @@ export function PulsePiece({
   // (entityId, kind); we map kind → route and fire signal +
   // navigate.
   const handleStreamReferenceClick = useCallback(
-    (entityId: string, kind: string) => {
+    (_entityId: string, kind: string) => {
       // V1 anomaly intelligence has no canonical entity-detail
       // route yet (anomalies surface via /agents); Tier 2 routing
       // is post-W-4a. For now, treat all anomaly references as

@@ -21,8 +21,6 @@
  * profile when work_areas not set (D4 fallback).
  */
 
-import { Fragment } from "react"
-
 import { PulsePiece } from "@/components/spaces/PulsePiece"
 import type {
   IntelligenceStream,

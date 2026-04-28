@@ -319,7 +319,7 @@ function VaultScheduleBrief({ data, isLoading, error }: VariantProps) {
 
 function ProductionBriefSection({
   production,
-  navigate,
+  navigate: _navigate,
 }: {
   production: ProductionScheduleData
   navigate: ReturnType<typeof useNavigate>
@@ -377,7 +377,7 @@ function ProductionBriefSection({
 
 function PurchaseBriefSection({
   purchase,
-  navigate,
+  navigate: _navigate,
 }: {
   purchase: PurchaseScheduleData
   navigate: ReturnType<typeof useNavigate>
@@ -444,7 +444,7 @@ function VaultScheduleEmptyState({
   cta,
   ctaTarget,
   variant,
-  date,
+  date: _date,
 }: {
   title: string
   body: string
@@ -599,7 +599,7 @@ function VaultScheduleDetail({ data, isLoading, error }: VariantProps) {
 
 function ProductionDetailSection({
   production,
-  navigate,
+  navigate: _navigate,
 }: {
   production: ProductionScheduleData
   navigate: ReturnType<typeof useNavigate>
@@ -691,7 +691,7 @@ function ProductionDetailSection({
 
 function PurchaseDetailSection({
   purchase,
-  navigate,
+  navigate: _navigate,
 }: {
   purchase: PurchaseScheduleData
   navigate: ReturnType<typeof useNavigate>

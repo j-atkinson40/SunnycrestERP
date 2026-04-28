@@ -9,7 +9,7 @@
  *   • Surface defaulting: variant_id="detail" when missing/glance
  */
 
-import { render, fireEvent } from "@testing-library/react"
+import { render } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 

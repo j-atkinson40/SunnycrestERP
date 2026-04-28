@@ -352,7 +352,7 @@ function ProfileRow({
 export interface OperatorProfileWidgetProps {
   widgetId?: string
   variant_id?: VariantId
-  surface?: "focus_canvas" | "focus_stack" | "spaces_pin"
+  surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
 }
 
 

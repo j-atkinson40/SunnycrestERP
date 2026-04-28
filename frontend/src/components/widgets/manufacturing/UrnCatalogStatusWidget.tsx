@@ -21,7 +21,6 @@
 import { useNavigate } from "react-router-dom"
 import { Package, AlertTriangle, ExternalLink } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { SkeletonLines } from "@/components/ui/skeleton"
 import { useWidgetData } from "../useWidgetData"
 import { cn } from "@/lib/utils"
