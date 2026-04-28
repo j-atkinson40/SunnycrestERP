@@ -204,9 +204,37 @@ def create_saved_view(
     Config's `permissions.owner_user_id` is rewritten to `user.id`
     to enforce ownership from the server side (don't trust client-
     supplied owner fields).
+
+    Pattern A enforcement (Phase W-4a Step 3, Layer 3): rejects
+    creation when the config's `entity_type` isn't compatible with
+    the tenant's vertical per the entity registry's
+    allowed_verticals. Reference: BRIDGEABLE_MASTER §3.25 saved
+    view vertical-scope inheritance amendment. Raises
+    SavedViewError(http_status=400) on incompatibility.
     """
     if not title.strip():
         raise SavedViewError("title is required")
+
+    # Pattern A enforcement: vertical-scope inheritance from data source.
+    from app.models.company import Company
+    from app.services.saved_views import registry
+
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    tenant_vertical = (
+        getattr(company, "vertical", None) if company else None
+    )
+    entity_type = config.query.entity_type
+    if not registry.is_entity_compatible_with_vertical(
+        entity_type, tenant_vertical
+    ):
+        meta = registry.get_entity(entity_type)
+        allowed = meta.allowed_verticals if meta else []
+        raise SavedViewError(
+            f"Cannot create saved view with entity_type={entity_type!r} "
+            f"in {tenant_vertical!r} tenant. "
+            f"Allowed verticals for this entity: {allowed!r}",
+            http_status=400,
+        )
 
     config.permissions.owner_user_id = user.id
 
@@ -268,7 +296,24 @@ def list_saved_views_for_user(
     to plan. For Phase 2 scale (expected ~5-50 saved views per user)
     this is fine. Phase 3+ may migrate to a promoted column if N
     grows.
+
+    Pattern A defense-in-depth (Phase W-4a Step 3, Layer 4): even
+    if a cross-vertical saved view exists in storage (pre-Step-3
+    contamination, or a future bug that bypasses the seed +
+    creation gates), this read filter drops it before returning to
+    the caller. The migration r62 cleans up existing contamination;
+    this filter prevents leak in transit. Reference:
+    BRIDGEABLE_MASTER §3.25 saved view vertical-scope inheritance
+    amendment.
     """
+    from app.models.company import Company
+    from app.services.saved_views import registry as registry_mod
+
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    tenant_vertical = (
+        getattr(company, "vertical", None) if company else None
+    )
+
     q = db.query(VaultItem).filter(
         VaultItem.company_id == user.company_id,
         VaultItem.item_type == "saved_view",
@@ -293,6 +338,19 @@ def list_saved_views_for_user(
             # — log and move on. Malformed rows should never exist
             # in prod, but defensive.
             logger.exception("Skipping malformed saved view %s: %s", row.id, exc)
+            continue
+        # Pattern A: drop cross-vertical instances at read time.
+        if not registry_mod.is_entity_compatible_with_vertical(
+            sv.config.query.entity_type, tenant_vertical
+        ):
+            logger.warning(
+                "saved_views.list: filtered cross-vertical row %s "
+                "(entity_type=%s) from tenant %s vertical=%s",
+                row.id,
+                sv.config.query.entity_type,
+                user.company_id,
+                tenant_vertical,
+            )
             continue
         if _can_user_see(db, user, row, sv.config):
             out.append(sv)

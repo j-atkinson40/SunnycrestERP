@@ -408,11 +408,26 @@ class TestSavedViewSeedDependencies:
         )
 
     def test_cemetery_admin_saved_views_seed(self):
-        """Explicit test for a new 8e combination."""
+        """Explicit test for a Phase 8e combination.
+
+        Phase W-4a Step 3 (Pattern A enforcement) removed the
+        `recent_cases` template (entity_type=fh_case) from this
+        seed combination — fh_case is funeral_home-only per the
+        entity registry's allowed_verticals. Cemeteries' own
+        entity_type (interments) will land here when the cemetery
+        data model solidifies.
+        """
         sv_templates = sv_seed.SEED_TEMPLATES.get(("cemetery", "admin"), [])
         ids = {t.template_id for t in sv_templates}
         assert "outstanding_invoices" in ids
-        assert "recent_cases" in ids
+        # Regression guard: no FH-typed templates here.
+        assert "recent_cases" not in ids
+        for tpl in sv_templates:
+            assert tpl.entity_type != "fh_case", (
+                f"Cemetery/admin seed template {tpl.template_id!r} "
+                f"declares entity_type='fh_case' — cross-vertical "
+                f"contamination per Pattern A."
+            )
 
     def test_fh_accountant_saved_views_seed(self):
         sv_templates = sv_seed.SEED_TEMPLATES.get(

@@ -108,6 +108,23 @@ class EntityTypeMetadata:
     Saved view executor calls this query_builder and adds the
     saved-view filters + sort + limit on top. Never overrides
     tenant isolation.
+
+    `allowed_verticals` declares which tenant verticals this entity
+    is meaningful for (Phase W-4a Step 3, BRIDGEABLE_MASTER §3.25
+    saved view vertical-scope inheritance amendment). Pattern A
+    enforcement uses this to:
+      - Reject seed templates that bind a cross-vertical entity_type
+        to a tenant of incompatible vertical (seed layer).
+      - Reject saved-view creation when the tenant's vertical isn't
+        in the entity's allowed_verticals (creation layer, 400).
+      - Filter out cross-vertical instances at read time
+        (defense-in-depth).
+    Use `["*"]` for entities that genuinely span every vertical
+    (sales_order, invoice, contact, product, document, vault_item,
+    delivery). Use `["funeral_home"]`-style narrow lists for entities
+    that only one vertical can produce or consume (fh_case is
+    FH-only; future cremation / interment entities belong to
+    crematory / cemetery respectively).
     """
 
     entity_type: str       # "fh_case", "sales_order", ...
@@ -126,6 +143,12 @@ class EntityTypeMetadata:
     # Columns shown in "table" presentation mode when the config's
     # table_config.columns is empty. Ordered.
     default_columns: list[str] = field(default_factory=list)
+    # Phase W-4a Step 3: vertical-scope inheritance per
+    # BRIDGEABLE_MASTER §3.25 amendment. ["*"] = cross-vertical;
+    # ["funeral_home"]-style = single-vertical. Default ["*"] for
+    # backward compat — explicit entity-by-entity declarations live
+    # in _seed_default_entities below.
+    allowed_verticals: list[str] = field(default_factory=lambda: ["*"])
 
     def field_by_name(self, field_name: str) -> FieldMetadata | None:
         return next(
@@ -142,6 +165,7 @@ class EntityTypeMetadata:
             "available_fields": [f.to_dict() for f in self.available_fields],
             "default_sort": list(self.default_sort),
             "default_columns": list(self.default_columns),
+            "allowed_verticals": list(self.allowed_verticals),
         }
 
 
@@ -170,6 +194,37 @@ def get_entity(entity_type: str) -> EntityTypeMetadata | None:
 def list_entities() -> list[EntityTypeMetadata]:
     _ensure_seeded()
     return sorted(_registry.values(), key=lambda e: e.display_name)
+
+
+def is_entity_compatible_with_vertical(
+    entity_type: str,
+    vertical: str | None,
+) -> bool:
+    """Pattern A check (Phase W-4a Step 3, BRIDGEABLE_MASTER §3.25):
+    is this entity_type meaningful for a tenant of the given
+    vertical?
+
+    Returns True when the entity is cross-vertical (`["*"]` allowed
+    list) or when the tenant's vertical is explicitly in the allowed
+    list. Returns False otherwise.
+
+    Unknown entity_types return False (defensive — better to reject
+    than silently allow). Callers should treat False as "block this
+    saved-view from being seeded / created / read in this tenant."
+
+    `vertical=None` returns False — a tenant without a known
+    vertical can't accept any vertical-scoped entity. Cross-vertical
+    entities still need a known vertical for context (the calling
+    tenant must be classified).
+    """
+    meta = get_entity(entity_type)
+    if meta is None:
+        return False
+    if not vertical:
+        return False
+    if "*" in meta.allowed_verticals:
+        return True
+    return vertical in meta.allowed_verticals
 
 
 def reset_registry() -> None:
@@ -250,6 +305,10 @@ def _seed_default_entities() -> None:
         ],
         default_sort=[{"field": "updated_at", "direction": "desc"}],
         default_columns=["case_number", "deceased_last_name", "status", "service_date"],
+        # Single-vertical: only funeral homes have FH cases. The
+        # canonical example for Pattern A enforcement
+        # (BRIDGEABLE_MASTER §3.25 amendment).
+        allowed_verticals=["funeral_home"],
     ))
 
     # sales_order ────────────────────────────────────────────────────
@@ -295,6 +354,8 @@ def _seed_default_entities() -> None:
         ],
         default_sort=[{"field": "modified_at", "direction": "desc"}],
         default_columns=["number", "status", "ship_to_name", "total", "order_date"],
+        # Cross-vertical: every tenant has sales orders.
+        allowed_verticals=["*"],
     ))
 
     # invoice ───────────────────────────────────────────────────────
@@ -342,6 +403,8 @@ def _seed_default_entities() -> None:
         ],
         default_sort=[{"field": "invoice_date", "direction": "desc"}],
         default_columns=["number", "status", "total", "invoice_date", "due_date"],
+        # Cross-vertical: every tenant invoices.
+        allowed_verticals=["*"],
     ))
 
     # contact ───────────────────────────────────────────────────────
@@ -380,6 +443,8 @@ def _seed_default_entities() -> None:
         ],
         default_sort=[{"field": "updated_at", "direction": "desc"}],
         default_columns=["name", "title", "email"],
+        # Cross-vertical: every tenant's CRM has contacts.
+        allowed_verticals=["*"],
     ))
 
     # product ───────────────────────────────────────────────────────
@@ -414,6 +479,9 @@ def _seed_default_entities() -> None:
         ],
         default_sort=[{"field": "name", "direction": "asc"}],
         default_columns=["name", "sku"],
+        # Cross-vertical: every tenant has products (material catalogs
+        # vary by vertical but all have a product table).
+        allowed_verticals=["*"],
     ))
 
     # document ──────────────────────────────────────────────────────
@@ -450,6 +518,9 @@ def _seed_default_entities() -> None:
         ],
         default_sort=[{"field": "updated_at", "direction": "desc"}],
         default_columns=["title", "document_type", "status", "updated_at"],
+        # Cross-vertical: documents (V-1d canonical Document model)
+        # are platform infrastructure shared across every vertical.
+        allowed_verticals=["*"],
     ))
 
     # vault_item ────────────────────────────────────────────────────
@@ -510,6 +581,11 @@ def _seed_default_entities() -> None:
         ],
         default_sort=[{"field": "updated_at", "direction": "desc"}],
         default_columns=["title", "item_type", "status", "updated_at"],
+        # Cross-vertical: Vault is platform infrastructure (V-1c+).
+        # Every tenant has a vault and vault_items spanning the
+        # platform's polymorphic surface (events, communications,
+        # reminders, etc.).
+        allowed_verticals=["*"],
     ))
 
     # delivery ──────────────────────────────────────────────────────
@@ -611,6 +687,14 @@ def _seed_default_entities() -> None:
             "hole_dug_status",
             "primary_assignee_id",
         ],
+        # Cross-vertical: the Delivery model serves any vertical that
+        # ships physical artifacts. Today the surfaced fields lean
+        # mfg (hole_dug_status, scheduling_type kanban/ancillary/
+        # direct_ship); future per-vertical query builders may filter
+        # the field set further. Pattern A only constrains
+        # entity_type, not which fields render — fine to keep this
+        # cross-vertical at the entity level.
+        allowed_verticals=["*"],
     ))
 
 

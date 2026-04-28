@@ -41,6 +41,7 @@ from app.models.role import Role
 from app.models.user import User
 from app.models.vault_item import VaultItem
 from app.services.saved_views import crud as crud_mod
+from app.services.saved_views import registry
 from app.services.saved_views.types import (
     CalendarConfig,
     CardConfig,
@@ -342,6 +343,16 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
     # ────────────────────────────────────────────────────────────────
 
     # ── Cemetery — admin ──
+    # Cross-vertical contamination cleanup (Phase W-4a Step 3, Layer 2):
+    # `recent_cases` (entity_type=fh_case) was seeded here when Phase
+    # 8e templates copy-pasted FH-style seeds into cemetery/crematory
+    # without re-evaluating entity_type. fh_case is FH-only per the
+    # Pattern A entity registry. The seed-layer enforcement hook
+    # (seed_for_user) skips it at runtime even if it stays here, but
+    # removing it is defense-in-depth: seeds shouldn't even contain
+    # cross-vertical entries. Cemeteries' equivalent (interments) gets
+    # a dedicated entity_type when the cemetery vertical's data model
+    # solidifies — a stub for future seeding.
     ("cemetery", "admin"): [
         SeedTemplate(
             template_id="outstanding_invoices",
@@ -356,17 +367,6 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
                 ],
                 sort=[Sort(field="due_date", direction="asc")],
                 columns=["number", "status", "total", "due_date"],
-                role_slug=role,
-            ),
-        ),
-        SeedTemplate(
-            template_id="recent_cases",
-            title="Recent cases",
-            description="Cases updated in the last 30 days.",
-            entity_type="fh_case",
-            config_factory=lambda role: _basic_list(
-                entity_type="fh_case",
-                sort=[Sort(field="updated_at", direction="desc")],
                 role_slug=role,
             ),
         ),
@@ -393,6 +393,11 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
     ],
 
     # ── Crematory — admin ──
+    # Cross-vertical contamination cleanup (Phase W-4a Step 3, Layer
+    # 2): same `recent_cases` (fh_case) leak as cemetery/admin above.
+    # Removed for the same reason. Crematories' equivalent (cremation
+    # records) gets a dedicated entity_type when the crematory data
+    # model solidifies.
     ("crematory", "admin"): [
         SeedTemplate(
             template_id="outstanding_invoices",
@@ -407,17 +412,6 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
                 ],
                 sort=[Sort(field="due_date", direction="asc")],
                 columns=["number", "status", "total", "due_date"],
-                role_slug=role,
-            ),
-        ),
-        SeedTemplate(
-            template_id="recent_cases",
-            title="Recent cases",
-            description="Cases updated in the last 30 days.",
-            entity_type="fh_case",
-            config_factory=lambda role: _basic_list(
-                entity_type="fh_case",
-                sort=[Sort(field="updated_at", direction="desc")],
                 role_slug=role,
             ),
         ),
@@ -667,6 +661,25 @@ def seed_for_user(
     for role_slug in new_roles:
         templates = SEED_TEMPLATES.get((vertical, role_slug), [])
         for template in templates:
+            # Pattern A enforcement (Phase W-4a Step 3, Layer 2):
+            # skip seeds whose entity_type is incompatible with the
+            # tenant's vertical. Defense at the seed layer means even
+            # if `_SEED_TEMPLATES` accidentally accumulates a cross-
+            # vertical entry (copy-paste between (vertical, role)
+            # blocks), the leak doesn't reach the tenant's vault_items.
+            # Reference: BRIDGEABLE_MASTER §3.25 saved view vertical-
+            # scope inheritance amendment.
+            if not registry.is_entity_compatible_with_vertical(
+                template.entity_type, vertical
+            ):
+                logger.warning(
+                    "saved_views.seed: skipped cross-vertical seed "
+                    "entity_type=%s for vertical=%s template=%s",
+                    template.entity_type,
+                    vertical,
+                    template.template_id,
+                )
+                continue
             if _already_seeded(db, user, role_slug, template.template_id):
                 # Defense in depth — preferences array said we
                 # haven't seeded this role, but a VaultItem with the

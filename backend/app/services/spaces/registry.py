@@ -332,15 +332,18 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             accent="industrial",
             is_default=True,
             default_home_route="/interments",
+            # Cross-vertical contamination cleanup (Phase W-4a Step 3):
+            # the `saved_view_seed:admin:recent_cases` pin previously
+            # here pointed at an FH-typed saved view (entity_type=
+            # fh_case) that no longer seeds in the cemetery vertical
+            # (Pattern A enforcement). Pin removed; cemeteries' own
+            # entity_type (interments) will land here when the data
+            # model solidifies.
             pins=[
                 PinSeed(pin_type="triage_queue", target="task_triage"),
                 PinSeed(pin_type="nav_item", target="/interments"),
                 PinSeed(pin_type="nav_item", target="/plots"),
                 PinSeed(pin_type="nav_item", target="/deeds"),
-                PinSeed(
-                    pin_type="saved_view",
-                    target="saved_view_seed:admin:recent_cases",
-                ),
             ],
         ),
         SpaceTemplate(
@@ -415,15 +418,18 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SpaceTemplate]] = {
             accent="industrial",
             is_default=True,
             default_home_route="/crematory/schedule",
+            # Cross-vertical contamination cleanup (Phase W-4a Step 3):
+            # the `saved_view_seed:admin:recent_cases` pin previously
+            # here pointed at an FH-typed saved view (entity_type=
+            # fh_case) that no longer seeds in the crematory vertical
+            # (Pattern A enforcement). Pin removed; crematories' own
+            # entity_type (cremation records) will land here when the
+            # data model solidifies.
             pins=[
                 PinSeed(pin_type="triage_queue", target="task_triage"),
                 PinSeed(pin_type="nav_item", target="/crematory/cases"),
                 PinSeed(pin_type="nav_item", target="/crematory/schedule"),
                 PinSeed(pin_type="nav_item", target="/crematory/custody"),
-                PinSeed(
-                    pin_type="saved_view",
-                    target="saved_view_seed:admin:recent_cases",
-                ),
             ],
         ),
         SpaceTemplate(

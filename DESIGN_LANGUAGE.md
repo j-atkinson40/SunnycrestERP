@@ -3983,6 +3983,16 @@ Layout properties:
 
 Pieces don't snap to fixed grid columns the way My Stuff/Custom Spaces do. Pieces flow into available space sized to their priority + content needs.
 
+**Viewport-dependent column collapse (Phase W-4a Step 2/3 amendment).** Pulse tetris layout uses CSS Grid with `grid-cols-[repeat(auto-fit,minmax(160px,1fr))]`. Smaller viewports collapse to fewer columns automatically:
+
+- < 360px: 1 column (mobile stacked)
+- 360–720px: 2–4 columns (tablet/narrow)
+- 720px+: 6 columns (desktop)
+
+This viewport-dependent column collapse is **intentional, not regression**. Pieces flow naturally across available width. Mobile users see Pulse as vertical scroll; desktop users see Pulse as composed surface. Both are correct presentations for their context.
+
+`grid-flow-row-dense` (added Phase W-4a Step 2.C) lets smaller pieces (e.g. `today` Glance 1×1) backfill empty cells left by larger pieces' spans rather than leaving visible gaps. The composition engine still emits pieces in priority order; dense flow only changes which empty cell each smaller piece lands in, not the order they're placed.
+
 #### 13.3.2 Layer Visual Demarcation
 
 Four layers compose Pulse content. Visual demarcation between layers is subtle:
@@ -3993,6 +4003,21 @@ Four layers compose Pulse content. Visual demarcation between layers is subtle:
 - **Activity layer** ambient at periphery (smaller pieces, lower visual weight)
 
 No hard section dividers between layers. Brass-thread (1px aged-brass divider) marks Operational layer boundary subtly. Other layers blend through positioning + sizing rather than chrome.
+
+#### 13.3.2.1 Workspace-core empty-state shape (Phase W-4a Step 2/3 amendment)
+
+Workspace-core widgets per §12.6 preserve their workspace shape in empty states. The kanban shape, calendar shape, or board shape **IS the cognitive affordance** — operators identify the widget by structural shape, not by data presence. Generic empty-state messages (centered icon + body text + CTA) are for non-workspace-core widgets only.
+
+**Distinction:**
+
+- **Data-empty** (workspace exists, no data today): preserve shape. The kanban frame renders with section eyebrows and dashed-border lane placeholders. Header + footer survive. The user reads the widget as "scheduling workspace, currently empty" — not as "what happened to my widget?"
+- **Structurally-empty** (workspace not enabled for this tenant — vault product line not active, urn extension not installed, etc.): use a centered "Vault not enabled" message with an enable-workspace CTA. The product line is absent; the workspace shape is moot.
+
+**Reference**: `vault_schedule` Detail variant.
+- Data-empty: `data-empty="true"` attribute + section eyebrow ("Production · Driver lanes / 0 total") + dashed-border lane placeholder ("No deliveries scheduled — driver lanes ready") + `data-slot="vault-schedule-empty-section"` + `data-slot="vault-schedule-empty-lane-placeholder"` survive. "Open in scheduling Focus →" footer link survives.
+- Structurally-empty: centered icon + "Vault not enabled" title + "Activate the vault product line to see scheduled deliveries here." + "Manage product lines →" CTA. `data-slot="vault-schedule-empty-cta"` distinguishes the centered branch.
+
+Future workspace-core widgets (per-line schedule widgets in W-3d, FH arrangement_pipeline in W-3c) follow the same shape-preserving empty-state pattern.
 
 #### 13.3.3 Multi-stream Within Layers
 
@@ -4011,6 +4036,14 @@ Render with Pattern 2 chrome (locked in §12.5) at variant-determined size:
 - Deep (3×2 or 4×2) — canvas-mounted pieces, full content rendering
 
 Variant chosen by Pulse intelligence based on priority + viewport availability.
+
+**Surface-specific widget compaction (Phase W-4a Step 2/3 amendment).** Pinable widgets may have surface-specific compact rendering. Pulse (`pulse_grid`) honors grid cell size constraints — Brief variant in Pulse compacts to header + footer when content density exceeds cell height. Dashboard surfaces (`dashboard_grid`) render full Brief content with rows.
+
+**Reference**: `anomalies` widget Brief variant.
+- In `pulse_grid` (2×1 = ~80px row): renders count + critical breakdown + count badge in the header, "Investigate N →" navigation footer. Body / rows DO NOT render. `data-surface="pulse_grid"` marks the rendering mode.
+- In `dashboard_grid` (~340px intrinsic): renders full 4-row anomaly list with per-row acknowledge action + "View all N →" footer.
+
+**Pattern**: when a widget renderer receives `surface={surface}` prop and intrinsic Brief content exceeds the grid cell vertical budget, switch to compact rendering. Compact preserves header + footer (the navigation affordance) while dropping the rich content body. The user gets the COUNT in Pulse and the FULL LIST when they click through to the dedicated page or open the widget on a dashboard surface.
 
 #### 13.4.2 Intelligence Stream Pieces
 

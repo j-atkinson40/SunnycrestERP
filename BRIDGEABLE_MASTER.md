@@ -3819,6 +3819,43 @@ Narrative: "Same widget library. Vertical-aware visibility. Variant-aware densit
 
 The strategic compounding payoff: every subsequent surface build (Pulse, expanded Spaces, peek panel content composition, hub dashboards migration) becomes bounded application of the locked widget library. Per-surface bespoke widget conventions stop accreting. Each new primitive (Vault, Intelligence, future Communications, future Vision) has a clear "what's the widget representation?" question with an answer; the catalog grows along the platform's primitive expansion.
 
+### 3.25.x Saved-view vertical-scope inheritance (Phase W-4a Step 3 amendment, April 2026)
+
+**Canon.** When a pinable widget's content is config-driven (e.g., `saved_view` with `view_id` config; future `dashboard` widget with `dashboard_id` config; future `report` widget with `report_id` config), the rendered content's vertical-scope is inherited from the **config's data source**, not from the widget definition.
+
+**Why the distinction matters.** The `saved_view` widget itself is `required_vertical: ["*"]` — a cross-vertical *surface* for any saved view. The saved view INSTANCE has implicit vertical-scope based on its data source: a saved view querying the `fh_cases` table is implicitly funeral_home; a saved view querying `vault_items` is implicitly cross-vertical (Vault is platform infrastructure); a saved view querying `cremations` (when that entity ships) would be implicitly crematory.
+
+Without inheritance enforcement, a manufacturing tenant could end up with a saved view querying `fh_cases` — the widget itself passes the 5-axis filter (`required_vertical: ["*"]`), but the underlying query has no rows for the tenant and conceptually doesn't belong. This is cross-vertical contamination at the INSTANCE level.
+
+**Pattern A — vertical-scope inheritance from data source (canonical).** Each `entity_type` in the saved-view registry declares `allowed_verticals: list[str]` — a closed list of verticals that meaningfully consume this entity, or `["*"]` for genuinely cross-vertical entities. As of Phase W-4a Step 3, the registry classifications are:
+
+| entity_type | allowed_verticals | rationale |
+|---|---|---|
+| `fh_case` | `["funeral_home"]` | FH cases are FH-only |
+| `sales_order` | `["*"]` | Every vertical sells |
+| `invoice` | `["*"]` | Every vertical invoices |
+| `contact` | `["*"]` | CRM contacts are cross-vertical |
+| `product` | `["*"]` | Every tenant has products |
+| `document` | `["*"]` | V-1d documents are platform infrastructure |
+| `vault_item` | `["*"]` | Vault is platform infrastructure |
+| `delivery` | `["*"]` | Delivery model is cross-vertical (fields lean mfg, but the model spans verticals) |
+
+Future single-vertical entities (cremations, interments, plot_reservations, etc.) declare narrow `allowed_verticals` lists when they ship.
+
+**Three enforcement layers (defense in depth).** A saved view has to pass every layer to be visible to a user; failing any layer drops the instance:
+
+1. **Seed layer** (`saved_views/seed.py::seed_for_user`): cross-vertical `entity_type` rejected at seed time. Even if `_SEED_TEMPLATES` accidentally accumulates a cross-vertical entry from copy-paste between (vertical, role) blocks, the leak doesn't reach the tenant's vault_items. Logs a warning so the contamination is visible in operator logs.
+2. **Creation layer** (`saved_views/crud.py::create_saved_view`): rejects cross-vertical creation with HTTP 400. The error message identifies the offending `entity_type` + `tenant.vertical` + the entity's allowed_verticals so the frontend can render a useful response.
+3. **Read/render layer** (`saved_views/crud.py::list_saved_views_for_user`): defense-in-depth filter drops cross-vertical-scoped instances at read time. Even if pre-existing data slipped through earlier layers (Phase W-4a Step 3 inherited 75 contaminated rows from pre-fix seeding) OR a future bug bypasses creation, the read path stays clean. Logs a warning when the filter fires so contamination is observable.
+
+**Migration r62** (`backend/alembic/versions/r62_cleanup_cross_vertical_saved_views.py`) cleans up pre-Step-3 contamination from existing tenants' `vault_items`. Idempotent — running twice deletes 0 rows the second time. Down-migration is a no-op (restoring contamination would re-introduce the bug). The migration's `_PROHIBITED_PAIRS` list mirrors the registry's single-vertical entities — a regression test (`test_saved_views_vertical_scope.py::test_prohibited_pairs_match_registry_single_vertical_entities`) fails loudly if someone adds a single-vertical entity to the registry without updating the migration.
+
+**Cross-tenant saved views (Mutual data foundation per §5.2.4) are explicit cross-tenant scope, not cross-vertical leak.** A saved view shared from a manufacturing tenant to a cemetery tenant via the `DocumentShare` / `PlatformTenantRelationship` mechanism flows through different code paths — the cross-tenant share grants access to the original data + view config; it doesn't change the entity_type. If the entity_type is cross-vertical (sales_order, invoice, etc.), the share works normally. If the entity_type is single-vertical (fh_case shared from FH to mfg), the receiving tenant's read filter drops the view because their vertical isn't in the entity's allowed_verticals. This is correct: even with explicit cross-tenant consent, you can't share a query the recipient can't execute.
+
+**Forward compatibility.** The same Pattern A applies to future config-driven widgets — `dashboard` widget (when it ships) inherits vertical-scope from its `dashboard_id`'s data sources; `report` widget inherits from its `report_id`'s queried entities. Adding a new config-driven widget = adding a `is_config_compatible_with_vertical(config)` check at seed/create/read layers, mirroring `saved_views.registry.is_entity_compatible_with_vertical`. The pattern is the platform-wide rule, not a saved-view-specific carve-out.
+
+**Reference**: `backend/app/services/saved_views/registry.py` (`allowed_verticals` field + `is_entity_compatible_with_vertical` helper), `seed.py::seed_for_user` (Layer 2), `crud.py::create_saved_view` (Layer 3), `crud.py::list_saved_views_for_user` (Layer 4), `alembic/versions/r62_cleanup_cross_vertical_saved_views.py` (cleanup migration), `tests/test_saved_views_vertical_scope.py` (23 enforcement tests across 5 layer-mirroring test classes).
+
 ## 3.26 Spaces and Pulse Architecture
 
 ### Overview
