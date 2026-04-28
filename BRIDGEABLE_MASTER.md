@@ -3511,22 +3511,181 @@ When a product line is activated for a tenant, the following become visible/acti
 - Product-specific quoting templates and extraction vocabularies
 - Product-specific compliance tracking
 - Product-specific AI extraction vocabulary in the intelligence layer
+- Product-specific widgets (per [DESIGN_LANGUAGE.md §12.4](DESIGN_LANGUAGE.md) 5-axis filter, axis 5 = `required_product_line`)
 
 **Current product lines (manufacturing vertical):**
-- Funeral Service — active by default for all manufacturing tenants
-- Urn Sales — activation toggle
-- Wastewater Treatment — activation toggle
-- Redi-Rock — activation toggle
-- Rosetta Hardscapes — activation toggle
-- NPCA Audit Prep — auto-activated when npca_certification_status = "certified"
+- **Vault** — auto-seeded baseline for every manufacturing tenant; not extension-gated
+- **Urn Sales** — activation via `urn_sales` extension
+- **Wastewater Treatment** — activation via `wastewater` extension
+- **Redi-Rock** — activation via `redi_rock` extension
+- **Rosetta Hardscapes** — activation via `rosetta` extension
+- **NPCA Audit Prep** — feature extension, auto-activated when `npca_certification_status = "certified"`
 
 **Architectural principle:**
 Adding a new product line requires:
 1. Define vault schema — SKU structure, quote fields, order fields, delivery requirements specific to that product
 2. Build custom UI surfaces — order entry, quote configuration, invoice template, delivery scheduling view, any specialty tools (e.g. wall sketcher for Redi-Rock, drawing upload for wastewater)
-3. Configure activation toggle
+3. Build per-line widgets (e.g. `redi_rock_schedule`, `wastewater_schedule`)
+4. Configure activation toggle
 
 The underlying ordering, quoting, invoicing, delivery, AR, accounting, compliance, and intelligence systems are NOT rebuilt per product line. They are inherited automatically. Every improvement to the core platform benefits every product line simultaneously.
+
+### 5.2.1 Extension vs. Product Line — the canonical distinction
+
+**Extension = how a line gets installed (or not — vault is built-in). Product line = the operational reality once installed.**
+
+These are two related but distinct concepts. Pre-canon they were conflated; this confusion produced asymmetries (vault as implicit baseline, urn/wastewater/redi-rock as extension-gated lines, all four behaving as "product lines" in operational reality but treated differently in the data model).
+
+**Extension** is a feature-unlock + setup-wizard surface. It answers: *Is this capability available to this tenant?* Backed by `extension_definitions` (catalog) + `tenant_extensions` (per-tenant activation). Extensions can be product lines (`urn_sales`, `wastewater`, `redi_rock`, `rosetta`) OR purely feature extensions (`npca_audit_prep`, `funeral_kanban_scheduler`).
+
+**Product line** is the operational reality of a tenant manufacturing or selling a category of products. It answers: *What does this tenant actually do, and how do they do it?* Backed by `tenant_product_lines` (per-tenant operational record). A product line carries its own **operating mode**, configuration, cross-tenant relationships, and widget set.
+
+**The bridge:** Installing a product-line extension auto-creates the corresponding `TenantProductLine` row. But product lines also exist independent of extensions — vault auto-seeds for every manufacturing tenant without any extension activation. Some product lines arrive via extension; vault arrives by virtue of the manufacturing vertical itself. Either way, the operational record lives in the same primitive.
+
+This canonical distinction lets a future Sonnet session, reading the platform docs, understand: extensions are the *front door* for installing capabilities; product lines are the *operational truth* of what the tenant actually runs.
+
+### 5.2.2 Per-Line Operating Mode Model
+
+A Wilbert licensee may operate multiple product lines simultaneously, **each in a different mode**. Operating mode is therefore a **per-line** attribute, not a tenant-level field.
+
+Concrete example: a Wilbert licensee in upstate New York might run:
+- **Vault**: production mode — they pour their own burial vaults
+- **Redi-Rock**: production mode — they pour their own retaining wall blocks
+- **Urn Sales**: purchase mode — they buy urns from Wilbert directly (drop-ship)
+- **Wastewater**: not activated
+
+A different licensee in a less dense market might run:
+- **Vault**: purchase mode — they buy from a neighbor licensee who has the molds + crew
+- **Urn Sales**: purchase mode — same as above
+- **Redi-Rock**: production mode — they pour their own walls
+
+**Operating mode values:**
+
+| Mode | Meaning |
+|---|---|
+| `production` | The tenant manufactures the line in-house. Pour calendar, work orders, production log entries, mix designs, mold scheduling all relevant. |
+| `purchase` | The tenant buys finished products from another licensee or supplier. PO tracking, incoming delivery scheduling, supplier inventory visibility (under consent) all relevant. |
+| `hybrid` | The tenant produces some products in the line, purchases others (e.g., pours standard vault types but buys cremation vaults from a neighbor). Both production and purchase paths active simultaneously. |
+
+**Where operating mode lives:**
+
+`TenantProductLine.config["operating_mode"]` — JSONB field on the per-tenant line record. Mode-aware features read this value to determine which surfaces, widgets, and workflows to render.
+
+**Anti-pattern (canonicalize away from):** `Company.vault_fulfillment_mode` is a pre-canon tenant-level mode field that worked for Sunnycrest (vault is their only line) but breaks for any multi-line tenant. Flagged for deprecation in a post-September hygiene session; per-line storage in `TenantProductLine.config` is the canonical replacement. Migration: copy each tenant's `Company.vault_fulfillment_mode` into the corresponding `TenantProductLine(line_key="vault").config["operating_mode"]`, then drop the column.
+
+**Implications for the platform:**
+
+- **Widget catalog**: per-line widgets (`vault_schedule`, `redi_rock_schedule`, `wastewater_schedule`) are gated by line activation (axis 5 of the 5-axis filter) and **mode-aware in their rendering**. A `vault_schedule` widget on a production-mode line renders the pour calendar; on a purchase-mode line, it renders the incoming PO calendar; on a hybrid-mode line, it renders both in unified composition. Same widget, different content per mode.
+- **Cross-line aggregator**: `line_status` widget (replaces the implicit vault-only "production status" assumption) shows per-line operational health across whatever modes the tenant runs. Production tenant sees pour status; purchase tenant sees incoming-supply status; hybrid tenant sees both.
+- **Vault-as-foundation**: per-line config + mode + relationships all flow through VaultItems where appropriate (delivery events, inventory transactions, cross-tenant share rows).
+- **Vertical scoping**: manufacturing vertical contains multiple product lines; the vertical filter (axis 4) operates above the product line filter (axis 5). A widget can be scoped to "manufacturing vertical AND urn_sales line" — both axes must pass.
+
+### 5.2.3 Cross-Tenant Purchase Relationships
+
+A tenant operating a product line in **purchase mode** has a supplier — typically another Wilbert licensee in their region, sometimes Wilbert itself. The platform tracks this as a first-class relationship: cross-tenant data sharing under consent, visible to both parties.
+
+**The relationship registry:**
+
+`PlatformTenantRelationship` is the canonical bidirectional consent record. Two tenants connect; either can initiate; both must accept. Once active, the relationship enables:
+- Document sharing (Phase D-6 — `document_shares`)
+- Cross-tenant transfers (`licensee_transfers` — formal cross-licensee transfer model with billing chain)
+- Inter-licensee pricing (`inter_licensee_price_lists` — supplier publishes pricing visible to connected licensees)
+- Cross-tenant order placement (`cross_tenant_vault_service` — FH→Mfr vault orders today; generalizes to Mfr→Mfr in purchase mode)
+
+**The data primitives are already built.** What ships post-September is the **purchase-mode UX layer** that turns these primitives into a coherent buyer experience: "browse my supplier's available inventory," "place an order against the supplier's price list," "track my POs against incoming deliveries," "reconcile my AP against the supplier's billing."
+
+**For September:** purchase-mode rendering is a demo-functional stub. The `vault_schedule` widget reads `operating_mode` and renders incoming POs (using existing `licensee_transfers` data) instead of pour calendar (using existing `work_orders` / `production_log` data). The architectural promise lands September; the full B2B marketplace UX is post-September scope.
+
+**Consent model:**
+- Supplier licensee opts into pricing visibility (configures `inter_licensee_price_lists.visible_to_all_licensees` or per-tenant grants)
+- Customer licensee opts into purchase relationship (the `PlatformTenantRelationship` activation)
+- Inventory visibility (a planned cross-tenant feature, not yet built) requires a separate explicit grant — no implicit data leakage
+
+### 5.2.4 The Mutual Connection — purchase relationships ARE the underwriting foundation
+
+**Strategic insight: the network effects building (licensees sharing inventory + orders + relationships through Bridgeable) ARE the Bridgeable Mutual underwriting foundation. Same infrastructure, two strategic outcomes.**
+
+[Bridgeable Mutual](#) — the captive insurance arm referenced in §1.7 (The Data Advantage — The GEICO Model) and §1.8–1.13 (Financial Services & Network Intelligence) — needs cross-tenant data for risk pricing. Specifically:
+
+- **Delivery reliability patterns** — PO → delivery time, on-time %, exception frequency. Generated by every cross-tenant transfer in `licensee_transfers`.
+- **Payment behavior** — cross-tenant statement aging, days-to-pay, dispute frequency. Generated by every cross-tenant invoice in the existing `cross_tenant_statement_service`.
+- **Volume + frequency** — transaction history depth, line-item composition, seasonality. Visible in the union of every cross-tenant order, payment, and transfer.
+- **Counterparty diversity** — how connected is this tenant in the network? How many active supplier + customer relationships? Generated by `PlatformTenantRelationship` density.
+- **Operational mode signals** — does this tenant actually pour vaults, or do they purchase? Production-mode tenants carry different risk profiles than purchase-mode tenants. `TenantProductLine.config["operating_mode"]` is itself a risk-relevant signal.
+
+**Why the connection matters for canon:**
+
+Without this canonical statement, a future Sonnet session looking at "build cross-tenant purchase relationship UX" might treat it as an isolated B2B marketplace concern. With this canon, the same session understands: this work compounds toward Mutual. Every purchase relationship ships data into the same consent registry that Mutual will read from when it ships post-September.
+
+**The infrastructure connection:**
+
+Both depend on the same `PlatformTenantRelationship` consent registry. Both flow data through the same VaultItem + cross-tenant share primitives. Both rely on the same per-line operational truth (operating_mode, line activation state, transaction history) for their respective decisions (UX in the case of purchase relationships; underwriting in the case of Mutual).
+
+**Strategic moat captured:**
+
+A competitor building a B2B marketplace for vault manufacturers has a vertical SaaS product. A competitor building a captive insurer has an insurance company with no data advantage. **A competitor building both — without the same shared substrate — has two unrelated products with no compounding value.** Bridgeable's path is one substrate that compounds toward both, with each strengthening the other:
+
+- More purchase relationships → more cross-tenant transaction data → better Mutual underwriting → lower premiums for connected licensees → more reason to deepen network connection → more purchase relationships.
+
+This is the GEICO model (§1.7) applied to physical-economy B2B. The network IS the data. The data IS the moat.
+
+**See also:**
+- §1.7 The Data Advantage — The GEICO Model (the parent thesis)
+- §1.8–1.13 Financial Services & Network Intelligence (Mutual roadmap)
+- §3.23 The Full Cross-Tenant Feature Landscape (cross-tenant feature taxonomy; purchase relationships sit in "medium-term cross-tenant inventory" + "cross-tenant financial records" categories)
+- §3.24 Bridgeable Vault V-1 Roll-Up (Vault-as-foundation that holds the cross-tenant data)
+- §3.25 Widget Library Architecture (5-axis filter incorporating product line scoping)
+- [PLATFORM_ARCHITECTURE.md §9.3](PLATFORM_ARCHITECTURE.md) (5-axis filter mechanics)
+
+### 5.2.5 SalesOrder vs Delivery — distinct concerns (canonical, established 2026-04-27)
+
+**Sale (SalesOrder) and delivery (Delivery) are distinct concerns. SalesOrder is the commercial transaction unit; Delivery is the logistics work unit. The kanban + every scheduling widget (vault_schedule, line_status, today widget, ancillary pool) consumes Delivery rows; the SalesOrder is enrichment context, not the source of truth for scheduling.**
+
+**Canonical articulation (load-bearing for future Sonnet sessions):**
+
+- **SalesOrder = "what was sold."** Commercial transaction unit. Owns: line items, customer, financial totals, invoicing, billing. State machine: `draft → confirmed → processing → delivered → completed`. The commercial source of truth.
+- **Delivery = "how it's being delivered."** Logistics work unit. Owns: driver assignment (`primary_assignee_id`), schedule date, route, status, hole-dug status, ancillary attachment. State machine: `pending → scheduled → in_transit → arrived → setup → completed`. The logistics source of truth.
+
+**Each item type is sold independently. Ancillaries are NOT line items or sub-orders.**
+
+A funeral home customer ordering a vault, an urn, and a cremation tray creates **three SalesOrders** (one per item type), each with its own commercial lifecycle, own invoice, own customer relationship. Each SalesOrder produces at least one Delivery work unit; sometimes multiple.
+
+**The ancillary `attached_to_delivery_id` relationship is logistics-only.** When an urn Delivery is "attached" to a vault Delivery, it means the two Delivery work units ride the same truck. The two SalesOrders remain entirely independent commercially — different invoices, different fulfillment status, separate detach without commercial implication. The attached three-state model:
+
+| State | `attached_to_delivery_id` | `primary_assignee_id` | Semantics |
+|---|---|---|---|
+| Pool | NULL | NULL | Ancillary SalesOrder + Delivery exist; awaiting routing decision |
+| Standalone | NULL | set | Ancillary Delivery assigned own driver run |
+| Attached | set (parent vault Delivery) | inherited from parent | Logistics ride-along; separate commerce |
+
+**Some Deliveries don't originate from SalesOrders at all:**
+- Direct-ship from supplier (Wilbert drop-ship orders create Delivery rows for tracking; the commercial relationship is supplier-to-funeral-home, not through this tenant's SalesOrder)
+- Purchase-mode receipts via `LicenseeTransfer` (a tenant whose vault line is in purchase mode receives incoming POs from supplier licensees — there is no originating SalesOrder for this tenant; vault_schedule purchase-mode rendering reads `LicenseeTransfer` directly)
+- Standalone ancillary pickups not tied to any order
+- Inventory drawdowns and ad-hoc deliveries
+
+**Delivery is the canonical scheduling work unit; SalesOrder is one source of those work units, not the only one.**
+
+**Why this matters for canon (load-bearing reason this section exists):**
+
+Without this canonical statement, a future Sonnet session might infer ancillaries are line items on a parent vault SalesOrder (a natural assumption when reading the codebase shallowly). That model is **wrong** and would break commercial semantics — different ancillaries are different sales, different invoices, different customer relationships. The data model already correctly represents independence; this section ensures future canon work doesn't drift away from it.
+
+**Practical consequences for widget + Focus design:**
+
+- The kanban renders Delivery cards. Each card enriches with linked SalesOrder context (deceased name, line items, customer) at render time. The card represents a logistics work unit; the SalesOrder is reference data shown alongside.
+- Driver lives on Delivery. Dragging in the kanban updates `Delivery.primary_assignee_id`, never SalesOrder. Multiple Deliveries per truck per driver per day is the norm; many ancillaries can ride along, each pointing at its own independent SalesOrder.
+- Multi-Delivery-per-SalesOrder is rare but supported. A single SalesOrder may produce multiple Delivery work units when, e.g., a complex order needs split fulfillment.
+- vault_schedule widget (Phase W-3d) consumes Delivery rows in production mode + LicenseeTransfer rows in purchase mode. SalesOrder is render-time context for production-mode cards.
+- `today` widget (Phase W-3a) counts Delivery rows for "vault deliveries today" — matches kanban semantics.
+
+**Two minor follow-ups flagged by the SalesOrder vs Delivery investigation (post-canon cleanup):**
+
+- `Delivery.order_id` is currently a nullable `String(36)` index, not a `ForeignKey` constraint. Adding the FK constraint with `ON DELETE SET NULL` is a small post-W-3d hygiene fix.
+- `SalesOrder → Delivery` sync is currently one-way (Delivery completion stamps SalesOrder.delivered_at; SalesOrder field changes don't propagate to existing Delivery). Whether this is correct (frozen-at-time-of-scheduling) or a defect depends on product semantics — out of scope until a product question forces resolution.
+
+**See also:**
+- [DESIGN_LANGUAGE.md §12.10 reference 12 — vault_schedule](DESIGN_LANGUAGE.md) (the workspace-core widget that demonstrates this canon end-to-end)
+- [PLATFORM_ARCHITECTURE.md §9](PLATFORM_ARCHITECTURE.md) (Widget Library Architecture)
 
 ### Redi-Rock Wall Design System
 
@@ -3647,16 +3806,490 @@ The widget catalog over time becomes the cross-cutting browse surface for the Va
 
 September Wilbert meeting demo flow:
 
-1. James (Sunnycrest manufacturing director) opens Production Space → Pulse shows manufacturing widgets (`pour_schedule`, `production_status`, `urn_catalog_status`, `recent_activity`, `today`). All vertical-filtered, all role-defaulted.
+1. James (Sunnycrest manufacturing director) opens Production Space → Pulse shows manufacturing widgets (`vault_schedule`, `line_status`, `urn_catalog_status`, `recent_activity`, `today`). All vertical-filtered (manufacturing), all product-line-filtered (vault + urn_sales lines active), all role-defaulted.
 2. James drags `urn_catalog_status` to upsize → variant swaps Glance → Brief; same widget, different content density.
 3. James opens Focus → AncillaryPool widget renders as canvas tablet (Brief variant) + DeliveryCard cards in kanban core. Same widget vocabulary, different surface.
-4. Tenant flip to Hopkins FH → Pulse shows funeral home widgets (vertical-filtered set is completely different from Sunnycrest's; same Pulse mechanism).
-5. Funeral Schedule widget at Detail variant renders the kanban data — interactive (drag deliveries, mark hole-dug, update ETAs) per widget interactivity discipline.
-6. Click → opens Funeral Scheduling Focus with same data + full editing chrome (finalize, day-switch, conflict resolution).
+4. **Per-line + mode awareness moment**: James scrolls into a section of `vault_schedule` showing cremation vaults purchased from Empire State Vault Co. (a fictional neighbor licensee). Same widget renders both production rows (Sunnycrest's pours) AND purchase rows (incoming POs from the neighbor) because vault is in hybrid mode for this tenant. Widget is mode-aware; user sees a unified view. Demonstrates the platform's adaptive nature — same widget, different shape per tenant's actual operations.
+5. Tenant flip to Hopkins FH → Pulse shows funeral home widgets (vertical-filtered set is completely different from Sunnycrest's; same Pulse mechanism). Funeral home tenants don't have manufacturing product lines, so `vault_schedule` is filtered out by axis 5.
+6. Funeral Schedule widget at Detail variant renders the kanban data — interactive (drag deliveries, mark hole-dug, update ETAs) per widget interactivity discipline.
+7. Click → opens Funeral Scheduling Focus with same data + full editing chrome (finalize, day-switch, conflict resolution).
+8. **Strategic close**: "Bridgeable adapts to your operating model. The licensee in this room who pours their own vaults sees production rows. The licensee who buys from a neighbor sees purchase rows. The hybrid licensee sees both. Same UI, different shape per tenant operations." See [§5.2.1–§5.2.4](#52-product-line-activation-model) for the canonical model.
 
 Narrative: "Same widget library. Vertical-aware visibility. Variant-aware density. Coherent across surfaces. Workspace cores have widget views — bounded interactions in widgets, considered decisions in Focus."
 
 The strategic compounding payoff: every subsequent surface build (Pulse, expanded Spaces, peek panel content composition, hub dashboards migration) becomes bounded application of the locked widget library. Per-surface bespoke widget conventions stop accreting. Each new primitive (Vault, Intelligence, future Communications, future Vision) has a clear "what's the widget representation?" question with an answer; the catalog grows along the platform's primitive expansion.
+
+## 3.26 Spaces and Pulse Architecture
+
+### Overview
+
+Spaces are Bridgeable's primary user-facing organizational primitive. Every operator's experience of the platform is mediated through Spaces. The Spaces system is not merely "tabs" or "workspaces" — it's a unified primitive that subsumes what other platforms split into separate concerns: dashboards, portals, settings surfaces, and intelligent home pages.
+
+### 3.26.1 Six Space Types
+
+The Bridgeable platform recognizes six distinct Space types, each serving different user needs:
+
+#### 1. Home Space
+The platform's primary Monitor surface. Contains the Pulse — an intelligent, dynamically-composed view of what matters to the user right now. Always present, always first in navigation. The user does not configure Pulse content directly; the platform composes it based on the user's work areas, time of day, and behavioral signals.
+
+**Strategic positioning:** Home Pulse is Bridgeable's primary differentiator. Most platforms have user-curated dashboards; Bridgeable has a Pulse that knows what the user needs. Custom Space creation rate is a platform health metric — when Pulse works well, users rarely need other Spaces.
+
+#### 2. My Stuff Space
+User-personal scope. Contains widgets relevant to the user as a person, not as an operator: payroll info, time-off balance, certifications, training, personal preferences, tax documents. Always present, cannot be deleted. User customizes (add/remove/rearrange widgets). Standard widget grid pattern — not intelligent. Per user-tenant combination (each tenant context has its own My Stuff).
+
+#### 3. Custom Spaces
+User-created operational dashboards. Optional, multiple allowed. Standard widget grid pattern. User customizes. Per-user only (sharing post-September). Creation flow offers both "blank" and "from template" — templates per work area accelerate common cases.
+
+**Health signal:** Custom Space creation rate is tracked as Pulse effectiveness metric. High creation rate for a role = Pulse failing to surface that role's needs. Low creation rate = Pulse working as designed.
+
+#### 4. Settings Space
+Platform and tenant configuration. Its own Space, not nested elsewhere. Contains user preferences, tenant settings, integrations, billing, security, audit logs. Detailed canon TBD in separate session.
+
+#### 5. Cross-tenant Spaces
+Coordination surface for cross-tenant work. When a tenant relationship exists (vault production tenant supplying purchase tenant; Wilbert licensee network; Family Portal access), the cross-tenant Space surfaces shared context: active orders, communications, scheduling coordination, financial state. Detailed canon TBD in separate session.
+
+#### 6. Portal Spaces
+Family Portal, Driver Portal, CPA Access Portal, etc. — all portals are Spaces with constrained permissions and bounded content scope. Same Space primitive; permission scoping determines what's visible. Family Portal user sees Space scoped to their family's case data + bounded actions. Driver Portal user sees Space scoped to their delivery schedule + bounded actions. This unification means portal architecture isn't separate engineering — it's permission scoping over the existing Space primitive. Detailed canon per portal type TBD in separate sessions.
+
+### 3.26.2 Pulse Architecture
+
+The Pulse exists only in the Home Space. It is the platform's primary Monitor surface and Bridgeable's most distinctive product feature.
+
+#### 3.26.2.1 Tetris Composition
+
+Pulse is not a widget grid. Pulse is a tetris-packed composition where intelligence determines what content surfaces, at what size, in what position, fitting available viewport. Users do not configure Pulse content directly.
+
+The composition is dynamic: same user opening Pulse at different times of day, after different navigation patterns, with different recent activity, sees differently-composed content. The platform has agency over what surfaces.
+
+#### 3.26.2.2 Two Content Primitives
+
+Pulse renders content from two distinct primitive types:
+
+**Pinable Widgets** (Widget Library catalog)
+- Bounded, multi-surface, user-pinable in My Stuff and Custom Spaces
+- Stable presentations
+- Examples: vault_schedule, line_status, anomalies, today, ancillary_pool, recent_activity
+- Intelligence in Pulse: select WHICH widgets surface + WHAT VARIANT + WHAT SIZE
+- Same widgets surface in standard widget grids; Pulse adds intelligent selection on top
+
+**Pulse Intelligence Streams** (Pulse-specific)
+- Intelligence-generated content surfaces
+- NOT pinable — content determined by intelligence, not user
+- Render in Pulse only (or future intelligence-mediated surfaces)
+- Three sub-types:
+  - **Synthesized content** — content generated from underlying data (commitment surfacing, conflict detection, daily briefing)
+  - **Smart filtered streams** — intelligently-prioritized feeds that don't make sense outside Pulse (smart email surfacing, smart customer communications)
+  - **Briefing summaries** — natural-language synthesis of state across user's work areas
+
+Both primitives compose visually as cards/tablets in tetris layout. Architecturally, they're distinct: pinable widgets are user-curatable surfaces; intelligence streams are platform-generated content.
+
+#### 3.26.2.3 Layered Composition
+
+Pulse composition organizes content across four conceptual layers:
+
+**Personal Layer** — items addressed to YOU
+- Tasks assigned to you
+- @mentions in comments and messages
+- Approvals waiting on you
+- Direct messages
+- Items you marked "watch"
+- Things explicitly routed to your name
+
+**Operational Layer** — work in your operational scope
+- Today's deliveries (for users with Delivery Scheduling work area)
+- In-progress orders (for users with Inside Sales work area)
+- Open cases (for users with Family Communications work area)
+- Active POs (for users with Inventory Management work area)
+- Bound by user's selected work areas + time of day
+
+**Anomaly Layer** — things needing attention
+- agent_anomalies surfaced
+- Blockers and exceptions
+- SLA risks (computed from operational data)
+- Compliance flags
+- Inventory risks
+- Schedule conflicts
+
+**Activity Layer** — recent context
+- What changed while you were away
+- Recent customer communications (smart-filtered)
+- Recent system events (Workflow Engine actions, integrations)
+- Recent cross-tenant communications
+- Updates to entities you're watching
+
+Each layer can contain multiple distinct content streams. Activity layer is not one running list — emails and system events surface as separate parts of Pulse. Operational layer can have schedule view, pool view, line status as separate streams. Personal layer can have assigned tasks, mentions, approvals as separate streams.
+
+#### 3.26.2.4 Composition Rules
+
+Composition follows hybrid pattern: predictable layered structure with intelligent ordering within each layer.
+
+- Personal layer surfaces at top (always visible)
+- Operational layer dominates primary work-surface area
+- Anomaly layer surfaces above standard operational content when severity warrants
+- Activity layer ambient at periphery
+
+Within each layer, intelligence determines:
+- Which streams surface
+- What size each stream gets
+- What variant of pinable widgets to render
+- What ordering within layer
+- Whether to surface at all (some content stays hidden if not relevant)
+
+#### 3.26.2.5 Three Intelligence Tiers
+
+Pulse intelligence operates in three tiers, deployed incrementally:
+
+**Tier 1: Rule-based** (ships September)
+- Composition rules per work-area combination
+- Time-of-day adaptation (morning/midday/end-of-day)
+- Tenant-context constraints (vertical, operating mode, active product lines)
+- Basic priority ordering within layers
+
+**Tier 2: Signal-driven** (signal collection ships September; algorithms post-September)
+- Track user dismissals (what user closes from Pulse)
+- Track navigation (what user opens from Pulse, what they navigate to leaving Pulse)
+- Engagement scoring per content stream type per user
+- Adjust composition over time per user
+- Demote dismissed content; promote engaged content
+- Algorithms iterate post-September against accumulated signal data
+
+**Tier 3: Synthesized** (1-2 demo-quality instances ship September; full intelligence post-September)
+- Content synthesis from underlying data
+- September instances:
+  - Smart email surfacing (commitments from past communications surfacing when temporally relevant)
+  - Daily briefing (synthesized natural-language briefing of today's state across user's work areas)
+  - Cross-tenant coordination summary (status of active cross-tenant relationships in natural language)
+  - Anomaly intelligence (synthesized "what to watch today" beyond raw anomaly list)
+  - Conflict detection (intelligence flags adjacent items that conflict)
+
+### 3.26.3 Onboarding Model
+
+Bridgeable's user onboarding replaces traditional role-based provisioning with work-areas + responsibilities-description model.
+
+#### 3.26.3.1 Work Areas
+
+Multi-select onboarding cards capture the structured signal of what user does:
+
+- Accounting
+- HR
+- Production Scheduling
+- Delivery Scheduling
+- Inside Sales
+- Inventory Management
+- Customer Service
+- Family Communications (FH-relevant)
+- Cross-tenant Coordination
+- [extensible — additional work areas added as platform grows]
+
+Stored as `user.work_areas: list[str]`. Multi-select reflects operational reality — most users do multiple things. A small-shop dispatcher also handles inventory, also handles some sales calls, also approves some POs.
+
+Work areas drive Tier 1 rule-based Pulse composition:
+- Selected areas → corresponding pinable widgets surface
+- Selected area combinations → coordinated content surfacing (Production Scheduling + Delivery Scheduling = vault_schedule + ancillary_pool + line_status surface together)
+- Permissions remain separate (admin vs operator vs viewer is permission concern, orthogonal to work areas)
+
+#### 3.26.3.2 Responsibilities Description
+
+Free-text natural-language description of user's responsibilities captured during onboarding:
+
+> "Tell us about your day-to-day. What do you do, what do you watch out for, what do you wish you had better visibility into?"
+
+Stored as `user.responsibilities_description: text`. Captures detail that multi-select cannot — emergency callouts, cross-functional work, specific contexts the user owns.
+
+Used by Tier 2+ intelligence:
+- Parse for context that informs synthesized content (Tier 3)
+- Identify watch-criteria for anomaly relevance
+- Personalize briefing generation
+- Inform Pulse composition over time
+
+#### 3.26.3.3 Why this beats role-based
+
+Traditional roles ("Manager," "Dispatcher," "Admin") are reductive. They miss multi-functional reality. They force false categorization. They constrain Pulse composition to coarse buckets.
+
+Work-areas + responsibilities composes correctly. User who selects [Production Scheduling, Delivery Scheduling, Inventory Management] gets Pulse composed for all three. Combined with natural-language responsibilities, intelligence has rich enough signal for meaningful synthesized content.
+
+### 3.26.4 My Stuff Space
+
+User-personal dashboard. Always present, cannot be deleted. Per user-tenant combination.
+
+#### 3.26.4.1 Default Widgets
+
+Default widget set on My Stuff Space activation:
+- operator_profile (already shipped)
+- payroll widget (when payroll integration ships post-September)
+- time-off requests (pending approvals + balance + history)
+- certifications (status + renewals)
+- personal preferences shortcut
+- recent_activity Brief (user-scoped)
+
+#### 3.26.4.2 User Customization
+
+User can add/remove/rearrange widgets via standard widget grid customization (drag-drop, edit mode, save). Reset-to-defaults available.
+
+#### 3.26.4.3 Lifecycle
+
+- Created automatically on user activation in tenant
+- Always present, cannot be deleted
+- User customization persists per user-tenant combination
+- Reset clears customization, restores defaults
+
+### 3.26.5 Custom Spaces
+
+User-created operational dashboards. Optional, multiple allowed. Per-user only for September.
+
+#### 3.26.5.1 Creation Flow
+
+Two paths:
+- **Blank**: User clicks "+", names Space, starts empty grid
+- **From template**: User picks template (Production / Dispatch / Inventory / Inside Sales / Custom-blank), Space starts with template defaults
+
+Templates correspond to common work-area combinations. Templates accelerate common cases; blank serves novel needs.
+
+#### 3.26.5.2 Sharing
+
+Per-user only for September. Sharing (Space templates shareable with other users at tenant; admin-promoted tenant-wide templates) is post-September scope.
+
+#### 3.26.5.3 Health Metric
+
+Custom Space creation rate per tenant per role per week is tracked as Pulse health indicator. High creation = Pulse failing to surface what users need for those work-area combinations. Low creation = Pulse working as designed.
+
+This metric is reviewed periodically and feeds Pulse Tier 1 rule refinement (when composition rules need work for specific work-area combinations).
+
+### 3.26.6 Implementation Sequencing
+
+Phase W-4 splits into two implementation phases driven by primitive dependencies.
+
+#### 3.26.6.1 Phase W-4a — Pulse Infrastructure (ships first)
+
+**Independent of communication primitives.** Builds the structural foundation Pulse needs.
+
+Backend:
+- Layer composition services (Personal/Operational/Anomaly/Activity layer content services)
+- Intelligence composition engine (work-areas-driven widget selection, time-based surfacing, layer ordering rules)
+- Signal tracking infrastructure (dismiss tracking, navigation tracking)
+- User schema additions (`work_areas: list[str]`, `responsibilities_description: text`)
+- Pulse composition API endpoints
+
+Frontend:
+- PulseSurface component
+- Tetris layout engine (intelligence-determined sizing + position)
+- Widget rendering with intelligence selection
+- Intelligence stream rendering (anomaly intelligence stream — depends only on locked agent_anomalies)
+- Dismiss/navigation tracking chrome
+- Subtle "composed" visual affordance
+
+Tier 1 rule-based composition functional. Anomaly intelligence stream functional (uses agent_anomalies — locked).
+
+Sunnycrest dispatcher Pulse partially functional: kanban widgets compose, anomalies intelligence functional, missing email/communication intelligence (those streams light up in Phase W-4b).
+
+#### 3.26.6.2 Layer 1 — Communication and Temporal Primitives
+
+After Phase W-4a, Layer 1 native primitives ship in parallel-able cluster:
+
+**Email native** (longest-lead, ships first within Layer 1)
+- Send/receive infrastructure (IMAP/SMTP, deliverability)
+- Threading model
+- Attachment handling
+- Address book
+- Signature management
+- Intelligence-friendly content storage (parsing-ready)
+- Scoped to demo flow needs (case-bound threads, templated drafts, attachment handling, intelligence-drafted replies)
+
+**Calendar native** (parallel-starting after Email schema established)
+- Event data model (polymorphic: delivery / service / appointment / meeting types)
+- Time zone handling
+- Recurring events (basic RRULE)
+- Multi-view rendering (day / week / month / timeline / agenda)
+- Drag-drop rescheduling
+- Workflow integration (sales order → delivery event auto-creation)
+- Cross-tenant event sharing
+- Composition with existing surfaces (scheduling Focus, vault_schedule purchase mode, future portals)
+
+**SMS native** (smaller scope, ships parallel-finish)
+- Twilio integration
+- Threading model
+- Opt-in/opt-out compliance
+- Tenant phone number provisioning
+
+#### 3.26.6.3 Layer 2 — Document Creation Surface
+
+Parallel with Email native completion:
+- Template-based document generation
+- Signature capture
+- Email-based distribution
+- WYSIWYG editing deferred post-September
+
+#### 3.26.6.4 Phase W-4b — Pulse Intelligence Streams
+
+After Layers 1 + 2 land, Pulse intelligence streams light up against real data:
+
+- Smart email surfacing (depends on email native)
+- Daily briefing (synthesized, depends on email + documents + onboarding work areas + responsibilities)
+- Cross-tenant coordination summary (depends on email cross-tenant + locked cross-tenant infrastructure)
+- Conflict detection (synthesized, depends on richer data across email + calendar + scheduling)
+- Onboarding work areas fully driving composition (work areas + responsibilities feeding composition rules)
+
+Sunnycrest dispatcher Pulse fully functional with all intelligence streams.
+
+#### 3.26.6.5 Phase W-5 — Standard Spaces Dashboards
+
+After Phase W-4b lands, standard Spaces dashboards ship:
+- My Stuff Space implementation
+- Custom Space creation flow + templates
+- Widget grid surface for non-Home Spaces
+- User customization affordances
+
+Faster against locked Pulse foundation — same Widget Library catalog, simpler composition (user-curated, not intelligent).
+
+#### 3.26.6.6 Command Bar
+
+After primitives complete, Command Bar ships:
+- Plugin/registry architecture
+- Each primitive registers summon-able actions and surfaces
+- Command bar composes across all primitives
+- Floating-window-with-chips pattern
+
+#### 3.26.6.7 Polish + Demo Preparation
+
+Final phases:
+- Phase 4.4.4 (scheduling Focus completion: slide animation, multi-day rendering, cross-day drag)
+- Aesthetic Arc Sessions 5-9 (component refinement against locked references)
+- Demo data seeding (Empire State Vault Co. fictional neighbor for hybrid Sunnycrest scenario)
+- Demo narrative rehearsal
+
+### 3.26.7 Strategic Principles
+
+#### 3.26.7.1 Pulse as Differentiator
+
+Most platforms have user-curated dashboards. Bridgeable has a Pulse that knows what users need. The Pulse is the platform's most distinctive product feature and primary competitive moat.
+
+Custom Spaces and My Stuff are standard SaaS dashboards that exist as fallback. Pulse is the differentiator that competitors can't easily replicate without similarly-deep platform-level intelligence infrastructure.
+
+#### 3.26.7.2 Communication-Prerequisites Discipline
+
+Pulse intelligence streams depend on communication primitives existing. Smart email surfacing requires email native. Daily briefing requires email + documents + onboarding context. Cross-tenant coordination summary requires email cross-tenant.
+
+Building Pulse intelligence streams against missing primitives = stub work that gets refactored when primitives land. The structurally correct sequence ships Pulse infrastructure first (independent of communications), then communication primitives, then Pulse intelligence streams against real data.
+
+#### 3.26.7.3 Compose-First Primitive Design
+
+Every Layer 1 primitive (Email, Calendar, SMS) and Layer 2 primitive (Documents creation) is designed for composition with existing surfaces from the start. Calendar is not built as standalone "calendar app" then refactored — it's built knowing it composes with scheduling Focus, vault_schedule widget, sales order Focus, future portals, Pulse intelligence streams.
+
+Email is not built with monolithic email-client UX assumption — it's built knowing it surfaces in case file, command bar floating-window-with-chips, Pulse smart email surfacing, document signature workflows.
+
+This is harder than building primitives standalone. It pays back in composition quality and avoided refactor cost.
+
+#### 3.26.7.4 Build Maximally, Structurally Correctly
+
+Scope is set by what's structurally needed for September demo's full vision, not by timeline anxiety. Each primitive is built to the depth required for its compositional role — not "minimum viable" cuts that compromise the demo, not "complete spec" coverage that wastes time on speculation.
+
+The 20-week timeline (April 27 → late September) is tight but achievable at current velocity with disciplined parallelization. Buffer is meaningful but not infinite. Strategic decisions favor structurally-correct sequencing over expedient shortcuts.
+
+### 3.26.8 Phase W-4a Implementation Notes
+
+Phase W-4a (April 2026) shipped the Pulse infrastructure as the first concrete realization of §3.26 across six commits. The notes below capture **as-built deviations from §3.26.6.1 + the canonical contracts that downstream phases (W-4b, W-5, communication primitives, Tier 2) inherit**. Where this section disagrees with §3.26.6.1, this section reflects the actual ship and supersedes.
+
+#### 3.26.8.1 Six-commit ship sequence
+
+W-4a landed in six sequential commits. Each shipped green (full backend + frontend regression + visual verification both modes) before the next began.
+
+| Commit | Scope | Tests added | Backend regression after |
+|---|---|---|---|
+| 1 | Migration `r61_user_work_areas_pulse_signals` (User.work_areas + responsibilities + pulse_signals table) + Home system space (gate-less, leftmost in DotNav, default_home_route="/home") + operator-profile editor service + API + login defensive re-seed widening | 25 | 25 |
+| 2 | Four layer composition services (personal, operational, anomaly, activity) + work-area-to-widget mapping locked in `operational_layer_service.py` | 28 | 53 |
+| 3 | Composition engine + V1 anomaly intelligence stream + 5-minute work_areas-aware composition cache + `GET /api/v1/pulse/composition` endpoint + retirement of legacy `spaces/pulse_compositions.py` | 27 | 80 |
+| 4 | Signal tracking endpoints (`POST /signals/dismiss` + `/signals/navigate`) + service + 3 aggregation helpers (dismiss counts, navigation targets, engagement score) ready for Tier 2 post-September | 26 | 106 |
+| 5 | Frontend `PulseSurface` + tetris layout + two-content-primitive `PulsePiece` + V1 `AnomalyIntelligenceStream` + `PulseFirstLoginBanner` + `/home` route + signal collection chrome | 26 frontend | 106 backend / 757 frontend |
+| 6 | Sunnycrest demo State B verified end-to-end + integration tests + canon doc updates | 18 | **124** |
+
+**Final Phase W-4a regression posture: 124 backend tests + 26 frontend tests passing. tsc clean. vite build clean. No regressions across W-1 + W-2 + W-3a + W-3b + W-3d + V-1 + Spaces Phases 1-8e.2.3.**
+
+#### 3.26.8.2 Six D-decisions resolved during pre-build investigation
+
+Six architectural decisions were resolved before Commit 1 began (separate investigation phase with three parallel sub-agents). The locked answers shipped as canonical contracts:
+
+| D# | Question | Resolved as |
+|---|---|---|
+| D1 | Composition cache strategy — Redis vs in-memory? Per-tenant cache invalidation? | In-memory dict with 5-min TTL + work_areas hash key. Single endpoint `GET /pulse/composition[?refresh=true]`. Cache key = `pulse:{user_id}:{work_areas_hash}:{minute_window}` |
+| D2 | Tetris layout engine — third-party (react-grid-layout) vs custom CSS Grid? | Custom CSS Grid with `grid-cols-[repeat(auto-fit,minmax(160px,1fr))] auto-rows-[80px]`. Pieces span via inline `gridColumn / gridRow` driven by composition engine sizing |
+| D3 | Layer ordering enforcement — backend or frontend? | Both. Backend emits in canonical order; frontend defensively re-sorts via the `LAYER_ORDER` constant in `PulseSurface.tsx` |
+| D4 | First-login fallback when `work_areas` is null — empty Pulse vs vertical-default? | Vertical-default composition (`metadata.vertical_default_applied=true`); banner gates on this flag exclusively |
+| D5 | Sunnycrest dispatcher canonical composition — confirm work-area mapping? | Locked: Production Scheduling + Delivery Scheduling + Inventory Management → vault_schedule Detail (2×2) + scheduling.ancillary-pool Brief + line_status Brief + today Glance + urn_catalog_status Glance (urn_sales-extension-conditional) |
+| D6 | V2 Haiku-cached anomaly synthesis — ship in W-4a or defer? | Deferred to W-4b. V1 deterministic synthesizer ships now; the IntelligenceStream contract is forward-compatible |
+| D7 | Legacy `spaces/pulse_compositions.py` retirement — preserve or retire? | Retire — verified zero remaining importers via grep. Retirement test in `test_phase_w4a_commit3.py::TestPulseCompositionsRetirement` |
+
+#### 3.26.8.3 Canonical work-area-to-widget mapping (locked)
+
+The §3.26.3.1 work-area vocabulary maps to the Phase W-3 widget catalog as documented in `backend/app/services/pulse/operational_layer_service.py`. The mapping is the **single source of truth** for §3.26.2.4 composition rules at Phase W-4a:
+
+| Work area | Widgets surfaced | Notes |
+|---|---|---|
+| Production Scheduling | vault_schedule Detail (2×2, p=90), line_status Brief (2×1, p=70) | Manufacturing core |
+| Delivery Scheduling | vault_schedule Detail, scheduling.ancillary-pool Brief (2×1, p=80), today Glance (1×1, p=50) | Dispatcher demo composition |
+| Inventory Management | urn_catalog_status Glance (urn_sales-extension-conditional, p=60), line_status Brief | line_status carries inventory metrics |
+| Customer Service | recent_activity Brief | V-1c activity-log feed |
+| Accounting | anomalies Brief (p=75), ar_summary Brief | Phase 1 accounting agent infrastructure |
+| Inside Sales | (stub for September — sales pipeline widget post-W-4b) | Selection still signal-collected for Tier 2 |
+| Family Communications | (deferred — depends on FH cases widget post-W-3c) | Selection signal-collected |
+| Cross-tenant Coordination | (deferred — depends on cross-tenant comms post-W-4b) | Selection signal-collected |
+| HR | (stub — HR widget post-September) | Selection signal-collected |
+
+**Vertical-default fallback compositions** are documented in the same file. For September demo: `manufacturing` falls back to the dispatcher composition (vault_schedule + line_status + ancillary-pool + today + extension-conditional urn_catalog_status); `funeral_home / cemetery / crematory` fall back to sparse `today + recent_activity` defaults until W-3c lands the FH-specific widgets.
+
+#### 3.26.8.4 Two content primitives (locked contract)
+
+Per §3.26.2.2, every Pulse piece is one of two primitives. Phase W-4a's `LayerItem.kind` discriminator enforces this:
+
+- `kind="widget"` → `component_key` matches a `widget_id` in the Phase W-3 widget registry; `variant_id` selects the surface presentation; `cols / rows` size the grid span; `config` carries optional per-instance configuration. Renderer dispatch via `getWidgetRenderer(component_key, surface="pulse_grid")`.
+- `kind="stream"` → `component_key` matches a `stream_id` in the intelligence-stream registry; the corresponding synthesized content lives at `PulseComposition.intelligence_streams[i]` keyed by `stream_id`. Renderer dispatch is registry-driven (same pattern as widgets).
+
+V1 ships exactly one stream — `anomaly_intelligence` — synthesized deterministically from the tenant's unresolved `AgentAnomaly` rows. W-4b extends the registry: smart email surfacing, daily briefing synthesis, cross-tenant coordination, conflict detection.
+
+#### 3.26.8.5 Signal collection — standardized JSONB metadata shapes
+
+The two signal endpoints persist with metadata shapes that are **load-bearing for Tier 2 algorithms** post-September. Any new signal type added post-W-4a must define its shape here AND in the migration docstring:
+
+- **Dismiss signal**: `{component_key, time_of_day, work_areas_at_dismiss}` — Tier 2 pattern: "user dismisses X consistently in the morning while in [areas]"
+- **Navigation signal**: `{from_component_key, to_route, dwell_time_seconds}` — Tier 2 pattern: "user clicks through from X to Y consistently → Y becomes a quick action on X"
+
+Tenant + user scoping is enforced server-side from the authenticated User on both endpoints. Request bodies NEVER carry `user_id` or `company_id` — cross-user / cross-tenant writes are structurally impossible.
+
+Three aggregation helpers ship ready for Tier 2 consumption: `get_dismiss_counts_per_component`, `get_navigation_targets`, `get_engagement_score`. Phase W-4a does NOT consume them; they're tested + battle-ready so the Tier 2 algorithm work post-September iterates against accumulated production data, not against unproven helpers.
+
+#### 3.26.8.6 Implementation deviations from §3.26.6.1
+
+§3.26.6.1 anticipated the W-4a scope at a high level. The as-built diverged on three points worth canonicalizing:
+
+1. **Settings system space integration** — Phase 8a's Settings system space pattern was reused as the integration model for the Home system space. Both share `is_system: bool = True`, gate-less seeding, leftmost-of-system ordering in DotNav, and the Phase 8e.2.2 invariant that no active user can have an empty `preferences.system_spaces_seeded`. The login defensive re-seed in `auth_service.login_user` was widened to fire on missing-Home as well as missing-Settings — closing a Phase 8e.2.2-shape gap proactively.
+
+2. **`/home` route, not `/pulse`** — the route was named `/home` (not `/pulse`) per §3.26.1.1 ("Home Space is always present, always first in navigation, contains the Pulse"). The Pulse is the Home Space's content; the route name reflects the user-facing concept. `/dashboard` continues to coexist during the Phase W-4a → W-5 transition (per §3.26.6.1 honest scope); retirement post-W-5 once My Stuff + Custom Spaces ship.
+
+3. **`PulseFirstLoginBanner`, not `OnboardingTouch`** — the Phase 7 `OnboardingTouch` primitive is a floating tooltip; W-4a's first-login banner needed inline-with-content positioning + a brass-filled CTA + dismiss X. A dedicated `PulseFirstLoginBanner` ships sharing the persistence hook (`useOnboardingTouch("pulse_first_login_banner")`) so dismissal is server-side cross-device. The architectural pattern: **shared persistence, distinct visual treatment** when the same conceptual signal needs different chrome on different surfaces.
+
+#### 3.26.8.7 What's wired now vs deferred to W-4b
+
+**Wired in Phase W-4a (production-ready):**
+- All four layer services (personal, operational, anomaly, activity) reading from real Phase W-3 widgets + V-1c activity log + Phase 1 agent_anomalies + Phase 5 tasks + approval-gate-aware approvals
+- V1 anomaly intelligence stream (deterministic synthesizer)
+- Composition cache + work_areas-aware invalidation
+- Signal tracking + aggregation infrastructure
+- Operator profile editor + work-area multi-select API contract
+- First-login banner with cross-device persistence
+- Tetris layout + two content primitives + brass-thread divider + empty-layer advisories
+
+**Deferred to W-4b (intelligence streams against communication primitives):**
+- Smart email surfacing (depends on Email primitive)
+- Daily briefing synthesis with email context (depends on Email + Calendar)
+- Cross-tenant coordination summary (depends on cross-tenant communications)
+- Conflict detection stream (depends on Calendar overlap)
+- V2 Haiku-cached anomaly synthesis (D6 deferral)
+
+**Deferred to Tier 2 post-September:**
+- Composition adjustments based on signal aggregations (engagement-driven re-prioritization)
+- Time-of-day adaptive composition (currently emits the signal in metadata; consumption is post-September)
+- Dismiss-driven content de-prioritization (signals captured; consumption post-September)
+
+The structurally correct sequence per §3.26.7.2 — infrastructure first, communications next, intelligence last — is the executed plan.
 
 ---
 

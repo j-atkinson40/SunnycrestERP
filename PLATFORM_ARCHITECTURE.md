@@ -1076,18 +1076,23 @@ A widget is a self-contained, reusable piece of operational content with a decla
 
 Same library, different surfaces. Catalog is one consistent flow for the user.
 
-### 9.3 The 4-axis filter 
+### 9.3 The 5-axis filter 
 
-Widgets gate visibility on **four orthogonal axes**, all evaluated AND-wise. Pattern extends `vault.hub_registry`'s permission + module + extension triple with vertical scoping:
+Widgets gate visibility on **five orthogonal axes**, all evaluated AND-wise. Pattern extends `vault.hub_registry`'s permission + module + extension triple with vertical scoping AND product-line scoping:
 
 1. **Permission** (`required_permission`) — role-based gate
 2. **Module** (`required_module`) — tenant capability flag (`company_modules` table)
 3. **Extension** (`required_extension`) — opt-in cross-tenant integration (`tenant_extensions`)
 4. **Vertical** (`required_vertical: Vertical[] | "*"`) — industry preset; default `"*"` cross-vertical
+5. **Product Line** (`required_product_line: string[] | "*"`) — operational scoping (`tenant_product_lines`); default `"*"` cross-line
+
+**Why 5 axes, not 4 with extension overload:** A pre-canon implementation might consider folding product line into `required_extension` since some product lines (urn_sales, wastewater, redi_rock, rosetta) are extensions today. Canon rejects this conflation. Vault is a baseline product line that is **not extension-gated**; widgets like `vault_schedule` need to scope to "vault product line activated" without requiring a vault extension that doesn't exist. Beyond vault, the semantic separation matters: extension answers *is this capability available?*; product line answers *what does this tenant operationally run?*. They're correlated but distinct, and conflating them means the canon can't represent vault widgets correctly.
+
+**Per the canonical distinction in [BRIDGEABLE_MASTER §5.2.1](BRIDGEABLE_MASTER.md): extension = how a line gets installed (or not — vault is built-in); product line = the operational reality once installed.** The 5-axis filter encodes both axes independently because they answer different questions.
 
 Defense-in-depth: filter applied at catalog-fetch + layout-fetch + render-dispatch. Invisible-not-disabled discipline — widgets the user can't see are simply absent from catalog.
 
-This is the platform-wide vertical-scoping mechanism. Widget definitions adopt it; future first-class entities (workflows, saved views, briefings, integrations) may adopt the same 4-axis filter as their canonical visibility model.
+This is the platform-wide visibility mechanism. Widget definitions adopt it; future first-class entities (workflows, saved views, briefings, integrations) may adopt the same 5-axis filter as their canonical visibility model.
 
 ### 9.4 Connection to Vault-as-foundation 
 
@@ -1120,16 +1125,119 @@ Decision sequence (revised by user during Spec session): **W-1 → W-2 → W-3 �
 
 ### 9.7 Demo narrative 
 
-September Wilbert meeting demo flow (per Spec session):
+September Wilbert meeting demo flow (per Spec session, revised by Product-Line canon session):
 
-1. James (Sunnycrest manufacturing director) opens Production Space → Pulse shows manufacturing widgets (`pour_schedule`, `production_status`, `urn_catalog_status`, `recent_activity`, `today`). All vertical-filtered, all role-defaulted.
+1. James (Sunnycrest manufacturing director) opens Production Space → Pulse shows manufacturing widgets — `vault_schedule` (line=vault, mode=production for Sunnycrest's vault types), `line_status` (cross-line operational health), `urn_catalog_status` (line=urn_sales), `recent_activity`, `today`. All vertical-filtered (manufacturing) and product-line-filtered (vault + urn_sales lines active for Sunnycrest).
 2. James drags `urn_catalog_status` to upsize → variant swaps Glance → Brief; same widget, different content density.
 3. James opens Focus → AncillaryPool widget renders as canvas tablet (Brief variant) + DeliveryCard cards in kanban core. Same widget vocabulary, different surface.
-4. Tenant flip to Hopkins FH → Pulse shows funeral home widgets (vertical-filtered set is completely different from Sunnycrest's; same Pulse mechanism).
-5. Funeral Schedule widget at Detail variant renders the kanban data — interactive (drag deliveries, mark hole-dug, update ETAs) per widget interactivity discipline.
-6. Click → opens Funeral Scheduling Focus with same data + full editing chrome (finalize, day-switch, conflict resolution).
+4. **Product-line + mode awareness moment**: James scrolls to a section of `vault_schedule` showing cremation vaults purchased from Empire State Vault Co. (a fictional neighbor licensee). Same widget renders both production rows (Sunnycrest's pours) AND purchase rows (incoming POs from the neighbor) because vault is in hybrid mode for this tenant. Widget is mode-aware; user sees a unified view.
+5. Tenant flip to Hopkins FH → Pulse shows funeral home widgets (vertical-filtered set is completely different from Sunnycrest's; same Pulse mechanism). Funeral home tenants don't have manufacturing product lines, so `vault_schedule` is filtered out by axis 5; instead they see `funeral_schedule` and other FH-vertical widgets.
+6. Funeral Schedule widget at Detail variant renders the kanban data — interactive (drag deliveries, mark hole-dug, update ETAs) per widget interactivity discipline.
+7. Click → opens Funeral Scheduling Focus with same data + full editing chrome (finalize, day-switch, conflict resolution).
+8. **Strategic close**: "Bridgeable adapts to your operating model. Same platform, different shape per tenant's actual operations. The licensee in this room who pours their own vaults sees production rows. The licensee who buys from a neighbor sees purchase rows. The hybrid licensee sees both. Same UI, different shape."
 
-Narrative: "Same widget library. Vertical-aware visibility. Variant-aware density. Coherent across surfaces. Workspace cores have widget views — bounded interactions in widgets, considered decisions in Focus."
+Narrative: "Same widget library. Vertical-aware visibility. Product-line-aware visibility. Mode-aware rendering. Variant-aware density. Coherent across surfaces. Workspace cores have widget views — bounded interactions in widgets, considered decisions in Focus."
+
+### 9.8 Product Line + Operating Mode infrastructure
+
+This section captures the data-model and cross-tenant infrastructure that the 5-axis filter (axis 5) depends on, and the per-line operating-mode model that mode-aware widgets read from. Strategic framing in [BRIDGEABLE_MASTER §5.2.1–§5.2.4](BRIDGEABLE_MASTER.md); this section is the architectural mechanics.
+
+#### 9.8.1 The TenantProductLine primitive
+
+`tenant_product_lines` table — per-tenant operational record of "this tenant runs this product line." Schema (already exists in codebase, service layer pending):
+
+| Column | Purpose |
+|---|---|
+| `(company_id, line_key)` | Composite unique key. `line_key` is a stable string identifier (`"vault"`, `"urn_sales"`, `"redi_rock"`, `"wastewater"`, `"rosetta"`). |
+| `display_name` | Tenant-facing label (defaults from line registry; tenants can override). |
+| `is_enabled` | Activation toggle. False rows kept for history; missing rows = never activated. |
+| `config` JSONB | Per-line operational config. Canonical home for `operating_mode`. |
+| `sort_order` | Display order in tenant UI surfaces. |
+
+**The line registry** (a code-side static map, not a table — analogous to `extension_definitions` but for lines): defines the canonical set of `line_key`s the platform recognizes, default `display_name`, the line's `vertical` association, the line's relationship to extensions (auto-seeded baseline OR extension-installable), and the line's default `operating_mode`. Adding a new product line = adding a registry entry + per-line schema + widget set.
+
+#### 9.8.2 Operating mode storage and reader
+
+**Canonical home:** `TenantProductLine.config["operating_mode"]` ∈ `{"production", "purchase", "hybrid"}`.
+
+**Writers:**
+- Tenant onboarding seeds vault baseline with `operating_mode = "production"` (configurable during onboarding).
+- Extension setup wizard sets `operating_mode` for product-line extensions on activation (`urn_sales` defaults to "purchase" — most licensees buy urns from Wilbert; `redi_rock` defaults to "production"; etc.).
+- Admin UI (post-September) lets tenants flip mode per line as their operations evolve.
+
+**Readers:**
+- Mode-aware widgets (`vault_schedule`, `redi_rock_schedule`, `wastewater_schedule`, `line_status`) read `operating_mode` to choose render path.
+- Cross-tenant purchase relationship UI (post-September) reads `operating_mode == "purchase"` to surface supplier browsing affordances.
+- Bridgeable Mutual underwriting (post-September) reads `operating_mode` as a risk-relevant signal.
+
+#### 9.8.3 Vault baseline auto-seed
+
+Per [BRIDGEABLE_MASTER §5.2](BRIDGEABLE_MASTER.md), vault is the auto-seeded baseline for manufacturing-vertical tenants. Mechanism:
+
+1. **New manufacturing tenant signs up** → seeder creates `TenantProductLine(company_id=X, line_key="vault", is_enabled=True, config={"operating_mode": "production"})`. No extension activation required; vault is built-in.
+2. **Existing manufacturing tenants** (data migration, post-canon) → backfill `TenantProductLine(line_key="vault")` with `operating_mode` copied from the now-deprecated `Company.vault_fulfillment_mode` column.
+3. **Non-manufacturing verticals** (FH, cemetery, crematory) → no auto-seed; vault is not their operational reality. They run their own product lines (FH cases, cemetery interments, crematory cases) under different schemas.
+
+**Anti-pattern flagged for deprecation:** `Company.vault_fulfillment_mode` is the pre-canon tenant-level mode field. Canonical replacement is `TenantProductLine.config["operating_mode"]`. Migration + column removal lands in a post-September hygiene session.
+
+#### 9.8.4 The product-line activation lifecycle
+
+Three pathways for a `TenantProductLine` row to come into existence:
+
+| Pathway | When | Mechanism |
+|---|---|---|
+| **Auto-seed (baseline)** | Tenant onboarding for manufacturing vertical | Seeder creates `vault` row with default `operating_mode: "production"` |
+| **Extension activation** | Admin installs `urn_sales` / `wastewater` / `redi_rock` / `rosetta` extension | Extension `install_extension` hook creates corresponding `TenantProductLine` row + sets default `operating_mode` |
+| **Direct admin action** | Future post-September: admin activates a line without an extension | Admin UI calls product-line service directly |
+
+**Deactivation:** sets `is_enabled = False`; preserves config + history. Re-activation is idempotent — same row flips back to `is_enabled = True`.
+
+**Extension uninstall** (future cleanup): deactivates the corresponding `TenantProductLine` row but does not delete it. Re-installing the extension re-activates the row with prior config preserved.
+
+#### 9.8.5 Cross-tenant purchase relationship infrastructure
+
+Purchase-mode product lines have a supplier — typically another tenant on the platform. The platform tracks this through the cross-tenant infrastructure already built (~80% complete pre-canon). Strategic framing in [BRIDGEABLE_MASTER §5.2.3–§5.2.4](BRIDGEABLE_MASTER.md); the architectural inventory:
+
+| Primitive | Status | Role in purchase-mode |
+|---|---|---|
+| `PlatformTenantRelationship` | **Built** | Bidirectional consent registry. Two tenants connect; either can initiate; both must accept. Holds `relationship_type`, `billing_enabled`, `connected_at`, `status`. |
+| `LicenseeTransfer` + `inter_licensee_pricing` | **Built (mature)** | Formal cross-licensee transfer with billing chain (`area_order_id` → `home_passthrough_invoice_id`). Supplier publishes pricing; customer accepts/declines. Already in production use. |
+| `cross_tenant_vault_service` | **Built (FH→Mfr)** | FH approves vault in arrangement → service creates `sales_order` on manufacturer tenant. Generalizes to Mfr→Mfr in purchase mode. |
+| `DocumentShare` (Phase D-6) | **Built** | Per-document cross-tenant sharing under explicit grant. Owner-tenant model (one source of truth, share rows control visibility). |
+| `VaultItem.shared_with_company_ids` | **Built** | Per-item granular sharing for delivery confirmations + other VaultItem types. |
+| Purchase-mode UX (browse supplier inventory + place B2B order + track POs) | **NOT BUILT** | The gap. Pre-canon: data infrastructure exists; UX layer does not. Demo-functional stub in W-3d (`vault_schedule` purchase-mode rendering uses existing `licensee_transfers` data). Full marketplace UX deferred post-September. |
+
+#### 9.8.6 The Mutual Connection (architectural)
+
+[Bridgeable Mutual](BRIDGEABLE_MASTER.md) — captive insurance for the licensee network — reads from the same cross-tenant infrastructure. Strategic framing lives in [BRIDGEABLE_MASTER §5.2.4](BRIDGEABLE_MASTER.md) and [§1.7 (GEICO Model)](BRIDGEABLE_MASTER.md).
+
+**Architecturally**: Mutual is downstream of `PlatformTenantRelationship` + cross-tenant transaction infrastructure. The data sources Mutual reads from for underwriting:
+
+- `licensee_transfers` (delivery reliability, exception frequency, on-time %)
+- `cross_tenant_statement_service` (payment behavior, days-to-pay)
+- `PlatformTenantRelationship` (counterparty diversity, network density)
+- `TenantProductLine.config["operating_mode"]` (production vs. purchase risk profiles)
+- `intelligence_executions` (operational signal density — how much AI-touched workflow does this tenant run?)
+
+No new platform infrastructure is required for Mutual to ship — it consumes existing read-paths under a new service layer. This is the canonical statement that **purchase-relationship work compounds toward Mutual rather than being separate effort**. Same substrate, two strategic outcomes.
+
+#### 9.8.7 Implementation scope (canonical, post-canon-session)
+
+| Scope | Pre-September | Post-September |
+|---|---|---|
+| `TenantProductLine` service layer | ✅ schema exists; build crud + activation + mode helpers | — |
+| Vault auto-seed in onboarding | ✅ wire into manufacturing-vertical onboarding seeder | — |
+| Backfill `Company.vault_fulfillment_mode` → `TenantProductLine.config["operating_mode"]` | ✅ data migration | — |
+| Extension activation hooks update `TenantProductLine` | ✅ `install_extension` calls product-line activator | — |
+| 5-axis filter `required_product_line` axis | ✅ extend `widget_service.get_available_widgets` | — |
+| Mode-aware widget rendering (`vault_schedule`, `line_status`) | ✅ W-3d build, both modes render | — |
+| Demo data: hybrid Sunnycrest + fictional neighbor "Empire State Vault Co." | ✅ 1 dedicated demo-data session | — |
+| `Company.vault_fulfillment_mode` column removal | — | post-September hygiene session |
+| Product table classification consolidation (`Product.product_line` + `category_id` + `visibility_requires_extension` → unified `tenant_product_line_id` FK) | — | post-September data hygiene |
+| Purchase-mode UX layer (browse supplier inventory, place B2B order, track POs) | — | post-September |
+| Bridgeable Mutual underwriting service | — | post-September (downstream of purchase-relationship UX) |
+
+**Decision boundary for September:** the architectural promise lands fully (TenantProductLine activated, 5-axis filter live, mode-aware widget rendering live, hybrid demo scenario seeded). The B2B marketplace UX + Mutual underwriting + data hygiene cleanup are all post-September. The September demo demonstrates *the model* with sufficient depth that a Wilbert licensee in the audience can project themselves into either operating mode.
 
 _End of document. Open issues, unresolved decisions, and future workshopping topics are tracked in Section 8. Widget Library Architecture lives in Section 9 above. This document supersedes earlier post-aesthetics-arc memory entries and discussion notes from the desktop sessions of April 2026._ 
 

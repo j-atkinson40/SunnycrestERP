@@ -314,6 +314,7 @@ from app.models.urn_catalog_sync_log import UrnCatalogSyncLog
 from app.models.urn_tenant_settings import UrnTenantSettings
 from app.models.user_action import UserAction
 from app.models.user_space_affinity import UserSpaceAffinity
+from app.models.pulse_signal import PulseSignal
 from app.models.portal_user import PortalUser
 from app.models.location import Location
 from app.models.user_location_access import UserLocationAccess
@@ -658,6 +659,7 @@ __all__ = [
     "UrnTenantSettings",
     "UserAction",
     "UserSpaceAffinity",
+    "PulseSignal",
     "PortalUser",
     "Location",
     "UserLocationAccess",

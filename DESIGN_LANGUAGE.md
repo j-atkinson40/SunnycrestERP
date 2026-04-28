@@ -3318,42 +3318,60 @@ interface WidgetVariantProps<TConfig = unknown> {
 
 ### 12.4 Visibility & gating model
 
-Widgets gate visibility on **four orthogonal axes**, all evaluated AND-wise. Defense-in-depth: filter applied at three points (catalog UI fetch, layout fetch, render dispatch) so a widget never accidentally renders for a user who shouldn't see it.
+Widgets gate visibility on **five orthogonal axes**, all evaluated AND-wise. Defense-in-depth: filter applied at three points (catalog UI fetch, layout fetch, render dispatch) so a widget never accidentally renders for a user who shouldn't see it.
 
-**The four axes.**
+**The five axes.**
 
 1. **Permission** (`required_permission`) — role-based gate. The user must hold the named permission via their role assignment. Examples: `delivery.view`, `customers.view`, `invoice.approve`. Backed by existing role / permission / role_permissions tables.
 2. **Module** (`required_module`) — tenant capability flag. The tenant must have the named module enabled via `company_modules` table. Examples: `crm`, `accounting`, `scheduling`. Cross-vertical capability gates.
-3. **Extension** (`required_extension`) — opt-in cross-tenant integration. The tenant must have the extension active via `tenant_extensions`. Examples: `urn_sales`, `wastewater`, `redi_rock`, `rosetta`, `npca_audit_prep`.
+3. **Extension** (`required_extension`) — opt-in cross-tenant integration. The tenant must have the extension active via `tenant_extensions`. Examples: `urn_sales`, `wastewater`, `redi_rock`, `rosetta`, `npca_audit_prep`. Extensions are the *front door for installing capabilities*; not every product line is an extension (vault is built-in baseline — see axis 5).
 4. **Vertical** (`required_vertical`) — industry preset. The tenant's `Company.vertical` value must match one of the declared verticals, OR the widget declares `"*"` (cross-vertical, default).
+5. **Product Line** (`required_product_line`) — operational scoping. The tenant must have the named product line activated via `tenant_product_lines.is_enabled = True`, OR the widget declares `"*"` (cross-line, default). Per [BRIDGEABLE_MASTER §5.2.1](BRIDGEABLE_MASTER.md), product line is the *operational reality* of what the tenant runs; distinct from extension (the activation surface). Vault is auto-seeded baseline for manufacturing-vertical tenants without extension activation; vault widgets gate on `required_product_line: ["vault"]`.
 
-**Composition.** All four axes are AND-evaluated. A widget like `urn_catalog_status` declares:
+**Composition.** All five axes are AND-evaluated. A widget like `urn_catalog_status` declares:
 ```typescript
 required_vertical: ["manufacturing"],
 required_extension: "urn_sales",
+required_product_line: ["urn_sales"],
 required_permission: "products.view",
 ```
-The widget is visible to a user only if: tenant.vertical = "manufacturing" AND tenant has `urn_sales` extension AND user has `products.view` permission. Composable, predictable, declarative.
+The widget is visible to a user only if: tenant.vertical = "manufacturing" AND tenant has `urn_sales` extension AND tenant has `urn_sales` product line activated AND user has `products.view` permission. Composable, predictable, declarative.
+
+A widget like `vault_schedule` declares (note no extension required — vault is baseline, not extension-installed):
+```typescript
+required_vertical: ["manufacturing"],
+required_product_line: ["vault"],
+required_permission: "production.view",
+```
 
 **The `required_vertical` semantics.**
 - `["funeral_home"]` — single-vertical (visible only to funeral_home tenants)
 - `["funeral_home", "cemetery"]` — multi-vertical (visible to either)
 - `"*"` — cross-vertical (visible to all verticals, default if omitted)
 
-Per Decision 9, `required_vertical` is **optional with default `"*"`**. Forces explicit declaration only for vertical-specific widgets, not every widget. Existing widgets receive explicit `"*"` annotation in migration; new widgets declare explicitly.
+**The `required_product_line` semantics.**
+- `["vault"]` — single-line (visible only when vault product line activated for the tenant)
+- `["vault", "redi_rock"]` — multi-line (visible when either line activated)
+- `"*"` — cross-line (visible regardless of which lines the tenant runs, default if omitted)
+
+Per Decision 9, `required_vertical` is **optional with default `"*"`**, and `required_product_line` follows the same convention. Forces explicit declaration only for line-specific widgets, not every widget. Cross-line widgets (`recent_activity`, `today`, `operator_profile`) declare `"*"` or omit. Per-line widgets (`vault_schedule`, `redi_rock_schedule`, `wastewater_schedule`, `urn_catalog_status`) declare their line(s) explicitly.
 
 **Defense-in-depth filter sites.**
-1. **Catalog UI fetch** (`/widgets/available?page_context=...`): backend filters by all four axes; response is the visible-to-this-user catalog. Catalog UI shows ONLY available widgets.
-2. **Layout fetch** (`/widgets/layout?page_context=...`): backend filters layout entries by current visibility; widgets the user has lost access to (e.g., vertical change, role change, extension deactivation) are stripped from the layout response. Persisted layout retains them; rendered layout doesn't show them.
+1. **Catalog UI fetch** (`/widgets/available?page_context=...`): backend filters by all five axes; response is the visible-to-this-user catalog. Catalog UI shows ONLY available widgets.
+2. **Layout fetch** (`/widgets/layout?page_context=...`): backend filters layout entries by current visibility; widgets the user has lost access to (e.g., vertical change, role change, extension deactivation, product-line deactivation) are stripped from the layout response. Persisted layout retains them; rendered layout doesn't show them.
 3. **Render dispatch**: `getWidgetRenderer(widget_id)` checks current visibility one more time at render. If the widget is somehow in the layout but the user fails the gate, render returns a "widget no longer available" placeholder (recovery path; rare).
 
 **Invisible-not-disabled discipline.** A widget the user can't see is not rendered as locked / grayed-out / "Pro feature" gated. It's simply absent from the catalog. The user doesn't perceive the existence of widgets they can't access. This matches Section 0 calibration ("calm by default, intentional materialization") and the broader platform discipline of inviting invitations vs gated reveals.
 
-**Pattern reuse.** This 4-axis filter mirrors `vault.hub_registry`'s `required_permission` + `required_module` + `required_extension` triple, extended with `required_vertical`. Same evaluation logic, same defense-in-depth pattern. The widget library inherits the discipline; consumers (catalog UI, dashboard hooks, render dispatch) reuse the filter helper.
+**Pattern reuse.** This 5-axis filter mirrors `vault.hub_registry`'s `required_permission` + `required_module` + `required_extension` triple, extended with `required_vertical` and `required_product_line`. Same evaluation logic, same defense-in-depth pattern. The widget library inherits the discipline; consumers (catalog UI, dashboard hooks, render dispatch) reuse the filter helper.
+
+**Mode-aware rendering vs. mode-aware visibility.** Operating mode (`production` / `purchase` / `hybrid`) is **NOT a sixth axis** — operating mode does not gate visibility. Per-line mode-aware widgets (`vault_schedule`, `line_status`) are visible whenever the line is activated; the widget's render path branches on `TenantProductLine.config["operating_mode"]`. Production-mode tenants see pour calendar; purchase-mode tenants see incoming PO calendar; hybrid-mode tenants see unified composition. Same widget, mode-aware rendering. Visibility = "is this line activated"; rendering = "in what mode does this line operate." Two distinct concerns, intentionally separated.
 
 ### 12.5 Composition rules per surface
 
 Each surface that hosts widgets has specific layout, lifecycle, persistence, and variant-default conventions. The unified contract (§12.3) carries through; the surface discipline differs.
+
+**Catalog filtering carries through every surface.** The 5-axis filter (§12.4) — including the product-line axis — applies at catalog fetch for every surface below. A user on a manufacturing tenant with vault + urn_sales lines activated sees `vault_schedule` and `urn_catalog_status` in the catalog. A user on the same tenant whose lines drop urn_sales (admin deactivates the extension or product line) loses `urn_catalog_status` from their catalog the next fetch — Pulse layouts strip it, Spaces sidebar pin grays it, Focus removes it. **Product-line filtering is uniform across surfaces**; mode-aware rendering happens *inside* the widget once visibility passes.
 
 **Focus (Decide) — canvas free-form, anchor-positioned.**
 - **Layout style**: 8-anchor positioning (top-left / top-center / top-right / left-rail / right-rail / bottom-left / bottom-center / bottom-right) + offset + width / height. Existing canvas widget primitive (Phase 4.3b.3.1 + Aesthetic Arc Session 4.8).
@@ -3420,7 +3438,7 @@ This is the bridge between the Focus primitive (deliberate-action workspace) and
 
 *Future Arrangement Focus core → Arrangement Widget.* When the Arrangement primitive (FH vertical) ships, the same pattern applies: the widget surfaces case progression with bounded interactions (mark a stage complete, add a quick note, flag for follow-up); decisions about case routing or arrangement reschedule require Focus.
 
-*Future Pour Schedule Focus core (manufacturing) → Pour Schedule Widget.* Per cold-start catalog scope: the Pour Schedule Widget will exist at Brief / Detail / Deep variants when Pour Schedule Focus exists; widget supports single pour reassignment, individual status updates; production line rebalancing requires Focus.
+*Future Vault Schedule Focus core (manufacturing) → Vault Schedule Widget.* Per cold-start catalog scope: the Vault Schedule Widget will exist at Brief / Detail / Deep variants when Vault Schedule Focus exists; widget supports single pour / single PO reassignment + individual status updates; production line rebalancing or supplier-coordination decisions require Focus. The widget is **mode-aware** (per [BRIDGEABLE_MASTER §5.2.2](BRIDGEABLE_MASTER.md)): production-mode tenants see pour-schedule render path; purchase-mode tenants see incoming-PO render path; hybrid-mode tenants see unified composition. Same widget, different content per `TenantProductLine.config["operating_mode"]`. Each non-vault product line has its own analogous schedule widget (`redi_rock_schedule`, `wastewater_schedule`) — same naming convention, same mode-aware contract.
 
 **Why this matters.** If widgets were truly read-only, operators would be forced into Focus for every micro-update — friction without payoff. If widgets had full editing capability, the workspace metaphor would muddy — no clear "where do I do which work" answer. Threading the needle: **widgets are reference + micro-actions; Focus is considered decisions + complex coordination**. Two genuinely different work modes.
 
@@ -3588,7 +3606,7 @@ Surface code reads only the relevant variant; widget components only see `Widget
 
 ### 12.10 Reference implementation
 
-Three canonical widgets serve as reference implementations for the Widget Library Architecture:
+Fourteen canonical widgets serve as reference implementations for the Widget Library Architecture. The first three demonstrate the cross-vertical + workspace-core + vertical-scoped patterns. The next two (added during the Product Line + Operating Mode canon session, April 2026) demonstrate per-line + mode-aware patterns. The next four (added during Phase W-3a Foundation Widget Cluster, April 2026) demonstrate the **cross-vertical + cross-line foundation widget** pattern shipped at the start of the W-3 cold-start catalog work. Two more (added during Phase W-3b Cross-Surface Infrastructure Widgets, April 2026) demonstrate the **config-driven user-authored widget catalog** pattern (`saved_view`) and the **per-user scoped narrative widget** pattern (`briefing` — promotion of an existing primitive surface to widget contract). The final three (added during Phase W-3d Manufacturing Per-Line Widgets, April 2026) demonstrate the **first concrete activation of the 5-axis filter end-to-end** — vault_schedule is the **first concrete workspace-core widget canonical reference** with mode-aware rendering; line_status is the **first cross-line aggregator using the multi-line builder pattern**; urn_catalog_status is the **first widget exercising the `required_extension` axis**. Together these three exercise vertical + product_line + extension axes simultaneously, completing the 5-axis filter coverage.
 
 **1. Funeral Schedule Widget (workspace-core widget).**
 - Cold-start catalog: `funeral_schedule`
@@ -3623,6 +3641,7 @@ Three canonical widgets serve as reference implementations for the Widget Librar
 - Variants: Glance + Brief + Detail
 - Surface compatibility: `pulse_grid`, `spaces_pin`, `dashboard_grid`, `peek_inline`
 - Vertical: `"*"` (cross-vertical)
+- Product line: `"*"` (cross-line)
 - Demonstrates: cross-vertical widget rendering across all surfaces with same component, different variants.
 - Data source: `useWidgetData("/api/v1/vault/activity/recent?limit=10")` with auto-refresh.
 - Per-variant content + interactions:
@@ -3630,6 +3649,230 @@ Three canonical widgets serve as reference implementations for the Widget Librar
   - **Brief** — 5 most recent activities with type icons + timestamps. Interactions: tap an activity to navigate to the related entity (peek or page).
   - **Detail** — 20 most recent activities with full descriptions + entity links. Interactions: tap to navigate (no in-place edits — Recent Activity is a reference-only widget, the activities themselves don't have widget-level state to flip).
 - Used inside peek panels (entity detail context) at Brief variant.
+
+**4. Vault Schedule Widget (per-line + mode-aware reference).**
+- Cold-start catalog: `vault_schedule`
+- Variants: Glance + Brief + Detail + Deep
+- Surface compatibility: `pulse_grid`, `focus_canvas`, `spaces_pin`, `dashboard_grid`
+- Vertical: `["manufacturing"]`
+- Product line: `["vault"]`
+- Permission: `production.view`
+- Demonstrates: **per-line + mode-aware rendering**. Same widget, different render path per `TenantProductLine.config["operating_mode"]` value. Reference for every other per-line schedule widget the platform builds (`redi_rock_schedule`, `wastewater_schedule` follow the same pattern with same naming convention).
+- Data source (per mode):
+  - **Production mode** — `useVaultProductionSchedule()` reading `work_orders`, `production_log_entries`, `production_mold_configs` for the user's tenant (existing pour-schedule data path).
+  - **Purchase mode** — `useVaultPurchaseSchedule()` reading `licensee_transfers` for the user's tenant where the tenant is the *receiving* party (incoming POs from supplier licensees).
+  - **Hybrid mode** — both data sources merged, ordered by date, render annotates each row with mode source ("Pour: Monticello x4" vs "Incoming: Empire State, Concord vault x2").
+- Per-variant content + interactions:
+  - **Glance** — today's schedule item count + status indicator (production: "today's pour load: 4 vaults"; purchase: "today's incoming: 2 deliveries"; hybrid: "today: 4 pours / 2 incoming"). Interactions: none. Tap navigates to Brief or Focus.
+  - **Brief** — next 5 schedule items grouped by date. Production-mode rows show pour assignments + crew; purchase-mode rows show supplier + tracking + ETA. Interactions: tap an item to peek (single-record view); single status flip per item (production: mark pour complete; purchase: mark received).
+  - **Detail** — full week of schedule items with pour-vs-receive distinction visible. Interactions: drag single pour to reassign crew (production), update single ETA (both modes), mark single status flip per row, quick note per row.
+  - **Deep** — Detail + flanking-day peek (multi-day visible) + bulk-of-one filtering by vault type. Same interaction set as Detail (no bulk operations — bulk reassignment routes to Focus).
+- **NOT supported in any variant**: schedule rebuild, bulk reassignment, multi-record coordination, finalize day's schedule, decision moments around pour-vs-purchase trade-offs (e.g., "should we pour this in-house or buy from neighbor"). Those are Focus-required.
+- **Mode-flip at runtime**: when an admin flips the tenant's vault `operating_mode` in `TenantProductLine.config`, the next render of `vault_schedule` swaps render path. No widget reinstall; no layout migration. Single widget, mode-aware contract.
+- **Decision sequence (per-line widget naming convention)**: each product line gets its own schedule widget named `<line_key>_schedule`. Vault is the canonical reference; Redi-Rock + wastewater + future lines follow. The naming is **mode-agnostic** (not "pour_schedule" — that leaked production-mode bias).
+
+**5. Line Status Widget (cross-line aggregator + mode-aware reference).**
+- Cold-start catalog: `line_status`
+- Variants: Brief + Detail (no Glance — line status is operational-health information that doesn't compress to count-only)
+- Surface compatibility: `pulse_grid`, `dashboard_grid`
+- Vertical: `["manufacturing"]`
+- Product line: `"*"` (renders for any active line; aggregates whichever lines the tenant has activated)
+- Permission: `production.view`
+- Demonstrates: **cross-line aggregator with per-line drill-down**. Replaces the implicit vault-only "production_status" assumption pre-canon. Production tenants see pour-status rows; purchase tenants see incoming-supply-status rows; hybrid tenants see both. Mode-awareness operates per active line, not at the widget level.
+- Data source: composes per-line data sources (`useVaultProductionSchedule` for vault production rows, `useVaultPurchaseSchedule` for vault purchase rows, similar for redi_rock + wastewater + urn_sales) into a unified line-by-line summary.
+- Per-variant content + interactions:
+  - **Brief** — one row per active product line, status indicator + headline metric. Production-mode lines show "On track / behind / blocked" with today's pour count; purchase-mode lines show supplier delivery status with today's incoming count; hybrid lines show both metrics inline. Interactions: acknowledge alerts (single state flip per alert).
+  - **Detail** — same row structure with expanded metrics: production-mode rows show crew utilization + mix design + this-week trend; purchase-mode rows show supplier on-time % + days-to-deliver + this-week supplier exception count. Interactions: + status flip per line (acknowledge a flagged line); tap a line to navigate to that line's `<line_key>_schedule` widget at Detail variant or open the relevant Focus.
+- **NOT supported in any variant**: trade-off decisions across lines (e.g., "should we re-prioritize redi_rock production over vault to meet a deadline"), capacity rebalancing, bulk acknowledgments. Those are Focus-required when the relevant Focus types ship; until then, line-level decisions are deferred to detail pages.
+- **The "operations_status" / "production_status" rename:** pre-canon a `production_status` widget was specified for manufacturing tenants, implicitly assuming all lines are production-mode. Canon supersedes with `line_status` — mode-agnostic, per-line health, cross-line aggregation. Any future "overall operations health" widget across all lines (if a need emerges) lands as a separate `operations_status` widget composing `line_status`-style rows alongside non-line operational health (orders pending, deliveries in flight, etc.). For September: `line_status` is the canonical per-line health widget; standalone `production_status` and `operations_status` widgets are not built unless explicit need surfaces.
+
+**6. Today Widget (Phase W-3a foundation reference — vertical-aware aggregation).**
+- Cold-start catalog: `today`
+- Variants: Glance + Brief
+- Surface compatibility: `pulse_grid`, `focus_canvas`, `spaces_pin`, `dashboard_grid`
+- Vertical: `"*"` (cross-vertical)
+- Product line: `"*"` (cross-line)
+- Reference component: `frontend/src/components/widgets/foundation/TodayWidget.tsx`
+- Demonstrates: **cross-vertical foundation widget with per-vertical-and-line content rendering**. Same widget for every tenant; the BACKEND service (`app/services/widgets/today_widget_service.py`) dispatches to per-(vertical, active product line) category builders. Manufacturing+vault tenants get vault deliveries + ancillary pool + unscheduled count. Other verticals get a thoughtful empty state + a vertical-aware `primary_navigation_target` (`/dispatch` for mfg, `/cases` for FH, `/interments` for cemetery, `/crematory/schedule` for crematory). Pattern locks the **multi-line builder shape** for future per-line breakdowns: when redi_rock activates, `_build_manufacturing_redi_rock_categories` plugs in alongside the vault builder without restructuring.
+- Data source: `GET /api/v1/widget-data/today` with 5-min auto-refresh. Tenant-scoped via `Company.id == user.company_id` filter; resolves "today" in the tenant's `Company.timezone` so a 23:30 tenant-local delivery doesn't bleed into "tomorrow" for non-UTC zones.
+- Per-variant content + interactions:
+  - **Glance** — date label + total count of relevant items. Interactions: tap to summon the tenant's `primary_navigation_target` (single navigate; no edit, no acknowledge).
+  - **Brief** — date header + per-category breakdown rows ("5 vault deliveries", "2 ancillary items waiting", "3 unscheduled"), each clickable for navigation. Empty-state rendering: "Nothing scheduled today" + "Open schedule →" CTA pointing at the vertical's primary work surface. Interactions: tap a row to navigate.
+- **NOT supported in any variant**: state flips, edits, decision moments. Today is a **reference widget** — it surfaces what's relevant; clicking through is the primary affordance.
+
+**7. Operator Profile Widget (Phase W-3a foundation reference — auth-context-only widget).**
+- Cold-start catalog: `operator_profile`
+- Variants: Glance + Brief
+- Surface compatibility: `pulse_grid`, `spaces_pin`, `dashboard_grid`
+- Vertical: `"*"` (cross-vertical)
+- Product line: `"*"` (cross-line)
+- Reference component: `frontend/src/components/widgets/foundation/OperatorProfileWidget.tsx`
+- Demonstrates: **auth-context-only widget — NO backend call.** The widget reads entirely from `useAuth()` (full user identity + role + permissions/modules/extensions counts) + `useSpacesOptional()` (active space name). Establishes the pattern: not every widget needs a data endpoint. Some widgets render context already in scope.
+- Per-variant content + interactions:
+  - **Glance** — initials avatar (24×24, terracotta-muted background) + first/last name + role label. Interactions: tap to summon `/settings/profile`.
+  - **Brief** — larger avatar (32×32) + full name + email header + role/active-space/access-summary rows + "Manage profile →" footer CTA. The access summary uses singular/plural-aware labels: "1 permission" vs. "3 permissions"; extensions row omitted when zero. Interactions: footer CTA navigates to `/settings/profile`.
+- **NOT supported in any variant**: profile editing, role/permission changes. Those happen on the dedicated settings page per §12.6a (decisions belong in Focus / dedicated surfaces).
+- **Defensive null behavior:** when mounted outside a tenant auth scope (e.g., misconfigured Storybook story), the dispatcher returns `null` rather than crashing. The widget is auth-required by definition.
+
+**8. Recent Activity Widget (Phase W-3a foundation reference — V-1c endpoint reuse with shim).**
+- Cold-start catalog: `recent_activity`
+- Variants: Glance + Brief + Detail
+- Surface compatibility: `pulse_grid`, `focus_canvas`, `spaces_pin`, `dashboard_grid`, `peek_inline`
+- Vertical: `"*"` (cross-vertical)
+- Product line: `"*"` (cross-line)
+- Reference component: `frontend/src/components/widgets/foundation/RecentActivityWidget.tsx`
+- Demonstrates: **endpoint reuse with minimal shim**. Backed by the V-1c `GET /api/v1/vault/activity/recent` endpoint extended Phase W-3a with an optional `actor_name` field populated server-side via User join (additive — existing V-1c consumers ignore the new field). No new backend endpoint. The pattern: when an existing endpoint is "almost right" for widget consumption, prefer additive Pydantic shim over new endpoint surface area.
+- Data source: `GET /api/v1/vault/activity/recent` with `limit=10` (Glance/Brief) or `limit=50` (Detail), 5-min auto-refresh. Tenant-scoped via the existing V-1c filter chain.
+- Per-variant content + interactions:
+  - **Glance** — count of recent events. Interactions: tap to summon `/vault/crm`.
+  - **Brief** — top 5 most recent events, each row "{actor_name} {verb} · {company_name} · {relative_time}". Interactions: tap row to navigate to the related CRM company; "View all →" footer CTA.
+  - **Detail** — top 50 events with category filter chips (All / Comms / Work / System) collapsing the activity_type vocabulary into a smaller user-facing taxonomy. Interactions: tap row to navigate; tap chip to filter (toggles `aria-selected` for a11y).
+- **Used inside peek panels** at Brief variant per §12.5 composition rules (`peek_inline` surface) — peek panels stay separately routed but compose this widget's components for content. Cross-surface reuse is the pattern; per-surface reinvention is what the widget library prevents.
+- **NOT supported in any variant**: activity editing (notes are read-only here; full edit happens on the entity detail page), follow-up management, comment threading. Per §12.6a — recent_activity is a reference widget, not an action surface.
+
+**9. Anomalies Widget (Phase W-3a foundation reference — bounded state-flip + tenant isolation).**
+- Cold-start catalog: `anomalies`
+- Variants: Brief + Detail (**NO Glance** — anomalies need at least Brief context per §12.10; count alone doesn't communicate severity or actionability)
+- Surface compatibility: `pulse_grid`, `focus_canvas`, `spaces_pin`, `dashboard_grid`
+- Vertical: `"*"` (cross-vertical)
+- Product line: `"*"` (cross-line)
+- Reference component: `frontend/src/components/widgets/foundation/AnomaliesWidget.tsx`
+- Demonstrates: **canonical widget-appropriate state-flip interaction** (Acknowledge) + **explicit tenant isolation in widget data sources**. Backed by the existing `agent_anomalies` table (Phase 1+ accounting agent infrastructure) with explicit tenant scoping via `AgentJob.tenant_id` join. Real production data — Wilbert licensee tenants running accounting agents have unresolved anomalies this widget surfaces directly. Phase W-5 (Intelligence-detected anomalies) extends the data source rather than replacing the widget.
+- Data source: `GET /api/v1/widget-data/anomalies` (severity-sorted critical → warning → info, then created_at desc). Acknowledge action: `POST /widget-data/anomalies/{id}/acknowledge` with optional `resolution_note`.
+- Severity vocabulary per `app.schemas.agent.AnomalySeverity` (3 levels — NOT 4 as some prior canon drafts suggested):
+  - **critical** → `text-status-error` / `border-l-status-error` (terracotta)
+  - **warning** → `text-status-warning` / `border-l-status-warning` (terracotta-muted)
+  - **info** → `text-status-info` / `border-l-status-info`
+- Per-variant content + interactions:
+  - **Brief** — top 4 most-critical anomalies, each row: severity icon + description + agent type + relative timestamp + Acknowledge button (single icon, hover-reveal). Header shows "{N} critical · {M} total" when criticals present, else "{M} unresolved". Interactions: tap row body to navigate to investigation; tap Acknowledge to flip state. Footer "View all {N} →" when total exceeds displayed.
+  - **Detail** — full list with severity filter chips (All / Critical / Warning / Info) + bulk-of-one acknowledge actions per row + scrollable. Interactions: same as Brief plus chip filter toggles severity visibility.
+- **The Acknowledge action is the canonical §12.6a test case** for widget-appropriate interactions:
+  1. ✅ Bounded scope: single anomaly per click
+  2. ✅ No coordination required: independent of other anomalies
+  3. ✅ Reversible / low-stakes: false-alarm acks can be re-investigated via audit log
+  4. ✅ Time-bounded: instant
+  Vocabulary: UI says "Acknowledge"; data action sets `resolved=true` + records `resolution_note`; audit log records `action="anomaly_resolved"` for accuracy at the data layer. Per CLAUDE.md §12 Spec-Override Discipline: the data model uses `resolved` not `acknowledged` (model precedes the widget); widget UI vocabulary kept as "Acknowledge" because that's the user's mental model.
+- **Tenant isolation** (load-bearing security gate): `agent_anomalies` has no direct `company_id` column; tenant scoping flows through `agent_job_id` FK → `AgentJob.tenant_id`. Every query in `app/services/widgets/anomalies_widget_service.py` explicitly joins `AgentJob` and filters `AgentJob.tenant_id == user.company_id`. The acknowledge endpoint re-validates tenant ownership BEFORE mutation; cross-tenant `anomaly_id` returns 404 (not 403, to avoid leaking existence). Verified explicitly via `TestTenantIsolation` test class with explicit cross-tenant fixtures.
+- **NOT supported in any variant**: bulk acknowledge across many anomalies (would require selection model + multi-record coordination — Focus-required); anomaly authoring (anomalies are agent-generated, not user-authored); routing rules (which agent emits which severity is configured at agent level, not widget level).
+- **Empty state** (Brief + Detail): "All clear" + sage `CheckCircle2` icon — accent-confirmed sage signals "good state" without using the celebratory accent terracotta. The empty state is a **first-class operational signal** ("nothing to worry about"), not an accidental absence.
+
+**10. Saved View Widget (Phase W-3b cross-surface infrastructure reference — config-driven user-authored widget catalog).**
+- Cold-start catalog: `saved_view`
+- Variants: Brief + Detail + Deep (**NO Glance** — saved views need at minimum a list to be informative; count alone doesn't communicate row content + sort + group)
+- Surface compatibility: `pulse_grid`, `dashboard_grid`, `focus_canvas` — **excludes `spaces_pin`** because sidebar requires Glance per §12.2 compatibility matrix and saved_view declares no Glance.
+- Vertical: `"*"` (cross-vertical)
+- Product line: `"*"` (cross-line)
+- Reference component: `frontend/src/components/widgets/foundation/SavedViewWidget.tsx`
+- Demonstrates: **the user-authored widget catalog without widget code**. A single `saved_view` widget definition + a `config: {view_id: <uuid>}` per-instance configuration mechanism turns every saved view in `vault_items.metadata_json.saved_view_config` into a widget instance. Tenants extend their effective widget catalog by authoring saved views; no code ship required. Pattern supersedes the pre-W-3b assumption that every "show me a list of X" needs its own widget definition. Phase W-3b Commit 0 closed the prerequisite — the pin contract carries `config` JSONB end-to-end through dispatch sites (`PinnedSection`, `Canvas`, `StackRail`, `BottomSheet`, `StackExpandedOverlay`, `WidgetGrid`).
+- Data source: thin wrapper around the existing V-1c `SavedViewWidget` (`frontend/src/components/saved-views/SavedViewWidget.tsx`). The W-3b foundation wrapper reads `props.config.view_id`, validates it, and delegates rendering to V-1c — including the V-1c renderer's 7 presentation modes (list / table / kanban / calendar / cards / chart / stat) + visibility checks + cross-tenant masking. **Reuse over rebuild**: zero changes to V-1c.
+- Per-variant content + interactions:
+  - **Brief** — full V-1c rendering at compact density (`showHeader=false`; widget framework's container provides chrome). Surface-size constraints in `WidgetDefinition.variants.brief.canvas_size` (320×auto, maxHeight 400). Interactions per V-1c renderer (click-through to entity row, mode-specific affordances).
+  - **Detail** — full V-1c rendering at standard density (`showHeader=true`). 480×auto, maxHeight 600. Same V-1c interaction set.
+  - **Deep** — canvas-mounted maximum density. 640×auto, maxHeight 800. Same V-1c interaction set.
+- **Empty state**: when `config.view_id` is missing or invalid, the widget renders an empty-state card (`Layers` icon + "No saved view configured" + "Pick a saved view from the library to display it here." copy + "Open saved views library →" link to `/saved-views`). Per Q4 fallback (b): inline picker dropdown deferred until a `PATCH /spaces/{space}/pins/{pin}` endpoint ships. Phase W-3b is widget shipping, not infrastructure expansion — settings-link fallback is honest about the missing PATCH path.
+- **Sidebar pin rejection** (canonical guard): the Phase W-2 `add_pin` surface check rejects `pin_type="widget" + target_id="saved_view"` against a Spaces sidebar because `supported_surfaces` doesn't include `spaces_pin`. Defense-in-depth: even if a legacy layout pre-dates the rejection (or a misconfigured pin slips through), the dispatcher's defensive fallback renders Detail rather than crashing. Belt and suspenders.
+- **NOT supported in any variant**: in-place saved view editing (rename, change query, change presentation, change visibility), saved view duplication, saved view deletion. Those are decision moments — full editing happens at `/saved-views/{view_id}` per §12.6a. The widget surfaces; the page owns.
+- **Cross-tenant masking inheritance**: the V-1c renderer applies cross-tenant field masking automatically when `caller_company_id != owner_company_id`; the widget inherits this behavior without re-implementing it.
+
+**11. Briefing Widget (Phase W-3b cross-surface infrastructure reference — per-user scoped narrative).**
+- Cold-start catalog: `briefing`
+- Variants: Glance + Brief + Detail (**NO Deep** — briefing detail is informationally complete; Deep would just re-render the dedicated `/briefing` page in widget chrome, which §12.6a discourages because heavy actions belong on the page, not the widget)
+- Surface compatibility: `pulse_grid`, `spaces_pin`, `dashboard_grid`, `focus_canvas` — **excludes `peek_inline`** because briefing is per-user content, not entity-scoped; peek panels compose around an entity, neither of which a briefing has.
+- Vertical: `"*"` (cross-vertical)
+- Product line: `"*"` (cross-line)
+- Reference component: `frontend/src/components/widgets/foundation/BriefingWidget.tsx`
+- Demonstrates: **per-user scoping via existing primitive infrastructure** + **promotion of an existing surface to widget contract**. The Phase 6 BriefingCard (a dashboard element on manufacturing-dashboard.tsx) was already a complete-enough rendering; W-3b promotes it to the widget contract by wrapping it with variant-aware tablets without touching the data path. The `useBriefing` hook (Phase 6) drives all variant rendering. Per-user scoping is enforced server-side at the `/briefings/v2/latest` endpoint (which filters by `user_id == current_user.id`); the widget itself does no user filtering — the endpoint contract is the security boundary, not the widget. Pattern: when an existing primitive renders the right content, prefer thin variant-aware wrapper over rebuild.
+- Data source: `useBriefing(briefing_type)` hook → `GET /api/v1/briefings/v2/latest?briefing_type={morning|evening}` with auto-retry-once on transient failure (Phase 7 `useRetryableFetch`). Per-user scoped server-side; the widget never sees other users' briefings.
+- Per-instance briefing-type config: `config.briefing_type` ("morning" | "evening", default "morning"). Future tenants can pin a Glance "End of day summary" alongside the morning briefing for two complementary sidebar entries.
+- Per-variant content + interactions:
+  - **Glance** — sidebar-density single-line strip: briefing-type icon (Sunrise / Sunset) + "Morning briefing" / "End of day summary" label + unread accent dot when `briefing.read_at == null`. Frosted-glass tablet treatment per Pattern 1 (sidebar Glance). Empty state: "No briefing yet" routes to `/briefing`. Interactions: tap navigates to `/briefing/{id}` (or `/briefing` when empty). No state flips.
+  - **Brief** — condensed card: briefing-type icon + title + narrative excerpt truncated to 320 chars at last-word-boundary + active space pill + Unread pill (when `read_at == null`) + "Read full briefing →" link. Empty state CTA. Interactions: tap "Read full" or click anywhere on the card → `/briefing/{id}`.
+  - **Detail** — full narrative (no truncation) + structured-section preview cards (Queues, Flags, Pending decisions — top 5 each, severity dot per flag) + Read full link. Renders only known structured-section keys; unknown keys silently skipped per the Phase 6 contract.
+- **NOT supported in any variant**: Mark-read (server stamp on `briefing.read_at`), Regenerate (Intelligence-billed regenerate), Preferences editing. All three live on `/briefing` and `/settings/briefings` per §12.6a — the dedicated page owns heavy + irreversible + Intelligence-cost actions; the widget surfaces.
+- **Sidebar pin acceptance** (the §12.2 + §12.10 rule in action): the Phase W-2 `add_pin` surface check accepts `pin_type="widget" + target_id="briefing"` against a Spaces sidebar because `briefing` declares `Glance + spaces_pin`. The pin defaults `variant_id="glance"` per §12.2. This contrasts directly with widget #10 (`saved_view`) which is rejected for the same sidebar pin — same canon, opposite outcome, both correct.
+- **Coexist-with-legacy discipline**: the Phase 6 `BriefingCard` component is NOT replaced by W-3b. Manufacturing-dashboard + order-station continue to mount `BriefingCard` directly (page-level rendering). The W-3b `BriefingWidget` is the **catalog-citizen** widget contract; Phase 6 `BriefingCard` is the **page-mounted** component. Both render briefing content; they have different consumers. Future natural-touch refactors may migrate page mounts onto the widget; this is not a W-3b deliverable.
+
+**12. Vault Schedule Widget (Phase W-3d workspace-core canonical reference — mode-aware rendering).**
+- Cold-start catalog: `vault_schedule`
+- Variants: Glance + Brief + Detail + Deep (full set — workspace-core widgets are first-class)
+- Surface compatibility: `pulse_grid`, `spaces_pin`, `dashboard_grid`, `focus_canvas` — excludes `peek_inline` (schedule is not entity-scoped)
+- Vertical: `["manufacturing"]`
+- Product line: `["vault"]`
+- Reference component: `frontend/src/components/widgets/manufacturing/VaultScheduleWidget.tsx`
+- Reference service: `backend/app/services/widgets/vault_schedule_service.py`
+- Demonstrates: **first concrete workspace-core widget canonical reference per §12.6** + **mode-aware rendering per BRIDGEABLE_MASTER §5.2.2**. Production mode reads `Delivery` rows (kanban shape — same data the scheduling Focus core consumes); purchase mode reads incoming `LicenseeTransfer` rows (this tenant as `area_tenant_id`); hybrid composes both. **Why Delivery is the canonical scheduling entity (not SalesOrder):** ancillary items (urns, cremation trays, flowers) are **independent SalesOrders** sold separately to the funeral home customer. A funeral home ordering "1 vault + 1 urn + 1 tray" creates THREE SalesOrders → THREE Deliveries. Driver assignment + scheduling lives on Delivery (logistics concept), not SalesOrder (commercial concept). The widget consumes Delivery rows; the kanban card enriches each row with SalesOrder context (deceased name, line items, service location) at render time. See PLATFORM_ARCHITECTURE.md §9 + BRIDGEABLE_MASTER §5.2 for the SalesOrder vs Delivery distinction.
+- Data sources (per mode):
+  - **Production mode** — `Delivery` rows where `requested_date == today`, `scheduling_type IS NULL OR == "kanban"`, `status != "cancelled"`. Bulk-fetches linked `SalesOrder` rows for context enrichment + `Delivery` rows attached via `attached_to_delivery_id` for ride-along ancillary count.
+  - **Purchase mode** — `LicenseeTransfer` rows where `area_tenant_id == this_tenant`, `service_date >= today AND < today+7 days`, `status IN (pending, accepted, in_progress, fulfilled)`. The tenant is the *receiver* of incoming POs from a supplier licensee.
+  - **Hybrid mode** — both data sources composed; Brief stacks production + purchase sections; Detail shows driver lanes (production) + date buckets (purchase) in a unified rendering.
+- Per-variant content + interactions:
+  - **Glance** — count + mode-aware label ("X deliveries" / "X incoming" / "X scheduled" hybrid). Interactions: tap to summon mode-appropriate primary navigation target (`/dispatch` for production/hybrid; `/licensee-transfers/incoming` for purchase). Unassigned-warning dot when production has unassigned deliveries.
+  - **Brief** — header (date + mode badge), per-section breakdown (production: assigned vs unassigned + ancillary attachment; purchase: top 5 incoming by service_date), "Open in scheduling Focus" footer link.
+  - **Detail** — per-driver lane breakdown (production rows grouped by `primary_assignee_id`, "Unassigned" lane flagged with `data-unassigned="true"` for visual emphasis); per-service-date bucket breakdown (purchase rows grouped by date); attached ancillary count surfaced inline ("+2" indicator on parent vault delivery row).
+  - **Deep** — same content shape as Detail; renderer chrome provides additional vertical room (max-height 900px). Workspace-core canon: Deep is informationally complete at Detail's grouping; Deep doesn't add a new layout, just more vertical space for long lists.
+- **Bounded interactions per §12.6a (workspace-core canon)**: mark hole-dug status, drag delivery between drivers (single reassignment), update single ETA / start time, attach/detach ancillary, quick note. **NOT supported in any variant**: finalize schedule, day-switch / day-rebuild, bulk reassignment, conflict resolution, schedule rebuild after disruption, adding new deliveries — those are decision moments that require the Focus core's full editing chrome + workspace context. The "Open in scheduling Focus" affordance is always present in Brief / Detail / Deep.
+- **Empty states**: tenant without vault product line activated → "Vault not enabled" + CTA to `/settings/product-lines`. Vault enabled but zero work today → "Nothing scheduled" + mode-appropriate CTA. Hybrid mode shows production sections only when production has work; purchase sections only when purchase has work — empty branches don't render section headers.
+
+**13. Line Status Widget (Phase W-3d cross-line aggregator — multi-line builder pattern reference).**
+- Cold-start catalog: `line_status`
+- Variants: Brief + Detail (NO Glance — operational health doesn't compress to count-only per §12.10)
+- Surface compatibility: `pulse_grid`, `dashboard_grid`, `focus_canvas` — excludes `spaces_pin` (no Glance variant) and `peek_inline` (not entity-scoped)
+- Vertical: `["manufacturing"]`
+- Product line: `"*"` (cross-line aggregator — renders for whichever lines the tenant has activated)
+- Reference component: `frontend/src/components/widgets/manufacturing/LineStatusWidget.tsx`
+- Reference service: `backend/app/services/widgets/line_status_service.py`
+- Demonstrates: **first concrete cross-line aggregator** + **canonical multi-line builder pattern** (mirrors `today_widget_service.py`). Per active `TenantProductLine`, the dispatcher calls a per-line health builder: `_build_vault_health(db, tid, mode, today)` for vault (real metrics today); `_build_placeholder_health(line_key, display_name, mode)` for redi_rock / wastewater / urn_sales / rosetta (placeholder rows with `status="unknown"` until each line's metrics aggregator ships). When a future cluster wires real metrics for redi_rock or urn_sales, that line's row activates without restructuring; the aggregator stays mode-agnostic at the dispatcher level.
+- Data source: `app.services.widgets.line_status_service.get_line_status(db, user)` queries `TenantProductLine` for active lines, dispatches per `line_key`. Vault health composes today's `Delivery` count + driver assignment distribution (production mode) or incoming `LicenseeTransfer` count (purchase mode) or both (hybrid).
+- Per-line health vocabulary (canonical):
+  - **on_track** — green; metrics nominal
+  - **behind** — amber; metrics show slippage (production: >25% unassigned; purchase: pending transfers exist)
+  - **blocked** — red; critical issue (heuristic placeholder for future capacity-vs-load analysis)
+  - **idle** — neutral; line enabled but no work today
+  - **unknown** — neutral; placeholder until line aggregator ships
+- Per-variant content + interactions:
+  - **Brief** — one row per active line: status icon + display name + headline metric ("8 pours today" / "no incoming today" / "8 pours · 2 incoming" hybrid). Click "→" navigates to that line's `<line_key>_schedule` widget at Detail (or Focus when ready). `data-attention="true"` on the widget root when any line is `behind` / `blocked` — gives shells/sidebars a regression-safe hook for visual emphasis.
+  - **Detail** — same row structure with expanded metrics (per-line metrics dict surfaces non-zero values: `production_today`, `production_assigned`, `production_unassigned`, `purchase_today`, `purchase_pending`). Mode badge per row (Production / Purchase / Hybrid). Click-through CTA opens line-specific schedule.
+- **NOT supported in any variant**: trade-off decisions across lines (e.g., "should we re-prioritize redi_rock production over vault to meet a deadline"), capacity rebalancing, bulk acknowledgments. Those are Focus-required when relevant Focus types ship. Per §12.6a — line_status surfaces health; decisions belong elsewhere.
+- **Empty state**: tenant with no active product lines → "No product lines active" + CTA to `/settings/product-lines`.
+
+**14. Urn Catalog Status Widget (Phase W-3d extension-gated reference — first `required_extension` axis activation).**
+- Cold-start catalog: `urn_catalog_status`
+- Variants: Glance + Brief (NO Detail/Deep — catalog management is the page's job; widget surfaces health)
+- Surface compatibility: `pulse_grid`, `spaces_pin`, `dashboard_grid`, `focus_canvas` — excludes `peek_inline` (catalog is not entity-scoped)
+- Vertical: `["manufacturing"]`
+- Product line: `["urn_sales"]`
+- **Required extension: `"urn_sales"`** ← first widget catalog entry exercising this axis
+- Reference component: `frontend/src/components/widgets/manufacturing/UrnCatalogStatusWidget.tsx`
+- Reference service: `backend/app/services/widgets/urn_catalog_status_service.py`
+- Demonstrates: **first widget exercising the `required_extension` axis of the 5-axis filter end-to-end**. Phase W-1 implemented extension gating in `widget_service.get_available_widgets`; Phase W-3a + W-3b cross-vertical widgets used `"*"` for the extension axis. urn_catalog_status is the first concrete activation: visible only to tenants with the `urn_sales` extension activated AND the urn_sales product line enabled. Tests in `backend/tests/test_urn_catalog_status_widget.py::TestExtensionGatingEndToEnd` verify the filter actually gates: `(no urn_sales extension) → invisible`; `(extension activated + product_line enabled) → visible`; `(extension activated, product_line missing) → invisible` (the 5-axis filter is AND-wise: every axis must pass).
+- Data source: `urn_catalog_status_service.get_urn_catalog_status(db, user)` queries `UrnProduct` (active + non-discontinued counts split by `source_type`), `UrnInventory` (low-stock identification: stocked SKUs where `qty_on_hand <= reorder_point AND reorder_point > 0`; reorder_point=0 means "no monitoring" and is excluded), `UrnOrder` (recent order count over last 7 days).
+- Per-variant content + interactions:
+  - **Glance** — single-line "{N} SKUs" + low-stock dot when `low_stock_count > 0`. Interactions: tap navigates to `/urns/catalog`. Reports "No catalog yet" when total_skus=0.
+  - **Brief** — 4 metric rows (Stocked / Drop-ship / Low stock / Orders 7d) + low-stock list when applicable (top 3 lowest-stock SKUs with format `{sku} {name} {qty_on_hand}/{reorder_point}`). Footer "Open catalog →" link. `data-low-stock="true"` on the widget root when any SKU is at-or-below reorder point.
+- **NOT supported in any variant**: adjusting stock levels, modifying reorder points, marking SKUs discontinued or active, ordering replenishment from suppliers. Catalog management lives at `/urns/catalog`. Per §12.6a — view-only with click-through.
+- **Empty state**: tenant with extension activated but no products → "Catalog is empty" + CTA to `/urns/catalog`.
+
+### Per-line widget naming convention
+
+Per [BRIDGEABLE_MASTER §5.2](BRIDGEABLE_MASTER.md) Product Line Activation model, the platform builds per-line widgets following a stable naming convention:
+
+| Pattern | Examples | Visibility (axis 5) |
+|---|---|---|
+| `<line_key>_schedule` | `vault_schedule`, `redi_rock_schedule`, `wastewater_schedule`, `urn_catalog_status` (urn line variant) | `required_product_line: ["<line_key>"]` |
+| Cross-line aggregators | `line_status` | `required_product_line: "*"` (renders for whichever lines are active) |
+
+**Naming discipline.**
+- **Mode-agnostic.** The widget name does not embed an operating mode (`pour_schedule` would leak production bias; `vault_schedule` is correct because vault may run in production OR purchase OR hybrid mode).
+- **Line-specific.** Per-line widgets carry the `line_key` exactly as it appears in `tenant_product_lines.line_key` so `required_product_line` filtering is unambiguous.
+- **Plural avoided.** `vault_schedule` not `vaults_schedule`; the line is the noun.
+- **Snake_case.** Matches the rest of the widget catalog (`recent_activity`, `urn_catalog_status`, etc.).
+
+When a new product line activates the platform, three artifacts ship together:
+1. Line registry entry (CODE-side: `line_key` + display_name + vertical association + default `operating_mode` + extension association if any)
+2. `<line_key>_schedule` widget (per-line schedule + mode-aware rendering)
+3. Line presence in `line_status` aggregator (automatic via the aggregator's per-active-line render loop)
+
+Optional follow-ups: `<line_key>_status` standalone widget (if line has health metrics independent of schedule), `<line_key>_inventory` widget (if line has inventory worth surfacing), `<line_key>_pricing` widget (if pricing dynamics warrant). All follow the same `<line_key>_*` naming convention.
 
 ### Per-variant interaction declaration pattern
 
@@ -3648,13 +3891,17 @@ The discipline is more important than the mechanism: when building a widget at a
 | `operator_profile` | None | switch active space | + edit role-driven defaults | n/a |
 | `anomalies` | n/a | approve/reject/snooze (single anomaly) | + note per anomaly | n/a |
 | `arrangement_pipeline` | n/a | tap to peek case | + mark stage complete (single case) | n/a |
-| `pour_schedule` | n/a | reassign single pour, status flip | + ETA per pour | (same as Detail) |
+| `vault_schedule` | None (count) | reassign single pour OR update single ETA, status flip per row | + quick note per row | + flanking-day peek (same interactions) |
 | `urn_catalog_status` | None | tap-to-navigate | n/a | n/a |
-| `production_status` | n/a | acknowledge alerts | + status flip per line | n/a |
+| `line_status` | n/a | acknowledge alerts (per line) | + status flip per line | n/a |
 | `saved_view` | n/a | execute view + view rows (interactions per saved-view config) | + filter / sort UI | + group / aggregation UI |
 | `briefing` | None | tap to expand | + dismiss / mark-read | n/a |
 
 In all rows, decisions involving trade-off evaluation, multi-record coordination, or commit-to-decision moments route to Focus or the entity's detail page. The matrix above is bounded to widget-appropriate interactions per §12.6a discipline.
+
+**Per-line widget mode awareness.** `vault_schedule` interactions in the table above describe the canonical interaction set; the **content** of those interactions is mode-aware. Production-mode interactions operate on pour rows (reassign crew, mark pour complete); purchase-mode interactions operate on incoming-PO rows (update ETA, mark received). Same interaction vocabulary, mode-appropriate target. `line_status` is similarly mode-aware per active line. Future per-line schedule widgets (`redi_rock_schedule`, `wastewater_schedule`) inherit the same mode-aware contract.
+
+**Naming note (canon update).** Pre-canon a `pour_schedule` widget was specified, implicitly assuming production-mode-only operation. Canon renames to `vault_schedule` (mode-agnostic, line-specific) and generalizes the pattern via the per-line naming convention above. Pre-canon `production_status` similarly assumed all lines run in production mode; canon renames to `line_status` (mode-agnostic, per-line health, cross-line aggregator).
 
 **Migration path for existing 25+ widgets.**
 - Operations Board widgets (16): wrap in `WidgetVariantProps` adapter, declare 1 Brief variant matching existing `default_size`, backfill `WidgetDefinition` from existing backend rows. Mechanical.
@@ -3684,6 +3931,273 @@ In all rows, decisions involving trade-off evaluation, multi-record coordination
 - **PLATFORM_ARCHITECTURE.md** §3 (Spaces / Pulse / Monitor) + future Widget Library subsection: phased implementation plan W-1 through W-6.
 - **PLATFORM_PRODUCT_PRINCIPLES.md** "Widget Compactness": compact-to-contents canon applies; chrome scales with content, content scales with variant.
 - **AESTHETIC_ARC.md** Widget Library Investigation + Specification entries: arc context.
+
+---
+
+## Section 13 — Spaces and Pulse Visual System
+
+### 13.1 Purpose
+
+This section captures the visual language for the Spaces system and Pulse surface. It complements §12 (Widget Library Architecture) by specifying how Space-level composition reads visually and how Pulse's intelligent composition signals its distinctive nature without dominating chrome.
+
+### 13.2 Visual Hierarchy Across Space Types
+
+All Space types share platform visual vocabulary established in §11 (eight patterns) and §12 (widget chrome). Distinctions between Space types are subtle, chrome-level differentiations rather than wholesale visual departures.
+
+#### 13.2.1 Home Space (Pulse) Visual Treatment
+
+Home Pulse renders as composed surface with subtle "intelligence" affordances:
+- Standard Pattern 2 widget chrome for pinable widgets
+- Standard tablet chrome for intelligence streams
+- Tetris layout (no fixed grid columns; intelligence-determined sizing + position)
+- Compact viewport-fit content density (no scrolling beyond viewport for primary content)
+- Subtle "composed" affordance: brass thread (1px aged-brass divider) above primary work-surface content marking the Operational layer
+- No edit mode (user does not customize Pulse content)
+- Dismiss affordances on each piece of content (signal collection chrome — see §13.5)
+
+#### 13.2.2 My Stuff and Custom Spaces Visual Treatment
+
+Standard widget grid surface:
+- Pattern 2 widget chrome
+- Fixed grid columns (responsive to viewport)
+- Edit mode toggle (visible drag handles, resize handles, remove affordances when active)
+- Add-widget affordance in edit mode (empty cells show "+" CTA)
+- User-customization-friendly chrome (clear what's editable vs locked)
+
+#### 13.2.3 Settings / Cross-tenant / Portal Spaces
+
+Detailed visual canon TBD per Space type in separate sessions. Default position: standard chrome with context-appropriate adaptations (Family Portal probably warmer/calmer; Driver Portal probably mobile-first; CPA Portal probably data-heavy with table emphasis).
+
+### 13.3 Pulse Tetris Composition
+
+#### 13.3.1 Layout Engine
+
+Pulse uses tetris-packing layout — intelligence determines content sizing, layout engine packs content to viewport.
+
+Layout properties:
+- Content units sized by intelligence in increments (Glance / Brief / Detail / Deep variant grid sizes)
+- Viewport dimensions calculated on render
+- Packing algorithm fits content with intelligent priority ordering (high-priority content gets larger sizing, surfaces above fold)
+- Reflow on window resize maintains composition coherence
+- Empty space acceptable (Pulse not packed-to-edges — breathing room reads as deliberate composition)
+
+Pieces don't snap to fixed grid columns the way My Stuff/Custom Spaces do. Pieces flow into available space sized to their priority + content needs.
+
+#### 13.3.2 Layer Visual Demarcation
+
+Four layers compose Pulse content. Visual demarcation between layers is subtle:
+
+- **Personal layer** at top (always first when present)
+- **Operational layer** dominates primary work-surface area (largest pieces typically here)
+- **Anomaly layer** intermixes with Operational when severity warrants (high-severity anomalies inline with operational content)
+- **Activity layer** ambient at periphery (smaller pieces, lower visual weight)
+
+No hard section dividers between layers. Brass-thread (1px aged-brass divider) marks Operational layer boundary subtly. Other layers blend through positioning + sizing rather than chrome.
+
+#### 13.3.3 Multi-stream Within Layers
+
+A layer can contain multiple distinct content streams. Each stream renders as its own piece in tetris layout — emails are one piece, system events another piece, both within Activity layer but visually distinct.
+
+Streams within a layer have visual coherence (similar chrome, similar sizing tendencies) without being grouped into compound containers. The user reads Pulse as composed pieces, not as nested layers.
+
+### 13.4 Content Stream Visual Treatments
+
+#### 13.4.1 Pinable Widget Pieces
+
+Render with Pattern 2 chrome (locked in §12.5) at variant-determined size:
+- Glance (1×1) — peripheral, single-data-point pieces
+- Brief (2×1 or 2×2) — standard pieces, primary-content visible
+- Detail (2×2 or 3×2) — work-surface pieces, primary work content
+- Deep (3×2 or 4×2) — canvas-mounted pieces, full content rendering
+
+Variant chosen by Pulse intelligence based on priority + viewport availability.
+
+#### 13.4.2 Intelligence Stream Pieces
+
+Render with similar Pattern 2 chrome but with intelligence-stream-specific affordances:
+- Smart email surfacing pieces show source email metadata (subject, sender, original date) plus contextual relevance reason ("you committed to follow up on this 3 weeks ago")
+- Daily briefing pieces show synthesized text in friendly typography (slightly larger reading-text size; brass accent on key entities)
+- Coordination summary pieces show cross-tenant context with tenant-color accent
+- Anomaly intelligence pieces show synthesis above raw anomaly count
+- Conflict detection pieces show conflicting items with terracotta connection indicator
+
+Intelligence streams are visually distinct from pinable widgets via:
+- Slightly more prose/text vs structured data
+- Reasoning-context chrome ("because..." or "given..." subtle text)
+- Brass thread accents at piece edges (signaling composed-by-intelligence)
+
+This subtle distinction signals "this is intelligent content" without dominating chrome. User can tell Pulse pieces apart but the surface reads coherently.
+
+### 13.5 Signal Collection Chrome
+
+Pulse Tier 2 intelligence requires dismiss + navigation tracking. Chrome supports this with subtle affordances:
+
+#### 13.5.1 Dismiss Affordances
+
+Each Pulse content piece has dismiss affordance:
+- Subtle X icon top-right of piece (visible on hover, otherwise low-contrast)
+- Dismiss action records signal (user dismissed this content type at this time of day)
+- Confirmation: piece animates out smoothly
+- Re-surface logic: dismissed content stays out for a calibrated window (next morning, next week, etc.)
+- "Restore dismissed" affordance in Pulse footer (rarely-used escape hatch)
+
+#### 13.5.2 Navigation Tracking
+
+Click-through from any Pulse piece records signal:
+- What user clicked
+- Where it navigated to
+- Time of navigation
+- Time spent on Pulse before navigating
+
+No visible chrome for navigation tracking — invisible signal collection.
+
+#### 13.5.3 Engagement Indicators (Tier 2+)
+
+When Tier 2 algorithms ship post-September, subtle engagement indicators may surface:
+- "Frequently used" markers on consistently-engaged content
+- "New for you" markers on content surfaced based on recent behavior shift
+- Calibrated to feel adaptive, not surveillance-y
+
+Specific chrome TBD when Tier 2 ships.
+
+### 13.6 Onboarding Visual Treatment
+
+Onboarding flow captures work areas + responsibilities with care:
+
+#### 13.6.1 Work Area Multi-select
+
+Multi-select cards for work areas:
+- Each work area as visual card (icon + label + brief description)
+- Cards arrange in responsive grid
+- Selection state: brass border + filled background
+- Multiple selections allowed (encouraged by phrasing)
+- Save-and-continue requires at least one selection
+- Adjustable post-onboarding via Settings Space
+
+#### 13.6.2 Responsibilities Description
+
+Free-text input for responsibilities:
+- Multi-line text area (calibrated for ~3-5 sentence response)
+- Placeholder text models good response: "Tell us about your day-to-day. What do you do, what do you watch out for, what do you wish you had better visibility into?"
+- Auto-save as user types
+- Skippable but encouraged ("This helps Bridgeable understand what to surface for you")
+- Adjustable post-onboarding via Settings Space
+
+### 13.7 Visual Coherence Discipline
+
+Across Space types, visual coherence is maintained:
+- Same brass accent color across Pulse and standard dashboards
+- Same widget chrome (Pattern 1 / Pattern 2) across surfaces
+- Same typography (Fraunces display + Geist body + Geist Mono numerals)
+- Same iconography (Lucide)
+- Same dark/light mode treatment
+
+Distinctions between Space types are intentional but subtle. User moving between Home Pulse and a custom Space should feel continuity ("same platform") with awareness ("different mode").
+
+### 13.8 Reference Implementations
+
+Phase W-4a (April 2026) shipped the Home Pulse infrastructure end-to-end. The references below are locked against that build and serve as calibration anchors for subsequent component refinement and post-September iteration. Three additional references — **My Stuff Space** (Phase W-4b+), **Custom Space template** (Phase W-5), and the **full Onboarding flow** including the multi-select work-area card grid (deferred until the standalone onboarding visual lands) — will be added as those phases ship.
+
+#### 13.8.1 Home Pulse — Sunnycrest dispatcher (canonical composition)
+
+The reference for §13.3 Tetris Composition + §13.4 Content Stream Visual Treatments is the Sunnycrest dispatcher Pulse surface. Two states are locked (the platform must render both coherently).
+
+**State A — User without `work_areas` set (vertical-default fallback per D4):**
+- `metadata.vertical_default_applied = true`
+- `PulseFirstLoginBanner` renders at the top of `PulseSurface` per §13.6
+- Operational layer composes the `manufacturing` vertical-default set: `vault_schedule` Detail (2×2) + `line_status` Brief (2×1) + `scheduling.ancillary-pool` Brief (2×1) + `today` Glance (1×1) + `urn_catalog_status` Glance (only when the `urn_sales` extension is active)
+- Anomaly + Activity layers render their advisory text in italic when empty
+- Brass-thread divider above the Operational layer per §13.3.2 — 1px solid terracotta accent at 30% alpha
+
+**State B — User with canonical Sunnycrest dispatcher `work_areas` set:**
+- `work_areas = ["Production Scheduling", "Delivery Scheduling", "Inventory Management"]`
+- `responsibilities_description` populated with operator-narrative text (e.g., *"I dispatch vault deliveries, coordinate ancillary pickups, and watch inventory levels for upcoming pours."*)
+- `metadata.vertical_default_applied = false`
+- `PulseFirstLoginBanner` is suppressed
+- Operational layer matches the same canonical D5 composition: `vault_schedule` Detail (2×2, primary work surface) + `scheduling.ancillary-pool` Brief (2×1) + `line_status` Brief (2×1) + `today` Glance (1×1)
+- Personal layer surfaces the `approvals_waiting` stream when the user has pending approvals; otherwise renders an empty advisory
+- Anomaly intelligence stream synthesizes prose when the tenant has unresolved `AgentAnomaly` rows; brass-thread accents at piece edges per §13.4.2
+
+The composition emerges from the work-area-to-widget mapping in `backend/app/services/pulse/operational_layer_service.py` — the canonical reference for the §3.26.3.1 work-area vocabulary.
+
+#### 13.8.2 PulseSurface tetris grid
+
+`frontend/src/components/spaces/PulseSurface.tsx` + `PulseLayer.tsx` implement §13.3.1. The locked grid contract:
+- Custom CSS Grid: `grid-cols-[repeat(auto-fit,minmax(160px,1fr))] auto-rows-[80px] gap-3`
+- Pieces consume cells via inline `gridColumn: span {cols}` + `gridRow: span {rows}` derived from each `LayerItem.cols / .rows` (sized by the composition engine, not the renderer)
+- Per-layer padding via `space-y-4` between layers — breathing-room composition per §13.3.1
+- Empty layers (`pieces.length === 0`) render a single italic advisory line (`pulse-layer-advisory` slot) when the layer service emits one; otherwise the layer returns `null` so it doesn't reserve vertical space
+
+#### 13.8.3 Operational layer brass-thread divider
+
+`PulseLayer` applies `border-t border-accent/30 pt-4 mt-2` ONLY when `layer === "operational"`. Visual contract:
+- 1px solid border using the platform terracotta accent token at 30% alpha
+- 16px top padding + 8px top margin separating the divider from the layer above
+- Subtle: passes the **cover-with-hand test** — covering the line with a hand should not change the user's perception of layered composition; the divider reinforces an already-readable hierarchy rather than carrying it
+- Single-value across light + dark mode per Aesthetic Arc Session 2 (no asymmetric tokenization)
+
+The divider is the only chrome marker between layers. Personal / Anomaly / Activity layers blend through positioning + sizing per §13.3.2.
+
+#### 13.8.4 PulsePiece — two content primitives
+
+`PulsePiece.tsx` dispatches by `LayerItem.kind`:
+- `kind="widget"` → routes through the widget renderer registry (`getWidgetRenderer`) with `surface="pulse_grid"` and the item's `variant_id` + `config`. Pattern 2 chrome inherited from §12.5.
+- `kind="stream"` → renders the matching `IntelligenceStream` content via the stream renderer registry; `AnomalyIntelligenceStream` is the Phase W-4a reference implementation per §13.4.2.
+
+Dismiss chrome (X icon, top-right, opacity-0 default → group-hover:opacity-100) per §13.5.1 and click navigation tracking per §13.5.2 are wired uniformly across both primitives.
+
+#### 13.8.5 AnomalyIntelligenceStream — V1 reference for §13.4.2
+
+`frontend/src/components/spaces/intelligence-streams/AnomalyIntelligenceStream.tsx` is the locked V1 reference for the intelligence-stream visual treatment:
+- Pattern 2 chrome (`bg-surface-elevated rounded-[2px] border border-border-subtle`) + brass-thread top edge via `before:` pseudo-element (`before:h-px before:bg-accent`)
+- `Sparkles` Lucide icon (terracotta) + `title` (display-weight) + `synthesized_text` (body, slightly larger reading-text size) per §13.4.2
+- `referenced_items` rendered as a row of chips (top 5; remainder collapsed into a "+N more" indicator)
+- Click dispatches `onReferencedItemClick` for the navigation signal collection contract
+
+Future intelligence streams (smart email surfacing, daily briefing, cross-tenant coordination, conflict detection — Phase W-4b) extend the same chrome pattern with stream-specific affordances.
+
+#### 13.8.6 PulseFirstLoginBanner — §13.6 onboarding surface
+
+`PulseFirstLoginBanner.tsx` is the locked reference for the §13.6 onboarding affordance on the Pulse surface itself. Visual contract:
+- Inline banner above all layers (NOT a tooltip — `OnboardingTouch` is the tooltip primitive; this banner shares the persistence hook `useOnboardingTouch("pulse_first_login_banner")` but renders as inline content)
+- `bg-accent-subtle` (terracotta @ 10% alpha) + `border-accent/30`
+- `Sparkles` icon + heading *"Personalize your Pulse"* + body explainer + brass-filled CTA button rendering as a `<Link to="/onboarding/operator-profile" />` + dismiss X
+- Suppressed in two cases: (1) `metadata.vertical_default_applied === false` (user has work_areas set), (2) the onboarding-touch flag is already dismissed
+- Dismissal persists server-side via `useOnboardingTouch` — cross-device, cross-session
+
+The full onboarding visual (multi-select work-area card grid + responsibilities textarea per §13.6.1 / §13.6.2) lands when the dedicated `/onboarding/operator-profile` route ships its visual; only the editor API surface (`PATCH /api/v1/operator-profile`) is locked in Phase W-4a.
+
+#### 13.8.7 Signal collection chrome
+
+The dismiss chrome on `PulsePiece` and the navigation signal collection on click-through are the locked reference for §13.5. Visual + behavioral contract:
+- Dismiss X positioned top-right, `opacity-0 group-hover:opacity-100` so chrome stays low-contrast at rest per §13.5.1
+- Click on dismiss → fire-and-forget `POST /api/v1/pulse/signals/dismiss` with `{component_key, layer, time_of_day, work_areas_at_dismiss}`; piece animates to `opacity-0 scale-95` over 200ms before unmount
+- Click on the piece body (or descendant `<a>` link) → fire-and-forget `POST /api/v1/pulse/signals/navigate` with `{from_component_key, to_route, dwell_time_seconds, layer}`; `dwell_time_seconds` computed client-side as `(Date.now() - pulseLoadedAt) / 1000`
+- Both signals persist with the standardized JSONB metadata shapes locked in the `r61_user_work_areas_pulse_signals` migration; Tier 2 algorithms post-September will pattern-match against them
+
+No visible chrome carries the navigation tracking — invisible signal collection per §13.5.2.
+
+#### 13.8.8 Empty-layer advisory pattern
+
+When a layer has no items, the layer service may emit an `advisory` string. `PulseLayer` renders it in italic `text-content-muted` via `text-body-sm` typography — the layer otherwise renders no grid container, no chrome. Locked exemplar copy:
+- Anomaly empty: *"All clear — nothing needs attention right now."*
+- Activity empty: *"Quiet day so far."*
+- Personal empty: layer service returns `null` (layer is omitted entirely rather than rendering an advisory) — the empty Personal state does not warrant a copy slot.
+
+Future layers added to Pulse follow the same advisory contract: a brief one-line italic note, no chrome, only when the empty state is informative.
+
+Future references for §13.8 will land here as Phase W-4b (intelligence streams beyond Anomaly), W-5 (My Stuff + Custom Spaces), and the standalone onboarding visual ship.
+
+### 13.9 Cross-references
+
+- **Section 11 Pattern 1 + Pattern 2**: chrome treatments shared across Pulse + standard Spaces.
+- **Section 12 (Widget Library Architecture)**: pinable widget catalog + variant + surface declarations consumed by Pulse composition engine.
+- **Section 12.5**: surface composition rules (`pulse_grid` is the surface declaration consulted by Pulse's intelligent selection).
+- **Section 12.6a**: Widget Interactivity Discipline applies inside Pulse — bounded interactions per piece; heavy decisions route to Focus.
+- **Section 12.10**: reference implementations (the 14 canonical widgets) compose into Pulse via §13.4.1 sizing rules.
+- **BRIDGEABLE_MASTER.md §3.26**: parent canon for Spaces taxonomy + Pulse architecture + onboarding model + implementation sequencing.
+- **PLATFORM_INTERACTION_MODEL.md** "Tony Stark / Jarvis interaction model": Pulse is the most direct realization of the summon/arrange/park/dismiss interaction primitives at platform scale.
+- **AESTHETIC_ARC.md** Spaces and Pulse Architecture Canon Session entry: arc context.
 
 ---
 

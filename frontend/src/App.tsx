@@ -19,6 +19,16 @@ import { ReturnPill } from "@/components/focus/ReturnPill";
 // open it (Cmd+K action, Monitor button). At app bootstrap is the
 // simplest place to guarantee that.
 import "@/components/dispatch/scheduling-focus/register";
+// Phase W-3a — register cross-vertical foundation widgets (today,
+// operator_profile, recent_activity, anomalies) with the canvas
+// widget renderer registry so PinnedSection + Canvas + dashboard
+// surfaces dispatch them via `getWidgetRenderer(widget_id)`.
+import "@/components/widgets/foundation/register";
+// Phase W-3d — register manufacturing per-line widgets (vault_schedule
+// + future line_status + urn_catalog_status). Same side-effect-on-
+// import pattern as foundation; widgets are registered at app
+// bootstrap before any surface consumer.
+import "@/components/widgets/manufacturing/register";
 import { AffinityVisitWatcher } from "@/components/spaces/AffinityVisitWatcher";
 import { PeekHost } from "@/components/peek/PeekHost";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -33,6 +43,7 @@ import PlatformApp from "@/PlatformApp";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard/employee-dashboard";
+import HomePage from "@/pages/home/HomePage";
 import FocusTestPage from "@/pages/dev/focus-test";
 import FuneralSchedulePage from "@/pages/dispatch/funeral-schedule";
 import UserManagement from "@/pages/admin/user-management";
@@ -206,6 +217,7 @@ import OrderStation from "@/pages/orders/order-station";
 import AnnouncementsPage from "@/pages/announcements";
 import OnboardingHub from "@/pages/onboarding/onboarding-hub";
 import OnboardingFlow from "@/pages/onboarding/onboarding-flow";
+import OperatorOnboardingFlow from "@/pages/onboarding/OperatorOnboardingFlow";
 import IntegrationSetupPage from "@/pages/onboarding/integration-setup";
 import OnboardingAnalyticsPage from "@/pages/onboarding/onboarding-analytics";
 import ProductLibraryPage from "@/pages/onboarding/product-library";
@@ -513,6 +525,16 @@ export default function App() {
                   >
                     <Route path="/dashboard" element={<Dashboard />} />
                   </Route>
+
+                  {/* Phase W-4a Commit 5 — Home Space's PulseSurface.
+                      No permission gate (Home is the canonical
+                      cross-vertical / cross-permission landing space
+                      per BRIDGEABLE_MASTER §3.26.1.1). DotNav routes
+                      every authenticated user here when they click
+                      the Home dot (Phase W-4a Commit 1 seeded the
+                      Home system space with default_home_route=/home).
+                      Coexists with /dashboard until W-5. */}
+                  <Route path="/home" element={<HomePage />} />
 
                   {/* Phase A Session 1 — dev-only test page for the
                       Focus primitive. Not in nav. Any authenticated
@@ -1147,6 +1169,11 @@ export default function App() {
                       migrated to the new checklist yet. */}
                   <Route path="/onboarding" element={<OnboardingFlow />} />
                   <Route path="/onboarding/flow" element={<OnboardingFlow />} />
+                  {/* Phase W-4a — operator onboarding (work_areas + responsibilities) */}
+                  <Route
+                    path="/onboarding/operator-profile"
+                    element={<OperatorOnboardingFlow />}
+                  />
                   <Route path="/onboarding/hub" element={<OnboardingHub />} />
                   <Route path="/onboarding/import-matching" element={<ImportMatchingPage />} />
                   <Route path="/onboarding/integrations/:type" element={<IntegrationSetupPage />} />

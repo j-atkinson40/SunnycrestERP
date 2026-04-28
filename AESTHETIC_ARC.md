@@ -613,6 +613,411 @@ Section 12 amended in same session: 12.6 rewritten ("abridged interactive surfac
 
 ---
 
+### Widget Library Phase W-3a — Foundation Widget Cluster (✅ Shipped, 2026-04-27)
+
+Six commits shipped end-to-end. Phase W-3a delivers the **cross-vertical foundation widget cluster** — four widgets (`today`, `operator_profile`, `recent_activity`, `anomalies`) plus the AncillaryPoolPin retag per the Product Line + Operating Mode canon shipped earlier same day. Establishes the **three-component variant shape** as canonical (proved across two W-2 widgets, now four more); locks the **5-axis filter** end-to-end (5th axis activated by code in this phase); ships **explicit tenant-isolation-at-service-level** discipline for every widget data source. Patterns cleanly generalize for W-3b (saved_view + briefing infrastructure), W-3c (FH arrangement_pipeline), W-3d (manufacturing per-line widgets).
+
+**Commit 1 — AncillaryPool retag + 5-axis filter activation + TenantProductLine vault auto-seed.** Migration `r59_widget_product_line_axis` adds `required_product_line` JSONB column to `widget_definitions` (default `["*"]`); backfills all 28 existing widgets to `["*"]`; retags `scheduling.ancillary-pool` from `required_vertical: ["funeral_home"]` → `["manufacturing"]` + new `required_product_line: ["vault"]` per the canon investigation finding (the scheduling Focus is Sunnycrest's manufacturing operations, not FH — FH-tagging was the bug the canon investigation surfaced). Migration `r60_backfill_tenant_product_lines_vault` backfills `TenantProductLine(line_key="vault")` for every active manufacturing tenant; **preserves `Company.vault_fulfillment_mode` value** via canonical `operating_mode` enum translation per the canon migration plan (`produce → production`, `purchase → purchase`, `hybrid → hybrid`). 9982 vault rows backfilled in dev DB (test pollution from accumulated fixtures; production Sunnycrest gets exactly 1 row). `widget_service.get_available_widgets` extended to 5-axis filter via new `_get_enabled_product_lines(db, tenant_id)` helper. New `seed_default_product_lines(db, company)` helper auto-seeds vault for manufacturing tenants based on `default_for_verticals` registry; wired into `auth_service.register_company` (new tenants) + `seed_staging.py` (testco). **Drift correction (Spec-Override Discipline):** `AVAILABLE_PRODUCT_LINES` catalog renamed `burial_vaults → vault`, `urns → urn_sales`, `rosetta_hardscapes → rosetta` to match canon (BRIDGEABLE_MASTER §5.2). 24 W-2 test fixtures flipped from `funeral_home` → `manufacturing+vault`; `_make_tenant_user_token` helpers extended with optional `product_lines` parameter. The inversion test `test_funeral_home_cannot_pin_manufacturing_vault_widget` flipped from the pre-canon direction (mfg-rejects-FH-widget) to post-canon (FH-rejects-mfg-widget). 60/60 W-1 + W-2 tests passing post-flip; 0 regressions.
+
+**Commit 2 — `today` widget (vertical+line-aware aggregation + multi-line builder pattern).** Cross-vertical foundation widget with **per-vertical-and-line content rendering**. Backend service `today_widget_service.py` resolves "today" in tenant local timezone (`Company.timezone`, default `America/New_York`), dispatches to per-(vertical, active product line) category builders. **Multi-line builder pattern locks the future-proofing shape** — `_build_manufacturing_vault_categories` for vault rows; `_build_manufacturing_redi_rock_categories` plugs in alongside when redi_rock activates without restructuring. Manufacturing+vault tenants get vault deliveries + ancillary pool + unscheduled count breakdown. Other verticals get empty payload + vertical-aware `primary_navigation_target` so the empty-state CTA "Open schedule →" lands somewhere useful (`/dispatch` for mfg, `/cases` for FH, `/interments` for cemetery, `/crematory/schedule` for crematory). Frontend `TodayWidget.tsx` three-component shape (presentation tablet + variant wrappers + dispatcher) per AncillaryPoolPin precedent. Glance variant: Pattern 1 frosted-glass tablet 60×280px with bezel-grip column + eyebrow/subtext/count chip — **same chrome as AncillaryPoolPin Glance** for cross-surface continuity. Brief variant: Pattern 2 solid-fill content with header (eyebrow + date + count chip), body (per-category breakdown rows with `→` chevron, click navigates), footer with empty-state CTA. `useWidgetData` 5-min auto-refresh. Endpoint `GET /api/v1/widget-data/today`. **Tenant isolation explicit** via `Company.id == user.company_id` filter; cancelled deliveries excluded; tenant-local-today resolution. 16 backend tests + 18 frontend tests passing.
+
+**Commit 3 — `operator_profile` widget (auth-context-only widget pattern).** Establishes the canonical pattern: **not every widget needs a backend endpoint**. Reads entirely from `useAuth()` (full user identity + role + permissions/modules/extensions counts) + `useSpacesOptional()` (active space name) — zero new endpoint surface area. Three-component shape per W-3a precedent. Glance: 24×24 initials avatar (`bg-accent-muted` with `text-content-on-accent`) + first/last name + role label; tap to summon `/settings/profile`. Brief: larger 32×32 avatar + full name + email header + role/active-space/access-summary rows + "Manage profile →" footer CTA. Access summary uses singular/plural-aware labels (`1 permission` vs `3 permissions`); extensions row omitted when zero. Defensive null behavior when unauthenticated (returns null rather than crashing). 4 backend catalog tests + 15 frontend tests passing.
+
+**Commit 4 — `recent_activity` widget (V-1c endpoint reuse with additive shim).** Establishes the canonical pattern: **when an existing endpoint is "almost right" for widget consumption, prefer additive Pydantic shim over new endpoint surface area**. V-1c `GET /api/v1/vault/activity/recent` (CrmRecentActivityWidget data source per V-1c roll-up) gained an optional `actor_name: str | None` field populated server-side via User left-join in `activity_log_service.get_tenant_feed`. Existing V-1c consumers ignore the new field (Pydantic optional). No new endpoint. Frontend `RecentActivityWidget.tsx` three-component shape with **all three variants** (Glance + Brief + Detail). Brief shows top 5 events (actor + verb + entity + relative timestamp). Detail adds 4 filter chips (All / Comms / Work / System) collapsing the activity_type taxonomy with proper `aria-selected` semantics + tablist accessibility. View-only per §12.6a — click-through navigates to related CRM company. **First widget shipping with `peek_inline` surface support** per §12.5 — peek panels stay separately routed but compose this widget's components for content. Cross-surface reuse is the pattern; per-surface reinvention is what the widget library prevents. 9 backend tests + 22 frontend tests passing.
+
+**Commit 5 — `anomalies` widget (real production data + bounded state-flip + tenant isolation discipline).** Real production data over stub — backed by existing `agent_anomalies` table (Phase 1+ accounting agent infrastructure: month_end_close, ar_collections, cash_receipts, expense_categorization, etc.). Wilbert licensee tenants running accounting agents have real unresolved anomalies this widget surfaces directly; Phase W-5 (Intelligence-detected anomalies) extends the data source rather than replacing the widget. **Severity vocabulary canonical: 3 levels (`critical`, `warning`, `info`) per `app.schemas.agent.AnomalySeverity` enum** — Spec-Override Discipline note: the user spec mentioned 4-level (critical/high/medium/low); actual production enum has 3 levels. Severity colors map to locked tokens: critical → terracotta (`status-error`), warning → terracotta-muted (`status-warning`), info → `status-info`. Brief + Detail variants — **NO Glance per §12.10** (anomalies need at least Brief context; count alone doesn't communicate severity or actionability). New backend service `anomalies_widget_service.py` with `get_anomalies` (severity-sorted critical → warning → info, then created_at desc) + `resolve_anomaly` (state-flip + audit log via `audit_service.log_action`). UI vocabulary "Acknowledge" maps to data-layer `resolved=true` + optional `resolution_note` (per CLAUDE.md §12: data model uses `resolved`, model precedes the widget; UI vocabulary kept as user's mental model). Endpoints: `GET /api/v1/widget-data/anomalies?severity=...&limit=N` + `POST /api/v1/widget-data/anomalies/{id}/acknowledge`.
+
+**Tenant isolation load-bearing for anomalies.** `agent_anomalies` has no direct `company_id` column; tenant scoping flows through `agent_job_id` FK → `AgentJob.tenant_id`. Every query in the service explicitly joins AgentJob and filters `AgentJob.tenant_id == user.company_id`. The acknowledge endpoint **re-validates tenant ownership BEFORE mutation**; cross-tenant `anomaly_id` returns 404 (not 403, to avoid leaking existence). Verified explicitly via `TestTenantIsolation` test class with both directions tested (read + acknowledge); confirmed an A-tenant user can NEITHER see NOR acknowledge a B-tenant anomaly.
+
+**The Acknowledge action is the canonical §12.6a test case** for widget-appropriate interactions, satisfying all four tests:
+1. ✅ Bounded scope: single anomaly per click
+2. ✅ No coordination required: independent of other anomalies
+3. ✅ Reversible / low-stakes: false-alarm acks can be re-investigated via audit log
+4. ✅ Time-bounded: instant
+
+Empty state "All clear" + sage `CheckCircle2` icon — operational signal (good state) without celebratory accent terracotta. 18 backend tests (including dedicated TestTenantIsolation class with explicit cross-tenant fixtures) + 21 frontend tests passing.
+
+**Commit 6 — Integration tests + canon doc updates.** New `test_widget_library_w3a_integration.py` — 19 tests across 5 classes:
+- `TestW3aCatalog` — all 4 widgets in catalog; cross-vertical visibility verified for manufacturing + funeral_home + cemetery + crematory
+- `TestFiveAxisFilterConformance` — all 4 declare `["*"]` on both vertical + product_line axes
+- `TestVariantDeclarations` — parametrized check that each widget's variants match §12.10 reference exactly (today: Glance+Brief, operator_profile: Glance+Brief, recent_activity: Glance+Brief+Detail, anomalies: Brief+Detail). Explicit regression guard: `test_anomalies_explicitly_has_no_glance` — prevents accidental Glance addition in future variant work
+- `TestSidebarPinLifecycle` — parametrized test that each widget pinnable to a Spaces sidebar via Phase W-2 widget pin API
+- `TestCrossSurfaceCoverage` — all 4 declare `spaces_pin` + `dashboard_grid` + `pulse_grid` in supported_surfaces
+- `TestWidgetDataEndpointsResolve` — endpoint shape contracts for today, recent_activity, anomalies; operator_profile flagged as auth-context-only
+
+DESIGN_LANGUAGE.md §12.10 expanded with reference implementations 6-9 covering the new W-3a foundation widgets. Establishes the **cross-vertical + cross-line foundation widget pattern** as canonical reference for future Phase W-3 cluster work. Each widget's reference entry includes: cold-start catalog id, variants declared, surface compatibility, vertical + product line scope, data source, per-variant content + interactions, NOT-supported list (the explicit boundary), reference component file path, notable design decisions.
+
+**Architectural patterns established this phase (cross-cluster):**
+
+1. **Three-component variant shape canonical** — proven across 4 widgets (TodayWidget, OperatorProfileWidget, RecentActivityWidget, AnomaliesWidget) plus the W-2 reference (AncillaryPoolPin). The structure: presentation tablet/card (render-only, no hooks) + variant wrapper (data fetch + navigation handlers) + top-level dispatcher (selects variant via `surface` + `variant_id` props, calls no hooks). Avoids rules-of-hooks violations across variant branches; cross-widget visual continuity via shared chrome vocabulary.
+
+2. **Pattern 1 vs Pattern 2 chrome by surface** — Glance variants on `spaces_pin` use Pattern 1 frosted-glass tablet (60px tall, bezel-grip column, eyebrow/subtext/count chip); Brief + Detail variants on grid surfaces use Pattern 2 solid-fill content (no widget-level chrome — host's `WidgetWrapper` provides card surface; widget renders header + body + footer interior).
+
+3. **Multi-line builder pattern (today widget)** — per-(vertical, line) category builder functions plug into the dispatcher without restructuring. Future-proof for Phase W-3d when redi_rock + wastewater + urn_sales lines activate widget content.
+
+4. **Endpoint reuse over new surface area (recent_activity)** — additive Pydantic shim (`actor_name` field) extended an existing V-1c endpoint instead of building a new one. Existing consumers unaffected.
+
+5. **Tenant isolation explicit at service level (anomalies)** — when a model has no direct `company_id` column, the service explicitly joins through the tenant-bearing FK chain. Acknowledge endpoint re-validates ownership before mutation; cross-tenant id → 404 (existence-hiding). Verified by dedicated `TestTenantIsolation` test class with cross-tenant fixtures.
+
+6. **Real data over stub when production source exists (anomalies)** — `agent_anomalies` is genuine production-emitted data from accounting agents. Wiring to real source ships demo-functional widget on day one; W-5 extends the data source rather than replacing the widget shell.
+
+7. **Auth-context-only widget pattern (operator_profile)** — not every widget needs a backend endpoint. Some widgets render context already in scope (auth, spaces, theme, etc.). Establishes the discipline: a widget's backend surface area should be the minimum needed.
+
+**Final regression posture:**
+- Backend: **254 passed, 1 skipped** across W-1 + W-2 + W-3a Commits 1-6 + spaces phases (8e, 8e.1, invariants). 0 regressions.
+- Frontend: **634 vitest tests passing** (up from 580 pre-Phase-W-3a). +54 tests added across the 4 new widgets.
+- tsc: 0 errors. vite build clean (4.32s).
+- Migration head: `r60_backfill_tenant_product_lines_vault` (unchanged from W-3a Commit 1).
+
+**Patterns unblocked for next clusters:**
+- W-3b (`saved_view`, `briefing`) — cross-surface infrastructure widgets composing existing endpoints; same three-component shape, same 5-axis cross-vertical scope, same pattern-1-vs-pattern-2 chrome
+- W-3c (FH `arrangement_pipeline`) — first vertical-scoped W-3 widget (`required_vertical: ["funeral_home"]`); same shape patterns, vertical-axis filter exercised end-to-end
+- W-3d (manufacturing per-line widgets `vault_schedule`, `line_status`, `urn_catalog_status`) — first product-line-scoped widgets (`required_product_line: ["vault"]` etc.); mode-aware rendering hooks, per-line builder pattern (proven by today widget) extends to per-line schedule widgets
+
+**Sequencing after Phase W-3a:** W-3b ships next (saved_view + briefing infrastructure), then W-3c (FH arrangement_pipeline), then W-3d (manufacturing per-line widgets). Phase W-4 (Pulse surface) ships post-W-3 with role-driven default layouts incorporating the now-established widget catalog. Phase 4.4.4 (slide animation + multi-day Focus rendering) and Aesthetic Arc Sessions 5-9 unblock simultaneously per the Phase W-2 entry.
+
+---
+
+### Widget Library Phase W-3b — Cross-Surface Infrastructure Widgets (✅ Shipped, 2026-04-27)
+
+Three commits shipped end-to-end. Phase W-3b delivers the **cross-surface infrastructure widget cluster** — two widgets (`saved_view`, `briefing`) plus a load-bearing widget config plumbing fix (Commit 0) that closes a latent gap surfaced during investigation. Establishes the **config-driven user-authored widget catalog** pattern via `saved_view` (any saved view becomes a widget instance via `config: {view_id}`), and the **per-user scoped narrative widget** pattern via `briefing` (Phase 6 BriefingCard promoted to widget contract without disturbing data path). Patterns generalize cleanly to W-3c (FH arrangement_pipeline) and W-3d (manufacturing per-line widgets).
+
+**Commit 0 — Widget config plumbing fix (load-bearing prerequisite).** The Phase W-2 canon claimed `PinnedSection` carried `pin.config` through to the widget component, but the actual code didn't. Investigation surfaced this as a blocker: `saved_view` reads `config.view_id` and `briefing` reads `config.briefing_type` — without the plumbing both widgets render only their empty states. Fixed in **6 dispatch sites** (per Q1 confirmed scope: sweep ALL of them, not just PinnedSection): extended `WidgetRendererProps` in `widget-renderers.ts` with optional `config?: Record<string, unknown>` field; extended `WidgetState` in `focus-registry.ts` with the same field; updated `Canvas.tsx`, `StackRail.tsx`, `BottomSheet.tsx` (TWO dispatch sites — main + expanded view), `StackExpandedOverlay.tsx`, `PinnedSection.tsx`, and `WidgetGrid.tsx` to pass `config` through to the rendered component. Backward-compat verified: 2 new `PinnedSection.test.tsx` regression tests cover `pin.config` round-trip + null-default; full vitest 636/636 unchanged post-fix.
+
+**Commit 1 — `saved_view` widget (config-driven user-authored widget catalog).** Generic widget rendering any tenant saved view via `config: {view_id: <uuid>}` — establishes the **user-authored widget catalog without widget code** pattern. Single widget definition + per-instance config turns every saved view in `vault_items.metadata_json.saved_view_config` into a widget instance. Tenants extend their effective widget catalog by authoring saved views; no code ship required. Brief + Detail + Deep variants per §12.10 — **NO Glance** because saved views need at minimum a list to be informative; surface compatibility excludes `spaces_pin` for the same reason (sidebar requires Glance per §12.2 compatibility matrix). Per Q2 confirmed scope: thin wrapper around the existing V-1c `SavedViewWidget` (`frontend/src/components/saved-views/SavedViewWidget.tsx`) — zero changes to V-1c, full reuse of its 7 presentation modes (list / table / kanban / calendar / cards / chart / stat) + visibility checks + cross-tenant masking. Brief variant calls V-1c with `showHeader=false` (widget framework chrome provides card surface); Detail + Deep call with `showHeader=true`. Empty state per Q4 fallback (b): when `config.view_id` missing or invalid, renders `Layers` icon + "No saved view configured" + "Pick a saved view from the library to display it here." + "Open saved views library →" link to `/saved-views`. Inline picker dropdown deferred until `PATCH /spaces/{space}/pins/{pin}` endpoint ships; not built as part of W-3b per scope discipline ("widget shipping, not infrastructure expansion"). **Sidebar pin rejection (canonical guard)**: Phase W-2 add_pin surface check rejects `pin_type="widget" + target_id="saved_view"` against a sidebar; defensive fallback in dispatcher renders Detail rather than crashing if a pre-W-2 layout slips through. 4 backend catalog tests + 14 frontend tests passing.
+
+**Commit 2 — `briefing` widget (per-user scoped narrative — Phase 6 BriefingCard promoted to widget contract).** Promotes the existing Phase 6 `BriefingCard` (mounted as a dashboard element on manufacturing-dashboard.tsx + order-station.tsx) to the widget catalog without disturbing the data path. Glance + Brief + Detail variants per §12.10 — **NO Deep** because briefing detail is informationally complete; Deep would just re-render the dedicated `/briefing` page in widget chrome, which §12.6a discourages (heavy actions belong on the page, not the widget). Surface compatibility includes `spaces_pin` (Glance) + `pulse_grid` + `dashboard_grid` + `focus_canvas`; **excludes `peek_inline`** because briefing is per-user content, not entity-scoped — peek panels compose around an entity, briefing has none. Reuses Phase 6 `useBriefing` hook unchanged; per-user scoping enforced server-side by `/briefings/v2/latest` (which filters by `user_id == current_user.id`). The widget never sees other users' briefings — endpoint contract is the security boundary, not the widget. Per-instance briefing-type via `config.briefing_type` ("morning" | "evening", default "morning") so future tenants can pin a Glance "End of day summary" alongside the morning briefing. **Glance variant** (Pattern 1 sidebar treatment): single-line strip with Sunrise/Sunset icon + briefing-type label + unread accent dot. **Brief variant** (Pattern 2 grid treatment): icon + title + narrative excerpt truncated to 320 chars at last-word boundary + active space pill + Unread pill + "Read full briefing →" link. **Detail variant**: full narrative (no truncation) + structured-section preview cards (Queues, Flags, Pending decisions — top 5 each, severity dot per flag) + Read full link. Renders only known structured-section keys; unknown keys silently skipped per the Phase 6 contract. **Coexist-with-legacy discipline (canonical pattern)**: Phase 6 `BriefingCard` stays alive as a page-mounted component; the W-3b `BriefingWidget` is the catalog-citizen widget contract. Same content, different consumers. Future natural-touch refactors may migrate page mounts onto the widget; not a W-3b deliverable. 5 backend catalog tests + 27 frontend tests passing.
+
+**Commit 3 — Integration tests + canon doc updates.** New `test_widget_library_w3b_integration.py` — 13 tests across 5 classes:
+- `TestW3bCatalog` — both widgets in catalog; cross-vertical visibility verified for manufacturing + funeral_home + cemetery + crematory
+- `TestFiveAxisFilterConformance` — both declare `["*"]` on both vertical + product_line axes
+- `TestW3bVariantDeclarations` — parametrized check that variants match §12.10 reference exactly (saved_view: Brief+Detail+Deep, briefing: Glance+Brief+Detail). Explicit regression guards: `test_saved_view_explicitly_has_no_glance` + `test_briefing_explicitly_has_no_deep`
+- `TestSidebarPinCompatibility` — saved_view pin to sidebar REJECTED (no Glance); briefing pin to sidebar ACCEPTED with `variant_id="glance"`. Same canon (§12.2 + §12.10), opposite outcomes per widget — both correct, both verified
+- `TestConfigPlumbingPersistence` — config JSONB round-trips through pin creation + listing for briefing widget. Closes the Commit 0 plumbing fix at the integration level
+- `TestW3bCrossSurfaceCoverage` — both widgets declare grid surfaces; neither declares `peek_inline` (saved_view is multi-row, briefing is per-user — neither is entity-scoped)
+
+DESIGN_LANGUAGE.md §12.10 expanded from 9 → 11 reference implementations covering the W-3b infrastructure widgets. Reference entries 10 + 11 follow the established §12.10 shape (cold-start catalog id, variants, surface compatibility, vertical + product line scope, reference component file path, demonstrates clause, data source, per-variant content + interactions, NOT-supported list, notable design decisions, empty state, coexist-with-legacy discipline note where applicable).
+
+**Architectural patterns established this phase (cross-cluster):**
+
+1. **Config plumbing as load-bearing infrastructure** — pin config carries through every dispatch site uniformly. Without the Commit 0 sweep, both W-3b widgets ship as empty-state-only. Pattern: when a contract claims "X carries through" and adding a feature depends on it, verify with a regression test before assuming the prior phase's claim is implementation, not aspiration.
+
+2. **Config-driven user-authored widget catalog (saved_view)** — single widget definition + per-instance config turns every saved-view-shaped artifact into a widget instance. Tenants extend their effective widget catalog without code ship. Future widgets that surface user-authored content (e.g., dashboards over user-defined queries, custom report widgets) follow the same pattern: catalog-side widget definition + config schema + thin wrapper around the existing rendering primitive.
+
+3. **Promotion-of-existing-surface-to-widget-contract (briefing)** — when an existing primitive renders the right content, prefer thin variant-aware wrapper over rebuild. The Phase 6 `BriefingCard` was already complete-enough; W-3b wraps it in a variant-aware dispatcher without disturbing the data path. Pattern: the widget contract is a presentation contract, not a data contract — existing data paths can stay untouched.
+
+4. **Per-user scoping via endpoint contract, not widget filtering** — the briefing widget itself does no user filtering. It calls a hook which calls an endpoint which enforces `user_id == current_user.id` server-side. The widget can't leak briefings between users because the endpoint won't return them. Pattern: when a widget surfaces per-user data, the security boundary is the endpoint, not the widget — keeps widgets dumb-render and pushes contract enforcement to the trustworthy layer.
+
+5. **Coexist-with-legacy discipline made explicit (briefing)** — Phase 6 `BriefingCard` stays alive as a page-mounted component; W-3b `BriefingWidget` is the catalog-citizen widget contract. Different consumers, same content. Pattern formalized: phase work that "promotes" an existing surface to a new contract should NOT delete the original surface unless explicitly scoped to migrate consumers. Migration-by-natural-touch keeps phase scope tight + avoids breaking active consumers.
+
+6. **Same canon, opposite per-widget outcomes (sidebar pin compatibility)** — saved_view rejected for sidebar pin (no Glance), briefing accepted (declares Glance + spaces_pin). §12.2 + §12.10 produce different outcomes per widget; both correct, both verified at the integration level. Pattern: §12.2's compatibility matrix is the gate; widgets self-declare; the gate enforces; per-widget tests verify.
+
+**Final regression posture:**
+- Backend: **148 passed** across W-1 + W-2 + W-3a + W-3b widget library suite (W-3a 19 + W-3b 13 + W-3a per-widget 60 + W-3b per-widget 9 + W-1/W-2 47). 0 regressions.
+- Frontend: **677 vitest tests passing** (up from 634 pre-Phase-W-3b: +14 SavedViewWidget + 27 BriefingWidget + 2 PinnedSection config-plumbing regression).
+- tsc: 0 errors. vite build clean (4.55s).
+- Migration head: `r60_backfill_tenant_product_lines_vault` (unchanged — W-3b ships zero schema changes; widget definition seed + config plumbing only).
+
+**Patterns unblocked for next clusters:**
+- W-3c (FH `arrangement_pipeline`) — first vertical-scoped W-3 widget (`required_vertical: ["funeral_home"]`); same three-component shape; can compose `saved_view` widget instances if FH-shaped saved views serve the data path, OR ship dedicated catalog widget per the canon decision when investigation lands
+- W-3d (manufacturing per-line widgets `vault_schedule`, `line_status`, `urn_catalog_status`) — same patterns; mode-aware rendering hooks; per-line builder pattern (proven by today widget) extends to per-line schedule widgets
+- Future narrative-widget promotions (briefing pattern generalizes) — any existing dashboard component that renders informationally-complete content can be promoted to widget contract via thin variant-aware wrapper
+
+**Sequencing after Phase W-3b:** W-3c (FH arrangement_pipeline) ships next, then W-3d (manufacturing per-line widgets). Phase W-4 (Pulse surface) ships post-W-3 with role-driven default layouts incorporating the full W-3 catalog (4 cross-vertical foundation + 2 cross-surface infrastructure + arrangement_pipeline + per-line schedule widgets + line_status). Phase 4.4.4 (slide animation + multi-day Focus rendering) and Aesthetic Arc Sessions 5-9 still unblocked per the Phase W-2 entry.
+
+---
+
+### Spaces and Pulse Architecture Canon Session (✅ Documented, 2026-04-27)
+
+**Context.** Phase W-3 widget catalog work nearly complete (W-3c FH widget intentionally deferred per manufacturing-vertical focus). Phase W-4 Pulse surface preparation surfaced fundamental architectural question: was Pulse "widget grid per Space" or genuinely intelligent composition?
+
+User clarified: only Home Space has Pulse. Other Spaces have standard dashboards. Pulse aggregates everything relevant across user's work; well-composed Pulse means user rarely needs custom Spaces. Custom Spaces are fallback when Pulse fails to surface what user needs.
+
+This insight made clear that Phase W-4 as drafted (widget-grid-per-Space) was wrong architecture. Canon session ran to lock Spaces taxonomy + Pulse mechanics before Phase W-4 implementation propagated wrong mental model.
+
+**Decisions locked.**
+
+**Six Space types:**
+1. Home Space (Pulse — intelligent)
+2. My Stuff Space (user-personal — standard dashboard)
+3. Custom Spaces (user-created operational — standard dashboard, optional, multiple)
+4. Settings Space (its own Space, separate canon TBD)
+5. Cross-tenant Spaces (separate canon TBD)
+6. Portal Spaces (Family / Driver / CPA / etc. — Spaces with constrained permissions, separate canon per portal type)
+
+**Pulse architecture:**
+- Tetris composition (intelligence-driven sizing + position, not widget grid)
+- Two content primitives:
+  - Pinable widgets (Widget Library catalog) — bounded, multi-surface, user-pinable in My Stuff/Custom
+  - Pulse intelligence streams (Pulse-specific) — intelligence-generated, not pinable, render in Pulse only
+- Layered composition (Personal / Operational / Anomaly / Activity) with multi-stream support per layer
+- Three intelligence tiers: rule-based (Tier 1) + signal-driven (Tier 2) + synthesized (Tier 3)
+- Compact viewport-fit content density
+- Subtle "composed" visual affordance (brass-thread accents on intelligence stream pieces)
+
+**Onboarding model:**
+- Work areas multi-select (Accounting / HR / Production Scheduling / Delivery Scheduling / Inside Sales / Inventory Management / Customer Service / Family Communications / Cross-tenant Coordination / [extensible])
+- Natural-language responsibilities description (free text)
+- Replaces traditional role-based provisioning
+- Both stored at user level
+- Work areas drive Tier 1 rule-based composition; responsibilities feed Tier 2+ intelligence
+
+**Implementation sequencing (structurally correct order):**
+1. **Phase W-4a — Pulse Infrastructure** (independent of communication primitives)
+2. **Layer 1 — Native Primitives**: Email + Calendar + SMS (parallel-able cluster)
+3. **Layer 2 — Document Creation Surface** (parallel with Email completion)
+4. **Layer 3 — Onboarding Work Areas + Responsibilities** (parallel)
+5. **Phase W-4b — Pulse Intelligence Streams** (lights up against real Layer 1/2/3 data)
+6. **Phase W-5 — Standard Spaces Dashboards** (My Stuff + Custom)
+7. **Command Bar** (plugin architecture against complete primitives)
+8. **Polish + Demo Preparation** (Phase 4.4.4, Aesthetic Arc 5-9, demo data, rehearsal)
+
+**Native Calendar primitive identified.** Initially missed; user surfaced it. Calendar joins Email + SMS in Layer 1 native primitives. Composes with: scheduling Focus, vault_schedule widget purchase mode, sales order Focus, future portals, Pulse intelligence streams. Built for composition from start.
+
+**Strategic principles:**
+- Pulse as differentiator (not standard SaaS dashboard pattern)
+- Custom Space creation rate = Pulse health metric
+- Communication-prerequisites discipline (Pulse intelligence depends on communication primitives existing)
+- Compose-first primitive design (Calendar/Email/SMS designed for composition, not standalone)
+- Build maximally, structurally correctly (scope set by demo vision, not timeline anxiety)
+- 20-week timeline (April 27 → late September) achievable at current velocity with disciplined parallelization
+
+**Architectural significance.** This canon session resolved Spaces architecture at Section 12-equivalent depth — same level of architectural commitment as Widget Library Architecture canon. Future Pulse, Spaces, primitive, and composition decisions inherit from this canon.
+
+Same pattern as Product Line + Operating Mode canon (April 26) and SalesOrder vs Delivery + Ancillary Independence canon (April 27): user surfaced architectural question before implementation propagated wrong assumption; investigation + thinking-through resolved direction; canon locked; implementation proceeds correctly.
+
+Cumulative pattern across the past few days: founder architectural intuition + investigation discipline + canon locking = platform coherence at scale most solo founders never achieve.
+
+**Documentation output:**
+- **BRIDGEABLE_MASTER.md §3.26 — Spaces and Pulse Architecture** (new major section under the §3.x architecture cluster, immediately after §3.25 Widget Library Architecture)
+- **DESIGN_LANGUAGE.md §13 — Spaces and Pulse Visual System** (new section)
+- **AESTHETIC_ARC.md — this entry**
+
+**Phase W-4a implementation unblocked.** Phase W-4a Pulse infrastructure can now proceed against locked architecture. Implementation prompt drafted in next session against this canon as authoritative reference.
+
+**Sequencing forward.** Phase W-4a (Pulse infrastructure) is the next implementation cluster. Multi-session work estimated 2-3 weeks. After Phase W-4a lands, Layer 1 communication + temporal primitives sequence begins (Email → Calendar overlap → SMS finishing parallel).
+
+Calendar primitive joins Layer 1 — substantial addition to original sequencing, identified mid-session via user surfacing.
+
+September Wilbert demo timeline: 20 weeks of work in 20 weeks of calendar. Achievable.
+
+---
+
+### Phase W-4a — Pulse Infrastructure (✅ Shipped, 2026-04-28)
+
+Six commits shipped end-to-end against the Spaces and Pulse Architecture canon (April 27). Phase W-4a delivers **Home Pulse infrastructure** as the first concrete realization of BRIDGEABLE_MASTER §3.26 — composition engine, four layer services, V1 anomaly intelligence stream, signal collection, frontend tetris layout, first-login banner, and the canonical Sunnycrest dispatcher demo composition end-to-end. Three load-bearing references locked for downstream phases (W-4b, W-5, communication primitives, Tier 2): work-area-to-widget mapping, two-content-primitive contract, standardized signal metadata shapes.
+
+**Strategic significance.** Phase W-4a is the platform's most distinctive product feature — the Pulse — shipped to production-ready depth ahead of the September Wilbert demo. Custom Spaces and My Stuff exist as fallback for when Pulse fails to surface what users need; Pulse is the differentiator competitors cannot easily replicate without similarly-deep platform-level intelligence infrastructure (per §3.26.7.1). The infrastructure-first sequencing per §3.26.7.2 means Pulse intelligence streams ship against real Layer 1/2/3 communication primitives in W-4b; nothing in W-4a is stub work that gets refactored when primitives land.
+
+**Six D-decisions resolved before Commit 1 began.** Pre-build investigation phase ran three parallel sub-agents to lock six architectural questions into canonical contracts: D1 composition cache strategy (in-memory dict, 5-min TTL, work_areas-hash key), D2 tetris layout engine (custom CSS Grid, no third-party dependency), D3 layer ordering enforcement (both backend + defensive frontend re-sort), D4 first-login fallback (vertical-default with `metadata.vertical_default_applied=true` flag), D5 Sunnycrest dispatcher canonical composition (locked verbatim), D6 V2 Haiku-cached anomaly synthesis (deferred to W-4b; V1 deterministic ships now), D7 legacy `spaces/pulse_compositions.py` retirement (retired with grep-verified zero importers).
+
+**Commit 1 — Schema + Home system space + onboarding (25 backend tests).** Migration `r61_user_work_areas_pulse_signals` adds `User.work_areas` (JSONB array, nullable) + `responsibilities_description` (text, nullable) + `pulse_signals` table with standardized JSONB metadata column + composite indexes for the aggregation hot paths. Home system space added to `SYSTEM_SPACE_TEMPLATES` — gate-less, leftmost in DotNav, `default_home_route="/home"`, `is_system=True`. Login defensive re-seed in `auth_service.login_user` widened to fire on missing-Home as well as missing-Settings (closes a Phase 8e.2.2-shape gap proactively — no active user can have an empty `preferences.system_spaces_seeded`). Operator profile editor service + `GET / PATCH /api/v1/operator-profile` endpoint with partial-update semantics + canonical `WORK_AREAS` vocabulary list returned in every response.
+
+**Commit 2 — Four layer composition services + work-area mapping locked (28 backend tests).** `personal_layer_service` (assigned tasks + approvals waiting from Phase 5 task system + approval gate), `operational_layer_service` (work-area-to-widget mapping authoritative for §3.26.3.1 vocabulary; vertical-default fallback per D4), `anomaly_layer_service` (raw `agent_anomalies` widget + intelligence stream pointer), `activity_layer_service` (V-1c recent activity feed). Mapping documented inline in `operational_layer_service.py` as the canonical work-area-vocabulary source of truth. Tenant + extension awareness via 5-axis widget filter pre-check.
+
+**Commit 3 — Composition engine + Pulse API + V1 anomaly intelligence + cache + retire pulse_compositions.py (27 backend tests).** `composition_engine.compose_for_user` orchestrates the four layer services + synthesizes the V1 anomaly intelligence stream (deterministic — frequency-weighted severity ordering + canonical title + narrative prose). 5-minute composition cache with work_areas-hash-aware key (`pulse:{user_id}:{work_areas_hash}:{minute_window}`) — work_areas update changes the key + next request misses + recomputes. `GET /api/v1/pulse/composition[?refresh=true]` single endpoint per D1; tenant + user scoping forced server-side. Legacy `spaces/pulse_compositions.py` retired with grep-verified zero importers + a regression test pinning the retirement.
+
+**Commit 4 — Signal tracking endpoints + service + 3 aggregation helpers (26 backend tests).** `POST /pulse/signals/dismiss` + `/pulse/signals/navigate` with standardized JSONB metadata shapes (`{component_key, time_of_day, work_areas_at_dismiss}` and `{from_component_key, to_route, dwell_time_seconds}` respectively — load-bearing for Tier 2 algorithms). Three aggregation helpers ready for Tier 2 consumption: `get_dismiss_counts_per_component`, `get_navigation_targets`, `get_engagement_score`. Phase W-4a does NOT consume them; battle-tested + ready so Tier 2 algorithm work post-September iterates against accumulated production data, not unproven helpers. Tenant + user scoping enforced server-side at every layer.
+
+**Commit 5 — Frontend Pulse rendering (26 vitest tests, 757 total frontend regression).** `frontend/src/components/spaces/PulseSurface.tsx` consumes the API; `PulseLayer.tsx` renders pieces in a custom CSS Grid (`grid-cols-[repeat(auto-fit,minmax(160px,1fr))] auto-rows-[80px] gap-3`) honoring per-piece `cols / rows` from the composition engine; `PulsePiece.tsx` dispatches the two content primitives via `LayerItem.kind`; `AnomalyIntelligenceStream.tsx` is the V1 reference for §13.4.2 chrome treatment with brass-thread top edge via `before:` pseudo-element; `PulseFirstLoginBanner.tsx` renders inline above all layers when `metadata.vertical_default_applied && shouldShow` per §13.6, dismissal cross-device via `useOnboardingTouch` hook. Brass-thread divider above Operational layer per §13.3.2 (1px solid terracotta accent at 30% alpha — passes cover-with-hand test). Empty-layer advisories in italic content-muted typography. Visual verification both modes coherent (warm cream ↔ warm charcoal substrate; single-value accent across modes per Aesthetic Arc Session 2).
+
+**Commit 6 — Sunnycrest demo State B + integration tests + canon docs (18 integration tests, 124 total backend regression).** Sunnycrest dispatcher composition verified end-to-end: `work_areas = ["Production Scheduling", "Delivery Scheduling", "Inventory Management"]` + responsibilities text → vertical_default_applied=false → operational layer matches the canonical D5 set (`vault_schedule` Detail + `scheduling.ancillary-pool` Brief + `line_status` Brief + `today` Glance; `urn_catalog_status` Glance only when `urn_sales` extension active — verified live via the `/api/v1/pulse/composition` endpoint against testco demo tenant). Integration tests at `backend/tests/test_phase_w4a_integration.py` cover four shapes — composition end-to-end through the API, signal collection flow, Sunnycrest dispatcher composition specifically, first-login flow including cache-invalidation through `PATCH /operator-profile`. **DESIGN_LANGUAGE §13.8 expanded with eight locked Phase W-4a reference implementations** (Home Pulse Sunnycrest dispatcher canonical State A + State B; PulseSurface tetris grid; brass-thread divider; PulsePiece two primitives; AnomalyIntelligenceStream V1; PulseFirstLoginBanner; signal collection chrome; empty-layer advisory pattern). **BRIDGEABLE_MASTER §3.26.8 added with seven subsections** (six-commit ship sequence; six D-decisions resolved; canonical work-area-to-widget mapping; two content primitives locked contract; signal collection metadata shapes; implementation deviations from §3.26.6.1; what's wired now vs deferred to W-4b).
+
+**Architectural patterns established this phase.**
+
+1. **Two-content-primitive Pulse**: every Pulse piece is `kind="widget"` (registry-dispatched widget renderer with surface=pulse_grid + variant + config + cols + rows) or `kind="stream"` (registry-dispatched intelligence stream renderer with stream_id matching synthesized content at composition top level). Future Pulse content extends the registry, not the primitive set.
+2. **Work-area mapping as authoritative vocabulary**: `operational_layer_service.WORK_AREA_WIDGET_MAPPING` is the single source of truth for §3.26.3.1 work-area vocabulary → §3.26.2.4 composition rules. New work areas land here; new widget surfacings land here; the layer service file is THE reference.
+3. **Standardized signal metadata as Tier 2 contract**: dismiss + navigation signal metadata shapes documented in the migration AND signal_service module — load-bearing for Tier 2 pattern matching. Any new signal type post-W-4a must define its shape in both places.
+4. **Vertical-default fallback flag as banner gate**: `metadata.vertical_default_applied` is the single discriminator the frontend uses to decide whether to render `PulseFirstLoginBanner`. Tier 2 may eventually adjust composition based on engagement; the banner gate stays this single boolean.
+5. **Shared persistence + distinct visual treatment**: `PulseFirstLoginBanner` shares the `useOnboardingTouch` hook with Phase 7's `OnboardingTouch` tooltip primitive but renders inline-with-content. When the same conceptual signal needs different chrome on different surfaces, share persistence + ship distinct visual primitives.
+6. **Cache-invalidation through key shape, not active eviction**: composition cache invalidates because the work_areas hash changes the key, not because anyone explicitly evicts the old key. Same shape works for any per-user-derived cache where the derivation inputs are part of the key.
+7. **`/home` route, not `/pulse`**: Home Space is the user-facing concept; Pulse is its content per §3.26.1.1. Route names follow user concepts, not implementation primitives.
+8. **Build infrastructure-first per §3.26.7.2**: V1 anomaly intelligence stream ships now (deterministic synthesizer); communication-dependent streams (smart email, briefing, cross-tenant coordination, conflict detection) wait for Layer 1 + Layer 2 primitives. The structurally correct sequence avoided ~3 weeks of stub-work-then-refactor cost.
+
+**Final Phase W-4a regression posture.** **124 backend tests passing** (Commit 1: 25 + Commit 2: 28 + Commit 3: 27 + Commit 4: 26 + Commit 6 integration: 18 = 124). **Frontend 757/757 vitest passing** (+26 PulseSurface tests). **tsc 0 errors. vite build clean.** Visual verification both light + dark mode (warm cream ↔ warm charcoal substrate; single-value terracotta accent across modes; brass-thread divider passes cover-with-hand subtlety test; breathing-room composition functional). **No regressions** across Widget Library W-1 + W-2 + W-3a + W-3b + W-3d + Spaces Phases 1-8e.2.3 + Aesthetic Arc Sessions 1-4 + Phase II Batches 0/1a/1b. Migration head: `r61_user_work_areas_pulse_signals` (unchanged from Commit 1 — no further schema changes through Commits 2-6).
+
+**Sequencing forward.** Layer 1 communication + temporal primitives cluster begins (Email → Calendar overlap → SMS finishing parallel) per §3.26.6.2. Phase W-4b ships the remaining intelligence streams against real Layer 1/2 data. Phase W-5 ships My Stuff + Custom Spaces dashboards. Aesthetic Arc Sessions 5-9 + Phase 4.4.4 (slide animation + multi-day Focus rendering) remain unblocked.
+
+**The Pulse is shipped.** What competitors cannot easily replicate is now production-ready against real testco data. State A + State B both verified visually + end-to-end. The September Wilbert demo's most distinctive product feature exists today.
+
+---
+
+### Widget Library Phase W-3d — Manufacturing Per-Line Widgets (✅ Shipped, 2026-04-27)
+
+Four commits shipped end-to-end. Phase W-3d delivers the **manufacturing per-line widget cluster** — three widgets (`vault_schedule`, `line_status`, `urn_catalog_status`) plus the **ancillary-independence + SalesOrder-vs-Delivery canon** captured in BRIDGEABLE_MASTER §5.2.5 to prevent future drift. **First cluster activating the 5-axis filter end-to-end** — vertical + product_line + extension axes all exercised concretely (W-3a + W-3b cross-vertical clusters all used `"*"`). **First workspace-core widget canonical reference** (`vault_schedule`) per DESIGN_LANGUAGE §12.6. **First cross-line aggregator using the multi-line builder pattern** (`line_status`). **First widget testing `required_extension` axis** (`urn_catalog_status`).
+
+**Pre-build investigation surfaced foundational architectural question.** User asked: "shouldn't kanban + scheduling widgets reference the actual SalesOrder rather than a separate Delivery entity? Dragging in kanban should just update a driver field on the SalesOrder." Three parallel agents audited; all three converged on the same answer: **Delivery is the canonical logistics entity, SalesOrder is the canonical commercial entity, and they are intentionally distinct concerns.** User's clarification that ancillaries are INDEPENDENT SalesOrders (not line items / sub-orders) sharpened the canon and was captured in BRIDGEABLE_MASTER §5.2.5 to prevent future Sonnet sessions from inferring nested commercial semantics. The SalesOrder vs Delivery investigation became a load-bearing canon-clarification for the entire scheduling stack going forward.
+
+**Commit 1 — `vault_schedule` widget (workspace-core canonical reference + mode-aware rendering).** First concrete workspace-core widget per DESIGN_LANGUAGE §12.6 — renders the SAME data the scheduling Focus kanban core consumes with a deliberately abridged interactive surface (mark hole-dug, drag delivery between drivers, attach/detach ancillary, update single ETA per §12.6a; finalize / day-switch / bulk reassignment remain Focus-only). Glance + Brief + Detail + Deep variants — full set, since workspace-core widgets are first-class. **Mode-aware rendering** per BRIDGEABLE_MASTER §5.2.2: production mode reads `Delivery` rows (kanban shape), purchase mode reads incoming `LicenseeTransfer` rows (this tenant as `area_tenant_id`), hybrid composes both stacked. Backend service `vault_schedule_service.py` reads `TenantProductLine(line_key="vault").config["operating_mode"]` and dispatches per mode. New endpoint `GET /api/v1/widget-data/vault-schedule?target_date=...`. Frontend `VaultScheduleWidget.tsx` three-component shape per established Phase W-3a/W-3b precedent (presentation tablets + dispatcher); per-section rendering for production driver lanes + purchase incoming buckets; ancillary attachment count surfaced inline as ride-along signal (canon §5.2.5: pure logistics, no commercial nesting). Empty states: "Vault not enabled" (no product line) + "Nothing scheduled" (line enabled, no work). 17 backend tests + 24 frontend tests passing.
+
+**Commit 2 — `line_status` widget (cross-line aggregator + multi-line builder pattern).** First concrete cross-line aggregator + canonical multi-line builder pattern (mirrors `today_widget_service.py`). Brief + Detail variants — NO Glance per §12.10 (operational health doesn't compress to count-only). Cross-line scope (`required_product_line=["*"]`) — renders for whichever lines the tenant has activated. Per-line health vocabulary canonical: `on_track / behind / blocked / idle / unknown`. Vault health real today (composes `Delivery` count + driver assignment distribution per mode); redi_rock / wastewater / urn_sales / rosetta render placeholder rows with `status="unknown"` until each line's metrics aggregator ships — multi-line builder pattern keeps the dispatcher clean while future lines plug in. Backend service `line_status_service.py` with per-line builders. Frontend `LineStatusWidget.tsx` renders per-line breakdown with status icons + headline metrics + per-row click-through. `data-attention="true"` widget-root attribute when any line is `behind / blocked` for visual emphasis hooks. 11 backend tests + 16 frontend tests passing.
+
+**Commit 3 — `urn_catalog_status` widget (first extension-gated widget).** First widget exercising `required_extension="urn_sales"` — Phase W-1 implemented extension gating in `widget_service.get_available_widgets`; W-3a + W-3b cross-vertical widgets all used `"*"`. urn_catalog_status is the first concrete activation: visible only to tenants with the `urn_sales` extension activated AND the urn_sales product line enabled. Glance + Brief variants — catalog management lives at `/urns/catalog` (the page); widget surfaces health (SKU counts, low-stock identification, recent order count). Backend service `urn_catalog_status_service.py` aggregates `UrnProduct` (active + non-discontinued counts split by `source_type`), `UrnInventory` (low-stock: `qty_on_hand <= reorder_point AND reorder_point > 0`; reorder_point=0 means "no monitoring" and is excluded), `UrnOrder` (recent orders over last 7 days). Frontend `UrnCatalogStatusWidget.tsx` four metric rows (Stocked / Drop-ship / Low stock / Orders 7d) + low-stock list with format `{sku} {name} {qty_on_hand}/{reorder_point}` + click-through to catalog. 10 backend tests (including 3 dedicated extension-gating end-to-end tests proving the filter actually gates) + 14 frontend tests passing.
+
+**Commit 4 — Integration tests + canon doc updates.** New `test_widget_library_w3d_integration.py`: 20 tests across 7 test classes:
+- `TestW3dCatalog` — all 3 widgets in catalog for full mfg+vault+urn_sales tenant; vault_schedule invisible to FH
+- `TestFiveAxisFilterEndToEnd` — extension axis filters urn_catalog_status (invisible without extension, visible with extension); product_line axis filters vault_schedule without vault line; vertical axis filters all 3 for non-mfg
+- `TestW3dVariantDeclarations` — parametrized check that variants match §12.10 reference exactly + explicit regression guard `test_line_status_explicitly_has_no_glance`
+- `TestW3dSidebarPinCompatibility` — vault_schedule + urn_catalog_status accepted (Glance + spaces_pin); line_status rejected (no Glance)
+- `TestWorkspaceCoreCanon` — vault_schedule supports all grid surfaces + has full variant set per §12.6 reference
+- `TestCrossClusterRegression` — W-3a + W-3b widgets still present after W-3d additions
+- `TestW3dEndpointContracts` — all 3 endpoints respond with expected shape
+
+DESIGN_LANGUAGE.md §12.10 expanded from 11 → 14 reference implementations covering the W-3d manufacturing per-line widgets. Reference entries 12 (vault_schedule), 13 (line_status), 14 (urn_catalog_status) follow the established §12.10 shape with the additional canonical content: vault_schedule explicitly references the SalesOrder vs Delivery investigation + ancillary-independence canon (BRIDGEABLE_MASTER §5.2.5); line_status documents the per-line health vocabulary + multi-line builder pattern as canonical reference; urn_catalog_status explicitly flags itself as the first widget exercising the `required_extension` axis end-to-end.
+
+**BRIDGEABLE_MASTER §5.2.5 — new canonical section** capturing SalesOrder vs Delivery distinction + ancillary independence. Load-bearing for future Sonnet sessions: prevents drift to the (incorrect) inference that ancillaries are line items / sub-orders of a parent vault SalesOrder. Explicit articulation: "each item type is sold independently. A funeral home customer ordering a vault, an urn, and a cremation tray creates THREE SalesOrders (one per item type), each with its own commercial lifecycle. Each SalesOrder produces at least one Delivery work unit; sometimes multiple. The ancillary `attached_to_delivery_id` relationship is logistics-only — when an urn Delivery is 'attached' to a vault Delivery, the two Delivery work units ride the same truck; the two SalesOrders remain entirely independent commercially." Two minor follow-ups flagged for post-W-3d cleanup (FK constraint on `Delivery.order_id`; SalesOrder→Delivery one-way sync semantics review).
+
+**Architectural patterns established this phase (cross-cluster):**
+
+1. **5-axis filter activated end-to-end** — vertical + product_line + extension axes all exercised concretely. Test: `TestExtensionGatingEndToEnd` with three scenarios (no extension → invisible; extension activated → visible; extension activated + product_line missing → invisible) proves AND-wise filter semantics. Future widgets gating on extension axis follow this exact test pattern.
+
+2. **Workspace-core widget canonical pattern (§12.6)** — vault_schedule is the reference implementation. Renders the SAME data as the Focus core, deliberately abridged interactive surface. Bounded edits per §12.6a; heavy actions remain Focus-required; "Open in Focus" affordance always present in Brief / Detail / Deep. Future workspace-core widgets (case kanban widget, intake queue widget, etc.) follow this exact shape.
+
+3. **Mode-aware rendering pattern** — vault_schedule reads `TenantProductLine.config["operating_mode"]` and dispatches per mode (production / purchase / hybrid). Future per-line widgets where operating mode varies follow this dispatcher pattern. Mode-specific data sources isolated to per-mode builder functions; widget-level dispatcher stays mode-agnostic.
+
+4. **Multi-line builder pattern as canonical** — line_status mirrors `today_widget_service.py`'s per-(vertical, line) builder pattern. Vault metrics real today; other lines surface placeholder rows with `status="unknown"` until their per-line aggregators ship. Pattern keeps the dispatcher clean across line activations without restructuring; future Phase W-3+ work plugs in per-line builders alongside.
+
+5. **SalesOrder vs Delivery + ancillary-independence canon** — load-bearing for the entire scheduling stack. Investigation was triggered by user's good architectural question; resulting canon prevents drift in future sessions. Captured in BRIDGEABLE_MASTER §5.2.5 + DESIGN_LANGUAGE §12.10 entry 12 (vault_schedule).
+
+6. **Investigation-before-code discipline (validated)** — three parallel investigation agents converged on the same architectural answer before any W-3d code shipped. The investigation surfaced (a) D1 data layer approach, (b) D2 demo data scope, (c) D3 hybrid mode scope, (d) D4 purchase mode depth. Then the user's follow-up clarification (ancillaries are independent SalesOrders) sharpened the canon further. The pattern: "no code without architectural clarity" pays off when the foundational question deserves resolution.
+
+**Final regression posture:**
+- Backend: **206 widget tests passing** across W-1 + W-2 + W-3a + W-3b + W-3d (W-3a 19 + W-3b 13 + W-3d 20 + W-3a per-widget 60 + W-3b per-widget 9 + W-3d per-widget 38 + W-1/W-2 47). 0 regressions.
+- Frontend: **731 vitest tests passing** (up from 677 pre-W-3d: +24 VaultScheduleWidget + 16 LineStatusWidget + 14 UrnCatalogStatusWidget).
+- tsc: 0 errors. vite build clean (4.64s).
+- Migration head: `r60_backfill_tenant_product_lines_vault` (unchanged — W-3d ships zero schema changes; widget definition seeds + service-layer logic only).
+
+**Patterns unblocked for next clusters:**
+- W-3c (FH `arrangement_pipeline`) — first vertical-scoped W-3 widget for funeral_home; same workspace-core canonical reference pattern (vault_schedule provides the architectural template); ancillary-independence canon is FH-specific too (multiple Deliveries per case → multi-line, multi-product fulfillment for one funeral)
+- Phase W-4 (Pulse surface) — full W-3 catalog (4 cross-vertical foundation + 2 cross-surface infrastructure + 3 manufacturing per-line; W-3c pending) ready to compose into role-driven default layouts. Sunnycrest production demo lights up with Pulse showing every widget in its right place.
+
+**Phase W-3 is COMPLETE for manufacturing tenants.** vault_schedule + line_status + urn_catalog_status alongside the 4 W-3a foundation widgets and 2 W-3b infrastructure widgets gives Sunnycrest a fully populated widget catalog (9 widgets visible to mfg+vault+urn_sales tenants). FH-specific work (W-3c arrangement_pipeline) sequences after as a separate FH-focused session.
+
+---
+
+### Widget Library Phase W-2 — Spaces sidebar widget pin integration (✅ Shipped, 2026-04-27)
+
+First Phase W-2 implementation session. Spaces sidebar absorbs widget pins per Decision 2 of the Specification session. Widget pins join `saved_view` / `nav_item` / `triage_queue` as a first-class pin type. `pin_type: "widget"` carries `target_id` (widget_id) + optional `variant_id` (defaults to `"glance"` per §12.2 sidebar compatibility) + optional `config` (per-instance widget config). 5 commits shipped end-to-end.
+
+**Backend (4 files):**
+- `backend/app/services/spaces/types.py` — extended `PinType` Literal with `"widget"`; added `variant_id` + `config` fields to `PinConfig` and `widget_id` + `variant_id` + `config` to `ResolvedPin`. Round-trip `to_dict`/`from_dict` preserves new fields.
+- `backend/app/services/spaces/crud.py` — `add_pin()` validates widget pins with **defense-in-depth at three layers**: pin time (catalog existence + `spaces_pin` surface check + 4-axis filter via `get_available_widgets`), resolve time (`_resolve_pin` re-runs filter so role/vertical changes degrade gracefully), render time (frontend `getWidgetRenderer` falls back to MockSavedViewWidget if registration missing). Default `variant_id="glance"` when omitted.
+- `backend/app/services/widgets/widget_service.py` — new `get_widgets_for_surface(db, tenant_id, user, surface)` function for the surface-scoped catalog. Sidebar pinning is page-context-independent; this function evaluates the 4-axis filter against the union of each widget's declared page_contexts (visible iff at least one context passes). Memoizes per-context lookups.
+- `backend/app/api/routes/widgets.py` — new `GET /widgets/available-for-surface?surface=spaces_pin` endpoint. Same response shape as `/widgets/available` so the WidgetPicker consumes both interchangeably.
+
+**Frontend (5 files):**
+- `frontend/src/types/spaces.ts` — extended `PinType` Literal + `ResolvedPin` + `AddPinBody` with W-2 fields.
+- `frontend/src/components/dispatch/scheduling-focus/AncillaryPoolPin.tsx` — restructured into clean three-component shape: `AncillaryPoolGlanceTablet` (presentation, accepts `poolCount` + `poolLoading`), `AncillaryPoolGlanceVariant` (data-piping wrapper using `useSchedulingFocusOptional` for graceful degradation outside Focus), `AncillaryPoolDetailVariant` (existing rich list with `useSchedulingFocus` hard contract). Top-level `AncillaryPoolPin(props)` calls no hooks itself — selects between Glance and Detail based on `surface === "spaces_pin"` OR `variant_id === "glance"`. Glance tablet uses same Pattern 1 frosted-glass + composite shadow + bezel-grip surface treatment as Detail (cross-surface visual continuity); differs in CONTENT density: 60px tall single-row, eyebrow + count chip + subtext, role=button + tabIndex=0 keyboard summon affordance per §12.6a.
+- `frontend/src/components/focus/canvas/widget-renderers.ts` — extended `WidgetRendererProps.surface` Literal to include `"spaces_pin"` alongside `"focus_canvas"` / `"focus_stack"`.
+- `frontend/src/components/spaces/PinnedSection.tsx` — new `WidgetPinRow` component renders widget pins via `getWidgetRenderer(widget_id, variant_id)` with `surface="spaces_pin"`. Click summons matching Focus via `WIDGET_FOCUS_SUMMON` lookup table (`scheduling.ancillary-pool` → `"funeral-scheduling"`). Keyboard summon via Enter/Space. Unavailable widgets render icon-row fallback. Unpin X absolute-positioned over tablet's top-right with hover-to-reveal opacity. Drag-to-reorder shared with non-widget pins. New "+ Pin widget" entry-point button at bottom of pinned list opens WidgetPicker (`destination="sidebar"`); already-pinned widgets filtered out via `currentWidgetIds`.
+- `frontend/src/components/widgets/WidgetPicker.tsx` — added optional `destination?: "dashboard" | "sidebar"` prop (defaults `"dashboard"` for back-compat). Sidebar destination filters widgets to those declaring `spaces_pin` in supported_surfaces; header reads "Pin widget to sidebar"; CTA reads "Pin" instead of "Add"; empty-state copy adapted.
+
+**Architectural decisions canonicalized in code:**
+1. Defense-in-depth at three layers (pin / resolve / render).
+2. Sidebar always renders Glance variant per §12.2 compatibility matrix; backend defaults `variant_id="glance"` when omitted.
+3. Click summon — Glance is summon affordance, not passive readout. Section 12.6a Widget Interactivity Discipline: state changes widget-appropriate, decisions belong in Focus.
+4. Surface-scoped catalog endpoint is page-context-independent — sidebar pinning is genuinely page-context-independent and the new endpoint reflects that without inventing a "sidebar context" pseudo-page.
+5. Affinity write deferred for widget pins — widget summons are Focus opens (not navigates), and the Phase 8e.1 affinity model is conceptually distinct. Adding "widget" to `AffinityTargetType` whitelist requires separate scope-expansion audit per `SPACES_ARCHITECTURE.md §9.4`.
+6. `WIDGET_FOCUS_SUMMON` map is inline today; promoted to focus-registry when a second widget declares `spaces_pin` support (natural-touch refactor).
+7. `AncillaryPoolPin` three-component refactor (tablet / variant wrapper / dispatcher) cleanly separates render-only presentation from data hooks, avoids rules-of-hooks violations across variant branches.
+8. `VariantId` type from W-1 (`glance | brief | detail | deep`) accepted on the props interface for registry compatibility; component renders Glance + Detail today, Brief + Deep fall through to Detail per Decision 10.
+
+**Surface-naming corrected.** During Commit 1 the validation initially used `"sidebar_pin"` as the surface name; the canonical name from §12.5 is `"spaces_pin"` (matches the 7-surface enum). Caught + corrected before tests ran.
+
+**Tests shipped (47 new, all passing):**
+- 27 backend tests (14 unit + 4 surface catalog + 9 integration). Integration suite covers full lifecycle through real API client + auth: pin/unpin cycle, idempotent re-pin, per-instance config round-trip through JSONB, cross-vertical widget rejected at API surface, unknown widget rejected, surface-scoped catalog returns spaces_pin widgets, response shape matches `/widgets/available`, mixed widget + nav pins coexist regression guard.
+- 11 frontend PinnedSection vitest tests covering renders widget via `getWidgetRenderer`, variant_id passed through, default "glance" when null, click summons matching Focus, no affinity write, nav pin click still records affinity (regression guard), unknown summon mapping graceful no-op, unavailable widget renders icon-row fallback, data attributes for Playwright drag tests, mixed widget + nav coexist, MockSavedViewWidget fallback.
+- 9 AncillaryPoolPin Glance variant vitest tests covering renders Glance when surface=spaces_pin, renders Glance when variant_id=glance, renders Detail by default, count chip with item count, "Pool clear" subtext when empty, singular "1 item" wording, role=button + tabIndex=0 a11y, eyebrow + bezel-grip continuity with Detail, graceful sidebar mounting outside Focus provider.
+
+**Final regression verification:**
+- Backend: 194 passed + 2 skipped across W-1 foundation + W-1 integration + W-2 unit + W-2 integration + spaces unit + spaces API + Phase 8e + 8e.1 + 8e.2.3 + invariants. No regressions.
+- Frontend: 558/558 vitest pass.
+- tsc 0 errors. vite build clean in 4.87s.
+
+**User flow now works end-to-end:**
+1. FH director opens any space (Arrangement / Administrative / Ownership).
+2. Clicks "+ Pin widget" at the bottom of the Pinned section.
+3. WidgetPicker slide-in opens with the surface-scoped catalog (only widgets declaring `spaces_pin` + visible to the user via 4-axis filter).
+4. Clicks "Pin" on AncillaryPoolPin.
+5. Widget appears in sidebar as Glance tablet showing pool item count + summon affordance.
+6. Clicks the tablet → funeral-scheduling Focus opens with the same widget rendered as Detail variant (full pool list with drag-source affordance).
+7. Hover the sidebar tablet → unpin X reveals → click X removes the pin.
+
+**Phase W-3 prep.** Phase W-3 (cold-start widget catalog) ready to begin. W-3a in progress (cross-vertical widgets); W-3d pending and includes the per-line `vault_schedule` widget — see Product Line + Operating Mode canon entry below for the architectural canon W-3d builds against.
+
+---
+
+### Product Line + Operating Mode canon (✅ Documented, 2026-04-27)
+
+**NO CODE — pure canonical documentation session.** Surfaced an architectural error in pre-canon platform documentation: operating mode (production / purchase / hybrid) was implicitly framed as tenant-level (concretely: `Company.vault_fulfillment_mode`). It must be **per-product-line** because a single Wilbert licensee may simultaneously run vault in production mode + Redi-Rock in production mode + urn sales in purchase mode + wastewater not activated. Tenant-level mode is wrong abstraction.
+
+**Investigation findings (load-bearing for the rest of the session):**
+
+1. **`TenantProductLine` model already exists** (`backend/app/models/tenant_product_line.py:12-29`) with `(company_id, line_key)` unique key + `is_enabled` + `config` JSONB + `sort_order`. Schema is ready; service layer is not yet built. **Not adding a new primitive — activating one that's been waiting.**
+2. **`Company.vault_fulfillment_mode` already exists** (`company.py:83`) with `'produce' | 'purchase' | 'hybrid'`. **This is the canonicalize-away-from anti-pattern.** Works for Sunnycrest (vault is their only line) but breaks for any multi-line tenant.
+3. **Extension model is mature with implicit product-line recognition.** `extension_service.py` has `_PRODUCT_LINE_EXTENSIONS = {"urn_sales", "wastewater", "redi_rock", "rosetta"}` already separating product-line extensions from feature extensions. The codebase has been waiting for this formalization.
+4. **Cross-tenant infrastructure is ~80% built.** `LicenseeTransfer` + `InterLicenseePricing` (mature, in production), `PlatformTenantRelationship` (consent registry), `DocumentShare` (Phase D-6), `cross_tenant_vault_service` (FH→Mfr orders), `VaultItem.shared_with_company_ids`. The gap is the purchase-mode UX layer (browse supplier inventory, place B2B order, track POs against incoming deliveries) — primitives exist; UX surfaces don't.
+5. **Vault is special-cased everywhere.** `inventory_items.spare_covers/spare_bases`, `production_mold_configs.product_category="burial_vault"`, `personalization_tier='wilbert_standard'`, `vault_fulfillment_mode`, `cross_tenant_vault_service`. Vault is the implicit baseline; other lines are extension-gated. The asymmetry is the bug.
+6. **`pour_schedule` doesn't exist anywhere.** Only one mention in an AI prompt narrative. Clean slate for the W-3d widget naming decision — no migration debt.
+7. **Product classification is fragmented across 4 fields** (`Product.product_line` scalar, `Product.category_id`, `Product.visibility_requires_extension`, `Product.personalization_tier`). Unifying is post-September data hygiene.
+
+**8 decisions resolved (all confirmed by user, all canonicalized in this session's deliverables):**
+
+| # | Decision | Resolution |
+|---|---|---|
+| 1 | ProductLine formalization | **Hybrid: `TenantProductLine` as canonical data model + extensions as activation surface + vault auto-seeded as baseline.** Mental model: "Extension = how a line gets installed (or not — vault is built-in). Product line = operational reality once installed." |
+| 2 | Vault as baseline or extension | **Baseline.** `TenantProductLine(line_key="vault")` auto-seeds for manufacturing-vertical tenants, not extension-gated. Migration: copy `Company.vault_fulfillment_mode` → `TenantProductLine.config["operating_mode"]`. Deprecate Company column post-September. |
+| 3 | Cross-tenant scope for September | **Demo-functional stub.** `TenantProductLine.config["operating_mode"]` is canonical mode field. `vault_schedule` widget reads operating_mode + renders production OR purchase appropriately using existing data (`work_orders` / `production_log` for production; `licensee_transfers` for purchase). Full B2B marketplace UX deferred post-September. |
+| 4 | `pour_schedule` → `vault_schedule` rename | **Use `vault_schedule` from W-3d inception.** Mode-agnostic + line-specific. Sets convention for `redi_rock_schedule`, `wastewater_schedule`. |
+| 5 | Mutual connection | **Canonize: cross-tenant purchase relationships ARE the Mutual data foundation.** Same `PlatformTenantRelationship` consent registry, same data flows, same VaultItem + cross-tenant share primitives. The network effects building (licensees sharing inventory + orders + relationships) ARE the underwriting foundation. Same infrastructure, two strategic outcomes. |
+| 6 | September demo scope | **Hybrid Sunnycrest scenario.** Production-mode for most vault types + purchase from fictional neighbor "Empire State Vault Co." for cremation vaults. Demonstrates platform's adaptive nature. Speaks to both production and purchase licensees in Wilbert audience. 1 dedicated session of demo data work for fictional neighbor + read-mostly preview B2B surface. |
+| 7 | 4-axis or 5-axis widget filter | **5-axis.** Add `required_product_line` as 5th axis distinct from `required_extension`. Vault baseline isn't an extension; product-line scoping is operational context distinct from feature unlock. 5 axes: permission + module + extension + vertical + product_line. |
+| 8 | `production_status` widget naming | **`line_status`** — mode-agnostic, per-line health, cross-line aggregator. Production tenant sees pour status; purchase tenant sees incoming-supply status; hybrid sees both. Optional cross-line `operations_status` aggregator can land later if explicit need surfaces. |
+
+**Deliverables (5 docs):**
+
+1. **BRIDGEABLE_MASTER.md** — extended §5.2 Product Line Activation Model with new sub-sections:
+   - **§5.2.1 Extension vs. Product Line — the canonical distinction.** Captures the mental-model framing verbatim per user direction.
+   - **§5.2.2 Per-Line Operating Mode Model.** Three-mode taxonomy (production / purchase / hybrid), `TenantProductLine.config["operating_mode"]` storage, `Company.vault_fulfillment_mode` flagged for deprecation.
+   - **§5.2.3 Cross-Tenant Purchase Relationships.** Inventory of existing infrastructure (`PlatformTenantRelationship`, `LicenseeTransfer`, `InterLicenseePricing`, `cross_tenant_vault_service`, `DocumentShare`); identifies the purchase-mode UX layer as the gap; canonicalizes demo-functional stub for September scope.
+   - **§5.2.4 The Mutual Connection.** Strategic insight captured prominently: "The network effects building (licensees sharing inventory + orders + relationships through Bridgeable) ARE the Mutual underwriting foundation. Same infrastructure, two strategic outcomes." Cross-references §1.7 GEICO Model + §1.8–1.13 Financial Services + §3.23 Cross-Tenant Feature Landscape.
+2. **PLATFORM_ARCHITECTURE.md** — §9.3 renamed "The 4-axis filter" → "The 5-axis filter" with `required_product_line` as the new 5th axis. New §9.8 covers the architectural mechanics: `TenantProductLine` primitive shape, operating mode storage + readers, vault auto-seed flow, three product-line activation pathways (auto-seed / extension / direct admin), cross-tenant purchase relationship infrastructure inventory, Mutual connection at architectural level (downstream of `PlatformTenantRelationship`), implementation scope table (pre-September vs post-September).
+3. **DESIGN_LANGUAGE.md** — §12.4 extended to 5 axes with `required_product_line` semantics + the mode-aware-rendering-vs-mode-aware-visibility distinction (operating mode is NOT a 6th axis; it's a render-time branch). §12.5 noted catalog filtering carries through every surface uniformly. §12.6 Pour Schedule reference renamed to Vault Schedule + mode-aware annotation. §12.10 added two new reference implementations: **Vault Schedule Widget** (per-line + mode-aware reference) and **Line Status Widget** (cross-line aggregator + mode-aware reference). New "Per-line widget naming convention" subsection codifies the `<line_key>_*` pattern. Cold-start catalog matrix updated: `pour_schedule` → `vault_schedule`, `production_status` → `line_status`.
+4. **PLATFORM_INTERACTION_MODEL.md** — new "Line-aware widget materialization" subsection in the Widgets-as-canonical-tablet-realization section. Two dimensions: catalog visibility (5th-axis filter applied to summon catalog) + mode-aware rendering (same widget, different content per line's operating_mode). Compounding effect captured: as purchase relationships deepen, same widget surfaces progressively richer cross-tenant content. Naming discipline carries through to voice/text invocation.
+5. **AESTHETIC_ARC.md** — this entry.
+
+**Strategic framing (load-bearing for future Sonnet sessions):**
+
+> Many architectural primitives have been waiting in the codebase. This canon activates them by canonicalizing the model that connects them — `TenantProductLine`, per-line operating mode, 5-axis filter, cross-tenant purchase as Mutual foundation. The infrastructure is ~80% built; this work makes it coherent.
+
+Future Sonnet sessions reading these docs should understand:
+1. **WHY** product lines are distinct from extensions
+2. **HOW** vault is baseline without being extension-gated
+3. **WHAT** operating mode means and where it lives (per-line, in `TenantProductLine.config`)
+4. **HOW** cross-tenant purchase relationships connect to Bridgeable Mutual
+5. **WHEN** each piece gets built (September scope vs. post-September)
+
+**Surfaced architectural conflicts logged as deferred work:**
+
+- `Company.vault_fulfillment_mode` deprecation (post-September hygiene)
+- Product classification fragmentation (`Product.product_line` + `category_id` + `visibility_requires_extension` consolidation, post-September)
+- `_PRODUCT_LINE_EXTENSIONS` set in `extension_service.py` should reference `TenantProductLine` going forward (post-September)
+- Cross-tenant browsing UX surfaces (full B2B marketplace post-September)
+
+**Implications for W-3d.** Phase W-3d builds `vault_schedule` + `line_status` widgets against this locked canon:
+- Both gate visibility via `required_product_line: ["vault"]` (vault_schedule) and `required_product_line: "*"` (line_status cross-line aggregator).
+- Both render mode-aware per `TenantProductLine.config["operating_mode"]`.
+- Production-mode render path uses existing `work_orders` / `production_log` / `production_mold_configs` data sources.
+- Purchase-mode render path uses existing `licensee_transfers` data source.
+- Hybrid-mode render path merges both, ordered by date, annotates each row with mode source.
+- Demo data: 1 dedicated session seeds the fictional "Empire State Vault Co." neighbor + active `PlatformTenantRelationship` between Sunnycrest and Empire State + sample purchase orders for cremation vaults.
+
+**Implications for post-September Bridgeable Mutual work.** When Mutual ships, it consumes existing read-paths: `licensee_transfers` (delivery reliability), `cross_tenant_statement_service` (payment behavior), `PlatformTenantRelationship` (counterparty diversity), `TenantProductLine.config["operating_mode"]` (operational mode as risk signal), `intelligence_executions` (operational signal density). **No new platform infrastructure required.** Mutual is downstream of the cross-tenant infrastructure built for purchase relationships. Same substrate, two strategic outcomes.
+
+**Sequencing after this canon session:** Phase W-3a (cross-vertical widgets) continues; W-3b (FH widgets) + W-3c (cross-surface infrastructure) follow; W-3d (manufacturing widgets including `vault_schedule` + `line_status`) builds against this locked canon. Phase W-4 (Pulse surface) ships post-W-3 with role-driven defaults that incorporate per-line awareness.
+
+---
+
 ### Session 4.8 — Sharp Corner Sweep + Widget Elevation Amplification (✅ Shipped, 2026-04-27)
 
 Closes the two remaining items after Session 4.7 visual verification: DateBox corners not architectural-sharp + AncillaryPoolPin reading as elevated card vs floating tablet. Final aesthetic-foundation calibration before declaring lock.

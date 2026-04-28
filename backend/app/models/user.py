@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -89,6 +89,22 @@ class User(Base):
         nullable=False,
         server_default="{}",
         default=dict,
+    )
+
+    # Phase W-4a — operator profile fields per BRIDGEABLE_MASTER §3.26.3.
+    # `work_areas` is multi-select per §3.26.3.1 (Production Scheduling,
+    # Delivery Scheduling, Inventory Management, etc.) and drives Tier
+    # 1 rule-based Pulse composition. `responsibilities_description` is
+    # free text per §3.26.3.2 used by Tier 2+ intelligence post-W-4a.
+    # Both NULL during onboarding window — Pulse falls back to
+    # vertical-default composition (D4 resolution) until populated.
+    work_areas: Mapped[list[str] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    responsibilities_description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
     )
 
     company = relationship("Company", back_populates="users", foreign_keys=[company_id])

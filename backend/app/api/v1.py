@@ -57,6 +57,8 @@ from app.api.routes import (   # noqa: E402 — continuation of main import
     bundles,
     focus as focus_routes,
     onboarding_touches,
+    operator_profile as operator_profile_routes,
+    pulse as pulse_routes,
     company_entities,
     carrier_portal,
     cases,
@@ -266,6 +268,16 @@ v1_router.include_router(
     onboarding_touches.router,
     prefix="/onboarding-touches",
     tags=["Phase 7 Onboarding Touches"],
+)
+v1_router.include_router(
+    operator_profile_routes.router,
+    prefix="/operator-profile",
+    tags=["Phase W-4a Operator Profile"],
+)
+v1_router.include_router(
+    pulse_routes.router,
+    prefix="/pulse",
+    tags=["Phase W-4a Pulse"],
 )
 v1_router.include_router(
     bundles.router, prefix="/products", tags=["Product Bundles"]

@@ -166,6 +166,22 @@ This discipline IS the Decide-vs-Monitor primitive boundary made concrete at the
 
 This pattern — composition reuse across primitives with distinct routing — is the platform's emerging architectural discipline. Peek + widget share the tablet visual contract + interaction discipline; their summon mechanisms differ. Same shape applies elsewhere: a future spatial parking lot would summon widgets via Spaces, peeks via hover, and command-bar tablets via voice/text — three summon mechanisms, one materialization unit, one interaction discipline.
 
+### Line-aware widget materialization
+
+Established with the Product Line + Operating Mode canon (April 2026) — see [BRIDGEABLE_MASTER §5.2](BRIDGEABLE_MASTER.md), [PLATFORM_ARCHITECTURE.md §9.3 + §9.8](PLATFORM_ARCHITECTURE.md), [DESIGN_LANGUAGE.md §12.4 + §12.10](DESIGN_LANGUAGE.md).
+
+A tenant runs N product lines, each in its own operating mode. The interaction model honors this in two ways: **catalog visibility** (which widgets summon at all) and **mode-aware rendering** (what the widget shows once summoned).
+
+**Catalog visibility — the 5th axis.** When a user summons via command bar ("show me today's vault schedule") or pins via Spaces sidebar, the widget catalog the platform offers them is filtered by — among the other axes — the user's tenant's active product lines. A manufacturing tenant running vault + redi_rock sees `vault_schedule`, `redi_rock_schedule`, and `line_status` in their summonable catalog. The same tenant after deactivating redi_rock loses `redi_rock_schedule` from the catalog. The user doesn't summon a widget that isn't theirs to summon; missing widgets are simply absent, not gated.
+
+**Mode-aware rendering — same widget, different content.** Once a per-line widget materializes, its render path branches on the tenant's `operating_mode` for that line. A vault widget on a production-mode tenant renders the pour calendar; the same widget on a purchase-mode tenant renders the incoming-PO calendar; on a hybrid-mode tenant, both are rendered in unified composition. The user summons "vault schedule" with the same gesture regardless of mode; what materializes is mode-appropriate.
+
+**Why this matters for the interaction model.** Without line-awareness, the platform would either show every tenant every widget (clutter, cognitive load, false promise of capability they don't have) OR force per-tenant configuration sweeps every time the line set changes (friction, drift, stale UI). With it, the materialization unit is **tenant-shape-adaptive by construction**. Same gesture, same vocabulary, different shape per actual tenant operations.
+
+**The compounding effect.** Per [BRIDGEABLE_MASTER §5.2.4](BRIDGEABLE_MASTER.md), cross-tenant purchase relationships are the underwriting foundation for Bridgeable Mutual. The interaction model's line-awareness means: as a tenant's purchase relationships deepen (more suppliers, more cross-tenant transactions), the same `vault_schedule` widget surface progressively shows richer purchase-mode content (supplier inventory previews, multi-supplier price comparisons, PO-against-budget projections). The tablet vocabulary is invariant; the content scales with the network the tenant is part of. This is what "Bridgeable adapts to your operating model" means at the interaction layer.
+
+**Naming discipline carries through.** Per-line widgets follow `<line_key>_*` naming convention ([DESIGN_LANGUAGE.md §12.10](DESIGN_LANGUAGE.md)). The voice / text invocations that summon them inherit the same vocabulary: "show me the vault schedule" resolves to `vault_schedule` widget; "show me redi-rock schedule" resolves to `redi_rock_schedule`. The user speaks line names that match what's actually activated for their tenant, in the language the platform uses internally — no translation layer between operator vocabulary and platform vocabulary.
+
 ---
 
 ## Voice/text invocation as primary verb
