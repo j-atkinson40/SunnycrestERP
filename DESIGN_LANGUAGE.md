@@ -4538,6 +4538,232 @@ Future layers added to Pulse follow the same advisory contract: a brief one-line
 
 Future references for §13.8 will land here as Phase W-4b (intelligence streams beyond Anomaly), W-5 (My Stuff + Custom Spaces), and the standalone onboarding visual ship.
 
+#### 13.8.9 Tier-based column dispatch (Phase W-4a Step 6 Commit 2)
+
+`useViewportFitMath` + `useViewportDimensions` (`frontend/src/hooks/useViewportFitMath.ts`) implement §13.3.1 + §13.3.4 Step 2 viewport-tier → column-count dispatch. The locked contract:
+
+- `getViewportTier(viewport_width)` → `"mobile" | "tablet" | "desktop"` per §13.3.1 breakpoints (`< 600` / `600–1023` / `≥ 1024`)
+- `getColumnCountForTier(tier)` → `2 | 4 | 6` per §13.3.4 Step 2
+- PulseSurface writes `--pulse-column-count` to its inline style + `data-column-count` data attribute on root for test observability
+- PulseLayer consumes via inline `grid-template-columns: repeat(var(--pulse-column-count, 6), minmax(0, 1fr))`
+- Both PulseSurface (measurement walk) and PulseLayer (rendering) consume the SAME `column_count` from `useViewportDimensions()` so tetris packing matches across surfaces — the cell-height solver's denominator equals the actually-rendered piece count
+
+Tier transition CSS on grid-template-columns shares the canonical 350ms cubic-bezier easing with grid-template-rows transitions per §13.3.2 amendment. Browsers handle int → int column-count interpolation inconsistently (Chrome 127+ smooths; others snap); the transition declaration is harmless when not interpolated.
+
+**Reference**: `frontend/src/components/spaces/PulseSurface.tsx` (writes CSS variables) + `PulseLayer.tsx` (consumes them) + `useViewportFitMath.ts` (math).
+
+#### 13.8.10 Container-query density tiers + opt-in widget renderings (Phase W-4a Step 6 Commit 2)
+
+`PulsePiece` declares itself as a query container per §13.4.1 — inline `containerType: "size"; containerName: "piece"`. `container-type: size` (not `inline-size`) is required because canon density thresholds are cell-HEIGHT based (80 / 100 / 120 px); block-axis containment is safe because each piece has definite block-size from the parent grid's `grid-row: span N × var(--pulse-cell-height)`.
+
+Three opt-in widgets ship in Commit 2 with three nested density-tier renderings:
+
+- **`anomalies` widget Brief** — Default (≥121 px): full 4-row anomaly list + Acknowledge actions + footer. Compact (101–120 px): header + count breakdown + footer. Ultra-compact (80–100 px): single-line "N unresolved · M critical →".
+- **`line_status` widget Brief** — Default: full per-line list with status indicators + headline metrics. Compact: condensed status pills (3 lines max). Ultra-compact: single-line "N lines · M attention →".
+- **`today` widget Glance** (NEW Pulse-grid render in Commit 2; sidebar `spaces_pin` keeps Pattern 1 frosted-glass tablet for cross-surface continuity with AncillaryPoolPin) — Default: eyebrow + long date + count chip. Compact: short date + count, no eyebrow. Ultra-compact: single-line "APR 28 · 0 deliveries".
+
+CSS dispatch lives in `frontend/src/styles/pulse-density.css`. Widget naming convention canonical: `<widget-key>-widget-pulse-{default,compact,ultra-compact}`. Future opt-in widgets (Phase W-4b briefings, Communications-layer per-primitive widgets, urn_catalog_status when emerges) extend the same selector convention.
+
+**Reference**: `frontend/src/styles/pulse-density.css` (selectors + thresholds) + each opt-in widget's three nested density variants.
+
+#### 13.8.11 Sub-pixel + border boundary buffer (Phase W-4a Step 6 Commit 3)
+
+Container queries measure the principal box CONTENT AREA (not border-box). PulsePiece carries Pattern 2 chrome — `border border-border-subtle` = 1 px border each side = 2 px subtracted from content-area vs piece outer height. Plus Chromium's sub-pixel rounding adds ~0.5 px noise at integer boundaries. **Total buffer = 2.5 px.** Canon thresholds 100 / 120 become `97.5` / `117.5` in CSS:
+
+```
+piece-outer 80  → content-area 78  → max-97.5 fires → ultra-compact ✓
+piece-outer 100 → content-area 98  → max-97.5 doesn't → compact*
+piece-outer 101 → content-area 99  → max-97.5 doesn't → compact ✓
+piece-outer 120 → content-area 118 → max-117.5 fires → compact ✓
+piece-outer 121 → content-area 119 → max-117.5 doesn't → default ✓
+```
+
+(*) The exact-100 case is the 1-px deviation: canon strictly says 100 = ultra-compact, but post-buffer 100 sits in the compact tier. This deviation is below human-visible threshold + only fires at exact integer boundaries; in exchange we get **reliable tier dispatch at integer-multiples like 101 / 99** which were Commit 2's actual visible failure mode (cell_height = 101 px fired ultra-compact incorrectly because content-area 99 ≤ 99.5 with the prior buffer).
+
+If a future change moves Pattern 2 chrome off the PulsePiece root onto a nested wrapper, the 2 px border buffer can be dropped (back to 99.5 / 119.5). The 0.5 px sub-pixel buffer stays regardless — Chromium sub-pixel rounding is independent of chrome accounting.
+
+**Reference**: `frontend/src/styles/pulse-density.css` `@container piece (max-height: 117.5px)` + `@container piece (max-height: 97.5px)` rules; full prose rationale in the file's header comment.
+
+#### 13.8.12 Scroll mode dispatch + tier-three threshold + empty-piece min-height (Phase W-4a Step 6 Commit 3)
+
+Per §13.3.4 Step 5 + §13.3.1 mobile fallback, `useViewportFitMath` emits `scroll_mode_active: boolean` composed from two OR'd conditions:
+
+- **Mobile fallback** — `tier === "mobile"` (vw < 600 px). Mobile is intentionally outside the viewport-fit promise; pieces stack vertically at natural-height per §13.3.1 line 4002.
+- **Tier-three threshold** — `cell_height < 80 px on tablet+` (heavy compositions or compressed viewport heights). Per canon: "switch to natural-height + scroll mode for this session" — implementation reads "as long as conditions hold" (dynamic recompute via existing ResizeObserver pattern from Commits 1+2). Resize back into viewport-fit zone releases scroll mode automatically.
+
+PulseSurface writes `data-scroll-mode={"true" | "false"}` to its root + sets `--pulse-cell-height: auto` sentinel when active. CSS attribute selector in `pulse-density.css` flips PulseLayer's grid → flex-column when scroll mode fires:
+
+```css
+[data-slot="pulse-surface"][data-scroll-mode="true"]
+  [data-slot="pulse-layer-grid"] {
+  display: flex;
+  flex-direction: column;
+}
+[data-slot="pulse-surface"][data-scroll-mode="true"]
+  [data-slot="pulse-piece"] {
+  min-height: 200px;
+}
+```
+
+**Empty-piece min-height fix**: widget renderers using `h-full` resolve to 0 in flex-column without a parent-height, collapsing pieces to ~2 px. The `min-height: 200 px` floor in scroll mode gives widget `h-full` a definite parent + ensures empty-content pieces register visually with Pattern 2 chrome intact. 200 px ≈ desktop comfortable cell-height baseline (Commit 1 verified ~205 px on 1440×900 testco).
+
+**Observability**: PulseSurface fires a debounced `console.warn("[pulse] cell_height < 80px threshold; falling back to scroll mode", ...)` when the tier-three threshold breaches on tablet+ (NOT on mobile — mobile fallback is intentional, not anomalous). Debounce key tuple: `${cell_height}|${total_row_count}|${viewport_height}|${banner_visible}` — fires once per unique tuple per session. Operators can tune composition shape (fewer pinned anomalies, simpler operational layer) when the warning surfaces in dev/staging logs.
+
+**Reference**: `useViewportFitMath.ts` scroll_mode_active output + `pulse-density.css` scroll-mode override rules + `PulseSurface.tsx` console.warn block.
+
+#### 13.8.13 Empty slot filter + agency-dictated error surface (Phase W-4a Step 6 Commit 4)
+
+§13.4.3 agency-dictated error surface canonical implementation:
+
+- **`isItemRenderable(item: LayerItem): boolean`** in `frontend/src/components/spaces/utils/renderability.ts` — single source of truth for "can this Pulse piece render?". Returns `true` for stream pieces (separate dispatch path); returns `true` for widget pieces whose `getWidgetRenderer(component_key)` resolves to a real component (not `MissingWidgetEmptyState`, not `MockSavedViewWidget`).
+- **Both consumers thread the predicate** — PulseSurface measurement walk passes `isItemRenderable` to `computeLayerRowCount` (Commit 2 shared util extended with optional `is_renderable` parameter); PulseLayer applies the same filter to its `visibleItems`. Cell-height solver's denominator equals actually-rendered piece count.
+- **Canonical console.warn at PulseLayer site** — `[pulse] missing widget renderer; skipping piece` with payload `{component_key, layer, item_id, kind, hint}`. Module-scoped `_emittedWarnKeys` Set debounces per `${layer}:${component_key}` so a continuously-failing widget doesn't spam across renders. Hint string references §13.4.3 + the CI parity test path.
+- **CI parity test at `frontend/src/__tests__/widget-renderer-parity.test.ts`** — reads `backend/app/services/widgets/widget_registry.py` via `fs.readFileSync` + regex extracts pulse_grid-eligible widget_ids, asserts each resolves to a registered renderer. `KNOWN_DEFERRED` Map permits documented drift (currently `scheduling.ancillary-pool` → Path 3 deferral) with stale-entry detection guards.
+
+The platform/user agency split: Pulse silently filters platform-composed misconfigurations (the slot disappears entirely; layer compacts to remaining items via tetris repacking; warn fires for observability). PinnedSection (user-composed) keeps `MissingWidgetEmptyState` as the visible placeholder per §13.4.3 user-composed-surfaces clause — user pinned the widget; broken state is their config concern + surfacing it gives them feedback.
+
+**Reference**: `utils/renderability.ts` (predicate) + `PulseLayer.tsx` (filter + warn) + `frontend/src/__tests__/widget-renderer-parity.test.ts` (CI gate).
+
+#### 13.8.14 Workspace-core scroll-within-piece (Phase W-4a Step 6 Commit 5)
+
+Per §13.4.1 + §13.3.2.1: workspace-core widgets preserve their workspace shape across all density tiers; canonical fallback when the cell can't fit minimum content is **scroll within piece** (the widget's own `overflow-y: auto`). Workspace-core widgets do NOT opt into ultra-compact density — the kanban frame (or calendar / board / matrix shape) IS the cognitive affordance.
+
+`vault_schedule` is the canonical workspace-core widget reference — the first concrete instance shipped in Phase W-3d. Both Brief and Detail variants now apply scroll-within-piece consistently:
+
+- **Detail variant**: outer wrapper carries `overflow-y-auto` (lines ~544 + ~671 of `VaultScheduleWidget.tsx` for empty + non-empty paths respectively) — already canonical pre-Commit-5.
+- **Brief variant**: body container previously used `overflow-hidden` (clipped content at compressed cells). Commit 5 closed the drift — both empty kanban-frame Brief (`!isDetail && "overflow-y-auto"`) and non-empty Brief body container (`flex-1 min-h-0 overflow-y-auto space-y-2`) now match Detail's scroll-within-piece pattern.
+
+Empty kanban-frame Brief preserves shape per §13.3.2.1 (kanban frame visible + section eyebrow + dashed-border lane placeholder + footer link) AND scrolls when cell is too small for the empty-frame to fit.
+
+Future workspace-core widgets (FH `arrangement_pipeline` per W-3c, future per-line schedule widgets) follow the same pattern: outer wrapper or body container `overflow-y-auto`; never aggressively compact via density tiers.
+
+**Reference**: `frontend/src/components/widgets/manufacturing/VaultScheduleWidget.tsx` Brief + Detail variants + the `TestWorkspaceCoreCanon` regression guards in the test file.
+
+#### 13.8.15 Viewport matrix reference implementations (Phase W-4a Step 6 Commit 6)
+
+Five canonical viewport sizes × 2 modes (light + dark) = 10 reference implementations. Each captures the locked Sunnycrest dispatcher Pulse composition State B (`work_areas` set, banner suppressed; canonical D5 composition emerges from `operational_layer_service` work-area-to-widget mapping).
+
+The composition emits 5 pieces:
+- `personal:approvals_waiting` (kind="stream", filtered by §13.4.3 silent-filter when no matching IntelligenceStream — pre-existing backend drift tracked separately)
+- `operational:vault_schedule` Detail (2×2, workspace-core)
+- `operational:scheduling.ancillary-pool` Brief (2×1, filtered by §13.4.3 — Path 3 deferral)
+- `operational:line_status` Brief (2×1)
+- `operational:today` Glance (1×1)
+
+The Anomaly + Activity layers render their italic empty advisories ("All clear — nothing needs attention right now." / "Quiet day so far.") per §13.8.8.
+
+##### 13.8.15.1 Mobile portrait (375 × 667) — scroll mode
+
+| Property | Value |
+|---|---|
+| Tier | mobile |
+| Column count | 2 |
+| Cell height | `auto` (scroll mode active) |
+| `data-scroll-mode` | `true` |
+| Pulse layer rendering | flex-column natural-height stack |
+| Per-piece minimum | 200 px (`min-height` floor per §13.8.12) |
+
+![Pulse mobile light mode](./design-references/pulse-step-6/pulse-mobile-light.png)
+![Pulse mobile dark mode](./design-references/pulse-step-6/pulse-mobile-dark.png)
+
+**Visual verification points:**
+- Pieces stack vertically at 200+ px each; AppLayout `<main>` scrolls naturally
+- Brass-thread divider above operational layer renders full-width
+- `line_status` widget renders **ultra-compact** density tier ("1 line · 1 attention →") — cell height post-min-height puts content-area within the (max-height: 97.5 px) container query envelope
+- Mobile bottom tab bar (`Home / Orders / Schedule / Financials / Vault / More`) visible at viewport bottom
+- Anomaly + Activity empty advisories render in italic
+
+##### 13.8.15.2 Tablet portrait (768 × 1024) — viewport-fit, 4-col
+
+| Property | Value |
+|---|---|
+| Tier | tablet |
+| Column count | 4 |
+| Cell height | ~182 px (computed; well above 121 default-tier floor) |
+| `data-scroll-mode` | `false` |
+| Pulse layer rendering | CSS Grid with tier-resolved columns |
+| Density tier | default (cells comfortably above 121 px buffer) |
+
+![Pulse tablet light mode](./design-references/pulse-step-6/pulse-tablet-light.png)
+![Pulse tablet dark mode](./design-references/pulse-step-6/pulse-tablet-dark.png)
+
+**Visual verification points:**
+- 4-col tetris layout; pieces sized via `repeat(var(--pulse-column-count), minmax(0, 1fr))` resolved to 4 columns
+- vault_schedule Detail spans 2 cols × 2 rows; line_status Brief + today Glance at default density
+- Brass-thread divider above operational layer
+- Anomaly + Activity empty advisories render in italic
+- No mobile bottom tab bar at tablet width
+
+##### 13.8.15.3 Desktop common (1440 × 900) — viewport-fit, 6-col, canonical baseline
+
+| Property | Value |
+|---|---|
+| Tier | desktop |
+| Column count | 6 |
+| Cell height | ~205 px |
+| `--pulse-content-height` | 628 px |
+| `--pulse-scale` | 0.875 (clamped to floor — viewport_height < 900 baseline after chrome) |
+| Density tier | default |
+
+![Pulse desktop common light mode](./design-references/pulse-step-6/pulse-desktop-common-light.png)
+![Pulse desktop common dark mode](./design-references/pulse-step-6/pulse-desktop-common-dark.png)
+
+**Visual verification points:** *This is the canonical W-4a Commit 5 reference baseline.* Three operational widgets render at default density tier: vault_schedule Detail kanban (Tuesday April 28, Production · DRIVER LANES, 2 deliveries), line_status Brief (1 line · Burial vault · 2 pours today), today Glance (Tuesday April 28 · 3 items today · count chip 3). Brass-thread divider visible. Personal layer's empty `approvals_waiting` chrome cell visible above the divider (pre-existing backend drift). Anomaly + Activity empty advisories. DotNav at sidebar bottom with active brass-ring on Home.
+
+Math verification (per §13.3.4 chrome budget formula):
+- chrome = 56 (app header) + 32 (DotNav) + 48 (page padding) + 0 (no banner) + 3·16 (3 inter-layer gaps) + 24 (brass-thread overhead) + 2·32 (anomaly + activity advisory) = **272 px**
+- available_pulse_height = 900 − 272 = **628 px** ✓
+- pulse_scale = 628 / 900 = 0.698 → clamped to floor **0.875** ✓
+- 3 populated rows ÷ 2 layers (1 personal + 1 operational with 2 rows) → cell_height = (628 − 12 gap) / 3 ≈ **205.3 px** ✓
+
+##### 13.8.15.4 Desktop FHD (1920 × 1080) — viewport-fit, 6-col, scale up
+
+| Property | Value |
+|---|---|
+| Tier | desktop |
+| Column count | 6 |
+| Cell height | larger than common (more vertical chrome budget) |
+| `--pulse-scale` | clamped to ceiling 1.25 (viewport_height 1080 > 900 baseline; raw 808/900 ≈ 0.898 with 4 layers + advisory chrome; recomputes per actual measurement) |
+| Density tier | default; pieces scale up via `--pulse-scale` typography + breathing-room padding |
+
+![Pulse desktop FHD light mode](./design-references/pulse-step-6/pulse-desktop-fhd-light.png)
+![Pulse desktop FHD dark mode](./design-references/pulse-step-6/pulse-desktop-fhd-dark.png)
+
+**Visual verification points:**
+- Surface still bounded by `mx-auto max-w-6xl` (~1152 px content width) → pieces don't grow uncontrollably wide; additional viewport space distributes as left/right breathing room per §13.3.4 Step 6 ("additional viewport space distributes as cell-internal breathing room — Apple Pro app discipline per §10")
+- Cell heights modestly larger than 1440×900 baseline; default density tier
+- All canonical D5 composition pieces present + advisories intact
+
+##### 13.8.15.5 4K display (2560 × 1440) — scale ceiling + breathing room
+
+| Property | Value |
+|---|---|
+| Tier | desktop |
+| Column count | 6 |
+| Cell height | larger still (more available_pulse_height; cell_height solver distributes generously across rows) |
+| `--pulse-scale` | clamped to ceiling **1.25** (1168/900 raw ≈ 1.30 → clamp; surface stays at the 1.25× typography scale ceiling) |
+| Density tier | default |
+
+![Pulse 4K light mode](./design-references/pulse-step-6/pulse-4k-light.png)
+![Pulse 4K dark mode](./design-references/pulse-step-6/pulse-4k-dark.png)
+
+**Visual verification points:**
+- Surface centered with significant breathing room on either side (`mx-auto max-w-6xl` caps content width at ~1152 px regardless of viewport width); 4K viewport (2560 px wide) shows ~700 px of substrate on each side of the Pulse content
+- Pieces sized similarly to Desktop FHD (max-w-6xl ceiling holds); ADDITIONAL space goes to substrate breathing room rather than larger pieces — Apple Pro app discipline per §10 (typography stays readable at peak Apple form; comfort scales, content size doesn't)
+- All D5 composition pieces present + advisories intact
+
+**Simulation note**: 4K capture is at logical 2560×1440 via headless Chromium with `deviceScaleFactor: 1`. Real 4K monitors typically render at 2× device pixel ratio (effective 1280×720 logical resolution); this reference captures the LOGICAL viewport at 2560 px width which matches the canonical breakpoint behavior. On a real 4K monitor at 2× DPR, the same composition renders at 1280 logical px = desktop tier (≥1024 breakpoint, 6 cols) but with smaller absolute pixel real-estate per cell. Both renderings are canonically correct for their viewport dimensions.
+
+##### 13.8.15.6 Cross-viewport observations
+
+- **Pattern 2 chrome on every piece across every viewport** (rounded-[2px], bg-surface-elevated, border-border-subtle, shadow-level-1) — canon-conformant per W-4a Step 5 surface-responsibility convention
+- **Brass-thread divider above operational layer** renders consistently across all viewports
+- **Empty-layer advisories** render in italic content-muted typography across all viewports
+- **Tier-resolved column count + cell height** computed dynamically; both PulseSurface measurement walk + PulseLayer rendering consume same predicate so cell-height solver matches rendered piece count
+- **Both modes coherent** — warm-cream substrate (light) + warm-charcoal substrate (dark); deepened terracotta accent thread single-value across modes per Aesthetic Arc Session 2
+
+These 5 viewports × 2 modes are the **calibration anchors** for subsequent Pulse component refinement, post-September iteration, and future widget development. When a widget's rendering at any of these viewports drifts from the locked references, that's a regression to investigate.
+
 ### 13.9 Cross-references
 
 - **Section 11 Pattern 1 + Pattern 2**: chrome treatments shared across Pulse + standard Spaces.
