@@ -1227,8 +1227,96 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 
 ---
 
+## Phase W-4b Canon Expansion Session (canon locked, 2026-05-04)
+
+**Canon-only session. No code shipped.** User-directed expansion of Phase W-4b architecture + canonical-quality discipline lock. Closes the W-4b scope question opened during the Step 6 viewport-responsive canon session (which resolved the Pulse rendering substrate; this session resolves what content composes onto that substrate).
+
+### What was canonicalized
+
+Four architectural shifts locked:
+
+1. **Communications layer replaces Personal layer.** "Personal" implied agency; the question users actually open Pulse to answer is the interpersonal one ("who needs me?"). Tasks + approvals migrate to Operational where they belong cognitively. Communications takes the layer-zero slot, aggregating signals across email + SMS + phone (Call Intelligence) + in-platform messaging + cross-tenant communications.
+2. **Pattern C composition pattern (stream + supporting widgets).** New layer-composition pattern distinct from material chrome Patterns 1-8. Composes one primary intelligence stream piece (full-width narrative) + N per-primitive Glance widgets (compact state-scan row beneath stream). Stream is the primary cognitive surface; widgets are confirmation/drill-down. Canonical at the Communications layer.
+3. **Per-primitive 4-aspect decomposition canonical for each communication primitive.** Email, SMS, phone, in-platform messaging — each gets canonical (a) signals contributed to layer, (b) Glance widget shape with default/compact/ultra-compact density tiers, (c) briefing surfacing rules for morning + evening, (d) Triage Focus shape when user opens primitive's full triage flow.
+4. **Triage Focus migration pattern.** Phase 5 Triage primitive (anomalies, approvals, tasks queues) migrates to render INSIDE Phase A Focus primitive — anchored modal core + canvas peripheral panels. Same Triage queue logic preserved; rendering shell changes from dedicated route to summoned Focus session. Matches PLATFORM_INTERACTION_MODEL.md Tony Stark / Jarvis interaction language.
+
+### Strategic discipline locked: canonical quality over demo timeline
+
+**Build at canonical quality. Demo timelines do not drive architecture.** Phase W-4b ships when complete (per the 16-step sequence). The September 2026 Wilbert demo shows whatever is complete at that point — honest checkpoint, not deadline.
+
+This is the Aesthetic Arc's discipline applied to Workflow Arc scope: same principle that produced Sessions 4-4.8's measurement-driven calibration applies to feature sequencing. Cuts compound as technical debt; canonical quality compounds across years.
+
+**What this discipline rules out:**
+- "MVP" cuts to features (e.g., shipping email primitive without inbound handling to make September). The cut compounds as debt; the demo shows incomplete-feeling email.
+- "Demo-essential subset" sequencing that re-orders the 16 steps to front-load demoable surfaces while back-burning structurally prerequisite work. The reordering creates dependency violations that surface as bugs.
+- "Polish at the end" assumptions. Polish is integral; primitives ship at canonical quality the first time.
+
+**What this discipline enables:**
+- Each step shipped is permanent foundation. Post-September Phase W-4b continues at sustainable pace; nothing built before September gets rebuilt.
+- The demo narrative is honest: "here's what we've built; here's the platform vision; here's what continues to ship through Q4 and beyond." Wilbert sees real depth + real roadmap, not vaporware.
+- Engineering velocity stays sustainable. No demo-deadline crunch costs morale or burns runway.
+
+### Phase W-4b implementation sequence (canonical)
+
+16 steps, sequencing by architectural dependency, total estimate 27-43 weeks. Full table at BRIDGEABLE_MASTER §3.26.6.4. Summary:
+
+1. Layer 1 email primitive (~5-6 weeks)
+2. Layer 1 calendar primitive (~3-4 weeks, parallel with email)
+3. Layer 1 SMS primitive (~1-2 weeks, after email infra)
+4. Layer 1 phone / Call Intelligence primitive (~3-4 weeks, parallel-able)
+5. Layer 1 in-platform messaging primitive (~2-3 weeks)
+6. Communications layer service + Pattern C composition (~2-3 weeks)
+7. Per-primitive intelligence streams (~2-3 weeks)
+8. Communications cross-primitive intelligence stream (~1-2 weeks)
+9. Morning briefing pipeline + 3-state machine (~2-3 weeks)
+10. Evening briefing pipeline (~1-2 weeks)
+11. Tenant briefing config UI (~1-2 weeks)
+12. Anomalies → Triage Focus migration (~1-2 weeks)
+13. Approvals → Triage Focus migration (~1-2 weeks)
+14. Tasks → Triage Focus migration (~1-2 weeks)
+15. Cross-tenant communications surface (~2-3 weeks)
+16. Tests + visual verification + canon doc updates (parallel throughout)
+
+### Canon doc updates locked this session
+
+**BRIDGEABLE_MASTER.md:**
+- §3.26.2.3 + §3.26.2.4 amended (Communications replaces Personal; canonical layer order; layer-vs-question framing)
+- §3.26.6.4 expanded (Phase W-4b full 16-step sequence, no MVP cuts)
+- §3.26.7.5 NEW (canonical-quality discipline lock — three forces in tension framing; rules out + enables analysis)
+- §3.26.9 NEW (Communications Layer Architecture — full canon, 11 D-decisions resolved)
+- §3.26.10 NEW (Briefings Architecture — three-state machine + generation pipeline + tenant config)
+- §3.26.11 NEW (Triage Focus Canonical Pattern — 4 D-decisions resolved)
+
+**DESIGN_LANGUAGE.md:**
+- §11 extended (Layer Composition Patterns A/B/C subsection — distinct from material chrome Patterns 1-8)
+- §13.4.1 extended (Pattern C density-tier opt-in canonical reference + per-tier behavior table)
+- §14 NEW (Communications Layer Visual Canon — per-primitive icon canon Mail/MessageSquare/Phone/AtSign + count typography + per-primitive default/compact/ultra-compact compositions)
+- §15 NEW (Briefing Visual System — three states visual mapping + per-state composition + typography per state + Pattern C integration + briefing page editorial-scale + tenant config UI canon)
+- §16 NEW (Triage Focus Visual System — anchored core composition + canvas peripheral panels + per-queue specialization + action palette typography + push-back + return pill + queue-exhausted empty state)
+
+**CLAUDE.md §14**: Phase W-4b canon expansion entry summarizing the 4 architectural shifts + discipline lock + 16-step sequence + canon doc updates.
+
+### What changes for the Aesthetic Arc going forward
+
+**Aesthetic Arc Session 5+ scope unchanged.** Motion pass + final QA proceed independently of Workflow Arc Phase W-4b. Both arcs run in parallel per existing cross-arc integration rule (line 1217+).
+
+**Cross-arc check at Session 5/6 boundary:** verify the Pattern C composition + Communications layer visual canon don't introduce motion patterns Aesthetic Arc Session 5 needs to absorb. Expected: Pattern C inherits §13.3.4 transition discipline (350ms cubic-bezier on grid-template-* changes); briefing 3-state machine inherits §6 motion canon (skeleton pulse → shimmer → fade-in over 350ms cubic-bezier). No new motion vocabulary needed.
+
+### Cross-arc check: Workflow Arc + Aesthetic Arc Phase II Batch sequencing
+
+Phase II Batch 1c-i (Order Station) + 1c-ii (long-tail pages) continue as-planned. Phase W-4b email primitive build (step 1) ships fresh code at DESIGN_LANGUAGE-token canonical quality from inception — no shadcn-aesthetic carryover that would need post-W-4b refactor. Phase II Batch 6 (deferred long-tail) absorbs any pages that ship behind aesthetic-token migration during the long W-4b runway.
+
+### Discipline lock summary
+
+> **"Build at canonical quality. Demo timelines don't drive architecture. Platform completeness compounds across years; cuts compound as technical debt. Phase W-4b ships when complete; September Wilbert demo shows whatever's complete at that point. Honest checkpoint over over-promised demo."**
+
+This discipline becomes the cross-arc anchor for any future scope decision during W-4b (and beyond). When future sessions face timeline-vs-scope tension, the canonical-quality framing wins.
+
+---
+
 ## Changelog
 
+- **2026-05-04 (Phase W-4b Canon Expansion Session — canon locked, no code):** Communications layer replaces Personal layer; Pattern C composition pattern; per-primitive 4-aspect decomposition for email/SMS/phone/messaging; Triage Focus migration pattern. Canonical-quality discipline locked. 16-step Phase W-4b implementation sequence (27-43 weeks, dependency-driven not timeline-driven). 18 architectural D-decisions resolved. Canon docs updated: BRIDGEABLE_MASTER §3.26.2.3 + §3.26.2.4 + §3.26.6.4 + §3.26.7.5 + §3.26.9 + §3.26.10 + §3.26.11; DESIGN_LANGUAGE §11 + §13.4.1 + §14 + §15 + §16. CLAUDE.md §14 entry. September Wilbert demo framed as honest checkpoint, not deadline. Implementation begins with Layer 1 email primitive in scoped session(s).
 - **2026-04-21 (Session 1 shipped):** Token foundation + Plex fonts + Tailwind v4 `@theme inline` extensions + `[data-mode="dark"]` mechanism + flash-prevention inline script + `theme-mode.ts` runtime API. No visual regression (status-color hex→oklch drift accepted).
 - **2026-04-21 (Session 2 shipped):** Core component refresh across 14 files (~480 LOC modified). 8 UI primitives (Button, Label, Input, Textarea, Select, Card, Dialog, DropdownMenu, SlideOver) + 6 navigation components (sidebar, DotNav, breadcrumbs, mobile tab bar, app-layout header, notification dropdown) on DESIGN_LANGUAGE tokens. `--font-sans` flipped from Geist to `var(--font-plex-sans)` in one line — entire platform renders in IBM Plex Sans. Geist `@fontsource-variable/geist` package uninstalled. Brass focus ring replaces gray everywhere. Tests: 165/165 vitest + 171/171 backend regression, tsc clean, build clean. Mixed-aesthetic pages expected during Session 2–3 window (213 pages still reference shadcn tokens; Session 3 closes extended-component gap).
 - **2026-04-21 (Session 3 shipped):** Extended components + status treatment across 23 files (~1,200 LOC touched). **6 net-new primitives** (Alert, StatusPill, Tooltip, Popover, FormSection + FormStack + FormFooter, FormSteps) — ~630 new LOC. **11 primitive refreshes** onto DESIGN_LANGUAGE tokens (Badge with 4 new status variants + destructive alias; Table + Tabs + Separator + Avatar + Switch + Radio + Skeleton + EmptyState + InlineError + Sonner) — ~400 LOC. **6 ad-hoc surface refreshes** (accounting-reminder-banner, kb-coaching-banner, agent-alerts-card with new status-key-keyed dict pattern, peek StatusBadge → StatusPill, App ErrorBoundary, WidgetErrorBoundary) — ~180 LOC. `next-themes` removed from package.json (single consumer; confirmed). **0 UI primitives remain in shadcn aesthetic.** ~213 pages still carry shadcn page-chrome (accepted per audit §9); migration recipe documented in CLAUDE.md for natural-refactor adoption. 5 flagged settings pages deferred to Phase 8e per audit §2. Tests: 165/165 vitest + 171/171 backend, tsc clean, build clean 4.94s.

@@ -3930,22 +3930,23 @@ Both primitives compose visually as cards/tablets in tetris layout. Architectura
 
 Pulse composition organizes content across four conceptual layers:
 
-**Personal Layer** — items addressed to YOU
-- Tasks assigned to you
-- @mentions in comments and messages
-- Approvals waiting on you
-- Direct messages
-- Items you marked "watch"
-- Things explicitly routed to your name
+**Communications Layer** — *Who needs me?* (canonical post-W-4b — supersedes the prior "Personal Layer" framing; see §3.26.9 for full architecture)
+- Email signals (unread / awaiting reply / AI-flagged-priority / attachments needing review)
+- SMS signals (incoming / pending reply / customer-initiated)
+- Phone signals (missed calls / voicemails awaiting transcription / completed calls flagged for follow-up)
+- In-platform messaging signals (@mentions, direct messages, comment-thread replies, approval-thread messages)
+- Cross-tenant communications (per V-1f document_shares pattern, extended to comm primitives)
 
-**Operational Layer** — work in your operational scope
+**Operational Layer** — *What's my work right now?*
 - Today's deliveries (for users with Delivery Scheduling work area)
 - In-progress orders (for users with Inside Sales work area)
 - Open cases (for users with Family Communications work area)
 - Active POs (for users with Inventory Management work area)
+- Tasks assigned to you (canonical post-W-4b — migrated from prior Personal layer)
+- Approvals waiting on your decision (canonical post-W-4b — migrated from prior Personal layer)
 - Bound by user's selected work areas + time of day
 
-**Anomaly Layer** — things needing attention
+**Anomaly Layer** — *What's anomalous?*
 - agent_anomalies surfaced
 - Blockers and exceptions
 - SLA risks (computed from operational data)
@@ -3953,21 +3954,33 @@ Pulse composition organizes content across four conceptual layers:
 - Inventory risks
 - Schedule conflicts
 
-**Activity Layer** — recent context
+**Activity Layer** — *What's changed?*
 - What changed while you were away
-- Recent customer communications (smart-filtered)
 - Recent system events (Workflow Engine actions, integrations)
-- Recent cross-tenant communications
 - Updates to entities you're watching
+- Background operational state changes (status flips, lifecycle transitions)
 
-Each layer can contain multiple distinct content streams. Activity layer is not one running list — emails and system events surface as separate parts of Pulse. Operational layer can have schedule view, pool view, line status as separate streams. Personal layer can have assigned tasks, mentions, approvals as separate streams.
+Each layer can contain multiple distinct content streams. Activity layer is not one running list — system events surface as separate parts of Pulse. Operational layer can have schedule view, pool view, line status as separate streams. Communications layer composes via Pattern C (§3.26.9 + DESIGN_LANGUAGE §11 Pattern C) — a primary intelligence stream synthesizing across primitives, plus per-primitive Glance widgets for quick state scan.
+
+**Layer-vs-question framing.** Each layer answers a distinct cognitive question. Communications + Operational together answer "what's in front of me." Anomaly + Activity together answer "what's been happening behind the scenes." Communications-at-top reflects user mental priority — interpersonal ALWAYS precedes operational, because operational work happens for someone in response to someone's order.
+
+**Why Personal layer was retired.** "Personal" implied agency (items the user owns); the actual question users open Pulse to answer is the interpersonal one ("who needs me?" — emails awaiting reply, missed calls returned with context, SMS thread requesting status). Tasks and approvals are downstream consequences of those communications, not the primary signal. Phase W-4b retires the Personal layer + folds tasks + approvals into Operational where they belong cognitively. Communications takes the layer-zero slot. See §3.26.9 for full architecture + the design rationale.
 
 #### 3.26.2.4 Composition Rules
 
 Composition follows hybrid pattern: predictable layered structure with intelligent ordering within each layer.
 
-- Personal layer surfaces at top (always visible)
-- Operational layer dominates primary work-surface area
+**Canonical layer order (post-W-4b, supersedes pre-W-4b ordering):**
+
+```
+Communications  ← top, no chrome divider (replaces "Personal" slot)
+Operational     ← brass-thread top-edge divider per DL §13.3.2
+Anomaly         ← no divider; demarcation via positioning
+Activity        ← ambient at periphery; no divider
+```
+
+- Communications layer surfaces at top (always visible) — same slot Personal occupied pre-W-4b, same chrome treatment (no divider above it per §13.3.2 visual demarcation rules)
+- Operational layer dominates primary work-surface area — gains tasks + approvals signals migrated from retired Personal layer
 - Anomaly layer surfaces above standard operational content when severity warrants
 - Activity layer ambient at periphery
 
@@ -3977,6 +3990,8 @@ Within each layer, intelligence determines:
 - What variant of pinable widgets to render
 - What ordering within layer
 - Whether to surface at all (some content stays hidden if not relevant)
+
+**Migration note (W-4a → W-4b):** Pre-W-4b code carries `LayerName: "personal"` literal in `frontend/src/types/pulse.ts` + `backend/app/services/pulse/personal_layer_service.py` + composition engine sort order. Phase W-4b migration: literal renames `"personal"` → `"communications"`; `personal_layer_service.py` becomes the foundation for `communications_layer_service.py` (the assigned-tasks + approvals-waiting builders move to `operational_layer_service.py`); composition engine constants update. Hard cutover, single PR, dual-source confusion avoided.
 
 #### 3.26.2.5 Three Intelligence Tiers
 
@@ -4162,17 +4177,38 @@ Parallel with Email native completion:
 - Email-based distribution
 - WYSIWYG editing deferred post-September
 
-#### 3.26.6.4 Phase W-4b — Pulse Intelligence Streams
+#### 3.26.6.4 Phase W-4b — Pulse Intelligence Streams + Communications Layer + Briefing System + Triage Focus Migrations
 
-After Layers 1 + 2 land, Pulse intelligence streams light up against real data:
+Phase W-4b is the substantive build phase that lights up the Communications layer, the briefing system, and the Triage Focus migrations against real Layer 1 + 2 data.
 
-- Smart email surfacing (depends on email native)
-- Daily briefing (synthesized, depends on email + documents + onboarding work areas + responsibilities)
-- Cross-tenant coordination summary (depends on email cross-tenant + locked cross-tenant infrastructure)
-- Conflict detection (synthesized, depends on richer data across email + calendar + scheduling)
-- Onboarding work areas fully driving composition (work areas + responsibilities feeding composition rules)
+**Sequencing by architectural dependency, not timeline pressure.** Demo timelines do not drive scope. Each step ships at canonical quality. September Wilbert demo shows whatever is complete at that point — honest checkpoint, not deadline. See §3.26.7.5 for the canonical-quality discipline lock.
 
-Sunnycrest dispatcher Pulse fully functional with all intelligence streams.
+**Full implementation sequence (16 steps, total estimate 27-43 weeks):**
+
+| # | Step | Estimate | Dependencies |
+|---|---|---|---|
+| 1 | Layer 1 email primitive (full inbound + outbound + threading + attachments + signatures + intelligence-friendly storage) | ~5-6 weeks | W-4a complete |
+| 2 | Layer 1 calendar primitive (event model, time zones, RRULE, multi-view rendering, drag-drop, workflow integration, cross-tenant sharing) | ~3-4 weeks | Can parallel with email after schema established |
+| 3 | Layer 1 SMS primitive (Twilio integration, threading, opt-in/out compliance, tenant phone provisioning) | ~1-2 weeks | After email infrastructure (shared comm patterns) |
+| 4 | Layer 1 phone / Call Intelligence primitive (RingCentral integration, voicemail transcription, call-log storage, action-item extraction) | ~3-4 weeks | Independent; can parallel with calendar |
+| 5 | Layer 1 in-platform messaging primitive (@mentions, DMs, comment threads, approval-thread messages) | ~2-3 weeks | Independent; can parallel with phone |
+| 6 | Communications layer service + Pattern C composition (per §3.26.9) | ~2-3 weeks | All Layer 1 primitives shipped (or substantively functional) |
+| 7 | Per-primitive intelligence streams (email_intelligence, sms_intelligence, phone_intelligence, messaging_intelligence) | ~2-3 weeks | Communications layer service shipped |
+| 8 | Communications cross-primitive intelligence stream (synthesizes across all 4 primitives — see §3.26.9.6) | ~1-2 weeks | Per-primitive streams shipped |
+| 9 | Morning briefing generation pipeline + three-state machine (per §3.26.10) | ~2-3 weeks | Communications layer + per-primitive streams shipped |
+| 10 | Evening briefing generation pipeline | ~1-2 weeks | Morning briefing shipped (shared infrastructure) |
+| 11 | Tenant briefing configuration UI (per-user prefs, primitive selection, time customization) | ~1-2 weeks | Briefing pipelines shipped |
+| 12 | Anomalies → Triage Focus migration (per §3.26.11) | ~1-2 weeks | Triage primitive Phase 5 already shipped; Focus primitive Phase A complete |
+| 13 | Approvals → Triage Focus migration | ~1-2 weeks | After anomalies migration (shared patterns) |
+| 14 | Tasks → Triage Focus migration | ~1-2 weeks | After approvals migration |
+| 15 | Cross-tenant communications surface (per §3.26.9.4 — supplier emails, customer SMS threads in two tenants' Pulses) | ~2-3 weeks | All Layer 1 primitives + V-1c CRM cross-tenant patterns mature |
+| 16 | Tests + visual verification + canon doc updates | parallel throughout | every step ships green |
+
+**Sunnycrest dispatcher Pulse fully functional** when steps 1-9 + 12 complete. Steps 10-11 + 13-15 add depth post-foundation. Step 16 runs parallel throughout — no separate "test phase" at end.
+
+**No MVP cuts.** Phase W-4b ships when complete. The 16-step sequence is structurally correct; cutting steps creates technical debt that compounds. If a primitive (e.g., in-platform messaging) is incomplete by September, Pulse renders without it (graceful empty-state per primitive widget); the demo shows the Communications layer with whatever primitives are shipped. Post-September the sequence continues at sustainable pace.
+
+**Architectural discipline canonicalized in AESTHETIC_ARC** (per §3.26.7.5): "Build at canonical quality. Demo timelines don't drive architecture. Platform completeness compounds across years; cuts compound as technical debt."
 
 #### 3.26.6.5 Phase W-5 — Standard Spaces Dashboards
 
@@ -4224,9 +4260,33 @@ This is harder than building primitives standalone. It pays back in composition 
 
 #### 3.26.7.4 Build Maximally, Structurally Correctly
 
-Scope is set by what's structurally needed for September demo's full vision, not by timeline anxiety. Each primitive is built to the depth required for its compositional role — not "minimum viable" cuts that compromise the demo, not "complete spec" coverage that wastes time on speculation.
+Scope is set by what's structurally needed for the platform's full vision, not by timeline anxiety. Each primitive is built to the depth required for its compositional role — not "minimum viable" cuts that compromise the platform, not "complete spec" coverage that wastes time on speculation.
 
-The 20-week timeline (April 27 → late September) is tight but achievable at current velocity with disciplined parallelization. Buffer is meaningful but not infinite. Strategic decisions favor structurally-correct sequencing over expedient shortcuts.
+#### 3.26.7.5 Canonical Quality, Honest Checkpoint
+
+**Build at canonical quality. Demo timelines do not drive architecture.**
+
+Phase W-4b ships when complete (per the §3.26.6.4 16-step sequence). The September Wilbert demo shows whatever is complete at that point — an honest checkpoint, not a deadline.
+
+Three forces in tension when timelines pressure architecture:
+
+1. **Demo legitimacy.** A demo that shows real platform foundation (whatever has shipped) earns trust. A demo that shows MVP-cut versions of features that get rebuilt later teaches Wilbert licensees to discount our depth.
+2. **Compounding completeness.** Platform completeness compounds across years. Every primitive built at canonical quality is a foundation the next primitive composes against cleanly. Every cut is technical debt that surfaces during the next composition.
+3. **Sustainable pace.** Sprinting to a demo deadline by cutting depth produces post-demo refactor cost that erases the velocity gain. Building at canonical quality, even if slower per-primitive, produces faster cumulative velocity.
+
+**The canonical commitment.** Phase W-4b's 16-step sequence ships in order, each step at canonical quality. If September arrives and steps 1-9 + 12 are complete, the demo shows Communications layer + morning briefing + anomalies Triage Focus against real data. If steps 1-6 are complete, the demo shows email + calendar + SMS primitives + Communications layer composition. Each is an honest checkpoint of real platform foundation.
+
+**What this rules out:**
+- "MVP" cuts to features (e.g., shipping email primitive without inbound handling to "make September"). The cut compounds as debt; the demo shows incomplete-feeling email.
+- "Demo-essential subset" sequencing (e.g., re-ordering the 16 steps to front-load demoable surfaces while back-burning structurally prerequisite work). The reordering creates dependency violations that surface as bugs.
+- "Polish at the end" assumptions (e.g., shipping primitives in rough state with intent to polish before September). Polish is integral; primitives ship at canonical quality the first time.
+
+**What this enables:**
+- Each step shipped is permanent foundation. Post-September W-4b continues at sustainable pace; nothing built before September gets rebuilt.
+- The demo narrative is honest: "here's what we've built; here's the platform vision; here's what continues to ship through Q4 and beyond." Wilbert sees real depth + real roadmap, not vaporware.
+- Engineering velocity stays sustainable. No demo-deadline crunch costs morale or burns runway.
+
+This discipline canonicalized in AESTHETIC_ARC alongside the canonical-quality material discipline from Aesthetic Arc Sessions 4+ (no shortcuts, single source of truth, mirror discipline). Same principle applied to scope sequencing: the platform's depth is the moat, and shortcuts erode it.
 
 ### 3.26.8 Phase W-4a Implementation Notes
 
@@ -4333,6 +4393,316 @@ Three aggregation helpers ship ready for Tier 2 consumption: `get_dismiss_counts
 - Dismiss-driven content de-prioritization (signals captured; consumption post-September)
 
 The structurally correct sequence per §3.26.7.2 — infrastructure first, communications next, intelligence last — is the executed plan.
+
+### 3.26.9 Communications Layer Architecture
+
+Phase W-4b's first substantive deliverable beyond the Layer 1 communication primitives. Replaces the prior "Personal" layer (retired per §3.26.2.3 amendment) with a layer that aggregates signals across all four communication primitives (email, SMS, phone, in-platform messaging) plus cross-tenant communications.
+
+**The layer answers a single cognitive question: "Who needs me?"**
+
+#### 3.26.9.1 Why Personal was retired
+
+"Personal" implied agency — items the user owns. But the actual question users open Pulse to answer is the interpersonal one: "who needs me?" — emails awaiting reply, missed calls returned with context, an SMS thread requesting a status update, an @mention in a case file. Tasks and approvals are downstream consequences of those communications, not the primary signal.
+
+The personal/operational split was a false dichotomy. Tasks-assigned and approvals-waiting fit cognitively in Operational ("what work is in front of me right now"). Communications takes the layer-zero slot it's always belonged in.
+
+#### 3.26.9.2 Layer composition order (canonical post-W-4b)
+
+```
+Communications  ← top, no chrome divider per DL §13.3.2
+Operational     ← brass-thread top-edge divider
+Anomaly         ← no divider; demarcation via positioning
+Activity        ← ambient at periphery; no divider
+```
+
+Same slot Personal occupied. Same chrome treatment. The signal source changes; the rendering infrastructure (W-4a) does not.
+
+#### 3.26.9.3 Per-primitive signals contributed
+
+Each communication primitive contributes signals to the layer. See §3.26.9.7 for the per-primitive decomposition (Glance widget shape + briefing surfacing + Triage Focus shape + intelligence stream).
+
+| Primitive | Signal types |
+|---|---|
+| Email | unread inbound; awaiting-reply outgoing (>24h dead, AI-flagged); AI-flagged-priority unread; attachments needing review |
+| SMS | incoming since last app-open; pending-reply outgoing (>2h dead); customer-initiated incoming (high priority); driver/system check-ins (low priority, auto-classified) |
+| Phone (Call Intelligence) | missed calls; voicemails awaiting transcription; transcribed-and-unread voicemails; calls flagged for follow-up; calls without follow-up dispositioning |
+| In-platform messaging | @mentions in artifacts; direct messages from team; comment-thread replies on user-authored content; approval-thread messages |
+
+#### 3.26.9.4 Cross-tenant communications surface
+
+Cross-tenant communications follow the V-1f / V-1g share pattern (`document_shares` table from `r25_document_sharing`) — extended to communication primitives. Phase W-4b step 15 implements this; ships after V-1c CRM cross-tenant patterns mature.
+
+**Examples:**
+- An email FROM a supplier tenant TO Sunnycrest surfaces in Sunnycrest's Communications layer
+- Hopkins FH SMS thread WITH Sunnycrest dispatcher surfaces in BOTH tenants' Communications layers (with appropriate scoping per the sender-perspective rule below)
+- Voicemails left ON Sunnycrest's main number from external callers surface in Sunnycrest's Communications layer
+
+**Permission gates per primitive:**
+- Email — recipient-based (existing gate via Phase 7 communication-layer auth)
+- SMS — phone-number-based + tenant-association (Twilio-routed)
+- Phone — call-log-recipient-based (RingCentral integration, tenant-routed)
+- In-platform messaging — message-recipient + thread-membership
+
+**Anonymization at layer rendering.** In cross-tenant surfaces, sender identity may be partial (e.g., "Hopkins FH" instead of specific staff member) when the sending tenant's privacy preferences mask granularity. Mirror discipline for V-1c CRM company-name resolution applies — sender identity surfaces at the company level by default, individual contact only when explicitly shared.
+
+**Sender-perspective rule.** When the same email thread surfaces in two tenants' Communications layers, each tenant computes intelligence independently. Sender perspective and recipient context differ; sharing a single AI-summary call across tenants would conflate the perspectives. Cost is accepted; data isolation preserved.
+
+#### 3.26.9.5 Pattern C composition (the layer's visual shape)
+
+Pattern C is the content-composition pattern unique to the Communications layer (DESIGN_LANGUAGE §11 Pattern C). It composes:
+
+1. **Primary intelligence stream** (full-width narrative, span 6 cols × 2 rows on desktop) — the `communications_intelligence` synthesizer aggregating signals across primitives into prose
+2. **Per-primitive Glance widgets** (4 widgets in a row below the stream, span 1 col × 1 row each on desktop) — `email_glance`, `sms_glance`, `phone_glance`, `messaging_glance`
+
+Stream is the primary narrative; widgets are confirmation/drill-down surfaces. User reads the stream first (~2 sec scan); the widgets verify the narrative + provide click-through to specific primitive triage flows.
+
+**Composition rules:**
+- Stream piece: `cols: 6, rows: 2` desktop / `cols: 4, rows: 2` tablet / scroll-mode-stacks on mobile
+- Per-primitive widgets: `cols: 1, rows: 1` desktop / `cols: 2, rows: 1` tablet / single-column stack on mobile
+- Stream priority: 95 (highest in layer; rendered first per §3.26.2.3 priority sort)
+- Widget priorities: 90 / 89 / 88 / 87 (just below stream, above Operational layer max ~80)
+- All five pieces opt INTO §13.4.1 density tiers; container queries dispatch default / compact / ultra-compact per cell-height range
+
+**Empty-state advisory.** Layer fully empty (no signal across any primitive): `"Quiet — nothing waiting."` rendered in italic content-muted typography per §13.3.2 amendment. Layer partially empty: per-primitive widgets render their own per-primitive empty state; stream narrates only non-empty primitives.
+
+#### 3.26.9.6 Cross-primitive intelligence stream
+
+The `communications_intelligence` synthesizer aggregates signals across all four primitives into a single narrative:
+
+```
+"Hopkins FH is awaiting your reply on the Anderson case (3 emails over 2 days).
+Sarah called twice this morning — both went to voicemail; transcripts mention 
+the Thursday delivery. @Mention in JM-2026-0001 by Mike asks for the cemetery
+contact."
+```
+
+**Synthesis weights:**
+- Same sender across primitives → grouped into single narrative thread (Hopkins FH email + voicemails grouped)
+- High-urgency signals surface first (voicemail with deadline language > generic FYI email)
+- Recent signals weighted over stale (voicemail from 2h ago > email from 3d ago)
+
+**Implementation.** Backend service `backend/app/services/pulse/communications_intelligence_service.py` — analogous to Phase W-4a Commit 3's `anomaly_intelligence_service.py`. V1 deterministic synthesis (frequency + recency weighting). V2 Haiku-cached post-Tier-2 algorithms. Cache key composes per-user + per-signal-hash + per-minute-window — invalidates on incoming signal so narrative stays current.
+
+#### 3.26.9.7 Per-primitive decomposition (4-aspect treatment)
+
+Each communication primitive gets four aspects canonicalized: signals contributed (above), Glance widget shape, briefing surfacing, Triage Focus shape. Below — full canonicalization for each.
+
+**Email primitive:**
+- *Signals*: unread inbound count + top sender; awaiting-reply outgoing (sent >24h, no reply, AI-flagged); AI-flagged-priority unread (Haiku scoring on new emails — high-priority indicators: deadline language, dollar amounts, named-stakeholder mentions); attachments needing review.
+- *Glance widget shape* (`email_glance`): default density renders `📧 Email` icon + `3 unread` count + top sender ("Sarah Chen — Hopkins FH") + "Open inbox →" footer. Compact density: icon + count + sender, no footer. Ultra-compact: icon + count only. Click navigates to `/communications/email` (full triage flow) or specific thread when single-thread.
+- *Briefing surfacing*: Morning — top 3 priority emails, AI-grouped by sender or topic ("Hopkins FH thread on Anderson case has 5 unread messages spanning 3 days"). Evening — emails sent today + reply rate ("You sent 12 emails today; 4 have replies, 8 awaiting").
+- *Triage Focus shape*: inbox-style stream of unread emails with Triage actions Read & Archive / Flag / Reply / Delegate / Snooze. Per-email: subject + sender + time + AI-priority badge + 2-line excerpt. Reply opens compose mode in same Focus session (no surface navigation away). Existing Phase 5 triage primitive composability — emails become a new triage queue type via `task_triage`-shape config.
+
+**SMS primitive:**
+- *Signals*: incoming texts since last app-open; pending-reply outgoing (>2h dead); customer-initiated incoming (high priority); delivery-confirmation incoming (auto-classified low-priority — driver SMS check-ins, customer "got it" acks).
+- *Glance widget shape* (`sms_glance`): default `💬 SMS` + `2 incoming` + sender ("Mike Driver — running 30 min late") + footer. Compact: icon + count + sender. Ultra-compact: icon + count.
+- *Briefing surfacing*: Morning — overnight SMS digest grouped by sender type (driver check-ins / customer messages / urgent alerts). Evening — SMS sent + received counts; flagged-customer threads still pending.
+- *Triage Focus shape*: thread view (per existing Twilio integration patterns). Triage actions Acknowledge / Reply / Forward to team / Mark resolved. Reply opens inline thread compose. Multi-thread Triage navigation (next thread / previous thread shortcut keys).
+
+**Phone (Call Intelligence) primitive:**
+- *Signals*: missed calls since last app-open; voicemails awaiting transcription; transcribed-and-unread voicemails; calls flagged for follow-up (Phase 7 Call Intelligence post-call action items); calls without follow-up dispositioning.
+- *Glance widget shape* (`phone_glance`): default `📞 Phone` + `4 missed` + caller ("Hopkins FH — 2 calls") + footer. Compact: icon + count + caller. Ultra-compact: icon + count.
+- *Briefing surfacing*: Morning — overnight voicemails (transcribed if possible) + missed calls grouped by caller. Evening — today's call summary (received, placed, follow-ups pending).
+- *Triage Focus shape*: voicemail player + transcript pane + extracted action items (existing Phase 7 Call Intelligence shape). Triage actions Listen → Mark heard / Add to followup queue / Snooze / Archive. Linked to CallLog records — historical context surfaces as right-rail. Reply: opens dialer for callback OR drafts SMS/email follow-up inline.
+
+**In-platform messaging primitive:**
+- *Signals*: @mentions in case files / orders / threads; direct messages from team members; comment-thread replies on artifacts user authored; approval-thread messages (existing Phase 8b/8c approval flow comments).
+- *Glance widget shape* (`messaging_glance`): default `💭 @Mention` + `1 unread` + sender ("Mike — re: case JM-2026-0001") + footer. Compact: icon + count + sender. Ultra-compact: icon + count.
+- *Briefing surfacing*: Morning — overnight @mentions grouped by artifact (case / order / approval). Evening — @mentions resolved today; pending mentions still requiring response.
+- *Triage Focus shape*: mention/thread view with artifact context (e.g., the case file the @mention is in). Triage actions Acknowledge / Reply in thread / Mark resolved / Snooze. Click-through to the artifact (case detail page, order page) preserves Triage Focus session.
+
+#### 3.26.9.8 Layer aggregation service architecture
+
+New service: `backend/app/services/pulse/communications_layer_service.py`. Mirrors the four existing layer services (operational/anomaly/activity post-W-4b; pre-W-4b retired Personal). Composes signals from per-primitive intelligence streams (§3.26.9.7) + per-primitive compact widgets.
+
+**Layer composition output shape** (extends `LayerContent` type):
+
+```python
+LayerContent {
+  layer: "communications",  # new literal in LayerName union
+  items: [
+    LayerItem(kind="stream", component_key="communications_intelligence", priority=95, cols=6, rows=2),
+    LayerItem(kind="widget", component_key="email_glance", variant_id="glance", priority=90, cols=1, rows=1),
+    LayerItem(kind="widget", component_key="sms_glance", variant_id="glance", priority=89, cols=1, rows=1),
+    LayerItem(kind="widget", component_key="phone_glance", variant_id="glance", priority=88, cols=1, rows=1),
+    LayerItem(kind="widget", component_key="messaging_glance", variant_id="glance", priority=87, cols=1, rows=1),
+  ],
+  advisory: null | "Quiet — nothing waiting"
+}
+```
+
+#### 3.26.9.9 D-decisions resolved at canonicalization
+
+| D | Decision | Resolved |
+|---|---|---|
+| D-COMMS-1 | Layer name canonicalization | `"communications"` (clarity over brevity) |
+| D-COMMS-2 | Empty-state advisory copy | `"Quiet — nothing waiting."` (matches Anomaly's "All clear" + Activity's "Quiet day so far" tone) |
+| D-COMMS-3 | Cross-tenant primitive precedence | Independent per-tenant computation (sender perspective + recipient context differ) |
+| D-COMMS-4 | Tasks + approvals migration timing | Hard cutover — Personal layer literal removed in same migration (no dual-source confusion) |
+| D-PRIM-1 | Primitive widget tiering when only some primitives have data | All 4 widgets always render — empty primitives show their empty-state Glance ("📞 No missed calls"); visual rhythm + consistency matter more than space efficiency |
+| D-PRIM-2 | Cross-tenant primitive surface implementation timing | Step 15 of W-4b — after V-1c CRM cross-tenant patterns mature |
+| D-PRIM-3 | Voicemail transcription pipeline | Server-side OpenAI Whisper API, batched per voicemail; same caching pattern as Intelligence prompts; latency budget 5-30 sec post-call OK |
+| D-PRIM-4 | SMS bidirectional hookup | Widget surfaces but triage actions disable when no Twilio config; tenant-config-gate per `Company.settings_json.twilio.enabled` |
+| D-PATTERN-C-1 | Per-primitive widget Glance vs Brief variant | Widget renders Glance content; PulsePiece supplies Pattern 2 chrome (per W-4a Step 5 convention). Glance variant = compact content density, NOT Pattern 1 chrome |
+| D-PATTERN-C-2 | Stream-piece dismissal semantics | Hide-for-session (per existing §13.5 dismiss signal collection); session-stickiness dispatches via Tier 2 algorithm post-September |
+| D-PATTERN-C-3 | Stream synthesis caching | Separate cache key for communications stream — `pulse:comms_stream:{user_id}:{signal_hash}:{minute_window}` — invalidates on incoming signal |
+
+### 3.26.10 Briefings Architecture
+
+Phase W-4b ships morning + evening briefings against Layer 1 communication primitives + Communications layer + Operational + Anomaly + Activity layer signals. Briefings are synthesized prose — natural-language narratives composed by Haiku from the same signal set Pulse renders structurally.
+
+**Phase 6 briefings** (UI/UX Arc, shipped April 2026) established the briefing primitive as a coexist-with-legacy surface. Phase W-4b extends the primitive with the **three-state machine** + per-tenant configuration UI + per-primitive surfacing rules per §3.26.9.7.
+
+#### 3.26.10.1 Three-state machine
+
+Briefings have 3 lifecycle states:
+
+| State | Meaning | Transitions |
+|---|---|---|
+| `queued` | Composition signals collected; narrative not yet generated | → `generating` (when scheduler sweep dispatches generation) |
+| `generating` | Haiku synthesis in flight | → `generated` (success) OR back to `queued` (retry on failure, max 3 attempts) |
+| `generated` | Narrative ready, awaiting user view | terminal (until next briefing cycle) |
+
+State stored in `briefings.state` column (extends Phase 6 `briefings` table — see migration `r35_briefings_table` + W-4b extension migration). Transition logged to `briefing_state_transitions` audit table for observability.
+
+**Why three states (vs Phase 6's binary unread/read).** Briefings at scale need to tolerate Haiku latency + cost. The `queued → generating → generated` pipeline lets the scheduler dispatch generation work asynchronously, batched across users, with retries on transient failures. Users see "your briefing is being prepared" in the `queued` / `generating` states; presentation in `generated` state is the rich narrative.
+
+**Per-state visual presentation** (DESIGN_LANGUAGE §15 Briefing Visual System):
+- `queued`: skeleton placeholder with subtle "preparing your briefing" copy
+- `generating`: animated indicator (subtle pulse) + "synthesizing now"
+- `generated`: full narrative + structured sections (queues, flags, pending decisions)
+
+#### 3.26.10.2 Generation pipeline architecture
+
+Scheduler sweep (extends Phase 6 `briefing_sweep` global cron at 15-minute interval) dispatches per-user briefing generation:
+
+```
+1. Sweep fires (every 15 min)
+2. Resolve users whose briefing-time falls in trailing 15-min window
+3. For each user:
+   a. Collect signals (Communications + Operational + Anomaly + Activity)
+   b. Insert briefing row in `queued` state
+   c. Enqueue Haiku generation job (background worker)
+4. Background worker:
+   a. Pick `queued` row, transition to `generating`
+   b. Render Haiku prompt with signals as Jinja variables
+   c. Call Intelligence service (existing prompt-managed infrastructure)
+   d. Parse response, extract narrative + structured sections
+   e. Transition to `generated`, store narrative + sections
+   f. On failure: log + transition back to `queued` (or `failed` after 3 retries)
+5. User opens Pulse; latest `generated` briefing surfaces in Communications layer or via dedicated briefing surface
+```
+
+**Per-primitive surfacing rules** (per §3.26.9.7 each primitive specifies what gets aggregated into morning vs evening briefing):
+- Morning briefing aggregates: top priority emails, overnight SMS digest, overnight voicemails, overnight @mentions
+- Evening briefing aggregates: emails sent + reply rate, SMS counts, today's call summary, @mentions resolved today
+
+**Tenant timezone resolution.** Per Phase 6 pattern: scheduler resolves `Company.timezone` (fallback `America/New_York`) + computes `local_now` per tenant before window check. One tenant's 7am is a different wall-clock than another's; per-tenant timing runs in application code, not in the scheduler.
+
+#### 3.26.10.3 Tenant briefing configuration
+
+Per-tenant + per-user preferences stored in `User.preferences.briefing_preferences` (extends Phase 6 `briefing_preferences` namespace):
+
+```json
+{
+  "morning": {
+    "enabled": true,
+    "delivery_time": "07:00",
+    "delivery_channels": ["in_app", "email"],
+    "primitives_included": {
+      "email": true,
+      "sms": true,
+      "phone": true,
+      "messaging": true
+    },
+    "sections_enabled": ["queues", "flags", "pending_decisions", "communications"]
+  },
+  "evening": {
+    "enabled": true,
+    "delivery_time": "18:00",
+    "delivery_channels": ["in_app"],
+    "primitives_included": { /* per-primitive opt-in */ },
+    "sections_enabled": ["completed_today", "pending_tomorrow"]
+  }
+}
+```
+
+**Configuration UI.** Settings page at `/settings/briefings` (Phase 6 shipped minimal version; W-4b step 11 extends): toggle morning/evening, time pickers, primitive opt-in/out, channel selection (in-app / email / future SMS), section selection.
+
+**Default values seeded per role + per tenant vertical** via existing Phase 6 seed pattern (`briefings_seeded_for_roles` idempotency tracker in `User.preferences`).
+
+#### 3.26.10.4 Three-state machine integration with Communications layer
+
+When a generated briefing is recent (within last hour for morning, last 4 hours for evening) AND user hasn't read it yet, it surfaces as a piece in the Communications layer:
+
+```python
+LayerItem(
+  kind="stream",
+  component_key="briefing_morning" | "briefing_evening",
+  priority=98,  # higher than communications_intelligence (95) — briefing is the day's organizing narrative
+  cols=6, rows=3,  # taller than communications_intelligence — briefing has more depth
+)
+```
+
+Otherwise: briefing surfaces only via dedicated `/briefing` page (existing Phase 6 surface). User can dismiss the briefing piece from Communications layer; dismissed briefing doesn't re-surface that day.
+
+### 3.26.11 Triage Focus Canonical Pattern
+
+Phase W-4b migrates the existing Phase 5 Triage primitive (anomalies, approvals, tasks queues) to render INSIDE the Phase A Focus primitive. "Triage Focus" is the canonical composition: Triage queue logic + actions + intelligence panels rendered inside Focus's anchored core + canvas.
+
+**Triage primitive (Phase 5)** ships the queue logic, action handlers, snooze infrastructure, AI question panels. **Focus primitive (Phase A)** ships the anchored core + canvas + push-back scale + return pill. **Triage Focus** is the composition.
+
+#### 3.26.11.1 Why migrate
+
+Pre-W-4b Triage renders as a dedicated route (`/triage/:queueId`) at `pages/triage/TriagePage.tsx` (Phase 5). The page surface is a fine starting point but limits triage to a navigation context — user has to leave their current work to enter triage.
+
+Triage Focus inverts: user opens Triage Focus from anywhere (command bar, briefing link, anomaly notification) and the Focus modal materializes over their current context. Push-back scale signals "your work is still here, you'll come back to it." Return pill on dismiss confirms the connection.
+
+This matches PLATFORM_INTERACTION_MODEL.md Tony Stark / Jarvis interaction language: triage as a summoned-and-dismissable session, not a navigation destination.
+
+#### 3.26.11.2 Triage Focus shape
+
+Focus core (anchored modal per Phase A):
+- Triage queue header (queue name + count + remaining count)
+- Current item display (display_component per Phase 5 Triage queue config)
+- Action palette (configured actions per Phase 5 + keyboard shortcuts)
+- Flow controls (snooze / skip / next / previous)
+
+Focus canvas (peripheral widgets per Phase A):
+- Context panels (related entities, AI question, document preview, communication thread, saved view — per Phase 5 context_panel_config)
+- Embedded actions (Playwright scripts, workflow triggers — per Phase 5 embedded_action_config)
+- Collaboration panel (audit log, replay — Phase 5 stub, Phase W-4b activates)
+
+#### 3.26.11.3 Migration sequence (steps 12-14 of §3.26.6.4)
+
+| Step | Migration | Existing surface |
+|---|---|---|
+| 12 | Anomalies → Triage Focus | Per-anomaly review via `agent_anomalies` (Phase 8b cash receipts model + W-3a anomalies widget) — already production-ready data |
+| 13 | Approvals → Triage Focus | Phase 8b/8c approval review (currently `/agents/:id/review` page) |
+| 14 | Tasks → Triage Focus | Phase 5 task triage already at `/triage/task_triage` — straightforward composition migration |
+
+Each migration: extend Triage queue config + register as Focus content type + verify keyboard parity + verify action palette parity + ship coexist-with-legacy (existing Phase 5 `/triage/:queueId` route stays alive one release for user-flow rollout window).
+
+#### 3.26.11.4 Triage primitive composability with Focus
+
+Phase A Session 2 introduced the Focus mode dispatcher (`mode-dispatcher.tsx`) routing to per-mode core renderers. Triage Focus adds a new core mode `"triage"`:
+
+```typescript
+type CoreMode = "kanban" | "singleRecord" | "editCanvas" | "triageQueue" | "matrix" | "triage"
+```
+
+The new `"triage"` mode dispatches to `TriageCore` component (shipped W-4b step 12 alongside anomalies migration). Mode dispatcher's exhaustive-record TypeScript check forces every CoreMode to have a renderer at compile.
+
+**Distinction from existing `triageQueue` mode**: `triageQueue` was a Phase A Session 2 stub. Phase W-4b's `triage` mode is the production-ready implementation; `triageQueue` stub is retired or merged.
+
+#### 3.26.11.5 D-decisions resolved at canonicalization
+
+| D | Decision | Resolved |
+|---|---|---|
+| D-W4B-1 | MVP scope cuts | NO MVP cuts. Full 16-step sequence ships at canonical quality per §3.26.7.5 |
+| D-W4B-2 | Layer 1 email inbound architecture | Per-tenant SES/Mailgun inbound webhook + tenant-routing OR IMAP polling — decision per implementation phase. NO platform-managed-inbox stopgap (that was an MVP cut now retired with §3.26.7.5) |
+| D-W4B-3 | Briefing scheduler architecture | Phase 6 scheduler infrastructure consumed; new content-builder added. Three-state machine layered on Phase 6's binary unread/read |
+| D-W4B-4 | Triage Focus shape canonicalization | New `"triage"` core mode in Focus mode dispatcher; renders queue config from Phase 5 Triage primitive infrastructure inside Focus anchored core + canvas |
 
 ---
 

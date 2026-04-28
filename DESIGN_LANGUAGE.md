@@ -3128,6 +3128,99 @@ The patterns are reference-implementation-driven. Each cites the canonical compo
 
 **Reference implementation.** [`SchedulingKanbanCore`](frontend/src/components/dispatch/scheduling-focus/SchedulingKanbanCore.tsx) finalize-status note ("Schedule finalized. Drag-rearrange will revert to draft.") — initial implementation Phase 3 / Session 1; full Pattern 8 application scheduled for Aesthetic Arc Session 5+.
 
+### Layer Composition Patterns (A / B / C)
+
+**Distinct from material chrome Patterns 1–8 above.** Patterns 1–8 specify how an *individual surface* materializes (a card, a tablet, a status indicator). Patterns A–C specify how a *layer of pieces* composes (which pieces appear, in what proportions, with what narrative-vs-structure balance).
+
+A Pulse layer applies one Layer Composition Pattern from this triple AND the per-piece chrome inside the layer applies one or more material Patterns from 1–8 above. The two pattern categories are orthogonal: Pattern A composition with Pattern 2 cards. Pattern C composition with Pattern 2 cards for widgets + Pattern 2 chrome for the stream piece (PulsePiece supplies it per W-4a Step 5 convention).
+
+Established Phase W-4b canon expansion (April 2026) alongside Communications Layer Architecture (BRIDGEABLE_MASTER §3.26.9). Each pattern cites the canonical Pulse layer where the composition is realized.
+
+#### Pattern A — Widgets-only layer
+
+**The pattern.** Layer composes N widgets in tetris layout. No narrative element. Pieces are purely structured-data presentations — counts, lists, cards, schedules.
+
+**Composition:**
+- N PulsePieces, each `kind: "widget"`, varying `cols × rows` per content density
+- Tetris packing per §13.3.1 (CSS Grid `grid-flow-row-dense`, tier-resolved column count from `--pulse-column-count`)
+- Each piece carries Pattern 2 chrome supplied by PulsePiece root (rounded-[2px] + bg-surface-elevated + border-border-subtle + shadow-level-1 per W-4a Step 5)
+- Variants per widget per §12.10 reference matrix (Glance / Brief / Detail / Deep)
+- Density-tier opt-in per §13.4.1 — widgets that opt in render compact / ultra-compact at low cell heights
+
+**When to apply.** Operational layer. Anomaly layer when intelligence stream is absent (early implementation phase, post-W-4a Step 5 — until V2 Haiku-cached anomaly synthesizer ships in W-4b).
+
+**When NOT to apply.** Layers where a synthesized narrative is the primary cognitive surface (use Pattern B). Layers where narrative + structured data both surface (use Pattern C).
+
+**Reference implementation.** Operational layer in canonical Sunnycrest dispatcher composition (BRIDGEABLE_MASTER §3.26.8.6) — vault_schedule Detail (workspace-core) + scheduling.ancillary-pool Brief + line_status Brief + today widget Glance + extension-conditional urn_catalog_status Glance. All widget pieces, no intelligence stream. Phase W-4a Commit 5 verified live.
+
+#### Pattern B — Stream-only layer
+
+**The pattern.** Layer composes a single intelligence stream piece, full-width. Layer = 1 piece. The stream's narrative IS the layer's content.
+
+**Composition:**
+- One PulsePiece, `kind: "stream"`, typically `cols: 6, rows: 2` on desktop / `cols: 4, rows: 2` on tablet
+- Stream component (e.g., `AnomalyIntelligenceStream`) renders narrative prose + referenced-item chips at bottom
+- Stream carries Pattern 2 chrome supplied by PulsePiece (consistent with widget pieces — pieces are pieces regardless of `kind`)
+- Optional: brass-thread top-edge accent on the stream piece itself (per AnomalyIntelligenceStream V1 reference) — distinguishes intelligence-stream pieces from widget pieces visually within Pattern 2 chrome
+
+**When to apply.** Anomaly layer (V1 anomaly intelligence stream — Phase W-4a Commit 3, 5). Future Activity layer when synthesized "what changed while you were away" stream ships.
+
+**When NOT to apply.** Layers needing structured data alongside narrative (use Pattern C). Layers with no narrative element (use Pattern A).
+
+**Reference implementation.** Anomaly layer in canonical Sunnycrest dispatcher composition. Single `anomaly_intelligence` stream piece — narrative ("2 critical anomalies. Most urgent: Hopkins invoice balance mismatch.") + chips for the referenced anomaly entities. Phase W-4a Commit 5 verified live.
+
+#### Pattern C — Stream + supporting widgets
+
+**The pattern.** Layer composes one primary intelligence stream (full-width narrative, top of layer) + N per-primitive Glance widgets (compact state-scan, row beneath stream). Stream is the primary cognitive surface; widgets are confirmation/drill-down surfaces.
+
+User reads the stream first (~2 sec scan); the widgets verify the narrative + provide click-through to specific primitive triage flows. If the user only reads the stream and acts, that's a successful Pulse pass — the widgets exist as reinforcement, not duplication.
+
+**Composition:**
+
+```
+┌─────────────────────────────────────────────────┐
+│  Communications Intelligence Stream             │  ← span 6 cols × 2 rows
+│  (full-width primary narrative)                 │
+│  "Hopkins FH is awaiting your reply on the      │
+│   Anderson case. 2 voicemails from cemeteries.  │
+│   @Mention in JM-2026-0001 needs context."      │
+│                                                 │
+└─────────────────────────────────────────────────┘
+┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
+│  📧 Email  │ │  💬 SMS    │ │  📞 Phone  │ │  💭 @Mention│  ← Glance widgets,
+│  3 unread  │ │  2 incoming│ │  4 missed  │ │  1 unread  │     span 1×1 each
+│  +sender   │ │  +sender   │ │  +sender   │ │  +sender   │     (or 2×1 on tablet)
+└────────────┘ └────────────┘ └────────────┘ └────────────┘
+```
+
+**Composition rules:**
+- Stream piece: `cols: 6, rows: 2` desktop / `cols: 4, rows: 2` tablet / scroll-mode-stacks on mobile
+- Per-primitive widgets: `cols: 1, rows: 1` desktop (4 in one row below stream) / `cols: 2, rows: 1` tablet (2 widgets per row, 2 rows below stream) / single-column stack on mobile
+- Stream priority: 95 (highest in layer; rendered first per §3.26.2.3 priority sort)
+- Per-primitive widget priorities: 90 / 89 / 88 / 87 (just below stream, above Operational layer pieces' max ~80)
+- Stream + all widgets carry Pattern 2 chrome via PulsePiece root
+- Stream + all widgets opt INTO §13.4.1 density tiers; container queries dispatch default / compact / ultra-compact per cell-height range
+
+**Density-tier behavior** (homogeneous across the 4 widgets):
+- Stream piece: default = full narrative + chips; compact = narrative truncated + chip count; ultra-compact = single-line synthesized headline + arrow
+- Per-primitive widget: default = icon + count + sender excerpt + footer; compact = icon + count + sender; ultra-compact = icon + count
+- The 4 widgets fire density tiers homogeneously because their `cols × rows` is uniform → uniform cell heights → uniform container-query firing
+
+**Empty-state advisory.** Layer fully empty (no signal across any primitive): renders advisory in italic content-muted typography per §13.3.2 amendment. Canonical copy: `"Quiet — nothing waiting."` (matches Anomaly's "All clear" + Activity's "Quiet day so far" tone). Layer partially empty: per-primitive widgets render their own per-primitive empty state ("📞 No missed calls"); stream narrates only non-empty primitives.
+
+**Pattern C visual grammar.** The narrative-led-with-supporting-structure shape echoes a familiar cognitive pattern from outside software:
+- Cocktail menu's "today's specials" prose at top + per-section structured items below (matches §1 cocktail lounge anchor)
+- Magazine feature article's lede paragraph + sidebar of pull-quotes / facts (matches §10 Apple Pro app discipline)
+- Operations briefing slide's "headline finding" + supporting metrics row
+
+**This is honest about cognitive sequencing.** The user reads the stream's synthesized text first; widgets exist to verify + drill down, not to be the primary surface.
+
+**When to apply.** Communications layer (canonical post-W-4b per BRIDGEABLE_MASTER §3.26.9). Future layers where narrative-led + per-primitive-supporting composition is the right cognitive shape.
+
+**When NOT to apply.** Layers where narrative isn't the primary surface (use Pattern A). Layers where narrative IS the entire surface, no supporting structured data (use Pattern B).
+
+**Reference implementation.** Communications layer (Phase W-4b step 6 ships the implementation). Five-piece composition: `communications_intelligence` stream (priority 95) + `email_glance` + `sms_glance` + `phone_glance` + `messaging_glance` widgets (priorities 90/89/88/87). Backend service `backend/app/services/pulse/communications_layer_service.py` — analogous to W-4a's four layer services.
+
 ### Cross-references
 
 These patterns compose. A DeliveryCard applies Patterns 2 (card material), 3 (status two-channel), 4 (numeric mono), and 5 (mid-dot hierarchy). An AncillaryPoolPin applies Patterns 1 (tablet) and 4 (mono labels + count chip). A SchedulingKanbanCore header applies Patterns 6 (day switcher) and 7 (column header) and (in the finalize note) Pattern 8.
@@ -4228,6 +4321,17 @@ Pulse cell sizes derived from §13.3.4 viewport-fit math; widgets respond automa
 
 **Pre-Step-6 Pattern (preserved as `surface=pulse_grid` fallback)**: Step 2 D's `surface === "pulse_grid"` branch in widget renderers stays as the explicit-fallback path. Container queries are canonical; `surface` prop is the back-compat path for older renderers + the explicit-identification path (e.g., for tests asserting "this rendering came from Pulse"). When both mechanisms apply, container queries win (more accurate to actual cell size).
 
+**Pattern C density-tier opt-in canonical reference (Phase W-4b extension).** Per §11 Layer Composition Patterns, Pattern C composes one intelligence stream piece + N per-primitive widget Glance pieces (canonical instantiation: Communications layer per BRIDGEABLE_MASTER §3.26.9). All Pattern C pieces — both stream and widgets — opt INTO density tiers via the same canonical mechanism above:
+
+| Pattern C piece | Default tier (≥121px) | Compact tier (101–120px) | Ultra-compact tier (80–100px) |
+|---|---|---|---|
+| `communications_intelligence` stream | Full narrative + 3-4 referenced-item chips at bottom | Narrative truncated + chip count as readout | Single-line synthesized headline + arrow |
+| `email_glance` / `sms_glance` / `phone_glance` / `messaging_glance` widgets | Icon + count + sender excerpt + footer ("Open inbox →") | Icon + count + sender, no footer | Icon + count only |
+
+Pattern C density tiers fire homogeneously across the 4 per-primitive widgets because their `cols × rows` is uniform (`1 × 1`) → uniform cell heights → uniform container-query firing. The stream piece (`6 × 2`) has independent cell-height math; its density tiers fire on its own piece geometry.
+
+The same `@container piece (max-height: 117.5px)` and `@container piece (max-height: 97.5px)` rules from `frontend/src/styles/pulse-density.css` (Phase W-4a Step 6 Commit 3 sub-pixel + border-buffer values) apply uniformly. Pattern C widgets use the canonical `<widget-key>-widget-pulse-{default,compact,ultra-compact}` class naming convention; the existing CSS dispatches without per-pattern CSS additions. New Pattern C widgets register their per-tier classes alongside existing `anomalies-widget-pulse-*` / `line-status-widget-pulse-*` / `today-widget-pulse-*` selectors — additive extension, no breaking change.
+
 #### 13.4.2 Intelligence Stream Pieces
 
 Render with similar Pattern 2 chrome but with intelligence-stream-specific affordances:
@@ -4437,13 +4541,494 @@ Future references for §13.8 will land here as Phase W-4b (intelligence streams 
 ### 13.9 Cross-references
 
 - **Section 11 Pattern 1 + Pattern 2**: chrome treatments shared across Pulse + standard Spaces.
+- **Section 11 Layer Composition Patterns A / B / C**: layer-level composition vocabulary distinct from per-piece chrome (Patterns 1–8). Pattern C is the Communications layer's canonical composition.
 - **Section 12 (Widget Library Architecture)**: pinable widget catalog + variant + surface declarations consumed by Pulse composition engine.
 - **Section 12.5**: surface composition rules (`pulse_grid` is the surface declaration consulted by Pulse's intelligent selection).
 - **Section 12.6a**: Widget Interactivity Discipline applies inside Pulse — bounded interactions per piece; heavy decisions route to Focus.
 - **Section 12.10**: reference implementations (the 14 canonical widgets) compose into Pulse via §13.4.1 sizing rules.
+- **Section 14 (Communications Layer Visual Canon)**: per-primitive widget shapes for the four Layer 1 communication primitives (email/sms/phone/messaging) inside Pattern C composition.
+- **Section 15 (Briefing Visual System)**: three-state machine visual treatment + per-state typography + per-state composition for morning + evening briefings.
+- **Section 16 (Triage Focus Visual System)**: visual canon for Triage primitive composing inside Focus primitive (Phase W-4b steps 12–14).
 - **BRIDGEABLE_MASTER.md §3.26**: parent canon for Spaces taxonomy + Pulse architecture + onboarding model + implementation sequencing.
+- **BRIDGEABLE_MASTER.md §3.26.9**: Communications Layer Architecture (companion canon to Section 14 below).
+- **BRIDGEABLE_MASTER.md §3.26.10**: Briefings Architecture (companion canon to Section 15 below).
+- **BRIDGEABLE_MASTER.md §3.26.11**: Triage Focus Canonical Pattern (companion canon to Section 16 below).
 - **PLATFORM_INTERACTION_MODEL.md** "Tony Stark / Jarvis interaction model": Pulse is the most direct realization of the summon/arrange/park/dismiss interaction primitives at platform scale.
 - **AESTHETIC_ARC.md** Spaces and Pulse Architecture Canon Session entry: arc context.
+
+---
+
+## Section 14 — Communications Layer Visual Canon
+
+Per-primitive widget visual shapes for the four Layer 1 communication primitives (email / SMS / phone / in-platform messaging) when rendering as Glance widgets inside the Communications layer's Pattern C composition. Companion canon to BRIDGEABLE_MASTER §3.26.9 (architectural) — this section specifies the visual treatment.
+
+Established Phase W-4b canon expansion (April 2026). Implements at Phase W-4b step 6 alongside the Communications layer service.
+
+### 14.1 Foundational frame
+
+Communications layer Glance widgets share a tight visual vocabulary so the Pattern C composition reads as a unified row of state-scan cards rather than four loosely-related tiles. The shared vocabulary:
+
+- **Each widget is a Pattern 2 card** (chrome supplied by PulsePiece root per W-4a Step 5)
+- **Single primitive icon** at top-left, sized 18×18px stroke 1.5
+- **Mono numeral count** at top-right, terracotta-toned `text-status-warning` when actionable + `text-content-muted` when zero
+- **Sender excerpt body** below (default tier), 1-2 lines, `font-sans text-body-sm` with sender-name in `font-medium`
+- **Footer link** at bottom (default tier), terracotta `text-accent` with `→` glyph
+
+The four widgets are visually homogeneous — same dimensions, same anchor positions, same treatment of count + sender + footer. The variety comes from **icon + content** alone.
+
+### 14.2 Per-primitive icon canon
+
+Each primitive carries one canonical icon. No emoji (emoji are forbidden per §10 anti-patterns); Lucide icon library only.
+
+| Primitive | Lucide icon | Icon framing |
+|---|---|---|
+| Email | `Mail` (closed envelope; matches macOS Mail.app instinct) | 18×18 stroke-1.5 in `text-content-muted` at rest, `text-accent` when count > 0 |
+| SMS | `MessageSquare` (rectangular speech bubble; distinct from messaging) | Same framing |
+| Phone (Call Intelligence) | `Phone` (handset; PhoneIncoming when missed call > 0) | Same framing |
+| In-platform messaging | `AtSign` (canonical @mention indicator; distinct from SMS speech bubble) | Same framing |
+
+The icon-color flip (muted ↔ accent) is the at-rest vs has-actionable-state signal. User scanning the Pattern C row sees four icons; brass-colored ones need attention, muted ones are at zero. Brass-color application matches §3 cross-mode terracotta thread.
+
+### 14.3 Count typography canon
+
+Counts are mono numerals — `font-plex-mono` per typography canon §4. Sizing per density tier:
+
+| Density tier | Count font-size | Count weight | Color when > 0 |
+|---|---|---|---|
+| Default | `text-h3` (20px) | `font-medium` (500) | `text-status-warning` (terracotta-muted) |
+| Compact | `text-body-sm` (14px) | `font-medium` | Same |
+| Ultra-compact | `text-body-sm` (14px) | `font-medium` | Same |
+
+When count is **zero** the widget renders the empty state per primitive (e.g., email = "Inbox clear", phone = "No missed calls") in `font-sans text-caption text-content-muted`. The mono count numeral disappears; the empty-state copy replaces it.
+
+When count is critical-high (e.g., email > 50 unread), the count gets `text-status-error` (terracotta-strong) instead of warning. Threshold per primitive — declared in widget config (`high_count_threshold` field).
+
+### 14.4 Per-primitive default-tier composition
+
+**Email widget (`email_glance`):**
+
+```
+┌─ Pattern 2 card ────────────────────┐
+│  📧 Email                       3   │  ← Mail icon + label · count
+│                                     │
+│  Sarah Chen                         │  ← Top sender bold (font-medium)
+│  Hopkins FH                         │  ← Sender context muted
+│                                     │
+│  Open inbox →                       │  ← Footer terracotta link
+└─────────────────────────────────────┘
+```
+
+- Header row: icon (18×18 brass at rest, `Mail` lucide) + "Email" eyebrow text-micro + spacer + count mono numeral
+- Body: top sender display name `font-sans font-medium text-body-sm text-content-strong`; secondary context (FH name, project context) `font-sans text-caption text-content-muted` — 2-line max
+- Footer: "Open inbox →" `font-sans text-caption text-accent` with hover `text-accent-hover`
+
+**SMS widget (`sms_glance`):**
+
+```
+┌─ Pattern 2 card ────────────────────┐
+│  💬 SMS                         2   │
+│                                     │
+│  Mike Driver                        │
+│  running 30 min late                │
+│                                     │
+│  Open thread →                      │
+└─────────────────────────────────────┘
+```
+
+Same shape as Email. Sender + body excerpt (1 line of message). Footer "Open thread →" or "Open inbox →" depending on whether single-thread or multi-thread.
+
+**Phone widget (`phone_glance`):**
+
+```
+┌─ Pattern 2 card ────────────────────┐
+│  📞 Phone                       4   │  ← icon flips to PhoneIncoming when missed > 0
+│                                     │
+│  Hopkins FH                         │
+│  2 calls · 1 voicemail              │
+│                                     │
+│  Listen + return →                  │
+└─────────────────────────────────────┘
+```
+
+Body: top caller + breakdown ("2 calls · 1 voicemail" — mid-dot separator per §11 Pattern 5). Footer copy "Listen + return →" reflects the dual action (voicemail listen + callback).
+
+**Messaging widget (`messaging_glance`):**
+
+```
+┌─ Pattern 2 card ────────────────────┐
+│  💭 @Mention                    1   │
+│                                     │
+│  Mike — case JM-2026-0001           │
+│  Need cemetery contact              │
+│                                     │
+│  Open thread →                      │
+└─────────────────────────────────────┘
+```
+
+Body: sender + artifact context line + 1-line message excerpt. Footer "Open thread →".
+
+### 14.5 Compact + ultra-compact tier compositions
+
+**Compact (101–120 px):**
+
+```
+┌─ Pattern 2 card ────────────────────┐
+│  📧 Email                       3   │  ← Header + count
+│  Sarah Chen — Hopkins FH            │  ← Sender single-line
+└─────────────────────────────────────┘
+```
+
+Footer drops; sender collapses to single-line "primary — secondary" with em-dash separator.
+
+**Ultra-compact (80–100 px):**
+
+```
+┌─ Pattern 2 card ────────────────────┐
+│  📧 Email                       3   │  ← Single line: icon + label + count
+└─────────────────────────────────────┘
+```
+
+Sender body drops entirely. Card becomes single-row label + count.
+
+### 14.6 Stream piece visual canon (Communications Intelligence)
+
+The Pattern C primary stream piece (`communications_intelligence`) renders the cross-primitive synthesized narrative. Visual treatment shares foundation with `AnomalyIntelligenceStream` (§13.4.2 Phase W-4a reference):
+
+- **Pattern 2 chrome via PulsePiece root** (consistent with widget pieces — pieces are pieces regardless of `kind`)
+- **Brass-thread top-edge accent** (1px terracotta accent at `--accent` strength, `before:bg-accent before:h-px before:absolute before:top-0 before:inset-x-0`) — distinguishes intelligence-stream pieces from widget pieces visually within Pattern 2 chrome
+- **Synthesized narrative prose** in `font-sans text-body-sm leading-relaxed text-content-base` — slightly more whitespace than typical card body; the prose IS the content
+- **Referenced-item chips** at bottom — small terracotta-bordered pills with sender/artifact name + chevron, click navigates to per-primitive triage flow
+- **No header label** — the narrative speaks for itself; no "Communications Intelligence" eyebrow needed
+
+**Density tiers for stream piece:**
+- Default: full narrative (3-5 sentences) + 3-4 referenced-item chips
+- Compact: narrative truncated to 1-2 sentences + chip count as readout ("3 senders, 2 voicemails")
+- Ultra-compact: single-line synthesized headline ("Hopkins FH waiting + 2 voicemails") + arrow
+
+### 14.7 Empty-state visual treatment (canonical per primitive)
+
+**Layer fully empty:** Single advisory line italic `font-sans text-caption text-content-muted italic px-1`:
+
+> *Quiet — nothing waiting.*
+
+Matches the canonical advisory pattern from §13.3.2 amendment (Anomaly's "All clear", Activity's "Quiet day so far").
+
+**Layer partially empty (some primitives have signals, others don't):**
+
+Stream piece narrates only non-empty primitives. Per-primitive widgets with zero signal render their primitive-specific empty state:
+
+| Primitive | Default-tier empty | Compact empty | Ultra-compact empty |
+|---|---|---|---|
+| Email | "📧 Email · Inbox clear" | "📧 · Inbox clear" | "📧 0" |
+| SMS | "💬 SMS · No messages" | "💬 · No messages" | "💬 0" |
+| Phone | "📞 Phone · No missed calls" | "📞 · No misses" | "📞 0" |
+| Messaging | "💭 @Mention · All resolved" | "💭 · Resolved" | "💭 0" |
+
+Empty-state copy uses `text-content-muted`; count numeral position renders the "0" in mono but at `text-content-muted` rather than warning-strength terracotta.
+
+### 14.8 Cross-references
+
+- **§11 Pattern C** (Layer Composition Patterns) — composition rules for the Pattern C arrangement that this section provides per-primitive visuals for
+- **§13.4.1** — density-tier opt-in canonical reference; Pattern C widgets use the same `<widget-key>-widget-pulse-{default,compact,ultra-compact}` class convention
+- **BRIDGEABLE_MASTER.md §3.26.9** — Communications Layer Architecture (architectural canon)
+- **BRIDGEABLE_MASTER.md §3.26.9.7** — per-primitive 4-aspect decomposition (signals + Glance widget shape + briefing surfacing + Triage Focus shape)
+
+---
+
+## Section 15 — Briefing Visual System
+
+Visual canon for morning + evening briefings — three-state machine visualization, per-state typography, per-state composition. Companion to BRIDGEABLE_MASTER §3.26.10 (architectural).
+
+Phase 6 briefings (UI/UX Arc, shipped April 2026) established the briefing primitive. Phase W-4b extends with the three-state machine + Communications-layer surfacing + extended typography canon.
+
+### 15.1 The three states (visual mapping)
+
+Per BRIDGEABLE_MASTER §3.26.10.1: briefings have lifecycle states `queued → generating → generated`. Each state has a distinct visual treatment so users know what's happening without reading status text.
+
+| State | Visual treatment |
+|---|---|
+| `queued` | Skeleton placeholder — same dimensions as final briefing; subtle pulse; "preparing your briefing" copy in `text-caption text-content-muted` |
+| `generating` | Animated indicator (subtle shimmer per §6 motion canon) + "synthesizing now" + per-section skeleton blocks |
+| `generated` | Full narrative + structured sections — the rich briefing, primary state |
+
+Transitions are visual (not just label changes):
+- `queued → generating`: pulse rate increases subtly; text changes from "preparing" to "synthesizing"
+- `generating → generated`: shimmer fades out; content fades in over 350ms cubic-bezier per §6 — matches Pulse's grid transition discipline
+
+### 15.2 Per-state composition
+
+**`queued` state:**
+
+```
+┌─ Pattern 2 card (PulsePiece chrome) ────────────────────┐
+│                                                         │
+│  ◌  Preparing your briefing…                            │  ← Subtle pulse on the dot
+│                                                         │
+│  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░             │  ← Skeleton bars
+│  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░                       │
+│                                                         │
+│  ░░░░░░  ░░░░░░  ░░░░░░  ░░░░░░                         │  ← Section skeleton chips
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+- Card height matches final briefing's typical height (~340px) so layout doesn't reflow on transition
+- Skeleton bars: `bg-surface-sunken animate-pulse` per §6 skeleton canon
+- Status text: "Preparing your briefing…" `font-sans text-caption text-content-muted italic`
+- Indicator dot: `Circle` lucide 8×8px in `text-content-muted` with subtle pulse animation
+
+**`generating` state:**
+
+```
+┌─ Pattern 2 card ────────────────────────────────────────┐
+│                                                         │
+│  ⟳  Synthesizing now…                                   │  ← Spinning indicator
+│                                                         │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓             │  ← Active shimmer
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                       │
+│                                                         │
+│  ▓▓▓▓▓▓  ▓▓▓▓▓▓  ▓▓▓▓▓▓  ▓▓▓▓▓▓                         │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+- Same layout as `queued`
+- Indicator: `Loader2` lucide spinning at `--duration-considered` cycle, in `text-accent` (terracotta — signals "active work")
+- Status text: "Synthesizing now…" — same typography as queued
+- Shimmer: Bars now have a more energetic shimmer animation (vs queued's subtle pulse) signaling active progress
+- This state typically lasts 5-15 seconds; never visible to user for long
+
+**`generated` state — the rich narrative:**
+
+```
+┌─ Pattern 2 card ────────────────────────────────────────┐
+│  Morning briefing · Tuesday, April 28              7:01 │  ← Eyebrow + timestamp
+│                                                         │
+│  Hopkins FH replied on the Anderson case — 3 emails     │  ← Narrative prose
+│  over 2 days, the most recent at 6:43am asking about    │     font-sans text-body
+│  the Thursday delivery time. Sarah called twice this    │     leading-relaxed
+│  morning; transcripts mention the cemetery contact.     │
+│                                                         │
+│  ── Communications ─────────────────────────            │  ← Section divider
+│  📧 3 emails awaiting reply                             │  ← Structured section
+│  📞 2 voicemails                                        │
+│  💭 1 mention                                           │
+│                                                         │
+│  ── Operational ────────────────────────────            │
+│  🚚 5 deliveries scheduled today                        │
+│  ⏰ Anderson Vault delivery 11am — needs confirmation    │
+│                                                         │
+│  ── Anomaly ────────────────────────────────            │
+│  ⚠ Hopkins invoice balance mismatch — $127.50            │
+│                                                         │
+│  Read full briefing →                                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+- Eyebrow: "Morning briefing · {weekday}, {month} {day}" `font-mono text-micro tracking-wider text-content-muted` — matches §11 Pattern 1 eyebrow vocabulary
+- Timestamp: right-aligned `font-mono text-caption text-content-muted` — generation time
+- Narrative: `font-sans text-body leading-relaxed text-content-base` — slightly more comfortable reading-text size than typical card body; the prose IS the content
+- Section dividers: `── {Section Name} ──` text-micro uppercase tracking-wider `text-content-muted font-mono`, with `border-t border-border-subtle/40` above each section header
+- Section content: structured but compact — icon + headline per signal
+- Footer link: "Read full briefing →" routes to dedicated `/briefing` page for full narrative + history
+
+### 15.3 Typography per state
+
+| Element | State | Typography |
+|---|---|---|
+| Eyebrow ("Morning briefing · ...") | generated | `font-mono text-micro tracking-wider text-content-muted` |
+| Timestamp | generated | `font-mono text-caption text-content-muted` |
+| Narrative prose | generated | `font-sans text-body leading-relaxed text-content-base` |
+| Section divider eyebrows ("Communications", "Operational", etc.) | generated | `font-mono text-micro tracking-wider uppercase text-content-muted` |
+| Section content lines | generated | `font-sans text-body-sm text-content-base` with `font-medium` on key entities |
+| Footer "Read full briefing →" | generated | `font-sans text-caption text-accent` |
+| Status text ("Preparing…", "Synthesizing…") | queued / generating | `font-sans text-caption text-content-muted italic` |
+
+### 15.4 Pattern C integration
+
+When a recent generated briefing exists (within last hour for morning, last 4 hours for evening) AND user hasn't read it yet, the briefing piece surfaces in the Communications layer with priority 98 (higher than `communications_intelligence` at 95 — briefing is the day's organizing narrative).
+
+Briefing piece dimensions: `cols: 6, rows: 3` (taller than `communications_intelligence`'s 6×2 — briefing has more depth). Below the briefing piece, the per-primitive Glance widgets still render in their row.
+
+When user dismisses the briefing piece from Pulse, dismissed briefing doesn't re-surface that day. Briefing remains accessible via dedicated `/briefing` page.
+
+When briefing is in `queued` or `generating` state during Pulse render, the placeholder appears at the priority 98 slot. User sees "preparing/synthesizing" briefing, then narrative materializes.
+
+### 15.5 Briefing page (full surface) visual canon
+
+The dedicated `/briefing` page (Phase 6 + W-4b) renders the full briefing narrative + structured sections at editorial scale:
+
+- Page-level chrome: `mx-auto max-w-readable px-6 py-12` — comfortable reading width
+- Eyebrow + timestamp at top
+- Full narrative in `text-h3 leading-relaxed` — magazine-feature treatment
+- Section blocks below — each section gets H4 header + structured content
+- "View today's Pulse" footer link returns to `/home`
+
+### 15.6 Tenant briefing configuration UI canon
+
+The `/settings/briefings` page (Phase 6 + W-4b step 11):
+
+- Section per briefing (Morning / Evening) — each is a Pattern 2 card with its own `<Card>` + `<CardHeader>` + `<CardContent>`
+- Per-section: enable toggle (Switch primitive), time picker (Input type="time"), delivery channel checkboxes, primitive opt-in checkboxes per §3.26.10.3
+- Save action: brass primary `<Button>` at section bottom
+- Reapply-defaults action: muted secondary `<Button variant="outline">` next to save
+
+Settings page styling matches §11 Pattern 2 + Aesthetic Arc Session 3 form-section primitives.
+
+### 15.7 Cross-references
+
+- **§13.3.2** — Pulse layer empty-state advisory canon (briefing's "Preparing…" state references this canonical italic-content-muted treatment)
+- **§13.4.2** — Intelligence stream pieces visual treatment (briefing piece is an intelligence-stream-shaped piece in Communications layer)
+- **§14** — Communications Layer Visual Canon (briefing surfaces in Communications layer per Pattern C)
+- **BRIDGEABLE_MASTER §3.26.10** — Briefings Architecture (architectural canon)
+- **§6** Skeleton + animation canon — `queued` and `generating` state treatments derive from here
+
+---
+
+## Section 16 — Triage Focus Visual System
+
+Visual canon for the Triage primitive composing inside the Focus primitive (Phase W-4b steps 12–14). Companion to BRIDGEABLE_MASTER §3.26.11 (architectural).
+
+### 16.1 Foundational frame
+
+Pre-W-4b Triage renders as a dedicated route (`pages/triage/TriagePage.tsx`). Phase W-4b migrates it to render INSIDE Focus — the anchored modal core + canvas per Phase A. Same Triage queue logic + actions + intelligence panels (Phase 5 infrastructure preserved); different rendering shell.
+
+This matches the PLATFORM_INTERACTION_MODEL.md Tony Stark / Jarvis interaction language: triage as a **summoned-and-dismissable session**, not a navigation destination. User opens Triage Focus from anywhere (command bar, briefing link, anomaly notification), Focus modal materializes over current context, push-back scale signals "your work is still here, you'll come back to it," return pill on dismiss confirms the connection.
+
+### 16.2 Anchored core composition
+
+The Focus anchored core (centered modal per Phase A) renders the Triage primary surface:
+
+```
+┌─ Focus anchored core ────────────────────────────────────┐
+│  ANOMALIES TRIAGE              168 to review · ESC to dismiss │  ← Header
+│  ───────────────────────────────────────────────────             │
+│                                                                  │
+│  Hopkins invoice balance mismatch                                │  ← Item display
+│  $127.50 variance · raised by AR aging agent at 6:32am          │
+│                                                                  │
+│  Customer: Hopkins Funeral Home                                  │
+│  Recent: 3 invoices over $500 in past month                     │
+│                                                                  │
+│  ─────────────────────                                           │
+│                                                                  │
+│  [ Acknowledge ] [ Investigate ] [ Snooze 4h ] [ Skip ]          │  ← Action palette
+│                                                                  │
+│  ─────────────────────                                           │
+│                                                                  │
+│  ◀ Previous · 12 of 168 · Next ▶                                 │  ← Flow controls
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Header row:**
+- Queue name in `font-mono text-micro tracking-wider uppercase text-content-muted` — matches §11 eyebrow vocabulary ("ANOMALIES TRIAGE", "TASK TRIAGE")
+- Right side: count remaining + dismiss hint in `font-sans text-caption text-content-muted`
+- 1px `border-b border-border-subtle` separator below header
+
+**Item display body:**
+- Display component per Phase 5 Triage queue config's `display_component` field (anomaly / task / approval-specific renderers)
+- Item title in `font-sans text-h3 font-medium text-content-strong` — magazine-feature scale
+- Subtitle / context in `font-sans text-body-sm text-content-muted`
+- Related-entity context lines in `font-sans text-caption text-content-muted` with mid-dot separators per §11 Pattern 5
+
+**Action palette:**
+- Buttons in horizontal row, gap-2
+- Primary action: `<Button>` brass primary fill
+- Secondary actions: `<Button variant="outline">` brass-outlined
+- Destructive actions (e.g., Reject, Skip): `<Button variant="ghost">` muted with terracotta-error on hover
+- Each button shows keyboard shortcut suffix in `font-plex-mono text-caption` (e.g., "Acknowledge ⏎", "Snooze S")
+
+**Flow controls (footer):**
+- Previous + count + Next in `font-sans text-caption text-content-muted` — center-aligned
+- Previous + Next as ghost buttons with chevron icons
+- Count in `font-plex-mono` numeral
+
+### 16.3 Canvas composition (peripheral context)
+
+The Focus canvas (per Phase A) renders Triage context panels alongside the anchored core. Per Phase 5 Triage queue config `context_panel_config`:
+
+- **Saved view panel** — right-rail card with related saved view results (e.g., "Recent invoices for Hopkins" rendering in compact list mode)
+- **AI question panel** — right-rail card with AI Q&A interface (per Phase 5 W-3a follow-up 2 implementation)
+- **Document preview panel** — right-rail card with embedded PDF/document preview
+- **Communication thread panel** — right-rail card with related email/SMS thread excerpt
+- **Related entities panel** — right-rail card with linked records (customer, FH, related deliveries)
+
+**Panel chrome:** Each panel is a Pattern 2 card via Phase A canvas WidgetChrome. Panels stack vertically in canvas right-rail with gap-3 between panels.
+
+**Density adaptation:** When viewport compresses, canvas tier transitions to stack tier (panels become a horizontal scroll rail — Phase A Session 3.7 stack tier reference). Triage anchored core stays centered; panels become summoned-on-click via stack rail.
+
+### 16.4 Per-queue visual specialization
+
+Each Triage queue type adapts the item display component without changing the core/canvas chrome:
+
+**Anomalies queue (W-4b step 12):**
+- Item display: `AnomalyItemDisplay` — severity badge (status-error/warning/info per §3 status palette) + entity link + amount + agent attribution
+- Canvas panels: AI question panel + related entities panel (customer + recent invoices)
+
+**Approvals queue (W-4b step 13):**
+- Item display: `ApprovalItemDisplay` — approval type + entity preview + requestor + diff summary
+- Canvas panels: document preview + AI question + related entities
+
+**Tasks queue (W-4b step 14):**
+- Item display: `TaskItemDisplay` — task title + description + due date + priority badge
+- Canvas panels: related entities (linked case/order/invoice) + saved view ("recent tasks for this assignee")
+
+### 16.5 Action palette typography canon
+
+Action buttons share consistent typography across queue types:
+
+| Element | Typography |
+|---|---|
+| Action label | `font-sans text-body-sm font-medium` |
+| Keyboard shortcut suffix | `font-plex-mono text-caption text-content-muted` |
+| Confirm modal copy (when action `requires_reason`) | `font-sans text-body text-content-base` |
+| Reason input | `<Textarea>` primitive with `font-sans text-body-sm` |
+
+### 16.6 Push-back + return pill canon
+
+When Triage Focus opens:
+- App shell behind scales to 0.98 per Phase A push-back canon (`base.css` keyframe on `[data-focus-pushback="true"]`)
+- Backdrop blurs with `bg-black/40 backdrop-blur-md` per Phase A Session 1
+- Anchored core animates in over `duration-arrive ease-settle` per overlay-family canon
+
+When Triage Focus dismisses (ESC, backdrop click, or Done action):
+- Anchored core animates out over `duration-settle ease-gentle`
+- Push-back releases (scale returns to 1.0)
+- Return pill appears at bottom-center per Phase A — `bg-surface-raised shadow-level-2 rounded-full` with 15-second countdown bar
+- Return pill click reopens last-closed Triage Focus session (per Phase A Session 4 persistence)
+
+### 16.7 Empty state (queue exhausted)
+
+When user works through every item in the queue:
+
+```
+┌─ Focus anchored core ────────────────────────────────────┐
+│  ANOMALIES TRIAGE                          ESC to dismiss │
+│  ───────────────────────────────────────────────────       │
+│                                                            │
+│                                                            │
+│              ✓                                             │
+│           All clear                                        │
+│   You've reviewed all 168 anomalies.                       │
+│                                                            │
+│   [ Close ]                                                │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
+```
+
+- Centered layout with CheckCircle icon `text-status-success` 32×32px
+- Title: "All clear" `font-sans text-h3 font-medium text-content-strong`
+- Body: review count in `font-sans text-body text-content-muted`
+- Close button: `<Button variant="outline">` brass-outlined, single CTA
+
+### 16.8 Cross-references
+
+- **§11 Pattern 2** — Card material treatment for canvas panels
+- **§11 Pattern 3** — Status indicator system (used by anomaly severity badges + approval status indicators)
+- **§13.5** — Signal collection chrome (Triage actions emit dismiss/navigation signals same as Pulse pieces)
+- **BRIDGEABLE_MASTER §3.26.11** — Triage Focus Canonical Pattern (architectural canon)
+- **PLATFORM_INTERACTION_MODEL.md** — Tony Stark / Jarvis interaction model (summon/arrange/park/dismiss; Triage Focus is a canonical instantiation)
+- **Phase A (Focus primitive)** — Phase A Sessions 1–4 ship the anchored core + canvas + push-back + return pill primitives Triage Focus composes against
 
 ---
 
