@@ -4037,6 +4037,12 @@ Render with Pattern 2 chrome (locked in §12.5) at variant-determined size:
 
 Variant chosen by Pulse intelligence based on priority + viewport availability.
 
+**Chrome-is-surface-responsibility convention (Phase W-4a Step 5 amendment, May 2026).** Pattern 2 chrome is the **surface's** responsibility, not the widget's. The surfaces that host pinable widgets (`PulsePiece` for Pulse, `WidgetWrapper` for dashboard surfaces, future `PinnedSection` widget pin renderer) apply Pattern 2 chrome at their own root. Widget renderer components MUST NOT apply Pattern 2 chrome at their root — doing so produces nested cards when the surface also applies chrome.
+
+**Reference**: `frontend/src/components/spaces/PulsePiece.tsx` applies `rounded-[2px] bg-surface-elevated border border-border-subtle shadow-level-1` at its outer div. `frontend/src/components/widgets/WidgetWrapper.tsx:72` applies `rounded-md bg-surface-elevated shadow-level-1` at its outer div. Widget renderers (`VaultScheduleWidget`, `LineStatusWidget`, `TodayWidget`, `AnomaliesWidget`, etc.) have only content layout (`flex flex-col h-full p-4 gap-3`) at their root — no chrome.
+
+**Pre-Step-5**: PulsePiece's docstring claimed widget renderers carry their own Pattern 2 chrome. That assumption was wrong — only `WidgetWrapper` applied chrome (dashboard surface), and Pulse pieces rendered without any chrome at all. Step 5 corrects: PulsePiece applies Pattern 2 chrome at its root + AnomalyIntelligenceStream's previously-duplicated chrome moved up to PulsePiece (single source of truth, no nested cards). Widget renderers stay chrome-less. Future surfaces hosting widgets follow the same pattern.
+
 **Surface-specific widget compaction (Phase W-4a Step 2/3 amendment).** Pinable widgets may have surface-specific compact rendering. Pulse (`pulse_grid`) honors grid cell size constraints — Brief variant in Pulse compacts to header + footer when content density exceeds cell height. Dashboard surfaces (`dashboard_grid`) render full Brief content with rows.
 
 **Reference**: `anomalies` widget Brief variant.

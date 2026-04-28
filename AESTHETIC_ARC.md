@@ -803,6 +803,18 @@ September Wilbert demo timeline: 20 weeks of work in 20 weeks of calendar. Achie
 
 ---
 
+### Phase W-4a Step 5 — Pulse Pattern 2 chrome + missing-widget honesty (✅ Shipped, 2026-05-02)
+
+**Implementation-drift-from-canon** session. The chrome was correct in canon; implementation drifted. Specifically: §11 Pattern 2 + §13.4.1 specify Pattern 2 chrome (rounded-[2px] + bg-surface-elevated + border-border-subtle + shadow-level-1) for pinable widget pieces. PulsePiece's docstring claimed "the widget renderers carry their own Pattern 2 chrome" — that was an incorrect assumption made during Phase W-4a Commit 5. Only `WidgetWrapper` (dashboard surface) applied chrome; widget renderer roots had only content layout (`flex flex-col h-full p-4`). Pulse pieces rendered without ANY chrome at all, producing the user-reported "scattered" perception. Step 5 ships PulsePiece as the chrome-applying surface (mirrors WidgetWrapper for dashboard), retires AnomalyIntelligenceStream's previously-duplicated chrome (single source of truth), and locks the chrome-is-surface-responsibility convention into DESIGN_LANGUAGE §13.4.1.
+
+Plus a related bug surfaced in the same investigation: `MockSavedViewWidget` was the fallback for ALL `getWidgetRenderer` misses including registered-but-unmapped widget keys. In production this masked a real widget-id mismatch (`scheduling.ancillary-pool` backend / `funeral-scheduling.ancillary-pool` frontend) by silently substituting fake "Recent Cases" mock data. New `MissingWidgetEmptyState` component splits the fallback: undefined widgetType → MockSavedViewWidget (legacy/test path); set-but-unmapped → honest "Widget unavailable" empty state in status-warning palette. Dev fixtures should fail visibly in production, not substitute as content.
+
+**Pattern lesson canonicalized for future drift**: when a docstring claims a contract that the implementation doesn't fulfill, the gap is invisible until something forces the contract to be exercised. PulsePiece's Pattern 2 chrome contract was claimed for ~5 weeks before user observation surfaced the drift. AESTHETIC ARC implementation work should periodically audit chrome contracts against actual rendering DOM (`getComputedStyle(piece).backgroundColor` vs declared canon). Step 5's investigation method (live DOM measurement of actual border/background/shadow values) becomes the canonical audit pattern for future canon-vs-implementation reviews.
+
+**Architectural debt surfaced for separate follow-up**: AncillaryPoolPin currently only renders inside Funeral Scheduling Focus subtree (depends on `SchedulingFocusDataProvider`). Backend declares `supported_surfaces: ["pulse_grid", ...]` for the widget — a contract the frontend can't fulfill. Phase W-3d's "First workspace-core widget canonical reference" promise needs the cross-surface portability the canon implies (Phase W-3d entry, line 808). Refactor scope: switch to `useSchedulingFocusOptional`, add `/widget-data/ancillary-pool` backend endpoint, surface-aware rendering (no drag handles in pulse_grid per §12.6a). Earns its own session.
+
+---
+
 ### Phase W-4a — Pulse Infrastructure (✅ Shipped, 2026-04-28)
 
 Six commits shipped end-to-end against the Spaces and Pulse Architecture canon (April 27). Phase W-4a delivers **Home Pulse infrastructure** as the first concrete realization of BRIDGEABLE_MASTER §3.26 — composition engine, four layer services, V1 anomaly intelligence stream, signal collection, frontend tetris layout, first-login banner, and the canonical Sunnycrest dispatcher demo composition end-to-end. Three load-bearing references locked for downstream phases (W-4b, W-5, communication primitives, Tier 2): work-area-to-widget mapping, two-content-primitive contract, standardized signal metadata shapes.

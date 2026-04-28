@@ -30,11 +30,32 @@
  *     the click with a navigation-tracker that also fires the
  *     signal.
  *
- * Pattern 2 chrome wrap: PulsePiece itself doesn't add a card
- * surface — the widget renderers carry their own Pattern 2 chrome
- * (per WidgetWrapper convention from prior W-3 commits) and the
- * intelligence stream component carries its own. PulsePiece adds
- * only the dismiss chrome layer + sizing + grid placement.
+ * Pattern 2 chrome (Phase W-4a Step 5, May 2026):
+ * PulsePiece applies Pattern 2 chrome at its own root; widget
+ * renderers provide content only. This keeps surface chrome
+ * decisions with the surface, not duplicated across every widget.
+ *
+ * The dashboard surface applies the equivalent chrome via
+ * `WidgetWrapper.tsx:72` (rounded-md + bg-surface-elevated +
+ * shadow-level-1). Pulse uses the §11 Pattern 2 / §13.4.1 chrome
+ * (rounded-[2px] + bg-surface-elevated + border-border-subtle +
+ * shadow-level-1) to match `AnomalyIntelligenceStream` (the V1
+ * intelligence stream reference that already applied this chrome
+ * at its own root). Result: every Pulse piece is a clearly-bounded
+ * card whether it's a widget or an intelligence stream.
+ *
+ * Convention: widget renderers should NOT apply Pattern 2 chrome at
+ * their root. Surface (PulsePiece, WidgetWrapper) applies chrome
+ * appropriate to that surface; widgets that double-apply chrome
+ * produce nested cards. See DESIGN_LANGUAGE §13.4.1 Step-5
+ * convention note.
+ *
+ * Pre-Step-5 the docstring claimed widget renderers carry their own
+ * Pattern 2 chrome — that was an incorrect assumption. The chrome
+ * lives on `WidgetWrapper` for dashboard surfaces; widget root
+ * elements have only `flex flex-col h-full p-4`. Pulse pieces
+ * rendered without any chrome at all, making the surface read as
+ * "scattered" rather than as composed cards. Step 5 corrects.
  */
 
 import { useCallback, useState } from "react"
@@ -216,6 +237,20 @@ export function PulsePiece({
       }}
       className={cn(
         "group relative",
+        // Pattern 2 chrome per DESIGN_LANGUAGE §11 + §13.4.1
+        // (Phase W-4a Step 5, May 2026). PulsePiece is the surface
+        // chrome owner; widget renderers + AnomalyIntelligenceStream
+        // provide content only. Matches the dashboard surface's
+        // WidgetWrapper chrome shape (rounded-md+bg-surface-elevated+
+        // shadow-level-1) but uses §11-Pattern-2-locked rounded-[2px]
+        // for tighter Pulse-grid feel + adds the canonical hairline
+        // border so cards demarcate cleanly against the warm-cream
+        // / warm-charcoal substrate.
+        "rounded-[2px]",
+        "bg-surface-elevated",
+        "border border-border-subtle",
+        "shadow-level-1",
+        "overflow-hidden",
         "transition-all duration-settle ease-settle",
         animatingOut ? "opacity-0 scale-95" : "opacity-100 scale-100",
       )}

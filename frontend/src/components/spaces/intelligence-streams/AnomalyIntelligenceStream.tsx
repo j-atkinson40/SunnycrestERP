@@ -45,16 +45,18 @@ export function AnomalyIntelligenceStream({
       data-slot="anomaly-intelligence-stream"
       data-stream-id={stream.stream_id}
       className={cn(
-        // Pattern 2 chrome (locked in §11) + intelligence-stream
-        // surface treatment.
+        // Phase W-4a Step 5 (May 2026): Pattern 2 chrome moved to
+        // PulsePiece outer div per the chrome-is-surface-responsibility
+        // convention (DESIGN_LANGUAGE §13.4.1 amendment). This stream
+        // component now provides only content + the brass-thread
+        // top-edge accent that's unique to intelligence streams per
+        // §13.4.2. PulsePiece's outer div carries rounded-[2px] +
+        // bg-surface-elevated + border + shadow.
         "relative h-full w-full",
-        "rounded-[2px]",
-        "bg-surface-elevated",
-        "border border-border-subtle",
         // Brass-thread top-edge accent per §13.4.2 — 1px line in
         // accent (aged-terracotta) signals composed-by-intelligence.
-        // Pseudo-element wouldn't work cleanly inside the rounded
-        // border; use a top-border that wins specificity.
+        // The pseudo lives on the PulsePiece's child div (this one)
+        // so it sits inside the surface chrome the parent applies.
         "before:content-['']",
         "before:absolute before:left-0 before:right-0 before:top-0",
         "before:h-px before:bg-accent",

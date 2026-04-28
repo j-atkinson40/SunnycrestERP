@@ -56,6 +56,7 @@ import type { ComponentType } from "react"
 
 import type { VariantId } from "@/components/widgets/types"
 
+import { MissingWidgetEmptyState } from "./MissingWidgetEmptyState"
 import { MockSavedViewWidget } from "./MockSavedViewWidget"
 
 
@@ -153,14 +154,31 @@ export function registerWidgetRenderer(
 }
 
 
-/** Resolve a widget renderer for the given `widgetType`. Returns
- *  `MockSavedViewWidget` when `widgetType` is undefined (legacy
- *  layouts) OR when the type is registered but missing (defensive —
- *  e.g. the registering module failed to load).
+/** Resolve a widget renderer for the given `widgetType`.
  *
- *  Callers (Canvas, BottomSheet, StackRail, StackExpandedOverlay)
- *  invoke this once per render and pass `widgetId` + variant_id +
- *  surface to the resulting component.
+ *  Two distinct fallback paths (Phase W-4a Step 5, May 2026):
+ *
+ *    • `widgetType === undefined` → `MockSavedViewWidget` (legacy
+ *      layouts pre-Phase-W-1 typed-widget system, plus test fixtures
+ *      that don't carry widgetType — back-compat path).
+ *    • `widgetType` set BUT not registered → `MissingWidgetEmptyState`
+ *      (real production case where backend declared a widget-id the
+ *      frontend has no renderer for; renders an honest "Widget
+ *      unavailable" empty state with the offending widget_id visible
+ *      so QA catches misconfigurations rather than mistaking placeholder
+ *      content for legitimate widget output).
+ *
+ *  Pre-Step-5 BOTH paths returned MockSavedViewWidget. That masked a
+ *  registration-key mismatch (the backend canonical
+ *  `scheduling.ancillary-pool` widget_id paired with the frontend
+ *  legacy `funeral-scheduling.ancillary-pool` registration) by
+ *  silently substituting the dev fixture's fake "Recent Cases" mock
+ *  data. The bug looked like cross-vertical contamination in
+ *  production. Step 5 split the fallback paths.
+ *
+ *  Callers (Canvas, BottomSheet, StackRail, StackExpandedOverlay,
+ *  PulsePiece, PinnedSection) invoke this once per render and pass
+ *  `widgetId` + variant_id + surface to the resulting component.
  *
  *  Phase W-1 — variant_id parameter is optional + accepted for API
  *  symmetry with backend. The current registry dispatches by
@@ -175,7 +193,7 @@ export function getWidgetRenderer(
   _variant_id?: VariantId,
 ): ComponentType<WidgetRendererProps> {
   if (widgetType === undefined) return MockSavedViewWidget
-  return REGISTRY.get(widgetType) ?? MockSavedViewWidget
+  return REGISTRY.get(widgetType) ?? MissingWidgetEmptyState
 }
 
 

@@ -337,20 +337,33 @@ describe("PinnedSection — widget pin rendering (Phase W-2)", () => {
     expect(allPinRows.length).toBeGreaterThanOrEqual(2)
   })
 
-  it("MockSavedViewWidget fallback when widget_id has no registered component", () => {
-    // Defensive — if a widget pin's id isn't in the renderer
-    // registry (e.g. registration module failed to import), fallback
-    // is the MockSavedViewWidget per getWidgetRenderer's contract.
+  it("MissingWidgetEmptyState fallback when widget_id has no registered component", () => {
+    // Phase W-4a Step 5 (May 2026): when a widget pin's id isn't in
+    // the renderer registry (registration module failed to import,
+    // backend/frontend widget_id mismatch, etc.), fallback is
+    // MissingWidgetEmptyState — an honest "Widget unavailable"
+    // empty state. Pre-Step-5 the fallback was MockSavedViewWidget
+    // (a dev fixture rendering fake "Recent Cases" mock data); that
+    // masked widget-id mismatches as "looks like contamination" in
+    // production. Split: undefined widgetType → MockSavedViewWidget
+    // (legacy/test path); set-but-unknown widgetType → this new
+    // empty state.
     _resetWidgetRendererRegistryForTests()
     // Don't re-register scheduling.ancillary-pool; should fall back.
     mockActiveSpace = makeSpace([makeWidgetPin()])
     renderInRouter(<PinnedSection />)
 
-    // Stub didn't render (we cleared its registration); MockSavedViewWidget
-    // should render in its place (it's the registry default).
+    // Stub didn't render (we cleared its registration);
+    // MissingWidgetEmptyState renders in its place.
     expect(
       document.querySelector('[data-testid="test-stub-widget"]'),
     ).toBeNull()
+    expect(
+      document.querySelector('[data-slot="missing-widget-empty"]'),
+    ).toBeInTheDocument()
+    // Empty state surfaces the offending widget_id for QA
+    // observability.
+    expect(document.body.textContent).toContain("Widget unavailable")
     // Wrapper still renders with widget data attributes — fallback
     // doesn't hide the pin.
     expect(
