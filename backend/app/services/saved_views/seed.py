@@ -288,7 +288,16 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
         ),
     ],
 
-    # ── Admin across every vertical — a minimal safety net ───────
+    # ── Manufacturing — admin ─────────────────────────────────────
+    # Cross-vertical contamination fix (Phase W-4a Step 1, April 2026):
+    # `recent_cases` was previously seeded here with
+    # `entity_type="fh_case"` — manufacturing tenants don't have FH
+    # cases. The seed accumulated FH-typed saved views in manufacturing
+    # tenants' vault_items library. Removed per BRIDGEABLE_MASTER §3.25
+    # (forthcoming Step 3 amendment) "saved view INSTANCE vertical-
+    # scope inherits from data source." Step 3 will enforce this at the
+    # registry / creation / read layers; this immediate removal stops
+    # new seeds from leaking the cross-vertical instance.
     ("manufacturing", "admin"): [
         SeedTemplate(
             template_id="outstanding_invoices",
@@ -303,17 +312,6 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
                 ],
                 sort=[Sort(field="due_date", direction="asc")],
                 columns=["number", "status", "total", "due_date"],
-                role_slug=role,
-            ),
-        ),
-        SeedTemplate(
-            template_id="recent_cases",
-            title="Recent cases",
-            description="Cases updated in the last 30 days.",
-            entity_type="fh_case",
-            config_factory=lambda role: _basic_list(
-                entity_type="fh_case",
-                sort=[Sort(field="updated_at", direction="desc")],
                 role_slug=role,
             ),
         ),

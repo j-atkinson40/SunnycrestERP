@@ -421,6 +421,36 @@ class TestSavedViewSeedDependencies:
         ids = {t.template_id for t in sv_templates}
         assert "outstanding_invoices" in ids
 
+    def test_manufacturing_admin_does_not_seed_fh_recent_cases(self):
+        """Cross-vertical contamination regression guard (Phase W-4a
+        Step 1, April 2026): manufacturing tenants don't have FH
+        cases. The `recent_cases` template (entity_type=fh_case) was
+        previously seeded for `("manufacturing", "admin")` and
+        accumulated FH-typed saved views in manufacturing tenants'
+        vault_items. Removed per the saved-view-vertical-scope-
+        inheritance canon (BRIDGEABLE_MASTER §3.25 forthcoming
+        amendment + DESIGN_LANGUAGE §13.4.1 forthcoming amendment).
+        Step 3 architectural fix will enforce at registry / creation
+        / read layers; this guard prevents the seed from regressing.
+        """
+        sv_templates = sv_seed.SEED_TEMPLATES.get(
+            ("manufacturing", "admin"), []
+        )
+        ids = {t.template_id for t in sv_templates}
+        # Sanity: outstanding_invoices stays — it's mfg-compatible.
+        assert "outstanding_invoices" in ids
+        # Regression guard: no FH-typed saved views.
+        assert "recent_cases" not in ids
+        # Defense-in-depth: no template should declare entity_type
+        # "fh_case" for the manufacturing/admin pair.
+        for tpl in sv_templates:
+            assert tpl.entity_type != "fh_case", (
+                f"Manufacturing/admin seed template {tpl.template_id!r} "
+                f"declares entity_type='fh_case' — cross-vertical "
+                f"contamination. Remove this template or move it to "
+                f"the funeral_home/admin combination."
+            )
+
 
 # ── default_home_route round-trip ───────────────────────────────────
 
