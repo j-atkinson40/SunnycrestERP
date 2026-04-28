@@ -46,7 +46,7 @@
  * mode (Step 5) lands in Commit 3.
  */
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { InlineError } from "@/components/ui/inline-error"
 import { SkeletonLines } from "@/components/ui/skeleton"
@@ -140,6 +140,39 @@ export function PulseSurface() {
     banner_visible,
   })
 
+  // Phase W-4a Step 6 Commit 3 — observability `console.warn` per
+  // §13.3.4 Step 5 when the tier-three threshold breaches. Fires
+  // ONCE per (cell_height, total_row_count, viewport_height,
+  // banner_visible) tuple so the warn doesn't spam during continuous
+  // resize. Only fires for tier-three breach (tablet+) — mobile
+  // fallback is intentional, not an anomaly. The composition shape
+  // can be tuned by the operator (fewer pinned anomalies, simpler
+  // operational layer) once the warning surfaces in dev/staging
+  // logs.
+  const lastWarnKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!viewportFit.tier_three_threshold_breached) return
+    const key = `${viewportFit.cell_height}|${measurement.total_row_count}|${viewportFit.viewport_height}|${banner_visible}`
+    if (lastWarnKeyRef.current === key) return
+    lastWarnKeyRef.current = key
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[pulse] cell_height < 80px threshold; falling back to scroll mode",
+      {
+        cell_height: viewportFit.cell_height,
+        total_row_count: measurement.total_row_count,
+        viewport_height: viewportFit.viewport_height,
+        banner_visible,
+      },
+    )
+  }, [
+    viewportFit.tier_three_threshold_breached,
+    viewportFit.cell_height,
+    viewportFit.viewport_height,
+    measurement.total_row_count,
+    banner_visible,
+  ])
+
   const handleDismissItem = useCallback((itemId: string) => {
     setDismissedItemIds((prev) => {
       const next = new Set(prev)
@@ -206,10 +239,22 @@ export function PulseSurface() {
       data-tier-three-breached={
         viewportFit.tier_three_threshold_breached ? "true" : "false"
       }
+      // Phase W-4a Step 6 Commit 3 — `data-scroll-mode` is the
+      // canonical CSS attribute selector for scroll-mode dispatch.
+      // PulseLayer's grid → flex-column override (in pulse-density.css)
+      // keys on this attribute. Per §13.3.4 + §13.3.1.
+      data-scroll-mode={viewportFit.scroll_mode_active ? "true" : "false"}
       style={
         {
           "--pulse-content-height": `${viewportFit.available_pulse_height}px`,
-          "--pulse-cell-height": `${viewportFit.cell_height}px`,
+          // In scroll mode, the canonical Pulse-cell-height variable
+          // is unset (`auto` sentinel) — pieces render at natural
+          // heights via flex-column overrides in pulse-density.css.
+          // The variable still ships so downstream consumers reading
+          // `var(--pulse-cell-height, 80px)` get a predictable signal.
+          "--pulse-cell-height": viewportFit.scroll_mode_active
+            ? "auto"
+            : `${viewportFit.cell_height}px`,
           "--pulse-column-count": viewportFit.column_count.toString(),
           "--pulse-scale": viewportFit.pulse_scale.toString(),
         } as React.CSSProperties

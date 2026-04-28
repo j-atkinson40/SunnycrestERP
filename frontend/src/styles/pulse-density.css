@@ -1,5 +1,6 @@
 /* ============================================================
- * Pulse density-tier dispatch — Phase W-4a Step 6 Commit 2.
+ * Pulse density-tier dispatch + scroll-mode override — Phase W-4a
+ * Step 6 Commits 2 + 3.
  *
  * Per DESIGN_LANGUAGE.md §13.4.1:
  *   • Default tier  ≥ 121 px cell height — full content
@@ -25,30 +26,75 @@
  * compact hidden. Container queries flip displays at the canonical
  * thresholds.
  *
+ * ── Sub-pixel + border boundary buffer (Commit 3) ─────────────
+ *
+ * Container queries measure the principal box CONTENT AREA (not
+ * border-box). PulsePiece carries Pattern 2 chrome — `border
+ * border-border-subtle` = 1px border each side = 2px subtracted
+ * from content-area vs piece outer height. Plus Chromium's sub-
+ * pixel rounding adds ~0.5px noise at integer boundaries.
+ *
+ * Total buffer = 2.5 px (2 border + 0.5 sub-pixel). Canon
+ * thresholds 100 / 120 become 97.5 / 117.5 in CSS. This keeps
+ * tier dispatch reliable at canonical PIECE OUTER heights:
+ *   piece-outer 80  → content-area 78  → max-97.5 fires → ultra ✓
+ *   piece-outer 100 → content-area 98  → max-97.5 doesn't → compact*
+ *   piece-outer 101 → content-area 99  → max-97.5 doesn't → compact ✓
+ *   piece-outer 120 → content-area 118 → max-117.5 fires → compact ✓
+ *   piece-outer 121 → content-area 119 → max-117.5 doesn't → default ✓
+ *
+ * (*) The exact-100 case is the 1-px deviation: canon strictly
+ * says 100 = ultra-compact, but post-buffer the boundary moves so
+ * 100 is in the compact tier. This deviation is below human-visible
+ * threshold + only fires at exact integer boundaries; in exchange
+ * we get RELIABLE tier dispatch at integer-multiples like 101 / 99
+ * which were Commit 2's actual visible failure mode.
+ *
+ * If a future change moves Pattern 2 chrome off the PulsePiece
+ * root onto a nested wrapper, the 2 px border buffer can be
+ * dropped (back to 99.5 / 119.5). The 0.5 px sub-pixel buffer
+ * stays regardless.
+ *
  * ── Dispatch logic ─────────────────────────────────────────────
  *
- * At cell ≥ 121 px:
+ * Threshold values below are PRE-BUFFER (canonical content-area).
+ * The actual @container rules below subtract the 2.5 px buffer.
+ *
+ * At piece-outer ≥ 121 px (content ≥ 119):
  *   No @container rule fires. Default-visible / compact-hidden /
  *   ultra-compact-hidden classes hold.
  *
- * At cell 101–120 px (compact tier):
- *   `@container piece (max-height: 120px)` matches.
+ * At piece-outer 101–120 px (content 99–118 px = compact tier):
+ *   `@container piece (max-height: 117.5px)` matches.
  *   default → display: none (override base)
  *   compact → display: flex (override base)
- *   ultra-compact → still hidden (matches the 120px-rule by inheritance,
- *     but a 100px rule below would also trigger; here it stays hidden).
  *
- * At cell 80–100 px (ultra-compact tier):
- *   Both `(max-height: 120px)` AND `(max-height: 100px)` match.
- *   Cascade: 100px rule comes after 120px rule, so its compact:none
- *   wins over the prior compact:flex. Ultra-compact:flex wins via
- *   the 100px rule.
+ * At piece-outer ≤ 100 px (content ≤ 98 px = ultra-compact tier):
+ *   Both `(max-height: 117.5px)` AND `(max-height: 97.5px)` match.
+ *   Cascade: 97.5px rule comes after 117.5px rule, so its
+ *   compact:none wins over the prior compact:flex.
+ *   Ultra-compact:flex wins via the 97.5px rule.
  *
  * Below 80 px:
- *   Pulse dispatches to natural-height scroll mode at the surface
- *   level (Commit 3). Container queries continue to fire
- *   (ultra-compact stays visible), but the overall layout switches
- *   away from viewport-fit.
+ *   Pulse surface dispatches to scroll mode (Commit 3) — pieces
+ *   render at natural heights, NOT inside grid cells. @container
+ *   queries continue to fire on whatever rendered piece-heights
+ *   resolve to in the natural-flow document.
+ *
+ * ── Scroll mode override (Commit 3) ───────────────────────────
+ *
+ * `[data-slot="pulse-surface"][data-scroll-mode="true"]` — set by
+ * `useViewportFitMath` → `PulseSurface` when EITHER:
+ *   (a) viewport_width < 600 px (mobile fallback)
+ *   (b) cell_height < 80 px on tablet+ (tier-three threshold)
+ *
+ * The override flips PulseLayer's grid container to flex-column
+ * (no grid template; pieces stack vertically at natural heights)
+ * + bypasses --pulse-cell-height (set to `auto` sentinel by
+ * PulseSurface). Pieces still ship `gridColumn: span N` /
+ * `gridRow: span N` inline styles but those are ignored in flex
+ * context. Per-piece chrome (Pattern 2 from Commit 1+2) survives
+ * intact.
  * ============================================================ */
 
 
@@ -72,10 +118,14 @@
 }
 
 
-/* ── Compact tier: 101–120 px ─────────────────────────────────
- * Cell height drops below 121 px. Default content too dense to
- * read; switch to header + footer only. */
-@container piece (max-height: 120px) {
+/* ── Compact tier: piece-outer 101–120 px (content 99–118 px) ───
+ * Default content too dense to read; switch to header + condensed
+ * only.
+ *
+ * Threshold = 117.5 px content-area (canon 120 piece-outer minus
+ * 2 px Pattern 2 border minus 0.5 px sub-pixel buffer). See header
+ * "Sub-pixel + border boundary buffer". */
+@container piece (max-height: 117.5px) {
   .anomalies-widget-pulse-default,
   .line-status-widget-pulse-default,
   .today-widget-pulse-default {
@@ -90,14 +140,17 @@
 }
 
 
-/* ── Ultra-compact tier: 80–100 px ────────────────────────────
- * Cell height drops below 101 px. Even the compact (header +
- * footer) is too tall; switch to single-line dense readout.
+/* ── Ultra-compact tier: piece-outer ≤ 100 px (content ≤ 98 px) ──
+ * Even the compact (header + footer) is too tall; switch to
+ * single-line dense readout.
  *
  * Both rules apply at this size — cascade order resolves: the
- * (max-height: 100px) rule comes after (max-height: 120px), so
- * the compact:none here overrides the compact:flex above. */
-@container piece (max-height: 100px) {
+ * (max-height: 97.5px) rule comes after (max-height: 117.5px),
+ * so the compact:none here overrides the compact:flex above.
+ *
+ * Threshold = 97.5 px content-area (canon 100 piece-outer minus
+ * 2 px Pattern 2 border minus 0.5 px sub-pixel buffer). */
+@container piece (max-height: 97.5px) {
   .anomalies-widget-pulse-compact,
   .line-status-widget-pulse-compact,
   .today-widget-pulse-compact {
@@ -109,4 +162,51 @@
   .today-widget-pulse-ultra-compact {
     display: flex;
   }
+}
+
+
+/* ============================================================
+ * Scroll-mode override — Phase W-4a Step 6 Commit 3.
+ *
+ * When `data-scroll-mode="true"` on PulseSurface, flip every
+ * descendant `pulse-layer-grid` from CSS Grid to vertical flex
+ * stack. Per-piece grid placement (`grid-column: span N`,
+ * `grid-row: span N`) becomes inert in flex context — pieces
+ * become full-width (flex-direction: column makes children
+ * full-width by default) + height-auto (intrinsic content size).
+ *
+ * The 350ms cubic-bezier transition declaration on the grid stays
+ * (covers grid-template-rows + grid-template-columns) — ignored
+ * when display flips between grid and flex; only fires when
+ * display stays grid.
+ *
+ * `gap-3` Tailwind utility on the grid produces gap: 0.75rem;
+ * `gap` works identically on flex containers, so vertical spacing
+ * between stacked pieces matches grid gap.
+ *
+ * Single-column natural-height stack matches §13.3.1's "natural-
+ * height vertical scroll" mobile fallback canon + tier-three
+ * threshold canon for tablet+. AppLayout's `<main>` already has
+ * `overflow-y-auto`, so PulseSurface content exceeding viewport
+ * scrolls naturally — no nested scroll containers.
+ * ============================================================ */
+[data-slot="pulse-surface"][data-scroll-mode="true"]
+  [data-slot="pulse-layer-grid"] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Pieces in scroll mode get a sensible min-height baseline so widget
+ * renderers using `h-full` (which resolves to 0 in flex-column without
+ * a parent-height) render content at a comfortable default size.
+ * 200 px ≈ the desktop-comfortable cell-height baseline (Commit 1
+ * verified ~205 px on a 1440×900 testco composition) and matches
+ * canon's "natural-height" intent — pieces aren't constrained by
+ * viewport-fit math but DO get a baseline so empty-content pieces
+ * don't collapse invisibly. Widgets with intrinsic content larger
+ * than 200 px grow naturally beyond the minimum. Per §13.3.1 mobile
+ * fallback canon line 4002: "pieces stack at content-driven sizes". */
+[data-slot="pulse-surface"][data-scroll-mode="true"]
+  [data-slot="pulse-piece"] {
+  min-height: 200px;
 }

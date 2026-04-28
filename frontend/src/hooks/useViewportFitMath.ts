@@ -88,9 +88,22 @@ export interface ViewportFitMath {
    *  viewport. May be 0 when caller has no populated layers. */
   cell_height: number
   /** Step 5 result. True when cell_height fell below the
-   *  MIN_READABLE_CELL_HEIGHT (80 px) on tablet+ — caller dispatches
-   *  to natural-height + scroll mode in Commit 3. */
+   *  MIN_READABLE_CELL_HEIGHT (80 px) on tablet+. Computed regardless
+   *  of `scroll_mode_active` — useful for observability. */
   tier_three_threshold_breached: boolean
+  /** Step 5 result (Commit 3). True when Pulse should render in
+   *  natural-height vertical scroll mode instead of viewport-fit
+   *  grid. Per §13.3.4 Step 5 + §13.3.1: dispatches in two cases —
+   *    (a) viewport_width < MOBILE_BREAKPOINT (mobile is intentionally
+   *        outside the viewport-fit promise per §13.3.1)
+   *    (b) cell_height < MIN_READABLE_CELL_HEIGHT on tablet+ (the
+   *        tier-three threshold; pathologically heavy compositions
+   *        or compressed viewport heights crush cells below readable)
+   *  Dynamic recompute per resize — ResizeObserver fires, math
+   *  re-runs, scroll_mode_active updates. Canon language "for this
+   *  session" reads as "for the current render pass" rather than
+   *  latched-once-entered; see §13.3.4 + ResizeObserver pattern. */
+  scroll_mode_active: boolean
   /** Step 6 result. The --pulse-scale clamped value (0.875–1.25). */
   pulse_scale: number
   /** Raw viewport_height used in the chrome budget — exposed for
@@ -305,6 +318,12 @@ export function useViewportFitMath(
       (tier === "tablet" || tier === "desktop") &&
       cell_height > 0 &&
       cell_height < MIN_READABLE_CELL_HEIGHT
+    // Phase W-4a Step 6 Commit 3 — scroll mode dispatch per
+    // §13.3.4 Step 5 + §13.3.1. Two entry conditions composed via OR:
+    //   (a) Mobile width — outside viewport-fit promise
+    //   (b) tier-three threshold breach — cell_height < 80 on tablet+
+    const scroll_mode_active =
+      tier === "mobile" || tier_three_threshold_breached
     const pulse_scale = computePulseScale(available_pulse_height)
 
     return {
@@ -313,6 +332,7 @@ export function useViewportFitMath(
       column_count,
       cell_height,
       tier_three_threshold_breached,
+      scroll_mode_active,
       pulse_scale,
       viewport_height: height,
       viewport_width: width,
