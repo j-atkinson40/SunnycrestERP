@@ -138,18 +138,26 @@ def get_tenant_feed(
 
     Returns a list of dicts with: id, activity_type, title, body,
     is_system_generated, company_id, company_name, created_at,
-    logged_by. Body is truncated to 200 chars to keep the payload
-    tight for widget use; full bodies remain available via the
-    per-company feed.
+    logged_by (user id), actor_name (display name, populated for
+    widget consumption — Phase W-3a additive shim). Body is truncated
+    to 200 chars to keep the payload tight for widget use; full bodies
+    remain available via the per-company feed.
+
+    Phase W-3a (April 2026) additive shim: a left-join on User
+    populates `actor_name` ("First Last") for the recent_activity
+    widget. Existing consumers of the dict (V-1c CrmRecentActivityWidget)
+    continue to work unchanged — they ignore unknown keys.
     """
     from app.models.company_entity import CompanyEntity  # avoid cycle
+    from app.models.user import User as _User
 
     query = (
-        db.query(ActivityLog, CompanyEntity)
+        db.query(ActivityLog, CompanyEntity, _User)
         .join(
             CompanyEntity,
             ActivityLog.master_company_id == CompanyEntity.id,
         )
+        .outerjoin(_User, ActivityLog.logged_by == _User.id)
         .filter(ActivityLog.tenant_id == tenant_id)
     )
 
@@ -163,10 +171,18 @@ def get_tenant_feed(
     )
 
     result: list[dict] = []
-    for activity, company in rows:
+    for activity, company, actor in rows:
         body = activity.body
         if body and len(body) > 200:
             body = body[:200] + "…"
+        # Phase W-3a — actor_name shim. Falls back to None for system-
+        # generated events, deleted users, or cross-tenant ghost rows
+        # that shouldn't exist but might in legacy data.
+        actor_name: str | None = None
+        if actor is not None:
+            first = (actor.first_name or "").strip()
+            last = (actor.last_name or "").strip()
+            actor_name = f"{first} {last}".strip() or None
         result.append(
             {
                 "id": activity.id,
@@ -178,6 +194,7 @@ def get_tenant_feed(
                 "company_name": company.name,
                 "created_at": activity.created_at,
                 "logged_by": activity.logged_by,
+                "actor_name": actor_name,
             }
         )
     return result

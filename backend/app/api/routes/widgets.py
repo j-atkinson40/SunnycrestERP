@@ -22,6 +22,34 @@ def get_available_widgets(
     )
 
 
+@router.get("/available-for-surface")
+def get_widgets_for_surface(
+    surface: str = Query(
+        ...,
+        description=(
+            "Surface slug from the 7-surface enum: pulse_grid / "
+            "focus_canvas / focus_stack / spaces_pin / floating_tablet / "
+            "dashboard_grid / peek_inline. See DESIGN_LANGUAGE.md §12.5."
+        ),
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Widget Library Phase W-2 — surface-scoped widget catalog.
+
+    Returns widgets that declare ``surface`` in their supported_surfaces,
+    filtered by the 4-axis filter against the union of their declared
+    page_contexts. Used by the WidgetPicker (`destination="sidebar"`)
+    to populate the list of pinnable widgets without coupling to a
+    specific page_context (sidebar pinning is page-context-independent).
+
+    Same response shape as ``/widgets/available``.
+    """
+    return widget_service.get_widgets_for_surface(
+        db, current_user.company_id, current_user, surface
+    )
+
+
 @router.get("/layout")
 def get_layout(
     page_context: str = Query(..., description="Page context slug"),

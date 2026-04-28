@@ -92,6 +92,32 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> dict:
 
     seed_spaces_best_effort(db, user, call_site="register_company")
 
+    # Phase W-3a — auto-seed default product lines per tenant vertical.
+    # Per [BRIDGEABLE_MASTER §5.2.1](../../BRIDGEABLE_MASTER.md): vault
+    # is the auto-seeded baseline for every manufacturing-vertical
+    # tenant, NOT extension-gated. Other verticals get their own
+    # baseline (funeral_services for funeral_home, etc.).
+    # Best-effort — per-line failures inside the helper don't propagate
+    # but a top-level exception here would still be defensive (log +
+    # continue) so registration completes.
+    try:
+        from app.services import product_line_service
+
+        product_line_service.seed_default_product_lines(db, company)
+    except Exception:
+        # Mirror the spaces-seed defensive pattern. The helper itself
+        # logs per-line failures; this catch is for unexpected import /
+        # session errors.
+        import logging
+        logging.getLogger(__name__).exception(
+            "Failed to seed default product lines for company %s",
+            company.id,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
     return {"company": company, "user": user}
 
 
@@ -232,7 +258,38 @@ def login_user(db: Session, data: LoginRequest, company: Company) -> TokenRespon
     # writes user.last_console_login_at in the same commit, so
     # adding a seed here keeps that single-commit discipline.
     _prefs = user.preferences or {}
-    if not _prefs.get("spaces") or not _prefs.get("spaces_seeded_for_roles"):
+    # Phase W-4a — third invariant: every user must have every
+    # currently-visible system space template seeded. New system
+    # templates added post-canon (Phase W-4a "home" template) won't
+    # surface for existing users without this gate widening, because
+    # `spaces_seeded_for_roles` is populated and the prior 8e.2.2
+    # gate would short-circuit. Cheap check: compare seeded
+    # template_ids against the visible-to-this-user set; mismatch
+    # triggers re-seed (idempotent — _apply_system_spaces skips
+    # already-seeded entries).
+    _missing_system_templates = False
+    if _prefs.get("spaces"):
+        try:
+            from app.services.spaces.registry import (
+                get_system_space_templates_for_user,
+            )
+
+            _seen = set(_prefs.get("system_spaces_seeded", []))
+            _expected = {
+                tpl.template_id
+                for tpl in get_system_space_templates_for_user(db, user)
+            }
+            if _expected - _seen:
+                _missing_system_templates = True
+        except Exception:
+            # Defensive: registry import failure must not block login.
+            pass
+
+    if (
+        not _prefs.get("spaces")
+        or not _prefs.get("spaces_seeded_for_roles")
+        or _missing_system_templates
+    ):
         from app.services.spaces.seed import seed_spaces_best_effort
 
         seed_spaces_best_effort(db, user, call_site="login_user")

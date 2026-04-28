@@ -475,3 +475,167 @@ describe("AncillaryPoolPin — drop target (Phase 4.3b.4)", () => {
     expect(empty?.textContent).not.toMatch(/Drop to return/)
   })
 })
+
+
+// ── Widget Library Phase W-2 — Glance variant ───────────────────────
+
+
+describe("AncillaryPoolPin — Glance variant (Phase W-2)", () => {
+  it("renders Glance variant when surface=spaces_pin", () => {
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin surface="spaces_pin" />
+      </Harness>,
+    )
+    const glance = document.querySelector(
+      '[data-slot="ancillary-pool-pin"][data-variant="glance"]',
+    )
+    expect(glance).toBeInTheDocument()
+    // Glance does NOT render the Detail-variant list / empty.
+    expect(
+      document.querySelector('[data-slot="ancillary-pool-pin-list"]'),
+    ).toBeNull()
+    expect(
+      document.querySelector('[data-slot="ancillary-pool-pin-empty"]'),
+    ).toBeNull()
+  })
+
+  it("renders Glance variant when variant_id=glance", () => {
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin variant_id="glance" />
+      </Harness>,
+    )
+    expect(
+      document.querySelector(
+        '[data-slot="ancillary-pool-pin"][data-variant="glance"]',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it("renders Detail variant by default (no variant_id, no surface)", () => {
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin />
+      </Harness>,
+    )
+    // Detail variant has the empty-state slot; Glance does not.
+    expect(
+      document.querySelector('[data-slot="ancillary-pool-pin-empty"]'),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector(
+        '[data-slot="ancillary-pool-pin"][data-variant="glance"]',
+      ),
+    ).toBeNull()
+  })
+
+  it("Glance shows count chip when pool has items", () => {
+    const items = [
+      makePoolItem({ id: "a" }),
+      makePoolItem({ id: "b" }),
+      makePoolItem({ id: "c" }),
+    ]
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: items })}>
+        <AncillaryPoolPin surface="spaces_pin" />
+      </Harness>,
+    )
+    const chip = document.querySelector(
+      '[data-slot="ancillary-pool-pin-count"]',
+    )
+    expect(chip).toBeInTheDocument()
+    expect(chip?.textContent).toBe("3")
+    const subtext = document.querySelector(
+      '[data-slot="ancillary-pool-pin-glance-subtext"]',
+    )
+    expect(subtext?.textContent).toMatch(/3 items waiting/)
+  })
+
+  it("Glance hides count chip when pool empty + shows 'Pool clear'", () => {
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin surface="spaces_pin" />
+      </Harness>,
+    )
+    expect(
+      document.querySelector('[data-slot="ancillary-pool-pin-count"]'),
+    ).toBeNull()
+    const subtext = document.querySelector(
+      '[data-slot="ancillary-pool-pin-glance-subtext"]',
+    )
+    expect(subtext?.textContent).toMatch(/Pool clear/)
+  })
+
+  it("Glance singular wording 'item' when count = 1", () => {
+    const items = [makePoolItem({ id: "only" })]
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: items })}>
+        <AncillaryPoolPin surface="spaces_pin" />
+      </Harness>,
+    )
+    const subtext = document.querySelector(
+      '[data-slot="ancillary-pool-pin-glance-subtext"]',
+    )
+    expect(subtext?.textContent).toMatch(/1 item waiting/)
+    // Should NOT pluralize when 1.
+    expect(subtext?.textContent).not.toMatch(/items waiting/)
+  })
+
+  it("Glance carries role=button + tabIndex=0 for keyboard summon", () => {
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin surface="spaces_pin" />
+      </Harness>,
+    )
+    const glance = document.querySelector(
+      '[data-slot="ancillary-pool-pin"][data-variant="glance"]',
+    ) as HTMLElement
+    expect(glance.getAttribute("role")).toBe("button")
+    expect(glance.getAttribute("tabIndex")).toBe("0")
+    expect(glance.getAttribute("aria-label")).toMatch(/Ancillary pool/)
+  })
+
+  it("Glance keeps eyebrow + bezel grip from Pattern 1 reference", () => {
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin surface="spaces_pin" />
+      </Harness>,
+    )
+    // Eyebrow label is consistent across variants — same identifying
+    // tablet name "Ancillary pool" reads on canvas + sidebar.
+    expect(
+      document.querySelector(
+        '[data-slot="ancillary-pool-pin-eyebrow"]',
+      )?.textContent,
+    ).toBe("Ancillary pool")
+    // Bezel grip column is the Pattern 1 structural left edge —
+    // identical between Glance + Detail.
+    expect(
+      document.querySelector('[data-slot="ancillary-pool-pin-bezel-grip"]'),
+    ).toBeInTheDocument()
+  })
+
+  it("Glance renders without a Focus provider (sidebar mounting)", () => {
+    // Spaces sidebar mounts the widget OUTSIDE the funeral-scheduling
+    // Focus, so the SchedulingFocusContext provider isn't present.
+    // Glance must degrade gracefully (count=0) — Detail variant
+    // would crash in this mounting per its hard-hook contract.
+    // Render directly with no Provider wrapper; Glance variant
+    // doesn't need DndContext (no draggables in the Glance shape).
+    render(<AncillaryPoolPin surface="spaces_pin" />)
+    const glance = document.querySelector(
+      '[data-slot="ancillary-pool-pin"][data-variant="glance"]',
+    )
+    expect(glance).toBeInTheDocument()
+    // No items, no count chip; subtext shows "Pool clear".
+    expect(
+      document.querySelector('[data-slot="ancillary-pool-pin-count"]'),
+    ).toBeNull()
+    expect(
+      document.querySelector(
+        '[data-slot="ancillary-pool-pin-glance-subtext"]',
+      )?.textContent,
+    ).toMatch(/Pool clear/)
+  })
+})

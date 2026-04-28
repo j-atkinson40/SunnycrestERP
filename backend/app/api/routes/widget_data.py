@@ -7,7 +7,8 @@ to be fast and independent so one widget failing doesn't affect others.
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, case, and_
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,192 @@ from app.api.deps import get_current_user, get_db
 from app.models.user import User
 
 router = APIRouter()
+
+
+# ── Phase W-3d — `vault_schedule` widget (mode-aware workspace-core) ──
+
+
+@router.get("/vault-schedule")
+def vault_schedule_widget_summary(
+    target_date: Optional[date] = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD) for the schedule. Default: tenant-local today.",
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mode-aware vault schedule — Phase W-3d `vault_schedule` widget
+    data source.
+
+    Reads `TenantProductLine(line_key="vault").config["operating_mode"]`
+    and dispatches:
+      • production → Delivery rows (kanban shape)
+      • purchase   → LicenseeTransfer incoming rows
+      • hybrid     → both, composed
+
+    Per DESIGN_LANGUAGE.md §12.6 workspace-core canon: same data the
+    scheduling Focus core consumes, abridged interactive surface.
+
+    See `app/services/widgets/vault_schedule_service.py` for full
+    mode-dispatch logic + tenant isolation discipline.
+    """
+    from app.services.widgets.vault_schedule_service import get_vault_schedule
+
+    return get_vault_schedule(db, user=current_user, target_date=target_date)
+
+
+# ── Phase W-3d — `urn_catalog_status` widget (extension-gated) ──
+
+
+@router.get("/urn-catalog-status")
+def urn_catalog_status_widget_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Urn catalog health — Phase W-3d `urn_catalog_status` widget
+    data source. **First widget exercising the `required_extension`
+    axis end-to-end** — visible only to tenants with urn_sales
+    activated.
+
+    Returns SKU counts (total, stocked, drop-ship), low-stock
+    identification, recent order count. Click-through to
+    /urns/catalog for full catalog view.
+
+    See `app/services/widgets/urn_catalog_status_service.py` for full
+    aggregation logic + tenant isolation discipline.
+    """
+    from app.services.widgets.urn_catalog_status_service import (
+        get_urn_catalog_status,
+    )
+
+    return get_urn_catalog_status(db, user=current_user)
+
+
+# ── Phase W-3d — `line_status` widget (cross-line aggregator) ──
+
+
+@router.get("/line-status")
+def line_status_widget_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cross-line health summary — Phase W-3d `line_status` widget
+    data source. Returns per-line health rows for whichever product
+    lines the tenant has activated. Multi-line builder pattern
+    (mirrors today_widget_service): vault metrics real today,
+    redi_rock/wastewater/urn_sales placeholders until each line's
+    metrics aggregator ships.
+
+    See `app/services/widgets/line_status_service.py` for full
+    per-line builder logic + status assessment heuristics.
+    """
+    from app.services.widgets.line_status_service import get_line_status
+
+    return get_line_status(db, user=current_user)
+
+
+# ── Phase W-3a — `today` widget (cross-vertical, product-line-aware) ──
+
+
+@router.get("/today")
+def today_widget_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Today's work summary — Phase W-3a `today` widget data source.
+
+    Cross-vertical visibility (every tenant); per-vertical-and-line
+    content. For Sunnycrest manufacturing+vault: vault deliveries +
+    ancillary pool items + unscheduled. For other verticals (W-3a
+    Phase 1): empty payload + primary_navigation_target pointing at
+    the relevant primary work surface so empty-state CTA lands
+    somewhere useful.
+
+    See `app/services/widgets/today_widget_service.py` for full
+    breakdown logic + per-line content shape.
+    """
+    from app.services.widgets.today_widget_service import get_today_summary
+
+    return get_today_summary(db, user=current_user)
+
+
+# ── Phase W-3a — `anomalies` widget (real agent_anomalies data) ──
+
+
+class _AcknowledgeAnomalyRequest(BaseModel):
+    resolution_note: str | None = Field(default=None, max_length=2000)
+
+
+@router.get("/anomalies")
+def anomalies_widget_summary(
+    severity: str | None = Query(
+        default=None,
+        regex="^(critical|warning|info)$",
+        description="Filter to a single severity level. Omit for all.",
+    ),
+    limit: int = Query(default=20, ge=1, le=200),
+    include_resolved: bool = Query(default=False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tenant-scoped unresolved anomalies — Phase W-3a `anomalies`
+    widget data source. Severity-sorted (critical → warning → info),
+    then by created_at desc.
+
+    Returns: `{ anomalies: [...], total_unresolved: int, critical_count: int }`.
+
+    Tenant isolation: explicit join on `AgentJob.tenant_id == user.company_id`
+    in `anomalies_widget_service.get_anomalies` — the security gate.
+    See `app/services/widgets/anomalies_widget_service.py` for details.
+    """
+    from app.services.widgets.anomalies_widget_service import get_anomalies
+
+    return get_anomalies(
+        db,
+        user=current_user,
+        severity_filter=severity,
+        limit=limit,
+        include_resolved=include_resolved,
+    )
+
+
+@router.post("/anomalies/{anomaly_id}/acknowledge")
+def acknowledge_anomaly(
+    anomaly_id: str,
+    body: _AcknowledgeAnomalyRequest = _AcknowledgeAnomalyRequest(),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Acknowledge (resolve) an anomaly. Phase W-3a interactivity
+    discipline test case: bounded state flip per §12.6a — single
+    anomaly, single field, audit-logged.
+
+    Tenant isolation: re-validates ownership via
+    `AgentJob.tenant_id == user.company_id` before mutation. Returns
+    404 for cross-tenant anomaly_id (existence-hiding to prevent
+    leakage).
+
+    Idempotent: re-acknowledging an already-resolved anomaly is a
+    no-op write returning the existing row.
+    """
+    from app.services.widgets.anomalies_widget_service import resolve_anomaly
+
+    anomaly = resolve_anomaly(
+        db,
+        user=current_user,
+        anomaly_id=anomaly_id,
+        resolution_note=body.resolution_note,
+    )
+    if anomaly is None:
+        raise HTTPException(status_code=404, detail="Anomaly not found")
+
+    return {
+        "id": anomaly.id,
+        "resolved": anomaly.resolved,
+        "resolved_at": anomaly.resolved_at,
+        "resolved_by": anomaly.resolved_by,
+        "resolution_note": anomaly.resolution_note,
+    }
 
 
 @router.get("/orders/today")

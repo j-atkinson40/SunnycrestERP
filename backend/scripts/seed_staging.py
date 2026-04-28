@@ -163,6 +163,16 @@ def main():
         print("[13] Creating delivery settings...")
         _seed_delivery_settings(db)
 
+        # ---- 14. Product lines (Phase W-3a — vault auto-seed) ----
+        # Per BRIDGEABLE_MASTER §5.2.1: vault is the auto-seeded baseline
+        # for every manufacturing-vertical tenant. testco is manufacturing
+        # vertical so it gets a TenantProductLine(line_key="vault") row
+        # with operating_mode=production by default. Other lines (urn_sales,
+        # redi_rock, wastewater, rosetta) activate via extension setup
+        # wizard, NOT auto-seeded for testco.
+        print("[14] Seeding product lines (vault baseline)...")
+        _seed_product_lines(db)
+
         db.commit()
         print()
 
@@ -966,6 +976,35 @@ def _seed_delivery_settings(db: Session):
                 :now)
         """), {"id": uid(), "cid": CFG["company_id"], "now": NOW})
         print("    -> Created delivery settings (end_of_day mode)")
+    db.flush()
+
+
+def _seed_product_lines(db: Session):
+    """Phase W-3a — auto-seed default product lines per tenant vertical.
+
+    testco is manufacturing → gets vault baseline (per BRIDGEABLE_MASTER
+    §5.2.1). Operating mode defaults to "production" via the catalog's
+    default_operating_mode. Idempotent — re-running enables existing
+    rows + merges config without clobbering.
+
+    Uses the canonical helper `seed_default_product_lines` so seed_staging
+    stays in lockstep with `auth_service.register_company` (the
+    production code path that auto-seeds at tenant registration).
+    """
+    from app.models.company import Company
+    from app.services import product_line_service
+
+    company = db.query(Company).filter(Company.id == CFG["company_id"]).first()
+    if not company:
+        print("    -> Company not found; skipping product line seed")
+        return
+
+    seeded = product_line_service.seed_default_product_lines(db, company)
+    if seeded:
+        line_keys = ", ".join(line.line_key for line in seeded)
+        print(f"    -> Seeded {len(seeded)} product line(s): {line_keys}")
+    else:
+        print("    -> No default product lines for vertical; or all already seeded")
     db.flush()
 
 

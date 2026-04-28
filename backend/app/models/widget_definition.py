@@ -1,21 +1,32 @@
 """WidgetDefinition — platform-wide widget catalog.
 
 Each row describes a widget that can appear on one or more surfaces.
-Visibility is gated via the 4-axis filter (Widget Library §12.4):
-permission + module + extension + vertical.
+Visibility is gated via the 5-axis filter (Widget Library §12.4):
+permission + module + extension + vertical + product_line.
 
 See `DESIGN_LANGUAGE.md` Section 12 for the canonical Widget Library
-Architecture spec. Phase W-1 of that spec adds:
+Architecture spec. Phase W-1 added the foundation. Phase W-3a (April
+2026) added the 5th axis (`required_product_line`) per Product Line +
+Operating Mode canon — see [BRIDGEABLE_MASTER §5.2.1](../../BRIDGEABLE_MASTER.md)
+for the canonical Extension-vs-ProductLine distinction:
+**Extension = how a line gets installed (or not — vault is built-in).
+Product line = the operational reality once installed.**
+
+Phase W-1 columns:
   • variants (JSONB) — per Section 12.3 / 12.10 per-widget variant
     declarations (Glance / Brief / Detail / Deep)
   • default_variant_id (str) — references one of the variants
-  • required_vertical (JSONB array | "*") — Section 12.4 4-axis
-    filter axis 4
+  • required_vertical (JSONB array | "*") — Section 12.4 axis 4
   • supported_surfaces (JSONB) — Section 12.5 per-surface
     composition rules
   • default_surfaces (JSONB) — surfaces where widget seeds in
     default layouts (subset of supported_surfaces)
   • intelligence_keywords (JSONB) — Section 12 phase W-5 prep
+
+Phase W-3a column:
+  • required_product_line (JSONB array | "*") — Section 12.4 axis 5.
+    JSONB array of TenantProductLine.line_key values (e.g.
+    ["vault"]) or ["*"] for cross-line (default).
 
 Legacy columns kept for one release window per Decision 10:
   • required_preset — DEPRECATED. The bug at widget_service.py:304
@@ -71,6 +82,20 @@ class WidgetDefinition(Base):
     # JSONB array of vertical strings (e.g. ["funeral_home"]) or
     # ["*"] for cross-vertical (the default per Decision 9).
     required_vertical: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=lambda: ["*"]
+    )
+
+    # Phase W-3a — Section 12.4 5-axis filter axis 5: product line scoping.
+    # JSONB array of TenantProductLine.line_key values (e.g. ["vault"]) or
+    # ["*"] for cross-line (default). Per [BRIDGEABLE_MASTER §5.2.1](../../BRIDGEABLE_MASTER.md):
+    # distinct from `required_extension` because vault is a baseline
+    # product line that is NOT extension-gated, but vault widgets need
+    # to scope to "vault product line activated for this tenant".
+    # Filter resolves against TenantProductLine.line_key with
+    # is_enabled=True; widget visible iff at least one of its declared
+    # line_keys appears in the tenant's enabled set, OR the widget
+    # declares ["*"].
+    required_product_line: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=lambda: ["*"]
     )
 

@@ -59,9 +59,13 @@ import { CSS } from "@dnd-kit/utilities"
 import { InboxIcon } from "lucide-react"
 
 import { useFocusDndActiveId } from "@/components/focus/FocusDndProvider"
-import { useSchedulingFocus } from "@/contexts/scheduling-focus-context"
+import {
+  useSchedulingFocus,
+  useSchedulingFocusOptional,
+} from "@/contexts/scheduling-focus-context"
 import { cn } from "@/lib/utils"
 import type { DeliveryDTO } from "@/services/dispatch-service"
+import type { VariantId } from "@/components/widgets/types"
 
 
 /** Drop target id for the AncillaryPoolPin. SchedulingKanbanCore's
@@ -211,13 +215,201 @@ export interface AncillaryPoolPinProps {
    *  WidgetRendererProps contract for future per-widget telemetry /
    *  state-keying. */
   widgetId?: string
+  /** Widget Library Phase W-1 — variant discriminator per Section
+   *  12.2. AncillaryPoolPin declares Glance + Brief + Detail in the
+   *  catalog. The full `VariantId` union is accepted for compatibility
+   *  with the registry's `WidgetRendererProps` shape (which is generic
+   *  across all widgets). This component renders Glance and Detail
+   *  branches today; Brief + Deep fall through to Detail per Decision
+   *  10 (graceful back-compat during migration window). */
+  variant_id?: VariantId
+  /** Phase W-2 — surface discriminator. When `surface === "spaces_pin"`,
+   *  the component renders a compact summon affordance regardless of
+   *  variant_id (sidebar pins always use Glance per §12.2). When
+   *  surface is unset OR focus_canvas/focus_stack, variant_id chooses
+   *  the rendering path. */
+  surface?: "focus_canvas" | "focus_stack" | "spaces_pin"
 }
 
 
-export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
-  // Read pool data from the Focus-level provider. useSchedulingFocus
-  // throws if mounted outside the provider — that's the contract:
-  // this widget is only valid inside the funeral-scheduling Focus.
+/**
+ * Glance variant rendering — Section 12.10 reference.
+ *
+ * Compact 180×60 summon affordance for the Spaces sidebar (and
+ * potentially pulse_grid) per the catalog's Glance variant config.
+ *
+ * Composition (DESIGN_LANGUAGE.md §12.2 + §11 Pattern 1 reference):
+ *   • Single-row chrome: eyebrow label + count chip + caret cue.
+ *   • No list, no per-item draggability — the Glance variant's
+ *     interactivity is the summon click only (Section 12.6a Widget
+ *     Interactivity Discipline: state changes widget-appropriate,
+ *     decisions belong in Focus). The whole tablet acts as the
+ *     button.
+ *   • Same Pattern 1 frosted-glass + rounded-none + composite shadow
+ *     surface treatment as the Detail variant — visual continuity
+ *     across surfaces (sidebar vs. focus canvas) is intentional.
+ *
+ * Click handler is provided by the parent surface (PinnedSection in
+ * Commit 3); the variant itself is render-only here. Per Section
+ * 12.6a, click summons Focus with the Detail variant — Glance's job
+ * is to surface a count and offer a way to expand into a decision
+ * surface.
+ *
+ * Empty state: still rendered (count chip omitted) — the absence of
+ * pool items IS the information at a glance. "Pool clear" subtext
+ * confirms; no zero-state hidden because that would silently degrade
+ * the affordance.
+ */
+function AncillaryPoolGlanceTablet({
+  poolCount,
+  poolLoading,
+}: {
+  poolCount: number
+  poolLoading: boolean
+}) {
+  return (
+    <div
+      data-slot="ancillary-pool-pin"
+      data-variant="glance"
+      data-surface="spaces_pin"
+      // Aesthetic Arc Session 4.8 — same Pattern 1 transform as the
+      // Detail variant. Tablet floats over the sidebar substrate via
+      // 2px upward offset + composite atmospheric shadow.
+      style={{ transform: "var(--widget-tablet-transform)" }}
+      className={cn(
+        // Pattern 1 frosted-glass surface (DL §11) — identical
+        // composition to the Detail variant for cross-surface
+        // visual continuity. The Glance variant differs in CONTENT
+        // density (single row vs. scrollable list), not in surface
+        // treatment.
+        "relative flex items-center overflow-hidden",
+        "bg-surface-elevated/85 supports-[backdrop-filter]:backdrop-blur-sm",
+        "rounded-none",
+        "shadow-[var(--shadow-widget-tablet)]",
+        // Glance-specific dimensions per WIDGET_DEFINITIONS catalog
+        // (canvas_size 180×60, density: minimal). h-15 = 60px.
+        "h-15 w-full",
+        // Section 12.6a — Glance summons. The tablet itself is the
+        // click affordance; cursor + hover signal interactivity.
+        "cursor-pointer",
+        "hover:bg-surface-elevated/95",
+        "transition-colors duration-quick ease-settle",
+        "focus-ring-accent outline-none",
+        poolLoading && "opacity-80",
+      )}
+      // role+tabIndex per Section 12.6a interactivity discipline:
+      // Glance is a summon affordance, not a passive readout. The
+      // parent PinnedSection wires the click handler; here we just
+      // declare the role + keyboard accessibility.
+      role="button"
+      tabIndex={0}
+      aria-label={
+        poolCount > 0
+          ? `Ancillary pool — ${poolCount} ${
+              poolCount === 1 ? "item" : "items"
+            } waiting. Open Focus to pair.`
+          : "Ancillary pool — clear. Open Focus."
+      }
+    >
+      {/* Bezel column — same 28px structural left edge as Detail
+          variant, two short vertical grip lines per macOS column-
+          resize-handle vocabulary. Aria-hidden because the tablet
+          itself carries the role=button semantics. */}
+      <div
+        aria-hidden
+        data-slot="ancillary-pool-pin-bezel-grip"
+        className={cn(
+          "flex h-full w-7 shrink-0 items-center justify-center",
+          "border-r border-border-subtle/30",
+          "gap-0.5",
+        )}
+      >
+        <span className="block h-3 w-0.5 rounded-full bg-content-muted/30" />
+        <span className="block h-3 w-0.5 rounded-full bg-content-muted/30" />
+      </div>
+      {/* Content row — eyebrow + count chip + caret cue. Single
+          horizontal layout, no header divider, no list. Section 12.10
+          Glance reference: minimum information density, summon
+          affordance via tablet click.
+          Note: per DL §11 Pattern 1 widget chrome reduction for
+          Glance variant, the eyebrow + heading composition collapses
+          to one line — eyebrow standalone reads as identifying
+          label without needing a state phrase below. */}
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3">
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "text-micro uppercase tracking-wider",
+              "text-content-muted font-mono",
+              "truncate",
+            )}
+            data-slot="ancillary-pool-pin-eyebrow"
+          >
+            Ancillary pool
+          </p>
+          <p
+            className={cn(
+              "mt-0.5 text-caption leading-tight",
+              "text-content-muted font-sans",
+              "truncate",
+            )}
+            data-slot="ancillary-pool-pin-glance-subtext"
+          >
+            {poolCount === 0
+              ? "Pool clear"
+              : `${poolCount} ${
+                  poolCount === 1 ? "item" : "items"
+                } waiting`}
+          </p>
+        </div>
+        {poolCount > 0 && (
+          <span
+            data-slot="ancillary-pool-pin-count"
+            className={cn(
+              "inline-flex items-center justify-center",
+              "min-w-[20px] h-5 px-1.5 rounded-full",
+              "bg-accent text-content-on-accent text-caption font-medium",
+              "font-mono tabular-nums shrink-0",
+            )}
+          >
+            {poolCount}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+/**
+ * Glance dispatcher — connects the Spaces sidebar mount to the
+ * stateless Glance tablet. Reads pool data via the OPTIONAL hook so
+ * mounting outside a Focus provider degrades gracefully (count=0).
+ *
+ * Phase W-2 contract: this is a pure data-piping component. The
+ * tablet itself (AncillaryPoolGlanceTablet) is render-only and
+ * presentation-only; click handling is the parent's responsibility
+ * (PinnedSection in Commit 3 wires the summon).
+ */
+function AncillaryPoolGlanceVariant() {
+  const optCtx = useSchedulingFocusOptional()
+  return (
+    <AncillaryPoolGlanceTablet
+      poolCount={optCtx?.poolAncillaries.length ?? 0}
+      poolLoading={optCtx?.poolLoading ?? false}
+    />
+  )
+}
+
+
+/**
+ * Detail variant — pre-W-2 rich list rendering. Hard-asserts the
+ * Focus provider via useSchedulingFocus(). The call sites that mount
+ * Detail (Canvas, StackRail, BottomSheet, StackExpandedOverlay) all
+ * sit inside the funeral-scheduling Focus, so the provider contract
+ * holds.
+ */
+function AncillaryPoolDetailVariant() {
   const { poolAncillaries, poolLoading } = useSchedulingFocus()
 
   // Phase 4.3b.4 — pin becomes a drop target for return-to-pool.
@@ -508,4 +700,44 @@ export function AncillaryPoolPin(_props: AncillaryPoolPinProps) {
       </div>{/* /content column (Session 4.5) */}
     </div>
   )
+}
+
+
+/**
+ * Top-level dispatcher — Widget Library Phase W-2.
+ *
+ * Selects the variant component based on the W-1 unified-contract
+ * props (variant_id + surface) per Section 12.3 Decision 5 (one
+ * component per widget; internal switch). The dispatcher itself
+ * calls NO hooks — each variant component owns its hook order, so
+ * React's rules-of-hooks are satisfied across renders that flip
+ * between variants.
+ *
+ * Glance branch (sidebar / pulse_grid):
+ *   - Triggered by `surface === "spaces_pin"` OR `variant_id === "glance"`.
+ *   - Renders the compact 180×60 summon affordance.
+ *   - Tolerates non-Focus mounting (the sidebar surface is global).
+ *
+ * Detail branch (default — Focus canvas, stack, bottom sheet, stack
+ * expanded overlay):
+ *   - Triggered when neither Glance signal is present.
+ *   - Renders the full scrollable list with drag-source affordance.
+ *   - Hard-asserts the Focus provider via useSchedulingFocus.
+ *
+ * Brief variant:
+ *   - Declared in the catalog (canvas_size 280×320), but Phase W-2
+ *     ships only Glance + Detail rendering. Brief falls through to
+ *     Detail today as graceful behavior; a dedicated Brief tablet
+ *     ships when a consumer surface (pulse_grid summary, focus_stack
+ *     compact) needs it. Decision 10 (back-compat during migration)
+ *     covers this — widgets ship variants incrementally without
+ *     breaking pre-existing consumers.
+ */
+export function AncillaryPoolPin(props: AncillaryPoolPinProps) {
+  const isGlance =
+    props.surface === "spaces_pin" || props.variant_id === "glance"
+  if (isGlance) {
+    return <AncillaryPoolGlanceVariant />
+  }
+  return <AncillaryPoolDetailVariant />
 }

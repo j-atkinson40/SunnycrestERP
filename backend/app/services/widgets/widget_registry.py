@@ -427,6 +427,748 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_position": 10,
         "required_permission": "admin",
     },
+    # ── Phase W-3a cross-vertical foundation widgets ──────────
+    # Cross-vertical (required_vertical: "*") + cross-line
+    # (required_product_line: "*"). Visible to every tenant
+    # regardless of vertical or product-line activation. Per
+    # DESIGN_LANGUAGE.md §12.10 reference implementations expanded
+    # for the W-3a foundation set.
+    {
+        "widget_id": "saved_view",
+        "title": "Saved View",
+        "description": (
+            "Generic widget rendering any tenant saved view. "
+            "Config-driven: each instance carries `config: {view_id: ...}` "
+            "selecting which saved view to render. Per-instance "
+            "configuration mechanism makes 'any saved view becomes a "
+            "widget instance' a first-class platform pattern — the "
+            "user-authored widget catalog without widget code. "
+            "Variants Brief + Detail + Deep — NO Glance because saved "
+            "views need at minimum a list to be informative; surface "
+            "compatibility excludes `spaces_pin` for the same reason "
+            "(sidebar requires Glance variant per §12.2 compatibility "
+            "matrix). Reuses the V-1c SavedView API + the existing "
+            "SavedViewRenderer per-mode dispatch (list / table / kanban "
+            "/ calendar / cards / chart / stat — 7 presentation modes). "
+            "View-only with click-through to entity per §12.6a — full "
+            "saved view editing happens at /saved-views/{view_id}."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "2x2",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1", "2x2", "4x2", "4x4"],
+        "category": "operations",
+        "icon": "Layers",
+        "default_enabled": True,
+        "default_position": 6,
+        # Section 12.5 surface declaration. Excludes `spaces_pin`
+        # because saved_view declares no Glance variant, and §12.2
+        # compatibility matrix requires Glance variants for sidebar
+        # rendering. Excludes `peek_inline` because the widget's
+        # variants are too dense for peek-panel content composition;
+        # peek panels can render saved views directly via
+        # SavedViewRenderer if needed.
+        "supported_surfaces": [
+            "pulse_grid",
+            "dashboard_grid",
+            "focus_canvas",
+        ],
+        "default_surfaces": ["dashboard_grid"],
+        "intelligence_keywords": [
+            "saved_view",
+            "view",
+            "list",
+            "table",
+            "kanban",
+            "calendar",
+            "report",
+        ],
+        "variants": [
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 320,
+                    "height": "auto",
+                    "maxHeight": 400,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+            {
+                "variant_id": "detail",
+                "density": "rich",
+                "grid_size": {"cols": 2, "rows": 2},
+                "canvas_size": {
+                    "width": 480,
+                    "height": "auto",
+                    "maxHeight": 600,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+            {
+                "variant_id": "deep",
+                "density": "deep",
+                "grid_size": {"cols": 4, "rows": 4},
+                "canvas_size": {
+                    "width": 640,
+                    "height": "auto",
+                    "maxHeight": 800,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+        ],
+        "default_variant_id": "detail",
+    },
+    {
+        "widget_id": "anomalies",
+        "title": "Anomalies",
+        "description": (
+            "Tenant-scoped unresolved anomaly feed — cross-vertical "
+            "foundation widget. Surfaces real production anomaly data "
+            "from the existing agent_anomalies table (accounting agent "
+            "infrastructure). Phase W-3a: real data over stub — "
+            "Wilbert licensee tenants running accounting agents have "
+            "production-emitted anomalies this widget surfaces "
+            "directly. Phase W-5 (Intelligence-detected anomalies) "
+            "extends the data source rather than replacing the widget. "
+            "Brief: 2-4 most recent/critical anomalies with "
+            "Acknowledge action. Detail: full scrollable list with "
+            "severity filter chips. NO Glance variant per §12.10 — "
+            "anomalies need at least Brief context. Per §12.6a: "
+            "Acknowledge is a bounded state flip (single anomaly, "
+            "single field, audit-logged) — widget-appropriate."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1", "2x2"],
+        "category": "operations",
+        "icon": "AlertTriangle",
+        "default_enabled": True,
+        "default_position": 5,
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+            "focus_canvas",
+        ],
+        "default_surfaces": ["pulse_grid", "dashboard_grid"],
+        "intelligence_keywords": [
+            "anomaly",
+            "anomalies",
+            "alert",
+            "exception",
+            "issue",
+            "warning",
+        ],
+        "variants": [
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 320,
+                    "height": "auto",
+                    "maxHeight": 320,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                    "spaces_pin",
+                ],
+            },
+            {
+                "variant_id": "detail",
+                "density": "rich",
+                "grid_size": {"cols": 2, "rows": 2},
+                "canvas_size": {
+                    "width": 480,
+                    "height": "auto",
+                    "maxHeight": 600,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+        ],
+        "default_variant_id": "brief",
+    },
+    {
+        "widget_id": "recent_activity",
+        "title": "Recent Activity",
+        "description": (
+            "Tenant-wide activity feed — cross-vertical foundation "
+            "widget. Backed by the V-1c `/vault/activity/recent` "
+            "endpoint extended Phase W-3a with `actor_name` shim. "
+            "Glance: count of recent events. Brief: 3-5 most recent "
+            "events with actor + action + entity + timestamp. Detail: "
+            "full scrollable list with event-type filter chips. "
+            "View-only widget per §12.6a — no state-flip interactions; "
+            "click-through navigates to the related entity. Used "
+            "inside peek panels at Brief variant for cross-surface "
+            "composition."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1", "2x2"],
+        "category": "operations",
+        "icon": "Activity",
+        "default_enabled": True,
+        "default_position": 4,
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+            "focus_canvas",
+            "peek_inline",
+        ],
+        "default_surfaces": ["pulse_grid", "dashboard_grid"],
+        "intelligence_keywords": [
+            "activity",
+            "recent",
+            "feed",
+            "events",
+            "log",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {"width": 240, "height": 60},
+                "supported_surfaces": ["spaces_pin", "pulse_grid"],
+            },
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 320,
+                    "height": "auto",
+                    "maxHeight": 320,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                    "peek_inline",
+                ],
+            },
+            {
+                "variant_id": "detail",
+                "density": "rich",
+                "grid_size": {"cols": 2, "rows": 2},
+                "canvas_size": {
+                    "width": 480,
+                    "height": "auto",
+                    "maxHeight": 600,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+        ],
+        "default_variant_id": "brief",
+    },
+    {
+        "widget_id": "operator_profile",
+        "title": "Operator Profile",
+        "description": (
+            "Current user's identity + role + active space — cross-"
+            "vertical foundation widget. Reads entirely from auth "
+            "context + spaces context (no backend call). Glance: "
+            "avatar + name + role. Brief: full identity + role + "
+            "active space + access summary (permissions / modules / "
+            "extensions counts). Click → /settings/profile for deep "
+            "edit."
+        ),
+        "page_contexts": ["pulse", "home"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1"],
+        "category": "operations",
+        "icon": "User",
+        "default_enabled": True,
+        "default_position": 2,
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+        ],
+        "default_surfaces": ["pulse_grid"],
+        "intelligence_keywords": [
+            "profile",
+            "operator",
+            "identity",
+            "role",
+            "permissions",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {"width": 240, "height": 60},
+                "supported_surfaces": ["spaces_pin", "pulse_grid"],
+            },
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 280,
+                    "height": "auto",
+                    "maxHeight": 240,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                ],
+            },
+        ],
+        "default_variant_id": "brief",
+    },
+    {
+        "widget_id": "today",
+        "title": "Today",
+        "description": (
+            "Today's work summary — cross-vertical foundation widget. "
+            "Shows the count + breakdown of relevant work items for the "
+            "user's tenant. Manufacturing+vault tenants see vault "
+            "deliveries, ancillary pool items waiting, and unscheduled "
+            "deliveries. Other verticals get a thoughtful empty state "
+            "with a CTA to their primary work surface (vertical-aware). "
+            "Per Section 12.10 W-3a reference implementation: Glance + "
+            "Brief variants only — `today` is a reference widget, not "
+            "a workspace surface."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1"],
+        "category": "operations",
+        "icon": "Calendar",
+        "default_enabled": True,
+        "default_position": 1,
+        # Cross-vertical + cross-line per W-3a foundation contract.
+        # Interactions per §12.6a are bounded to navigation only
+        # (no acknowledge / edit). View-only with click-through.
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+            "focus_canvas",
+        ],
+        "default_surfaces": ["pulse_grid", "dashboard_grid"],
+        "intelligence_keywords": [
+            "today",
+            "schedule",
+            "summary",
+            "overview",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {"width": 180, "height": 60},
+                "supported_surfaces": ["spaces_pin", "pulse_grid"],
+            },
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 280,
+                    "height": "auto",
+                    "maxHeight": 240,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+        ],
+        "default_variant_id": "brief",
+    },
+    {
+        "widget_id": "briefing",
+        "title": "Briefing",
+        "description": (
+            "Per-user AI briefing widget — Phase W-3b promotion of the "
+            "Phase 6 BriefingCard to widget contract. Per-user scoped: "
+            "every user sees their own latest morning OR evening "
+            "briefing (the existing Phase 6 `/briefings/v2/latest` "
+            "endpoint enforces the user-scoping). Glance: unread badge "
+            "+ briefing-type icon (sunrise/sunset). Brief: condensed "
+            "narrative excerpt + active space pill + 'Read full → ' "
+            "deep link to /briefing. Detail: full narrative + "
+            "structured-section preview cards (queue summaries, flags, "
+            "pending decisions) + Read full link. View-only per §12.6a "
+            "— Mark-read + Regenerate live on the dedicated /briefing "
+            "page, not the widget. Briefing-type selectable per "
+            "instance via `config.briefing_type` (default: 'morning'). "
+            "Cross-vertical + cross-line — every tenant + every user "
+            "with at least one Phase 6 briefing seen. Empty state when "
+            "the user has no briefing today routes to /briefing."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1", "2x2"],
+        "category": "intelligence",
+        "icon": "Sunrise",
+        "default_enabled": True,
+        "default_position": 7,
+        # Briefing surfaces: pulse_grid + spaces_pin (Glance) +
+        # dashboard_grid + focus_canvas (Brief / Detail). NOT
+        # peek_inline — briefing is per-user content, not
+        # entity-scoped, so peek panels (which compose around an
+        # entity) don't have a meaningful briefing rendering.
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+            "focus_canvas",
+        ],
+        "default_surfaces": ["pulse_grid", "dashboard_grid"],
+        "intelligence_keywords": [
+            "briefing",
+            "morning",
+            "evening",
+            "summary",
+            "today",
+            "agenda",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {"width": 200, "height": 60},
+                "supported_surfaces": ["spaces_pin", "pulse_grid"],
+            },
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 320,
+                    "height": "auto",
+                    "maxHeight": 320,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+            {
+                "variant_id": "detail",
+                "density": "rich",
+                "grid_size": {"cols": 2, "rows": 2},
+                "canvas_size": {
+                    "width": 480,
+                    "height": "auto",
+                    "maxHeight": 600,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+        ],
+        "default_variant_id": "brief",
+    },
+    # ── Phase W-3d manufacturing per-line widgets ─────────────
+    # Vertical-scoped + product-line-scoped. First widgets to exercise
+    # the 5-axis filter at full activation: vault_schedule + line_status
+    # use `required_product_line: ["vault"]` (or "*" for line_status
+    # cross-line aggregator); urn_catalog_status uses
+    # `required_extension: ["urn_sales"]` — first widget testing the
+    # extension axis end-to-end.
+    {
+        "widget_id": "vault_schedule",
+        "title": "Vault Schedule",
+        "description": (
+            "Mode-aware vault production schedule — Phase W-3d "
+            "workspace-core widget per §12.6. Reads "
+            "`TenantProductLine(line_key='vault').config['operating_mode']` "
+            "and dispatches: production mode reads Delivery rows "
+            "(kanban shape — same data scheduling Focus consumes); "
+            "purchase mode reads incoming LicenseeTransfer rows; "
+            "hybrid composes both. **Workspace-core canonical "
+            "reference**: bounded interactive surface per §12.6a "
+            "(mark hole-dug, drag delivery between drivers, attach/"
+            "detach ancillary, update single ETA); finalize / "
+            "day-switch / bulk reassignment remain Focus-only — "
+            "click-through 'Open in Focus' affordance always present. "
+            "Glance + Brief + Detail + Deep variants per §12.10 "
+            "reference. Per the SalesOrder vs Delivery investigation "
+            "(2026-04-27): widget consumes Delivery rows because "
+            "ancillary items are independent SalesOrders; driver "
+            "lives on Delivery (logistics concept). Cards enrich "
+            "with SalesOrder context (deceased, customer, line "
+            "items) at render time."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "2x2",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1", "2x2", "4x2", "4x4"],
+        "category": "operations",
+        "icon": "Truck",
+        "default_enabled": True,
+        "default_position": 8,
+        "required_vertical": ["manufacturing"],
+        "required_product_line": ["vault"],
+        # Section 12.5 surface declaration. Includes `spaces_pin` via
+        # Glance variant (sidebar-pinnable per §12.2 compatibility
+        # matrix). Excludes `peek_inline` because schedule is per-
+        # tenant operational data, not entity-scoped.
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+            "focus_canvas",
+        ],
+        "default_surfaces": ["pulse_grid", "dashboard_grid"],
+        "intelligence_keywords": [
+            "vault",
+            "schedule",
+            "pour",
+            "delivery",
+            "kanban",
+            "production",
+            "purchase",
+            "incoming",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {"width": 240, "height": 60},
+                "supported_surfaces": ["spaces_pin", "pulse_grid"],
+            },
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 320,
+                    "height": "auto",
+                    "maxHeight": 360,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+            {
+                "variant_id": "detail",
+                "density": "rich",
+                "grid_size": {"cols": 2, "rows": 2},
+                "canvas_size": {
+                    "width": 480,
+                    "height": "auto",
+                    "maxHeight": 600,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+            {
+                "variant_id": "deep",
+                "density": "deep",
+                "grid_size": {"cols": 4, "rows": 4},
+                "canvas_size": {
+                    "width": 720,
+                    "height": "auto",
+                    "maxHeight": 900,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+        ],
+        "default_variant_id": "brief",
+    },
+    {
+        "widget_id": "line_status",
+        "title": "Line Status",
+        "description": (
+            "Cross-line operational health aggregator — Phase W-3d "
+            "manufacturing per-line widget. Surfaces per-line status "
+            "for whichever product lines the tenant has activated. "
+            "Replaces the implicit pre-canon `production_status` "
+            "widget (which assumed all lines are production-mode) "
+            "with a mode-agnostic, per-line health view. Production-"
+            "mode lines show pour load + driver assignment; purchase-"
+            "mode lines show supplier delivery status; hybrid lines "
+            "compose both. Brief + Detail variants per §12.10 — NO "
+            "Glance because line status is operational-health "
+            "information that doesn't compress to count-only. "
+            "Cross-line scope (`required_product_line=['*']`) — "
+            "renders for whichever lines are active per tenant. "
+            "Multi-line builder pattern (mirrors today widget): "
+            "vault metrics real, redi_rock/wastewater/urn_sales "
+            "placeholders activate as their per-line aggregators "
+            "ship."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1", "2x2"],
+        "category": "operations",
+        "icon": "Activity",
+        "default_enabled": True,
+        "default_position": 9,
+        "required_vertical": ["manufacturing"],
+        "required_product_line": ["*"],
+        "supported_surfaces": [
+            "pulse_grid",
+            "dashboard_grid",
+            "focus_canvas",
+        ],
+        "default_surfaces": ["pulse_grid", "dashboard_grid"],
+        "intelligence_keywords": [
+            "line",
+            "status",
+            "health",
+            "operations",
+            "production",
+            "capacity",
+        ],
+        "variants": [
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 320,
+                    "height": "auto",
+                    "maxHeight": 280,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+            {
+                "variant_id": "detail",
+                "density": "rich",
+                "grid_size": {"cols": 2, "rows": 2},
+                "canvas_size": {
+                    "width": 480,
+                    "height": "auto",
+                    "maxHeight": 600,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+        ],
+        "default_variant_id": "brief",
+    },
+    {
+        "widget_id": "urn_catalog_status",
+        "title": "Urn Catalog Status",
+        "description": (
+            "Urn catalog health — Phase W-3d extension-gated widget. "
+            "**First widget in the catalog exercising the "
+            "`required_extension` axis end-to-end** — visible only "
+            "to tenants with the `urn_sales` extension activated. "
+            "Surfaces total active SKUs, stocked vs drop-ship "
+            "split, low-stock count + identification, recent order "
+            "volume. Glance + Brief variants per §12.10 — operator "
+            "wants 'how is my catalog' in one glance, not deep "
+            "navigation. Click-through to /urns/catalog for full "
+            "catalog management. View-only per §12.6a — adjusting "
+            "stock levels, reorder points, SKU activation happens "
+            "on the catalog page."
+        ),
+        "page_contexts": ["pulse", "home", "ops_board"],
+        "default_size": "1x1",
+        "min_size": "1x1",
+        "supported_sizes": ["1x1", "2x1"],
+        "category": "operations",
+        "icon": "Package",
+        "default_enabled": True,
+        "default_position": 10,
+        "required_vertical": ["manufacturing"],
+        # Product line + extension gating: must have urn_sales line
+        # AND extension activated.
+        "required_product_line": ["urn_sales"],
+        "required_extension": "urn_sales",
+        "supported_surfaces": [
+            "pulse_grid",
+            "spaces_pin",
+            "dashboard_grid",
+            "focus_canvas",
+        ],
+        "default_surfaces": ["pulse_grid", "dashboard_grid"],
+        "intelligence_keywords": [
+            "urn",
+            "catalog",
+            "sku",
+            "inventory",
+            "stock",
+        ],
+        "variants": [
+            {
+                "variant_id": "glance",
+                "density": "minimal",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {"width": 240, "height": 60},
+                "supported_surfaces": ["spaces_pin", "pulse_grid"],
+            },
+            {
+                "variant_id": "brief",
+                "density": "focused",
+                "grid_size": {"cols": 1, "rows": 1},
+                "canvas_size": {
+                    "width": 320,
+                    "height": "auto",
+                    "maxHeight": 320,
+                },
+                "supported_surfaces": [
+                    "pulse_grid",
+                    "dashboard_grid",
+                    "focus_canvas",
+                ],
+            },
+        ],
+        "default_variant_id": "brief",
+    },
     # ── Canvas widgets (Widget Library Phase W-1) ─────────────
     # Per Decision 1 unified contract, canvas widgets enter the
     # backend catalog with the same WidgetDefinition shape as
@@ -440,10 +1182,12 @@ WIDGET_DEFINITIONS: list[dict] = [
         "title": "Ancillary Pool",
         "description": (
             "Pool of date-less, unassigned ancillary deliveries waiting "
-            "to be paired with a primary delivery. Drag from pool to "
-            "driver lane (standalone) or onto a parent delivery card "
+            "to be paired with a primary vault delivery. Drag from pool "
+            "to driver lane (standalone) or onto a parent delivery card "
             "(attached). Reference implementation for Section 12 "
-            "Pattern 1 tablet treatment."
+            "Pattern 1 tablet treatment. Tracks vault-line-related "
+            "ancillaries (urns, cremation trays) riding along with "
+            "vault deliveries — hence vault product line scoping."
         ),
         "page_contexts": ["funeral_scheduling_focus", "pulse"],
         "default_size": "1x1",
@@ -454,7 +1198,15 @@ WIDGET_DEFINITIONS: list[dict] = [
         "default_enabled": True,
         "default_position": 1,
         "required_permission": "delivery.view",
-        "required_vertical": ["funeral_home"],
+        # Phase W-3a tagging correction (April 2026, post Product Line +
+        # Operating Mode canon): scheduling Focus is Sunnycrest
+        # manufacturing operations (outbound vault deliveries to FH
+        # customers); ancillary pool tracks vault-line ancillaries.
+        # Pre-canon was tagged ["funeral_home"] — that was the bug the
+        # canon investigation surfaced. Correct tagging per 5-axis
+        # filter: manufacturing vertical + vault product line.
+        "required_vertical": ["manufacturing"],
+        "required_product_line": ["vault"],
         "supported_surfaces": [
             "focus_canvas",
             "focus_stack",
@@ -563,13 +1315,17 @@ def seed_widget_definitions(db: Session) -> int:
       `at_risk_accounts` also appear in `vault_overview`) just by
       shipping new code — no migration required.
 
-    Per Widget Library Phase W-1 (Section 12), every widget must
-    declare `variants` + `default_variant_id` + `required_vertical` +
-    `supported_surfaces` + `default_surfaces` + `intelligence_keywords`.
-    Widgets that don't declare them get sensible defaults backfilled:
+    Per Widget Library Phase W-1 + W-3a (Section 12), every widget
+    must declare `variants` + `default_variant_id` + `required_vertical`
+    + `required_product_line` + `supported_surfaces` + `default_surfaces`
+    + `intelligence_keywords`. Widgets that don't declare them get
+    sensible defaults backfilled:
       • variants → single 'brief' variant matching legacy default_size
       • default_variant_id → 'brief'
       • required_vertical → ["*"] (cross-vertical, per Decision 9)
+      • required_product_line → ["*"] (cross-line, Phase W-3a default —
+        most platform-foundation widgets are line-agnostic; per-line
+        widgets like vault_schedule explicitly declare ["vault"])
       • supported_surfaces → ["dashboard_grid"] (current rendering target)
       • default_surfaces → same as supported_surfaces
       • intelligence_keywords → []
@@ -585,10 +1341,13 @@ def seed_widget_definitions(db: Session) -> int:
         row.setdefault("min_size", row.get("default_size", "1x1"))
         row.setdefault("max_size", "4x4")
 
-        # Phase W-1 unified contract defaults (Section 12).
+        # Phase W-1 + W-3a unified contract defaults (Section 12).
         row.setdefault("variants", [_brief_variant_for_size(row.get("default_size", "1x1"))])
         row.setdefault("default_variant_id", "brief")
         row.setdefault("required_vertical", ["*"])
+        # Phase W-3a — 5th axis default. Cross-line is the canonical
+        # default per §12.4 Decision 9 carry-through.
+        row.setdefault("required_product_line", ["*"])
         row.setdefault("supported_surfaces", ["dashboard_grid"])
         row.setdefault("default_surfaces", row["supported_surfaces"])
         row.setdefault("intelligence_keywords", [])
@@ -608,10 +1367,11 @@ def seed_widget_definitions(db: Session) -> int:
             "required_extension": row["required_extension"],
             "required_permission": row["required_permission"],
             "required_preset": row["required_preset"],
-            # Phase W-1 unified contract.
+            # Phase W-1 + W-3a unified contract.
             "variants": row["variants"],
             "default_variant_id": row["default_variant_id"],
             "required_vertical": row["required_vertical"],
+            "required_product_line": row["required_product_line"],
             "supported_surfaces": row["supported_surfaces"],
             "default_surfaces": row["default_surfaces"],
             "intelligence_keywords": row["intelligence_keywords"],
