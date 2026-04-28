@@ -3871,6 +3871,10 @@ The platform's primary Monitor surface. Contains the Pulse — an intelligent, d
 
 **Strategic positioning:** Home Pulse is Bridgeable's primary differentiator. Most platforms have user-curated dashboards; Bridgeable has a Pulse that knows what the user needs. Custom Space creation rate is a platform health metric — when Pulse works well, users rarely need other Spaces.
 
+**Canonical entry point (Phase W-4a Step 4 amendment, May 2026):** Home Space is the canonical entry point for the platform. Authenticated tenant users land on Home Space (rendering Pulse at `/home`) on app open, unless they have specialized roles with their own canonical entry — drivers go to their portal at `/driver`, production-console-track users go to `/console/*`. The frontend's `RootRedirect` component honors this canon: root path `/` redirects authenticated tenant users to `/home`. `/dashboard` (the legacy Manufacturing Dashboard) remains accessible via direct URL and via the Ownership space's `default_home_route="/dashboard"` until Phase W-5 retires it once My Stuff + Custom Spaces ship.
+
+This is explicit canon, not implicit assumption. Pre-Step-4, RootRedirect routed tenant users to `/dashboard` as a coexistence-policy choice ("Pulse reachable via DotNav Home dot"), but the canonical "open the app" flow never reached Pulse — undermining §3.26.7.1 (Pulse as differentiator). Step 4 corrects the redirect target to honor §3.26.1.1's "always present, always first in navigation" framing at the entry-flow level.
+
 #### 2. My Stuff Space
 User-personal scope. Contains widgets relevant to the user as a person, not as an operator: payroll info, time-off balance, certifications, training, personal preferences, tax documents. Always present, cannot be deleted. User customizes (add/remove/rearrange widgets). Standard widget grid pattern — not intelligent. Per user-tenant combination (each tenant context has its own My Stuff).
 

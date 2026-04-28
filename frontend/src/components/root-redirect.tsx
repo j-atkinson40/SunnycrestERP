@@ -32,5 +32,13 @@ export function RootRedirect() {
     return <Navigate to="/console" replace />;
   }
 
-  return <Navigate to="/dashboard" replace />;
+  // Phase W-4a Step 4 (May 2026) — canonical entry point per
+  // BRIDGEABLE_MASTER §3.26.1.1: Home Space is "always present, always
+  // first in navigation, contains the Pulse." RootRedirect honors that
+  // canon: authenticated tenant users land on /home (Pulse) on app
+  // open. /dashboard remains accessible via the Ownership space's
+  // default_home_route, via direct URL, and as a coexistence surface
+  // until Phase W-5 ships My Stuff + Custom Spaces and dashboard
+  // retires. See Phase W-4a Step 4 routing-bug investigation.
+  return <Navigate to="/home" replace />;
 }
