@@ -4104,6 +4104,17 @@ if cell_height < 80 px AND tier ∈ {Tablet, Desktop}:
                { cell_height, total_row_count, viewport_height, banner_visible })
 ```
 
+This 80 px threshold is **load-bearing** for the §13.4.1 three-tier widget density dispatch chain:
+
+| `cell_height` range | §13.4.1 density tier | Behavior |
+|---|---|---|
+| ≥ 121 px | **Default** | Full content |
+| 101–120 px | **Compact** | Header + footer only |
+| 80–100 px | **Ultra-compact** | Single-line dense |
+| < 80 px | n/a | This step (§13.3.4 Step 5) catches before container queries fire — Pulse switches to scroll mode |
+
+Density tiers + tier-three threshold are one coherent dispatch chain — no overlapping conditions, no unreachable branches. Reference: §13.4.1 amended density-tier table.
+
 **Step 6 — Compute --pulse-scale and chrome scaling.**
 
 ```
@@ -4173,19 +4184,25 @@ Variant chosen by Pulse intelligence based on priority + viewport availability.
 
 **Phase W-4a Step 6 amendment — container queries canonical for Pulse density.** Inside Pulse, density shifts respond to actual cell size, not a static surface label. Widgets that opt into density-tier rendering use `@container piece (...)` to switch between three densities:
 
-- **Default** — assumes `cell_height ≥ 120 px`. Full Brief content (rows, descriptive copy, etc.).
-- **Compact** — fits `cell_height` 80–120 px. Header + footer only (the anomalies Pulse-compact pattern from Step 2 D becomes this density tier).
-- **Ultra-compact** — fits `cell_height` 60–80 px. Single-line dense rendering (icon + count + CTA inline).
+- **Default** — assumes `cell_height ≥ 121 px`. Full Brief content (rows, descriptive copy, etc.).
+- **Compact** — fits `cell_height` 101–120 px. Header + footer only (the anomalies Pulse-compact pattern from Step 2 D becomes this density tier).
+- **Ultra-compact** — fits `cell_height` 80–100 px. Single-line dense rendering (icon + count + CTA inline).
+
+Below `cell_height = 80 px` the §13.3.4 tier-three threshold dispatches Pulse to natural-height scroll mode for that session, so ultra-compact is the smallest in-viewport-fit density. The 80–100 px ultra-compact band is the **reachable + meaningful** lower bound under the viewport-fit canon; sub-80 px is structurally outside the canon. This alignment makes the three density tiers + the tier-three threshold one coherent dispatch chain rather than overlapping or unreachable conditions.
 
 The container query targets the cell, not the page:
 
 ```css
+@container piece (max-height: 120px) {
+  .anomalies-widget-pulse-compact { /* compact: header + footer */ }
+}
 @container piece (max-height: 100px) {
-  .anomalies-widget-pulse-compact { /* compact rendering */ }
+  .anomalies-widget-pulse-ultra-compact { /* ultra-compact: single-line */ }
 }
-@container piece (max-height: 80px) {
-  .anomalies-widget-pulse-ultra-compact { /* single-line dense */ }
-}
+/* Cell heights below 80px never reach this section — §13.3.4
+   tier-three threshold dispatches to scroll mode before container
+   queries fire. Ultra-compact's effective range is 80–100px under
+   viewport-fit. */
 ```
 
 `PulsePiece` declares itself as a container (`container-type: size; container-name: piece`) so each piece's content responds to its cell size independently.
@@ -4200,9 +4217,10 @@ The container query targets the cell, not the page:
 
 | Density | Cell height range | Content |
 |---|---|---|
-| Default (`@container piece (min-height: 121px)`) | ≥ 121 px | Full 4-row list with per-row Acknowledge action + "View all N →" footer |
-| Compact (`@container piece (max-height: 120px) (min-height: 81px)`) | 81–120 px | Header (count + critical breakdown + count badge) + footer ("Investigate N →"). Body/rows skipped. |
-| Ultra-compact (`@container piece (max-height: 80px)`) | ≤ 80 px | Single-line: icon + "N anomalies" + critical badge + "Investigate →" inline. |
+| Default (`@container piece (min-width: 0) and (min-height: 121px)`) | ≥ 121 px | Full 4-row list with per-row Acknowledge action + "View all N →" footer |
+| Compact (`@container piece (max-height: 120px)`) | 101–120 px | Header (count + critical breakdown + count badge) + footer ("Investigate N →"). Body/rows skipped. |
+| Ultra-compact (`@container piece (max-height: 100px)`) | 80–100 px | Single-line: icon + "N anomalies" + critical badge + "Investigate →" inline. |
+| ≤ 80 px (out of band) | n/a | §13.3.4 tier-three threshold dispatches to natural-height-scroll mode; container queries do not fire in scroll mode. |
 
 Pulse cell sizes derived from §13.3.4 viewport-fit math; widgets respond automatically.
 
