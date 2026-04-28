@@ -632,6 +632,120 @@ describe("VaultScheduleWidget — workspace-core canon (§12.6 + §12.6a)", () =
     expect(text).not.toMatch(/rebuild schedule/i)
     expect(text).not.toMatch(/bulk reassign/i)
   })
+
+  // ── Phase W-4a Step 6 Commit 5 — workspace-core scroll-within-piece
+  //    regression guards per §13.3.2.1 + §13.4.1. Workspace-core
+  //    widgets preserve their workspace shape; canonical fallback
+  //    when the cell can't fit minimum content is `overflow-y: auto`
+  //    (the widget's own scroll). Both Brief AND Detail variants must
+  //    honor this — the Brief variant's body container previously had
+  //    `overflow-hidden` (clipping content at compressed cells); the
+  //    Detail variant's outer wrapper had `overflow-y-auto` correctly.
+  //    Commit 5 closed the Brief gap. Both empty + non-empty paths
+  //    covered.
+
+  it("Brief variant renders scroll-within-piece (overflow-y-auto) for non-empty kanban", () => {
+    mockResult = {
+      data: makeProductionData(),
+      isLoading: false,
+      error: null,
+    }
+    const { container } = renderWidget({ variant_id: "brief" })
+    const widget = container.querySelector(
+      '[data-slot="vault-schedule-widget"][data-variant="brief"]',
+    )
+    expect(widget).toBeInTheDocument()
+    // Find the body container that holds the section grid. Per the
+    // Commit 5 fix, this container carries `overflow-y-auto` (was
+    // `overflow-hidden` pre-Commit-5).
+    const bodyDivs = widget!.querySelectorAll(
+      'div.flex-1.min-h-0',
+    )
+    expect(bodyDivs.length).toBeGreaterThanOrEqual(1)
+    // At least one of the body containers must have overflow-y-auto.
+    const hasScrollWithinPiece = Array.from(bodyDivs).some((d) =>
+      (d as HTMLElement).className.includes("overflow-y-auto"),
+    )
+    expect(hasScrollWithinPiece).toBe(true)
+    // Regression: the body container must NOT have overflow-hidden
+    // (workspace-core widgets clip content at compressed cells via
+    // overflow-hidden — that's the bug Commit 5 closed).
+    const hasOverflowHidden = Array.from(bodyDivs).some((d) =>
+      (d as HTMLElement).className.includes("overflow-hidden"),
+    )
+    expect(hasOverflowHidden).toBe(false)
+  })
+
+  it("Brief variant renders scroll-within-piece (overflow-y-auto) for empty kanban frame", () => {
+    // Empty data path renders the canonical empty-kanban-frame
+    // (dashed-border lane placeholders). Per §13.3.2.1 workspace-core
+    // empty-state shape canon, the empty frame ALSO preserves shape +
+    // scrolls when cell can't accommodate.
+    mockResult = {
+      data: {
+        date: "2026-04-27",
+        operating_mode: "production",
+        production: { deliveries: [], total_count: 0, unassigned_count: 0, assigned_count: 0, driver_count: 0 },
+        purchase: null,
+        primary_navigation_target: "/dispatch",
+        is_vault_enabled: true,
+      },
+      isLoading: false,
+      error: null,
+    }
+    const { container } = renderWidget({ variant_id: "brief" })
+    const emptyFrame = container.querySelector(
+      '[data-slot="vault-schedule-widget"][data-variant="brief"][data-empty="true"]',
+    )
+    expect(emptyFrame).toBeInTheDocument()
+    const bodyDivs = emptyFrame!.querySelectorAll('div.flex-1.min-h-0')
+    expect(bodyDivs.length).toBeGreaterThanOrEqual(1)
+    const hasScrollWithinPiece = Array.from(bodyDivs).some((d) =>
+      (d as HTMLElement).className.includes("overflow-y-auto"),
+    )
+    expect(hasScrollWithinPiece).toBe(true)
+    const hasOverflowHidden = Array.from(bodyDivs).some((d) =>
+      (d as HTMLElement).className.includes("overflow-hidden"),
+    )
+    expect(hasOverflowHidden).toBe(false)
+  })
+
+  it("Detail variant retains scroll-within-piece (regression guard for existing canon)", () => {
+    // Detail already had overflow-y-auto on its outer wrapper
+    // pre-Commit-5. This test guards against accidental removal.
+    mockResult = {
+      data: makeProductionData(),
+      isLoading: false,
+      error: null,
+    }
+    const { container } = renderWidget({ variant_id: "detail" })
+    const widget = container.querySelector(
+      '[data-slot="vault-schedule-widget"][data-variant="detail"]',
+    ) as HTMLElement | null
+    expect(widget).not.toBeNull()
+    expect(widget!.className).toContain("overflow-y-auto")
+  })
+
+  it("Detail variant empty-frame retains scroll-within-piece (regression guard)", () => {
+    mockResult = {
+      data: {
+        date: "2026-04-27",
+        operating_mode: "production",
+        production: { deliveries: [], total_count: 0, unassigned_count: 0, assigned_count: 0, driver_count: 0 },
+        purchase: null,
+        primary_navigation_target: "/dispatch",
+        is_vault_enabled: true,
+      },
+      isLoading: false,
+      error: null,
+    }
+    const { container } = renderWidget({ variant_id: "detail" })
+    const widget = container.querySelector(
+      '[data-slot="vault-schedule-widget"][data-variant="detail"][data-empty="true"]',
+    ) as HTMLElement | null
+    expect(widget).not.toBeNull()
+    expect(widget!.className).toContain("overflow-y-auto")
+  })
 })
 
 

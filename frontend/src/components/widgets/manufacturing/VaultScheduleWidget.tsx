@@ -272,7 +272,15 @@ function VaultScheduleBrief({ data, isLoading, error }: VariantProps) {
         <ModeBadge mode={data.operating_mode} />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden space-y-2">
+      {/* Phase W-4a Step 6 Commit 5 — workspace-core scroll-within-piece
+       * canon-conformance per §13.3.2.1 + §13.4.1: workspace-core
+       * widgets preserve their workspace shape; canonical fallback
+       * when cell can't fit minimum content is `overflow-y: auto`
+       * (the widget's own scroll). Detail variant already had this
+       * (lines below at line ~536 + ~671 of empty/non-empty paths);
+       * Brief variant previously used `overflow-hidden` which clipped
+       * content at compressed cells — drift closed Commit 5. */}
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
         {data.production && data.production.total_count > 0 ? (
           <ProductionBriefSection
             production={data.production}
@@ -552,10 +560,20 @@ function VaultScheduleEmptyKanbanFrame({
         <ModeBadge mode={data.operating_mode} />
       </div>
 
+      {/* Phase W-4a Step 6 Commit 5 — workspace-core scroll-within-piece
+       * canon-conformance for the EMPTY kanban-frame state too. Per
+       * §13.3.2.1: workspace-core widgets preserve shape in empty
+       * states (kanban frame visible with dashed-border lane
+       * placeholders). Per §13.4.1: when the empty frame can't fit
+       * the cell, scroll within piece. Detail empty already has
+       * outer-wrapper `overflow-y-auto` (line ~544); Brief empty
+       * previously used inner `overflow-hidden` clipping the empty
+       * frame at compressed cells. Both variants now scroll-within-
+       * piece consistently. */}
       <div
         className={cn(
           "flex-1 min-h-0 space-y-2",
-          !isDetail && "overflow-hidden",
+          !isDetail && "overflow-y-auto",
         )}
       >
         {sections.map((s) => (
