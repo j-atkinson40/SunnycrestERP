@@ -242,6 +242,12 @@ interface BriefProps {
   onInvestigate: (anomaly: Anomaly) => void
   onAcknowledge: (anomaly: Anomaly) => void
   onViewAll: () => void
+  // Surface-specific compaction per DESIGN_LANGUAGE §13.4.1 amendment
+  // (Phase W-4a Step 2.D, April 2026): Pulse honors grid cell size
+  // constraints — Brief variant in pulse_grid compacts to header +
+  // footer when content density exceeds cell height. Dashboard
+  // surfaces render full Brief content with rows.
+  surface?: "focus_canvas" | "focus_stack" | "spaces_pin" | "pulse_grid"
 }
 
 
@@ -253,6 +259,7 @@ function AnomaliesBriefCard({
   onInvestigate,
   onAcknowledge,
   onViewAll,
+  surface,
 }: BriefProps) {
   if (error) {
     return (
@@ -269,11 +276,25 @@ function AnomaliesBriefCard({
   const totalUnresolved = data?.total_unresolved ?? 0
   const criticalCount = data?.critical_count ?? 0
 
+  // Pulse compaction (DESIGN_LANGUAGE §13.4.1 amendment): when this
+  // widget renders inside the Pulse tetris grid, the Brief variant's
+  // 4-row body (~340px intrinsic) doesn't fit 2x1=80px grid cells.
+  // Compact to header summary + footer link only — full row rendering
+  // available in Detail variant or on dashboard surfaces.
+  const isPulse = surface === "pulse_grid"
+
   return (
     <div
       data-slot="anomalies-widget"
       data-variant="brief"
-      className={cn("flex flex-col h-full", isLoading && "opacity-80")}
+      data-surface={surface ?? "default"}
+      className={cn(
+        "flex flex-col h-full",
+        isLoading && "opacity-80",
+        // In Pulse, render as a single dense row (header + count
+        // badge + inline View-all CTA) rather than vertical stack.
+        isPulse && "anomalies-widget-pulse-compact",
+      )}
     >
       <div
         data-slot="anomalies-widget-header"
@@ -321,46 +342,63 @@ function AnomaliesBriefCard({
         )}
       </div>
 
-      <div data-slot="anomalies-widget-body" className="flex-1">
-        {!isLoading && items.length === 0 && (
-          <div
-            data-slot="anomalies-widget-empty"
-            className="flex flex-col items-center justify-center gap-2 px-4 py-6 text-center"
-          >
-            <CheckCircle2
-              className="h-6 w-6 text-status-success"
-              aria-hidden
-            />
-            <p className="text-caption text-content-muted font-sans leading-tight">
-              All clear
-            </p>
-            <p className="text-micro text-content-subtle font-sans leading-tight">
-              No unresolved anomalies right now.
-            </p>
-          </div>
-        )}
-        {items.length > 0 && (
-          <ul
-            data-slot="anomalies-widget-rows"
-            className="space-y-1 px-2 py-2"
-          >
-            {items.map((anomaly) => (
-              <AnomalyRow
-                key={anomaly.id}
-                anomaly={anomaly}
-                onInvestigate={() => onInvestigate(anomaly)}
-                onAcknowledge={() => onAcknowledge(anomaly)}
-                isAcknowledging={acknowledgingIds.has(anomaly.id)}
+      {/* Pulse compact: skip the 4-row body. Header carries the
+          count + critical breakdown; the footer link routes to full
+          investigation. Per §13.4.1 amendment. */}
+      {!isPulse && (
+        <div data-slot="anomalies-widget-body" className="flex-1">
+          {!isLoading && items.length === 0 && (
+            <div
+              data-slot="anomalies-widget-empty"
+              className="flex flex-col items-center justify-center gap-2 px-4 py-6 text-center"
+            >
+              <CheckCircle2
+                className="h-6 w-6 text-status-success"
+                aria-hidden
               />
-            ))}
-          </ul>
-        )}
-      </div>
+              <p className="text-caption text-content-muted font-sans leading-tight">
+                All clear
+              </p>
+              <p className="text-micro text-content-subtle font-sans leading-tight">
+                No unresolved anomalies right now.
+              </p>
+            </div>
+          )}
+          {items.length > 0 && (
+            <ul
+              data-slot="anomalies-widget-rows"
+              className="space-y-1 px-2 py-2"
+            >
+              {items.map((anomaly) => (
+                <AnomalyRow
+                  key={anomaly.id}
+                  anomaly={anomaly}
+                  onInvestigate={() => onInvestigate(anomaly)}
+                  onAcknowledge={() => onAcknowledge(anomaly)}
+                  isAcknowledging={acknowledgingIds.has(anomaly.id)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
-      {totalUnresolved > items.length && (
+      {/* Footer: in Pulse (compact), ALWAYS render the navigation
+          affordance when totalUnresolved > 0 — the footer IS the
+          interaction surface in compact mode (no rows above it).
+          In dashboard mode, footer surfaces only when the body shows
+          a partial slice. */}
+      {((isPulse && totalUnresolved > 0) ||
+        (!isPulse && totalUnresolved > items.length)) && (
         <div
           data-slot="anomalies-widget-footer"
-          className="border-t border-border-subtle/40 px-4 py-2"
+          className={cn(
+            "px-4 py-2",
+            // Brass-thread separator only in non-Pulse (with rows
+            // above). In Pulse compact, the header's bottom border
+            // already separates from the footer.
+            !isPulse && "border-t border-border-subtle/40",
+          )}
         >
           <button
             onClick={onViewAll}
@@ -372,7 +410,9 @@ function AnomaliesBriefCard({
             )}
             data-slot="anomalies-widget-view-all"
           >
-            View all {totalUnresolved} →
+            {isPulse
+              ? `Investigate ${totalUnresolved} →`
+              : `View all ${totalUnresolved} →`}
           </button>
         </div>
       )}
@@ -561,7 +601,7 @@ export function AnomaliesWidget(props: AnomaliesWidgetProps) {
   if (props.variant_id === "detail") {
     return <AnomaliesDetailVariant />
   }
-  return <AnomaliesBriefVariant />
+  return <AnomaliesBriefVariant surface={props.surface} />
 }
 
 
@@ -619,7 +659,11 @@ function useAnomaliesController() {
 }
 
 
-function AnomaliesBriefVariant() {
+function AnomaliesBriefVariant({
+  surface,
+}: {
+  surface?: AnomaliesWidgetProps["surface"]
+}) {
   const ctl = useAnomaliesController()
   return (
     <AnomaliesBriefCard
@@ -630,6 +674,7 @@ function AnomaliesBriefVariant() {
       onInvestigate={ctl.handleInvestigate}
       onAcknowledge={ctl.handleAcknowledge}
       onViewAll={ctl.handleViewAll}
+      surface={surface}
     />
   )
 }

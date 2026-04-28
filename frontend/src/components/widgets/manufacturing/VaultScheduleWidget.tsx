@@ -252,18 +252,9 @@ function VaultScheduleBrief({ data, isLoading, error }: VariantProps) {
 
   const total = computeTotalCount(data)
   if (total === 0) {
-    return (
-      <VaultScheduleEmptyState
-        title="Nothing scheduled"
-        body={`No vault ${
-          data.operating_mode === "purchase" ? "incoming" : "deliveries"
-        } for ${formatScheduleDateShort(data.date)}.`}
-        cta="Open schedule"
-        ctaTarget={data.primary_navigation_target || "/dispatch"}
-        variant="brief"
-        date={data.date}
-      />
-    )
+    // Per DESIGN_LANGUAGE §13 amendment: workspace-core widgets
+    // preserve workspace shape in empty data states.
+    return <VaultScheduleEmptyKanbanFrame data={data} variant="brief" />
   }
 
   return (
@@ -486,6 +477,137 @@ function VaultScheduleEmptyState({
 }
 
 
+// ── Workspace-frame empty state (DESIGN_LANGUAGE §13 amendment) ──
+// Per the canon: "Workspace-core widgets per §12.6 preserve their
+// workspace shape in empty states. The kanban shape, calendar shape,
+// or board shape IS the cognitive affordance — operators identify the
+// widget by structural shape, not by data presence. Generic empty-
+// state messages (centered icon + body text + CTA) are for non-
+// workspace-core widgets only."
+//
+// This component renders the kanban frame (header + section eyebrow +
+// inline empty placeholder) when the tenant has the vault product line
+// enabled but no deliveries are scheduled for the date. Distinct from
+// the "Vault not enabled" centered empty state, which is structurally
+// different (product line absent → workspace shape is moot).
+function VaultScheduleEmptyKanbanFrame({
+  data,
+  variant,
+}: {
+  data: VaultScheduleData
+  variant: "brief" | "detail"
+}) {
+  const navigate = useNavigate()
+  const isPurchase = data.operating_mode === "purchase"
+  const isHybrid = data.operating_mode === "hybrid"
+
+  // Section labels mirror the populated sections (Production · Driver
+  // lanes for production mode; Purchase · Incoming for purchase mode).
+  const sections: Array<{ label: string; placeholder: string }> = []
+  if (data.operating_mode === "production" || isHybrid) {
+    sections.push({
+      label: "Production · Driver lanes",
+      placeholder: "No deliveries scheduled — driver lanes ready",
+    })
+  }
+  if (isPurchase || isHybrid) {
+    sections.push({
+      label: "Purchase · Incoming",
+      placeholder: "No incoming transfers — schedule available",
+    })
+  }
+  // Fallback for unknown mode.
+  if (sections.length === 0) {
+    sections.push({
+      label: "Production · Driver lanes",
+      placeholder: "No deliveries scheduled",
+    })
+  }
+
+  const isDetail = variant === "detail"
+  return (
+    <div
+      data-slot="vault-schedule-widget"
+      data-variant={variant}
+      data-mode={data.operating_mode ?? "unknown"}
+      data-empty="true"
+      className={cn(
+        "flex flex-col h-full p-4 gap-3",
+        isDetail && "overflow-y-auto",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Truck
+          className={cn(isDetail ? "h-5 w-5" : "h-4 w-4", "text-accent")}
+          aria-hidden
+        />
+        <h3
+          className={cn(
+            isDetail ? "text-body" : "text-body-sm",
+            "font-medium text-content-strong font-sans flex-1",
+          )}
+        >
+          {formatScheduleDate(data.date)}
+        </h3>
+        <ModeBadge mode={data.operating_mode} />
+      </div>
+
+      <div
+        className={cn(
+          "flex-1 min-h-0 space-y-2",
+          !isDetail && "overflow-hidden",
+        )}
+      >
+        {sections.map((s) => (
+          <section
+            key={s.label}
+            data-slot="vault-schedule-empty-section"
+            className="space-y-2"
+          >
+            <div className="flex items-baseline justify-between">
+              <h4 className="text-caption font-medium text-content-muted font-sans uppercase tracking-wide">
+                {s.label}
+              </h4>
+              <span className="text-caption text-content-muted font-plex-mono">
+                0 total
+              </span>
+            </div>
+            <div
+              data-slot="vault-schedule-empty-lane-placeholder"
+              className={cn(
+                "rounded-sm px-2 py-2",
+                "border border-dashed border-border-subtle",
+                "bg-surface-base/40",
+                "text-caption text-content-muted font-sans italic",
+              )}
+            >
+              {s.placeholder}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() =>
+          navigate(data.primary_navigation_target || "/dispatch")
+        }
+        className={cn(
+          "inline-flex items-center gap-1 mt-auto",
+          "text-caption text-accent font-sans",
+          "hover:text-accent-hover",
+          "focus-ring-accent outline-none rounded-sm",
+          "transition-colors duration-quick ease-settle",
+        )}
+        data-slot="vault-schedule-open-focus"
+      >
+        Open in scheduling Focus <ExternalLink className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+
 // ── Detail variant (rich card with full per-driver breakdown) ──────
 
 
@@ -535,17 +657,10 @@ function VaultScheduleDetail({ data, isLoading, error }: VariantProps) {
 
   const total = computeTotalCount(data)
   if (total === 0) {
-    return (
-      <VaultScheduleEmptyState
-        title="Nothing scheduled"
-        body={`No vault ${
-          data.operating_mode === "purchase" ? "incoming" : "deliveries"
-        } for ${formatScheduleDateShort(data.date)}.`}
-        cta="Open schedule"
-        ctaTarget={data.primary_navigation_target || "/dispatch"}
-        variant="detail"
-      />
-    )
+    // Per DESIGN_LANGUAGE §13 amendment: workspace-core widgets
+    // preserve workspace shape in empty data states. The kanban
+    // shape IS the cognitive affordance.
+    return <VaultScheduleEmptyKanbanFrame data={data} variant="detail" />
   }
 
   return (

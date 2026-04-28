@@ -126,7 +126,16 @@ export function PulseLayer({
           // (60px) with a touch of internal padding budget. A
           // Detail piece (2×2) is ~320px × ~160px — enough for
           // vault_schedule's kanban-shaped Detail variant content.
-          "grid",
+          //
+          // `grid-flow-row-dense` (Phase W-4a Step 2.C, April 2026):
+          // smaller pieces (e.g. today widget Glance 1×1) backfill
+          // empty cells left by larger pieces' spans rather than
+          // leaving row-2 visual gaps. Pieces still respect their
+          // priority-driven render order (composition_engine sorts
+          // before emission); dense flow only changes _which empty
+          // cell_ each smaller piece lands in, not the order pieces
+          // are placed.
+          "grid grid-flow-row-dense",
           "grid-cols-[repeat(auto-fit,minmax(160px,1fr))]",
           "auto-rows-[80px]",
           "gap-3",

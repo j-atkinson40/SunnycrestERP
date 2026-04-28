@@ -844,4 +844,39 @@ describe("TestVisualChrome", () => {
     expect(grid.className).toMatch(/auto-fit/)
     expect(grid.className).toMatch(/auto-rows/)
   })
+
+  it("layer grid uses grid-flow-row-dense (Step 2.C — backfills empty cells)", async () => {
+    // Phase W-4a Step 2.C (April 2026): smaller pieces backfill
+    // empty cells left by larger pieces' spans rather than leaving
+    // visual gaps. The today widget Glance (1×1) was visibly orphaned
+    // in row 2 with empty cells beside it; dense flow closes those.
+    mockComposition = makeComposition({
+      layers: [
+        makeLayer("personal"),
+        makeLayer("operational", [
+          makeWidgetItem({ component_key: "vault_schedule", cols: 2, rows: 2 }),
+          makeWidgetItem({
+            component_key: "scheduling.ancillary-pool",
+            cols: 2,
+            rows: 1,
+            item_id: "widget:ancillary",
+          }),
+          makeWidgetItem({
+            component_key: "today",
+            cols: 1,
+            rows: 1,
+            item_id: "widget:today",
+          }),
+        ]),
+        makeLayer("anomaly"),
+        makeLayer("activity"),
+      ],
+    })
+    const PulseSurface = await importPulseSurface()
+    renderWithRouter(<PulseSurface />)
+    const grid = document.querySelector(
+      '[data-slot="pulse-layer-grid"]',
+    ) as HTMLElement
+    expect(grid.className).toMatch(/grid-flow-row-dense/)
+  })
 })

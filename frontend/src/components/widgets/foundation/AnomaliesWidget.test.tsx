@@ -143,6 +143,73 @@ describe("AnomaliesWidget — Brief variant (default)", () => {
     ).toBeNull()
   })
 
+  it("Brief in pulse_grid compacts to header + footer (no rows)", () => {
+    // DESIGN_LANGUAGE §13.4.1 amendment (Phase W-4a Step 2.D):
+    // Pulse honors grid cell size constraints — Brief in pulse_grid
+    // compacts to header + footer when content density exceeds cell
+    // height. Dashboard surfaces render full Brief with rows.
+    mockData = {
+      anomalies: [
+        makeAnomaly({ id: "1" }),
+        makeAnomaly({ id: "2" }),
+        makeAnomaly({ id: "3" }),
+      ],
+      total_unresolved: 264,
+      critical_count: 12,
+    }
+    renderWidget({ surface: "pulse_grid" })
+
+    const widget = document.querySelector(
+      '[data-slot="anomalies-widget"][data-variant="brief"]',
+    )
+    expect(widget?.getAttribute("data-surface")).toBe("pulse_grid")
+    // Header survives (count + critical breakdown).
+    expect(
+      document.querySelector('[data-slot="anomalies-widget-header"]'),
+    ).toBeInTheDocument()
+    expect(widget?.textContent).toContain("12 critical")
+    expect(widget?.textContent).toContain("264")
+    // Body / rows DO NOT render in compact mode.
+    expect(
+      document.querySelector('[data-slot="anomalies-widget-body"]'),
+    ).toBeNull()
+    expect(
+      document.querySelector('[data-slot="anomalies-widget-rows"]'),
+    ).toBeNull()
+    // Footer renders the navigation affordance with Pulse copy.
+    const footer = document.querySelector(
+      '[data-slot="anomalies-widget-footer"]',
+    )
+    expect(footer).toBeInTheDocument()
+    expect(footer?.textContent).toContain("Investigate 264 →")
+  })
+
+  it("Brief in dashboard_grid renders full 4-row body (no compaction)", () => {
+    // Dashboard surface gets the rich rendering — same widget,
+    // surface-specific compaction.
+    mockData = {
+      anomalies: [
+        makeAnomaly({ id: "1" }),
+        makeAnomaly({ id: "2" }),
+        makeAnomaly({ id: "3" }),
+      ],
+      total_unresolved: 264,
+      critical_count: 12,
+    }
+    renderWidget({ surface: "dashboard_grid" } as never)
+    expect(
+      document.querySelector('[data-slot="anomalies-widget-body"]'),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="anomalies-widget-rows"]'),
+    ).toBeInTheDocument()
+    // Dashboard footer carries "View all" copy.
+    const footer = document.querySelector(
+      '[data-slot="anomalies-widget-footer"]',
+    )
+    expect(footer?.textContent).toContain("View all 264 →")
+  })
+
   it("Brief renders top 4 rows", () => {
     mockData = {
       anomalies: [

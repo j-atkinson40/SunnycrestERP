@@ -421,7 +421,12 @@ describe("VaultScheduleWidget — Brief variant", () => {
     expect(empty?.textContent).toContain("Vault not enabled")
   })
 
-  it("Brief renders 'Nothing scheduled' when zero work", () => {
+  it("Brief preserves kanban frame in zero-work empty state", () => {
+    // DESIGN_LANGUAGE §13 amendment (Phase W-4a Step 2.A): workspace-
+    // core widgets preserve workspace shape in empty data states.
+    // The kanban shape (header + section eyebrow + driver-lane
+    // placeholder) IS the cognitive affordance — operators identify
+    // the widget by structural shape, not by data presence.
     const data = makeProductionData()
     data.production!.total_count = 0
     data.production!.deliveries = []
@@ -429,10 +434,64 @@ describe("VaultScheduleWidget — Brief variant", () => {
     data.production!.unassigned_count = 0
     mockResult = { data, isLoading: false, error: null }
     renderWidget({ variant_id: "brief" })
-    const empty = document.querySelector(
+    const widget = document.querySelector(
       '[data-slot="vault-schedule-widget"][data-variant="brief"]',
     )
-    expect(empty?.textContent).toContain("Nothing scheduled")
+    // Workspace shape preserved: data-empty marker + section eyebrow +
+    // dashed-placeholder lane. NOT a centered "Nothing scheduled".
+    expect(widget?.getAttribute("data-empty")).toBe("true")
+    expect(widget?.querySelector('[data-slot="vault-schedule-empty-section"]'))
+      .toBeTruthy()
+    expect(
+      widget?.querySelector(
+        '[data-slot="vault-schedule-empty-lane-placeholder"]',
+      ),
+    ).toBeTruthy()
+    // Section eyebrow should still read "Production · Driver lanes"
+    // — same chrome as populated state.
+    expect(widget?.textContent).toContain("Production · Driver lanes")
+    expect(widget?.textContent).toContain("0 total")
+    // The "Open in scheduling Focus" footer link survives.
+    expect(widget?.querySelector('[data-slot="vault-schedule-open-focus"]'))
+      .toBeTruthy()
+  })
+
+  it("Detail preserves kanban frame in zero-work empty state", () => {
+    const data = makeProductionData()
+    data.production!.total_count = 0
+    data.production!.deliveries = []
+    data.production!.assigned_count = 0
+    data.production!.unassigned_count = 0
+    mockResult = { data, isLoading: false, error: null }
+    renderWidget({ variant_id: "detail" })
+    const widget = document.querySelector(
+      '[data-slot="vault-schedule-widget"][data-variant="detail"]',
+    )
+    expect(widget?.getAttribute("data-empty")).toBe("true")
+    expect(widget?.querySelector('[data-slot="vault-schedule-empty-section"]'))
+      .toBeTruthy()
+    expect(widget?.textContent).toContain("Production · Driver lanes")
+  })
+
+  it("'Vault not enabled' still renders centered empty state", () => {
+    // The centered-icon + body-text + CTA generic empty state stays
+    // for STRUCTURAL gaps (vault product line not active) — distinct
+    // from data-empty kanban-frame.
+    const data = makeProductionData()
+    data.is_vault_enabled = false
+    mockResult = { data, isLoading: false, error: null }
+    renderWidget({ variant_id: "brief" })
+    const widget = document.querySelector(
+      '[data-slot="vault-schedule-widget"][data-variant="brief"]',
+    )
+    expect(widget?.textContent).toContain("Vault not enabled")
+    // Centered empty state has the dedicated CTA slot, NOT the
+    // workspace shape's empty-section slots.
+    expect(widget?.querySelector('[data-slot="vault-schedule-empty-cta"]'))
+      .toBeTruthy()
+    expect(
+      widget?.querySelector('[data-slot="vault-schedule-empty-section"]'),
+    ).toBeFalsy()
   })
 
   it("Brief renders Open in Focus link", () => {
