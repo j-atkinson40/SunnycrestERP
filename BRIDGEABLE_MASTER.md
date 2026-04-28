@@ -3902,6 +3902,8 @@ Pulse is not a widget grid. Pulse is a tetris-packed composition where intellige
 
 The composition is dynamic: same user opening Pulse at different times of day, after different navigation patterns, with different recent activity, sees differently-composed content. The platform has agency over what surfaces.
 
+**Viewport-fit implementation (Phase W-4a Step 6 amendment, May 2026)**: "fitting available viewport" is implemented via tier-based fixed column counts (2-col mobile, 4-col tablet, 6-col desktop) + fractional viewport-derived row heights. Pieces' relative sizes (vault_schedule 2×2 vs today 1×1) stay constant across viewports; absolute pixel sizes scale linearly with viewport. Total piece height + chrome equals viewport height — Pulse fills the available space within the canonical viewport range. Mobile (`< 600 px`) intentionally falls back to natural-height vertical scroll (viewport real estate too constrained for fit-math to land on readable cells). 4K+ displays cap typography at the canonical scale ceiling and distribute additional viewport space as cell-internal breathing room (Apple Pro app discipline). Reference: DESIGN_LANGUAGE §13.3.1 Layout Engine + §13.3.4 Viewport-Fit Math. Pre-Step-6 implementation used `auto-fit` columns + fixed `auto-rows-[80px]` with bottom whitespace acceptable; superseded by viewport-fit canon after production usage feedback established that the user-perception model is "bigger viewport = bigger pieces, no whitespace at bottom."
+
 #### 3.26.2.2 Two Content Primitives
 
 Pulse renders content from two distinct primitive types:

@@ -803,6 +803,50 @@ September Wilbert demo timeline: 20 weeks of work in 20 weeks of calendar. Achie
 
 ---
 
+### Phase W-4a Step 6 — Pulse Viewport-Responsive Architecture Canon Session (📐 Canon locked, 2026-05-03)
+
+**Canon-only session.** No code shipped. Canon settled before implementation. Implementation follows in scoped multi-commit session(s) post-canon-lock.
+
+User feedback after Step 5 visual verification: Pulse should fill viewport. Pieces should scale with viewport (same composition, same info, but visual size scales linearly). Larger viewport → bigger pieces (readable). Smaller viewport → smaller pieces (still readable). No empty space at bottom.
+
+This was a meaningful architectural reframe. Pre-Step-6 §13.3.1 canon ("auto-fit collapse intentional, not regression") proved insufficient against canonical user perception. The locked-Apr-28 canon was correct against test-data verification at the time of W-4a Commit 5 ship — PulseSurface tests confirmed the auto-fit math, dev DOM measurements confirmed the layout. But production usage with actual tenant data + actual operator workflows surfaced the perception model the test data couldn't reveal: operators expect Pulse to fill the viewport, the way a Bloomberg Terminal or a calendar app fills its window. Whitespace at the bottom of a "primary monitor surface" reads as "this isn't ready" rather than as "deliberate composition."
+
+**Canon revision discipline.** Locked canon CAN be invalidated by production usage feedback. The Step 5 + Step 6 revisions establish the post-September pattern: locked canon is the working state at the time of lock; production-usage feedback after a real-world cycle of dogfooding is the next gate. Canon revision is not failure — canon revision after production-usage signal is the system working. The discipline: when locked canon needs revision, run a fresh canon session (this one) with full proposal + trade-off analysis + amendment scope, then ship doc updates as a single canon-lock session before code work begins. Don't piecemeal-amend canon during implementation; the implementation path is brittle if it depends on shifting canon.
+
+**Canon-vs-implementation drift detection (extended from Step 5)**. Step 5 established the live-DOM-measurement pattern for canon-vs-implementation audits. Step 6 extends: also measure against **user-perception canon**, not just visual-canon. The visual canon was honored (Pattern 2 chrome present, brass-thread divider rendering, layer ordering correct) but the user-perception canon (Pulse fills its primary surface viewport) was implicit + unspoken until production usage surfaced it. Future canon work should articulate user-perception expectations explicitly, not just visual-token expectations.
+
+**8 canon questions resolved** (full proposal in session log):
+1. Sizing model: tiered fixed columns (2/4/6) + fractional viewport-derived rows
+2. Layer height allocation: row-count-weighted with empty-layer fixed allowance
+3. Widget scale-awareness: `--pulse-scale` CSS variable + container queries for density tiers
+4. Reserved chrome budget: client-computed via observer pattern (hard-coded constants for September; dynamic ResizeObserver canonical post-September)
+5. Minimum readable threshold: mobile (`< 600 px`) falls back to natural-height scroll; tier-three threshold (`cell_height < 80 px`) also falls back
+6. Maximum scale ceiling: `--pulse-scale` clamps at 1.25× — additional viewport space → breathing room (Apple Pro app discipline)
+7. Empty slot handling: agency-dictated — Pulse silently filters (Philosophy A); PinnedSection shows `MissingWidgetEmptyState` (Philosophy B). CI parity test mandatory.
+8. Content truncation: container queries select default / compact / ultra-compact density per cell size; workspace-core widgets exempt from aggressive compaction (preserve workspace shape per §13.3.2.1, fall back to scroll within piece if can't fit).
+
+**Canon updates locked (this session)**:
+- DESIGN_LANGUAGE §13.3.1 — REWRITE viewport behavior (tier-based 2/4/6 cols, viewport-fit canon, mobile + tier-three fallback to scroll)
+- DESIGN_LANGUAGE §13.3.2 — AMEND cell-height consistency across layers + 300ms ease-out transition discipline + empty-layer advisory fixed allowance (32px)
+- DESIGN_LANGUAGE §13.3.4 — NEW viewport-fit math (chrome budget formula, `--pulse-content-height`, `--pulse-scale` clamp formula, layer row-count weighting, transition timing, full constants table)
+- DESIGN_LANGUAGE §13.4.1 — AMEND container queries canonical for Pulse density; surface prop for non-Pulse surfaces; per-widget density tier opt-in; workspace-core exemption
+- DESIGN_LANGUAGE §13.4.3 — NEW agency-dictated error surface (platform-composed silent filter; user-composed visible placeholder; CI parity test mandatory)
+- BRIDGEABLE_MASTER §3.26.2.1 — minor amendment (tetris composition viewport-fit implementation note)
+
+**Implementation scope** (separate session(s), 6-commit boundary):
+1. Chrome budget + grid math foundation (PulseSurface ResizeObserver + `--pulse-content-height` + `grid-template-rows: repeat(N, 1fr)`)
+2. Tier-based columns + container queries on opt-in widgets
+3. Mobile fallback + scroll edge case + tier-three threshold
+4. Empty slot filter at PulseLayer level + console.warn + CI parity test
+5. Per-widget density tier rendering (anomalies / line_status / today / etc opt-in)
+6. §13.8 reference implementations at 5 viewport sizes (10 screenshots) + final canon doc verification
+
+Realistic estimate: **~10-12 hr implementation + ~3 hr canon docs (this session) + ~3 hr visual verification = ~16-18 hr total**. Scoped per natural commit boundary, multi-session feasible.
+
+§13.8 reference implementations DEFERRED until implementation completes. Final doc verification (post-implementation) confirms canon + implementation aligned.
+
+---
+
 ### Phase W-4a Step 5 — Pulse Pattern 2 chrome + missing-widget honesty (✅ Shipped, 2026-05-02)
 
 **Implementation-drift-from-canon** session. The chrome was correct in canon; implementation drifted. Specifically: §11 Pattern 2 + §13.4.1 specify Pattern 2 chrome (rounded-[2px] + bg-surface-elevated + border-border-subtle + shadow-level-1) for pinable widget pieces. PulsePiece's docstring claimed "the widget renderers carry their own Pattern 2 chrome" — that was an incorrect assumption made during Phase W-4a Commit 5. Only `WidgetWrapper` (dashboard surface) applied chrome; widget renderer roots had only content layout (`flex flex-col h-full p-4`). Pulse pieces rendered without ANY chrome at all, producing the user-reported "scattered" perception. Step 5 ships PulsePiece as the chrome-applying surface (mirrors WidgetWrapper for dashboard), retires AnomalyIntelligenceStream's previously-duplicated chrome (single source of truth), and locks the chrome-is-surface-responsibility convention into DESIGN_LANGUAGE §13.4.1.

@@ -3970,28 +3970,40 @@ Detailed visual canon TBD per Space type in separate sessions. Default position:
 
 ### 13.3 Pulse Tetris Composition
 
-#### 13.3.1 Layout Engine
+#### 13.3.1 Layout Engine — viewport-fit canon (Phase W-4a Step 6 rewrite, May 2026)
 
-Pulse uses tetris-packing layout — intelligence determines content sizing, layout engine packs content to viewport.
+Pulse is a **viewport-fit composed surface**. Pieces scale linearly with viewport. Total piece height + chrome equals viewport height — Pulse fills the available space, no whitespace at the bottom (within the canonical viewport range; see Question 6 ceiling). Composition engine determines content sizing in proportional units (cols × rows spans); the layout engine derives absolute pixel sizes from the available viewport.
 
-Layout properties:
-- Content units sized by intelligence in increments (Glance / Brief / Detail / Deep variant grid sizes)
-- Viewport dimensions calculated on render
-- Packing algorithm fits content with intelligent priority ordering (high-priority content gets larger sizing, surfaces above fold)
-- Reflow on window resize maintains composition coherence
-- Empty space acceptable (Pulse not packed-to-edges — breathing room reads as deliberate composition)
+**Architectural reframe (Phase W-4a Step 6).** Pre-Step-6 Pulse used `grid-cols-[repeat(auto-fit,minmax(160px,1fr))]` + `auto-rows-[80px]`. That model's "auto-fit collapse intentional, not regression" claim shipped with the W-4a Pulse infrastructure but proved insufficient against canonical user perception ("bigger viewport, bigger pieces"). Step 6 supersedes: tier-based fixed column counts + fractional viewport-derived row heights. The previous canon's "empty space acceptable" framing is reframed as "empty space is breathing room ABOVE the scale ceiling, not unfilled space below the canonical viewport range."
 
-Pieces don't snap to fixed grid columns the way My Stuff/Custom Spaces do. Pieces flow into available space sized to their priority + content needs.
+**Three viewport-width tiers determine column count:**
 
-**Viewport-dependent column collapse (Phase W-4a Step 2/3 amendment).** Pulse tetris layout uses CSS Grid with `grid-cols-[repeat(auto-fit,minmax(160px,1fr))]`. Smaller viewports collapse to fewer columns automatically:
+| Viewport width | Tier | Column count | Notes |
+|---|---|---|---|
+| `< 600 px` | Mobile | 2 | Pieces with `cols=1` fill half-width; `cols=2` fills full row. **Outside viewport-fit promise** — Pulse falls back to natural-height vertical scroll. See Q5 minimum-readable threshold. |
+| `600 – 1024 px` | Tablet | 4 | Viewport-fit active. Pieces with `cols=2` fill half-width; `cols=4`-spanning would fill full row (uncommon — pieces declare cols ≤ 2 today). |
+| `≥ 1024 px` | Desktop | 6 | Canonical Pulse experience. The Sunnycrest dispatcher demo composition is calibrated to this tier. |
 
-- < 360px: 1 column (mobile stacked)
-- 360–720px: 2–4 columns (tablet/narrow)
-- 720px+: 6 columns (desktop)
+**Tier transitions are discrete + CSS-transitioned.** Crossing a breakpoint (e.g. user resizing browser window from 1023px → 1025px) jumps column count from 4 → 6. CSS `transition: grid-template-columns 300ms ease-out` smooths the visual handoff so the transition reads as composition adapting rather than layout snapping.
 
-This viewport-dependent column collapse is **intentional, not regression**. Pieces flow naturally across available width. Mobile users see Pulse as vertical scroll; desktop users see Pulse as composed surface. Both are correct presentations for their context.
+**Within a tier**, both axes use fractional sizing:
 
-`grid-flow-row-dense` (added Phase W-4a Step 2.C) lets smaller pieces (e.g. `today` Glance 1×1) backfill empty cells left by larger pieces' spans rather than leaving visible gaps. The composition engine still emits pieces in priority order; dense flow only changes which empty cell each smaller piece lands in, not the order they're placed.
+```
+cell_width  = (container_width  − total_horizontal_gaps) / column_count
+cell_height = (available_pulse_height − total_vertical_gaps) / total_row_count
+```
+
+Where `total_row_count` is the sum of rows consumed by populated layers under tetris packing. Same `cell_height` applied to every cell in every populated layer — visual coherence per §13.3.2 (a Glance piece in personal layer is the same height as a Glance piece in operational layer).
+
+**Pieces span declared `cols × rows`** (e.g., `vault_schedule` 2×2, `today` 1×1, `anomalies` Brief 2×1). **Spans are constant across tiers** — the relative composition shape stays stable as viewport changes. Larger viewport → bigger cells → bigger pieces, but vault_schedule is always the largest piece and today is always the smallest.
+
+**Tetris packing + dense flow.** `grid-auto-flow: row dense` (added Phase W-4a Step 2.C, retained) lets smaller pieces (e.g. `today` Glance 1×1) backfill empty cells left by larger pieces' spans rather than leaving visible gaps. The composition engine still emits pieces in priority order; dense flow only changes which empty cell each smaller piece lands in, not the order they're placed.
+
+**Mobile fallback (`< 600 px` viewport width)**: Pulse is intentionally outside the viewport-fit promise. The 2-column tier produces cells too narrow + viewport heights too cramped for fit-math to land on readable cell sizes. Mobile renders Pulse as a natural-height vertical scroll: cells use `auto`/`max-content` row sizing, surface scrolls vertically, pieces stack at content-driven sizes. Both presentations are correct for their context — desktop users see Pulse as composed surface; mobile users see Pulse as vertical content stream. This split is honest, not a regression.
+
+**Tier-three threshold** (computed `cell_height < 80 px` on tablet+): even within tier, pathologically heavy compositions (e.g. 8+ row count from a tenant with many anomalies + many ops widgets + populated personal layer) can crush cells below readable. When the chrome budget math produces `cell_height < 80px` for the desktop or tablet tier, Pulse switches to natural-height + scroll mode for that session. `console.warn` fires for observability so the composition shape can be tuned. Reference: §13.3.4.
+
+**Math closure (Phase W-4a Step 6).** The viewport-fit promise is mathematically closed: `cell_height` is the single solved variable that makes total layer heights + chrome budget = viewport height by construction. Reference implementation in §13.3.4 (Viewport-Fit Math).
 
 #### 13.3.2 Layer Visual Demarcation
 
@@ -4003,6 +4015,12 @@ Four layers compose Pulse content. Visual demarcation between layers is subtle:
 - **Activity layer** ambient at periphery (smaller pieces, lower visual weight)
 
 No hard section dividers between layers. Brass-thread (1px aged-brass divider) marks Operational layer boundary subtly. Other layers blend through positioning + sizing rather than chrome.
+
+**Cell-height consistency across layers (Phase W-4a Step 6 amendment).** Every populated layer's cells use the same `cell_height` per §13.3.4 viewport-fit math. A Glance piece in the personal layer is the same height as a Glance piece in the operational layer. Layer-level vertical real estate differs (operational typically takes more rows than personal), but per-cell size stays consistent. This visual coherence is load-bearing for the composed-surface read — different cell heights across layers would fracture Pulse into disconnected sections rather than reading as one composition.
+
+**Transition discipline on cell-height recomputation (Phase W-4a Step 6 amendment).** Layer composition changes (piece dismiss, piece add via late-arriving content, viewport resize crossing a tier boundary) trigger `cell_height` recomputation, which ripples to every cell in every layer. Naive recomputation would cause every piece to resize abruptly — jarring visual jitter. The canonical handling: **300ms ease-out CSS transition on `grid-template-rows` + `--cell-height`** (the latter being the CSS variable PulseSurface exposes for cell sizing). Pieces resize smoothly; the surface reads as composition adapting rather than layout snapping. Dismissals, viewport changes, and late-arriving compositions all share the same transition timing for predictable feel.
+
+**Empty-layer advisory fixed allowance (Phase W-4a Step 6 amendment).** Empty-with-advisory layers ("All clear — nothing needs attention right now.", "Quiet day so far.") render at a fixed 32px height regardless of viewport scale. They sit OUTSIDE the row-count-weighted allocation — the viewport-fit math allocates available height to populated layers' rows, then layers with advisories add their fixed 32px on top of that. Empty-no-advisory layers (e.g., personal layer with no pinned items + no advisory copy) suppress entirely (zero height), as already documented in PulseLayer's render contract.
 
 #### 13.3.2.1 Workspace-core empty-state shape (Phase W-4a Step 2/3 amendment)
 
@@ -4025,6 +4043,114 @@ A layer can contain multiple distinct content streams. Each stream renders as it
 
 Streams within a layer have visual coherence (similar chrome, similar sizing tendencies) without being grouped into compound containers. The user reads Pulse as composed pieces, not as nested layers.
 
+#### 13.3.4 Viewport-Fit Math (Phase W-4a Step 6, May 2026)
+
+The math that makes `total piece height + chrome = viewport height` close. This subsection is the canonical reference for the implementation; tests + future audits cross-reference against the formulas here.
+
+**Step 1 — Compute available Pulse height from chrome budget.**
+
+```
+available_pulse_height = viewport_height
+  − APP_HEADER_HEIGHT                  (56 px, always present)
+  − BOTTOM_TAB_BAR_HEIGHT_MOBILE       (56 px, mobile only — 0 on tablet/desktop)
+  − DOT_NAV_HEIGHT                     (32 px, always present)
+  − PULSE_PAGE_PADDING_Y               (48 px = py-6 ×2)
+  − BANNER_HEIGHT                      (96 px when first-login banner visible, else 0)
+  − LAYER_SPACING_TOTAL                ((N_layers − 1) × 16 px = 48 px for 4 layers)
+  − BRASS_THREAD_OVERHEAD              (24 px = mt-2 + pt-4 + 1 px line above operational)
+  − empty_layer_advisory_total         (32 px × count_of_empty_layers_with_advisory)
+```
+
+For September: hard-coded constants per `frontend/src/components/spaces/PulseSurface.tsx` module-level. Post-September canonical target: dynamic `ResizeObserver` on each chrome element so changes to header height / DotNav height ripple naturally without canon updates. Hard-coded constants must include a TODO comment pointing at this section.
+
+**Step 2 — Determine column count from viewport tier.**
+
+```
+column_count =
+  2  if viewport_width < 600 px        (Mobile — fallback to natural-height scroll, see §13.3.1)
+  4  if 600 ≤ viewport_width < 1024 px (Tablet)
+  6  if viewport_width ≥ 1024 px       (Desktop)
+```
+
+**Step 3 — Compute total row count from composition shape.**
+
+```
+total_row_count = Σ (layer_row_count[i]) for i in populated_layers
+
+where layer_row_count[i] = max(row_index_used + 1) under tetris packing
+                          for layer i's pieces with column_count cells per row
+```
+
+Tetris packing solved per layer independently; pieces span their declared `(cols, rows)` within the layer's grid. Dense auto-flow lets smaller pieces backfill empty cells; doesn't change `layer_row_count` (still derived from max row index occupied).
+
+**Step 4 — Solve cell_height.**
+
+```
+total_vertical_gaps = (total_row_count − 1) × CELL_GAP_Y       (12 px = gap-3 vertical)
+                      + (count_of_populated_layer_internal_gaps)
+                      // Cell gaps WITHIN a layer's grid only; layer-spacing already in chrome budget
+
+cell_height = (available_pulse_height − total_vertical_gaps) / total_row_count
+```
+
+`cell_height` is the single solved variable that makes the composition fit the viewport. Same value applies to every cell in every populated layer.
+
+**Step 5 — Tier-three threshold check.**
+
+```
+if cell_height < 80 px AND tier ∈ {Tablet, Desktop}:
+  switch to natural-height + scroll mode for this session
+  console.warn("[pulse] cell_height < 80px threshold; falling back to scroll mode",
+               { cell_height, total_row_count, viewport_height, banner_visible })
+```
+
+**Step 6 — Compute --pulse-scale and chrome scaling.**
+
+```
+--pulse-scale = clamp(0.875, available_pulse_height / 900, 1.25)
+```
+
+`900` is the canonical baseline (1080p desktop minus chrome ≈ 896-900px). Below baseline (compressed), scale dips to 0.875 floor. Above baseline (large desktop, 4K, 5K), scale climbs to 1.25 ceiling. Beyond the ceiling, additional viewport space distributes as cell-internal padding (breathing room) per §13.3.1's "ceiling" framing — typography stays readable at peak Apple form, additional space goes to comfort, not bigger text.
+
+**Step 7 — Apply via CSS variables.**
+
+```css
+.pulse-surface {
+  --pulse-content-height: <step-1 result>px;
+  --pulse-cell-height: <step-4 result>px;
+  --pulse-scale: <step-6 result>;
+}
+.pulse-layer-grid {
+  grid-template-columns: repeat(var(--pulse-column-count), 1fr);
+  grid-template-rows: repeat(var(--layer-row-count), var(--pulse-cell-height));
+  transition: grid-template-rows 300ms ease-out, grid-template-columns 300ms ease-out;
+}
+```
+
+**Constants documented here**:
+
+| Token | Value | Source / rationale |
+|---|---|---|
+| `APP_HEADER_HEIGHT` | `56 px` | `frontend/src/components/layout/app-layout.tsx` h-14 |
+| `BOTTOM_TAB_BAR_HEIGHT_MOBILE` | `56 px` | `frontend/src/components/layout/mobile-tab-bar.tsx` h-14, mobile only |
+| `DOT_NAV_HEIGHT` | `32 px` | `frontend/src/components/layout/DotNav.tsx` (rough vertical claim) |
+| `PULSE_PAGE_PADDING_Y` | `48 px` | `py-6` × 2 sides |
+| `BANNER_HEIGHT` | `96 px` | Sparkles icon + heading + body + CTA + dismiss X (when present) |
+| `LAYER_SPACING` | `16 px` | `space-y-4` between layers |
+| `BRASS_THREAD_OVERHEAD` | `24 px` | `mt-2` + `pt-4` + 1px line, above Operational layer only |
+| `EMPTY_LAYER_ADVISORY_HEIGHT` | `32 px` | Fixed advisory row, regardless of viewport scale |
+| `CELL_GAP_Y` | `12 px` | `gap-3` |
+| `MIN_READABLE_CELL_HEIGHT` | `80 px` | Tier-three threshold for natural-height-scroll fallback |
+| `MOBILE_BREAKPOINT` | `600 px` | Below = mobile fallback (natural-height-scroll) |
+| `TABLET_BREAKPOINT` | `1024 px` | Below = 4-col tablet tier; ≥ = 6-col desktop tier |
+| `BASELINE_AVAILABLE_HEIGHT` | `900 px` | --pulse-scale anchor (1080p minus typical chrome) |
+| `SCALE_FLOOR` | `0.875` | Minimum --pulse-scale (compressed viewports) |
+| `SCALE_CEILING` | `1.25` | Maximum --pulse-scale (large viewports → breathing room thereafter) |
+| `TRANSITION_DURATION` | `300 ms` | Cell-height recomputation + tier transition timing |
+| `TRANSITION_EASING` | `ease-out` | Settle-feel curve |
+
+**Reference implementation**: `frontend/src/components/spaces/PulseSurface.tsx` + `PulseLayer.tsx` (post-Step-6 implementation; rendered against this section's formulas verbatim). Tests in `PulseSurface.test.tsx` cross-reference these constants — drift between docs + implementation is a defect.
+
 ### 13.4 Content Stream Visual Treatments
 
 #### 13.4.1 Pinable Widget Pieces
@@ -4043,13 +4169,46 @@ Variant chosen by Pulse intelligence based on priority + viewport availability.
 
 **Pre-Step-5**: PulsePiece's docstring claimed widget renderers carry their own Pattern 2 chrome. That assumption was wrong — only `WidgetWrapper` applied chrome (dashboard surface), and Pulse pieces rendered without any chrome at all. Step 5 corrects: PulsePiece applies Pattern 2 chrome at its root + AnomalyIntelligenceStream's previously-duplicated chrome moved up to PulsePiece (single source of truth, no nested cards). Widget renderers stay chrome-less. Future surfaces hosting widgets follow the same pattern.
 
-**Surface-specific widget compaction (Phase W-4a Step 2/3 amendment).** Pinable widgets may have surface-specific compact rendering. Pulse (`pulse_grid`) honors grid cell size constraints — Brief variant in Pulse compacts to header + footer when content density exceeds cell height. Dashboard surfaces (`dashboard_grid`) render full Brief content with rows.
+**Surface-specific widget compaction (Phase W-4a Step 2/3 amendment, refined Step 6).** Pinable widgets may have surface-specific compact rendering. Pulse (`pulse_grid`) honors grid cell size constraints. Dashboard surfaces (`dashboard_grid`) render full Brief content with rows.
+
+**Phase W-4a Step 6 amendment — container queries canonical for Pulse density.** Inside Pulse, density shifts respond to actual cell size, not a static surface label. Widgets that opt into density-tier rendering use `@container piece (...)` to switch between three densities:
+
+- **Default** — assumes `cell_height ≥ 120 px`. Full Brief content (rows, descriptive copy, etc.).
+- **Compact** — fits `cell_height` 80–120 px. Header + footer only (the anomalies Pulse-compact pattern from Step 2 D becomes this density tier).
+- **Ultra-compact** — fits `cell_height` 60–80 px. Single-line dense rendering (icon + count + CTA inline).
+
+The container query targets the cell, not the page:
+
+```css
+@container piece (max-height: 100px) {
+  .anomalies-widget-pulse-compact { /* compact rendering */ }
+}
+@container piece (max-height: 80px) {
+  .anomalies-widget-pulse-ultra-compact { /* single-line dense */ }
+}
+```
+
+`PulsePiece` declares itself as a container (`container-type: size; container-name: piece`) so each piece's content responds to its cell size independently.
+
+**Per-widget density tier opt-in.** Widgets opt INTO density tiers; they don't have to support all three. Most widgets render the same content at all densities (just smaller spacing/font via `--pulse-scale`). Widgets with structurally distinct compact modes (anomalies' "drop the rows" mode, line_status' "summary line only" mode) declare their compact + ultra-compact rendering explicitly via `@container` queries. Widgets without explicit declarations fall back to default rendering at all cell sizes (and may overflow if cell is small — surfaced as a defect through CI tests + visual review).
+
+**Workspace-core widget exemption.** Workspace-core widgets per §12.6 (e.g. `vault_schedule` Detail) preserve their workspace shape per §13.3.2.1. They MAY NOT aggressively compact — the kanban frame IS the cognitive affordance. When a workspace-core widget can't fit its minimum content in the cell allocated, the canonical fallback is **scroll within piece** (the widget's own `overflow-y: auto`). Workspace-core widgets do not opt into ultra-compact density.
+
+**Surface prop for non-Pulse surfaces.** The `surface` prop (`pulse_grid` | `dashboard_grid` | `focus_canvas` | `focus_stack` | `spaces_pin`) stays on the widget renderer signature for non-Pulse surfaces. Sidebar pins (`spaces_pin`) and dashboard widgets use `surface` to select rendering. Pulse-grid rendering is now driven by container queries (which inspect actual cell size, not surface label); the `surface="pulse_grid"` prop remains for explicit identification + back-compat with Step 2 D rendering.
 
 **Reference**: `anomalies` widget Brief variant.
-- In `pulse_grid` (2×1 = ~80px row): renders count + critical breakdown + count badge in the header, "Investigate N →" navigation footer. Body / rows DO NOT render. `data-surface="pulse_grid"` marks the rendering mode.
-- In `dashboard_grid` (~340px intrinsic): renders full 4-row anomaly list with per-row acknowledge action + "View all N →" footer.
 
-**Pattern**: when a widget renderer receives `surface={surface}` prop and intrinsic Brief content exceeds the grid cell vertical budget, switch to compact rendering. Compact preserves header + footer (the navigation affordance) while dropping the rich content body. The user gets the COUNT in Pulse and the FULL LIST when they click through to the dedicated page or open the widget on a dashboard surface.
+| Density | Cell height range | Content |
+|---|---|---|
+| Default (`@container piece (min-height: 121px)`) | ≥ 121 px | Full 4-row list with per-row Acknowledge action + "View all N →" footer |
+| Compact (`@container piece (max-height: 120px) (min-height: 81px)`) | 81–120 px | Header (count + critical breakdown + count badge) + footer ("Investigate N →"). Body/rows skipped. |
+| Ultra-compact (`@container piece (max-height: 80px)`) | ≤ 80 px | Single-line: icon + "N anomalies" + critical badge + "Investigate →" inline. |
+
+Pulse cell sizes derived from §13.3.4 viewport-fit math; widgets respond automatically.
+
+**Pattern**: opt into density tiers when intrinsic content varies meaningfully across cell sizes. Most widgets won't need this — they render uniform content with `--pulse-scale` typography. Density tiers are for widgets like anomalies / line_status / today / briefing where the small-cell rendering is structurally different from the large-cell rendering.
+
+**Pre-Step-6 Pattern (preserved as `surface=pulse_grid` fallback)**: Step 2 D's `surface === "pulse_grid"` branch in widget renderers stays as the explicit-fallback path. Container queries are canonical; `surface` prop is the back-compat path for older renderers + the explicit-identification path (e.g., for tests asserting "this rendering came from Pulse"). When both mechanisms apply, container queries win (more accurate to actual cell size).
 
 #### 13.4.2 Intelligence Stream Pieces
 
@@ -4066,6 +4225,36 @@ Intelligence streams are visually distinct from pinable widgets via:
 - Brass thread accents at piece edges (signaling composed-by-intelligence)
 
 This subtle distinction signals "this is intelligent content" without dominating chrome. User can tell Pulse pieces apart but the surface reads coherently.
+
+#### 13.4.3 Agency-Dictated Error Surface (Phase W-4a Step 6, May 2026)
+
+When a widget renderer is unavailable (registered but not in the renderer registry, or registered but throws at render time), the error-surface treatment depends on **who composed the surface**: platform or user.
+
+**Platform-composed surfaces (silent filter + log)**:
+
+- **Pulse** (`pulse_grid`) — composition engine plans the surface. If a widget can't render, the platform's choice is silently overridden. The slot disappears from the layout entirely; layer compacts to remaining items via tetris repacking. `console.warn("[pulse] missing widget renderer; skipping piece", {component_key, layer, item_id})` fires for observability. RUM integration captures the warn (post-September). Users never see misconfigurations they didn't author.
+
+- **Future platform-composed surfaces** (briefing summaries, default standard-Spaces dashboards if platform-seeded) follow the same pattern.
+
+**User-composed surfaces (visible placeholder)**:
+
+- **`PinnedSection`** (sidebar pins) — user explicitly pinned the widget. If broken, they SHOULD see the broken state — they own the configuration. `MissingWidgetEmptyState` renders in place with the offending `widget_id` surfaced for QA observability + user transparency.
+
+- **Custom Spaces dashboards** (Phase W-5+) — user added the widget to their dashboard. `MissingWidgetEmptyState` renders in place.
+
+- **Future user-composed surfaces** (saved-view-as-widget instances on user's surfaces, etc.) follow the same pattern.
+
+**Why agency dictates the treatment**: composition agency = error-surface agency. If the platform composed and made a wrong choice, the platform should clean up silently — surfacing the platform's wrong choice TO the user is poor UX (they didn't ask for it). If the user composed and made a wrong choice, the user should see the consequence — surfacing it gives them feedback to fix or remove.
+
+**CI parity test mandatory.** Every backend `widget_id` declared in `app/services/widgets/widget_registry.py::WIDGET_DEFINITIONS` must have a corresponding frontend renderer registered via `registerWidgetRenderer(widget_id, Component)`. A vitest test imports all widget-registration modules + asserts every backend widget_id resolves to a registered renderer (not the fallback). The CI parity test fails loudly when a backend declaration has no frontend implementation — surfaces backend/frontend drift before it reaches production.
+
+The CI test does NOT cover renderers throwing at render time (e.g., AncillaryPoolPin throws when called outside `SchedulingFocusDataProvider`). That class of failure is observed via `console.warn` from the platform-composed-surface filter at runtime.
+
+**Reference implementations**:
+- `frontend/src/components/focus/canvas/widget-renderers.ts::getWidgetRenderer` — fallback split: `widgetType === undefined` → MockSavedViewWidget (legacy/test); `widgetType` set-but-not-registered → `MissingWidgetEmptyState`. (Step 5)
+- `PulseLayer` filter (Step 6 implementation) — items where the renderer resolves to `MissingWidgetEmptyState` are filtered from `visibleItems` + `console.warn` fires.
+- `PinnedSection` (Step 5 unchanged) — user pinned the widget; placeholder visible.
+- CI parity test: `frontend/src/__tests__/widget-renderer-parity.test.ts` (Step 6 — new file).
 
 ### 13.5 Signal Collection Chrome
 
