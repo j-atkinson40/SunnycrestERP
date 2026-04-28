@@ -545,3 +545,98 @@ describe("TestConsoleWarnDiscipline", () => {
     expect(warnSpy).not.toHaveBeenCalled()
   })
 })
+
+
+// ── TestSessionB1PersonalLayerDeferral ───────────────────────────────
+
+
+describe("TestSessionB1PersonalLayerDeferral", () => {
+  // Phase W-4a Cleanup Session B.1 (2026-05-04): backend
+  // personal_layer_service.py defers _build_tasks_item +
+  // _build_approvals_item to return None always pending Phase W-4b
+  // migration to operational_layer_service. Per §3.26.7.5 canonical-
+  // quality discipline. Frontend contract: personal layer arrives
+  // with items=[] + canonical advisory; PulseLayer renders advisory-
+  // only; no empty Pattern 2 card; no console.warn fires (because no
+  // unrenderable items reach the filter).
+
+  it("personal layer with items=[] + advisory renders advisory only — no piece chrome", () => {
+    const layer: LayerContent = {
+      layer: "personal",
+      items: [],
+      advisory: "Nothing addressed to you right now.",
+    }
+    const { container } = render(
+      <MemoryRouter>
+        <PulseLayer
+          layer={layer}
+          intelligenceStreams={[]}
+          timeOfDay={"morning" as TimeOfDaySignal}
+          workAreas={[]}
+          pulseLoadedAt={1000}
+          dismissedItemIds={new Set()}
+        />
+      </MemoryRouter>,
+    )
+    // Layer renders empty-state advisory.
+    const emptySection = container.querySelector(
+      '[data-slot="pulse-layer"][data-empty="true"]',
+    )
+    expect(emptySection).not.toBeNull()
+    expect(container.textContent).toContain(
+      "Nothing addressed to you right now.",
+    )
+    // CRITICAL: no piece chrome anywhere (the pre-Session-B.1 drift
+    // rendered an empty Pattern 2 card here).
+    const pieces = container.querySelectorAll('[data-slot="pulse-piece"]')
+    expect(pieces.length).toBe(0)
+    // No console.warn fires — there are no items to filter.
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it("backend deferral closes the approvals_waiting + tasks_assigned drift surfaced by Commit 4", () => {
+    // Pre-Session-B.1 contract (now retired): backend emitted
+    // kind="stream" LayerItems for tasks_assigned and approvals_waiting
+    // but composition_engine had no matching IntelligenceStream
+    // registration → PulsePiece's stream-render path returned null →
+    // empty Pattern 2 card visible. This test simulates the
+    // post-Session-B.1 contract: backend emits items=[].
+    const layer: LayerContent = {
+      layer: "personal",
+      items: [],
+      advisory: "Nothing addressed to you right now.",
+    }
+    const { container } = render(
+      <MemoryRouter>
+        <PulseLayer
+          layer={layer}
+          intelligenceStreams={[]}
+          timeOfDay={"morning" as TimeOfDaySignal}
+          workAreas={[]}
+          pulseLoadedAt={1000}
+          dismissedItemIds={new Set()}
+        />
+      </MemoryRouter>,
+    )
+    // Critical regression guard: no piece carrying the deferred
+    // component_keys leaks into the rendered DOM under any path.
+    expect(
+      container.querySelector('[data-component-key="approvals_waiting"]'),
+    ).toBeNull()
+    expect(
+      container.querySelector('[data-component-key="tasks_assigned"]'),
+    ).toBeNull()
+    // No warns for these component_keys either (backend doesn't emit
+    // them; frontend has no LayerItem to filter).
+    const warnsForDeferredKeys = warnSpy.mock.calls.filter(
+      (args: unknown[]) => {
+        const payload = args[1] as { component_key?: string } | undefined
+        return (
+          payload?.component_key === "approvals_waiting" ||
+          payload?.component_key === "tasks_assigned"
+        )
+      },
+    )
+    expect(warnsForDeferredKeys.length).toBe(0)
+  })
+})

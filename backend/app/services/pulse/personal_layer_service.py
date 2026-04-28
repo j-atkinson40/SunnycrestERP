@@ -1,22 +1,69 @@
 """Personal layer composition — items addressed to the current user.
 
-Per BRIDGEABLE_MASTER §3.26.2.3 Personal Layer:
-  • Tasks assigned to you ........... Phase W-4a (READY)
-  • Approvals waiting on you ........ Phase W-4a (READY via briefing
-                                       pending_decisions)
-  • @mentions in comments/messages .. Phase W-4b (STUB — needs comm
-                                       primitives)
-  • Direct messages ................. Phase W-4b (STUB — needs email)
-  • Items you marked "watch" ........ Post-arc (no watch system today)
+**Phase W-4a Cleanup Session B.1 (2026-05-04) status: items deferred.**
 
-Honest scope for Phase W-4a: tasks + approvals only. Sunnycrest
-dispatcher's Personal Layer is thin pre-W-4b — that's accepted.
-Demo narrative carries on Operational + Anomaly layers; Personal
-layer fills in once Phase W-4b lands the communications primitives.
+Per Phase W-4b canon expansion (BRIDGEABLE_MASTER §3.26.2.3 +
+§3.26.2.4 amendment + §3.26.9 Communications Layer + D-COMMS-4),
+the Personal layer literal is **scheduled for hard-cutover removal**.
+Tasks + approvals migrate to the Operational layer; the Personal
+layer slot at the top of the canonical layer order is reclaimed by
+the Communications layer. The migration is wholesale — this file
+itself rewrites to `communications_layer_service.py` with the
+tasks-assigned + approvals-waiting builders moving to
+`operational_layer_service.py`.
 
-**Tenant isolation:** every query filters by `company_id ==
-user.company_id`. Personal layer additionally filters by `user_id`
-or assignee — no cross-user leakage even within the same tenant.
+Pre-Phase-W-4b state: composition_engine.py only synthesizes
+IntelligenceStream entries for `anomaly_intelligence`
+(per Commit 3 V1 anomaly intelligence). Tasks-assigned + approvals-
+waiting items emitted with `kind="stream"` had no matching
+IntelligenceStream registry entry on the frontend dispatch side, so
+PulsePiece's stream-rendering path returned null and rendered an
+empty Pattern 2 chrome card. Phase W-4a Step 6 Commit 4 (`91df9a4`)
+empty-slot filter surfaced this drift; Cleanup Session B.1 closes
+it.
+
+**Per §3.26.7.5 canonical-quality discipline**: build at canonical
+quality WHEN the widget is needed, not preemptively against
+speculative composition shapes that may evolve. The intermediate
+"stream-in-Personal" framing is itself transitional. Building stream
+or widget UI now produces ~5 weeks of useful life followed by
+retirement when Phase W-4b's hard cutover lands. The canonical fix
+is to defer emission until the migration ships proper Operational-
+layer rendering.
+
+**Builders deferred to Phase W-4b:**
+  • `_build_tasks_item` ............. Returns None always
+  • `_build_approvals_item` ......... Returns None always
+  • Both functions retained as scaffolding so the Phase W-4b migration
+    can MOVE them (rename + relocate to operational_layer_service)
+    rather than recreate them — the data shapes + tenant-isolation
+    queries are correct; only the layer destination is being
+    deferred. Restore by removing the early return + uncomment the
+    return-LayerItem block.
+
+**Reversibility**: re-enabling the pre-deferral emission requires
+removing the early `return None` lines from both `_build_*` functions.
+If Phase W-4b's hard cutover doesn't ship cleanly, the deferral can
+be flipped without architectural rework.
+
+**Empty-state advisory unchanged**: `compose_for_user` continues to
+emit the canonical "Nothing addressed to you right now." advisory
+when `items == []`. Per Option (i) confirmed in Session B.1: no new
+copy invented; honest empty state.
+
+**Tenant isolation contract preserved**: when builders eventually
+re-enable in Phase W-4b at their new home, the query filters
+(`company_id == user.company_id` + assignee/user_id scoping) carry
+forward verbatim. Cleanup Session B.1 doesn't rewrite the data
+queries — only gates the LayerItem emission.
+
+**Path forward**:
+  1. Phase W-4b implementation lands operational_layer_service
+     additions for tasks + approvals
+  2. Phase W-4b implementation lands communications_layer_service
+     replacing this file
+  3. This file deletes (or gets repurposed as the foundation for
+     communications_layer_service per the canonical migration note)
 """
 from __future__ import annotations
 
@@ -40,12 +87,31 @@ APPROVALS_WAITING_KEY = "approvals_waiting"
 def _build_tasks_item(db: Session, *, user: User) -> LayerItem | None:
     """Surface tasks assigned to this user in the Personal layer.
 
-    Phase 5 Triage shipped the Task model with `assignee_user_id`.
-    For Pulse, we surface a stream item (count + top 3) rather than a
-    full kanban — the dedicated /tasks page or task triage queue
-    handles deep work. Per §12.6a, Pulse is a reference surface for
-    Personal items; deep editing happens on the page.
+    **Phase W-4a Cleanup Session B.1 (2026-05-04) — DEFERRED to
+    Phase W-4b**: returns None always pending Phase W-4b migration to
+    operational_layer_service. Pre-deferral, this function emitted
+    `kind="stream"` LayerItems but composition_engine had no matching
+    IntelligenceStream registration on the dispatch side, producing
+    empty Pattern 2 chrome cards. Per §3.26.7.5 canonical-quality
+    discipline, the canonical fix is to defer emission until Phase
+    W-4b ships proper Operational-layer rendering — not to ship
+    transitional UI that retires in ~5 weeks. See file-level docstring
+    for full context.
+
+    The pre-deferral query logic is preserved as scaffolding below
+    (after the early return) so Phase W-4b can MOVE this builder
+    (rename + relocate to operational_layer_service.py) rather than
+    recreate it. Tenant isolation contract (`company_id ==
+    user.company_id`) carries forward when re-enabled.
+
+    To re-enable: remove the `return None` line below.
     """
+    # ── Phase W-4a Cleanup Session B.1 deferral (per §3.26.7.5)
+    # Re-enable in Phase W-4b at new home in operational_layer_service.
+    return None
+    # NOTE: lines below preserved as scaffolding for Phase W-4b
+    # migration. Tenant isolation + query correctness verified
+    # pre-deferral; data shape unchanged.
     # Open / in-progress tasks assigned to this user.
     rows: list[Task] = (
         db.query(Task)
@@ -105,18 +171,31 @@ def _build_tasks_item(db: Session, *, user: User) -> LayerItem | None:
 def _build_approvals_item(db: Session, *, user: User) -> LayerItem | None:
     """Surface agent-job approvals awaiting this user.
 
-    Phase 8b accounting agents use the `approval_gate` token-based
-    flow. Approvals waiting are AgentJob rows with status
-    `awaiting_approval` whose `tenant_id == user.company_id`. For
-    Phase W-4a we surface a count + most-recent links; full review
-    happens on the agent dashboard.
+    **Phase W-4a Cleanup Session B.1 (2026-05-04) — DEFERRED to
+    Phase W-4b**: returns None always pending Phase W-4b migration to
+    operational_layer_service. Pre-deferral, this function emitted
+    `kind="stream"` LayerItems but composition_engine had no matching
+    IntelligenceStream registration on the dispatch side, producing
+    empty Pattern 2 chrome cards. Per §3.26.7.5 canonical-quality
+    discipline, the canonical fix is to defer emission until Phase
+    W-4b ships proper Operational-layer rendering — not to ship
+    transitional UI that retires in ~5 weeks. See file-level docstring
+    for full context.
 
-    Honest scope: this surfaces tenant-wide pending approvals, not
-    per-user routing (the approval_gate doesn't have explicit
-    routing today — admin permission gates the action). When per-
-    user routing lands (Phase W-4b+ task assignment for approvals),
-    this filter tightens.
+    The pre-deferral query logic is preserved as scaffolding below
+    (after the early return) so Phase W-4b can MOVE this builder
+    (rename + relocate to operational_layer_service.py) rather than
+    recreate it. Tenant isolation contract (`tenant_id ==
+    user.company_id`) carries forward when re-enabled.
+
+    To re-enable: remove the `return None` line below.
     """
+    # ── Phase W-4a Cleanup Session B.1 deferral (per §3.26.7.5)
+    # Re-enable in Phase W-4b at new home in operational_layer_service.
+    return None
+    # NOTE: lines below preserved as scaffolding for Phase W-4b
+    # migration. Tenant isolation + query correctness verified
+    # pre-deferral; data shape unchanged.
     # AgentJob (Phase 8b approval_gate) — tenant-wide pending
     # approvals. Filter to admin users only? No — Pulse is per-user,
     # the surfacing is informational; the actual approve action is

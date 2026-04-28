@@ -229,6 +229,19 @@ def _make_anomaly(
 
 
 class TestPersonalLayer:
+    """Personal layer tests post-Cleanup-Session-B.1 (2026-05-04).
+
+    Both _build_tasks_item + _build_approvals_item return None always
+    per Phase W-4b deferral (per §3.26.7.5 canonical-quality discipline
+    + §3.26.2.4 Operational-layer migration target). Tests assert the
+    deferred contract: items=[] regardless of tenant tasks/approvals
+    state; canonical empty advisory preserved.
+
+    When Phase W-4b lands and tasks + approvals migrate to
+    operational_layer_service, these tests retire (or move alongside
+    the builders to operational_layer_service test coverage).
+    """
+
     def test_empty_state_advisory(self, db_session):
         from app.models.user import User
         from app.services.pulse.personal_layer_service import compose_for_user
@@ -242,9 +255,20 @@ class TestPersonalLayer:
         assert result.items == []
         assert result.advisory == "Nothing addressed to you right now."
 
-    def test_tasks_assigned_surface_with_count_and_top_items(
+    def test_tasks_assigned_deferred_no_emission_even_with_tenant_tasks(
         self, db_session
     ):
+        """Phase W-4a Cleanup Session B.1 — _build_tasks_item returns
+        None always pending Phase W-4b migration. Even with seeded
+        tasks, no LayerItem emits. Empty advisory + items=[] hold.
+
+        Pre-Session-B.1 contract: tasks_assigned LayerItem with
+        kind=stream emitted. That contract retired per §3.26.7.5
+        canonical-quality discipline (composition_engine had no
+        matching IntelligenceStream registration → empty Pattern 2
+        card visible). Phase W-4b restores emission at new home in
+        operational_layer_service.
+        """
         from app.models.user import User
         from app.services.pulse.personal_layer_service import (
             TASKS_ASSIGNED_KEY,
@@ -263,16 +287,21 @@ class TestPersonalLayer:
             db_session.query(User).filter(User.id == ctx["user_id"]).one()
         )
         result = compose_for_user(db_session, user=user)
-        tasks = next(
-            (it for it in result.items if it.component_key == TASKS_ASSIGNED_KEY),
-            None,
+        # Post-Session-B.1: NO LayerItem emitted regardless of task state.
+        assert result.items == []
+        assert all(
+            it.component_key != TASKS_ASSIGNED_KEY for it in result.items
         )
-        assert tasks is not None
-        assert tasks.kind == "stream"
-        assert tasks.payload["total_count"] == 5
-        assert len(tasks.payload["top_items"]) == 3  # top N=3
+        # Empty advisory preserved per Option (i) confirmed in Session B.1.
+        assert result.advisory == "Nothing addressed to you right now."
 
     def test_completed_tasks_excluded(self, db_session):
+        """Pre-Session-B.1 this asserted that done-status tasks didn't
+        surface (the inactive-task filter). Post-Session-B.1 the
+        broader assertion is that NO tasks surface regardless of
+        status — the entire emission is deferred. This test guards
+        that the deferral covers the originally-surfaced state too.
+        """
         from app.models.user import User
         from app.services.pulse.personal_layer_service import (
             TASKS_ASSIGNED_KEY,
@@ -290,12 +319,28 @@ class TestPersonalLayer:
             db_session.query(User).filter(User.id == ctx["user_id"]).one()
         )
         result = compose_for_user(db_session, user=user)
-        # Done task → no surface (function returns None)
+        # Post-Session-B.1: no tasks surface regardless of status.
         assert all(
             it.component_key != TASKS_ASSIGNED_KEY for it in result.items
         )
 
-    def test_approvals_waiting_surface(self, db_session):
+    def test_approvals_waiting_deferred_no_emission_even_with_pending(
+        self, db_session
+    ):
+        """Phase W-4a Cleanup Session B.1 — _build_approvals_item
+        returns None always pending Phase W-4b migration. Even with
+        a seeded AgentJob in awaiting_approval status, no LayerItem
+        emits. Closes the empty Pattern 2 card drift surfaced by
+        Phase W-4a Step 6 Commit 4 (`91df9a4`) empty-slot filter.
+
+        Pre-Session-B.1 contract: approvals_waiting LayerItem with
+        kind=stream emitted. composition_engine.py had no matching
+        IntelligenceStream registration → PulsePiece's stream-render
+        path returned null → empty Pattern 2 card visible at testco
+        admin /home. Per §3.26.7.5 canonical-quality discipline, the
+        canonical fix is deferral until Phase W-4b ships
+        Operational-layer rendering.
+        """
         from app.models.user import User
         from app.services.pulse.personal_layer_service import (
             APPROVALS_WAITING_KEY,
@@ -308,12 +353,39 @@ class TestPersonalLayer:
             db_session.query(User).filter(User.id == ctx["user_id"]).one()
         )
         result = compose_for_user(db_session, user=user)
-        approvals = next(
-            (it for it in result.items if it.component_key == APPROVALS_WAITING_KEY),
-            None,
+        # Post-Session-B.1: NO LayerItem emitted regardless of
+        # approval state.
+        assert result.items == []
+        assert all(
+            it.component_key != APPROVALS_WAITING_KEY for it in result.items
         )
-        assert approvals is not None
-        assert approvals.payload["total_count"] == 1
+        # Empty advisory preserved per Option (i).
+        assert result.advisory == "Nothing addressed to you right now."
+
+    def test_compose_for_user_combined_state_no_emission(self, db_session):
+        """Mixed-state regression guard: tenant has BOTH open tasks
+        AND pending approvals. Pre-Session-B.1 this would have emitted
+        2 LayerItems. Post-Session-B.1 nothing emits; canonical empty
+        advisory holds.
+        """
+        from app.models.user import User
+        from app.services.pulse.personal_layer_service import compose_for_user
+
+        ctx = _make_tenant_user()
+        for i in range(3):
+            _make_task(
+                db_session,
+                company_id=ctx["company_id"],
+                assignee_user_id=ctx["user_id"],
+                title=f"Task {i}",
+            )
+        _make_agent_job(db_session, tenant_id=ctx["company_id"])
+        user = (
+            db_session.query(User).filter(User.id == ctx["user_id"]).one()
+        )
+        result = compose_for_user(db_session, user=user)
+        assert result.items == []
+        assert result.advisory == "Nothing addressed to you right now."
 
 
 # ── Operational layer — work_areas-driven ──────────────────────────
@@ -699,6 +771,16 @@ class TestTenantIsolation:
     def test_personal_layer_tasks_scoped_to_caller_tenant(
         self, db_session
     ):
+        """Tenant isolation regression guard.
+
+        Post-Session-B.1: this test passes vacuously because
+        _build_tasks_item returns None always — A's user sees nothing
+        regardless of B's tasks. The test stays as a guard for when
+        Phase W-4b re-enables the builder at its new home in
+        operational_layer_service: cross-tenant leakage must remain
+        prevented (the `company_id == user.company_id` filter carries
+        forward verbatim per the canonical migration note).
+        """
         from app.models.user import User
         from app.services.pulse.personal_layer_service import (
             TASKS_ASSIGNED_KEY,
@@ -718,7 +800,9 @@ class TestTenantIsolation:
             db_session.query(User).filter(User.id == ctx_a["user_id"]).one()
         )
         result = compose_for_user(db_session, user=user_a)
-        # A's user sees nothing
+        # A's user sees nothing — pre-Session-B.1 because of tenant
+        # isolation; post-Session-B.1 because of the deferral. Either
+        # way the absence-of-leakage assertion holds.
         assert all(
             it.component_key != TASKS_ASSIGNED_KEY for it in result.items
         )
