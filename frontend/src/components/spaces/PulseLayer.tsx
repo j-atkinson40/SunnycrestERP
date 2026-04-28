@@ -40,14 +40,68 @@
 
 import { PulsePiece } from "@/components/spaces/PulsePiece"
 import { computeLayerRowCount } from "@/components/spaces/utils/layer-row-count"
+import { isItemRenderable } from "@/components/spaces/utils/renderability"
 import { useViewportDimensions } from "@/hooks/useViewportFitMath"
 import type {
   IntelligenceStream,
   LayerContent,
+  LayerItem,
   LayerName,
   TimeOfDaySignal,
 } from "@/types/pulse"
 import { cn } from "@/lib/utils"
+
+
+/**
+ * Per-session debounce store for the canonical §13.4.3 console.warn.
+ * Module-scoped (one per page session) so the same `${layer}:${
+ * component_key}` warns ONCE during the session even though
+ * PulseLayer re-renders on every Pulse refresh, viewport resize, or
+ * dismiss action. Cleared on full page reload.
+ *
+ * Per §13.4.3: "console.warn fires for observability. RUM
+ * integration captures the warn (post-September). Users never see
+ * misconfigurations they didn't author."
+ */
+const _emittedWarnKeys = new Set<string>()
+
+
+/** Reset for tests — production callers never use this. */
+export function _resetPulseLayerWarnDebounceForTests(): void {
+  _emittedWarnKeys.clear()
+}
+
+
+/**
+ * Emit canonical Pulse missing-renderer warning, debounced per
+ * `${layer}:${component_key}` so a continuously-failing widget
+ * doesn't spam the console across renders.
+ */
+function _warnUnrenderable(
+  layer: LayerName,
+  item: LayerItem,
+): void {
+  const key = `${layer}:${item.component_key}`
+  if (_emittedWarnKeys.has(key)) return
+  _emittedWarnKeys.add(key)
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[pulse] missing widget renderer; skipping piece",
+    {
+      component_key: item.component_key,
+      layer,
+      item_id: item.item_id,
+      kind: item.kind,
+      hint:
+        "Per DESIGN_LANGUAGE §13.4.3 agency-dictated error surface, " +
+        "Pulse silently filters unrenderable pieces. Check that the " +
+        "frontend `registerWidgetRenderer(widget_id, Component)` " +
+        "matches the backend `WIDGET_DEFINITIONS` entry. The CI " +
+        "parity test (`frontend/src/__tests__/widget-renderer-" +
+        "parity.test.ts`) catches drift at build time.",
+    },
+  )
+}
 
 
 export interface PulseLayerProps {
@@ -80,11 +134,26 @@ export function PulseLayer({
   onDismissItem,
   dismissedItemIds,
 }: PulseLayerProps) {
-  // Filter out items the user dismissed in this session (parent
-  // tracks the set; PulsePiece animates out then parent removes).
-  const visibleItems = layer.items.filter(
-    (it) => !dismissedItemIds.has(it.item_id),
-  )
+  // Filter out (a) items the user dismissed in this session and (b)
+  // unrenderable pieces per §13.4.3 platform-composed surface canon.
+  // PulseSurface measurement walk applies the same renderability
+  // filter so cell-height math + render stay consistent.
+  //
+  // For each piece filtered for unrenderability, fire the canonical
+  // console.warn (debounced via module-scoped Set keyed on
+  // `${layer.layer}:${component_key}` so a continuously-failing
+  // widget doesn't spam across renders). Per canon:
+  //   "console.warn fires for observability. RUM integration captures
+  //    the warn (post-September). Users never see misconfigurations
+  //    they didn't author."
+  const visibleItems = layer.items.filter((it) => {
+    if (dismissedItemIds.has(it.item_id)) return false
+    if (!isItemRenderable(it)) {
+      _warnUnrenderable(layer.layer, it)
+      return false
+    }
+    return true
+  })
 
   // Empty-after-dismiss OR truly empty layer.
   if (visibleItems.length === 0) {
@@ -115,16 +184,19 @@ export function PulseLayer({
     )
   }
 
-  // Phase W-4a Step 6 Commit 2 — compute this layer's row count
-  // tier-aware. Both the parent PulseSurface (for the aggregate
-  // measurement) and this layer (for grid-template-rows) consume the
-  // same `column_count` from `useViewportDimensions()` so the tetris
-  // packing matches across both render surfaces.
+  // Phase W-4a Step 6 Commit 2 + Commit 4 — compute this layer's row
+  // count tier-aware + renderability-aware. Both PulseSurface (for
+  // the aggregate measurement) and this layer (for grid-template-rows)
+  // consume the same `column_count` from `useViewportDimensions()`
+  // AND the same `isItemRenderable` predicate so tetris packing
+  // matches across both render surfaces (the cell-height solver's
+  // denominator equals the actually-rendered piece count).
   const dimensions = useViewportDimensions()
   const layerRowCount = computeLayerRowCount(
     layer.items,
     dismissedItemIds,
     dimensions.column_count,
+    isItemRenderable,
   )
 
   return (

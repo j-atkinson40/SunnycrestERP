@@ -60,6 +60,20 @@ vi.mock("@/components/widgets/useWidgetData", () => ({
 }))
 
 
+// Phase W-4a Step 6 Commit 4 — PulseLayer now filters unrenderable
+// widgets per §13.4.3. The opt-in widgets are registered by their
+// production register.ts via the Anomalies/LineStatus/Today widget
+// tests' own dynamic imports. The tier-dispatch tests use
+// `component_key: "test"` (a synthetic key) which won't resolve
+// without explicit registration. Registration happens via dynamic
+// import inside each affected describe block's beforeEach —
+// module-level registration is unreliable across the
+// `vi.resetModules()` boundary used by sibling describe blocks.
+function _MockTierTestWidget() {
+  return null
+}
+
+
 // ── Fixtures ─────────────────────────────────────────────────────────
 
 
@@ -391,6 +405,20 @@ describe("TestPulseSurfaceTierWiring", () => {
   // Smoke test that PulseSurface / PulseLayer don't drift from the
   // shared util and consume the same column_count signal.
   // (Full PulseSurface render coverage lives in PulseSurface.test.tsx.)
+  //
+  // Register the synthetic "test" widget key before each test so
+  // PulseLayer's Commit 4 renderability filter doesn't drop the test
+  // fixture pieces. Earlier describe blocks call `vi.resetModules()`
+  // (TestContainerQueriesLineStatus) which wipes the module-graph
+  // registry; the dynamic import inside each test re-loads
+  // widget-renderers.ts. We register against the SAME freshly-loaded
+  // module instance via dynamic import in beforeEach.
+  beforeEach(async () => {
+    const { registerWidgetRenderer: register } = await import(
+      "@/components/focus/canvas/widget-renderers"
+    )
+    register("test", _MockTierTestWidget)
+  })
 
   it("PulseLayer renders gridTemplateColumns referencing var(--pulse-column-count)", async () => {
     const { PulseLayer } = await import(

@@ -53,6 +53,7 @@ import { SkeletonLines } from "@/components/ui/skeleton"
 import { PulseFirstLoginBanner } from "@/components/spaces/PulseFirstLoginBanner"
 import { PulseLayer } from "@/components/spaces/PulseLayer"
 import { computeLayerRowCount } from "@/components/spaces/utils/layer-row-count"
+import { isItemRenderable } from "@/components/spaces/utils/renderability"
 import { useOnboardingTouch } from "@/hooks/useOnboardingTouch"
 import { usePulseComposition } from "@/hooks/usePulseComposition"
 import {
@@ -114,10 +115,20 @@ export function PulseSurface() {
     let empty_with_advisory_layer_count = 0
     let has_operational_layer = false
     for (const lc of composition.layers) {
+      // Phase W-4a Step 6 Commit 4 — pass renderability predicate so
+      // unrenderable widget pieces (e.g. backend declares widget_id
+      // but frontend has no registered renderer) silently filter out
+      // of the row-count math per §13.4.3 platform-composed surface
+      // canon. The cell-height solver's denominator therefore matches
+      // the actually-rendered piece count. PulseLayer applies the
+      // same predicate at render time + emits the canonical
+      // console.warn — the warn fires there (canon § "PulseLayer
+      // filter (Step 6 implementation)"), not here.
       const rows = computeLayerRowCount(
         lc.items,
         dismissedItemIds,
         column_count,
+        isItemRenderable,
       )
       if (rows > 0) {
         populated_layer_count++

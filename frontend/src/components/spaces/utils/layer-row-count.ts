@@ -1,5 +1,6 @@
 /**
- * computeLayerRowCount — Phase W-4a Step 6 Commit 2 (deduplicated).
+ * computeLayerRowCount — Phase W-4a Step 6 Commit 2 (deduplicated)
+ * + Commit 4 (renderable predicate).
  *
  * Walks a layer's items + simulates dense-flow tetris placement.
  * Returns the row count that layer consumes under the given column
@@ -13,24 +14,44 @@
  * measurement) and PulseLayer (for the per-layer render). Commit 2
  * hoists to a single shared util — both consumers import from here.
  *
+ * Commit 4 (Phase W-4a Step 6, May 2026) — extends with optional
+ * `is_renderable` predicate per §13.4.3 agency-dictated error surface
+ * canon. Pulse is platform-composed; widget pieces whose renderer
+ * resolves to a fallback (MissingWidgetEmptyState / MockSavedViewWidget)
+ * are silently filtered from row-count math + render. Both consumers
+ * (PulseSurface measurement walk + PulseLayer rendering) supply the
+ * same predicate so the cell-height solver's denominator matches the
+ * actual rendered piece count. console.warn discipline lives at the
+ * PulseLayer call site (canon § "PulseLayer filter (Step 6
+ * implementation)") — not duplicated here.
+ *
  * Algorithm: dense-flow placement, same as CSS Grid `grid-auto-flow:
  * row dense`. Returns 0 for empty layers.
  *
  * @param items - LayerContent.items array
  * @param filtered_ids - Set of dismissed item_ids to exclude
  * @param column_count - Tier-resolved column count (2/4/6 per §13.3.1)
+ * @param is_renderable - Optional predicate. When provided, items where
+ *   `is_renderable(item)` returns false are filtered before packing.
+ *   Per §13.4.3 platform-composed surface canon. When omitted (Commit
+ *   2 callers), every item passes — backward-compat preserved.
  * @returns Row count consumed under tetris packing; 0 if empty.
  */
 
-import type { LayerContent } from "@/types/pulse"
+import type { LayerContent, LayerItem } from "@/types/pulse"
 
 
 export function computeLayerRowCount(
   items: LayerContent["items"],
   filtered_ids: Set<string>,
   column_count: number,
+  is_renderable?: (item: LayerItem) => boolean,
 ): number {
-  const visible = items.filter((it) => !filtered_ids.has(it.item_id))
+  const visible = items.filter((it) => {
+    if (filtered_ids.has(it.item_id)) return false
+    if (is_renderable && !is_renderable(it)) return false
+    return true
+  })
   if (visible.length === 0) return 0
 
   // Bitmap of occupied cells, one row at a time. Grows as needed.
