@@ -245,9 +245,12 @@ class TestPhase8eEnrichments:
             vertical="manufacturing",
         )
         created = seed_for_user(db_session, user=user)
-        assert created == 2  # Compliance + Training — no longer General
+        # Phase W-4a — Home system space added for all users; count
+        # increments by 1 vs pre-W-4a (was 2: Compliance + Training).
+        assert created == 3  # Home + Compliance + Training
         spaces = get_spaces_for_user(db_session, user=user)
         names = [s.name for s in spaces]
+        assert "Home" in names  # Phase W-4a system space
         assert "Compliance" in names
         assert "Training" in names
         assert "General" not in names  # promoted away from fallback
@@ -301,15 +304,19 @@ class TestDriverTemplatesUsePortalAccessMode:
     def test_fh_driver_has_no_template(self, db_session):
         """Phase 8e.2 ships MFG driver only. FH driver still falls
         to FALLBACK — FH removal staff work dispatches through case
-        workflows, no driver-specific portal yet."""
+        workflows, no driver-specific portal yet. Phase W-4a — Home
+        system space is added for ALL users including FH driver, so
+        the count is 2 (Home + General) not 1."""
         assert ("funeral_home", "driver") not in reg.SEED_TEMPLATES
         user = _fresh_user(
             db_session, role_slug="driver", vertical="funeral_home"
         )
         seed_for_user(db_session, user=user)
         spaces = get_spaces_for_user(db_session, user=user)
-        assert len(spaces) == 1
-        assert spaces[0].name == "General"
+        # Phase W-4a — Home + General
+        assert len(spaces) == 2
+        names = {s.name for s in spaces}
+        assert names == {"Home", "General"}
 
     def test_all_operational_role_templates_use_portal_access_mode(self):
         """Invariant: if SEED_TEMPLATES has ANY entry for an

@@ -139,8 +139,19 @@ def seed_for_user(
         return created
 
     new_roles = [r for r in current_roles if r not in already_seeded]
-    if not new_roles:
-        return 0
+    # Phase W-4a — pre-existing latent issue fix surfaced during
+    # Home-space addition: this function used to early-return at this
+    # point when `new_roles` was empty, which skipped the system-spaces
+    # sweep below. That meant: a new system template added post-canon
+    # (Phase 8a Settings, Phase W-4a Home) wouldn't propagate to
+    # already-role-seeded users on re-seed because the function bailed
+    # before line 167. Removing the early return makes the function
+    # idempotent for the system-spaces dimension too. Cost: when
+    # `new_roles` is empty we still run `_apply_system_spaces` which
+    # is itself idempotent (skips already-seeded templates via
+    # `prefs.system_spaces_seeded`), so this is a cheap O(1) extra
+    # query when nothing's missing — and the only path that surfaces
+    # newly-added system templates for existing users.
 
     created_total = 0
     for role_slug in new_roles:
@@ -160,10 +171,9 @@ def seed_for_user(
 
     # Workflow Arc Phase 8a — seed system spaces (Settings etc.)
     # based on live permissions. Idempotent via
-    # preferences.system_spaces_seeded. Re-runs on role change
-    # pick up newly-granted admin permission without forcing the
-    # user-space re-seed (which is gated by ROLE_CHANGE_RESEED_ENABLED
-    # in user_service.update_user).
+    # preferences.system_spaces_seeded. Phase W-4a — also runs when
+    # role-templates are unchanged, so newly-added system templates
+    # (Home in W-4a) reach existing users on next defensive re-seed.
     created_total += _apply_system_spaces(db, user, prefs)
 
     _save_prefs(db, user, prefs)

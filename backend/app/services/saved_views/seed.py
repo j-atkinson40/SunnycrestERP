@@ -487,9 +487,13 @@ SEED_TEMPLATES: dict[tuple[str, str], list[SeedTemplate]] = {
 
     # ────────────────────────────────────────────────────────────────
     # Phase B Session 1 — Dispatcher (manufacturing) saved-view seeds.
-    # Five filtered views over the `delivery` entity type. Referenced
-    # by the (manufacturing, dispatcher) Pulse composition in
-    # `spaces/pulse_compositions.py` via their seed keys.
+    # Five filtered views over the `delivery` entity type. These seeds
+    # remain part of the platform's saved-view library; Pulse
+    # composition for manufacturing dispatchers (Phase W-4a Commit 3
+    # `app/services/pulse/composition_engine.py`) surfaces work through
+    # the Widget Library catalog (vault_schedule etc.), not directly
+    # through saved views — but the saved-view library remains
+    # available for tenants to compose their own custom dashboards.
     #
     # NOTE ON DATE FILTERS — these seeds intentionally filter on
     # structural conditions (scheduling_type, status, null/not-null)

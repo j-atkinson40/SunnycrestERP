@@ -52,10 +52,16 @@ def _make_tenant_with_user(
     permissions: list[str] | None = None,
     extensions: list[str] | None = None,
     modules: list[str] | None = None,
+    product_lines: list[str] | None = None,
 ) -> dict:
-    """Create a tenant + user + roles + extensions + modules. Returns
-    dict of handles. Tests use the user_id + company_id to drive the
-    4-axis filter under realistic conditions."""
+    """Create a tenant + user + roles + extensions + modules + product
+    lines. Returns dict of handles. Tests use the user_id + company_id
+    to drive the 5-axis filter under realistic conditions.
+
+    Phase W-3a: gained `product_lines` parameter to seed
+    `TenantProductLine` rows for axis 5 of the 5-axis filter. Idempotent
+    via product_line_service.enable_line.
+    """
     from app.database import SessionLocal
     from app.models.company import Company
     from app.models.role import Role
@@ -123,6 +129,16 @@ def _make_tenant_with_user(
                 pass
 
         db.commit()
+
+        # Phase W-3a — TenantProductLine rows for axis 5. Done after
+        # commit because product_line_service.enable_line opens its own
+        # commit boundaries.
+        if product_lines:
+            from app.services import product_line_service
+            for line_key in product_lines:
+                product_line_service.enable_line(
+                    db, company_id=co.id, line_key=line_key
+                )
 
         return {
             "company_id": co.id,
@@ -392,8 +408,11 @@ class TestCanvasWidgetCatalog:
             # Three variants per Section 12.10 reference: Glance + Brief + Detail
             assert {v["variant_id"] for v in row.variants} == {"glance", "brief", "detail"}
             assert row.default_variant_id == "detail"
-            # Funeral-home-only
-            assert row.required_vertical == ["funeral_home"]
+            # Phase W-3a retag: manufacturing vertical + vault product line.
+            # Pre-W-3a was ["funeral_home"] which was the canon investigation
+            # finding (scheduling Focus is Sunnycrest mfg operations, not FH).
+            assert row.required_vertical == ["manufacturing"]
+            assert row.required_product_line == ["vault"]
             # Multi-surface (focus_canvas + others)
             assert "focus_canvas" in row.supported_surfaces
             assert "spaces_pin" in row.supported_surfaces
@@ -401,15 +420,30 @@ class TestCanvasWidgetCatalog:
             db.close()
 
     @pytest.mark.parametrize(
-        "vertical,visible",
+        "vertical,product_lines,visible",
         [
-            ("funeral_home", True),
-            ("manufacturing", False),
+            # Phase W-3a inversion: manufacturing+vault visible;
+            # everything else fails the 5-axis filter.
+            ("manufacturing", ["vault"], True),
+            # Manufacturing without vault — vertical passes but product_line fails
+            ("manufacturing", [], False),
+            # Funeral home — vertical fails (regardless of product line)
+            ("funeral_home", ["vault"], False),
+            ("funeral_home", [], False),
         ],
     )
-    def test_ancillary_pool_vertical_filtered(
-        self, fresh_db_with_seed, vertical, visible
+    def test_ancillary_pool_5_axis_filter(
+        self, fresh_db_with_seed, vertical, product_lines, visible
     ):
+        """Phase W-3a — exercises all 5 axes for ancillary-pool widget.
+
+        Renamed from `test_ancillary_pool_vertical_filtered` to reflect
+        the W-3a 5-axis scope. Coverage: vertical pass + product_line
+        pass = visible; either axis fail = invisible. Confirms the
+        product_line axis is load-bearing (not redundant with vertical)
+        — the manufacturing-without-vault case fails on product_line
+        even though vertical passes.
+        """
         from app.database import SessionLocal
         from app.models.user import User
         from app.services.widgets.widget_service import get_available_widgets
@@ -417,6 +451,7 @@ class TestCanvasWidgetCatalog:
         ctx = _make_tenant_with_user(
             vertical=vertical,
             permissions=["delivery.view"],
+            product_lines=product_lines,
         )
         db = SessionLocal()
         try:
@@ -430,7 +465,8 @@ class TestCanvasWidgetCatalog:
             )
             assert ap is not None
             assert ap["is_available"] == visible, (
-                f"scheduling.ancillary-pool in {vertical}: expected "
+                f"scheduling.ancillary-pool in vertical={vertical} "
+                f"product_lines={product_lines}: expected "
                 f"visible={visible}, got {ap['is_available']!r} "
                 f"reason={ap['unavailable_reason']!r}"
             )

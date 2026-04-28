@@ -177,6 +177,9 @@ class TestSpaceConfigIsSystem:
 
 class TestSystemSpaceSeed:
     def test_admin_seed_appends_settings_space(self, db_session, admin_user):
+        """Phase W-4a — Home system space added for ALL users; admin
+        sees Home + Settings (2 system spaces). Settings still admin-
+        gated; Home is gate-less."""
         from app.services.spaces import seed_for_user
         from app.services.spaces.types import SpaceConfig
 
@@ -185,15 +188,22 @@ class TestSystemSpaceSeed:
         prefs = dict(admin_user.preferences or {})
         spaces = [SpaceConfig.from_dict(s) for s in prefs.get("spaces", [])]
         system = [s for s in spaces if s.is_system]
-        assert len(system) == 1
-        assert system[0].name == "Settings"
-        assert system[0].space_id == "sys_settings"
+        # Phase W-4a — Home + Settings for admin
+        assert len(system) == 2
+        system_names = {s.name for s in system}
+        assert system_names == {"Home", "Settings"}
+        system_ids = {s.space_id for s in system}
+        assert system_ids == {"sys_home", "sys_settings"}
         # Tracked via system_spaces_seeded idempotency array.
-        assert "settings" in prefs.get("system_spaces_seeded", [])
+        seeded = prefs.get("system_spaces_seeded", [])
+        assert "home" in seeded
+        assert "settings" in seeded
         # Total `created` count includes system + role-based spaces.
         assert created >= 1
 
     def test_office_seed_skips_settings_space(self, db_session, office_user):
+        """Phase W-4a — Home is gate-less so office still gets Home;
+        Settings remains admin-gated and is NOT seeded for office."""
         from app.services.spaces import seed_for_user
         from app.services.spaces.types import SpaceConfig
 
@@ -202,8 +212,12 @@ class TestSystemSpaceSeed:
         prefs = dict(office_user.preferences or {})
         spaces = [SpaceConfig.from_dict(s) for s in prefs.get("spaces", [])]
         system = [s for s in spaces if s.is_system]
-        assert len(system) == 0
-        assert "settings" not in prefs.get("system_spaces_seeded", [])
+        # Phase W-4a — Home (gate-less) but NOT Settings (admin-gated)
+        assert len(system) == 1
+        assert system[0].name == "Home"
+        seeded = prefs.get("system_spaces_seeded", [])
+        assert "home" in seeded
+        assert "settings" not in seeded
 
     def test_seed_is_idempotent_for_settings(self, db_session, admin_user):
         from app.services.spaces import seed_for_user
@@ -219,6 +233,8 @@ class TestSystemSpaceSeed:
     def test_director_seed_includes_role_spaces_but_no_settings(
         self, db_session, director_user
     ):
+        """Phase W-4a — director (non-admin) gets Home (gate-less) +
+        role-template spaces, but NOT Settings (admin-gated)."""
         from app.services.spaces import seed_for_user
         from app.services.spaces.types import SpaceConfig
 
@@ -227,7 +243,12 @@ class TestSystemSpaceSeed:
         prefs = dict(director_user.preferences or {})
         spaces = [SpaceConfig.from_dict(s) for s in prefs.get("spaces", [])]
         assert any(s.name == "Arrangement" for s in spaces)
-        assert not any(s.is_system for s in spaces)
+        # Phase W-4a — Home is the only system space for non-admin.
+        system = [s for s in spaces if s.is_system]
+        assert len(system) == 1
+        assert system[0].name == "Home"
+        # Settings explicitly absent.
+        assert not any(s.name == "Settings" for s in spaces)
 
 
 # ── Delete protection ─────────────────────────────────────────────

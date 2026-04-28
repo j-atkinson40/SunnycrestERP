@@ -51,8 +51,17 @@ def _seeded() -> Iterator[None]:
         db.close()
 
 
-def _make_tenant_user_token(*, vertical: str, permissions: list[str]) -> dict:
-    """Create a tenant + user + role with permissions; return token."""
+def _make_tenant_user_token(
+    *,
+    vertical: str,
+    permissions: list[str],
+    product_lines: list[str] | None = None,
+) -> dict:
+    """Create a tenant + user + role with permissions; return token.
+
+    Phase W-3a: gained `product_lines` parameter for axis 5 of the
+    5-axis filter.
+    """
     from app.core.security import create_access_token
     from app.database import SessionLocal
     from app.models.company import Company
@@ -98,6 +107,14 @@ def _make_tenant_user_token(*, vertical: str, permissions: list[str]) -> dict:
         )
         db.add(user)
         db.commit()
+
+        # Phase W-3a — TenantProductLine rows for axis 5.
+        if product_lines:
+            from app.services import product_line_service
+            for line_key in product_lines:
+                product_line_service.enable_line(
+                    db, company_id=co.id, line_key=line_key
+                )
 
         token = create_access_token(
             {"sub": user.id, "company_id": co.id, "realm": "tenant"}
@@ -328,9 +345,13 @@ class TestPageContextCoverage:
         assert "vault_unread_inbox" in widget_ids
 
     def test_focus_scheduling_returns_ancillary_pool(self, client: TestClient):
+        """Phase W-3a: ancillary-pool retagged from FH → manufacturing+vault.
+        Tenant fixture flipped accordingly so the 5-axis filter passes
+        and the widget shows is_available=True."""
         ctx = _make_tenant_user_token(
-            vertical="funeral_home",
+            vertical="manufacturing",
             permissions=["delivery.view"],
+            product_lines=["vault"],
         )
         r = client.get(
             "/api/v1/widgets/available",

@@ -53,7 +53,7 @@ router = APIRouter()
 
 class _PinResponse(BaseModel):
     pin_id: str
-    pin_type: Literal["saved_view", "nav_item", "triage_queue"]
+    pin_type: Literal["saved_view", "nav_item", "triage_queue", "widget"]
     target_id: str
     display_order: int
     label: str
@@ -65,6 +65,15 @@ class _PinResponse(BaseModel):
     # Phase 3 follow-up 1 — pending item count for triage_queue pins.
     # None for other pin types or when the queue is unavailable.
     queue_item_count: int | None = None
+    # Widget Library Phase W-2 — widget pin resolution fields. Present
+    # only for pin_type="widget". widget_id mirrors target_id (the
+    # frontend reads widget_id for clarity since target_id is the
+    # generic dispatch identifier across all pin types). variant_id
+    # defaults to "glance" at resolve time; config is per-instance
+    # widget configuration. None for non-widget pin types.
+    widget_id: str | None = None
+    variant_id: str | None = None
+    config: dict[str, Any] | None = None
 
 
 class _SpaceResponse(BaseModel):
@@ -128,10 +137,19 @@ class _ReorderRequest(BaseModel):
 
 
 class _AddPinRequest(BaseModel):
-    pin_type: Literal["saved_view", "nav_item", "triage_queue"]
+    pin_type: Literal["saved_view", "nav_item", "triage_queue", "widget"]
     target_id: str
     label_override: str | None = None
     target_seed_key: str | None = None
+    # Widget Library Phase W-2 — widget pin payload. variant_id
+    # defaults to "glance" server-side when omitted (the only valid
+    # sidebar variant per DESIGN_LANGUAGE.md §12.2). config carries
+    # per-instance widget configuration if the widget declares a
+    # config_schema (e.g. saved_view widget uses
+    # config={"view_id": "..."}). None for non-widget pin types or
+    # widgets without per-instance config.
+    variant_id: str | None = None
+    config: dict[str, Any] | None = None
 
 
 class _ReorderPinsRequest(BaseModel):
@@ -171,6 +189,9 @@ def _pin_to_response(p: ResolvedPin) -> _PinResponse:
         saved_view_id=p.saved_view_id,
         saved_view_title=p.saved_view_title,
         queue_item_count=p.queue_item_count,
+        widget_id=p.widget_id,
+        variant_id=p.variant_id,
+        config=p.config,
     )
 
 
@@ -456,7 +477,12 @@ def create_pin(
 ) -> _PinResponse:
     """Add a pin. Idempotent — same-(type, target, seed_key) on an
     existing pin is treated as no-op + returns the existing pin.
-    Max 20 pins per space."""
+    Max 20 pins per space.
+
+    Widget Library Phase W-2 — for `pin_type="widget"`, the request
+    must carry `target_id` (the widget_id) and may carry `variant_id`
+    + `config`. Server-side validation runs the 4-axis filter at pin
+    time; pinning a widget the user can't see returns 400."""
     try:
         pin = add_pin(
             db,
@@ -466,6 +492,8 @@ def create_pin(
             target_id=body.target_id,
             label_override=body.label_override,
             target_seed_key=body.target_seed_key,
+            variant_id=body.variant_id,
+            config=body.config,
         )
         return _pin_to_response(pin)
     except SpaceError as exc:

@@ -25,6 +25,13 @@ Pin resolution:
   - nav_item pins → label/icon looked up in
     `registry.NAV_LABEL_TABLE`. Availability is trusted; runtime
     frontend filters still apply.
+  - triage_queue pins → resolved via Phase 5 registry + queue_count;
+    unavailable when the user no longer has access to the queue.
+  - widget pins (Widget Library Phase W-2) → resolved via
+    WidgetDefinition catalog + 4-axis filter (defense-in-depth);
+    unavailable when widget removed or user lost access. variant_id
+    defaults to "glance" (the only valid sidebar variant per
+    DESIGN_LANGUAGE.md §12.2 compatibility matrix).
 """
 
 from __future__ import annotations
@@ -249,6 +256,98 @@ def _resolve_pin(
             href=f"/triage/{queue_id}",
             unavailable=False,
             queue_item_count=count,
+        )
+
+    # widget pin — Widget Library Phase W-2 — resolve via WidgetDefinition
+    # catalog + 4-axis filter. Defense-in-depth: even though add_pin()
+    # validated at pin-time, re-validate at resolve-time because the
+    # user's role / vertical / extension state may have changed since
+    # the pin was created. Per DESIGN_LANGUAGE.md §12.4 invisible-not-
+    # disabled discipline.
+    if pin.pin_type == "widget":
+        from app.models.widget_definition import WidgetDefinition
+        from app.services.widgets.widget_service import get_available_widgets
+
+        widget_id = pin.target_id
+        # Default variant_id to "glance" — the only valid sidebar
+        # variant per §12.2 compatibility matrix.
+        variant_id = pin.variant_id or "glance"
+
+        widget_def = (
+            db.query(WidgetDefinition)
+            .filter(WidgetDefinition.widget_id == widget_id)
+            .first()
+        )
+        if widget_def is None:
+            # Widget no longer in catalog (e.g. extension uninstalled
+            # + extension owned this widget definition row, OR a
+            # platform widget removed in a later release).
+            return ResolvedPin(
+                pin_id=pin.pin_id,
+                pin_type="widget",
+                target_id=widget_id,
+                display_order=pin.display_order,
+                label=pin.label_override or widget_id.split(".")[-1].replace("-", " ").replace("_", " ").title(),
+                icon="Layers",
+                href=None,
+                unavailable=True,
+                widget_id=widget_id,
+                variant_id=variant_id,
+                config=pin.config,
+            )
+
+        # Re-run the 4-axis filter against the widget's declared
+        # page_contexts. User passes if visible in ANY context (sidebar
+        # pin doesn't have its own page_context concept — the pin
+        # follows the user, not a page).
+        contexts = widget_def.page_contexts or []
+        visible = False
+        for ctx in contexts:
+            available = get_available_widgets(
+                db, user.company_id, user, ctx
+            )
+            for w in available:
+                if w["widget_id"] == widget_id and w["is_available"]:
+                    visible = True
+                    break
+            if visible:
+                break
+
+        if not visible:
+            # User lost access since pin creation (vertical change,
+            # role change, extension uninstalled, etc.). Render as
+            # unavailable so PinnedSection can show a graceful
+            # "no longer available" affordance per §12.4.
+            return ResolvedPin(
+                pin_id=pin.pin_id,
+                pin_type="widget",
+                target_id=widget_id,
+                display_order=pin.display_order,
+                label=pin.label_override or widget_def.title,
+                icon=widget_def.icon or "Layers",
+                href=None,
+                unavailable=True,
+                widget_id=widget_id,
+                variant_id=variant_id,
+                config=pin.config,
+            )
+
+        return ResolvedPin(
+            pin_id=pin.pin_id,
+            pin_type="widget",
+            target_id=widget_id,
+            display_order=pin.display_order,
+            label=pin.label_override or widget_def.title,
+            icon=widget_def.icon or "Layers",
+            # href=None — sidebar widget pins don't navigate. Click
+            # behavior is widget-defined (summon Focus, expand inline,
+            # etc.) and dispatched frontend-side via the widget
+            # renderer.
+            href=None,
+            unavailable=False,
+            widget_id=widget_id,
+            variant_id=variant_id,
+            config=pin.config,
         )
 
     # saved_view pin — two resolution paths
@@ -614,6 +713,8 @@ def add_pin(
     target_id: str,
     label_override: str | None = None,
     target_seed_key: str | None = None,
+    variant_id: str | None = None,
+    config: dict | None = None,
 ) -> ResolvedPin:
     spaces = _load_spaces(user)
     hit = _find_space(spaces, space_id)
@@ -624,8 +725,67 @@ def add_pin(
     if len(sp.pins) >= MAX_PINS_PER_SPACE:
         raise SpaceError(f"Space has the maximum {MAX_PINS_PER_SPACE} pins")
 
-    if pin_type not in ("saved_view", "nav_item", "triage_queue"):
+    if pin_type not in ("saved_view", "nav_item", "triage_queue", "widget"):
         raise SpaceError(f"Unknown pin_type {pin_type!r}")
+
+    # Widget Library Phase W-2 — defense-in-depth at pin time.
+    # Validate the widget exists in the catalog AND that the user
+    # passes the 4-axis filter (permission + module + extension +
+    # vertical) for the widget. Widgets not visible to the user
+    # cannot be pinned. Per DESIGN_LANGUAGE.md §12.4 invisible-not-
+    # disabled discipline.
+    if pin_type == "widget":
+        from app.models.widget_definition import WidgetDefinition
+        from app.services.widgets.widget_service import get_available_widgets
+
+        widget_def = (
+            db.query(WidgetDefinition)
+            .filter(WidgetDefinition.widget_id == target_id)
+            .first()
+        )
+        if widget_def is None:
+            raise SpaceError(f"Widget {target_id!r} not found in catalog")
+
+        # Check spaces_pin support per Section 12.5 composition
+        # rules. A widget without spaces_pin in supported_surfaces
+        # cannot be pinned to a Spaces sidebar regardless of variants.
+        # (`spaces_pin` is the canonical surface name from the 7-surface
+        # enum in DESIGN_LANGUAGE.md §12.5; this maps to the Spaces
+        # sidebar Glance-only render path.)
+        if "spaces_pin" not in (widget_def.supported_surfaces or []):
+            raise SpaceError(
+                f"Widget {target_id!r} does not support spaces_pin "
+                f"surface (supported: {widget_def.supported_surfaces})"
+            )
+
+        # Run widget through the 4-axis filter using each page_context
+        # the widget declares. The widget is pinnable to sidebar
+        # iff the user passes the filter against ANY of its declared
+        # page_contexts (the filter is page-context-scoped; sidebar
+        # pin doesn't have its own page_context concept since pins
+        # follow the user, not a page).
+        contexts = widget_def.page_contexts or []
+        visible = False
+        for ctx in contexts:
+            available = get_available_widgets(db, user.company_id, user, ctx)
+            for w in available:
+                if w["widget_id"] == target_id and w["is_available"]:
+                    visible = True
+                    break
+            if visible:
+                break
+        if not visible:
+            raise SpaceError(
+                f"Widget {target_id!r} not available to user "
+                f"(failed 4-axis filter)"
+            )
+
+        # Default variant_id to widget's declared default. Sidebar
+        # always uses Glance per Section 12.2 compatibility matrix
+        # but we honor the widget's default_variant_id if it's
+        # explicitly Glance-capable.
+        if variant_id is None:
+            variant_id = "glance"
 
     # De-dupe: skip if a pin of the same (type, target) already
     # exists. Callers (star toggle) rely on idempotency.
@@ -646,6 +806,8 @@ def add_pin(
         display_order=len(sp.pins),
         label_override=label_override,
         target_seed_key=target_seed_key,
+        variant_id=variant_id,
+        config=config,
     )
     sp.pins.append(new_pin)
     sp.updated_at = now_iso()

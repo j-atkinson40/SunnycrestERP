@@ -22,7 +22,15 @@ export type AccentName =
 
 export type DensityName = "comfortable" | "compact";
 
-export type PinType = "saved_view" | "nav_item" | "triage_queue";
+// Widget Library Phase W-2 — added "widget" pin type. Spaces sidebar
+// absorbs widget pins per Decision 2; sidebar always renders the
+// Glance variant per DESIGN_LANGUAGE.md §12.2 compatibility matrix.
+// Mirrors backend `app.services.spaces.types.PinType`.
+export type PinType =
+  | "saved_view"
+  | "nav_item"
+  | "triage_queue"
+  | "widget";
 
 // Phase 8e.2 — portal-as-space-with-modifiers. See
 // SPACES_ARCHITECTURE.md §10.1.
@@ -45,6 +53,15 @@ export interface ResolvedPin {
   // Phase 3 follow-up 1 — pending item count for triage_queue pins.
   // null for other pin types or when the queue is unavailable.
   queue_item_count?: number | null;
+  // Widget Library Phase W-2 — widget pin resolution fields. Present
+  // only for pin_type="widget". widget_id mirrors target_id (the
+  // frontend reads widget_id for clarity since target_id is the
+  // generic dispatch identifier across all pin types). variant_id
+  // defaults to "glance" server-side; config is per-instance widget
+  // configuration. null/undefined for non-widget pin types.
+  widget_id?: string | null;
+  variant_id?: string | null;
+  config?: Record<string, unknown> | null;
 }
 
 // ── Space ───────────────────────────────────────────────────────────
@@ -151,6 +168,13 @@ export interface AddPinBody {
   target_id: string;
   label_override?: string | null;
   target_seed_key?: string | null;
+  // Widget Library Phase W-2 — widget pin payload. Backend defaults
+  // variant_id to "glance" when omitted (the only valid sidebar
+  // variant per §12.2). config carries per-instance widget config
+  // when the widget declares a config_schema (e.g. saved_view widget
+  // uses config={"view_id": "..."}).
+  variant_id?: string | null;
+  config?: Record<string, unknown> | null;
 }
 
 // ── Constants ───────────────────────────────────────────────────────

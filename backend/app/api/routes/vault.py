@@ -556,6 +556,12 @@ class _VaultActivityItem(BaseModel):
     company_name: str
     created_at: datetime
     logged_by: str | None
+    # Phase W-3a — display name for the actor (First Last). Populated
+    # via User join in `activity_log_service.get_tenant_feed`. None
+    # when the activity has no logged_by, or when the user was deleted,
+    # or when the row is system-generated. Optional to preserve
+    # backward-compat with V-1c consumers that ignore unknown fields.
+    actor_name: str | None = None
 
 
 class _VaultRecentActivityResponse(BaseModel):

@@ -165,10 +165,13 @@ class TestRegistry:
 class TestSeed:
     def test_fh_director_seeds_three_spaces(self, db_session, fresh_user):
         created = seed_for_user(db_session, user=fresh_user)
-        assert created == 3  # Arrangement + Administrative + Ownership
+        # Phase W-4a — Home system space adds +1 to the role-template
+        # count for every user. FH director: Home + Arrangement +
+        # Administrative + Ownership.
+        assert created == 4
         spaces = get_spaces_for_user(db_session, user=fresh_user)
         names = {s.name for s in spaces}
-        assert {"Arrangement", "Administrative", "Ownership"} == names
+        assert {"Home", "Arrangement", "Administrative", "Ownership"} == names
 
     def test_seed_records_role_in_preferences(self, db_session, fresh_user):
         seed_for_user(db_session, user=fresh_user)
@@ -180,7 +183,8 @@ class TestSeed:
         first = seed_for_user(db_session, user=fresh_user)
         db_session.refresh(fresh_user)
         second = seed_for_user(db_session, user=fresh_user)
-        assert first == 3
+        # Phase W-4a — first run includes Home system space (+1).
+        assert first == 4
         assert second == 0
 
     def test_seed_sets_active_space_id(self, db_session, fresh_user):
@@ -196,7 +200,7 @@ class TestSeed:
     def test_unknown_role_slug_seeds_fallback(self, db_session):
         # Custom role that doesn't have a template — e.g. a tenant
         # defines an "intern" role. Registry returns the fallback,
-        # seed creates exactly one "General" space.
+        # seed creates "General" space + Phase W-4a Home system space.
         user_id, _, _ = _make_tenant_user(
             role_slug="intern", vertical="manufacturing"
         )
@@ -204,11 +208,16 @@ class TestSeed:
 
         user = db_session.query(User).filter(User.id == user_id).one()
         created = seed_for_user(db_session, user=user)
-        assert created == 1
+        # Phase W-4a — Home + General
+        assert created == 2
         spaces = get_spaces_for_user(db_session, user=user)
-        assert len(spaces) == 1
-        assert spaces[0].name == "General"
-        assert spaces[0].is_default is True
+        assert len(spaces) == 2
+        names = {s.name for s in spaces}
+        assert names == {"Home", "General"}
+        # General remains the default space (is_default=True). Home is
+        # a system space; system spaces are never the user's default.
+        general = next(s for s in spaces if s.name == "General")
+        assert general.is_default is True
 
     def test_saved_view_seed_key_resolves_after_phase2_seed(
         self, db_session, fresh_user

@@ -685,6 +685,28 @@ class SystemSpaceTemplate:
 
 
 SYSTEM_SPACE_TEMPLATES: list[SystemSpaceTemplate] = [
+    # Phase W-4a — Home system space (always-first, contains Pulse).
+    # Per BRIDGEABLE_MASTER §3.26.1.1, Home is "always present, always
+    # first in navigation" and renders the Pulse — the platform's
+    # primary Monitor surface and most distinctive product feature.
+    # Seeded for every active user regardless of role/permission;
+    # `default_home_route="/home"` so DotNav click navigates straight
+    # to PulseSurface. `display_order=-2000` ranks it leftmost of all
+    # system spaces (Settings is -1000). Pins are intentionally empty:
+    # Pulse is intelligence-composed, not user-curated, so the Home
+    # space's pin list is conceptually meaningless. The space exists
+    # to give DotNav an always-present leftmost slot that routes to
+    # the Pulse.
+    SystemSpaceTemplate(
+        template_id="home",
+        name="Home",
+        icon="home",
+        accent="warm",
+        required_permission=None,
+        pins=[],
+        display_order=-2000,
+        default_home_route="/home",
+    ),
     SystemSpaceTemplate(
         template_id="settings",
         name="Settings",

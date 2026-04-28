@@ -42,7 +42,15 @@ DensityName = Literal["comfortable", "compact"]
 # (crud.py), `_build_pins_from_seeds` (seed.py), the API pin
 # request/response Pydantic models, the frontend `PinType` literal,
 # and PinStar's prop union. All must stay in lockstep.
-PinType = Literal["saved_view", "nav_item", "triage_queue"]
+#
+# Widget Library Phase W-2 (April 2026) added `widget` per Decision
+# 2 of the Widget Library Architecture spec — Spaces sidebar absorbs
+# widget pins so users have one mental model: pin to dashboard OR
+# pin to sidebar (Glance variant). DESIGN_LANGUAGE.md §12.5
+# documents the composition; sidebar widget pins always use Glance
+# variant (the only valid sidebar variant per §12.2 compatibility
+# matrix).
+PinType = Literal["saved_view", "nav_item", "triage_queue", "widget"]
 
 # ── Phase 8e.2 — portal-as-space-with-modifiers types ──────────────
 #
@@ -94,6 +102,20 @@ class PinConfig:
     For `pin_type="nav_item"`:
       - `target_id` is the nav `href` (e.g. `/cases`, `/financials`).
       - `target_seed_key` is None.
+
+    For `pin_type="triage_queue"`:
+      - `target_id` is the queue id (e.g. `task_triage`).
+      - `target_seed_key` is None.
+
+    Widget Library Phase W-2 — for `pin_type="widget"`:
+      - `target_id` is the widget_id (e.g. `scheduling.ancillary-pool`).
+      - `target_seed_key` is None.
+      - `variant_id` defaults to "glance" at resolve time (the only
+        valid sidebar variant per DESIGN_LANGUAGE.md §12.2).
+      - `config` carries per-instance widget configuration if the
+        widget declares a config_schema (e.g. a saved_view widget
+        pin uses config={"view_id": "..."}). None for widgets without
+        per-instance config.
     """
 
     pin_id: str
@@ -102,6 +124,14 @@ class PinConfig:
     display_order: int
     label_override: str | None = None
     target_seed_key: str | None = None
+    # Widget Library Phase W-2 — variant-aware pin storage.
+    # variant_id is None for non-widget pins; widget pins default to
+    # "glance" at resolve time when stored as None.
+    variant_id: str | None = None
+    # Widget Library Phase W-2 — per-instance widget config (e.g.
+    # saved_view widget gets config={"view_id": "..."}). None for
+    # non-widget pins or widgets without per-instance config.
+    config: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -111,6 +141,8 @@ class PinConfig:
             "display_order": self.display_order,
             "label_override": self.label_override,
             "target_seed_key": self.target_seed_key,
+            "variant_id": self.variant_id,
+            "config": self.config,
         }
 
     @classmethod
@@ -122,6 +154,8 @@ class PinConfig:
             display_order=int(data.get("display_order", 0)),
             label_override=data.get("label_override"),
             target_seed_key=data.get("target_seed_key"),
+            variant_id=data.get("variant_id"),
+            config=data.get("config"),
         )
 
     @staticmethod
@@ -254,6 +288,15 @@ class ResolvedPin:
     # badge. Excludes snoozed items (see triage.engine.queue_count).
     # None for non-triage pin types + for unavailable triage pins.
     queue_item_count: int | None = None
+    # Widget Library Phase W-2 — present only for widget pins.
+    # widget_id is the catalog reference (e.g. `scheduling.ancillary-
+    # pool`); variant_id is the resolved variant ("glance" default
+    # for sidebar). config is per-instance widget config (None for
+    # widgets without per-instance config). The frontend
+    # PinnedSection passes these through to `getWidgetRenderer()`.
+    widget_id: str | None = None
+    variant_id: str | None = None
+    config: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -268,6 +311,9 @@ class ResolvedPin:
             "saved_view_id": self.saved_view_id,
             "saved_view_title": self.saved_view_title,
             "queue_item_count": self.queue_item_count,
+            "widget_id": self.widget_id,
+            "variant_id": self.variant_id,
+            "config": self.config,
         }
 
 
