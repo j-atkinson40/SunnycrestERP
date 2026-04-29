@@ -75,6 +75,7 @@ import PortalUsersSettings from "@/pages/settings/PortalUsersSettings";
 import PortalBrandingSettings from "@/pages/settings/PortalBrandingSettings";
 import EmailAccountsPage from "@/pages/settings/EmailAccountsPage";
 import EmailOAuthCallback from "@/pages/settings/EmailOAuthCallback";
+import InboxPage from "@/pages/email/InboxPage";
 import SavedOrdersPage from "@/pages/settings/SavedOrders";
 import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
@@ -761,6 +762,14 @@ export default function App() {
                       element={<EmailOAuthCallback />}
                     />
                   </Route>
+
+                  {/* Phase W-4b Layer 1 Step 4a — unified email inbox.
+                     Per canon §3.26.15.9 three canonical entry paths:
+                     direct nav (this route), Cmd+K summon (Step 5+),
+                     Communications-Layer Pulse drill-down (Step 5+).
+                     Tenant-scoped via current_user; per-account access
+                     enforced server-side via EmailAccountAccess. */}
+                  <Route path="/inbox" element={<InboxPage />} />
 
                   {/* Products — core feature, no module gate */}
                   <Route

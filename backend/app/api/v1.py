@@ -20,6 +20,7 @@ from app.api.routes import (
     portal,
     portal_admin,
     email_accounts,
+    email_inbox,
     email_webhooks,
     tasks,
     triage,
@@ -231,6 +232,16 @@ v1_router.include_router(
     email_webhooks.router,
     prefix="/email/webhooks",
     tags=["Email Webhooks"],
+)
+# Email Primitive — Phase W-4b Layer 1 Step 4a inbox surface.
+# Read path (GET /threads + GET /threads/{id}) + status mutations
+# (POST /messages/{id}/read|unread + POST /threads/{id}/archive|flag).
+# Per-tenant isolation via current_user; per-account access via
+# EmailAccountAccess junction; cross-tenant masking inheritance hooks
+# present (passthrough in Step 4a; full masking lands alongside
+# operator-action affordances in Step 4b+).
+v1_router.include_router(
+    email_inbox.router, prefix="/email", tags=["Email Inbox"]
 )
 # NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
 v1_router.include_router(
