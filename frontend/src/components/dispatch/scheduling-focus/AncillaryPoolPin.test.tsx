@@ -19,14 +19,15 @@
  * paths.
  */
 
-import { render } from "@testing-library/react"
+import { render, waitFor } from "@testing-library/react"
 import {
   DndContext,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { MemoryRouter } from "react-router-dom"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   SchedulingFocusContext,
@@ -35,6 +36,22 @@ import {
 import type { DeliveryDTO } from "@/services/dispatch-service"
 
 import { AncillaryPoolPin } from "./AncillaryPoolPin"
+
+
+// ── Module-level mock for the surface-fetched fallback path ─────────
+//
+// The `useAncillaryPool` hook's read-only fallback path goes through
+// apiClient. Hoist the mock to module scope so all describe blocks
+// (including provider-contract tests that render Detail outside any
+// SchedulingFocusContext) share the same mocked client.
+
+const mockApiGet = vi.fn()
+
+vi.mock("@/lib/api-client", () => ({
+  default: {
+    get: (...args: unknown[]) => mockApiGet(...args),
+  },
+}))
 
 
 function makePoolItem(overrides: Partial<DeliveryDTO> = {}): DeliveryDTO {
@@ -75,15 +92,18 @@ function Harness({
 }) {
   // DndContext required because PoolItem uses useDraggable; no
   // listeners necessary for these structural tests.
+  // MemoryRouter wraps because PoolItemStatic + Brief CTA use Link.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   )
   return (
-    <DndContext sensors={sensors}>
-      <SchedulingFocusContext.Provider value={contextValue}>
-        {children}
-      </SchedulingFocusContext.Provider>
-    </DndContext>
+    <MemoryRouter>
+      <DndContext sensors={sensors}>
+        <SchedulingFocusContext.Provider value={contextValue}>
+          {children}
+        </SchedulingFocusContext.Provider>
+      </DndContext>
+    </MemoryRouter>
   )
 }
 
@@ -374,19 +394,43 @@ describe("AncillaryPoolPin — whole-item drag (no grip handle)", () => {
 })
 
 
-describe("AncillaryPoolPin — provider contract", () => {
-  it("throws when rendered outside SchedulingFocusContext.Provider", () => {
-    // Suppress error log for the expected throw.
+describe("AncillaryPoolPin — provider contract (post-Session-B.2)", () => {
+  // Phase W-4a Cleanup Session B.2 — Detail variant migrated from
+  // strict `useSchedulingFocus()` to `useAncillaryPool()` which
+  // optionally reads context + falls back to a surface-fetched
+  // endpoint when context is absent. Pre-Session-B.2 the Detail
+  // variant THREW outside the provider; post-Session-B.2 it
+  // gracefully renders with read-only items via the hook's fetch
+  // fallback. The behavioral guarantee is now "renders without
+  // throwing" — the strict-throw contract was the architectural
+  // bug Session B.2 closed.
+  it("renders without throwing when mounted outside SchedulingFocusContext.Provider", () => {
+    // The file-level `vi.mock("@/lib/api-client")` ensures the
+    // hook's fetch fallback returns the mocked apiClient. Setting
+    // it to a valid resolved promise prevents the .then() chain
+    // from blowing up.
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "production",
+        is_vault_enabled: true,
+        items: [],
+        total_count: 0,
+        mode_note: null,
+        primary_navigation_target: "/dispatch",
+      },
+    })
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {})
     expect(() => {
       render(
-        <DndContext>
-          <AncillaryPoolPin />
-        </DndContext>,
+        <MemoryRouter>
+          <DndContext>
+            <AncillaryPoolPin />
+          </DndContext>
+        </MemoryRouter>,
       )
-    }).toThrow(/useSchedulingFocus must be used inside/)
+    }).not.toThrow()
     consoleError.mockRestore()
   })
 })
@@ -620,7 +664,10 @@ describe("AncillaryPoolPin — Glance variant (Phase W-2)", () => {
     // Spaces sidebar mounts the widget OUTSIDE the funeral-scheduling
     // Focus, so the SchedulingFocusContext provider isn't present.
     // Glance must degrade gracefully (count=0) — Detail variant
-    // would crash in this mounting per its hard-hook contract.
+    // would crash in this mounting per its hard-hook contract
+    // (pre-Session-B.2). Post-Session-B.2 Detail also degrades
+    // gracefully via useAncillaryPool fallback, but Glance remains
+    // the canonical sidebar variant per §12.10.
     // Render directly with no Provider wrapper; Glance variant
     // doesn't need DndContext (no draggables in the Glance shape).
     render(<AncillaryPoolPin surface="spaces_pin" />)
@@ -637,5 +684,392 @@ describe("AncillaryPoolPin — Glance variant (Phase W-2)", () => {
         '[data-slot="ancillary-pool-pin-glance-subtext"]',
       )?.textContent,
     ).toMatch(/Pool clear/)
+  })
+})
+
+
+// ── Phase W-4a Cleanup Session B.2 — Brief variant tests ────────────
+
+
+/**
+ * Brief variant tests — Phase W-4a Cleanup Session B.2.
+ *
+ * Brief renders in pulse_grid surface (canonical Sunnycrest §13.8.1
+ * State B composition). Read-only — no drag chrome per §12.6a. Uses
+ * `useAncillaryPool` hook which falls back to surface-fetched
+ * endpoint when no SchedulingFocusContext is present.
+ *
+ * Workspace-shape preservation per §13.3.2.1: the eyebrow + heading
+ * + CTA structure renders identically across all data states (pool-
+ * with-items, pool-empty, purchase-mode, vault-disabled). Only the
+ * CONTENT row (item list vs advisory text) changes.
+ */
+
+
+function BriefHarness({ children }: { children: React.ReactNode }) {
+  // Brief renders without SchedulingFocusContext (pulse_grid surface)
+  // but DOES need MemoryRouter for the CTA <Link>.
+  return <MemoryRouter>{children}</MemoryRouter>
+}
+
+
+function makePoolItemDataItem(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "anc-" + Math.random().toString(36).slice(2, 8),
+    delivery_type: "supply_delivery",
+    type_config: { product_summary: "Bronze urn" },
+    ancillary_soft_target_date: null,
+    created_at: null,
+    ...overrides,
+  }
+}
+
+
+describe("AncillaryPoolPin — Brief variant (Session B.2)", () => {
+  beforeEach(() => {
+    mockApiGet.mockReset()
+  })
+
+  it("renders Brief variant when surface=pulse_grid", async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "production",
+        is_vault_enabled: true,
+        items: [makePoolItemDataItem({ id: "a" })],
+        total_count: 1,
+        mode_note: null,
+        primary_navigation_target: "/dispatch",
+      },
+    })
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="pulse_grid" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      const brief = document.querySelector(
+        '[data-slot="ancillary-pool-pin"][data-variant="brief"]',
+      )
+      expect(brief).toBeInTheDocument()
+    })
+    expect(mockApiGet).toHaveBeenCalledWith("/widget-data/ancillary-pool")
+  })
+
+  it("renders Brief variant when variant_id=brief", async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "production",
+        is_vault_enabled: true,
+        items: [],
+        total_count: 0,
+        mode_note: null,
+        primary_navigation_target: "/dispatch",
+      },
+    })
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin variant_id="brief" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          '[data-slot="ancillary-pool-pin"][data-variant="brief"]',
+        ),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it("Brief renders count chip + top 3 items + 'Open in scheduling Focus' CTA", async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "production",
+        is_vault_enabled: true,
+        items: [
+          makePoolItemDataItem({
+            id: "a",
+            type_config: { product_summary: "Bronze urn", family_name: "Smith" },
+          }),
+          makePoolItemDataItem({
+            id: "b",
+            type_config: { product_summary: "Cremation tray", family_name: "Jones" },
+          }),
+          makePoolItemDataItem({
+            id: "c",
+            type_config: { product_summary: "Marker base", family_name: "Brown" },
+          }),
+        ],
+        total_count: 3,
+        mode_note: null,
+        primary_navigation_target: "/dispatch",
+      },
+    })
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="pulse_grid" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      const items = document.querySelectorAll(
+        '[data-slot="ancillary-pool-item"]',
+      )
+      expect(items.length).toBe(3)
+    })
+    // Count chip
+    const count = document.querySelector(
+      '[data-slot="ancillary-pool-pin-count"]',
+    )
+    expect(count?.textContent).toBe("3")
+    // CTA
+    const cta = document.querySelector(
+      '[data-slot="ancillary-pool-pin-cta"]',
+    )
+    expect(cta).toBeInTheDocument()
+    expect(cta?.textContent).toMatch(/Open in scheduling Focus/)
+  })
+
+  it("Brief truncates to top 3 + shows '+ N more' overflow", async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "production",
+        is_vault_enabled: true,
+        items: [
+          makePoolItemDataItem({ id: "a" }),
+          makePoolItemDataItem({ id: "b" }),
+          makePoolItemDataItem({ id: "c" }),
+          makePoolItemDataItem({ id: "d" }),
+          makePoolItemDataItem({ id: "e" }),
+        ],
+        total_count: 5,
+        mode_note: null,
+        primary_navigation_target: "/dispatch",
+      },
+    })
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="pulse_grid" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      const items = document.querySelectorAll(
+        '[data-slot="ancillary-pool-item"]',
+      )
+      expect(items.length).toBe(3)  // capped at top 3
+    })
+    const overflow = document.querySelector(
+      '[data-slot="ancillary-pool-pin-overflow"]',
+    )
+    expect(overflow?.textContent).toMatch(/\+ 2 more/)
+  })
+
+  it("Brief renders advisory + CTA in purchase mode (workspace-shape preservation)", async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "purchase",
+        is_vault_enabled: true,
+        items: [],
+        total_count: 0,
+        mode_note: "no_pool_in_purchase_mode",
+        primary_navigation_target: "/dispatch",
+      },
+    })
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="pulse_grid" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      const advisory = document.querySelector(
+        '[data-slot="ancillary-pool-pin-mode-advisory"][data-mode="purchase"]',
+      )
+      expect(advisory).toBeInTheDocument()
+    })
+    // Workspace-shape preservation: advisory present + CTA preserved.
+    const cta = document.querySelector(
+      '[data-slot="ancillary-pool-pin-cta"]',
+    )
+    expect(cta).toBeInTheDocument()
+    // Heading shifts to "Purchase mode" but eyebrow + structure stable.
+    const header = document.querySelector(
+      '[data-slot="ancillary-pool-pin-header"]',
+    )
+    expect(header?.textContent).toMatch(/Ancillary pool/)
+    expect(header?.textContent).toMatch(/Purchase mode/)
+  })
+
+  it("Brief renders vault-disabled advisory when product line not enabled", async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: null,
+        is_vault_enabled: false,
+        items: [],
+        total_count: 0,
+        mode_note: null,
+        primary_navigation_target: null,
+      },
+    })
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="pulse_grid" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      const advisory = document.querySelector(
+        '[data-slot="ancillary-pool-pin-mode-advisory"][data-mode="vault_disabled"]',
+      )
+      expect(advisory).toBeInTheDocument()
+    })
+    // Heading reflects vault-disabled state.
+    const header = document.querySelector(
+      '[data-slot="ancillary-pool-pin-header"]',
+    )
+    expect(header?.textContent).toMatch(/Vault not enabled/)
+    // CTA suppressed when no navigation target.
+    expect(
+      document.querySelector('[data-slot="ancillary-pool-pin-cta"]'),
+    ).toBeNull()
+  })
+
+  it("Brief renders empty state when pool has zero items + vault enabled", async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "production",
+        is_vault_enabled: true,
+        items: [],
+        total_count: 0,
+        mode_note: null,
+        primary_navigation_target: "/dispatch",
+      },
+    })
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="pulse_grid" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      const empty = document.querySelector(
+        '[data-slot="ancillary-pool-pin-empty"]',
+      )
+      expect(empty).toBeInTheDocument()
+    })
+    // CTA still present per workspace-shape preservation.
+    expect(
+      document.querySelector('[data-slot="ancillary-pool-pin-cta"]'),
+    ).toBeInTheDocument()
+    // Heading reads "Pool clear".
+    const header = document.querySelector(
+      '[data-slot="ancillary-pool-pin-header"]',
+    )
+    expect(header?.textContent).toMatch(/Pool clear/)
+  })
+
+  it("Brief NEVER renders drag chrome (no aria-roledescription='draggable')", async () => {
+    // Per §12.6a "bounded interactions only" canon — pulse_grid
+    // surface is non-canvas, drag-attach is canvas-conditional.
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "production",
+        is_vault_enabled: true,
+        items: [
+          makePoolItemDataItem({ id: "a" }),
+          makePoolItemDataItem({ id: "b" }),
+        ],
+        total_count: 2,
+        mode_note: null,
+        primary_navigation_target: "/dispatch",
+      },
+    })
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="pulse_grid" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      const items = document.querySelectorAll(
+        '[data-slot="ancillary-pool-item"]',
+      )
+      expect(items.length).toBe(2)
+    })
+    // No item carries draggable role
+    const rows = document.querySelectorAll(
+      '[data-slot="ancillary-pool-item"]',
+    )
+    rows.forEach((row) => {
+      expect(row.getAttribute("aria-roledescription")).not.toBe("draggable")
+      expect(row.getAttribute("data-interactive")).toBe("false")
+    })
+  })
+})
+
+
+// ── Sub-part 4 verification: registration key + dispatcher hooks ───
+
+
+describe("AncillaryPoolPin — Session B.2 dispatcher discipline", () => {
+  beforeEach(() => {
+    mockApiGet.mockReset()
+    mockApiGet.mockResolvedValue({
+      data: {
+        operating_mode: "production",
+        is_vault_enabled: true,
+        items: [],
+        total_count: 0,
+        mode_note: null,
+        primary_navigation_target: "/dispatch",
+      },
+    })
+  })
+
+  it("dispatcher routes pulse_grid surface to Brief (not Detail)", async () => {
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="pulse_grid" />
+      </BriefHarness>,
+    )
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          '[data-slot="ancillary-pool-pin"][data-variant="brief"]',
+        ),
+      ).toBeInTheDocument()
+    })
+    expect(
+      document.querySelector(
+        '[data-slot="ancillary-pool-pin"][data-variant="detail"]',
+      ),
+    ).toBeNull()
+  })
+
+  it("dispatcher routes spaces_pin surface to Glance (not Brief)", () => {
+    render(
+      <BriefHarness>
+        <AncillaryPoolPin surface="spaces_pin" />
+      </BriefHarness>,
+    )
+    expect(
+      document.querySelector(
+        '[data-slot="ancillary-pool-pin"][data-variant="glance"]',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      document.querySelector(
+        '[data-slot="ancillary-pool-pin"][data-variant="brief"]',
+      ),
+    ).toBeNull()
+  })
+
+  it("dispatcher routes default (no surface, no variant_id) to Detail with provider", () => {
+    // Detail variant requires SchedulingFocusContext for full
+    // interactivity — render with the Harness wrapper.
+    render(
+      <Harness contextValue={makeContext({ poolAncillaries: [] })}>
+        <AncillaryPoolPin />
+      </Harness>,
+    )
+    expect(
+      document.querySelector(
+        '[data-slot="ancillary-pool-pin"][data-variant="detail"]',
+      ),
+    ).toBeInTheDocument()
   })
 })

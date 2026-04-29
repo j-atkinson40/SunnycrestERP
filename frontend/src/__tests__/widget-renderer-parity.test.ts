@@ -115,27 +115,15 @@ function extractPulseEligibleWidgetIds(): string[] {
  * When a deferred entry's blocker is closed, REMOVE it from this
  * set + verify the test passes. Entries left here as documentation;
  * the set should shrink over time, never grow.
+ *
+ * Phase W-4a Cleanup Session B.2 closed `scheduling.ancillary-pool`
+ * — the registration key migrated to the canonical backend key +
+ * AncillaryPoolPin gained Brief variant for pulse_grid surface +
+ * `useAncillaryPool` hook + `/widget-data/ancillary-pool` endpoint.
+ * Map is empty; the structure stays so future deferrals have a
+ * documented home (and the stale-entry-detection guard stays armed).
  */
-const KNOWN_DEFERRED: ReadonlyMap<string, string> = new Map([
-  [
-    "scheduling.ancillary-pool",
-    // Per Phase W-4a Step 5 audit + CLAUDE.md §14: backend uses
-    // canonical key `scheduling.ancillary-pool`; frontend registers
-    // legacy `funeral-scheduling.ancillary-pool`. The mismatch
-    // MASKED a deeper architectural issue — AncillaryPoolPin uses
-    // strict `useSchedulingFocus()` which throws outside the
-    // SchedulingFocusDataProvider subtree. Fixing the registry key
-    // alone would surface a runtime crash in Pulse. Path 3 follow-up
-    // refactors AncillaryPoolPin to support `pulse_grid` surface
-    // (switch to useSchedulingFocusOptional + add /widget-data/
-    // ancillary-pool endpoint + surface-aware rendering). When Path 3
-    // ships, register the canonical key + remove this entry.
-    "Path 3 deferred — AncillaryPoolPin needs pulse_grid-surface " +
-      "refactor before frontend registration; backend canonical " +
-      "key vs frontend legacy key mismatch must NOT be silently " +
-      "papered over. See CLAUDE.md §14 Phase W-4a Step 5 entry.",
-  ],
-])
+const KNOWN_DEFERRED: ReadonlyMap<string, string> = new Map([])
 
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -226,12 +214,17 @@ describe("Widget renderer parity (CI gate per DESIGN_LANGUAGE §13.4.3)", () => 
     }
   })
 
-  it("the canonical 9 Pulse-eligible widget_ids resolve cleanly (regression guard)", () => {
+  it("the canonical 10 Pulse-eligible widget_ids resolve cleanly (regression guard)", () => {
     // Explicit list of Pulse-eligible widget_ids that should resolve
     // post-W-4a. If any of these regress (someone deletes a
     // register.ts call or renames a key), test fails immediately
     // with the offending widget_id. Regression guard separate from
     // the dynamic backend-walk above.
+    //
+    // Phase W-4a Cleanup Session B.2 — `scheduling.ancillary-pool`
+    // moves from KNOWN_DEFERRED to CANONICAL after the surface-
+    // aware refactor closed the Path 3 deferral. List grows from
+    // 9 → 10.
     const CANONICAL_PULSE_WIDGETS = [
       "today",
       "operator_profile",
@@ -242,6 +235,7 @@ describe("Widget renderer parity (CI gate per DESIGN_LANGUAGE §13.4.3)", () => 
       "vault_schedule",
       "line_status",
       "urn_catalog_status",
+      "scheduling.ancillary-pool",
     ] as const
 
     for (const widget_id of CANONICAL_PULSE_WIDGETS) {

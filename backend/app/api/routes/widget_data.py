@@ -50,6 +50,45 @@ def vault_schedule_widget_summary(
     return get_vault_schedule(db, user=current_user, target_date=target_date)
 
 
+# ── Phase W-4a Cleanup Session B.2 — `scheduling.ancillary-pool` widget ──
+
+
+@router.get("/ancillary-pool")
+def ancillary_pool_widget_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mode-aware ancillary pool — Phase W-4a Cleanup Session B.2
+    `scheduling.ancillary-pool` widget data source for the **pulse_grid
+    surface**.
+
+    Closes the Path 3 deferral surfaced in Phase W-4a Step 5: the
+    AncillaryPoolPin uses strict `useSchedulingFocus()` which throws
+    outside the SchedulingFocusDataProvider subtree (FH Focus only).
+    This endpoint powers the Brief variant's read-only fallback path
+    so the widget renders in home Pulse without the provider context.
+
+    Reads `TenantProductLine(line_key="vault").config["operating_mode"]`
+    and dispatches:
+      • production / hybrid → full pool (`items`, `total_count`)
+      • purchase            → empty + `mode_note=
+                              "no_pool_in_purchase_mode"` advisory
+      • vault disabled      → `is_vault_enabled=False` + empty
+
+    Per DESIGN_LANGUAGE.md §12.6 + §12.6a workspace-core canon: the
+    widget reads from the SAME source the Focus core consumes when
+    interactive (FH Focus subtree → context); when mounted in a non-
+    Focus surface (pulse_grid), this endpoint provides parallel
+    read-only data.
+
+    See `app/services/widgets/ancillary_pool_service.py` for full
+    mode-dispatch logic + tenant isolation discipline.
+    """
+    from app.services.widgets.ancillary_pool_service import get_ancillary_pool
+
+    return get_ancillary_pool(db, user=current_user)
+
+
 # ── Phase W-3d — `urn_catalog_status` widget (extension-gated) ──
 
 

@@ -48,14 +48,25 @@ import { SchedulingKanbanCore } from "./SchedulingKanbanCore"
 
 // Phase 4.3b.3 — register the AncillaryPoolPin component before the
 // Focus config that references it. Order matters because
-// registerFocus's defaultLayout.tenantDefault declares
-// `widgetType: "funeral-scheduling.ancillary-pool"`, and Canvas calls
-// getWidgetRenderer(widgetType) at render time — the resolver
-// returns MockSavedViewWidget if the type isn't registered. Both
-// register* calls are synchronous + idempotent; the order is for
-// reader clarity, not behavioral correctness.
+// registerFocus's defaultLayout.tenantDefault declares the same
+// widgetType, and Canvas calls getWidgetRenderer(widgetType) at
+// render time — the resolver returns MissingWidgetEmptyState if the
+// type isn't registered. Both register* calls are synchronous +
+// idempotent; the order is for reader clarity, not behavioral
+// correctness.
+//
+// Phase W-4a Cleanup Session B.2 — registration key migrated from
+// the legacy `funeral-scheduling.ancillary-pool` to the canonical
+// backend key `scheduling.ancillary-pool` (matches
+// `widget_registry.py::WIDGET_DEFINITIONS` entry). Pre-Session-B.2
+// the key mismatch caused Pulse-rendered ancillary-pool slots to
+// resolve via the empty-slot filter (§13.4.3 platform-composed
+// silent filter) — symptom hidden but architecturally wrong.
+// Backend key is the canonical SOT; frontend registers under the
+// matching key. CI parity test (`widget-renderer-parity.test.ts`)
+// catches any future drift.
 registerWidgetRenderer(
-  "funeral-scheduling.ancillary-pool",
+  "scheduling.ancillary-pool",
   AncillaryPoolPin,
 )
 
@@ -90,7 +101,7 @@ registerFocus({
     tenantDefault: {
       widgets: {
         "ancillary-pool": {
-          widgetType: "funeral-scheduling.ancillary-pool",
+          widgetType: "scheduling.ancillary-pool",
           // Widget Library Phase W-1 — Section 12.10 reference:
           // AncillaryPoolPin declares Glance + Brief + Detail
           // variants in the backend WIDGET_DEFINITIONS catalog.
