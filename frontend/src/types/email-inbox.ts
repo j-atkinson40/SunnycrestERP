@@ -45,6 +45,12 @@ export interface MessageDetail {
   subject: string | null;
   body_text: string | null;
   body_html: string | null;
+  /**
+   * Step 4c — sanitized full-page HTML doc (CSP + image-blocking +
+   * styles + body) ready to drop into iframe `srcdoc`. Computed
+   * server-side at render time. null when body_html is null.
+   */
+  body_html_sanitized?: string | null;
   sent_at: string | null;
   received_at: string;
   direction: "inbound" | "outbound";
@@ -55,6 +61,67 @@ export interface MessageDetail {
   to: { email_address: string; display_name: string | null }[];
   cc: { email_address: string; display_name: string | null }[];
   bcc: { email_address: string; display_name: string | null }[];
+  /**
+   * Step 4c — operational-action affordances per §3.26.15.17.
+   * Empty array when no actions attached.
+   */
+  actions?: EmailMessageAction[];
+}
+
+/**
+ * Operational-action affordance shape per §3.26.15.17. Currently
+ * only `quote_approval` ships in Step 4c; future action_types extend
+ * the union.
+ */
+export type EmailActionType = "quote_approval";
+
+export type EmailActionStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "changes_requested";
+
+export interface EmailMessageAction {
+  action_type: EmailActionType;
+  action_target_type: string;
+  action_target_id: string;
+  action_metadata: Record<string, unknown>;
+  action_status: EmailActionStatus;
+  action_completed_at: string | null;
+  action_completed_by: string | null;
+  action_completion_metadata: Record<string, unknown> | null;
+}
+
+/**
+ * Magic-link contextual surface payload — what the public landing
+ * page renders.
+ */
+export interface MagicLinkActionDetails {
+  tenant_name: string;
+  tenant_brand_color: string | null;
+  sender_name: string | null;
+  sender_email: string;
+  subject: string | null;
+  sent_at: string | null;
+  action_idx: number;
+  action_type: EmailActionType;
+  action_target_type: string;
+  action_target_id: string;
+  action_metadata: Record<string, unknown>;
+  action_status: EmailActionStatus;
+  recipient_email: string;
+  expires_at: string;
+  consumed: boolean;
+}
+
+export interface CommitActionResponse {
+  action_idx: number;
+  action_type: EmailActionType;
+  action_status: EmailActionStatus;
+  action_completed_at: string | null;
+  action_target_type: string;
+  action_target_id: string;
+  target_status: string | null;
 }
 
 export interface ThreadDetail {

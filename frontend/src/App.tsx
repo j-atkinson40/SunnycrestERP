@@ -93,6 +93,7 @@ import SigningEnvelopeLibrary from "@/pages/admin/signing/SigningEnvelopeLibrary
 import SigningEnvelopeDetail from "@/pages/admin/signing/SigningEnvelopeDetail";
 import CreateEnvelopeWizard from "@/pages/admin/signing/CreateEnvelopeWizard";
 import SignerLandingPage from "@/pages/sign/SignerLandingPage";
+import MagicLinkActionPage from "@/pages/email/MagicLinkActionPage";
 import IntelligencePromptDetail from "@/pages/admin/intelligence/PromptDetail";
 import IntelligenceExecutionLog from "@/pages/admin/intelligence/ExecutionLog";
 import IntelligenceExecutionDetail from "@/pages/admin/intelligence/ExecutionDetail";
@@ -1737,6 +1738,11 @@ export default function App() {
 
               {/* Native signing signer-facing page — public, token-validated (Phase D-4) */}
               <Route path="/sign/:token" element={<SignerLandingPage />} />
+
+              {/* Email operational-action magic-link surface — public, token-
+                  authenticated kill-the-portal contextual surface per
+                  §3.26.15.17 + §14.9.5 (Phase W-4b Layer 1 Step 4c). */}
+              <Route path="/email/actions/:token" element={<MagicLinkActionPage />} />
 
               {/* Family portal — no auth required, standalone page */}
               <Route path="/portal/:token" element={<FHPortalPage />} />

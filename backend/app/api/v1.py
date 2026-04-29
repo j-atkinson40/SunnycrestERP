@@ -20,6 +20,7 @@ from app.api.routes import (
     portal,
     portal_admin,
     email_accounts,
+    email_actions,
     email_inbox,
     email_webhooks,
     tasks,
@@ -242,6 +243,15 @@ v1_router.include_router(
 # operator-action affordances in Step 4b+).
 v1_router.include_router(
     email_inbox.router, prefix="/email", tags=["Email Inbox"]
+)
+# Email Primitive — Phase W-4b Layer 1 Step 4c operational-action affordance API.
+# Two surfaces sharing one commit logic: inline action for Bridgeable users
+# (POST /email/messages/{id}/actions/{idx}/commit) + magic-link surface
+# for non-Bridgeable recipients (GET/POST /email/actions/{token}). Public
+# magic-link routes auth via token; inline routes auth via session.
+# kill-the-portal canonical case (quote_approval) per §3.26.15.17.
+v1_router.include_router(
+    email_actions.router, prefix="/email", tags=["Email Actions"]
 )
 # NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
 v1_router.include_router(

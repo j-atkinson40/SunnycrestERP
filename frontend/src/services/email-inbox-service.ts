@@ -6,8 +6,10 @@
 
 import apiClient from "@/lib/api-client";
 import type {
+  CommitActionResponse,
   EmailLabel,
   EmailStatusFilter,
+  MagicLinkActionDetails,
   ResolvedRecipient,
   RoleRecipient,
   ThreadDetail,
@@ -171,4 +173,76 @@ export async function expandRoleRecipient(
     { role_kind: roleKind, id_value: idValue },
   );
   return r.data;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Step 4c — operational-action affordance API
+// ──────────────────────────────────────────────────────────────────
+
+export async function commitInlineAction(
+  messageId: string,
+  actionIdx: number,
+  payload: { outcome: string; completion_note?: string | null },
+): Promise<CommitActionResponse> {
+  const r = await apiClient.post<CommitActionResponse>(
+    `${BASE}/messages/${messageId}/actions/${actionIdx}/commit`,
+    payload,
+  );
+  return r.data;
+}
+
+/**
+ * Public magic-link API — does NOT use the authenticated apiClient
+ * because the token IS the auth. Uses fetch directly so we don't
+ * accidentally bind tenant headers / session cookies.
+ */
+const MAGIC_LINK_BASE =
+  (typeof import.meta !== "undefined" &&
+    (import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL) ||
+  "";
+
+export async function getMagicLinkAction(
+  token: string,
+): Promise<MagicLinkActionDetails> {
+  const url = `${MAGIC_LINK_BASE}/api/v1/email/actions/${encodeURIComponent(token)}`;
+  const r = await fetch(url, { credentials: "omit" });
+  if (!r.ok) {
+    throw new MagicLinkError(r.status, await safeReadDetail(r));
+  }
+  return (await r.json()) as MagicLinkActionDetails;
+}
+
+export async function commitMagicLinkAction(
+  token: string,
+  payload: { outcome: string; completion_note?: string | null },
+): Promise<CommitActionResponse> {
+  const url = `${MAGIC_LINK_BASE}/api/v1/email/actions/${encodeURIComponent(token)}/commit`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "omit",
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    throw new MagicLinkError(r.status, await safeReadDetail(r));
+  }
+  return (await r.json()) as CommitActionResponse;
+}
+
+export class MagicLinkError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "MagicLinkError";
+  }
+}
+
+async function safeReadDetail(r: Response): Promise<string> {
+  try {
+    const body = (await r.json()) as { detail?: string };
+    return body.detail || `Request failed (${r.status})`;
+  } catch {
+    return `Request failed (${r.status})`;
+  }
 }

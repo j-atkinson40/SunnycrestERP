@@ -31,3 +31,5 @@ Pillow>=10.0.0
 numpy>=1.26.0
 sse-starlette>=1.6.0,<2.0.0
 playwright>=1.40.0
+bleach>=6.1.0
+tinycss2>=1.5.0

@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -128,6 +128,8 @@ def send_message(
     thread_id: str | None = None,
     in_reply_to_message_id: str | None = None,
     attachments: list[dict[str, Any]] | None = None,
+    actions: list[dict[str, Any]] | None = None,
+    action_tokens: list[str] | None = None,
 ) -> EmailMessage:
     """Send an outbound message + persist + audit.
 
@@ -147,6 +149,18 @@ def send_message(
         attachments: list of dicts with keys ``filename``, ``bytes``,
             ``maintype``, ``subtype``. Bytes are passed through to
             the provider; never persisted as part of audit log.
+        actions: optional list of operational-action affordance objects
+            per §3.26.15.17 (Step 4c). Stored on
+            ``EmailMessage.message_payload.actions``. Callers building
+            a quote_approval action use
+            ``email_action_service.build_quote_approval_action``.
+        action_tokens: optional list parallel to ``actions`` — magic-
+            link tokens (already embedded in body_html by caller) that
+            this function persists as ``email_action_tokens`` rows
+            for the primary (first ``to``) recipient. Length must
+            match ``actions`` if both are supplied. None entries are
+            permitted (action present but no magic-link token —
+            Bridgeable-only recipients use the inline-action endpoint).
 
     Returns the persisted ``EmailMessage`` row.
 
@@ -182,6 +196,13 @@ def send_message(
     cc = cc or []
     bcc = bcc or []
     attachments = attachments or []
+    actions = actions or []
+    action_tokens = action_tokens or []
+    if actions and action_tokens and len(actions) != len(action_tokens):
+        raise OutboundError(
+            "actions and action_tokens must have matching length when both "
+            "supplied."
+        )
 
     # 3. Resolve thread context
     thread: EmailThread | None = None
@@ -326,11 +347,61 @@ def send_message(
         message_payload={
             "provider": account.provider_type,
             "provider_thread_id": result.provider_thread_id,
+            # Step 4c — operational-action affordances per §3.26.15.17.
+            # Empty list when no actions attached. Tokens NEVER stored
+            # in message_payload (they live in email_action_tokens
+            # table; payload only carries the action shape + status).
+            "actions": list(actions),
         },
         entity_references=[],
     )
     db.add(message)
     db.flush()
+
+    # 6.5. Persist action tokens (Step 4c). Caller pre-generated tokens
+    # + embedded the magic-link URLs in the body before provider send;
+    # we stamp the token rows now that message exists (FK requirement).
+    if actions and action_tokens:
+        # Magic-link tokens are issued for the primary (first) ``to``
+        # recipient — the canonical "external approver" per
+        # §3.26.15.17. cc/bcc do not get tokens (cannot approve).
+        primary_recipient = to[0][0] if to else None
+        if primary_recipient:
+            from app.services.email.email_action_service import (
+                ACTION_TYPES,
+            )
+
+            for action_idx, (action, token) in enumerate(
+                zip(actions, action_tokens)
+            ):
+                if not token:
+                    continue
+                action_type = action.get("action_type")
+                if action_type not in ACTION_TYPES:
+                    raise OutboundError(
+                        f"Unknown action_type: {action_type}"
+                    )
+                from app.services.email.email_action_service import (
+                    _INSERT_ACTION_TOKEN_SQL,
+                    TOKEN_TTL_DAYS,
+                )
+
+                expires_at = datetime.now(timezone.utc) + timedelta(
+                    days=TOKEN_TTL_DAYS
+                )
+                db.execute(
+                    _INSERT_ACTION_TOKEN_SQL,
+                    {
+                        "token": token,
+                        "tenant_id": account.tenant_id,
+                        "message_id": message.id,
+                        "action_idx": action_idx,
+                        "action_type": action_type,
+                        "recipient_email": primary_recipient.lower().strip(),
+                        "expires_at": expires_at,
+                    },
+                )
+            db.flush()
 
     # 7. Resolve participants + create MessageParticipant rows. We
     # walk From + To/Cc/Bcc; reusing the inbound-side participant

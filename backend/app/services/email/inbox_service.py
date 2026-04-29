@@ -118,6 +118,11 @@ class MessageDetail:
     subject: str | None
     body_text: str | None
     body_html: str | None
+    # Step 4c — sanitized body suitable for sandboxed iframe srcdoc.
+    # Computed on-demand via ``html_sanitization.sanitize_email_html`` +
+    # ``build_srcdoc`` (rendering-time sanitization per §3.26.15.5).
+    # When body_html is None, this is also None.
+    body_html_sanitized: str | None
     sent_at: str | None
     received_at: str
     direction: str
@@ -128,6 +133,10 @@ class MessageDetail:
     to: list[dict[str, str | None]]
     cc: list[dict[str, str | None]]
     bcc: list[dict[str, str | None]]
+    # Step 4c — operational-action affordances per §3.26.15.17.
+    # Empty list when no actions attached. Caller's UI renders the
+    # InlineActionBar when this is non-empty.
+    actions: list[dict]
 
 
 @dataclass(slots=True)
@@ -570,6 +579,24 @@ def get_thread_detail(
                 if r == role
             ]
 
+        # Step 4c — sanitize HTML body at render time + extract actions
+        from app.services.email.html_sanitization import (
+            build_srcdoc,
+            sanitize_email_html,
+        )
+
+        if msg.body_html:
+            sanitized = sanitize_email_html(msg.body_html)
+            body_html_sanitized = build_srcdoc(
+                sanitized.cleaned_html, block_external_images=True
+            )
+        else:
+            body_html_sanitized = None
+
+        msg_actions = (msg.message_payload or {}).get("actions") or []
+        if not isinstance(msg_actions, list):
+            msg_actions = []
+
         message_details.append(
             MessageDetail(
                 id=msg.id,
@@ -579,6 +606,7 @@ def get_thread_detail(
                 subject=msg.subject,
                 body_text=msg.body_text,
                 body_html=msg.body_html,
+                body_html_sanitized=body_html_sanitized,
                 sent_at=msg.sent_at.isoformat() if msg.sent_at else None,
                 received_at=msg.received_at.isoformat(),
                 direction=msg.direction,
@@ -592,6 +620,7 @@ def get_thread_detail(
                 to=_role_pairs("to"),
                 cc=_role_pairs("cc"),
                 bcc=_role_pairs("bcc"),
+                actions=list(msg_actions),
             )
         )
 

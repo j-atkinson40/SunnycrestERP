@@ -82,6 +82,8 @@ import type {
 } from "@/types/email-inbox";
 
 import { ComposeDialog } from "./ComposeDialog";
+import HtmlEmailRenderer from "./HtmlEmailRenderer";
+import InlineActionBar from "./InlineActionBar";
 import { SnoozePicker } from "./SnoozePicker";
 import { LabelManager } from "./LabelManager";
 
@@ -778,7 +780,22 @@ function ThreadDetailPane({
         data-testid="message-list"
       >
         {detail.messages.map((m) => (
-          <MessageCard key={m.id} message={m} onForward={onForward} />
+          <MessageCard
+            key={m.id}
+            message={m}
+            onForward={onForward}
+            onActionCommitted={() => {
+              // Re-fetch thread detail so the action's terminal state
+              // (and any concurrent commits) flow back into the UI.
+              void getThreadDetail(detail.id).then((d) => {
+                // Parent owns ThreadDetail state; emit through a hook.
+                // We piggyback on onReplySent's reload semantics — same
+                // thread re-fetch needed.
+                onReplySent();
+                return d;
+              });
+            }}
+          />
         ))}
 
         {replyMode !== "none" && lastInbound && account && (
@@ -834,10 +851,22 @@ function ThreadDetailPane({
 function MessageCard({
   message,
   onForward,
+  onActionCommitted,
 }: {
   message: MessageDetail;
   onForward?: (message: MessageDetail) => void;
+  onActionCommitted?: () => void;
 }) {
+  // Step 4c body precedence:
+  //   - body_html_sanitized → render in sandboxed iframe (canonical)
+  //   - body_text → plain pre-formatted fallback
+  //   - body_html (raw) → only when sanitized is missing (server didn't
+  //     compute one — should never happen post-Step-4c, but defensive
+  //     fallback shows the user something rather than crashing)
+  const hasSandboxed = !!message.body_html_sanitized;
+  const hasText = !!message.body_text;
+  const hasRawHtml = !!message.body_html;
+
   return (
     <div
       className="rounded-[2px] bg-surface-elevated border border-border-subtle shadow-level-1 p-4 group"
@@ -866,23 +895,35 @@ function MessageCard({
         </span>
       </div>
 
-      {/* Body — text first; HTML body sandboxed iframe lands in Step 4c
-       (security-sensitive, deserves dedicated implementation). Step 4a/b
-       render text fallback inline; HTML messages with no text body show
-       "[HTML message — preview in Step 4c]" placeholder. */}
-      {message.body_text ? (
+      {hasSandboxed ? (
+        <HtmlEmailRenderer
+          sandboxedSrcdoc={message.body_html_sanitized as string}
+          testId={`email-html-iframe-${message.id}`}
+        />
+      ) : hasText ? (
         <pre className="font-plex-sans text-body-sm text-content-base whitespace-pre-wrap break-words">
           {message.body_text}
         </pre>
-      ) : message.body_html ? (
+      ) : hasRawHtml ? (
         <div className="text-body-sm text-content-muted italic">
-          [HTML message — sandboxed preview ships in Step 4c]
+          [HTML body could not be sanitized for safe display]
         </div>
       ) : (
         <div className="text-body-sm text-content-muted italic">
           (no body)
         </div>
       )}
+
+      {/* Step 4c — Operational-action affordance chrome per §3.26.15.17 */}
+      {(message.actions ?? []).map((act, idx) => (
+        <InlineActionBar
+          key={`${message.id}-action-${idx}`}
+          messageId={message.id}
+          actionIdx={idx}
+          action={act}
+          onCommitted={() => onActionCommitted?.()}
+        />
+      ))}
 
       {/* Forward affordance per-message — hover-reveal */}
       {onForward && message.direction === "inbound" && (

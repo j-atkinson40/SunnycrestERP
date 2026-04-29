@@ -76,6 +76,7 @@ class MessageDetailResponse(BaseModel):
     subject: str | None
     body_text: str | None
     body_html: str | None
+    body_html_sanitized: str | None = None
     sent_at: str | None
     received_at: str
     direction: str
@@ -86,6 +87,7 @@ class MessageDetailResponse(BaseModel):
     to: list[dict]
     cc: list[dict]
     bcc: list[dict]
+    actions: list[dict] = []
 
 
 class ThreadDetailResponse(BaseModel):
@@ -195,6 +197,7 @@ def get_thread_detail(
                 subject=m.subject,
                 body_text=m.body_text,
                 body_html=m.body_html,
+                body_html_sanitized=m.body_html_sanitized,
                 sent_at=m.sent_at,
                 received_at=m.received_at,
                 direction=m.direction,
@@ -205,6 +208,7 @@ def get_thread_detail(
                 to=m.to,
                 cc=m.cc,
                 bcc=m.bcc,
+                actions=m.actions,
             )
             for m in detail.messages
         ],
