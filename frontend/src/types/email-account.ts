@@ -25,6 +25,7 @@ export interface EmailAccount {
   reply_to_override: string | null;
   is_active: boolean;
   is_default: boolean;
+  outbound_enabled?: boolean;
   sync_status: string | null;
   last_credential_op?: string | null;
   last_credential_op_at?: string | null;
@@ -33,6 +34,30 @@ export interface EmailAccount {
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SendMessageRecipient {
+  email_address: string;
+  display_name?: string | null;
+}
+
+export interface SendMessageRequest {
+  to: SendMessageRecipient[];
+  cc?: SendMessageRecipient[];
+  bcc?: SendMessageRecipient[];
+  subject: string;
+  body_text?: string | null;
+  body_html?: string | null;
+  thread_id?: string | null;
+  in_reply_to_message_id?: string | null;
+}
+
+export interface SendMessageResponse {
+  message_id: string;
+  thread_id: string;
+  provider_message_id: string | null;
+  sent_at: string;
+  direction: string;
 }
 
 export interface EmailAccountAccess {

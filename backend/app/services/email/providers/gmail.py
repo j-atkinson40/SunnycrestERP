@@ -190,9 +190,68 @@ class GmailAPIProvider(EmailProvider):
         in_reply_to_provider_id: str | None = None,
         attachments: list[dict[str, Any]] | None = None,
     ) -> ProviderSendResult:
-        # Step 3 wires real send via Gmail API users.messages.send.
-        raise NotImplementedError(
-            "Gmail send ships in Phase W-4b Layer 1 Step 3 (outbound)."
+        """Send via Gmail API users.messages.send.
+
+        Constructs an RFC 5322 message + base64-url-safe encodes the
+        raw bytes per Gmail API spec. Returns the provider message id
+        for outbound deduplication on the next inbound sync of the
+        Sent folder.
+        """
+        # Build RFC 5322 message via stdlib email — handles headers,
+        # multipart bodies, In-Reply-To threading.
+        from email.message import EmailMessage as MimeMessage
+
+        mime = MimeMessage()
+        mime["From"] = _format_address(from_address, None)
+        mime["To"] = ", ".join(_format_address(a, n) for a, n in to)
+        if cc:
+            mime["Cc"] = ", ".join(_format_address(a, n) for a, n in cc)
+        if bcc:
+            mime["Bcc"] = ", ".join(_format_address(a, n) for a, n in bcc)
+        mime["Subject"] = subject or ""
+        if in_reply_to_provider_id:
+            # RFC 5322 In-Reply-To header — Gmail uses this for threading.
+            mime["In-Reply-To"] = f"<{in_reply_to_provider_id}>"
+            mime["References"] = f"<{in_reply_to_provider_id}>"
+
+        if body_html and body_text:
+            mime.set_content(body_text)
+            mime.add_alternative(body_html, subtype="html")
+        elif body_html:
+            mime.set_content(body_html, subtype="html")
+        else:
+            mime.set_content(body_text or "")
+
+        for att in attachments or []:
+            mime.add_attachment(
+                att["bytes"],
+                maintype=att.get("maintype", "application"),
+                subtype=att.get("subtype", "octet-stream"),
+                filename=att["filename"],
+            )
+
+        raw_bytes = mime.as_bytes()
+        raw_b64 = base64.urlsafe_b64encode(raw_bytes).decode("ascii").rstrip("=")
+
+        client = self._client()
+        try:
+            r = client.post(
+                f"{_GMAIL_API_BASE}/users/me/messages/send",
+                json={"raw": raw_b64},
+            )
+            r.raise_for_status()
+            payload = r.json()
+        except Exception as exc:  # noqa: BLE001
+            return ProviderSendResult(
+                success=False,
+                error_message=f"Gmail send failed: {exc}",
+                error_retryable=_is_retryable_http(exc),
+            )
+
+        return ProviderSendResult(
+            success=True,
+            provider_message_id=payload.get("id"),
+            provider_thread_id=payload.get("threadId"),
         )
 
     @staticmethod
@@ -363,3 +422,32 @@ def _parse_internal_date(value: str | None) -> datetime | None:
         return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
     except (ValueError, OSError):
         return None
+
+
+def _format_address(email: str, display_name: str | None) -> str:
+    """Format an address for an RFC 5322 header.
+
+    Returns ``"Display Name" <email@host>`` when a name is supplied,
+    or the bare email otherwise. Quoted-printable encoding for non-
+    ASCII names handled by stdlib email.headerregistry on header set.
+    """
+    if display_name:
+        # Escape inner quotes per RFC 5322 atext rules.
+        safe_name = display_name.replace('"', '\\"')
+        return f'"{safe_name}" <{email}>'
+    return email
+
+
+def _is_retryable_http(exc: Exception) -> bool:
+    """Classify an httpx exception as retryable vs non-retryable.
+
+    Connection errors + 5xx + 429 → retryable (caller may back off
+    and retry). Auth errors (401 / 403) + 4xx other than 429 →
+    non-retryable (fail-loud; user must reconnect or fix request).
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        return status >= 500 or status == 429
+    if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
+        return True
+    return False

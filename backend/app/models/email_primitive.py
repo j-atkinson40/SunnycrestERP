@@ -118,6 +118,12 @@ class EmailAccount(Base):
     is_default: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    # Step 3 — per-account outbound gate (canon §3.26.15.5).
+    # Defaults True; tenant admins toggle False to disable outbound
+    # while keeping inbound sync flowing.
+    outbound_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     # Step 2 — encrypted credential storage. Fernet-encrypted JSON blob
     # containing access_token / refresh_token / token_expiry (OAuth) OR
     # imap_password (IMAP). Encrypted under the platform-wide

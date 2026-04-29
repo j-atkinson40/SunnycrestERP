@@ -14,6 +14,8 @@ import type {
   OAuthCallbackRequest,
   OAuthCallbackResponse,
   ProviderInfo,
+  SendMessageRequest,
+  SendMessageResponse,
   SyncStatus,
   UpdateAccountRequest,
   AccessLevel,
@@ -134,6 +136,17 @@ export async function syncNow(
 ): Promise<Record<string, string>> {
   const r = await apiClient.post<Record<string, string>>(
     `${BASE}/${accountId}/sync-now`,
+  );
+  return r.data;
+}
+
+export async function sendMessage(
+  accountId: string,
+  request: SendMessageRequest,
+): Promise<SendMessageResponse> {
+  const r = await apiClient.post<SendMessageResponse>(
+    `${BASE}/${accountId}/messages`,
+    request,
   );
   return r.data;
 }

@@ -21,6 +21,7 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Send,
   ShieldCheck,
   Trash2,
   Users,
@@ -56,6 +57,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StatusPill } from "@/components/ui/status-pill";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -73,6 +75,7 @@ import {
   listAccounts,
   listProviders,
   revokeAccess,
+  sendMessage,
   syncNow,
   updateAccount,
 } from "@/services/email-account-service";
@@ -102,6 +105,11 @@ export default function EmailAccountsPage() {
   const [accessDialogAccount, setAccessDialogAccount] =
     useState<EmailAccount | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<EmailAccount | null>(null);
+  // Step 3 — minimal outbound test affordance. Step 4 ships full
+  // composition surface (inline reply, modal new/forward).
+  const [sendTestAccount, setSendTestAccount] = useState<EmailAccount | null>(
+    null,
+  );
 
   async function reload() {
     setLoading(true);
@@ -262,6 +270,14 @@ export default function EmailAccountsPage() {
                             Manage access
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            onSelect={() => setSendTestAccount(acc)}
+                            data-testid={`send-test-${acc.id}`}
+                            disabled={acc.outbound_enabled === false}
+                          >
+                            <Send className="h-4 w-4 mr-2" />
+                            Send test message
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             onSelect={async () => {
                               await updateAccount(acc.id, {
                                 is_default: !acc.is_default,
@@ -335,6 +351,17 @@ export default function EmailAccountsPage() {
         <ManageAccessDialog
           account={accessDialogAccount}
           onClose={() => setAccessDialogAccount(null)}
+        />
+      )}
+
+      {sendTestAccount && (
+        <SendTestMessageDialog
+          account={sendTestAccount}
+          onClose={() => setSendTestAccount(null)}
+          onSent={() => {
+            setSendTestAccount(null);
+            reload();
+          }}
         />
       )}
 
@@ -851,6 +878,123 @@ function ManageAccessDialog({
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Step 3 — Send Test Message dialog (minimal outbound test affordance)
+//
+// NOT the full composition surface (Step 4 ships inline reply +
+// modal new/forward per §3.26.15.13). This is a dev/admin smoke
+// trigger so admins can verify outbound is working end-to-end after
+// connecting an account.
+// ─────────────────────────────────────────────────────────────────────
+
+export function SendTestMessageDialog({
+  account,
+  onClose,
+  onSent,
+}: {
+  account: EmailAccount;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [recipient, setRecipient] = useState("");
+  const [subject, setSubject] = useState("Test from Bridgeable");
+  const [body, setBody] = useState(
+    `Hello — this is a test message from Bridgeable's email primitive\n` +
+      `(account: ${account.email_address}).\n\n` +
+      `If you received this, outbound is working end-to-end.`,
+  );
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSend() {
+    if (!recipient.trim()) {
+      toast.error("Recipient required");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await sendMessage(account.id, {
+        to: [{ email_address: recipient.trim().toLowerCase() }],
+        subject: subject.trim() || "Test",
+        body_text: body,
+      });
+      toast.success(`Test message sent through ${account.email_address}`);
+      onSent();
+    } catch (e) {
+      const detail =
+        e && typeof e === "object" && "response" in e
+          ? ((e as { response?: { data?: { detail?: string } } })
+              .response?.data?.detail ?? null)
+          : null;
+      toast.error(
+        detail ?? (e instanceof Error ? e.message : "Send failed"),
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg" data-testid="send-test-dialog">
+        <DialogHeader>
+          <DialogTitle>Send test message — {account.display_name}</DialogTitle>
+          <DialogDescription>
+            Sends a single outbound message through the connected provider
+            to verify the pipeline. Step 4 ships full composition UX
+            (inline reply, modal new/forward).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="send-test-to">To</Label>
+            <Input
+              id="send-test-to"
+              type="email"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              placeholder="recipient@example.com"
+              data-testid="send-test-to"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="send-test-subject">Subject</Label>
+            <Input
+              id="send-test-subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              data-testid="send-test-subject"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="send-test-body">Body</Label>
+            <Textarea
+              id="send-test-body"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={6}
+              data-testid="send-test-body"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSend}
+            disabled={submitting || !recipient.trim()}
+            data-testid="send-test-submit"
+          >
+            <Send className="h-4 w-4 mr-2" />
+            Send
           </Button>
         </DialogFooter>
       </DialogContent>

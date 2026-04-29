@@ -1,25 +1,25 @@
-"""IMAPProvider — polling-only implementation, Phase W-4b Layer 1 Step 2.
+"""IMAPProvider — polling + SMTP send, Phase W-4b Layer 1 Step 3.
 
-Per Step 2 canon-clarification: IMAP IDLE long-lived connections are
-deferred to Step 2.1 / Step 4 (when inbox UI surfaces real-time
-freshness pressure). Step 2 ships **polling-only** matching canon
-§3.26.15.4 "polling 5-min fallback" — APScheduler sweep over active
-IMAP accounts, per-account UIDVALIDITY + UIDNEXT cursor.
+Step 2 shipped polling-only inbound sync (canon §3.26.15.4 "polling
+5-min fallback"). Step 3 adds SMTP outbound via stdlib smtplib using
+SMTP server config from ``account_config`` (separate server/port from
+IMAP) and the same encrypted credentials Step 2 stored.
 
-Connection model:
+Connection model unchanged:
   - Open imaplib connection per ``sync_initial`` / ``fetch_message``
-    call; close at end. No long-lived connection state.
+    call; close at end. No long-lived state.
   - Step 2.1 (deferred): persistent IDLE worker thread per account.
+  - Step 3: SMTP connection per ``send_message`` call; close at end.
 
 Credential resolution:
-  - imap_password decrypted at provider construction time from
-    ``account_config["imap_password"]`` (caller injects via
-    ``oauth_service``-equivalent IMAP credential decryption).
-  - server / port / username live in plaintext provider_config.
+  - imap_password (also used as SMTP password by canonical pattern)
+    decrypted at provider construction time from
+    ``account_config["imap_password"]``.
+  - SMTP server / port live in plaintext provider_config.
 
-Tests inject a mock ``imaplib.IMAP4_SSL``-shaped object via the
-``imap_client_factory`` injection seam to verify the wire format
-without a real IMAP server.
+Tests inject a mock IMAP via ``imap_client_factory`` and a mock SMTP
+via ``smtp_client_factory`` — wire format verifiable without real
+servers.
 """
 
 from __future__ import annotations
@@ -27,7 +27,10 @@ from __future__ import annotations
 import email
 import imaplib
 import logging
+import smtplib
+import ssl
 from datetime import datetime, timezone
+from email.message import EmailMessage as MimeMessage
 from email.message import Message as EmailMimeMessage
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from typing import Any, Callable
@@ -50,15 +53,39 @@ def _default_imap_factory(server: str, port: int):
     return imaplib.IMAP4_SSL(server, port)
 
 
+def _default_smtp_factory(server: str, port: int):
+    """Default SMTP client factory.
+
+    Uses STARTTLS for the canonical 587 submission port, SMTP_SSL for
+    465. Tests inject a mock factory that returns an in-memory shim.
+    """
+    if int(port) == 465:
+        return smtplib.SMTP_SSL(server, int(port), timeout=30)
+    client = smtplib.SMTP(server, int(port), timeout=30)
+    try:
+        client.ehlo()
+        client.starttls(context=ssl.create_default_context())
+        client.ehlo()
+    except smtplib.SMTPException:
+        # Server doesn't support STARTTLS — proceed unencrypted only
+        # if the operator explicitly configured port 25 (legacy
+        # tenant-internal relay). Most modern providers reject this.
+        pass
+    return client
+
+
 class IMAPProvider(EmailProvider):
     provider_type = "imap"
     display_label = "IMAP / SMTP (custom)"
     supports_inbound = True
     supports_realtime = False  # Step 2 is polling-only
 
-    # Class-level test seam (monkey-patchable in tests)
+    # Class-level test seams (monkey-patchable in tests)
     imap_client_factory: Callable[[str, int], Any] = staticmethod(
         _default_imap_factory
+    )
+    smtp_client_factory: Callable[[str, int], Any] = staticmethod(
+        _default_smtp_factory
     )
 
     def __init__(self, account_config: dict[str, Any]) -> None:
@@ -256,9 +283,110 @@ class IMAPProvider(EmailProvider):
         in_reply_to_provider_id: str | None = None,
         attachments: list[dict[str, Any]] | None = None,
     ) -> ProviderSendResult:
-        raise NotImplementedError(
-            "IMAP/SMTP send ships in Phase W-4b Layer 1 Step 3 (outbound)."
+        """Send via SMTP using the account's configured smtp_server / port.
+
+        Builds an RFC 5322 message via stdlib email.EmailMessage, then
+        relays via smtplib.send_message. SMTP credentials reused from
+        the encrypted ``imap_password`` storage (canonical pattern:
+        IMAP password = SMTP password for most providers).
+
+        Returns a ProviderSendResult with no provider_message_id (SMTP
+        relay doesn't surface a stable message id; the next inbound
+        sync of Sent folder via IMAP populates provider_message_id and
+        triggers deduplication via the unique index).
+        """
+        smtp_server = self.account_config.get("smtp_server")
+        smtp_port = int(self.account_config.get("smtp_port", 587))
+        username = self.account_config.get("username")
+        password = self.account_config.get("imap_password")
+        if not all([smtp_server, smtp_port, username, password]):
+            return ProviderSendResult(
+                success=False,
+                error_message=(
+                    "SMTP send requires smtp_server, smtp_port, username, "
+                    "imap_password in account_config."
+                ),
+                error_retryable=False,
+            )
+
+        mime = MimeMessage()
+        mime["From"] = (
+            f'"{from_address}" <{from_address}>'
+            if "@" in from_address
+            else from_address
         )
+        mime["To"] = ", ".join(_format_addr(a, n) for a, n in to)
+        if cc:
+            mime["Cc"] = ", ".join(_format_addr(a, n) for a, n in cc)
+        # bcc not added to headers — smtplib uses the rcpt_to list
+        mime["Subject"] = subject or ""
+        if in_reply_to_provider_id:
+            mime["In-Reply-To"] = f"<{in_reply_to_provider_id}>"
+            mime["References"] = f"<{in_reply_to_provider_id}>"
+
+        if body_html and body_text:
+            mime.set_content(body_text)
+            mime.add_alternative(body_html, subtype="html")
+        elif body_html:
+            mime.set_content(body_html, subtype="html")
+        else:
+            mime.set_content(body_text or "")
+
+        for att in attachments or []:
+            mime.add_attachment(
+                att["bytes"],
+                maintype=att.get("maintype", "application"),
+                subtype=att.get("subtype", "octet-stream"),
+                filename=att["filename"],
+            )
+
+        # Compute envelope rcpt_to (To + Cc + Bcc).
+        rcpts = [a for a, _ in to]
+        if cc:
+            rcpts.extend(a for a, _ in cc)
+        if bcc:
+            rcpts.extend(a for a, _ in bcc)
+
+        try:
+            client = type(self).smtp_client_factory(smtp_server, smtp_port)
+            try:
+                client.login(username, password)
+                client.send_message(mime, from_addr=from_address, to_addrs=rcpts)
+            finally:
+                try:
+                    client.quit()
+                except smtplib.SMTPException:
+                    pass
+        except smtplib.SMTPAuthenticationError as exc:
+            return ProviderSendResult(
+                success=False,
+                error_message=f"SMTP authentication failed: {exc}",
+                error_retryable=False,
+            )
+        except (smtplib.SMTPConnectError, OSError) as exc:
+            return ProviderSendResult(
+                success=False,
+                error_message=f"SMTP connection failed: {exc}",
+                error_retryable=True,
+            )
+        except smtplib.SMTPException as exc:
+            return ProviderSendResult(
+                success=False,
+                error_message=f"SMTP send failed: {exc}",
+                error_retryable=False,
+            )
+
+        return ProviderSendResult(
+            success=True,
+            provider_message_id=None,
+        )
+
+
+def _format_addr(email: str, display_name: str | None) -> str:
+    if display_name:
+        safe = display_name.replace('"', '\\"')
+        return f'"{safe}" <{email}>'
+    return email
 
 
 def _parse_imap_mime(

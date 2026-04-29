@@ -153,8 +153,97 @@ class MicrosoftGraphProvider(EmailProvider):
         in_reply_to_provider_id: str | None = None,
         attachments: list[dict[str, Any]] | None = None,
     ) -> ProviderSendResult:
-        raise NotImplementedError(
-            "MS Graph send ships in Phase W-4b Layer 1 Step 3 (outbound)."
+        """Send via Graph me/sendMail.
+
+        Constructs the canonical Graph message JSON shape per
+        https://learn.microsoft.com/en-us/graph/api/user-sendmail.
+        """
+
+        def _recipients(pairs: list[tuple[str, str | None]]) -> list[dict]:
+            out = []
+            for addr, name in pairs:
+                entry = {"emailAddress": {"address": addr}}
+                if name:
+                    entry["emailAddress"]["name"] = name
+                out.append(entry)
+            return out
+
+        body_field = (
+            {"contentType": "html", "content": body_html}
+            if body_html
+            else {"contentType": "text", "content": body_text or ""}
+        )
+
+        message: dict[str, Any] = {
+            "subject": subject or "",
+            "body": body_field,
+            "toRecipients": _recipients(to),
+        }
+        if cc:
+            message["ccRecipients"] = _recipients(cc)
+        if bcc:
+            message["bccRecipients"] = _recipients(bcc)
+
+        # Graph supports In-Reply-To via internetMessageHeaders. Caller
+        # supplies the original Internet-Message-ID; we wrap in <>.
+        if in_reply_to_provider_id:
+            message["internetMessageHeaders"] = [
+                {
+                    "name": "In-Reply-To",
+                    "value": f"<{in_reply_to_provider_id}>",
+                },
+                {
+                    "name": "References",
+                    "value": f"<{in_reply_to_provider_id}>",
+                },
+            ]
+
+        if attachments:
+            import base64 as _b64
+
+            message["attachments"] = [
+                {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": att["filename"],
+                    "contentType": (
+                        f"{att.get('maintype', 'application')}/"
+                        f"{att.get('subtype', 'octet-stream')}"
+                    ),
+                    "contentBytes": _b64.b64encode(att["bytes"]).decode("ascii"),
+                }
+                for att in attachments
+            ]
+
+        envelope = {"message": message, "saveToSentItems": True}
+
+        client = self._client()
+        try:
+            r = client.post(
+                f"{_GRAPH_API_BASE}/me/sendMail", json=envelope
+            )
+            # Graph returns 202 Accepted on success with empty body
+            if r.status_code not in (200, 202):
+                r.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            from app.services.email.providers.gmail import _is_retryable_http
+
+            return ProviderSendResult(
+                success=False,
+                error_message=f"MS Graph send failed: {exc}",
+                error_retryable=_is_retryable_http(exc),
+            )
+
+        # Graph me/sendMail does NOT return a message id directly. The
+        # message lands in Sent Items and gets a server-side id; the
+        # caller can fetch via me/messages?$filter=internetMessageId
+        # if it pre-generated one, OR rely on the next inbound sync of
+        # Sent Items to populate provider_message_id via deduplication.
+        # We return success without a provider_message_id; the outbound
+        # service handles the deferred-id case by storing a placeholder
+        # that gets reconciled on next sync.
+        return ProviderSendResult(
+            success=True,
+            provider_message_id=None,
         )
 
     @staticmethod

@@ -24,6 +24,9 @@ const mockListProviders = vi.fn();
 const mockCreateAccount = vi.fn();
 const mockGetOAuthAuthorizeUrl = vi.fn();
 
+const mockSendMessage = vi.fn();
+const mockSyncNow = vi.fn();
+
 vi.mock("@/services/email-account-service", () => ({
   listAccounts: (...args: unknown[]) => mockListAccounts(...args),
   listProviders: () => mockListProviders(),
@@ -35,6 +38,8 @@ vi.mock("@/services/email-account-service", () => ({
   listAccessGrants: vi.fn().mockResolvedValue([]),
   grantAccess: vi.fn(),
   revokeAccess: vi.fn(),
+  sendMessage: (...args: unknown[]) => mockSendMessage(...args),
+  syncNow: (...args: unknown[]) => mockSyncNow(...args),
 }));
 
 // Toast — we don't care about output, just don't blow up.
@@ -247,5 +252,126 @@ describe("EmailAccountsPage", () => {
     expect(call.provider_type).toBe("imap");
     expect(call.email_address).toBe("user@example.com");
     expect(call.provider_config.imap_server).toBe("imap.example.com");
+  });
+
+});
+
+// ── Step 3 — SendTestMessageDialog tested in isolation ──────────────
+//
+// Note: the dropdown trigger UX (clicking a row's "..." menu →
+// "Send test message" item) is intentionally exercised via Playwright
+// rather than vitest. base-ui's DropdownMenu uses Popover portals
+// with hover/focus event flows that jsdom + userEvent don't trigger
+// reliably (verified empirically — every codebase test that touches
+// per-row dropdowns runs via Playwright). The dialog logic itself
+// (form state, submit, mockSendMessage call shape) is the actual
+// thing worth unit-testing — and we can do that directly.
+
+describe("SendTestMessageDialog", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const baseAccount = {
+    id: "acc-1",
+    tenant_id: "t-1",
+    account_type: "shared" as const,
+    display_name: "Sales Inbox",
+    email_address: "sales@example.com",
+    provider_type: "gmail" as const,
+    provider_config_keys: [],
+    signature_html: null,
+    reply_to_override: null,
+    is_active: true,
+    is_default: false,
+    outbound_enabled: true,
+    sync_status: "synced",
+    created_by_user_id: null,
+    created_at: "2026-05-07T00:00:00+00:00",
+    updated_at: "2026-05-07T00:00:00+00:00",
+  };
+
+  it("posts the form via sendMessage with canonical shape", async () => {
+    const user = userEvent.setup();
+    mockSendMessage.mockResolvedValue({
+      message_id: "msg-1",
+      thread_id: "thread-1",
+      provider_message_id: "gmail-id",
+      sent_at: "2026-05-07T12:00:00+00:00",
+      direction: "outbound",
+    });
+    const onSent = vi.fn();
+    const onClose = vi.fn();
+
+    const { SendTestMessageDialog } = await import("./EmailAccountsPage");
+    render(
+      <SendTestMessageDialog
+        account={baseAccount}
+        onClose={onClose}
+        onSent={onSent}
+      />,
+    );
+
+    const recipientInput = await screen.findByTestId("send-test-to");
+    await user.type(recipientInput, "recipient@example.com");
+    await user.click(screen.getByTestId("send-test-submit"));
+
+    await waitFor(() => {
+      expect(mockSendMessage).toHaveBeenCalledWith("acc-1", {
+        to: [{ email_address: "recipient@example.com" }],
+        subject: "Test from Bridgeable",
+        body_text: expect.stringContaining("Bridgeable"),
+      });
+    });
+    await waitFor(() => expect(onSent).toHaveBeenCalled());
+  });
+
+  it("disables submit when recipient empty", async () => {
+    const onSent = vi.fn();
+    const onClose = vi.fn();
+
+    const { SendTestMessageDialog } = await import("./EmailAccountsPage");
+    render(
+      <SendTestMessageDialog
+        account={baseAccount}
+        onClose={onClose}
+        onSent={onSent}
+      />,
+    );
+
+    expect(screen.getByTestId("send-test-submit")).toBeDisabled();
+  });
+
+  it("surfaces backend detail on send failure", async () => {
+    const user = userEvent.setup();
+    mockSendMessage.mockRejectedValue({
+      response: {
+        data: { detail: "Account has outbound_enabled=False" },
+      },
+    });
+    const onSent = vi.fn();
+    const onClose = vi.fn();
+    const { toast } = await import("sonner");
+
+    const { SendTestMessageDialog } = await import("./EmailAccountsPage");
+    render(
+      <SendTestMessageDialog
+        account={baseAccount}
+        onClose={onClose}
+        onSent={onSent}
+      />,
+    );
+    await user.type(
+      screen.getByTestId("send-test-to"),
+      "x@y.com",
+    );
+    await user.click(screen.getByTestId("send-test-submit"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Account has outbound_enabled=False",
+      );
+    });
+    expect(onSent).not.toHaveBeenCalled();
   });
 });

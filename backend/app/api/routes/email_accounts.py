@@ -35,7 +35,7 @@ from app.models.email_primitive import (
 from app.models.user import User
 from app.services.email import account_service
 from app.services.email.account_service import EmailAccountError
-from app.services.email import oauth_service
+from app.services.email import oauth_service, outbound_service
 from app.services.email.providers import (
     PROVIDER_REGISTRY,
     get_provider_class,
@@ -218,6 +218,39 @@ class OAuthCallbackResponse(BaseModel):
     email_address: str
     backfill_status: str
     backfill_progress_pct: int
+
+
+class SendMessageRecipient(BaseModel):
+    email_address: str = Field(min_length=3, max_length=320)
+    display_name: str | None = None
+
+
+class SendMessageRequest(BaseModel):
+    """Outbound message send request — Step 3.
+
+    Per canon §3.26.15.13 four composition shapes:
+      - New thread: thread_id=None, in_reply_to_message_id=None
+      - Reply: thread_id=<existing>, in_reply_to_message_id=<parent>
+      - Reply-all: same as Reply (caller adds original to/cc minus self)
+      - Forward: thread_id=None (new thread), copy original body in
+    """
+
+    to: list[SendMessageRecipient] = Field(min_length=1)
+    cc: list[SendMessageRecipient] = Field(default_factory=list)
+    bcc: list[SendMessageRecipient] = Field(default_factory=list)
+    subject: str = Field(default="", max_length=998)
+    body_text: str | None = None
+    body_html: str | None = None
+    thread_id: str | None = None
+    in_reply_to_message_id: str | None = None
+
+
+class SendMessageResponse(BaseModel):
+    message_id: str
+    thread_id: str
+    provider_message_id: str | None
+    sent_at: str
+    direction: str
 
 
 class SyncStatusResponse(BaseModel):
@@ -800,3 +833,74 @@ def sync_now(
 
     db.commit()
     return {"status": "queued", **{k: str(v) for k, v in result.items()}}
+
+
+@router.post(
+    "/{account_id}/messages",
+    response_model=SendMessageResponse,
+    status_code=201,
+)
+def send_message_endpoint(
+    account_id: str,
+    request: SendMessageRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SendMessageResponse:
+    """Send an outbound email through the account's provider.
+
+    Per canon §3.26.15.5 + §3.26.15.13:
+      - Per-account outbound (Path 1) for Gmail / MSGraph / IMAP
+      - Phase D-7 bridge (Path 2) for ``transactional`` accounts
+      - Reply preserves thread continuity (in_reply_to_message_id +
+        wire-level In-Reply-To header)
+      - New thread: thread_id=None, in_reply_to_message_id=None
+      - Authorization: read_write or admin access required (read-only
+        users can't send through shared accounts)
+
+    Body content + recipient addresses go through the audit log per
+    §3.26.15.8 (metadata-only — body content NOT logged).
+
+    Returns 201 with the persisted message_id + thread_id +
+    provider_message_id (when the provider returns one immediately;
+    None for providers that defer until Sent-folder sync).
+    """
+    try:
+        account = account_service.get_account(
+            db,
+            account_id=account_id,
+            tenant_id=current_user.company_id,
+        )
+    except EmailAccountError as exc:
+        raise _translate(exc) from exc
+
+    to_pairs = [(r.email_address, r.display_name) for r in request.to]
+    cc_pairs = [(r.email_address, r.display_name) for r in request.cc]
+    bcc_pairs = [(r.email_address, r.display_name) for r in request.bcc]
+
+    try:
+        message = outbound_service.send_message(
+            db,
+            account=account,
+            sender=current_user,
+            to=to_pairs,
+            cc=cc_pairs,
+            bcc=bcc_pairs,
+            subject=request.subject,
+            body_text=request.body_text,
+            body_html=request.body_html,
+            thread_id=request.thread_id,
+            in_reply_to_message_id=request.in_reply_to_message_id,
+        )
+    except EmailAccountError as exc:
+        db.rollback()
+        raise _translate(exc) from exc
+
+    db.commit()
+    db.refresh(message)
+    return SendMessageResponse(
+        message_id=message.id,
+        thread_id=message.thread_id,
+        provider_message_id=message.provider_message_id,
+        sent_at=message.sent_at.isoformat() if message.sent_at else "",
+        direction=message.direction,
+    )
