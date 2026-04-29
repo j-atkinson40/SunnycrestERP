@@ -19,6 +19,7 @@ from app.api.routes import (
     peek,
     portal,
     portal_admin,
+    email_accounts,
     tasks,
     triage,
     ai_settings,
@@ -214,6 +215,14 @@ v1_router.include_router(
 # tight (no X-Company-Slug header dependency). See
 # SPACES_ARCHITECTURE.md §10.
 v1_router.include_router(portal.router, prefix="/portal", tags=["Portal"])
+# Email Primitive — Phase W-4b Layer 1 Step 1 (BRIDGEABLE_MASTER §3.26.15).
+# Tenant-admin endpoints for managing EmailAccount + EmailAccountAccess.
+# Coexists with existing transactional email infrastructure (D-7 DeliveryService
+# + email_sends model) — different architectural concern (conversation/inbox
+# vs fire-and-forget transactional send). See app.services.email package.
+v1_router.include_router(
+    email_accounts.router, prefix="/email-accounts", tags=["Email Accounts"]
+)
 # NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
 v1_router.include_router(
     nl_creation.router, prefix="/nl-creation", tags=["NL Creation"]

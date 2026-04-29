@@ -302,6 +302,25 @@ from app.models.price_list_template import PriceListTemplate
 from app.models.price_update_settings import PriceUpdateSettings
 from app.models.platform_email_settings import PlatformEmailSettings
 from app.models.email_send import EmailSend
+from app.models.email_primitive import (
+    CrossTenantThreadPairing,
+    EmailAccount,
+    EmailAccountAccess,
+    EmailAccountSyncState,
+    EmailAttachment,
+    EmailAuditLog,
+    EmailLabel,
+    EmailMessage,
+    EmailParticipant,
+    EmailThread,
+    EmailThreadAssignmentLog,
+    EmailThreadLabel,
+    EmailThreadLinkage,
+    EmailThreadStatus,
+    InternalComment,
+    MessageParticipant,
+    UserMessageRead,
+)
 from app.models.platform_incident import PlatformIncident
 from app.models.platform_notification import PlatformNotification
 from app.models.tenant_health_score import TenantHealthScore
@@ -642,6 +661,24 @@ __all__ = [
     "PriceUpdateSettings",
     "PlatformEmailSettings",
     "EmailSend",
+    # Email Primitive (§3.26.15) — Phase W-4b Layer 1 Step 1
+    "EmailAccount",
+    "EmailAccountAccess",
+    "EmailAccountSyncState",
+    "EmailThread",
+    "EmailMessage",
+    "EmailAttachment",
+    "EmailParticipant",
+    "MessageParticipant",
+    "UserMessageRead",
+    "EmailThreadStatus",
+    "InternalComment",
+    "EmailThreadAssignmentLog",
+    "EmailThreadLinkage",
+    "CrossTenantThreadPairing",
+    "EmailLabel",
+    "EmailThreadLabel",
+    "EmailAuditLog",
     "PlatformIncident",
     "PlatformNotification",
     "TenantHealthScore",

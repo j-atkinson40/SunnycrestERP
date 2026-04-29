@@ -73,6 +73,8 @@ import BriefingPreferencesPage from "@/pages/settings/BriefingPreferences";
 import SpacesSettings from "@/pages/settings/SpacesSettings";
 import PortalUsersSettings from "@/pages/settings/PortalUsersSettings";
 import PortalBrandingSettings from "@/pages/settings/PortalBrandingSettings";
+import EmailAccountsPage from "@/pages/settings/EmailAccountsPage";
+import EmailOAuthCallback from "@/pages/settings/EmailOAuthCallback";
 import SavedOrdersPage from "@/pages/settings/SavedOrders";
 import ExternalAccountsPage from "@/pages/settings/ExternalAccounts";
 import DuplicateReviewPage from "@/pages/crm/duplicates";
@@ -744,6 +746,19 @@ export default function App() {
                     <Route
                       path="/settings/portal-branding"
                       element={<PortalBrandingSettings />}
+                    />
+                    {/* Phase W-4b Layer 1 Step 1 — Email Primitive (§3.26.15).
+                       Tenant-admin email account management. Coexists with
+                       Phase D-7 transactional send infrastructure (different
+                       architectural concern: conversation/inbox vs one-shot
+                       transactional send). */}
+                    <Route
+                      path="/settings/email"
+                      element={<EmailAccountsPage />}
+                    />
+                    <Route
+                      path="/settings/email/oauth-callback"
+                      element={<EmailOAuthCallback />}
                     />
                   </Route>
 
