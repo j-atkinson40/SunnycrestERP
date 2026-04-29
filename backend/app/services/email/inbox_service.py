@@ -889,3 +889,401 @@ def unflag_thread(
     )
     db.flush()
     return True
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Step 4b — Snooze (per §3.26.15.13 Q1; per-thread-per-user snooze)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def snooze_thread(
+    db: Session,
+    *,
+    thread_id: str,
+    tenant_id: str,
+    user_id: str,
+    snoozed_until: datetime,
+) -> bool:
+    """Snooze a thread until ``snoozed_until``.
+
+    Per §3.26.15.13 Q1: snooze is per-thread-per-user (Sarah's
+    snooze never affects Mike's view). Sets
+    ``EmailThreadStatus.is_snoozed=True`` + ``snoozed_until``. The
+    existing partial index ``ix_email_thread_status_snoozed`` covers
+    the un-snooze sweep query (a future scheduler job).
+    """
+    if snoozed_until <= datetime.now(timezone.utc):
+        raise InboxError("snoozed_until must be in the future.")
+    thread = _verify_thread_access(
+        db, thread_id=thread_id, tenant_id=tenant_id, user_id=user_id
+    )
+    status = _get_or_create_status(
+        db, thread=thread, user_id=user_id, tenant_id=tenant_id
+    )
+    status.is_snoozed = True
+    status.snoozed_until = snoozed_until
+    _audit(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        action="thread_snoozed",
+        entity_type="email_thread",
+        entity_id=thread_id,
+        changes={"snoozed_until": snoozed_until.isoformat()},
+    )
+    db.flush()
+    return True
+
+
+def unsnooze_thread(
+    db: Session,
+    *,
+    thread_id: str,
+    tenant_id: str,
+    user_id: str,
+) -> bool:
+    thread = _verify_thread_access(
+        db, thread_id=thread_id, tenant_id=tenant_id, user_id=user_id
+    )
+    status = _get_or_create_status(
+        db, thread=thread, user_id=user_id, tenant_id=tenant_id
+    )
+    if not status.is_snoozed:
+        return True
+    status.is_snoozed = False
+    status.snoozed_until = None
+    _audit(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        action="thread_unsnoozed",
+        entity_type="email_thread",
+        entity_id=thread_id,
+    )
+    db.flush()
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Step 4b — Labels (per-tenant, via EmailLabel + EmailThreadLabel)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def list_labels(
+    db: Session,
+    *,
+    tenant_id: str,
+) -> list:
+    from app.models.email_primitive import EmailLabel
+
+    return (
+        db.query(EmailLabel)
+        .filter(EmailLabel.tenant_id == tenant_id)
+        .order_by(EmailLabel.is_system.desc(), EmailLabel.name.asc())
+        .all()
+    )
+
+
+def create_label(
+    db: Session,
+    *,
+    tenant_id: str,
+    user_id: str,
+    name: str,
+    color: str | None = None,
+    icon: str | None = None,
+) -> "EmailLabel":  # noqa: F821 - forward reference for type checker
+    """Create a new tenant-scoped label.
+
+    Idempotent on (tenant_id, name) — re-creating returns the
+    existing row. Audit log captures creation.
+    """
+    from app.models.email_primitive import EmailLabel
+
+    name = (name or "").strip()
+    if not name:
+        raise InboxError("name required")
+
+    existing = (
+        db.query(EmailLabel)
+        .filter(
+            EmailLabel.tenant_id == tenant_id,
+            EmailLabel.name == name,
+        )
+        .first()
+    )
+    if existing:
+        return existing
+    label = EmailLabel(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        name=name,
+        color=color,
+        icon=icon,
+        is_system=False,
+    )
+    db.add(label)
+    db.flush()
+    _audit(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        action="label_created",
+        entity_type="email_label",
+        entity_id=label.id,
+        changes={"name": name, "color": color},
+    )
+    db.flush()
+    return label
+
+
+def add_label_to_thread(
+    db: Session,
+    *,
+    thread_id: str,
+    label_id: str,
+    tenant_id: str,
+    user_id: str,
+) -> bool:
+    """Add a label to a thread. Tenant-scoped — verifies the label
+    belongs to the same tenant as the thread to prevent cross-tenant
+    label leakage."""
+    from app.models.email_primitive import EmailLabel, EmailThreadLabel
+
+    thread = _verify_thread_access(
+        db, thread_id=thread_id, tenant_id=tenant_id, user_id=user_id
+    )
+    label = (
+        db.query(EmailLabel)
+        .filter(EmailLabel.id == label_id, EmailLabel.tenant_id == tenant_id)
+        .first()
+    )
+    if not label:
+        raise InboxError(f"Label {label_id!r} not found in tenant.")
+    existing = (
+        db.query(EmailThreadLabel)
+        .filter(
+            EmailThreadLabel.thread_id == thread_id,
+            EmailThreadLabel.label_id == label_id,
+        )
+        .first()
+    )
+    if existing:
+        return True  # idempotent
+    junction = EmailThreadLabel(
+        thread_id=thread_id,
+        label_id=label_id,
+        applied_by_user_id=user_id,
+    )
+    db.add(junction)
+    _audit(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        action="label_added_to_thread",
+        entity_type="email_thread",
+        entity_id=thread_id,
+        changes={"label_id": label_id, "label_name": label.name},
+    )
+    db.flush()
+    return True
+
+
+def remove_label_from_thread(
+    db: Session,
+    *,
+    thread_id: str,
+    label_id: str,
+    tenant_id: str,
+    user_id: str,
+) -> bool:
+    from app.models.email_primitive import EmailThreadLabel
+
+    _verify_thread_access(
+        db, thread_id=thread_id, tenant_id=tenant_id, user_id=user_id
+    )
+    deleted = (
+        db.query(EmailThreadLabel)
+        .filter(
+            EmailThreadLabel.thread_id == thread_id,
+            EmailThreadLabel.label_id == label_id,
+        )
+        .delete(synchronize_session=False)
+    )
+    if deleted:
+        _audit(
+            db,
+            tenant_id=tenant_id,
+            actor_user_id=user_id,
+            action="label_removed_from_thread",
+            entity_type="email_thread",
+            entity_id=thread_id,
+            changes={"label_id": label_id},
+        )
+    db.flush()
+    return bool(deleted)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Step 4b — Search (simple ILIKE; trigram indexes deferred)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def search_threads(
+    db: Session,
+    *,
+    tenant_id: str,
+    user_id: str,
+    query: str,
+    account_id: str | None = None,
+    limit: int = 50,
+) -> list[ThreadSummary]:
+    """Search threads via ILIKE on subject + sender_email + sender_name
+    + body_text. Tenant + per-account-access scoped.
+
+    Step 4b ships ILIKE — sufficient at typical inbox volumes
+    (<10K threads/tenant). Production-grade trigram indexes on
+    email_messages can be added in a follow-up r66 migration if
+    performance signals demand it. The
+    ``ix_email_threads_tenant_last_message`` index pre-filters the
+    candidate set; the per-row ILIKE fan-out is bounded by that.
+
+    Empty query returns []; very short queries (<2 chars) are likely
+    spurious so we also return [] to avoid full-table scan.
+    """
+    q = (query or "").strip()
+    if len(q) < 2:
+        return []
+
+    accessible = _accessible_account_ids(
+        db, tenant_id=tenant_id, user_id=user_id
+    )
+    if not accessible:
+        return []
+    if account_id is not None:
+        if account_id not in accessible:
+            return []
+        candidate_account_ids = [account_id]
+    else:
+        candidate_account_ids = accessible
+
+    pattern = f"%{q}%"
+    # Pre-filter via thread + a JOIN to email_messages where any
+    # message matches. DISTINCT on thread_id since multiple messages
+    # within one thread can match.
+    matched_thread_ids = (
+        db.query(EmailMessage.thread_id)
+        .filter(
+            EmailMessage.tenant_id == tenant_id,
+            EmailMessage.account_id.in_(candidate_account_ids),
+            EmailMessage.is_deleted.is_(False),
+            or_(
+                EmailMessage.subject.ilike(pattern),
+                EmailMessage.body_text.ilike(pattern),
+                EmailMessage.sender_email.ilike(pattern),
+                EmailMessage.sender_name.ilike(pattern),
+            ),
+        )
+        .distinct()
+        .limit(limit * 4)  # over-pull to allow thread-level ranking
+        .all()
+    )
+    thread_ids = {row[0] for row in matched_thread_ids}
+    if not thread_ids:
+        return []
+
+    threads = (
+        db.query(EmailThread)
+        .filter(
+            EmailThread.id.in_(thread_ids),
+            EmailThread.tenant_id == tenant_id,
+            EmailThread.is_active.is_(True),
+        )
+        .order_by(EmailThread.last_message_at.desc().nullslast())
+        .limit(limit)
+        .all()
+    )
+
+    # Build summaries. Reuse the denormalization block from
+    # list_threads (extracted helper lookup maps).
+    if not threads:
+        return []
+
+    thread_id_list = [t.id for t in threads]
+    last_message_map: dict[str, EmailMessage] = {}
+    sub = (
+        db.query(
+            EmailMessage.thread_id,
+            func.max(EmailMessage.received_at).label("max_recv"),
+        )
+        .filter(EmailMessage.thread_id.in_(thread_id_list))
+        .group_by(EmailMessage.thread_id)
+        .subquery()
+    )
+    last_messages = (
+        db.query(EmailMessage)
+        .join(
+            sub,
+            and_(
+                EmailMessage.thread_id == sub.c.thread_id,
+                EmailMessage.received_at == sub.c.max_recv,
+            ),
+        )
+        .all()
+    )
+    for msg in last_messages:
+        existing = last_message_map.get(msg.thread_id)
+        if existing is None or (
+            msg.sent_at and existing.sent_at and msg.sent_at > existing.sent_at
+        ):
+            last_message_map[msg.thread_id] = msg
+
+    unread_rows = (
+        db.query(EmailMessage.thread_id, func.count(EmailMessage.id))
+        .outerjoin(
+            UserMessageRead,
+            and_(
+                UserMessageRead.message_id == EmailMessage.id,
+                UserMessageRead.user_id == user_id,
+            ),
+        )
+        .filter(
+            EmailMessage.thread_id.in_(thread_id_list),
+            EmailMessage.is_deleted.is_(False),
+            EmailMessage.direction == "inbound",
+            UserMessageRead.id.is_(None),
+        )
+        .group_by(EmailMessage.thread_id)
+        .all()
+    )
+    unread_count_map = dict(unread_rows)
+
+    summaries: list[ThreadSummary] = []
+    for thread in threads:
+        last_msg = last_message_map.get(thread.id)
+        summaries.append(
+            ThreadSummary(
+                id=thread.id,
+                account_id=thread.account_id,
+                subject=thread.subject,
+                sender_summary=_format_sender(last_msg) if last_msg else "",
+                snippet=_snippet(
+                    last_msg.body_text if last_msg else None,
+                    last_msg.body_html if last_msg else None,
+                ),
+                last_message_at=(
+                    thread.last_message_at.isoformat()
+                    if thread.last_message_at
+                    else None
+                ),
+                message_count=thread.message_count or 0,
+                unread_count=int(unread_count_map.get(thread.id, 0)),
+                is_archived=False,  # search returns across all states
+                is_flagged_thread=False,
+                is_cross_tenant=bool(thread.is_cross_tenant),
+                cross_tenant_partner_tenant_id=None,  # skipped for search
+                label_ids=[],
+                assigned_to_user_id=thread.assigned_to_user_id,
+            )
+        )
+    return summaries

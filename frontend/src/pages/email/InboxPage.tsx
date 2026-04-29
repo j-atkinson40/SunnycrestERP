@@ -36,11 +36,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
+  Clock,
   Flag,
   Mail,
+  Pencil,
   Reply,
   ReplyAll,
+  Search,
   Send,
+  Tag,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -63,6 +67,8 @@ import {
   getThreadDetail,
   listThreads,
   markRead,
+  searchThreads,
+  snoozeThread,
   unarchiveThread,
   unflagThread,
 } from "@/services/email-inbox-service";
@@ -74,6 +80,10 @@ import type {
   ThreadDetail,
   ThreadSummary,
 } from "@/types/email-inbox";
+
+import { ComposeDialog } from "./ComposeDialog";
+import { SnoozePicker } from "./SnoozePicker";
+import { LabelManager } from "./LabelManager";
 
 
 const STATUS_FILTERS: { value: EmailStatusFilter; label: string }[] = [
@@ -94,6 +104,12 @@ export default function InboxPage() {
   const [threadDetail, setThreadDetail] = useState<ThreadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Step 4b — search + compose + thread management
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [forwardSource, setForwardSource] = useState<MessageDetail | null>(null);
+  const searchDebounceRef = useRef<number | null>(null);
 
   // ── Load accessible accounts for selector ─────────────────────────
   useEffect(() => {
@@ -111,21 +127,45 @@ export default function InboxPage() {
     setLoading(true);
     setError(null);
     try {
-      const r = await listThreads({
-        account_id: accountId,
-        status_filter: statusFilter,
-      });
-      setThreads(r.threads);
+      if (searchActive && searchQuery.trim().length >= 2) {
+        const results = await searchThreads({
+          q: searchQuery.trim(),
+          account_id: accountId,
+        });
+        setThreads(results);
+      } else {
+        const r = await listThreads({
+          account_id: accountId,
+          status_filter: statusFilter,
+        });
+        setThreads(r.threads);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load inbox.");
     } finally {
       setLoading(false);
     }
-  }, [accountId, statusFilter]);
+  }, [accountId, statusFilter, searchActive, searchQuery]);
 
   useEffect(() => {
     void reloadThreads();
   }, [reloadThreads]);
+
+  // ── Debounced search ────────────────────────────────────────────────
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    if (searchDebounceRef.current !== null) {
+      window.clearTimeout(searchDebounceRef.current);
+    }
+    searchDebounceRef.current = window.setTimeout(() => {
+      setSearchActive(value.trim().length >= 2);
+    }, 250);
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
+    setSearchActive(false);
+  }
 
   // ── Load thread detail when selection changes ─────────────────────
   useEffect(() => {
@@ -268,6 +308,17 @@ export default function InboxPage() {
           Inbox
         </h1>
         <div className="flex-1" />
+        <Button
+          onClick={() => {
+            setForwardSource(null);
+            setComposeOpen(true);
+          }}
+          data-testid="compose-new-btn"
+          disabled={accounts.length === 0}
+        >
+          <Pencil className="h-4 w-4 mr-2" />
+          Compose
+        </Button>
         {accounts.length > 0 && (
           <Select
             value={accountId ?? "__all__"}
@@ -293,8 +344,32 @@ export default function InboxPage() {
       <div className="flex flex-1 min-h-0">
         {/* ── Left pane: filter strip + thread list ─────────────── */}
         <div className="w-96 border-r border-border-subtle bg-surface-base flex flex-col min-h-0">
+          <div className="px-3 py-2 border-b border-border-subtle relative">
+            <Search className="absolute left-5 top-4 h-4 w-4 text-content-muted pointer-events-none" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search subject, body, sender…"
+              className="pl-8 pr-8"
+              data-testid="search-input"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-5 top-4 h-4 w-4 text-content-muted hover:text-content-strong"
+                aria-label="Clear search"
+                data-testid="search-clear"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
           <div
-            className="flex items-center gap-1 px-3 py-2 border-b border-border-subtle"
+            className={
+              "flex items-center gap-1 px-3 py-2 border-b border-border-subtle " +
+              (searchActive ? "opacity-50 pointer-events-none" : "")
+            }
             data-testid="filter-strip"
           >
             {STATUS_FILTERS.map((f) => (
@@ -371,6 +446,22 @@ export default function InboxPage() {
               onArchive={() => handleArchive(threadDetail.id)}
               onUnarchive={() => handleUnarchive(threadDetail.id)}
               onFlagToggle={() => handleFlagToggle(threadDetail)}
+              onForward={(message) => {
+                setForwardSource(message);
+                setComposeOpen(true);
+              }}
+              onLabelsChanged={() => {
+                void reloadThreads();
+                void getThreadDetail(threadDetail.id).then(setThreadDetail);
+              }}
+              onSnoozed={() => {
+                // Optimistic — remove from list since current default
+                // view excludes snoozed threads
+                setThreads((prev) =>
+                  prev.filter((t) => t.id !== threadDetail.id),
+                );
+                setSelectedThreadId(null);
+              }}
               onReplySent={() => {
                 void reloadThreads();
                 void getThreadDetail(threadDetail.id).then(setThreadDetail);
@@ -379,6 +470,30 @@ export default function InboxPage() {
           ) : null}
         </div>
       </div>
+
+      {composeOpen && accounts.length > 0 && (
+        <ComposeDialog
+          accounts={accounts.filter((a) => a.outbound_enabled !== false)}
+          defaultAccountId={
+            forwardSource
+              ? threadDetail?.account_id ?? accounts[0].id
+              : accountId ?? accounts[0].id
+          }
+          forwardSource={forwardSource}
+          onClose={() => {
+            setComposeOpen(false);
+            setForwardSource(null);
+          }}
+          onSent={() => {
+            setComposeOpen(false);
+            setForwardSource(null);
+            void reloadThreads();
+            if (threadDetail) {
+              void getThreadDetail(threadDetail.id).then(setThreadDetail);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -489,6 +604,9 @@ function ThreadDetailPane({
   onArchive,
   onUnarchive,
   onFlagToggle,
+  onForward,
+  onSnoozed,
+  onLabelsChanged,
   onReplySent,
 }: {
   detail: ThreadDetail;
@@ -496,12 +614,32 @@ function ThreadDetailPane({
   onArchive: () => void;
   onUnarchive: () => void;
   onFlagToggle: () => void;
+  onForward: (message: MessageDetail) => void;
+  onSnoozed: () => void;
+  onLabelsChanged: () => void;
   onReplySent: () => void;
 }) {
   const [replyMode, setReplyMode] = useState<"none" | "reply" | "reply-all">(
     "none",
   );
+  const [showSnoozePicker, setShowSnoozePicker] = useState(false);
+  const [showLabelManager, setShowLabelManager] = useState(false);
   const account = accounts.find((a) => a.id === detail.account_id);
+
+  async function handleSnoozePicked(snoozedUntil: Date) {
+    setShowSnoozePicker(false);
+    try {
+      await snoozeThread(detail.id, snoozedUntil);
+      toast.success(
+        `Snoozed until ${snoozedUntil.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`,
+      );
+      onSnoozed();
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Snooze failed",
+      );
+    }
+  }
 
   // Per §3.26.15.13: send-from-account = account that received the
   // original message. Step 4a uses thread.account_id (the inbox the
@@ -565,7 +703,7 @@ function ThreadDetailPane({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 relative">
           <Button
             variant="ghost"
             size="sm"
@@ -574,6 +712,24 @@ function ThreadDetailPane({
             aria-label="Toggle flag"
           >
             <Flag className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowSnoozePicker((v) => !v)}
+            data-testid="thread-snooze-btn"
+            aria-label="Snooze thread"
+          >
+            <Clock className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowLabelManager((v) => !v)}
+            data-testid="thread-labels-btn"
+            aria-label="Manage labels"
+          >
+            <Tag className="h-4 w-4" />
           </Button>
           {detail.is_archived ? (
             <Button
@@ -596,6 +752,24 @@ function ThreadDetailPane({
               <Archive className="h-4 w-4" />
             </Button>
           )}
+          {showSnoozePicker && (
+            <div className="absolute right-0 top-full mt-2 z-50">
+              <SnoozePicker
+                onPick={handleSnoozePicked}
+                onCancel={() => setShowSnoozePicker(false)}
+              />
+            </div>
+          )}
+          {showLabelManager && (
+            <div className="absolute right-0 top-full mt-2 z-50">
+              <LabelManager
+                threadId={detail.id}
+                currentLabelIds={detail.label_ids}
+                onLabelsChanged={() => onLabelsChanged()}
+                onClose={() => setShowLabelManager(false)}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -604,7 +778,7 @@ function ThreadDetailPane({
         data-testid="message-list"
       >
         {detail.messages.map((m) => (
-          <MessageCard key={m.id} message={m} />
+          <MessageCard key={m.id} message={m} onForward={onForward} />
         ))}
 
         {replyMode !== "none" && lastInbound && account && (
@@ -657,10 +831,16 @@ function ThreadDetailPane({
 // MessageCard — per-message Pattern 2 chrome per §14.9.2
 // ─────────────────────────────────────────────────────────────────────
 
-function MessageCard({ message }: { message: MessageDetail }) {
+function MessageCard({
+  message,
+  onForward,
+}: {
+  message: MessageDetail;
+  onForward?: (message: MessageDetail) => void;
+}) {
   return (
     <div
-      className="rounded-[2px] bg-surface-elevated border border-border-subtle shadow-level-1 p-4"
+      className="rounded-[2px] bg-surface-elevated border border-border-subtle shadow-level-1 p-4 group"
       data-testid={`message-${message.id}`}
     >
       <div className="flex items-baseline justify-between gap-2 mb-3">
@@ -686,22 +866,36 @@ function MessageCard({ message }: { message: MessageDetail }) {
         </span>
       </div>
 
-      {/* Body — text first; HTML body deferred to Step 4b alongside
-       sandboxed iframe per §3.26.15.5 (preventing inbound HTML script
-       execution). Step 4a renders text fallback inline; HTML
-       messages with no text body show "[HTML message — preview in
-       Step 4b]" placeholder. */}
+      {/* Body — text first; HTML body sandboxed iframe lands in Step 4c
+       (security-sensitive, deserves dedicated implementation). Step 4a/b
+       render text fallback inline; HTML messages with no text body show
+       "[HTML message — preview in Step 4c]" placeholder. */}
       {message.body_text ? (
         <pre className="font-plex-sans text-body-sm text-content-base whitespace-pre-wrap break-words">
           {message.body_text}
         </pre>
       ) : message.body_html ? (
         <div className="text-body-sm text-content-muted italic">
-          [HTML message — sandboxed preview ships in Step 4b]
+          [HTML message — sandboxed preview ships in Step 4c]
         </div>
       ) : (
         <div className="text-body-sm text-content-muted italic">
           (no body)
+        </div>
+      )}
+
+      {/* Forward affordance per-message — hover-reveal */}
+      {onForward && message.direction === "inbound" && (
+        <div className="mt-3 pt-3 border-t border-border-subtle/50 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onForward(message)}
+            data-testid={`message-forward-${message.id}`}
+          >
+            <Send className="h-3 w-3 mr-1.5" />
+            Forward
+          </Button>
         </div>
       )}
     </div>

@@ -45,6 +45,17 @@ vi.mock("@/services/email-inbox-service", () => ({
   unarchiveThread: vi.fn().mockResolvedValue(undefined),
   flagThread: vi.fn().mockResolvedValue(undefined),
   unflagThread: vi.fn().mockResolvedValue(undefined),
+  // Step 4b additions — InboxPage imports these too now
+  searchThreads: vi.fn().mockResolvedValue([]),
+  snoozeThread: vi.fn().mockResolvedValue(undefined),
+  unsnoozeThread: vi.fn().mockResolvedValue(undefined),
+  listLabels: vi.fn().mockResolvedValue([]),
+  createLabel: vi.fn(),
+  addLabelToThread: vi.fn().mockResolvedValue(undefined),
+  removeLabelFromThread: vi.fn().mockResolvedValue(undefined),
+  resolveRecipients: vi.fn().mockResolvedValue([]),
+  listRoleRecipients: vi.fn().mockResolvedValue([]),
+  expandRoleRecipient: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/services/email-account-service", () => ({

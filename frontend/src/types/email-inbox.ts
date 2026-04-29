@@ -68,3 +68,36 @@ export interface ThreadDetail {
   participants_summary: string[];
   messages: MessageDetail[];
 }
+
+// Step 4b — labels, recipients, role-based routing
+
+export interface EmailLabel {
+  id: string;
+  name: string;
+  color: string | null;
+  icon: string | null;
+  is_system: boolean;
+}
+
+export type RecipientSourceType =
+  | "crm_contact"
+  | "recent"
+  | "internal_user"
+  | "role_expansion"
+  | "external_tenant"
+  | "cross_tenant_user";
+
+export interface ResolvedRecipient {
+  email_address: string;
+  display_name: string | null;
+  source_type: RecipientSourceType;
+  resolution_id: string | null;
+  rank_score: number;
+}
+
+export interface RoleRecipient {
+  label: string;
+  role_kind: "account_access" | "role_slug";
+  id_value: string;
+  member_count: number;
+}
