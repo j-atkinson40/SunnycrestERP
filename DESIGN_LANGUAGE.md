@@ -5106,6 +5106,278 @@ Empty-state copy uses `text-content-muted`; count numeral position renders the "
 
 ---
 
+## Section 14.9 — Email Primitive Visual Canon (Session 2)
+
+Per-primitive visual canon for the Email primitive specifically — extending §14's Communications Layer foundation with email-specific composition surfaces. Companion to BRIDGEABLE_MASTER §3.26.15 (architectural).
+
+Phase W-4b Layer 1 ships the Email primitive as the first concrete realization of the Communications layer. §14.9 locks visual canon for the five email-specific surfaces that compose inside Bridgeable's primitive framework: inbox surface, thread rendering, composition surface, cross-tenant thread chrome, and operational-action affordance chrome.
+
+### 14.9.1 Email inbox visual canon
+
+Email inbox is the **default presentation mode** per §3.26.15.12 — list of threads, ordered most-recent-first, with per-user status indicators (unread, has-mention, has-task) per §3.26.15.13.
+
+**List item composition** (Pattern A widgets-only or scoped Pulse composition; default-tier 6-column grid):
+
+```
+┌─ Pattern 2 card (per-thread row) ───────────────────────────────────────┐
+│                                                                         │
+│  ●  John Hopkins · Hopkins FH                       2:14 PM             │  ← Status dot + sender + tenant context + relative time
+│      Re: Bronze urn delivery — Andersen family                          │  ← Subject (truncated 64ch)
+│      Confirming Thursday 3pm pickup. Mary Andersen will be presen…      │  ← Snippet (truncated 96ch)
+│                                                                         │
+│      📎 2 attachments      🔗 Linked: case-2026-0012     ↻ 4 in thread  │  ← Optional metadata row
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Status dot canon** (left edge, 8px circle, single visual element carries multiple states via composition):
+
+| State | Visual |
+|---|---|
+| Unread + no special status | Solid `bg-status-info` 8px circle |
+| Unread + has-mention | Solid `bg-accent` 8px circle (terracotta — escalation signal) |
+| Unread + has-task | Solid `bg-status-warning` 8px circle |
+| Read | `border border-border-subtle` 8px ring (hollow) |
+| Snoozed | `border-2 border-content-muted` 8px hollow ring + `Clock` icon overlay 6px |
+
+Multiple states compose: unread + has-mention + has-task renders the **most-escalated** color (mention > task > info) — single dot, layered priority.
+
+**Per-user status independence canon** (§3.26.15.13): the status dot reflects THIS user's view. Two users in the same tenant see different dot states for the same thread. The dot is rendered from `email_user_status` table state, not from thread-level state. List re-fetches via SSE when this user's status changes; other users' status changes never trigger re-render.
+
+**Sender + tenant context line:**
+- `text-body-sm font-medium text-content-strong` for sender name
+- `·` separator at `text-content-muted`
+- Tenant context (Hopkins FH, Riverside FH, Self) at `text-body-sm text-content-muted`
+- When sender's tenant === current tenant: omit tenant context (default to Self), don't render the separator
+
+**Subject truncation:** 64 character truncation with ellipsis at last word boundary; `text-body text-content-base font-medium` when unread, `font-normal` when read. Italic subject reserved for drafts only.
+
+**Snippet:** 96 character truncation with ellipsis at last word boundary; `text-body-sm text-content-muted`. Snippet always renders unread or read uniformly (read state is conveyed by status dot + subject weight, not by snippet treatment — subtle redundancy avoided).
+
+**Optional metadata row:** renders only when at least one signal present; `text-caption text-content-subtle font-plex-mono`. Three signal types:
+- `📎 2 attachments` — Lucide `Paperclip` icon (NOT emoji per §14.5 icon canon) + count
+- `🔗 Linked: <entity-display-label>` — Lucide `Link2` icon + linked entity per §3.26.15.7 (clickable peek-trigger via §3.26.13.7-eq link composition pattern)
+- `↻ 4 in thread` — Lucide `RotateCw` icon + thread message count (omitted when count = 1)
+
+**Density tier behavior** (§13.4.1 canonical):
+
+| Tier | Cell height range | List item rendering |
+|---|---|---|
+| Default | ≥120px | Full 4-line composition (status + sender row + subject + snippet + metadata row when present) |
+| Compact | 80-120px | Status + sender row + subject only; snippet + metadata row hidden |
+| Ultra-compact | <80px | Status + sender + subject collapsed to single line: `[●] John Hopkins · Hopkins FH · Re: Bronze urn delivery` truncated to fit |
+
+### 14.9.2 Email thread rendering visual canon
+
+Thread Detail mode renders the chronological message sequence + thread-level participant list + linked-entity panel + operational-action affordances. Reached via list-item click (default) or summon-thread command bar verb (§3.26.13).
+
+**Thread surface composition** (Pattern 2 card with internal sections):
+
+```
+┌─ Thread Surface ──────────────────────────────────────────────────────┐
+│                                                                       │
+│  Re: Bronze urn delivery — Andersen family                            │  ← Thread subject (h2)
+│  4 messages · 3 participants · Linked: case-2026-0012                 │  ← Thread metadata strip
+│                                                                       │
+│  ┌─ Participants ────────────────────────────────────────────────┐   │  ← Collapsible (default open)
+│  │ ● John Hopkins (Hopkins FH)  ● Mary Andersen  ● You          │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                       │
+│  ┌─ Linked entities ─────────────────────────────────────────────┐   │  ← Collapsible (default open when present)
+│  │ 🔗 Case 2026-0012 · Andersen family    [Open peek →]         │   │
+│  │ 📦 Order SO-2026-0445 · Bronze urn     [Open peek →]         │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                       │
+│  ── Messages (chronological, oldest first) ──                         │
+│                                                                       │
+│  ┌─ Message 1 ──────────────────────────────────────────────────┐   │
+│  │ John Hopkins · Hopkins FH                  Mon 9:42 AM       │   │
+│  │ ╔══════════════════════════════════════════════════════════╗ │   │
+│  │ ║ Hi — confirming the Bronze urn for Andersen family.      ║ │   │  ← HTML body sandbox
+│  │ ║ Mary will be at the FH Thursday at 3pm for pickup.       ║ │   │
+│  │ ║ Please confirm the engraving spec we sent last week.     ║ │   │
+│  │ ╚══════════════════════════════════════════════════════════╝ │   │
+│  │ 📎 engraving-proof-v2.pdf  [Open in viewer]                  │   │
+│  │                                                              │   │
+│  │ [Reply] [Forward] [Mark as task]                             │   │  ← Per-message action affordances (hover-reveal)
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                       │
+│  [↑ 3 earlier messages collapsed — click to expand]                  │  ← Long-thread collapse pattern
+│                                                                       │
+│  ── Inline reply composer ──                                          │  ← Inline reply (Q3 Phase B canonical)
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ [Composing as: johnsmith@sunnycrest.bridgeable …  ▼]         │   │  ← Sender account picker
+│  │ [Inline composer body — rich-text]                           │   │
+│  │ [Send] [Save draft] [Discard]                                │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**Thread metadata strip:** `text-body-sm text-content-muted`; participants count + message count + linked-entity count rendered inline with `·` separators. Linked-entity count is clickable to open the Linked Entities panel.
+
+**Participants section:**
+- `text-caption text-content-muted uppercase tracking-wider` eyebrow "Participants"
+- Per-participant chip: 6px solid status dot + name + tenant context in parens (`text-body-sm text-content-base`)
+- Status dot canonical: green (active in last 5min), gray-muted (responded in last 24h), gray-subtle (older or never responded)
+- "You" rendered last in the list, regardless of chronological participation order
+
+**Linked entities section:** Renders only when ≥1 linked entity present (§3.26.15.7 retroactive linkage). Each entity row:
+- Lucide entity-type icon (Box for case, Package for order, FileText for invoice, etc.)
+- Entity display label `text-body-sm text-content-strong`
+- "[Open peek →]" link `text-body-sm text-accent hover:text-accent-hover` — opens peek panel per §3.26.13.7
+
+**Message rendering canon:**
+
+Each message is a Pattern 2 sub-card (`bg-surface-elevated rounded-md shadow-level-1 p-4`). Composition:
+
+1. **Header row**: Sender name + tenant context + Mon 9:42 AM relative-friendly timestamp; `text-body-sm font-medium text-content-strong` for name, `text-content-muted` for tenant + timestamp
+2. **HTML body sandbox**: Iframe with sandboxed permissions per §3.26.15.5 (no scripts, no top-level navigation, no popups). Inline images rendered via Content-ID resolution. Quoted text from prior messages collapsed to `[Show quoted text]` toggle (`text-caption text-accent`)
+3. **Attachments row**: Lucide `Paperclip` icon + filename + "[Open in viewer]" link per attachment. Attachments stored as VaultItems per §3.26.15.4; click opens VaultItem peek
+4. **Per-message action row**: hover-reveal at `opacity-0 group-hover:opacity-100 transition-opacity`. Three primary actions: `Reply` (inline composer expansion), `Forward` (modal new composer per Q3 Phase B), `Mark as task` (creates Task linked to message — operational-state-coupled-to-communication per §3.26.15.16)
+
+**Long-thread collapse pattern:** When thread message count > 5, oldest messages collapse to "[↑ N earlier messages collapsed — click to expand]" line at top. Most-recent 3 messages always expanded. Collapsed bar `text-body-sm text-content-muted hover:text-content-base bg-surface-sunken rounded px-3 py-2 cursor-pointer`.
+
+**Inline reply composer canon** (Q3 Phase B canonical: inline reply + modal new/forward):
+
+- Renders **inline at thread bottom** by default
+- Sender account picker as first row — dropdown listing user's connected `email_accounts` per §3.26.15.6, with active default account preselected
+- Rich-text composer body uses base-ui Textarea primitive + minimal toolbar (bold, italic, link, list)
+- Three actions: `[Send]` (primary brass button), `[Save draft]` (outline), `[Discard]` (text-only ghost)
+- Discard with unsaved content shows confirm dialog per §6 destructive-action discipline
+
+### 14.9.3 Email composition surface visual canon
+
+New email + Forward render as **modal overlay** per Q3 Phase B canonical. Reply renders inline (§14.9.2). New + Forward warrant focus-mode treatment because they're discrete authoring tasks not anchored to existing thread context.
+
+**Modal composition surface** (Pattern 2 dialog, full overlay-family treatment per §6):
+
+```
+┌─ Modal Dialog (centered, max-w-2xl, bg-surface-raised shadow-level-3) ─┐
+│                                                                        │
+│  New email                                          [✕]                │  ← Header h2 + close
+│                                                                        │
+│  Sending as: [johnsmith@sunnycrest.bridgeable  ▼]                     │  ← Account picker (Q1 Phase A)
+│                                                                        │
+│  To: [Mary Andersen  <mary@andersen-family.com>  ✕]                   │  ← Multi-recipient chip input
+│  Cc: [collapsed by default — "Show Cc/Bcc" link]                      │
+│                                                                        │
+│  Subject: [Bronze urn engraving — final spec                       ]   │
+│                                                                        │
+│  Link to: [📦 Order SO-2026-0445 ▼]  (optional)                       │  ← Pre-link to entity (§3.26.15.7)
+│                                                                        │
+│  ┌─ Rich-text composer body ───────────────────────────────────┐     │
+│  │ [B] [I] [Link] [List] [📎]                                  │     │
+│  │                                                             │     │
+│  │ Hi Mary,                                                    │     │
+│  │                                                             │     │
+│  │ Confirming the engraving spec — please review and reply…   │     │
+│  │                                                             │     │
+│  │                                                             │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                                                                        │
+│  📎 engraving-proof-v2.pdf  ✕                                          │  ← Attachment chips
+│                                                                        │
+│  [Send]  [Save draft]  [Discard]                                       │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+**Account picker:** Dropdown listing all `email_accounts` for current user per §3.26.15.6. Default selection: user's primary account; remembered across sessions (last-used). When the user has only one account, picker collapses to a static label.
+
+**Recipient chip input:** Per-recipient chip with name (resolved from contacts) + email address. X to remove. Type to add: ILIKE search across contacts + manual email entry; press Enter or comma to commit chip. Cc/Bcc collapsed by default; "Show Cc/Bcc" expands additional rows.
+
+**Subject:** `<Input>` primitive per §6 form canon. Subject is autosaved to draft on every keystroke (debounce 1.5s).
+
+**Link to entity:** Optional pre-link before send per §3.26.15.7. Dropdown surfaces recent entities (cases, orders, invoices) the user touched in the last 14 days. When not pre-linked, the email links retroactively if the recipient resolves to an entity-relationship contact post-send.
+
+**Rich-text composer:** Tiptap-style minimal toolbar (Bold, Italic, Link, List, Attach). Composer height auto-grows to content; max-height 60vh with internal scroll. HTML output sanitized per §3.26.15.5 outbound discipline (no inline scripts, no external CSS).
+
+**Attachments:** Click `📎` toolbar button OR drag-drop files. Each attachment renders as chip below composer body with filename + size + remove X. Files upload to R2 via VaultItem creation per §3.26.15.4; chips show upload progress bar.
+
+**Action row:** `[Send]` brass primary, `[Save draft]` outline, `[Discard]` ghost. Discard with unsaved changes shows confirm. Send with empty subject + empty body disabled.
+
+### 14.9.4 Cross-tenant thread chrome visual canon
+
+Cross-tenant threads (Hopkins FH ↔ Sunnycrest manufacturing) get distinct visual chrome to signal cross-tenant scope per §3.26.15.10.
+
+**Thread-level cross-tenant indicator:**
+
+- Thread metadata strip gains pill: `bg-accent-subtle border-accent text-accent text-caption px-2 py-0.5 rounded-full font-medium uppercase tracking-wide` rendering "CROSS-TENANT"
+- Pill clickable to surface cross-tenant masking transparency per §3.25 — opens a Popover listing which fields are masked + which are visible
+- Participants section signals cross-tenant participants by tenant-color thread accent: each participant chip carries the participant's tenant accent color in the status dot border
+
+**Cross-tenant masked-field rendering:**
+
+When a field carries cross-tenant mask sentinel (`__MASKED__`):
+- Field renders as `[Hidden]` in `font-plex-mono text-caption text-content-subtle italic`
+- Tooltip on hover: "This field is hidden from your tenant per cross-tenant data agreement"
+- Clicking the field surfaces the data-agreement detail panel (Workshop-managed per §3.25.x)
+
+**Per-tenant copy distinction** (§3.26.15.18 — independent per-tenant cross-tenant copies):
+
+Each tenant has its own copy of the thread under its own ownership. Cross-tenant chrome visualizes:
+- "Your copy" indicator in thread footer: "Your copy (Sunnycrest manufacturing) · Last sync: 2 min ago"
+- The other tenant's copy is independent — operational state changes (status dot, mark-as-task) do NOT mirror to their copy
+- Visual canonical: thread chrome looks identical across tenants; the per-tenant copy distinction surfaces only in the footer detail strip
+
+### 14.9.5 Operational-action affordance chrome
+
+Per §3.26.15.16 (operational-state-coupled-to-communication) and §3.26.15.17 (state-changes-generate-communications), email surfaces carry operational-action affordances that bind email content to platform operations.
+
+**Per-message operational actions** (hover-reveal action row per §14.9.2):
+
+| Action | Visual | Behavior |
+|---|---|---|
+| `Reply` | Lucide `Reply` icon + label, brass on hover | Expands inline composer per §14.9.2 |
+| `Forward` | Lucide `Forward` icon + label | Opens modal composer pre-populated with quoted message |
+| `Mark as task` | Lucide `CheckSquare` icon + label | Opens task composer Popover; on confirm creates Task per §3.26.15.16 + adds task indicator to message header (small `bg-status-warning` dot) |
+| `Link to entity` | Lucide `Link2` icon + label | Opens entity picker; on select adds entity to thread's linked entities per §3.26.15.7 |
+| `Generate state change` | Lucide `Zap` icon + label | Surfaces detected state-change candidates per §3.26.15.17 (e.g., "Mark Order SO-2026-0445 confirmed?"); explicit confirm before mutation — never auto-applies |
+
+**Generate-state-change affordance canon** (§3.26.15.17 — load-bearing operator agency discipline):
+
+- Email content drives Intelligence detection of candidate state changes ("confirming Thursday 3pm pickup" → "Mark scheduled_at on SO-2026-0445?")
+- Detection surfaces as **suggestion**, never auto-action — explicit operator confirm required per §3.26.14.14.5 operator agency
+- Visual: candidate state-change row at bottom of message body, `bg-status-info-muted border-status-info rounded-md p-3`:
+
+```
+┌─ Suggested state change ──────────────────────────────┐
+│ ⚡ Mark scheduled_at on Order SO-2026-0445?           │
+│ Detected from "Thursday 3pm pickup" in this message.  │
+│                                                       │
+│ [Confirm] [Edit] [Dismiss]                            │
+└───────────────────────────────────────────────────────┘
+```
+
+- `[Confirm]` applies state change with audit trail; `[Edit]` opens entity-edit Popover with proposed value pre-filled; `[Dismiss]` removes suggestion (Intelligence learns from dismissal pattern over time)
+- Multiple suggestions stack vertically; never auto-confirmed in batch
+
+**Thread-level operational actions** (rendered in thread metadata strip, right side):
+
+| Action | Visual | Behavior |
+|---|---|---|
+| `Snooze thread` | Lucide `Clock` icon | Snooze entire thread until X (1h, EOD, tomorrow, custom) — per-user state per §3.26.15.13 |
+| `Mark thread done` | Lucide `Check` icon | Marks thread done (per-user state); thread leaves inbox for this user only |
+| `Add task from thread` | Lucide `CheckSquarePlus` icon | Creates task linked to thread; task default subject = thread subject |
+| `Link thread to entity` | Lucide `Link2` icon | Opens entity picker; adds entity to thread's linked-entity set |
+
+### 14.9.6 Cross-references
+
+- **§14** (Communications Layer Visual Canon) — per-primitive icon canon, count typography, default-tier compositions
+- **§13.4.1** — density-tier opt-in canonical reference
+- **§11 Pattern A** + **§11 Pattern C** — Layer Composition Patterns (Pattern A widgets-only at Operational; Pattern C stream + supporting widgets at Communications)
+- **§6** — overlay family canon (Dialog, Popover, modal composition surface inherits this canon)
+- **BRIDGEABLE_MASTER.md §3.26.15** — Email Primitive Architecture (architectural canon)
+- **BRIDGEABLE_MASTER.md §3.26.15.5** — HTML body sandbox + outbound sanitization discipline
+- **BRIDGEABLE_MASTER.md §3.26.15.7** — entity linkage (retroactive + pre-link)
+- **BRIDGEABLE_MASTER.md §3.26.15.10** — cross-tenant thread architecture
+- **BRIDGEABLE_MASTER.md §3.26.15.13** — per-user status independence
+- **BRIDGEABLE_MASTER.md §3.26.15.16** — operational-state-coupled-to-communication
+- **BRIDGEABLE_MASTER.md §3.26.15.17** — state-changes-generate-communications
+
+---
+
 ## Section 15 — Briefing Visual System
 
 Visual canon for morning + evening briefings — three-state machine visualization, per-state typography, per-state composition. Companion to BRIDGEABLE_MASTER §3.26.10 (architectural).

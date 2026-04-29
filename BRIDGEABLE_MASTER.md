@@ -6066,6 +6066,850 @@ Per §3.26.14.4 forcing function: every customizable platform surface has Worksh
 
 **Canonical evolution path**: as new customizable primitives canonicalize, they extend this table. Workshop integration is mandatory canonical infrastructure for any customizable platform surface. Templates-as-data discipline (§3.26.14.4) is the cross-cutting commitment; this table is the per-primitive accountability ledger.
 
+### 3.26.15 Email Primitive
+
+Email is the first Layer 1 communication primitive scheduled for Phase W-4b implementation per §3.26.6.4 sequencing (~5-6 weeks substantive scope). Email integrates with multiple settled primitives — §3.26.9 Communications Layer Architecture (parent canon), §3.26.10 Briefings, §3.26.11 Focus Primitive Types, §3.26.12 Pulse Scope Architecture, §3.26.13 Command Bar Architecture, §3.26.14 Workshop Primitive — plus existing canon (V-1c CRM activity feed, Phase 8a workflows, §3.25 saved views).
+
+#### 3.26.15.1 Email primitive emergence + canonical Layer 1 Communications instance
+
+**Strategic framing**: email is most-used communication primitive across funeral home + manufacturing verticals. Foundation for Briefing structured-sections, Coordination Focus joint coordination, Customer Pulse thread surfacing, Communications Layer signal contribution.
+
+**Architectural framing — what email primitive provides**:
+- Bridgeable-canonical email model (threads + messages + attachments + participants + labels)
+- Provider abstraction supporting Gmail API + Microsoft Graph + IMAP + transactional email service
+- Multi-tenant storage with cross-tenant masking inheritance per §3.25.x
+- Polymorphic linkage to existing primitives (Customer + Case + Order + Vault item + Cross-tenant tenant)
+- Per-tenant email account configuration with multi-account + role-based assignment patterns
+- Sync semantics across provider patterns (webhook + IDLE + polling + initial backfill)
+- Privacy + compliance discipline per §3.26.9 retention + audit canon
+
+**Architectural framing — what email primitive is NOT**:
+- Not a webmail replacement (operators continue using Gmail / Outlook / etc. as primary email client; Bridgeable email surface complements operational workflows)
+- Not a mass-marketing email platform (transactional + operational only; Bridgeable does NOT compete with Mailchimp/Constant Contact)
+- Not a stand-alone primitive (integrates deeply with all settled primitives; not surfaceable as standalone product)
+
+**Integrate-now-make-native-later framework — canonical decision (Session 2 deliberation)**:
+
+Native email service evaluated during Session 2 canon work (April 2026). Honest scope assessment: 4-6 months engineering (SMTP outbound + IMAP/JMAP inbound + DKIM/SPF/DMARC + spam filtering + outbound abuse prevention + authentication + migration tooling + mobile/desktop client compatibility) + ongoing operational infrastructure (deliverability operations + 24/7 incident response + email-specific customer support + SOC 2/HIPAA email scope expansion) + reputation risk (compromised tenant account spam → IP pool blacklist → cross-tenant deliverability degradation) + regulatory dimensions (CAN-SPAM + GDPR + state-specific retention compliance).
+
+Deferred indefinitely per §3.26.7.5 canonical-quality discipline. Operational infrastructure scope displaces September 2026 Wilbert demo + Phase W-4b primitive sequencing without commensurate platform thesis advancement (software-as-new-employee-coaching + Monitor/Act/Decide framework) or strategic moat advancement (cross-tenant operational wisdom propagation + Bridgeable Mutual underwriting moat).
+
+Integrate-now-make-native-later framework canonical: Phase W-4b implementation integrates with existing email providers (Gmail API + Microsoft Graph + IMAP + transactional services). Provider abstraction layer designed so native email could plug in as additional provider when concrete tenant signal warrants (e.g., regulatory tenant requires Bridgeable-operated email infrastructure for compliance posture; new tenant onboarding without existing email; consolidation moat at very large tenant scale).
+
+Future canonicalization path: native email canonicalizes when concrete signal emerges; provider abstraction supports drop-in addition without retrofit. Until concrete signal, integration-first is canonical.
+
+#### 3.26.15.2 Email entity data model
+
+**Five canonical email entities + four junction tables**:
+
+**Thread** — conversation grouping
+- `id` (UUID); `tenant_id` (per-tenant isolation)
+- `subject` (normalized — strip Re: / Fwd: prefixes; preserve original on Message)
+- `participants` (denormalized list for fast querying; contact-resolved)
+- `labels` (Bridgeable labels + provider-mapped labels)
+- `last_message_at` (timestamp; thread sort key)
+- `message_count`, `unread_count`, `attachment_count` (denormalized counters)
+- `linked_entity_type`, `linked_entity_id` (polymorphic linkage per §3.26.15.7)
+- `cross_tenant_partner_tenant_id` (NULLable; set when thread spans tenant boundary per §3.26.15.7 + §3.26.9.4)
+- `account_id` (FK to email account configuration per §3.26.15.3)
+- `assigned_user_id` (NULLable; per §3.26.15.19 shared inbox assignment)
+- `created_at`, `updated_at`, `deleted_at` (soft-delete; retention per §3.26.15.8)
+
+**Message** — individual email
+- `id` (UUID); `thread_id` (FK; cascade soft-delete)
+- `tenant_id` (per-tenant isolation)
+- `provider_message_id` (RFC 5322 Message-ID header)
+- `provider_thread_id` (provider's internal thread identifier)
+- `in_reply_to` (RFC 5322 In-Reply-To header)
+- `subject` (per-message original)
+- `body_text` (plaintext body)
+- `body_html` (HTML body; sanitized)
+- `from_participant_id` (FK to Participant)
+- `sent_at` (provider timestamp)
+- `received_at` (Bridgeable ingestion timestamp)
+- `headers` (JSON; full RFC 5322 headers preserved for audit)
+- `provider_labels` (provider-native label list)
+- `is_draft` (Bridgeable-composed message in draft state)
+- `is_outbound` (sent FROM this tenant's account)
+- `intelligence_metadata` (JSONB — priority_score, intent_class, sentiment, summary; populated per §3.26.15.24)
+- `message_payload` (JSONB — operational action references per §3.26.15.17)
+- `entity_references` (JSONB — structured entity references per §3.26.15.20)
+- `created_at`, `updated_at`, `deleted_at` (soft-delete; retention per §3.26.15.8)
+
+**Attachment** — file attached to message
+- `id` (UUID); `message_id` (FK; cascade)
+- `tenant_id`
+- `filename`, `mime_type`, `size_bytes`
+- `storage_provider` (`r2` canonical), `storage_key`
+- `provider_attachment_id`
+- `is_inline` (cid: referenced inline images)
+- `vault_item_id` (NULLable; set when attachment promoted to Vault item per §3.26.15.7)
+- `created_at`, `updated_at`
+
+**Participant** — sender + recipients
+- `id` (UUID); `tenant_id`
+- `email_address` (normalized)
+- `display_name`
+- `contact_id` (NULLable; resolves to existing CRM Contact)
+- `customer_entity_id` (NULLable; resolves to CRM Customer entity)
+- `cross_tenant_user_id` (NULLable; user at partner Bridgeable tenant)
+- `is_internal`, `is_external_partner` (booleans)
+- `created_at`, `updated_at`
+
+**Label** — Bridgeable + provider-mapped labels
+- `id` (UUID); `tenant_id`
+- `name`, `color` (DESIGN_LANGUAGE accent palette)
+- `is_provider_synced`, `provider_label_id`
+- `created_at`, `updated_at`
+
+**Junction tables**:
+- **MessageParticipant** — message-to-participant role mapping (composite PK on message_id + participant_id + role; role: from / to / cc / bcc)
+- **ThreadLabel** — thread-to-label M:N (composite PK on thread_id + label_id)
+- **MessageStatus** — per-user-per-message status (read_at + flagged + flagged_at; composite PK on message_id + user_id; per §3.26.15.13 CONCERN G + Q1)
+- **ThreadStatus** — per-user-per-thread status (archived_at + snoozed_until + replied_at; composite PK on thread_id + user_id; per §3.26.15.13 CONCERN G + Q1)
+- **InternalComment** — per-thread internal comments (visible only to users with EmailAccountAccess; never in outbound; per §3.26.15.19)
+
+#### 3.26.15.3 Per-tenant email account configuration
+
+**Hybrid account model with three patterns canonical** (per Q1 Phase A — three patterns from day one):
+
+| Account type | Pattern | Access scope |
+|---|---|---|
+| **Shared operational** | `sales@`, `dispatch@`, `info@`, `support@` | Multiple users; role-based |
+| **Per-user operational** | `jim@hopkinsfh.com`, `mary@hopkinsfh.com` | Single user; their personal account |
+| **Shared role** | `director@hopkinsfh.com` | Multiple users when role rotates |
+
+**EmailAccount** — per-tenant account configuration
+- `id` (UUID); `tenant_id`; `email_address`; `display_name`
+- `account_type` (`shared` / `per_user` / `hybrid`)
+- `provider` (`gmail_api` / `ms_graph` / `imap` / `transactional_send_only`)
+- `provider_config` (JSONB), `oauth_token_encrypted`
+- `inbound_enabled`, `outbound_enabled`
+- `sync_strategy` (`webhook` / `idle` / `polling` / `none`)
+- `sla_config` (JSONB; per §3.26.15.19 SLA tracking)
+- `last_sync_at`
+- `created_at`, `updated_at`, `deleted_at`
+
+**EmailAccountAccess** — per-account user access junction
+- Composite PK on (account_id, user_id)
+- `access_level` (`read` / `read_write` / `admin`)
+- `created_at`
+
+**Default access patterns**:
+- Shared accounts default to role-based access via tenant role mapping
+- Per-user accounts default to single-user access (the user whose account it is)
+- Hybrid accounts allow per-user explicit grants
+
+#### 3.26.15.4 Inbound email infrastructure
+
+Provider abstraction layer with per-provider sync strategies. Universal core + provider-specific extensions per Q4 Phase A resolution.
+
+**Provider abstraction contract**:
+```
+connect(account_config, credentials) → Connection
+sync_initial(connection, backfill_days) → MessageBatch[]
+subscribe_realtime(connection, callback) → SubscriptionHandle
+fetch_message(connection, provider_message_id) → Message
+fetch_attachment(connection, attachment_ref) → AttachmentBytes
+disconnect(connection) → void
+```
+
+**Per-provider sync strategies**:
+
+| Provider | Sync strategy | Initial backfill | Realtime mechanism |
+|---|---|---|---|
+| Gmail API (`gmail_api`) | webhook | Last 30 days (configurable) | Google Pub/Sub history watch |
+| Microsoft Graph (`ms_graph`) | webhook | Last 30 days | MS Graph subscriptions |
+| IMAP (`imap`) | IDLE / polling | Last 30 days via UID search | IMAP IDLE long-lived; polling 5-min fallback |
+| Transactional send-only | none | none | outbound-only |
+
+**Universal core + provider-specific extensions** (per Q4):
+- Core: thread/message/attachment/participant unified across providers
+- Extensions: Gmail labels (rich color taxonomy + sublabel hierarchies); MS Graph categories; IMAP folders
+- Extensions behind feature flags; opt-in per tenant
+
+**EmailAccountSyncState** — per-account sync state tracking
+- `account_id` (FK), `last_sync_at`, `last_provider_cursor` (JSONB; provider-specific)
+- `sync_in_progress` (mutex), `last_sync_error`, `consecutive_error_count`
+
+**Initial connect backfill**: default 30-day window; tenant admin configurable; runs as background job; tenant sees progress indicator; attachments fetched lazily.
+
+#### 3.26.15.5 Outbound email infrastructure
+
+**Hybrid model**: Bridgeable composes outbound mail; sends via account's provider for per-account outbound; via transactional service for system-generated mail.
+
+**Path 1 — Per-account outbound** (user replies, new threads from Bridgeable surface):
+- User composes in Bridgeable surface
+- Outbound sent via account's provider (Gmail API users.messages.send / MS Graph me/sendMail / IMAP SMTP)
+- Outbound copy stored as Message with `is_outbound = true`
+- Outbound copy synced back through inbound infrastructure (Sent folder webhook → deduplication via provider_message_id)
+
+**Path 2 — Transactional** (system-generated mail; existing Phase D-7 EmailService canonical pattern):
+- Briefings, document deliveries, notifications, signature requests
+- Sent via SendGrid / Postmark / Resend per `delivery_service.send_email_with_template(...)`
+- Email primitive does NOT replace Phase D-7; transactional path remains canonical for system-generated mail
+
+**Outbound discipline**:
+- Per-account outbound requires `account.outbound_enabled`
+- Reply-from-Bridgeable surface always uses account that received original (preserves thread continuity)
+- Outbound auditing: every outbound message logged in audit trail
+
+#### 3.26.15.6 Multi-tenant storage discipline
+
+**Per-tenant isolation**: every email entity tenant-scoped (`tenant_id` FK); all queries filter by `tenant_id`; cross-tenant queries opt-in via dedicated views per §3.26.9.
+
+**Hybrid retention model** (per Q2 Phase A):
+- Default 30-day cached-mirror retention (synced with provider state)
+- Tenant-configurable extension up to 7 years for compliance
+- Audit log of all retention configuration changes (who, when, what)
+- Hard-delete after retention window expires (irreversible; audit log entry retained indefinitely)
+
+**Storage discipline per query patterns**:
+
+| Entity | Storage | Query patterns |
+|---|---|---|
+| Thread, Message, Attachment, Participant | Dedicated tables | High-volume queryable; full-text search via GIN |
+| Label, EmailAccount, EmailAccountSyncState | Dedicated tables | Low-volume queryable |
+| MessageParticipant, ThreadLabel, MessageStatus, ThreadStatus, EmailAccountAccess | Junction tables | Composite PK; high-volume |
+| InternalComment | Dedicated table | Per-thread; tenant-scoped |
+| Attachment blob data | R2 object storage | Provider abstraction |
+
+**Indexes** (canonical):
+- `email_threads (tenant_id, last_message_at DESC)` — inbox sort
+- `email_threads (tenant_id, linked_entity_type, linked_entity_id)` — entity-linked thread lookup
+- `email_threads (tenant_id, cross_tenant_partner_tenant_id)` — cross-tenant thread lookup
+- `email_messages (thread_id, sent_at DESC)` — thread message order
+- `email_messages` GIN index on body_text + body_html → full-text search
+- `email_participants (tenant_id, email_address)` — participant lookup
+
+**Cross-tenant masking inheritance**: per §3.25.x, when threads span tenant boundary, participant lists + attachments inherit cross-tenant masking. Sunnycrest's view of Hopkins-emails-Sunnycrest thread shows Sunnycrest's contacts at Hopkins anonymized per Hopkins's outbound masking rules.
+
+#### 3.26.15.7 Email entity relationships
+
+**Polymorphic linkage to existing primitives** (canonical pattern matches Phase D-1 Document polymorphic linkage):
+
+`Thread.linked_entity_type` + `Thread.linked_entity_id`:
+- `customer` → CRM Customer entity
+- `fh_case` → FH Case
+- `sales_order` → Sales Order
+- `vault_item` → V-1c CRM Vault Item
+- `cross_tenant_thread` → Cross-tenant tenant-to-tenant thread
+
+**Linkage resolution**:
+- **Auto-resolution**: when participants resolve to known entities, thread auto-links
+- **Manual linkage**: user can link thread to entity via Bridgeable surface
+- **Multi-linkage**: thread can have multiple linkages via `email_thread_linkages` junction table
+
+**EmailThreadLinkage** — many-to-many thread linkage
+- `id`, `tenant_id`, `thread_id` (FK), `linked_entity_type`, `linked_entity_id`, `role` (`primary` / `secondary`), `linkage_source` (`auto` / `manual`)
+
+**Cross-tenant thread architecture** (per Q3 Phase A — independent per-tenant copies):
+- Each tenant has own thread record
+- Both threads have `cross_tenant_partner_tenant_id` set
+- Junction table `cross_tenant_thread_pairing` connects per-tenant thread IDs
+- Each tenant computes intelligence independently (matches §3.26.9 D-COMMS-3 — sender perspective + recipient context differ)
+- Cross-tenant masking per §3.25.x applies on each side
+
+**Hybrid attachment storage with promote-to-Vault-item affordance** (per Q5 Phase A):
+- Default: attachments live in `email_attachments` table; round-trip with provider continues
+- Promotion: user explicitly promotes when document-management need warrants → creates Vault item with `vault_item_id` linkage
+- Promoted attachments inherit D-1 versioning + D-6 sharing + D-7 delivery + lineage to email source
+- `email_attachments` record preserved (provider round-trip continues)
+- Bulk-promote affordance for tenant admin deferred per §3.26.7.5
+
+#### 3.26.15.8 Privacy + compliance
+
+**Per-message retention** (hybrid retention discipline):
+- Default 30-day cached-mirror; tenant-configurable extension to 7 years; hard-delete after window
+
+**PII handling**:
+- All email entities encrypted at rest; per-tenant key isolation
+- Attachments encrypted in object storage (R2 server-side encryption canonical)
+- Audit log of all read/write access to email entities
+- Operator behavior privacy preserved (§3.26.14.14.4)
+
+**Compliance frameworks** (canonical preparedness):
+- SOC 2 Type II — encryption + audit logging + access controls
+- HIPAA where applicable — encryption + retention + audit
+- GDPR — DSAR + right to be forgotten
+- CCPA — California consumer privacy compliance
+
+**Audit log discipline**:
+- All email entity reads + writes logged (`email_audit_log` table — query metadata + user_id + tenant_id + timestamp)
+- Audit log retained indefinitely (compliance baseline)
+- Audit log NEVER includes message body content (only metadata) to limit breach scope
+
+**Data subject access requests (DSAR)**:
+- Tenant admin can export all email data for specific Participant
+- Export packaged as ZIP with structured manifest
+- Right-to-be-forgotten: hard-delete all email data for specific Participant on tenant admin authorization
+
+#### 3.26.15.9 Unified inbox surface
+
+Per §3.26.9 Communications Layer, email contributes signals to Communications layer. Unified inbox surface is canonical for email management beyond per-thread context.
+
+**Three canonical entry paths**:
+- Direct navigation: `/inbox` route
+- Command Bar summoning: ⌘K → "inbox" / "unread emails" per §3.26.13.2
+- Communications Layer drill-down: clicking email Glance widget in Home Pulse Communications layer
+
+**Layout**:
+- Two-pane layout (desktop) / stacked (mobile) — thread list + thread detail
+- Account selector (multi-account-per-tenant per §3.26.15.3)
+- Filter strip (status / label / linked-entity / date range)
+- Search bar (full-text across threads + messages)
+- Compose-new-thread affordance
+
+**Account selector behavior**: default union of all accessible accounts; per-account filter; account-level + per-user read state.
+
+**Filter strip canonical filters**: All / Unread / Awaiting reply / Flagged / Snoozed / Archived; per-tenant labels; linked entity; date range.
+
+**Search**: full-text via GIN index; results inline in thread list; query persists in URL.
+
+#### 3.26.15.10 Email rendering at multiple surfaces
+
+Email content surfaces at five canonical Bridgeable surfaces. Each renders email-shaped content using shared design language (Pattern 2 chrome + Pattern 1 tablet + §14 Communications Visual System tokens).
+
+| Surface | Composition | Cross-references |
+|---|---|---|
+| **Pulse Communications Layer** | `email_glance` widget per Pattern C | §3.26.9 |
+| **Customer Pulse threads** | Thread-list slot in Customer Pulse template | §3.26.12.3 |
+| **Coordination Focus participants** | Email thread as primary communication channel (real-time-thread core element) | §3.26.11.3 |
+| **Briefing structured-sections** | Morning + evening email digest delivery | §3.26.10 |
+| **Activity timeline integration** | Email events surface in entity activity feed | V-1c CRM |
+
+**Cross-surface discipline**:
+- Same canonical email entity renders at all surfaces
+- Per-surface visual treatment varies (density tier, slot composition); content shared
+- Operator actions propagate across surfaces (read in Customer Pulse → marked read in unified inbox)
+- Cross-tenant masking applies uniformly per §3.25.x
+
+#### 3.26.15.11 Command Bar email summoning
+
+Per §3.26.13.2 summon types catalog, email is canonical summon type. Phase B canonicalizes natural-language summon grammar.
+
+**Canonical NL summon shapes**:
+
+| Summon shape | Resolves to | Example |
+|---|---|---|
+| Entity-scoped | Thread tablet filtered to entity | "recent emails from Hopkins" |
+| Time-scoped | Inbox surface filtered to time window | "unread this week" |
+| Status-scoped | Status-filtered surface | "awaiting response" |
+| Combined | Multi-axis filter | "Hopkins this week", "Hopkins unread" |
+| Action-shaped | Compose-new-thread context | "email Hopkins about Anderson case" |
+| Thread-specific | Specific thread tablet | "Anderson case email thread" |
+
+**Per §3.26.13.4 Intelligence-driven autocomplete (3-layer)**:
+- Layer 1: Recent + frequent (Phase 8e.1 affinity tracking)
+- Layer 2: Intelligence-suggested ("Hopkins typically emails Mon morning")
+- Layer 3: Workshop-authored shortcuts ("EOD email review")
+
+**Performance discipline**: NL summon resolution within Phase 1 Command Bar performance budget (p50 < 100ms / p99 < 300ms).
+
+**Spatial workspace tablet rendering** per §3.26.13.5: entity-scoped → thread-list tablet; time/status-scoped → inbox tablet; compose-action → modal composition tablet.
+
+#### 3.26.15.12 Email-typed saved views
+
+Per §3.25 saved view canon. Email becomes new entity type `email_thread` for saved views.
+
+**Storage**: `vault_items.metadata_json.saved_view_config` with `entity_type: "email_thread"`; cross-tenant masking per §3.25.x.
+
+**Available presentation modes** (per §3.25; **list as default per Q5 Phase B** — chronological narrative preserves thread temporal flow):
+- list (default), table, kanban, chart, stat
+
+**Filter dimensions**: sender/recipient, date range, status, label, linked entity, account, cross-tenant indicator.
+
+**Sort dimensions**: last_message_at (default), sent_at, message_count, unread_count, response_time.
+
+**Grouping dimensions**: by sender, linked entity, account, status, time window.
+
+**Canonical default email saved views** (seeded per Workshop integration):
+- "Unread from priority customers"
+- "Awaiting response > 48h"
+- "This week's customer responses"
+- "Cross-tenant threads"
+- "Flagged for follow-up"
+
+#### 3.26.15.13 Email composition canonical authoring surface
+
+Per CONCERNS F + G + H + I resolutions: four composition shapes; per-user status tracking; thread-as-Coordination-Focus promotion; email composition templates.
+
+**Four canonical composition shapes**:
+
+| Shape | UX surface | Thread continuity |
+|---|---|---|
+| **New thread** | Modal | New thread_id |
+| **Reply** | **Inline** (per Q3) | Preserves thread; In-Reply-To header |
+| **Reply-all** | **Inline** (per Q3) | Preserves thread; all original to/cc |
+| **Forward** | Modal | New thread (or threaded if same recipients) |
+
+**UX surface placement** (per Q3 — inline reply + modal new/forward; matches Gmail/Outlook canonical UX):
+- Inline composition for Reply / Reply-all: opens within thread detail surface; composes alongside thread context
+- Modal composition for New thread / Forward: opens as full-screen modal for focused authoring
+
+**Recipient selection**: contact resolution + role-based routing + pasted email auto-resolve + bcc field.
+
+**Templates affordance**: Workshop email templates accessible via template picker; Tune-mode pre-fills; operator can adjust before sending.
+
+**Thread continuity preservation** (canonical):
+- Reply uses original Message-ID as In-Reply-To header (RFC 5322 threading)
+- Outbound message gets thread_id = original thread_id
+- Provider-side threading preserved (Gmail thread / MS Graph conversation)
+- Subject normalization preserves thread on subject change
+
+**Per Q1 + CONCERN G — email status tracking** (per-user primary; per-tenant aggregates derived):
+
+**Status semantics canonical**:
+- **Read** (per-message per-user): operator viewed message
+- **Replied** (per-thread per-user): operator sent outbound message in thread (per-user, NOT per-tenant — operator agency mental model)
+- **Archived** (per-thread per-user): operator removed thread from active inbox; re-surfaces if new message
+- **Snoozed** (per-thread per-user): operator deferred; re-surfaces at snoozed_until
+- **Flagged** (per-message per-user): operator marked priority
+
+**Per-tenant aggregates derived**:
+- "Unread by anyone with access" — derived from per-user read states across users with EmailAccountAccess
+- "Awaiting response across tenant" — derived from per-user replied states
+- Aggregates surface in shared-account inbox views (e.g., `sales@` inbox shared by sales role users)
+
+**CONCERN H resolution — Thread-as-Coordination-Focus mapping**:
+
+**Trigger 1 — Manual operator promotion** (canonical baseline):
+- Operator clicks "Promote to Coordination Focus" affordance
+- Coordination Focus instantiated; thread participants → Focus participants; email thread continues
+- Future thread messages surface in BOTH unified inbox AND Coordination Focus
+
+**Trigger 2 — Intelligence-suggested promotion** (per §3.26.14.14):
+- Pattern detection: thread shape matches coordination pattern
+- Suggestion in Workshop home Section 4
+- Operator accepts → promotion; dismisses → 30-day suppression
+
+**Trigger 3 — Auto-promotion DEFERRED** per §3.26.7.5 (per Q2 Phase B — Intelligence-suggested only; pre-create-as-draft + auto-promotion both deferred to preserve operator agency per §3.26.14.14.5).
+
+**Demotion**: operator can demote Focus back to "just a thread" (Focus closed; thread persists; can re-promote later).
+
+**CONCERN I resolution — Email composition templates** (per §3.26.14.6 + §3.26.14.7):
+
+Tune-mode parameters: recipients (role-based) + subject template + body template + send conditions + content variants + attachment defaults + reply-to address.
+
+Compose-mode primitives: content blocks + dynamic-data tokens + recipient routing + conditional content + attachment slots.
+
+Storage: `vault_items` with `item_type="email_template"`.
+
+Network library publishing per §3.26.14.10: anonymization per §3.26.14.11; vertical_applicability per §3.26.14.12.
+
+#### 3.26.15.14 Cross-tenant email visibility + consent model
+
+Per §3.26.9 cross-tenant Communications Layer canon + §3.26.15.7 independent per-tenant copies.
+
+**Cross-tenant visibility scenarios**:
+- **Tenant-internal thread** (default): only sender's tenant
+- **Cross-tenant thread** (Hopkins emails Sunnycrest): each tenant has own thread record; both Communications layers receive signal; per-tenant intelligence computed independently per §3.26.9 D-COMMS-3
+- **Multi-party thread including non-Bridgeable participants**: tenants have own records; non-Bridgeable participants are standard email participants
+
+**Cross-tenant participant resolution timing** (per Q4 Phase B): at participant resolution time. When participant resolves to cross-tenant tenant user, thread is marked cross-tenant. Supports retroactive linkage when partner tenant onboards mid-thread.
+
+**Cross-tenant masking flow**: per §3.25.x masking applies on each side; each tenant's audit log captures their tenant's email data; cross-tenant queries respect masking at query time.
+
+**Consent model**: cross-tenant threads inherit consent from underlying primitives (CRM cross-tenant linkage; communications-layer cross-tenant visibility); either tenant can revoke for specific thread or specific partner.
+
+**Cross-tenant thread chrome** (visual canon — DESIGN_LANGUAGE §14.x): cross-tenant threads carry visual indicator chrome (`↔` icon + partner-tenant-name pill anonymized per masking).
+
+#### 3.26.15.15 Strategic framing — Bridgeable's structural advantage in communications
+
+**Canonical positioning** for email primitive (and Layer 1 communications generally):
+
+> **Bridgeable is the only operating environment where communications and operations are the same system.** The gap is structural, not incremental. Every dedicated communications tool fights a fundamental constraint — they cannot see the operation. They get better at the medium (faster, prettier, more keyboard shortcuts) but cannot get better at the meaning because they lack access to it. Bridgeable is 10x better on meaning while only 0.8x as good on medium-polish — and meaning beats polish every time for operators.
+
+**Architectural framing — the structural gap**: dedicated communication tools (Gmail, Outlook, Superhuman, Front, Slack) operate at the **medium layer** — they make email faster, threading clearer, search better. They optimize *handling messages*. But they cannot optimize *understanding what messages mean for the operation*, because they lack access to operational data.
+
+Bridgeable's architectural position is the inverse: messages arrive into a system that already knows what they mean. The Anderson case is a real entity in Bridgeable's data model. Email primitive surfaces messages in operational context — every thread carries linkage to entities; every message can trigger operational actions; operational state changes can generate communications. The medium serves the meaning.
+
+**Architectural framing — meaning beats polish**:
+- When polish-first design choices conflict with meaning-first design choices, **meaning wins**
+- When integrating-with-operations adds friction to polish, the friction is acceptable
+- When polish improvements would isolate communications from operations, polish is rejected
+
+**Architectural framing — operator-centric design philosophy**: Bridgeable email is designed for operators who do operational work, not communication professionals who optimize message handling. The operator's question is "what does this message mean for my operation?" not "how fast can I process my inbox?".
+
+**Implications for Phase W-4b email implementation** (canonical):
+- Every email thread surfaces with linked-entity chrome — not as add-on but as canonical surface
+- Every message exposes operational-action affordances when applicable
+- Every cross-tenant thread surfaces with cross-tenant chrome
+- Every Pulse surface composes email signals as operational signal
+
+**Strategic discipline**: Phase W-4b email implementation prioritizes operational integration over medium polish. Polish improvements ship as natural-refactor work post-September; operational integration ships from day one.
+
+#### 3.26.15.16 Canonical design disciplines for email primitive
+
+Seven design disciplines borrowed from best-in-class tools, canonicalized as Phase W-4b email implementation principles:
+
+**Discipline 1 — Keyboard-first everything**: every action accessible via one or two keystrokes; Command Bar universal escape hatch; muscle-memory-driven UX. Canonical baseline shortcuts: `R` reply, `A` reply-all, `F` forward, `E` archive, `#` delete, `S` snooze, `J/K` next/prev thread, `?` show all shortcuts.
+
+**Discipline 2 — Threaded conversations with branching support**: email threads canonical (Phase A Thread entity); branching replies + side conversations supported via thread-fork affordance; cross-references §3.26.11 sub-Focus hierarchy canon (sub-Focus pattern applies to email thread forks).
+
+**Discipline 3 — Smart batching notifications**: per-thread + per-entity collapse (canonicalized via §3.26.11 sub-Focus + §3.26.9 Communications Layer); per-thread cooldown; canonical pattern: notification fatigue is anti-pattern.
+
+**Discipline 4 — Reactions as lightweight acknowledgment**: semantic acknowledgments — "approved", "scheduled", "received", "noted", "thanks". When reaction maps to operational state, reaction updates operational state. Cross-references §3.26.15.17 operational-state-coupled-to-communication.
+
+**Discipline 5 — Status awareness**: per-user status (away / focused / in-meeting / available); status surfaces in participant context; auto-detection via Pulse activity + Calendar primitive (when ships) + manual override.
+
+**Discipline 6 — Send-later scheduling with natural language**: composition surface affordance ("Send tomorrow at 9am"); natural-language parsing via managed prompt `email.send_time_parse`; scheduled send queue surfaces in Workshop home Section 1; canonical discipline: scheduled-but-not-yet-sent is editable.
+
+**Discipline 7 — Snippet expansion + Workshop integration**: slash-command snippets (`/quote`, `/follow-up`, `/intro`); canonicalized via Workshop email templates per §3.26.14.4; per-tenant snippet library; save-as-template affordance.
+
+**Canonical anti-pattern**: implementing email without these disciplines is implementing email-the-medium without the meaning advantage. Phase W-4b implementation that fails any of these disciplines triggers canon-vs-implementation drift detection per Phase W-4a Step 6 discipline.
+
+#### 3.26.15.17 Operational-state-coupled-to-communication (messages carry actions)
+
+**Canonical pattern**: messages carry operational actions, not just text. **Quote-approval-via-email is canonical case for September Wilbert demo**. Kill-the-portal architectural discipline.
+
+**Architectural extension to Message entity** (`message_payload` JSONB):
+
+```typescript
+interface MessagePayload {
+  action_type: ActionType
+  action_target_type: EntityType
+  action_target_id: UUID
+  action_metadata: Record<string, unknown>
+  action_status: "pending" | "completed" | "expired" | "revoked"
+  action_completed_at?: Timestamp
+  action_completed_by?: UUID
+  action_completion_metadata?: Record<string, unknown>
+}
+
+type ActionType =
+  | "quote_approval"          // September canonical
+  // Future canonical action types deferred per §3.26.7.5
+```
+
+**Canonical action types — September scope**:
+
+**`quote_approval`** (September Wilbert demo canonical case):
+- `action_target_type: "quote"`; `action_metadata: { quote_amount, quote_line_items, expires_at }`
+- Bridgeable recipient: inline action UX in Bridgeable email surface — single-click "Approve" / "Reject" / "Request changes"
+- Non-Bridgeable recipient: smart approval link → contextual surface (NOT full app login)
+- State propagation: approval action → Quote entity status update → Pulse feed event → Communications Layer signal
+
+**Future canonical action types deferred per §3.26.7.5**: `delivery_confirmation`, `schedule_acceptance`, `document_signature`, `payment_confirmation`. Each canonicalizes when concrete tenant signal warrants.
+
+**Bridgeable recipient inline-action UX** (canonical):
+- Action affordance renders inline in email surface (within thread detail)
+- Single-click approval flow (NO portal login; user already authenticated)
+- Action commit → state change in Bridgeable + audit log + outbound notification
+- Action surfaces in Recipient's Pulse AND originator's Pulse
+
+**Non-Bridgeable recipient smart approval link UX** (canonical — kill-the-portal discipline):
+- Action affordance renders as smart approval link in email
+- Link → contextual surface (NOT full app login):
+  - Magic-link-token-authenticated (matches §3.26.11.9 Focus magic-link pattern)
+  - Scoped to single action
+  - Limited-duration token (canonical: 7 days; tenant-configurable)
+  - Mobile-friendly responsive surface
+  - Single action affordance; no navigation
+- Action commit → state propagates back to Bridgeable
+- Magic-link expires after action OR after duration
+
+**Kill-the-portal architectural discipline canonical**:
+
+Cross-tenant + customer-facing communications NEVER require recipient to log into a "portal" or maintain a Bridgeable account to perform operational actions.
+
+**Why kill-the-portal**:
+- Portals require account creation friction
+- Recipients DON'T want another account; they want to act on the specific item
+- Portal logins fragment recipient's email-based workflow
+- Smart approval link → contextual surface preserves email-based workflow + adds operational state coupling
+
+**State propagation back to operator Pulse feed**: action completion → audit log entry → operator's Communications Layer receives action signal → operator never has to ask "did they approve?" — system surfaces state change.
+
+#### 3.26.15.18 State-changes-generate-communications canonicalization
+
+**Reverse direction**: operations trigger communications. Workflow templates + Briefing templates trigger draft compositions; operator approves and sends. **NEVER auto-send** — preserves operator agency per §3.26.14.14.5.
+
+**Architectural pipeline**:
+```
+Operational state change (Workflow / Briefing / Manual trigger)
+    ↓
+Draft composition generated (template + operational data)
+    ↓
+"Ready to send" queue surfaces in operator Workshop home Section 1
+    ↓
+Operator reviews draft (can edit before sending)
+    ↓
+Operator approves and sends (one-tap approve)
+    ↓
+Outbound via §3.26.15.5 outbound infrastructure
+```
+
+**Canonical trigger sources**:
+- **Workflow templates (Phase 8a)**: workflow step "Send communication" creates draft using email template per §3.26.14.4
+- **Briefing templates (Phase 6)**: briefing structured-section "Pending communications" surfaces drafts ready for send
+- **Manual operator triggers**: operator selects template from Workshop → composition surface pre-fills
+
+**"Ready to send" queue UX**: surfaces in Workshop home Section 1; per-draft card (recipient + subject + body preview + linked-entity chrome + send-affordance); edit-before-sending affordance.
+
+**Templates supply communication shape; operational state supplies content**:
+- Template: subject template + body template + recipient routing + send conditions
+- Operational state: dynamic-data token values resolved
+- Composition resolution: template + operational state → fully-rendered draft
+
+**Canonical anti-pattern: NEVER auto-send communications without operator approval**. Auto-send would compromise operator authorship; bypass operator agency per §3.26.14.14.5; risk reputation damage; violate kill-the-portal-but-preserve-operator-control.
+
+**Future canonicalization paths** (per §3.26.7.5): auto-send for low-stakes confirmations + bulk-approve workflows + auto-schedule for time-sensitive sends — all deferred until concrete tenant signal warrants.
+
+#### 3.26.15.19 Front-style shared inbox operational UX
+
+Phase A §3.26.15.3 hybrid account model + EmailAccountAccess junction sets foundation. Phase B canonicalizes operational UX for shared accounts.
+
+**Five canonical operational UX patterns**:
+
+**Pattern 1 — Assignment** (per-thread ownership):
+- `Thread.assigned_user_id` (NULLable); `ThreadAssignmentLog` audit trail
+- Auto-assignment rules (deferred per §3.26.7.5): default thread assigns to first replier; round-robin + skill-based deferred
+- Manual assignment + reassignment + unassignment affordances; audit trail preserved
+
+**Pattern 2 — Internal comments** (visible only to teammates with EmailAccountAccess):
+- `InternalComment` entity (separate from Message; never sent externally)
+- @mentions canonical (matches in-platform messaging primitive)
+- Visually distinct from messages ("Internal" chrome)
+- Cross-reference §3.26.9 Communications Layer (in-platform messaging primitive integration)
+
+**Pattern 3 — SLA tracking**:
+- `EmailAccount.sla_config` JSONB (target_first_response_minutes, target_resolution_hours, alert_thresholds, business_hours_only)
+- SLA surfaces in Pulse Communications layer (threads approaching SLA breach)
+- Per-thread first_response_at + resolution_at timestamps; computed against SLA config
+
+**Pattern 4 — Ownership transfer flows**: operator A transfers thread to operator B → assignment changes + audit log entry; transfer notification to operator B; cross-tenant transfers deferred per §3.26.7.5.
+
+**Pattern 5 — Multi-operator presence indicators**: real-time presence on shared inbox threads; visual avatar stack ("Sarah and Mike are viewing this thread"); per-thread WebSocket presence channel; "Sarah is replying" coordination affordance.
+
+**Canonical discipline**: shared inbox operational UX preserves multi-operator coordination without forcing assignment.
+
+#### 3.26.15.20 Cross-tenant native messaging with entity references
+
+Phase A §3.26.15.7 cross-tenant linkage canon establishes independent per-tenant copies + cross_tenant_thread_pairing junction. Phase B canonicalizes structured cross-tenant messaging beyond plain-text email.
+
+**Canonical pattern**: cross-tenant messages between Bridgeable tenants carry structured entity references natively. Re: Smith case → links to actual case object in BOTH tenants' systems.
+
+**Architectural extension** (`Message.entity_references` JSONB):
+
+```typescript
+interface EntityReference {
+  tenant_id: UUID
+  entity_type: EntityType
+  entity_id: UUID
+  role: "primary" | "secondary"
+  reference_label?: string
+  created_at: Timestamp
+}
+```
+
+**Cross-tenant entity resolution at render time**:
+- Tenant A's view: resolve all entity_references where tenant_id matches Tenant A → render as inline entity links
+- Tenant B's entity_references in same message: resolve only those Tenant B has shared with Tenant A per §3.26.9 cross-tenant consent + §3.25.x masking
+- Per-tenant masking applied at resolution time
+- Entity links resolve to per-tenant entity instances
+
+**Bilateral update propagation**:
+- Tenant A makes operational change to entity referenced in cross-tenant thread
+- Change surfaces in Tenant A's thread view as event
+- Cross-tenant linkage propagates change event to Tenant B's view per §3.26.9 Communications Layer
+- Bilateral updates respect §3.25.x masking
+
+**Decision-bounded cross-tenant threads**:
+- Thread tied to specific bounded decision per §3.26.11 Coordination Focus discipline
+- `Thread.bounded_decision_focus_id` → Coordination Focus reference (when promoted)
+- Auto-archival when decision closes (Coordination Focus auto-closes per §3.26.11.11)
+- Threads remain queryable (audit trail preserved); not destroyed
+- Manual archive override available
+
+**Retroactive linkage handling** (per Q4 Phase B canon detail):
+
+When participant resolution upgrades existing thread to cross-tenant (e.g., partner tenant onboards mid-thread), cross-tenant masking re-evaluated for thread per §3.25.x. Per-tenant masking rules apply to existing thread content; pre-existing message visibility may change for partner tenant per masking rules. Audit log captures retroactive masking application.
+
+**Retroactive linkage trigger flow** (canonical):
+1. Hopkins onboards as Bridgeable tenant on Tuesday
+2. Participant resolution batch job (or async re-resolution on next message ingestion) detects Hopkins users now resolve to cross-tenant Bridgeable participants
+3. Pre-existing threads with Hopkins participants get `cross_tenant_partner_tenant_id` set; cross_tenant_thread_pairing junction populated
+4. **Per §3.25.x masking re-evaluation**:
+   - Sunnycrest's outbound masking rules now apply to thread content visible to Hopkins
+   - Hopkins's inbound visibility preferences now govern what Hopkins sees
+   - Pre-existing message content with tenant-specific terms may be redacted retroactively
+   - Audit log entry per masked field
+5. Operator-side surfacing: notification "Hopkins now visible on this thread"; thread chrome updates to show cross-tenant indicator
+6. Hopkins-side surfacing: thread surfaces in Hopkins inbox per §3.26.15.7 independent per-tenant copies
+
+**Retroactive linkage caveats** (canonical):
+- **Redaction is one-way**: content already exposed remains in caches/exports/audit logs; retroactive masking is forward-looking
+- **Operator notification on retroactive linkage**: tenant operators notified when pre-existing threads gain cross-tenant linkage (preserves awareness; prevents surprise content propagation)
+- **Operator opt-out affordance**: per §3.26.9 cross-tenant consent, tenant can revoke cross-tenant visibility for specific thread post-retroactive-linkage
+- **Audit trail integrity**: full retroactive linkage event captured (when, what threads, which fields masked, operator notification, opt-out actions)
+
+**Storage discipline**: entity_references stored as JSONB on Message; typically 1-5 references per message; GIN index for cross-tenant entity lookup queries.
+
+#### 3.26.15.21 Strategic vision deferral catalog
+
+Comprehensive deferral catalog matching Sessions 1 + 1.5 + Phase A discipline. Future canon sessions inherit explicit deferrals; prevent re-litigation.
+
+**Voice + multimedia deferrals**:
+- Live phone-call transcription with operational tagging — Phase 4 RingCentral + Bridgeable Intelligence transcription scope; defer until concrete tenant signal
+- Voice-as-creation-medium — substantial Bridgeable Intelligence + Command Bar voice integration; Phase 5+
+- Loom-style asynchronous video for FH arrangements — substantial multimedia infrastructure; defer until concrete FH tenant signal
+- Voice notes for internal communication — ~3-4 weeks multimedia infrastructure; defer to post-September
+
+**Customer-facing surface deferrals**:
+- Customer portal-as-thread for FH families — kill-the-portal discipline rejects; defer until concrete FH tenant signal warrants persistent surface beyond smart-link
+- Public-facing delivery tracker with link expiry — smart approval link patterns cover most cases; defer until concrete signal
+
+**Intelligence-driven advanced feature deferrals** (Phase C scope is initial; these extensions deferred):
+- Anniversary intelligence (managed prompt `email.anniversary_detection`)
+- Pattern-of-life intelligence on key relationships (`email.relationship_health`)
+- Cross-customer pattern surfacing (`email.cross_customer_pattern`)
+- Sentiment-aware operational dashboards
+- Tone calibration (per-tenant style learning)
+- Translation as ambient feature — defer until concrete tenant signal warrants (likely FH demographic-driven)
+- Predictive composition (operational-situation → draft-in-queue)
+- Introduction feature (cross-contact pattern detection) — network-scale; defer until network reaches scale
+
+**Long-form publishing deferrals**:
+- Substack-style publish mode for outbound communications — structurally different primitive; canon as separate primitive consideration if first tenant concrete need warrants
+
+**Network-level feature deferrals**:
+- Cross-tenant network-level communication patterns — depends on multi-tenant scale ~20-30 tenants; defer
+
+**Persistent voice deferrals**:
+- Discord-style persistent voice channels for yard coordination — probably integrate-with-existing rather than build native; defer with skepticism
+
+**Architectural skepticism deferrals** (deferred WITH skepticism — not roadmapped but documented):
+- End-to-end encrypted internal messaging — substantial cryptographic scope; tenant-scoped encryption already provides isolation; probably overkill; defer with skepticism
+- Disappearing messages — conflicts with §3.26.15.8 compliance + audit log; probably anti-pattern; defer with skepticism
+
+**Structured payload pattern deferrals** (canonical action types beyond September):
+- iMessage-style tapbacks updating operational state — extends §3.26.15.16 Discipline 4 reactions with state-updates; canonicalize via Compose-mode primitives when concrete signal
+- Multi-modal threads (text + voice + video + structured data + documents + forms) — substantial cross-modality infrastructure; defer
+
+Each deferral documented with: scope assessment + rationale + future canonicalization path + concrete signal that would warrant canonicalization.
+
+#### 3.26.15.22 Email-triggered Decision Focus (priority email triage)
+
+Per §3.26.11.2 Decision Focus type with triage core element. Email-triggered Decision Focus surfaces priority emails as triage queue.
+
+**Architecture**:
+- Decision Focus instantiates with triage core element
+- Triage queue source: per-tenant unread inbox filtered to AI-flagged-priority status via `email.priority_detection` managed prompt
+- Per-item actions: Read & archive / Reply / Snooze / Escalate to Coordination Focus / Skip
+- Surfaces in Pulse Communications layer per §3.26.9
+
+**Triage queue construction** (canonical):
+- Default queue rules: priority_score ≥ 0.75 OR cross-tenant OR awaiting-reply >24h
+- Queue rules Workshop-customizable per §3.26.14.4
+- Per-tenant priority threshold tunable (canonical default 0.75; tunable 0.5-0.95)
+
+**UX surface**:
+- Anchored core: queue header + current item display + action palette (one-keystroke actions per §3.26.15.16) + flow controls
+- Canvas: context panels (sender history; related entity context; AI summary via `email.thread_summarize`)
+- Magic-link participants: N/A (Decision Focus typically intra-tenant)
+
+**Triage actions canonical**: Read & archive / Reply / Snooze / Escalate to Coordination Focus / Skip.
+
+**Cross-references**: §3.26.11.2 Decision Focus + §3.26.14.14 Workshop Intelligence-Suggested Customizations + §3.26.9 Communications Layer.
+
+#### 3.26.15.23 Email-mediated Coordination Focus
+
+Per §3.26.11.3 Coordination Focus type with real-time-thread core element. Email thread as primary participant communication channel for joint coordination.
+
+**Canonical use cases**:
+- Joint service-day coordination (Hopkins + Sunnycrest jointly coordinate Anderson service)
+- Joint quality response (Hopkins + Sunnycrest coordinate vault quality issue)
+- Multi-load job coordination (Sunnycrest internal coordination across drivers)
+- Mold-changeover coordination (Sunnycrest production team)
+
+**Architecture** (extends §3.26.11.3):
+- Coordination Focus instantiated with `core_element="real-time-thread"`
+- Email thread becomes Focus's `primary_communication_channel_thread_id`
+- Focus participants ↔ thread participants (mapped at promotion time)
+- Future thread messages surface in BOTH unified inbox AND Coordination Focus
+- Outbound from Focus surface routes through §3.26.15.5; thread continuity preserved
+
+**Promotion mechanics** (per §3.26.15 CONCERN H + Q2 Phase B):
+- Trigger 1 — Manual operator promotion (canonical baseline)
+- Trigger 2 — Intelligence-suggested promotion via Workshop home Section 4
+- Auto-promotion deferred per §3.26.7.5 (Intelligence-suggested only; pre-create-as-draft deferred to preserve operator agency per §3.26.14.14.5)
+
+**Cross-tenant participation patterns** (per §3.26.11.10):
+- Cross-tenant Coordination Focus common pattern
+- Per §3.26.11.10 consent model: both tenants opt in; either can revoke
+- Per-tenant participant routing; per-side audit logs; cross-tenant masking per §3.25.x
+
+**Magic-link participant scope** (per §3.26.11.9):
+- External participants without Bridgeable accounts participate via magic-link
+- Magic-link scope: thread + Focus core element + linked entities
+- Cannot escape Focus; cannot see other participants beyond Focus thread
+- Per §3.26.15.17 kill-the-portal discipline: magic-link is contextual surface, NOT full app login
+
+**Cross-references**: §3.26.15.20 cross-tenant native messaging; §3.26.11.6 sub-Focus hierarchy (Job Coordination Focus contains Load Coordination Focuses; email thread per Focus); §3.26.11.9 magic-link participant scope.
+
+#### 3.26.15.24 Email Intelligence integration
+
+Per Bridgeable Intelligence backbone canonical pattern.
+
+**September canonical scope: four managed prompts**:
+
+| Prompt | Model | Use | Storage |
+|---|---|---|---|
+| `email.priority_detection` | Haiku | Inbound classification → priority_score | Prompt registered; threshold per-tenant config |
+| `email.thread_summarize` | Haiku | Quick summary on demand | Prompt registered; output cached per-thread 24h |
+| `email.response_draft` | Sonnet | Quality response drafting (operator selects intent → drafts → operator edits) | Prompt registered; drafts NOT cached |
+| `email.intent_classify` | Haiku | Intent + sentiment per-message | Prompt registered; classification stored on Message |
+
+**Operator agency discipline preserved per §3.26.14.14.5**: AI drafts + suggests; operator decides + approves. Canonical anti-pattern: auto-send AI-drafted responses.
+
+**Future canonical prompts deferred per §3.26.15.21**: `email.anniversary_detection`, `email.relationship_health`, `email.cross_customer_pattern`, `email.send_time_parse`.
+
+**Bridgeable Intelligence canonical disciplines applied**:
+- All prompts registered in managed prompt registry
+- Every invocation logs `intelligence_executions` audit row
+- Per-tenant configuration as tenant operational config (NOT managed prompt registry — per §3.26.11.7 storage separation)
+- Operator agency preserved
+
+#### 3.26.15.25 Email Workshop integration
+
+Per §3.26.14.4 templates-as-data forcing function. Single `email_template` template type with reply_to_account_id parameter (per Q2 Phase C — account routing is parameter, not discriminator).
+
+**Email template type registered in Workshop**:
+- Template type: `email_template`
+- Storage: `vault_items.metadata_json.email_template_config` (matches §3.26.14.5 distributed storage)
+- Common envelope per §3.26.14.5 + email-specific config (recipients, subject_template, body_template, reply_to_account_id, send_conditions, content_variants, attachment_defaults, composition_blocks, conditional_content, attachment_slots)
+
+**Tune mode parameters** (per §3.26.14.6):
+- Recipients (role-based routing)
+- Subject template + body template (with dynamic-data tokens)
+- Reply-to address (which email account sends — `reply_to_account_id` parameter)
+- Send conditions
+- Content variants
+- Attachment defaults
+
+**Compose mode primitives** (per §3.26.14.7):
+- Content blocks + dynamic-data tokens + recipient routing primitives + conditional content + attachment slots
+
+**Network library publishing** (per §3.26.14.10):
+- Anonymization per §3.26.14.11 with two-tier confidence within Tier 1
+- vertical_applicability per §3.26.14.12 (no default; explicit operator declaration)
+- Marmon publishes one template; adopting tenant configures account routing per their topology — cleaner publishing/adoption flow than per-account-type templates
+
+**Cross-vertical applicability examples**:
+- FH email patterns: case communication, family follow-up, arrangement scribe response drafts, aftercare check-ins
+- Manufacturing email patterns: vault scheduling notifications, customer service responses, vendor coordination, quality issue communications
+- Cross-vertical patterns: AR aging escalation, monthly close coordination, generic supplier follow-up
+
+**Workshop home surfacing** (per §3.26.14.3 5-section composition):
+- Section 1 — Your Customizations: operator-authored email templates
+- Section 2 — Tenant Templates: tenant-authored + adopted
+- Section 3 — Network Library: published email templates (vertical-filtered)
+- Section 4 — Intelligence Suggestions: Workshop pattern detection suggesting email template formalization
+- Section 5 — Recent Changes: audit log of email template authoring
+
+**Cross-references**: §3.26.14 Workshop Primitive (entire Workshop architecture applies) + §3.26.15.13 email composition canonical authoring surface.
+
 ---
 
 # Part 6 — Funeral Home Vertical
