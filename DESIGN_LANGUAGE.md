@@ -5397,9 +5397,135 @@ When user works through every item in the queue:
 - **§11 Pattern 2** — Card material treatment for canvas panels
 - **§11 Pattern 3** — Status indicator system (used by anomaly severity badges + approval status indicators)
 - **§13.5** — Signal collection chrome (Triage actions emit dismiss/navigation signals same as Pulse pieces)
-- **BRIDGEABLE_MASTER §3.26.11** — Triage Focus Canonical Pattern (architectural canon)
+- **BRIDGEABLE_MASTER §3.26.11** — Focus Primitive Types (architectural canon — Triage is core element of Decision Focus type)
 - **PLATFORM_INTERACTION_MODEL.md** — Tony Stark / Jarvis interaction model (summon/arrange/park/dismiss; Triage Focus is a canonical instantiation)
 - **Phase A (Focus primitive)** — Phase A Sessions 1–4 ship the anchored core + canvas + push-back + return pill primitives Triage Focus composes against
+
+---
+
+## Section 17 — Workshop Visual System
+
+Workshop primitive deserves dedicated visual canon section parallel to §14 Communications + §15 Briefing + §16 Triage Focus visual systems. Workshop is its own canonical Space (per BRIDGEABLE_MASTER §3.26.14.1); visual canon at top level matches that architectural weight.
+
+Established Session 1.5 (May 2026). Implements alongside Workshop primitive when Phase W-4b sequencing surfaces concrete Workshop implementation.
+
+### 17.1 Foundational frame
+
+Workshop home is a Workshop-specific Space rendering — NOT a Pulse instance (per BRIDGEABLE_MASTER §3.26.14.3 + Session 1.5 Phase A Q1 resolution). Visual continuity with Pulse via shared design language (Pattern 2 chrome + section eyebrows + Pattern 1 tablet treatment) but distinct composition shape (sections vs layered attention model).
+
+**Shared design language elements**:
+- Pattern 2 chrome per piece (rounded-[2px] + bg-surface-elevated + border-border-subtle + shadow-level-1)
+- Section eyebrows: text-micro uppercase tracking-wider text-content-muted
+- Pattern 1 tablet treatment for individual templates (frosted-glass + atmospheric shadow per §11)
+- Same DESIGN_LANGUAGE tokens; same accent palette (terracotta single-value cross-mode per Aesthetic Arc Session 2)
+
+**Distinct composition shape**:
+- Sections, not layered attention model (Pulse is monitoring; Workshop is craft)
+- Vertical stack of 5 canonical sections (per §17.2)
+- Per-section eyebrow + content + section-specific affordances
+- No brass-thread divider between sections (brass-thread is Pulse-specific Operational layer demarcation per §13.3.2)
+
+### 17.2 Workshop home composition
+
+Five canonical sections render vertically stacked:
+
+```
+WORKSHOP HOME (visual structure)
+─────────────────────────────────────────────────────────────
+[Header strip: "Workshop" + search bar + mode-toggle for Tune vs Compose]
+
+Section 1: Your Customizations
+  [Eyebrow: "YOUR CUSTOMIZATIONS"]
+  [Card grid: per-template tablet (Pattern 1 chrome)]
+
+Section 2: Tenant Templates
+  [Eyebrow: "TENANT TEMPLATES"]
+  [Card grid: per-template tablet (Pattern 1 chrome)]
+
+Section 3: Network Library
+  [Eyebrow: "NETWORK LIBRARY"]
+  [Filter strip: vertical + template type + curation source]
+  [Card grid: per-template tablet (Pattern 1 chrome with adoption affordance)]
+
+Section 4: Intelligence Suggestions
+  [Eyebrow: "INTELLIGENCE SUGGESTIONS"]
+  [Card stack: per-suggestion card (Pattern 2 chrome with accept/dismiss/tell-more affordances)]
+
+Section 5: Recent Changes
+  [Eyebrow: "RECENT CHANGES"]
+  [List: per-change row (compact; audit-log-shaped)]
+─────────────────────────────────────────────────────────────
+```
+
+**Vertical scroll**: sections accumulate vertically; user scrolls through Workshop home. Each section anchored by eyebrow + content; sections breathe with consistent margin spacing (per §5 spacing canon).
+
+**Section ordering rationale** (preserved from BRIDGEABLE_MASTER §3.26.14.3): most-relevant-to-current-user-first. Your Customizations (highest engagement) → Tenant Templates → Network Library → Intelligence Suggestions → Recent Changes.
+
+### 17.3 Per-section visual treatment
+
+**Section 1: Your Customizations** — operator's authored or modified templates
+- Card grid: 2-3 columns desktop / 1-2 columns tablet / single column mobile
+- Per-card: template name (font-sans text-body-sm font-medium) + template type eyebrow (text-micro text-content-muted) + last-modified timestamp + draft-state indicator
+- Pattern 1 tablet treatment per card (frosted-glass + Pattern 1 transform per Aesthetic Arc Session 4.8)
+- Click → per-template authoring sub-page (Tune or Compose mode)
+
+**Section 2: Tenant Templates** — tenant-authored or adopted templates
+- Same card grid + Pattern 1 tablet treatment as Section 1
+- Per-card adds: author name (anonymized for adopted templates per BRIDGEABLE_MASTER §3.26.14.11) + adoption-source indicator + visibility level
+- Read-able by all per workshop.view; edit affordance visible only with appropriate per-area sub-role
+
+**Section 3: Network Library** — cross-tenant browsable
+- Filter strip above card grid: vertical (default-set to adopting tenant's vertical) + template type + curation source (editorial / popular / recent / intelligence-recommended)
+- Card grid: 3-4 columns desktop (denser than Sections 1-2 because exploratory browsing)
+- Per-card: template name + template type eyebrow + adoption count + rating + anonymized publisher identifier
+- Pattern 1 tablet treatment with adoption affordance ("Adopt" button per BRIDGEABLE_MASTER §3.26.14.10)
+- Click → per-template detail surface (config preview + adoption stats + lineage tree + ratings + comments + adopt affordance)
+
+**Section 4: Intelligence Suggestions** — per BRIDGEABLE_MASTER §3.26.14.14
+- Card stack (single column; suggestions don't grid because each requires reading + deciding)
+- Per-card: pattern summary (font-sans text-body) + suggested template type eyebrow + accept / dismiss / "tell me more" affordances
+- Pattern 2 chrome (subtle elevation; not Pattern 1 tablet — suggestions are advisory not summon-target)
+- Confidence indicator visual: subtle (small icon + tooltip; not prominent — suggestion confidence is meta-information not primary content)
+
+**Section 5: Recent Changes** — audit log surface
+- Compact list (high-density; many rows visible)
+- Per-row: timestamp + actor + action (created/modified/promoted/published/adopted) + template name + diff-affordance
+- Minimal chrome (just dividers between rows; no per-row Pattern 1 tablet — audit data is reference, not primary surface)
+- Click → per-version diff view (Tune-mode parameter diff or Compose-mode composition diff)
+
+### 17.4 Per-template-type sub-page visual treatment
+
+Clicking into a template type opens dedicated authoring surface within Workshop Space (URL: `/workshop/{template_type}/{template_id?}`).
+
+**Sub-page composition**:
+- Header: template name + version + active/draft indicator + back-to-Workshop affordance
+- Mode toggle: Tune / Compose (mode availability per per-customization-area sub-role)
+- Authoring surface (Tune-mode form OR Compose-mode canvas)
+- Preview pane: live preview of template against current operational data (read-only; preview-only)
+- Action bar: save draft / promote to active / discard / publish-to-network-library (Tier-3 only)
+
+**Tune-mode visual**:
+- Form layout (per §5 form spacing canon)
+- Parameter form fields with labels + descriptions + validation feedback
+- "Reset to platform default" affordance per parameter
+- Diff-against-current-active visual (subtle highlight on changed parameters)
+
+**Compose-mode visual**:
+- Canvas surface (template-type-specific shape)
+- Primitive palette on left side (per-template-type composition primitives per BRIDGEABLE_MASTER §3.26.14.7)
+- Drag-and-drop affordance with snap-to-grid + visual feedback
+- Per-primitive configuration popover (click primitive → configure parameters in popover)
+
+### 17.5 Cross-references
+
+- **§11 Pattern 1**: tablet chrome family for individual templates
+- **§11 Pattern 2**: chrome treatment for Workshop home section pieces + Intelligence Suggestion cards
+- **§13.3 Pulse Tetris Composition**: shared design language elements (Pattern 2 chrome + section eyebrows)
+- **§13.10 Spatial Workspace**: Workshop entry via ⌘K → "Workshop" summons Workshop Space (per BRIDGEABLE_MASTER §3.26.13.9; not spatial workspace tablet because Workshop is persistent Space)
+- **BRIDGEABLE_MASTER §3.26.14**: Workshop Primitive (architectural canon — companion to this section)
+- **BRIDGEABLE_MASTER §3.26.14.3**: Workshop home rendering (architectural canon for 5-section composition)
+- **BRIDGEABLE_MASTER §3.26.14.14**: Intelligence-Suggested Customizations (architectural canon for Section 4 visual treatment)
+- **AESTHETIC_ARC.md** Session 1.5 entry: arc context for Workshop primitive canon work
 
 ---
 

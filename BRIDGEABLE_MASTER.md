@@ -5242,6 +5242,830 @@ Per Phase A Session 4 canon (Focus persistence) + Phase C uniform render-stack: 
 
 Workshop primitive canon canonicalizes these integration points in Session 1.5. §3.26.13 ships Command Bar architecture + spatial workspace render-stack at canonical-quality independent of Workshop; Workshop integration layers cleanly post-Session-1.5 without §3.26.13 retrofit.
 
+### 3.26.14 Workshop Primitive
+
+The Workshop primitive consolidates customization across the platform. All customizable platform surfaces — Pulse templates, Focus templates, saved views, workflows, briefings, document templates, Command Bar shortcuts, widget overrides, email/SMS templates — render through Workshop's authoring surfaces. Templates-as-data discipline retroactively + prospectively canonicalizes pattern that has emerged across Phase 2 saved views + Phase 6 briefings + Phase 8a workflows + Phase D-2 document templates + Phase W-3 widget catalog.
+
+**Strategic moat framing**: by 2030, accumulated operational wisdom propagated cross-tenant via network library (§3.26.14.9) compounds into competitive advantage competitors cannot replicate without similar tenure. Cross-vertical template propagation deepens variant ecosystem; Intelligence-Suggested Customizations close the operator-behavior → template-formalization loop. Workshop is canonical-quality treatment matching strategic weight.
+
+#### 3.26.14.1 Workshop as canonical Space
+
+**Workshop is a canonical Space** — distinct from operational Spaces (where users live and work) and Custom Spaces (per-user workspace configurations). Workshop is **craft-work Space**: tenant operators visit deliberately to customize the platform, then leave.
+
+**The architectural framing**:
+- One Workshop instance per tenant (singleton; not per-user)
+- Persistent navigation destination — Spaces are persistent; Workshop is
+- NOT summoned for momentary attention (Pulse is the monitoring summon-target; Workshop is not)
+- BUT exception-summonable via ⌘K → "Workshop" per §3.26.13.1 because Workshop authoring is craft-work, not workflow-inhabitation
+- Both entry paths canonical: side-nav top-level entry (discoverability for new operators) AND command-bar summon (efficient for power users)
+
+**Architectural distinction from operational Spaces** (§3.26.1.1):
+- Operational Spaces (Vault Management, Finance, Scheduling, etc.) are where work happens. Pulse is the canonical monitoring surface inside; Focus is the canonical work surface; Entities are the records being acted upon.
+- Workshop is where the platform itself is shaped. No live operational data is consumed at Workshop home; templates are authored against schema + parameter forms + composition primitives, not against live data.
+- "Spaces are where you live. Focuses are where you work. Workshop is where you shape the platform itself." (Extends Session 1 discipline lock.)
+
+**Architectural distinction from Settings Space** (Phase 8a):
+- Settings handles tenant configuration — preferences, roles, permissions, integrations, system defaults
+- Workshop handles tenant customization — templates rendered against operational data
+- The two coexist as distinct Spaces. Settings is admin-restricted by default; Workshop is operational-visibility default per §3.26.14.2.
+
+**Why a Space rather than a feature inside Settings or per-customization-area pages**:
+- Templates-as-data discipline (per §3.26.14.4) is a cross-cutting platform commitment. Surfacing customization across N admin pages dilutes the architectural coherence.
+- Workshop becomes the canonical home where every customizable surface is visible. Operators learn one mental model: "go to Workshop to shape the platform."
+- Network library (per §3.26.14.9) requires a canonical home; settings-page-per-customization-type would force per-type network library implementations and fragment the cross-tenant operational-wisdom surface.
+
+**Network library as section within Workshop home**: network library is canonical Section 3 of Workshop home (per §3.26.14.3) — NOT a separate top-level Space. Cross-tenant browsing happens within the tenant Workshop instance with per-tenant filtering. Reduces nav surface; matches Pulse-as-primary-canonical-entry discipline; preserves customization mental model coherence (browse → adopt → customize → publish flows naturally within Workshop).
+
+**Architectural model post-Session-1.5**:
+
+> 5 primitives + fractal Pulse + universal Command Bar + Workshop:
+> - **Spaces** (rare — tenant homes; **Workshop joins as canonical Space**; cross-tenant collaboration; custom user-authored)
+> - **Focuses** (typed — bounded work surfaces with core element catalog per type; Workshop-customizable templates)
+> - **Pulse** (fractal — Home + scoped instances; same primitive at multiple scopes; Workshop-customizable templates)
+> - **Entities** (everywhere — summonable record cards)
+> - **Communications** (flow through unified inbox; Workshop-customizable templates)
+> - **Command Bar** (universal summoning verb handling all summon types)
+> - **Workshop** (Space — customization home; templates-as-data discipline; network library)
+
+Workshop is itself a canonical Space — listed in the Spaces tier, not as a separate primitive class. Architectural elegance: every customizable surface unifies under existing primitive framework; Workshop is the canonical home where customization happens.
+
+#### 3.26.14.2 Workshop access scope
+
+Three-tier access model + per-customization-area sub-roles + tenant tightening capability.
+
+**Three-tier access model**:
+
+**Tier 1 — `workshop.view` (default-permissive — granted to all active tenant users)**:
+- Sees Workshop entry in side-nav (visible to operational role)
+- Can browse Workshop home (read-only view of tenant's customization landscape)
+- Can browse network library (read-only view of published templates from other tenants per §3.26.14.9)
+- Cannot edit templates; cannot publish; cannot adopt
+- **Justification**: Workshop visibility is operational concern (operators understand what their platform is configured to do), not admin concern. Hiding Workshop from non-admin users obscures the platform's customization story. Network library browsing is not competitive risk because published templates are anonymized per §3.26.14.11.
+
+**Tier 2 — `workshop.author` (role for senior operators; default-restricted)**:
+- All Tier 1 capabilities
+- Can author templates per per-customization-area sub-role grants (see below)
+- Cannot publish to network library; cannot administer tenant beyond customization
+- **Justification**: senior operators may need template authoring authority without full admin power. Decouples customization authority from administrative authority — important pattern for tenants where customization expertise concentrates in non-admin operators.
+
+**Tier 3 — `workshop.publish` (tenant admin role; default-restricted)**:
+- All Tier 2 capabilities
+- Can publish templates to network library
+- Can adopt-with-publish-authority from network library (canonical publishing of adopted-and-customized templates)
+- Can grant `workshop.author` to other users
+- **Justification**: publishing affects tenant brand + competitive posture; admin oversight is appropriate.
+
+**Per-customization-area sub-roles** (gating Tune + Compose mode access within `workshop.author`):
+
+| Sub-role | Authoring authority |
+|---|---|
+| `workflow.edit` | Workflow templates (existing Phase 8a role) |
+| `space.admin` | Pulse templates + saved view templates + scoped Pulse templates (existing Phase 3 role) |
+| `briefing.edit` | Briefing templates |
+| `document.edit` | Document templates (existing Phase D role) |
+| `email.edit` | Email/SMS templates (Phase W-4b) |
+| `focus.author` | Focus templates per §3.26.11 (NEW with Workshop primitive) |
+| `widget.author` | Custom widget templates (rare; advanced power-user role) |
+
+These sub-roles compose with `workshop.author`: a user with `workshop.author + workflow.edit` can author workflow templates; a user with `workshop.author + space.admin` can author Pulse + saved-view templates. Each sub-role independently grantable.
+
+**Cross-tenant collaboration access** (network library):
+- Network library is a shared canonical browsable surface (cross-tenant by design)
+- All tenants' Tier-1 users see the same network library content (modulo vertical-typing per §3.26.14.12 + visibility per `vertical_applicability`)
+- Per-tenant publish authority remains tenant-local (`workshop.publish` Tier-3 role)
+- Per-tenant adopt authority remains tenant-local (`workshop.author` Tier-2 role with appropriate per-area sub-role grants)
+
+**Default-restricted vs default-permissive philosophy**:
+- VIEW defaults: permissive (Workshop browse + network library browse) — operational visibility
+- EDIT defaults: restricted (per-customization-area role required) — change-control discipline
+- PUBLISH defaults: restricted (tenant-admin only) — brand protection + competitive posture
+
+**Tenant tightening**: tenants can declare per-template-type additional restrictions beyond canonical defaults. Default visibility + per-area edit gates are baseline; tenants can tighten if their compliance posture warrants (e.g., financial-document templates require dual-author authorization; SOC 2 customer requirements; competitive-information sensitivity).
+
+#### 3.26.14.3 Workshop home rendering
+
+**Workshop home is a Workshop-specific Space rendering** — NOT a Pulse instance. Pulse is for monitoring (passive); Workshop home is for craft-work (active engagement). Different verbs, different shapes. Forcing fractal-Pulse architecture onto Workshop would distort both primitives — architectural restraint corollary applies (when forcing existing primitive distorts both, don't force it).
+
+**Visual continuity preserved via shared design language** (per DESIGN_LANGUAGE §17 Workshop Visual System):
+- Pattern 2 chrome (rounded-[2px] + bg-surface-elevated + border-border-subtle + shadow-level-1) per piece
+- Section eyebrows (text-micro uppercase tracking-wider text-content-muted) per §13 typography canon
+- Pattern 1 tablet treatment (frosted-glass + atmospheric shadow) for individual template tablets
+
+Same DESIGN_LANGUAGE tokens; different composition shape (sections vs layered attention model). Operators recognize Workshop as platform-coherent; Workshop home composition is craft-shaped not monitoring-shaped.
+
+**Five-section composition** (canonical):
+
+```
+WORKSHOP HOME LAYOUT
+─────────────────────────────────────────────────────────────
+Header
+  • Workshop Space identifier ("Workshop")
+  • Search bar (search across all template types + network library)
+  • Mode-toggle for Tune vs Compose authoring entry
+
+Section 1: Your Customizations
+  • Templates this user has authored or modified
+  • Recent drafts in progress (with promote-to-active affordance)
+  • Filter by template type
+  • Most-engaged surface; highest section priority
+
+Section 2: Tenant Templates
+  • Templates the tenant has authored or adopted
+  • Read-able by all (per workshop.view); editable per role
+  • Filter by template type, author, adoption-source
+  • Operational visibility surface
+
+Section 3: Network Library
+  • Browse + search published templates from other tenants
+  • Vertical-aware filter (per §3.26.14.12 cross-vertical applicability)
+  • Curation surfaces (intelligence ranking + editorial selection per §3.26.14.9)
+  • Adoption affordance (adopt-to-tenant-Workshop with lineage tracking)
+
+Section 4: Intelligence Suggestions
+  • Patterns Workshop intelligence has detected (operator behavior → template suggestions)
+  • Per §3.26.14.14 closing-the-loop feature
+  • Accept / dismiss / "tell me more" affordances per suggestion
+
+Section 5: Recent Changes
+  • Audit log of recent template authoring across tenant
+  • Version history surface
+  • Per-template diff view affordance
+─────────────────────────────────────────────────────────────
+```
+
+**Section ordering rationale**: most-relevant-to-current-user-first. Your Customizations (highest engagement) → Tenant Templates (operational visibility) → Network Library (discovery) → Intelligence Suggestions (proactive guidance) → Recent Changes (audit/awareness).
+
+**Per-template-type sub-pages**: clicking into a template type opens dedicated authoring surface (Tune or Compose mode per §3.26.14.6/§3.26.14.7). Sub-pages render WITHIN Workshop Space (URL: `/workshop/{template_type}/{template_id?}`); back-navigation returns to Workshop home.
+
+**Search affordance**: Workshop home search spans all sections. Search results group by section + template type. Search powers Command Bar Workshop summons per §3.26.13.2 (⌘K → "edit pulse template" routes to Workshop search context).
+
+#### 3.26.14.4 Templates-as-data canonical commitment
+
+**Architectural commitment (cross-cutting platform discipline)**: every customizable platform surface is a TEMPLATE rendered against DATA. Not hard-coded UI. Not procedurally-generated layouts. Templates are first-class platform citizens.
+
+**The discipline**:
+- **Template** = persistent declaration (slot mapping + parameterization + composition + authoring metadata)
+- **Data** = ephemeral (live operational data fetched at render time)
+- **Render** = template + data → user-facing surface
+
+**Implications for existing primitives** (retroactive canonicalization — formalizing pattern that's been emerging across Phase W-3 widget catalog + Phase 2 saved views + Phase 6 briefing templates + Phase 8a workflows):
+
+| Primitive | Template type | Existing storage | Workshop integration |
+|---|---|---|---|
+| Pulse (per §3.26.12.4) | `pulse_template` | `vault_items.metadata_json.pulse_template_config` | Workshop is canonical authoring surface |
+| Saved views (Phase 2) | `saved_view` | `vault_items.metadata_json.saved_view_config` | `/saved-views` builder coexists; Workshop becomes canonical home |
+| Workflows (Phase 8a) | `workflow` | `workflows` table | Workflow Builder coexists; Workshop becomes canonical home |
+| Briefings (Phase 6) | `briefing_template` | `User.preferences.briefing_preferences` + platform defaults | Workshop is canonical authoring surface |
+| Documents (Phase D-2) | `document_template` | `document_templates` table | Workshop is canonical authoring surface |
+| Email/SMS (Phase W-4b) | `email_template` / `sms_template` | TBD per Phase W-4b email primitive design | Workshop integrates when Phase W-4b ships |
+| Focus (per §3.26.11) | `focus_template` | `vault_items.metadata_json.focus_template_config` (proposed) | Workshop is canonical authoring surface |
+| Widget catalog (Phase W-3) | `widget_template` | In-code `WIDGET_DEFINITIONS` + per-tenant overrides via `vault_items` | Workshop is canonical home for tenant overrides |
+| Command Bar shortcuts (per §3.26.13.4) | `command_bar_shortcut` | `vault_items.metadata_json.command_bar_shortcut_config` | Workshop is canonical authoring surface |
+
+**Implications for NEW customizable surfaces** (forcing function on canonicalization):
+- "How does Workshop customize this?" must be answerable at canonicalization time
+- New templates inherit storage pattern (VaultItems for low-volume templates; dedicated tables for high-volume queryable templates per §3.26.14.5)
+- New templates inherit version history + staging + collaborative editing (per §3.26.14.8)
+- New templates inherit network library publishing affordances (per §3.26.14.9)
+
+**Cross-cutting commitment depth**: this is the same architectural depth as "every AI call routes through `intelligence_service`" (Bridgeable Intelligence canon, CLAUDE.md §14) or "every document goes through `document_renderer`" (Phase D-1 canon). Cross-cutting platform commitment that downstream features inherit automatically when canonicalized.
+
+**Dual-path coexistence with legacy URLs**: existing customization surfaces (`/saved-views` builder + Phase 8a Workflow Builder + briefing config page + document templates admin page) coexist with Workshop as parallel canonical access paths. Workshop becomes canonical home for customization discovery + cross-template-type unified UX; existing URL paths remain canonical for direct authoring. Decision on path consolidation (single canonical OR continued dual-path) deferred to post-Workshop production tenant signal — concrete operator behavior determines whether dual-path causes confusion (consolidate to Workshop) or serves operator efficiency (preserve direct-path access).
+
+#### 3.26.14.5 Template registry infrastructure
+
+Distributed storage matching existing canon. Per-template-type registries; storage pattern chosen per template type by query patterns + volume. Workshop UI presents unified view via per-type registry contracts.
+
+**Storage discipline**:
+- Low-volume templates (Pulse, saved view, briefing, command-bar shortcut, focus, widget overrides) → `vault_items` with `item_type` discriminator + `metadata_json.{template_type}_config`
+- High-volume / queryable templates (workflows, document templates) → dedicated tables (`workflows`, `document_templates`)
+- **Discipline**: storage-pattern-per-template-type chosen by query patterns + volume; Workshop UI surfaces uniformly via per-template-type registries. UI needs unified API, not unified storage.
+
+**Per-template-type registry contracts** (unified API per template type):
+
+```
+Each registry exposes:
+  • list_templates(tenant_id, filter, role) → Template[]
+  • get_template(tenant_id, template_id, role) → Template | null
+  • create_template(tenant_id, draft_config, author) → Template
+  • update_template(template_id, draft_config, author) → Template (new version)
+  • promote_draft_to_active(template_id, author) → Template
+  • get_template_versions(template_id) → TemplateVersion[]
+  • adopt_from_network_library(network_template_id, tenant_id, author) → Template (with lineage)
+  • publish_to_network_library(template_id, anonymization_config) → NetworkLibraryEntry
+```
+
+**Common template envelope** (shared shape across template types — registry-canonical):
+
+```typescript
+interface Template<TConfig> {
+  id: string                              // UUID
+  tenant_id: string                       // owner tenant
+  template_type: TemplateType             // discriminator
+  name: string                            // user-facing label
+  description: string | null
+  version: number                         // monotonic per-template
+  is_active: boolean                      // current active version
+  is_draft: boolean                       // draft vs current
+  config: TConfig                         // type-specific config payload
+  author_id: string                       // who created/last-modified
+  created_at: timestamp
+  updated_at: timestamp
+  adopted_from?: {                        // network library lineage
+    network_template_id: string
+    source_tenant_anonymized: string
+    adopted_at: timestamp
+    upstream_subscribed: boolean          // per §3.26.14.10 subscription mechanics
+  }
+  visibility: "private" | "role_shared" | "user_shared" | "tenant_public"
+  audit_log_id: string                    // pointer to version history
+}
+```
+
+**Architectural separation discipline**: registry envelope (above) is platform-canon shared shape; per-template-type config (`TConfig`) is type-specific. This separation lets Workshop UI render a unified template-list surface while preserving type-specific authoring sub-pages. Registry envelope evolves rarely (canonical shape); per-type configs evolve per-template-type independently.
+
+**Registry contract migration**: existing primitives (Phase 2 saved views + Phase 8a workflows + Phase 6 briefings + Phase D-2 documents) gain registry-contract adapters when Workshop ships. Adapters surface existing storage through unified registry API without storage migration. Phase W-4b+ implementation lands the adapters; canon ships the contract.
+
+#### 3.26.14.6 Parameterization layer (Tune mode)
+
+**Tune mode**: existing template + parameter adjustments. Most operators stay in Tune mode.
+
+**Marmon 80/20 case** (canonical reference): adopting tenant takes published template (e.g., Marmon's "weekly mold-changeover Coordination Focus") + adjusts parameters (their schedule timing, their participant roles, their threshold values) without restructuring the template. 80% of customizations are parameterization, not composition.
+
+**Parameter schema per template type** (illustrative; per-type schema canonicalizes when each template type's Workshop integration ships):
+
+| Template type | Tune parameters |
+|---|---|
+| Pulse | Included widgets/saved views; slot mapping overrides; intelligence pattern variants |
+| Saved view | Filters, sort, grouping, presentation mode |
+| Workflow | Cron schedules, recipient roles, thresholds, branching conditions |
+| Briefing | Time of day, included sections, recipient role-routing |
+| Document | Branding (colors, logos), recipient roles, content variant selection |
+| Email/SMS | Recipient roles, send conditions, content variants |
+| Focus | Lifecycle trigger thresholds, participant role routing, sub-Focus declarations |
+| Command Bar shortcut | Trigger phrase, summon target |
+
+**Tune mode UX shape (canonical)**:
+- Template surface displays parameters as form fields (or appropriate input — date pickers, role pickers, threshold sliders)
+- User adjusts; preview reflects adjustments live (preview-only; doesn't persist until explicit save)
+- Save → new template version persists; user is opted into version history
+- Tune mode authoring requires per-customization-area sub-role per §3.26.14.2
+
+**Schema-driven**: each template type declares its tunable parameters via parameter schema. Workshop renders Tune-mode forms from schema. New parameters added to template type → automatically surfaced in Tune mode without Workshop UI code changes.
+
+**Tune-mode authoring discipline**:
+- Parameter validation per schema (type-checked + range-checked + cross-parameter consistency-checked)
+- Diff-against-current-active surface (operator sees what changed since active version)
+- "Reset to platform default" affordance (revert tuned parameters to platform-template baseline)
+- "Reset to upstream" affordance for adopted templates with subscription (revert to current upstream version per §3.26.14.10)
+
+#### 3.26.14.7 Composition layer (Compose mode)
+
+**Compose mode**: drag-and-drop assembly. Power users.
+
+**The "Notion blocks for operational data" insight**: composition primitives are reusable building blocks (widgets + saved views + intelligence patterns + content blocks + step types) that compose into custom templates.
+
+**Per-template-type composition primitives**:
+
+| Template type | Composition primitives |
+|---|---|
+| Pulse template | Widgets, saved views, intelligence patterns, sub-Focus references — drag into slots; rearrange layer compositions |
+| Saved view | Filter conditions, sort fields, grouping fields — drag to compose query |
+| Workflow | Step types (action, conditional, AI, document generation) — drag + connect with edges |
+| Document template | Content blocks (header, body sections, table, footer) — drag into document layout |
+| Briefing template | Sections (queues, flags, pending decisions, communications) — drag + ordering |
+| Focus template | Core element + canvas widgets + lifecycle trigger configuration — drag-and-drop canvas |
+| Email/SMS template | Content blocks + dynamic-data tokens + recipient routing — drag into composition |
+
+**Compose mode UX shape (canonical)**:
+- Canvas surface (per template type) with primitive palette on side
+- User drags primitives into composition; configures each primitive
+- Preview reflects composition live
+- Save → new template version persists
+- Compose mode authoring requires per-customization-area sub-role + tenant grant of `workshop.author` Tier-2 role
+
+**Power-user oriented**: most operators stay in Tune mode; Compose mode is for senior operators. Workshop UX surfaces Compose mode behind explicit affordance ("Compose new template" button) — not the default authoring path. Workshop home Section 1 (Your Customizations) surfaces draft Compose-mode templates; Tune-mode adjustments to existing templates surface in Section 2 (Tenant Templates) with diff indicators.
+
+**Composition primitive registry** (forward-flag): each template type declares its composition primitives via a per-type registry. Workshop renders Compose-mode palettes from registry. New primitive added to template type → automatically surfaced in Compose mode palette without Workshop UI code changes.
+
+**Templates composing other primitives** (cross-link to §3.26.14.13): when a Compose-mode template references widgets / saved views / intelligence prompts, the references are stored by canonical name (widget_id, saved_view shape, prompt_key). On render, references resolve against tenant's primitive instances. Detail at §3.26.14.13.
+
+#### 3.26.14.8 Authoring scope, version history, staging, collaborative editing
+
+**Three modes canonical**:
+
+| Mode | Scope | Authoring authority | Status |
+|---|---|---|---|
+| **Tune** | Existing template + parameter adjustments | Per-customization-area sub-role | CANONICAL |
+| **Compose** | Drag-and-drop assembly of primitives into custom template | Tier-2 `workshop.author` + per-area sub-role | CANONICAL |
+| **Code mode** | Direct JSON/code editing of template internals | — | **DEFERRED INDEFINITELY** per §3.26.7.5 canonical-quality discipline |
+
+**Code mode deferral discipline**: Tune + Compose cover the customization spectrum. Code mode addresses theoretical edge case that may never emerge. Speculative complexity (schema validation infrastructure + dangerous-template-detection + safety checks + UX-vs-power tradeoff) not justified preemptively. **Architectural restraint corollary**: don't canonicalize escape hatches before needed. If concrete need emerges from production tenant signal, canon expansion lands then. Until then, Tune + Compose are the canonical authoring surfaces.
+
+**Version history**:
+- Every template authoring action creates a new version (immutable; never overwrites prior versions)
+- Version current vs draft (current = active; draft = work-in-progress)
+- Promotion: draft → active is explicit operator action ("Promote to active") — not automatic on save
+- Audit trail: who modified what when; per-version diff view in Workshop
+
+**Staging discipline**:
+- **Draft version preview** (canonical, ships with Workshop): render template against current operational data WITHOUT promoting (preview-only)
+- **Staging environment** (deferred to post-Workshop ship): copy of tenant operational data with synthetic test scenarios for template testing. Canonical pattern, not Phase A scope.
+- **Promotion gates**: tenant admin can require dual-author approval or test-pass before promotion (per-tenant configurable; canonical pattern, ships when first tenant compliance posture requires it)
+
+**Collaborative editing**:
+- **Initial Workshop ships with single-author-per-draft** + draft-switching UX. Multiple operators can edit DIFFERENT drafts of the same template; merge resolution at promote-to-active.
+- **Real-time collaborative editing** (Google Docs-style co-authoring with cursor presence): deferred to post-Workshop ship. Canonical pattern, not Phase A scope.
+- **Merge resolution at promote-to-active**: last-writer-wins for parameter changes (Tune mode); explicit merge UX for composition changes (Compose mode). Conflict surfacing in Workshop UI; operator resolves.
+
+**Audit log retention**:
+- All template versions retained indefinitely (immutable history)
+- Per-version retention: who, what, when, optional commit message
+- Export-to-audit affordance for compliance review
+- Per-version diff view: side-by-side parameter comparison (Tune diffs) + composition diff (Compose diffs)
+
+**Authoring discipline scope**: Workshop authors templates against schema + parameter forms + composition primitives. Workshop does NOT directly edit operational data — operational data is consumed at render time, not at authoring time. This separation enforces templates-as-data discipline at the authoring boundary: Workshop is craft-work; operational Spaces are data-work.
+
+#### 3.26.14.9 Network library architecture
+
+**Network library is the cross-tenant browsable surface for published templates** — Section 3 of Workshop home per §3.26.14.3.
+
+**Strategic framing**: cross-tenant template propagation is strategic moat. By 2030, accumulated operational wisdom that competitors can't replicate without similar tenure. Cross-vertical template propagation compounds value across funeral homes + manufacturing + cemetery + crematory verticals. Network library is canonical-quality treatment matching strategic weight.
+
+**The architectural framing — what network library contains**:
+- **Per-template-type publishing affordances** — tenants publish their authored templates from Workshop to network library
+- **Per-template browse surfaces** — config preview + adoption stats + lineage tree + ratings + comments
+- **Curation infrastructure** — usage statistics + ratings + editorial selection + intelligence-based ranking
+- **Vertical-aware filtering** — templates filtered by adopting tenant's vertical per §3.26.14.12 cross-vertical applicability
+- **Adoption affordances** — adopt-to-tenant-Workshop with lineage tracking + subscription opt-in per §3.26.14.10
+- **Publisher accountability** — publisher anonymization decisions audited per §3.26.14.11
+
+**Network library NOT a separate Space**: rendered as Section 3 of Workshop home. Single browsable surface within tenant Workshop instance with per-tenant filtering. Architectural consolidation matches Workshop-as-canonical-customization-home framing.
+
+**Multi-source curation ranking signals**:
+
+| Signal | Source | Update cadence |
+|---|---|---|
+| Adoption count | Aggregated tenant adoption events | Real-time |
+| Active subscribers | Subscription state per template | Real-time |
+| Recent adoption velocity | Adoption rate over 30-day window | Daily aggregate |
+| Operator ratings | Per-tenant thumbs-up/thumbs-down | Real-time |
+| Editorial selection | Bridgeable team curation | Per-curation event |
+| Intelligence relevance | Per-adopting-tenant relevance scoring | Per-browse session |
+
+**Curation surfaces in network library**:
+- Top templates per vertical (intelligence + usage ranking)
+- Editorial picks (Bridgeable curation — "Starting templates for new manufacturing tenants" / "High-impact templates for funeral home operations")
+- Recently-adopted (popular adoption velocity)
+- Most-rated (high operator engagement)
+
+**Editorial selection authority** (Q5 resolved):
+
+Bridgeable team curation initially. Bridgeable team curates editorial picks for cross-vertical balance, platform-values alignment, and quality control. Tenants browse editorial picks via "Editorial picks" curation surface in network library.
+
+**Community-suggested editorial mechanism deferred** per §3.26.7.5 architectural restraint discipline. Concrete signal that warrants community-suggested editorial canonicalization:
+- Operators flagging exceptional templates Bridgeable team missed
+- Editorial bandwidth bottleneck (Bridgeable team can't keep pace with template ecosystem growth)
+
+When concrete signal emerges, future canonicalization path clear: community-flagged editorial layers atop existing Bridgeable team curation rather than replacing it. Maintains quality control + platform-values alignment while expanding curation capacity.
+
+Until concrete signal, editorial selection remains Bridgeable-team-only. Curation rigor matters more than curation throughput at network library bootstrap.
+
+**Per-template-type publishing affordance** (canonical flow):
+1. Operator selects template version to publish (typically active version, but draft can be published explicitly)
+2. Anonymization review surface (per §3.26.14.11) — Intelligence flags tenant-specific terms; operator confirms / overrides
+3. vertical_applicability declaration (per §3.26.14.12) — operator declares applicability scope
+4. Volume signature configuration (Tier 1 / 2 / 3 per §3.26.14.11)
+5. Operator confirms publish; template appears in network library; lineage tracked
+
+#### 3.26.14.10 Cross-tenant template propagation
+
+Copy-on-adopt default + subscribe-to-upstream-updates affordance opt-in per-template at adoption time.
+
+**Two adoption models**:
+
+**Model 1 — Copy-on-adopt (default)**:
+- Tenant adopts template; copy lives in tenant Workshop
+- Upstream changes do NOT propagate to copy
+- Tenant fully owns the copy (can customize, republish, delete)
+- Lineage tracked (`adopted_from.network_template_id` + `adopted_from.source_tenant_anonymized` per §3.26.14.5 envelope)
+- Most adoptions are copy-on-adopt — operator wants the template as a starting point, not a managed dependency
+
+**Model 2 — Subscribe-to-upstream-updates (opt-in per adoption)**:
+- Tenant adopts template AND opts into subscription (`adopted_from.upstream_subscribed = true`)
+- Subscriber receives notification on upstream version publication
+- Notification surfaces in Workshop home Section 5 (Recent Changes) + as Tier-2 Intelligence-suggested action per §3.26.14.14
+- Subscriber chooses per upstream update: accept-update / reject-update / unsubscribe
+
+**Subscription mechanics** (per-template per-tenant):
+- Subscription state stored in adopting template's `adopted_from.upstream_subscribed` field
+- Subscription is per-template (not per-publisher-aggregate; tenant subscribing to one of Marmon's templates does not automatically subscribe to all of Marmon's templates)
+- Notification dispatched within 24h of upstream publish (canonical SLA; tighter for Intelligence-detected high-priority updates per §3.26.14.14)
+
+**Two-tier merge discipline** (Q1 resolved):
+
+**Tune-mode parameter changes**:
+- **Non-conflicting** (subscriber hasn't modified those parameters): auto-accept upstream
+- **Conflicting** (subscriber has modified): explicit review required
+- Bulk-accept-upstream affordance: "accept all non-conflicting changes" button
+
+**Compose-mode composition changes**:
+- ALWAYS require explicit operator review regardless of conflict status
+- **Reasoning**: composition changes restructure template fundamentally; subscriber should review even non-conflicting changes because behavior may change
+- Side-by-side composition diff in Workshop UI; operator manually constructs merged composition
+
+Phase 8a workflow fork-vs-enrollment patterns parallel; consistent discipline across customization mechanisms.
+
+**Revocation of subscription**:
+- Subscriber can unsubscribe at any time via Workshop UI
+- Unsubscribe drops subscription state but preserves current local template (tenant keeps the version they've got; just stops receiving upstream notifications)
+- Re-subscribe affordance: subscriber can re-subscribe; if upstream has advanced, immediate update notification surfaces
+- Publisher CANNOT force-unsubscribe subscribers (subscription is opt-in pull, not push)
+
+**Publisher template lifecycle**:
+- Publisher can deprecate template (mark as superseded; existing subscribers keep current version + receive deprecation notification + recommended-replacement template if publisher provides one)
+- Publisher can publish new variant (e.g., "Marmon mold-changeover v2") as separate template; subscribers of v1 receive variant-availability notification + can choose to migrate or stay
+- Publisher CANNOT modify in-place after publication (immutable per-version; new versions = new published entries with version-incremented identifiers)
+
+**Subscription mechanics edge cases**:
+- Subscriber tenant changes vertical: subscription continues if vertical_applicability still includes new vertical; otherwise subscription pauses with operator-review affordance
+- Publisher tenant deactivates: published templates remain in network library indefinitely (anonymized; no tenant-identifying data); subscribers continue with current version
+- Subscriber template customizations diverge significantly from upstream: subscription remains valid; subscriber sees increasingly large merge surfaces; can unsubscribe at any time
+
+#### 3.26.14.11 Anonymization granularity
+
+Multi-tier model — tenant identifiers + counterparty identifiers stripped automatically; pattern semantics preserved; volume signatures configurable per publish (3-tier: stripped / bucketed / preserved).
+
+**Tier 1 — Tenant identifiers + counterparty identifiers** (two-tier confidence within Tier 1, per Q2 resolution):
+
+**High-confidence terms** (auto-stripped at publish time):
+- Tenant name, tenant ID, customer names, supplier names, partner tenant names, employee names + emails
+- Internal codes, internal product names that are unambiguously tenant-specific
+- Pattern: Intelligence Haiku-tier scan with high-confidence threshold (canonical threshold: ≥0.90 confidence per Bridgeable Intelligence canonical confidence-tier mapping)
+- Operator review surface visible (sees what was auto-stripped + can override for false-positives)
+
+**Low-confidence terms** (flagged for operator review without auto-strip):
+- Tenant-specific terminology that may or may not be identifying
+- Generic-sounding terms with possible tenant-specific context
+- Pattern: Intelligence scan with low-confidence threshold (0.50–0.89 confidence)
+- Operator decides per-flagged-term: **strip** (operator confirms term is identifying) / **preserve** (operator confirms term is generic) / **edit** (operator manually rewrites term to anonymized form)
+
+**Below-threshold terms** (not flagged, preserved as pattern semantic): below 0.50 confidence; assumed pattern-semantic; preserved without flag.
+
+**Two-tier confidence rationale**: matches Bridgeable Intelligence canonical pattern (flags-and-suggests + operator confirms-and-overrides). Reduces false-strip rate (legitimate pattern-semantic terms preserved when low-confidence-flagged); reduces operator burden (high-confidence cases auto-handled). Operator accountability preserved via audit log + override surface.
+
+**Confidence-threshold tuning**: thresholds canonicalize at publish-flow implementation; initial thresholds (≥0.90 / 0.50–0.89 / <0.50) calibrated against synthetic test corpus + adjustable via tenant operational config if production signal warrants.
+
+**Cryptographic identifier replacement** (preserves referential integrity within template):
+- One-way hash of tenant ID → stable anonymous identifier (`Manufacturer-A12B`)
+- Within a template, references to same tenant resolve to same anonymized ID
+- Across templates from same tenant, anonymized IDs DIFFER (per-template-publish hash; not consistent across publishes) — prevents cross-template fingerprinting while preserving within-template referential integrity
+- Hash function: salted SHA-256 with per-publish salt; salt stored in publish metadata for audit purposes
+
+**Tier 2 — Pattern semantics preserved**:
+- Rule logic (workflow steps, conditional branches)
+- Prompts (intelligence prompt templates with anonymized variable names)
+- Composition shape (slot mapping, primitive arrangement)
+- Time-of-day patterns ("send at 7am" preserved; "send to Hopkins FH at 7am" anonymized to "send to {customer-token} at 7am")
+- Role-based routing structure (preserved; specific role names stay if generic — `dispatcher`, `office_admin` — anonymized if tenant-custom — `bob_the_dispatcher`)
+- Decision logic (preserved; specific values handled per Tier 3 below)
+
+**Tier 3 — Volume signatures configurable per publish (3-tier)**:
+
+| Tier | Treatment | Example |
+|---|---|---|
+| **Stripped** | Numeric thresholds removed; rules adapt to adopting tenant's volume | "send when N invoices > X" → "send when N invoices > {threshold}"; X stripped + parameterized |
+| **Bucketed** | Relative low/medium/high; preserves sense without exact numbers | "high-volume threshold" / "low-frequency event" |
+| **Preserved** | Publisher opt-in transparency | Publisher chooses to surface their actual numbers as guidance for adopters |
+
+Default: Tier 1 stripped (most conservative). Operator can opt up to Tier 2 or Tier 3 per publish (Tier 3 requires explicit acknowledgment — "I confirm publishing my actual operational volumes as guidance for adopters").
+
+**What counts as tenant identifier vs pattern semantic** (canonical taxonomy):
+
+| Category | Tenant Identifier (stripped) | Pattern Semantic (preserved) |
+|---|---|---|
+| Names | Customer names, supplier names, employee names, internal product names | Generic role names (driver, dispatcher), entity types (case, order, invoice) |
+| Numbers | Specific revenue figures, customer counts, invoice volumes (Tier 1 default) | Relative thresholds, ratios, percentages |
+| Times | Specific calendar dates, business hours unique to tenant | Time-of-day patterns ("morning", "end of day"), recurring schedules ("weekly", "monthly") |
+| Text | Tenant-specific terminology, internal jargon | Generic operational vocabulary, role descriptions |
+| Logic | (none — logic always pattern semantic) | All conditional logic, decision branches, threshold comparisons |
+
+**Edge case — product names**: Generic product names ("burial vault", "urn") = pattern semantic. Tenant-specific product names ("Wilbert Triune", "Marmon Pro Series X") = tenant identifier. Intelligence flag-and-strip with operator review at publish time per pre-publish review surface.
+
+**Audit log of what was anonymized vs preserved** (publisher accountability):
+- Audit trail: what fields were anonymized, what fields were preserved (per Tier 2 + Tier 3), what operator decisions were made
+- Audit log is publisher-internal (visible in Workshop's audit log); NOT visible to adopters (anonymity preserved on adopter side)
+- Compliance review affordance: tenant admin can review historical publish audit logs
+
+**Competitive-information leak prevention**:
+- Tier 1 default conservative
+- Two-tier confidence within Tier 1
+- Operator accountability via audit log
+- Network library does NOT expose publish-source-tenant identifiers to adopters (adopters see only `Manufacturer-A12B` style anonymized identifier)
+- Tenant tightening (per §3.26.14.2) — tenants can declare per-template-type additional restrictions on what can be published
+
+#### 3.26.14.12 Cross-vertical template applicability
+
+Vertical-typed templates with cross-vertical applicability declared explicitly per template. `vertical_applicability` field at publish time.
+
+**Field declaration at publish time**:
+
+```typescript
+type VerticalApplicability = "all" | Vertical[]
+// Where Vertical = "funeral_home" | "manufacturing" | "cemetery" | "crematory"
+```
+
+**Canonical declarations**:
+- `["all"]` — cross-vertical (operational pattern applicable across verticals — e.g., AR aging escalation, monthly close coordination)
+- `["funeral_home"]` — vertical-specific (FH-only patterns — case management coordination, arrangement scribe workflows)
+- `["manufacturing"]` — vertical-specific (mfg-only patterns — production scheduling, mold changeover)
+- `["funeral_home", "cemetery"]` — multi-vertical intersection (FH + cemetery patterns — interment coordination)
+- `["funeral_home", "manufacturing"]` — uncommon but valid (Marmon 80/20 case — manufacturer-FH supplier coordination)
+
+**vertical_applicability declaration discipline — no default** (Q3 resolved):
+
+Publisher MUST explicitly declare `vertical_applicability` at publish time. **No default value**. Publishing flow gates on operator confirmation of vertical scope before publish completes.
+
+**Rationale**:
+- Publishing is intentional act; defaulting could publish to wrong vertical scope (e.g., default to publisher's vertical when operator intended cross-vertical)
+- Cross-vertical detection unreliable for defaulting (Intelligence cannot reliably auto-detect cross-vertical applicability — operator domain knowledge required)
+- Explicit declaration captures operator wisdom about applicability scope (operator knows their template's intended audience)
+
+**Pre-publish review surface** (canonical): Intelligence flags-and-suggests at pre-publish review:
+- "This template has no vertical-specific elements; consider declaring `[all]`?" (cross-vertical suggestion)
+- "This template references vertical-specific terminology (`urn`, `casket`); consider declaring `[funeral_home]`?" (vertical-specific suggestion)
+- "This template references both manufacturing terminology AND funeral-home terminology; consider declaring `[funeral_home, manufacturing]`?" (multi-vertical suggestion — Marmon 80/20 case)
+
+Operator confirms vertical applicability before publish completes. Intelligence suggests; operator decides. Matches Bridgeable Intelligence canonical pattern.
+
+**Multi-vertical templates require operator manual declaration**: Intelligence cannot reliably auto-detect cross-vertical applicability; multi-vertical declarations require operator confirmation. Single-vertical declarations may auto-suggest with high confidence based on terminology analysis but still require explicit operator confirmation.
+
+**Browsing filters** (canonical):
+- Default browse filter: templates with `vertical_applicability` matching adopting tenant's vertical (`vertical IN vertical_applicability OR "all" IN vertical_applicability`)
+- Browse surface displays "filtered to your vertical" indicator + "show templates from other verticals" affordance
+- Operator override: opt-in to browse cross-vertical templates with explicit affordance ("Show templates from manufacturing tenants for inspiration")
+
+**Cross-vertical adoption**:
+- **Allowed when applicability matches**: `"all" IN vertical_applicability` OR adopting vertical IN `vertical_applicability` list
+- **Blocked when incompatible**: template `["funeral_home"]` cannot be adopted by manufacturing tenant — adoption attempt surfaces incompatibility error with explanation
+- **Adoption with explicit override**: tenant admin (`workshop.publish` Tier-3 role) can override block with explicit acknowledgment ("I understand this template is designed for funeral homes; I'm adopting it as inspiration for manufacturing context"); template adopted with `cross_vertical_override = true` flag in lineage
+
+**Edge case — tenant changes vertical**:
+- Pre-adopted templates with incompatible vertical_applicability (relative to new vertical) surface as "adopted from incompatible vertical" warning in Workshop tenant template list
+- Operator review affordance: keep template (acknowledge mismatch) / archive template / customize-to-fit-new-vertical
+- Tenant vertical change is rare (most tenants stay in their vertical); edge case handled with operator review rather than auto-action
+
+**Marmon 80/20 case — canonical cross-vertical pattern**:
+- Publisher declares `vertical_applicability = ["funeral_home", "manufacturing"]`
+- FH tenants adopt as customer-coordination template (FH-perspective rendering)
+- Manufacturing tenants adopt as supplier-coordination template (manufacturing-perspective rendering)
+- Adopting tenant's role-context determines template render (template parameters include tenant-perspective placeholder; resolved per-tenant at adoption)
+
+**Vertical-specific template fallback**:
+- When tenant browses network library and no templates match their vertical: browse surface shows "no templates currently published for your vertical; consider browsing cross-vertical inspiration" with affordance to widen filter
+- Tenant can browse cross-vertical templates manually with explicit affordance per above
+- Editorial team monitors per-vertical template library health; flags under-served verticals for editorial outreach
+
+#### 3.26.14.13 Templates composing other primitives
+
+Templates carry source references by canonical name (widget_id, saved_view shape, intelligence_prompt_key); on adoption, references resolve against adopting tenant's primitive instances; missing references render per §13.4.3 agency-dictated error surface.
+
+**Source reference taxonomy** (which primitives can be referenced in templates):
+
+| Primitive | Reference shape | Resolution discipline |
+|---|---|---|
+| Widget | `widget_id` (Phase W-3 catalog citizen — `today`, `anomalies`, etc.) | Adopting tenant's widget catalog must include `widget_id`; platform-canon widgets always present; extension-gated widgets require activation |
+| Saved view | `saved_view` shape (entity_type + filter + sort + grouping declaration) | Adopting tenant either has matching saved view OR Workshop UI prompts to create matching saved view at adoption time |
+| Intelligence prompt | `intelligence_prompt_key` (Bridgeable Intelligence canonical key) | Prompt registry is platform-canon (managed prompts); resolution straightforward (prompt exists for all tenants) |
+| Entity type | `entity_type` (e.g., `fh_case`, `sales_order`, `invoice`) | Entity types are platform-canon; resolution straightforward |
+| Focus template | `focus_template_type` + `core_element` (per §3.26.11) | Focus templates may be adopting-tenant-specific; resolution against tenant's Focus template registry |
+| Sub-Focus reference | `sub_focus_template_type` (per §3.26.11.6) | Per-template-type declaration of supported sub-Focus types; resolution against tenant's Focus template registry |
+
+**Resolution discipline — references stored by canonical name, not by tenant-specific ID**:
+- Publisher's template references widgets by `widget_id` (platform-canon name), not by widget-instance UUID
+- Publisher's template references saved views by SHAPE (entity_type + filter + sort + grouping declaration), not by saved-view UUID — adopting tenant's saved-view UUID will differ; shape is portable
+- Publisher's template references prompts by canonical key, not by prompt UUID
+- All references portable across tenants
+
+**Resolution at adoption time**:
+- On adoption, references resolve against adopting tenant's primitive instances
+- Successful resolution: reference passes; template renders normally
+- Failed resolution: missing reference; template surfaces empty-state placeholder per §13.4.3
+
+**Missing references render per §13.4.3 agency-dictated error surface**:
+- Adopted templates are USER-COMPOSED surface (operator chose to adopt)
+- Missing references = visible failure (NOT silent filter — adopting tenant should see and remediate)
+- Per-primitive empty-state placeholder:
+  - Widget missing: "Widget '{widget_id}' not available in your tenant"
+  - Saved view shape unmatched: "No matching saved view; create one to match this shape?"
+  - Intelligence prompt missing: "Required intelligence prompt unavailable" (rare; platform-canon prompts present for all tenants)
+  - Entity type unsupported: "Entity type not enabled in your tenant" (extension-gated; e.g., urn entities require urn_sales extension)
+  - Focus template missing: "Focus template not configured; create one to match this shape?"
+- Affordance to remediate per missing-reference type
+
+**Tenant remediation paths**:
+- **Enable missing infrastructure** (e.g., activate `urn_sales` extension if template references urn widgets)
+- **Create matching saved view** (Workshop prompts to create saved view matching shape; user reviews + saves; references resolve)
+- **Create matching Focus template** (Workshop prompts to create Focus template matching declared type + core element)
+- **Customize-to-remove-dependency**: edit template (Tune or Compose mode) to remove missing reference
+- **Stay-with-broken-state**: not recommended but allowed (visible failure remains until remediated)
+
+**Pre-adoption incompatibility surfacing UX** (canonical):
+- At adoption time: pre-adopt review surface flags missing references ("this template references 3 widgets you don't have + 1 saved view shape your tenant needs to create; review before adopting")
+- Per-missing-reference action affordance: "auto-remediate" (Workshop prompts for required configurations) / "adopt anyway" (broken state until remediated)
+- At render time: missing reference renders empty-state placeholder per §13.4.3
+- In Workshop tenant template list: templates with broken references flagged for operator attention with "fix references" affordance
+
+**Reciprocity discipline — encouragement, not requirement**:
+
+Network library benefits from contribution (more published templates = more value for all tenants). Tenants are encouraged to publish customizations that prove valuable. Reciprocity discipline avoids: forced contribution, pay-to-play, quality gating beyond editorial.
+
+**Reciprocity affordances** (canonical):
+- "Template you adopted has 47 other adopters — yours could help others too" prompt (post-customization Workshop nudge)
+- Tenant publish stats surface in Workshop ("you've published 5 templates; thanks for contributing")
+- Editorial recognition for high-value publishers (intelligence-curated; surfaces in network library curation feed)
+- Per-template adoption stats visible to publisher ("your template has been adopted by 12 tenants this quarter")
+
+**What reciprocity discipline avoids**:
+- **Forced contribution**: tenant can fully use platform without ever publishing — adoption authority and publish authority decoupled per §3.26.14.2
+- **Pay-to-play**: no tier of platform access requires contribution
+- **Arbitrary access barriers**: editorial curation is value-add, not gatekeeping; tenants browse all published templates regardless of their publishing history
+
+**Strategic discipline**: reciprocity is encouraged because cross-tenant operational wisdom propagation IS the strategic moat. But forcing reciprocity degrades adoption willingness; making contribution voluntary preserves the wisdom-flywheel without coercion.
+
+**Adoption-with-publish-authority workflow** (Tier-3 `workshop.publish` role):
+
+When Tier-3 user adopts from network library + customizes, additional affordance available: **adopt-and-republish**.
+
+**Workflow**:
+1. Tier-3 user adopts template from network library (copy-on-adopt or subscribe)
+2. User customizes template (Tune or Compose mode)
+3. Workshop offers "republish as variant" affordance — re-publishes customized template to network library as new variant
+4. Lineage tracked: original publisher → adopting tenant → republisher (all anonymized per §3.26.14.11)
+5. Republished variant appears in network library as separate published template; original publisher's template not modified
+6. Republisher's vertical_applicability + anonymization config independent of original publisher's
+
+**Strategic insight — adoption-with-publish-authority enables template evolution**:
+- Original publisher creates "Marmon mold-changeover v1"
+- Adopting tenant customizes for their operation + republishes as "mold-changeover variant for high-volume facilities"
+- Network library accumulates variant ecosystem — different operational contexts get tailored templates
+- Templates compound in value as variant ecosystem deepens
+
+**Lineage depth canonical (3-level)** (Q4 resolved):
+
+**3-level chain** (canonical full chain):
+- Original publisher → adopting tenant → republisher
+- All three levels visible in lineage display (anonymized identifiers per §3.26.14.11)
+- Display: "originally from {anonymous-source-A}, adopted by {anonymous-source-B}, republished by {anonymous-source-C}"
+
+**2-level chain** (original + immediate republisher; no intermediate adopter):
+- Edge case: original publisher's template republished WITHOUT adopting-tenant intermediate (e.g., Bridgeable team curates and republishes)
+- Display: direct lineage WITHOUT "republished derivative" framing — "originally from {anonymous-source-A}, republished by {anonymous-source-B}"
+
+**Deeper chains** (chain depth > 3 — republished-from-republished):
+- Intermediate links collapse to preserve privacy + UI clarity
+- Display: "originally from {anonymous-source-A}, last republished by {anonymous-source-D}" — preserves originator credit + immediate predecessor visibility; intermediate links {B, C} not surfaced
+- Audit log retains full chain (publisher accountability); display surface collapses for adopter view
+
+**Why 3-level canonical**:
+- Originator credit preserved (most important — establishes template provenance)
+- Immediate predecessor visibility (adopter can evaluate immediate refinement context)
+- Chain depth >3 creates privacy fingerprinting risk (longer chains = more anonymized identifiers visible = more cross-template correlation possible)
+- UI complexity manageable at 3-level; explodes at variable-depth chains
+
+**Strategic insight**: 3-level lineage discipline preserves the wisdom-flywheel (template variant ecosystem visible + originator-credited) while protecting privacy (intermediate-link collapse limits fingerprinting surface).
+
+#### 3.26.14.14 Intelligence-Suggested Customizations
+
+**Closing-the-loop feature**: Intelligence detects operator behavior patterns + suggests templates Workshop-customizable. The platform learns what operators actually do; suggests how they could formalize emerging patterns.
+
+**Strategic framing**: this is the layer where the templates-as-data discipline (§3.26.14.4) earns compounding value. Every operator action generates signal; Intelligence surfaces patterns; Workshop offers formalization. Over time, tenants accumulate operationally-grounded customizations without requiring deliberate template-authoring effort. The wisdom flywheel completes: behavior → suggestion → template → published-anonymized → cross-tenant adoption → cross-tenant behavior signals → ... iterating across years.
+
+##### 3.26.14.14.1 Pattern detection categories
+
+**Three canonical pattern detection categories**:
+
+**Behavioral patterns** — operator behavior signals → "you do X often; want it formalized?"
+- Drill-down patterns: operator repeatedly drills into top-20%-customers-by-revenue → suggest "Key Accounts" Customer Pulse template
+- Summon patterns: operator repeatedly summons "this week" + "Hopkins" via Command Bar → suggest combined "Hopkins this week" custom shortcut
+- Route patterns: operator follows consistent navigation sequence (`/dashboard` → `/orders/today` → `/scheduling`) → suggest custom Pulse template + Command Bar shortcut bundling that workflow
+
+**Adoption patterns** — cross-tenant template-adoption correlations → "tenants who adopted A often adopt B"
+- Anonymized per §3.26.14.11: signal is "manufacturing tenants who adopt template-shape-A frequently adopt template-shape-B"; never "Tenant XYZ adopted both"
+- Example: "Your team adopted Marmon's 80/20 template; consider adopting their AR-aging escalation template too?"
+- Pattern source: cross-tenant adoption velocity correlations + intelligence-detected operational complementarity
+
+**Communication patterns** — manual coordination has consistent shape → "consider a Coordination Focus template?"
+- SMS thread patterns: same participant set + similar topic vocabulary across multiple threads → suggest Coordination Focus template
+- Email thread patterns: recurring email exchanges around scheduled events → suggest Coordination Focus + scheduled-coordination core element
+- Ad-hoc workflow patterns: operator manually executes consistent step sequence → suggest workflow template
+
+##### 3.26.14.14.2 Suggestion delivery surfaces
+
+**Two canonical delivery surfaces**:
+
+**Surface 1 — Workshop home Section 4 (Intelligence Suggestions)** (per §3.26.14.3 canonical 5-section layout):
+- Persistent surface; operator visits Workshop deliberately to review accumulated suggestions
+- Per-suggestion card: pattern summary + suggested template type + accept / dismiss / "tell me more" affordances
+- Ranking: highest-confidence + most-recent-pattern-emergence first
+- Cap on visible suggestions (default ~5 visible; "show all" affordance for full backlog)
+
+**Surface 2 — Ambient suggestions in operational context**:
+- Right-rail prompt (non-blocking; dismissable) when operator is doing the thing the suggestion would formalize
+- Example: operator drills into top-20%-customers for the 14th time → right-rail prompt "Doing this often? Formalize as Key Accounts Customer Pulse"
+- NOT modal; NOT blocking work; same suppression discipline as Workshop home suggestions
+- Frequency cap: max 1 ambient suggestion per session per pattern type (avoids notification fatigue)
+
+**Per-suggestion affordances** (canonical):
+- **Accept** → opens suggestion-driven template authoring flow (Tune-mode preferred; Compose-mode for complex cases — see §3.26.14.14.3)
+- **Dismiss** → suggestion suppressed for 30 days for operator+pattern combination; re-surfaces if pattern persists significantly past suppression window
+- **"Tell me more"** → context expansion explaining why pattern emerged (behavior data summary + suggested template config preview + similar-tenant adoption stats anonymized per §3.26.14.11)
+
+##### 3.26.14.14.3 Acceptance + rejection handling
+
+**Acceptance flow** (Accept → template authoring):
+
+**Tune-mode preferred** (most suggestions): Intelligence pre-populates template config based on detected pattern; operator tunes parameters before saving. Reduces operator effort vs. starting from scratch; preserves operator authorship (operator's customization is the saved template, not the auto-generated suggestion).
+
+**Compose-mode for complex cases**: when suggestion involves composition (e.g., custom Coordination Focus template combining real-time-thread + threshold-watch core elements), Compose-mode opens with pre-populated composition draft; operator refines via drag-and-drop.
+
+**Suggestion-derived template lineage**: tenant-local lineage tracking — adopted template's audit log records "originated from Intelligence suggestion based on [pattern type]". Not a network-library lineage (suggestion is per-tenant; published templates are explicit publish events per §3.26.14.10).
+
+**Rejection flow** (Dismiss → suppression):
+- Suggestion suppressed for 30 days for operator+pattern combination (suppression scope: this user; this pattern type; this tenant)
+- Re-surface logic: if pattern persists significantly past suppression window (e.g., behavior frequency increases 50% over baseline; or new contributing-pattern signals emerge), suggestion re-surfaces with "you dismissed this earlier; here's why we're showing it again" framing
+- Permanent dismissal affordance: "don't suggest this pattern again" (permanently suppressed for operator+pattern combination)
+
+**"Tell me more" flow** (context expansion):
+- Behavior data summary: "We noticed you drilled into top-20%-customers 14 times in the past 30 days, with average drill-down depth of 3 levels"
+- Suggested template config preview: full template config rendered for review (operator can mentally verify suggestion logic before accepting)
+- Similar-tenant adoption stats (anonymized): "12 manufacturing tenants in similar revenue range have adopted similar template shapes" (per §3.26.14.11 anonymization — never specific tenant attribution)
+
+##### 3.26.14.14.4 Intelligence learning loop
+
+**Per-tenant pattern detection** (canonical):
+- Operator behavior signals collected via existing audit log infrastructure + Phase 8e.1 affinity tracking infrastructure
+- Pattern detection prompts via Bridgeable Intelligence backbone — registered managed prompts: `workshop.pattern_detection.{pattern_type}` (e.g., `workshop.pattern_detection.drill_down`, `workshop.pattern_detection.summon_correlation`, `workshop.pattern_detection.communication_shape`)
+- Per-tenant pattern signals: tenant-scoped (no cross-tenant exposure of operator behavior data)
+
+**Cross-tenant pattern signals** (anonymized per §3.26.14.11):
+- Aggregate-only signals: "12 manufacturing tenants adopted template-shape-A" — never specific tenant attribution
+- Pattern-shape signals: "manufacturing tenants who adopt template-shape-A frequently adopt template-shape-B" — pattern shape preserved, tenant identifiers stripped
+- Anonymization at signal extraction level (NOT at suggestion delivery level — extraction-time anonymization prevents per-tenant attribution from ever entering the cross-tenant signal space)
+
+**Suggestion quality calibration**:
+- Acceptance rate per suggestion type tracked over time
+- High-acceptance suggestion types: threshold lowered (more aggressive suggestion delivery)
+- High-dismissal suggestion types: threshold raised (more conservative; only highest-confidence patterns surface)
+- Per-tenant calibration: each tenant's behavior may differ; thresholds adapt per-tenant
+- Calibration review: tenant admin can review per-suggestion-type acceptance rates in Workshop audit log
+
+**Storage discipline**:
+- Suggestion state stored as tenant operational data (NOT managed prompt registry — matches §3.26.11.7 storage discipline established in Session 1 Phase A)
+- Per-suggestion rows: status (pending/accepted/dismissed/permanently-dismissed), context (pattern signals + confidence), generated-template-config-preview, action audit (who saw, when shown, action taken, latency)
+- Concrete schema canonicalizes when first Workshop implementation lands (Phase W-4b+ depending on Workshop sequencing)
+- Storage location follows existing canonical patterns (`Company.settings_json.workshop_suggestions` JSONB for low-volume; dedicated `workshop_suggestions` table for high-volume + queryable patterns)
+
+**Privacy preservation**:
+- Per-tenant signals: tenant-scoped per Bridgeable Intelligence canonical scoping
+- Cross-tenant signals: anonymized per §3.26.14.11; never expose individual tenant's behavior to other tenants
+- Operator behavior privacy: signals captured for Workshop only; not exposed in other operational surfaces; not exposed to other tenants under any circumstances
+
+##### 3.26.14.14.5 Pattern detection vs operator-initiated authoring
+
+**Architectural distinction** (preserved discipline):
+- **Operator-initiated authoring** (Phase A Workshop primitive): operator visits Workshop deliberately + creates template via Tune or Compose mode
+- **Intelligence-suggested customizations** (this subsection): Intelligence detects patterns + offers template suggestions; operator decides accept / dismiss
+- Both flows produce same outcome (template in tenant Workshop); different initiation patterns
+
+**Why both flows canonical**:
+- Operator-initiated: operator knows what they want; deliberate craft-work
+- Intelligence-suggested: operator may not realize pattern is formalize-able; closing-the-loop catches emergence
+- Different operator psychology; both serve customization need
+- Together: comprehensive customization flow without forcing either pattern
+
+**Discipline**: Intelligence-suggested customizations augment operator agency, never replace it. Suggestion is offering, not imposition. Operator always controls accept / dismiss / customize-before-saving. No "Intelligence auto-creates templates without operator approval" pattern. Templates-as-data discipline preserves operator authorship.
+
+#### 3.26.14.15 Cross-references to customizable primitives
+
+Per §3.26.14.4 forcing function: every customizable platform surface has Workshop integration documented. This section establishes the canonical cross-reference catalog.
+
+| Customizable primitive | Workshop integration | Storage | Coexistence |
+|---|---|---|---|
+| **§3.26.11 Focus Primitive Types** | Focus templates Workshop-customizable per §3.26.14.4 retroactive canonicalization. Tune-mode parameter adjustments (lifecycle thresholds, participant routing); Compose-mode core element + canvas widget assembly. | `vault_items.metadata_json.focus_template_config` (proposed; canonical when Focus templates ship with Phase W-4b+ implementation) | New canonical surface; no legacy URL |
+| **§3.26.12 Pulse Scope Architecture** | Pulse templates Workshop-customizable. Marmon 80/20 case canonical anchor. Tune-mode parameter adjustments (slot mapping, intelligence pattern variants); Compose-mode widget + saved-view + entity-card assembly into custom Pulse compositions. | `vault_items.metadata_json.pulse_template_config` (per §3.26.12.4 forward-flag) | New canonical surface; no legacy URL |
+| **§3.26.13 Command Bar Architecture** | Custom command bar shortcuts Workshop-authored per §3.26.13.4 Layer 3 forward-flag. Trigger-phrase + summon-target authoring; Intelligence-suggested-summon promotion to Workshop shortcuts. | `vault_items.metadata_json.command_bar_shortcut_config` | New canonical surface; no legacy URL |
+| **§3.26.10 Briefings** | Briefing templates Workshop-customizable. Tune-mode parameter adjustments (time of day, included sections, recipient role-routing); Compose-mode section + content-source assembly. | `User.preferences.briefing_preferences` + platform defaults (Phase 6 canonical pattern; Workshop becomes UI surface) | New canonical surface; existing /briefing settings page coexists per §3.26.14.4 dual-path discipline |
+| **§3.25 Phase W-3 widget catalog** | Custom widget templates + per-tenant widget overrides Workshop-authored. Rare; advanced power-user role per §3.26.14.2 `widget.author` sub-role. | In-code `WIDGET_DEFINITIONS` + per-tenant overrides via `vault_items.metadata_json.widget_template_override` | New canonical surface; no legacy URL |
+| **§3.25 Phase 2 saved views** | Saved view authoring Workshop-customizable. Tune-mode filter + sort + grouping adjustments; Compose-mode query construction + presentation mode selection. | `vault_items.metadata_json.saved_view_config` (existing Phase 2 canon) | `/saved-views` builder coexists with Workshop as parallel canonical access paths per §3.26.14.4 dual-path discipline |
+| **Phase D-1 / D-2 documents** | Document templates Workshop-customizable. Tune-mode branding + recipients; Compose-mode content block assembly. | `document_templates` table (existing Phase D-2 canon) | Existing document templates admin page coexists with Workshop per §3.26.14.4 dual-path discipline |
+| **Phase 8a–d workflows** | Workflow templates Workshop-customizable. Tune-mode cron + recipient + threshold adjustments; Compose-mode step + edge construction (Workflow Builder canonical Compose-mode shape). | `workflows` table (existing Phase 8a canon) | Workflow Builder coexists with Workshop as parallel canonical access paths per §3.26.14.4 dual-path discipline |
+| **Phase W-4b email/SMS** | Email/SMS templates Workshop-customizable when Phase W-4b email primitive ships. Tune-mode recipient + send-condition + content-variant adjustments; Compose-mode content block + dynamic-data-token assembly. | TBD per Phase W-4b email primitive design (likely `email_templates` / `sms_templates` dedicated tables for high-volume queryable patterns) | New canonical surface (Phase W-4b ships with Workshop integration native; no pre-Workshop legacy URL) |
+
+**Forcing function preserved**: every NEW customizable surface canonicalized post-Session-1.5 must answer "how does Workshop customize this?" at canonicalization time. Add row to this catalog. No customizable surfaces ship without Workshop integration.
+
+**Canonical evolution path**: as new customizable primitives canonicalize, they extend this table. Workshop integration is mandatory canonical infrastructure for any customizable platform surface. Templates-as-data discipline (§3.26.14.4) is the cross-cutting commitment; this table is the per-primitive accountability ledger.
+
 ---
 
 # Part 6 — Funeral Home Vertical

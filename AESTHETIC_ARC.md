@@ -1227,6 +1227,141 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 
 ---
 
+## Session 1.5 — Workshop Primitive Canon (canon locked, 2026-05-06)
+
+Pure architectural canon session. NO CODE this session. Workshop primitive emergence canonicalized; templates-as-data discipline established as cross-cutting platform commitment; network library architecture as strategic moat; Intelligence-Suggested Customizations as closing-the-loop feature. Total ~3.5 hours conversational/architectural work; canon doc batch write at session close.
+
+### Phase A — Workshop Space + Customization Architecture
+
+§3.26.14 introduced as comprehensive Workshop Primitive section (15 subsections). Workshop established as canonical Space — distinct from operational Spaces (where users live and work) and Custom Spaces (per-user workspace configurations). **Workshop is craft-work Space**: tenant operators visit deliberately to customize the platform, then leave. One Workshop instance per tenant (singleton); both side-nav top-level entry AND command-bar summon canonical (⌘K → "Workshop" exception-summonable per §3.26.13.1).
+
+**Workshop access scope canonicalized as three-tier model**:
+- Tier 1 `workshop.view` — default-permissive (all active tenant users); browsing operational visibility
+- Tier 2 `workshop.author` — default-restricted; per-customization-area sub-role gates editing (`workflow.edit`, `space.admin`, `briefing.edit`, `document.edit`, `email.edit`, `focus.author`, `widget.author`)
+- Tier 3 `workshop.publish` — default-restricted; tenant admin publishes to network library
+
+**Workshop home rendering** as Workshop-specific Space layout (NOT fractal Pulse — different verbs, different shapes; forcing Pulse architecture would distort both primitives). Five-section composition: Your Customizations / Tenant Templates / Network Library / Intelligence Suggestions / Recent Changes. Visual continuity preserved via Pattern 2 chrome + section eyebrows + Pattern 1 tablet treatment for individual templates.
+
+**Templates-as-data canonical commitment** established as cross-cutting platform discipline: every customizable platform surface is a TEMPLATE rendered against DATA. Not hard-coded UI. Same architectural depth as "every AI call routes through `intelligence_service`" + "every document goes through `document_renderer`". Retroactively canonicalizes pattern emerging across Phase 2 saved views + Phase 6 briefings + Phase 8a workflows + Phase D-2 document templates + Phase W-3 widget catalog. Forcing function for new customizable surfaces.
+
+**Template registry infrastructure**: distributed storage matching existing canon (Phase 2 saved views in vault_items + Phase 8a workflows in workflows table + Phase 6 briefings in User.preferences + Phase D-2 document templates in document_templates). Per-template-type registries with unified contracts (list_templates / get_template / create_template / update_template / promote_draft_to_active / get_template_versions / adopt_from_network_library / publish_to_network_library). Common template envelope (versioning + adoption lineage + visibility levels + audit_log_id).
+
+**Tune mode + Compose mode canonical** authoring; **Code mode deferred indefinitely** per §3.26.7.5 architectural restraint discipline. Tune-mode (parameter adjustments) covers Marmon 80/20 case; Compose-mode (drag-and-drop assembly) for power-user template composition.
+
+**Version history + staging + collaborative editing**: immutable per-version retention; draft → active explicit promotion; preview-only staging canonical (full staging environment + promotion gates + real-time collaborative editing deferred per §3.26.7.5).
+
+**Phase A refinement** (§3.26.14.4): legacy URL coexistence reframed from "eventual deprecation" speculative promise to "parallel canonical access paths" with consolidation decision deferred to post-Workshop production tenant signal. Architectural restraint corollary applied.
+
+### Phase B — Network Library + Cross-Tenant Template Propagation
+
+§3.26.14.9 through §3.26.14.13 + Reciprocity discipline + Adoption-with-publish-authority workflow.
+
+**Network library architecture**: cross-tenant browsable surface as Section 3 of Workshop home (NOT separate top-level Space). Multi-source curation ranking signals (adoption count + ratings + Bridgeable editorial + Intelligence relevance). **Editorial selection authority Bridgeable-team-only initially**; community-suggested editorial mechanism deferred per §3.26.7.5 (concrete signal warrants — operator-flagged exceptional templates, editorial bandwidth bottleneck — triggers future canonicalization layering atop existing Bridgeable-team curation).
+
+**Cross-tenant template propagation** (CONCERN B): copy-on-adopt default + subscribe-to-upstream-updates affordance opt-in. **Two-tier merge discipline** — Tune-mode parameter changes auto-accept non-conflicting + explicit-review conflicting; Compose-mode composition changes ALWAYS require explicit operator review regardless of conflict status. Phase 8a workflow fork-vs-enrollment patterns parallel; consistent discipline across customization mechanisms.
+
+**Anonymization granularity** (CONCERN C): three-tier model. Tier 1 tenant + counterparty identifiers stripped automatically with **two-tier confidence within Tier 1** — high-confidence terms (≥0.90) auto-stripped; low-confidence terms (0.50–0.89) flagged for operator review without auto-strip; below-threshold preserved as pattern semantic. Tier 2 pattern semantics preserved. Tier 3 volume signatures configurable (stripped / bucketed / preserved). Cryptographic identifier replacement preserves within-template referential integrity while preventing cross-template fingerprinting.
+
+**Cross-vertical template applicability** (CONCERN D): vertical_applicability field with explicit operator declaration required at publish time; **no default**. Intelligence flags-and-suggests at pre-publish review (Bridgeable Intelligence canonical pattern). Marmon 80/20 case canonical cross-vertical pattern (`["funeral_home", "manufacturing"]` declaration). Browsing filters by adopting tenant's vertical + template applicability; cross-vertical adoption allowed when applicability matches; blocked when incompatible (with Tier-3 explicit override affordance).
+
+**Templates composing other primitives** (CONCERN E): source references by canonical name (widget_id, saved_view shape, intelligence_prompt_key, entity_type, focus_template_type, sub_focus_template_type). On adoption, references resolve against adopting tenant's primitive instances. Missing references render per §13.4.3 agency-dictated error surface (visible failure for user-composed surface; tenant remediation paths: enable missing infrastructure, create matching saved view, customize-to-remove-dependency).
+
+**Reciprocity discipline canonicalized as encouragement, not requirement**. Reciprocity affordances + adoption-stat surfaces + editorial recognition for high-value publishers. What reciprocity discipline avoids: forced contribution, pay-to-play, arbitrary access barriers.
+
+**Adoption-with-publish-authority workflow** with **3-level lineage canonical** (CONCERN B Q4 resolved): original publisher → adopting tenant → republisher. Deeper chains collapse intermediate links ("originally from X, last republished by Y"). 2-level chains display direct lineage without "republished derivative" framing. Strategic insight: 3-level lineage discipline preserves wisdom-flywheel while protecting privacy via fingerprinting limits.
+
+### Phase C — Intelligence-Suggested Customizations + Cross-References + Workshop Visual Canon
+
+§3.26.14.14 (Intelligence-Suggested Customizations) + §3.26.14.15 (Cross-References Catalog) + DESIGN_LANGUAGE §17 (Workshop Visual System).
+
+**Intelligence-Suggested Customizations as closing-the-loop feature**: Intelligence detects operator behavior patterns + suggests templates Workshop-customizable. Three pattern detection categories — behavioral (drill-down + summon + route patterns), adoption (cross-tenant template-adoption correlations), communication (manual coordination shape patterns). Two delivery surfaces — Workshop home Section 4 + ambient operational right-rail prompts (non-blocking; dismissable). Per-suggestion accept / dismiss / "tell me more" affordances. 30-day suppression + permanent dismissal + re-surface logic when pattern persists significantly.
+
+**Intelligence learning loop**: per-tenant pattern detection (existing audit log + Phase 8e.1 affinity tracking) + cross-tenant pattern signals (anonymized per §3.26.14.11) + suggestion quality calibration (acceptance rate per suggestion type → adjusts threshold over time). Storage: tenant operational data (NOT managed prompt registry — matches §3.26.11.7 storage discipline).
+
+**Pattern-detection-vs-operator-initiated discipline**: "Intelligence augments operator agency, never replaces it." Suggestion is offering, not imposition. Operator always controls accept / dismiss / customize-before-saving. No "Intelligence auto-creates templates without operator approval" pattern. Templates-as-data discipline preserves operator authorship. Load-bearing canon discipline preventing future Sonnet sessions from drifting toward Intelligence-auto-creation patterns.
+
+**Cross-references catalog** (§3.26.14.15): canonical accountability ledger covering 9 customizable primitives — Focus Primitive Types + Pulse Scope Architecture + Command Bar Architecture + Briefings + Phase W-3 widget catalog + Phase 2 saved views + Phase D-1/D-2 documents + Phase 8a-d workflows + Phase W-4b email/SMS. Forcing function preserved: every NEW customizable surface canonicalized post-Session-1.5 must answer "how does Workshop customize this?" at canonicalization time.
+
+**Workshop Visual System** (DESIGN_LANGUAGE §17 NEW top-level section parallel to §14 Communications + §15 Briefing + §16 Triage Focus visual systems): foundational frame + 5-section composition + per-section visual treatment + per-template-type sub-page visual treatment + cross-references. Visual canon depth proportional to primitive depth.
+
+### Architectural model post-Session-1.5
+
+**5 primitives + fractal Pulse + universal Command Bar + Workshop**:
+- Spaces (rare — tenant homes; **Workshop joins as canonical Space**; cross-tenant collaboration; custom user-authored)
+- Focuses (typed — bounded work surfaces; Workshop-customizable templates)
+- Pulse (fractal — Home + scoped instances; same primitive at multiple scopes; Workshop-customizable templates)
+- Entities (everywhere — summonable record cards)
+- Communications (flow through unified inbox; Workshop-customizable templates)
+- Command Bar (universal summoning verb handling all summon types)
+- Workshop (Space — customization home; templates-as-data discipline; network library)
+
+Architectural elegance achievement compounded: every customizable surface unifies under existing primitive framework; templates-as-data commitment makes every "feature" a template + data + intelligence composition; network library compounds operational wisdom across years.
+
+### Six explicit deferrals tracked across Phase A + B + C
+
+Per §3.26.7.5 architectural restraint discipline (concrete-need-emerges before canonicalization):
+
+| Deferred | Phase | Future canonicalization signal |
+|---|---|---|
+| Code mode | A (Q4) | Concrete tenant signal that Tune + Compose insufficient |
+| Real-time collaborative editing | A | Tenant signal that single-author-per-draft + draft-switching insufficient |
+| Full staging environment | A | Tenant signal that preview-only staging insufficient for compliance posture |
+| Promotion gates (dual-author + test-pass) | A | Tenant signal that promotion gates required for compliance posture |
+| vertical_applicability default | B (Q3) | Concrete signal that explicit declaration creates operator burden disproportionate to value |
+| Community-suggested editorial | B (Q5) | Operators flagging exceptional templates Bridgeable team missed; editorial bandwidth bottleneck |
+
+Each deferred per concrete-need-emerges discipline. Each future canonicalization path documented. Workshop primitive ships at canonical quality without speculative scope expansion.
+
+### Canon doc updates this session
+
+**BRIDGEABLE_MASTER**:
+- §3.26.14 NEW comprehensive section "Workshop Primitive" (15 subsections):
+  - §3.26.14.1 Workshop as canonical Space
+  - §3.26.14.2 Workshop access scope (three-tier + per-area sub-roles + tenant tightening)
+  - §3.26.14.3 Workshop home rendering (Workshop-specific Space; 5-section layout)
+  - §3.26.14.4 Templates-as-data canonical commitment (with dual-path discipline per Phase A refinement)
+  - §3.26.14.5 Template registry infrastructure (distributed storage; unified registry contracts)
+  - §3.26.14.6 Parameterization layer (Tune mode; Marmon 80/20 case)
+  - §3.26.14.7 Composition layer (Compose mode; Notion-blocks-for-operational-data)
+  - §3.26.14.8 Authoring scope + version history + staging + collaborative editing
+  - §3.26.14.9 Network library architecture
+  - §3.26.14.10 Cross-tenant template propagation (two-tier merge discipline)
+  - §3.26.14.11 Anonymization granularity (three-tier + two-tier confidence within Tier 1)
+  - §3.26.14.12 Cross-vertical template applicability (no default declaration)
+  - §3.26.14.13 Templates composing other primitives (source references by canonical name)
+  - §3.26.14.14 Intelligence-Suggested Customizations (closing-the-loop feature)
+  - §3.26.14.15 Cross-references catalog (9 customizable primitives + forcing function)
+
+**DESIGN_LANGUAGE**:
+- §17 NEW top-level section "Workshop Visual System" (5 sub-sections: foundational frame + Workshop home composition + per-section visual treatment + per-template-type sub-page visual treatment + cross-references)
+- §16.8 cross-reference updated ("Triage Focus Canonical Pattern" → "Focus Primitive Types — Triage is core element of Decision Focus type")
+
+**AESTHETIC_ARC**: this Session 1.5 entry.
+
+**CLAUDE.md §14**: Session 1.5 Recent Changes entry covering Phase A + B + C achievements.
+
+**No code shipped.** Architecturally locked foundation for Session 2 Email primitive canon design + Phase W-4b email primitive implementation. Workshop primitive ships at canonical quality without speculative scope expansion.
+
+### Forward implications
+
+**Sequencing forward**:
+- Session 2 (Email primitive canon, ~3-4h) — designs against settled Focus + Pulse + Command Bar + Workshop foundation
+- Phase W-4b implementation begins after Session 2 ships
+
+Total canon work pre-email-implementation: Session 1 (Focus + Pulse + Command Bar canon) + Session 1.5 (Workshop canon) + Session 2 (Email canon) ≈ 11-13h. Substantial; bounded; architecturally justified per §3.26.7.5 ("MVP cuts compound as debt").
+
+**Cross-arc check at Phase II Batch 1c-i / Aesthetic Arc Sessions 5-6 boundary**: Session 1.5 canon does NOT introduce motion patterns Aesthetic Arc Session 5 needs to absorb. Workshop visual canon inherits §13 Pulse visual canon for shared design language elements (Pattern 2 chrome + section eyebrows + Pattern 1 tablets). No new motion vocabulary needed. Both arcs run in parallel per existing cross-arc integration rule.
+
+**Discipline lock summary**:
+
+> "Build at canonical quality. Demo timelines don't drive architecture. Platform completeness compounds across years; cuts compound as technical debt. Phase W-4b ships when complete; September Wilbert demo shows whatever's complete at that point. Honest checkpoint over over-promised demo."
+>
+> Workshop primitive canonicalization compounds the discipline: templates-as-data commitment + network library moat + Intelligence-Suggested Customizations earn compounding value across years. Customization infrastructure deferral cuts (code mode, real-time collab editing, etc.) preserve initial Workshop ship at canonical quality while leaving canonical paths for future expansion when concrete signal warrants.
+
+This discipline becomes the cross-arc anchor for Email canon (Session 2) + Phase W-4b implementation.
+
+---
+
 ## Session 1 — Focus + Pulse Scope + Command Bar Canon (canon locked, 2026-05-05)
 
 Pure architectural canon session. NO CODE this session. Three architectural areas canonicalized as load-bearing foundation for Phase W-4b email primitive design (Session 2) + Phase W-4b implementation. Total ~5 hours conversational/architectural work; canon doc batch write at session close.
