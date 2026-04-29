@@ -4198,9 +4198,9 @@ Phase W-4b is the substantive build phase that lights up the Communications laye
 | 9 | Morning briefing generation pipeline + three-state machine (per §3.26.10) | ~2-3 weeks | Communications layer + per-primitive streams shipped |
 | 10 | Evening briefing generation pipeline | ~1-2 weeks | Morning briefing shipped (shared infrastructure) |
 | 11 | Tenant briefing configuration UI (per-user prefs, primitive selection, time customization) | ~1-2 weeks | Briefing pipelines shipped |
-| 12 | Anomalies → Triage Focus migration (per §3.26.11) | ~1-2 weeks | Triage primitive Phase 5 already shipped; Focus primitive Phase A complete |
-| 13 | Approvals → Triage Focus migration | ~1-2 weeks | After anomalies migration (shared patterns) |
-| 14 | Tasks → Triage Focus migration | ~1-2 weeks | After approvals migration |
+| 12 | Anomalies → Decision Focus with triage core element migration (per §3.26.11) | ~1-2 weeks | Phase 5 Triage queue infrastructure already shipped; Focus primitive Phase A complete |
+| 13 | Approvals → Decision Focus with triage core element migration | ~1-2 weeks | After anomalies migration (shared patterns) |
+| 14 | Tasks → Decision Focus with triage core element migration | ~1-2 weeks | After approvals migration |
 | 15 | Cross-tenant communications surface (per §3.26.9.4 — supplier emails, customer SMS threads in two tenants' Pulses) | ~2-3 weeks | All Layer 1 primitives + V-1c CRM cross-tenant patterns mature |
 | 16 | Tests + visual verification + canon doc updates | parallel throughout | every step ships green |
 
@@ -4487,6 +4487,8 @@ contact."
 
 Each communication primitive gets four aspects canonicalized: signals contributed (above), Glance widget shape, briefing surfacing, Triage Focus shape. Below — full canonicalization for each.
 
+**Note on terminology** (per §3.26.11 amendment): "Triage Focus" is colloquial reference to **Decision Focus with triage core element** — the canonical Focus type per the Phase A canon. Triage is a work-surface shape (core element catalog citizen), not a separate primitive. The bullet shapes below specify the per-primitive Decision Focus + triage core element rendering; "Triage Focus" preserved as colloquial reference for readability.
+
 **Email primitive:**
 - *Signals*: unread inbound count + top sender; awaiting-reply outgoing (sent >24h, no reply, AI-flagged); AI-flagged-priority unread (Haiku scoring on new emails — high-priority indicators: deadline language, dollar amounts, named-stakeholder mentions); attachments needing review.
 - *Glance widget shape* (`email_glance`): default density renders `📧 Email` icon + `3 unread` count + top sender ("Sarah Chen — Hopkins FH") + "Open inbox →" footer. Compact density: icon + count + sender, no footer. Ultra-compact: icon + count only. Click navigates to `/communications/email` (full triage flow) or specific thread when single-thread.
@@ -4646,63 +4648,599 @@ LayerItem(
 
 Otherwise: briefing surfaces only via dedicated `/briefing` page (existing Phase 6 surface). User can dismiss the briefing piece from Communications layer; dismissed briefing doesn't re-surface that day.
 
-### 3.26.11 Triage Focus Canonical Pattern
+**Cross-reference to §3.26.12 Pulse Scope Architecture**: briefing structured-sections (e.g., "Today's customers" / "Period summary") MAY render scoped-Pulse-shape mini-compositions per §3.26.12 once scoped Pulse summoning ships. Briefing AS A WHOLE remains a distinct narrative primitive (temporally-triggered; narrative-as-output); scoped-Pulse-shape compositions render INSIDE briefing structured-sections as composed citizens. Same pattern as widgets rendering inside both dashboard AND Pulse layer.
 
-Phase W-4b migrates the existing Phase 5 Triage primitive (anomalies, approvals, tasks queues) to render INSIDE the Phase A Focus primitive. "Triage Focus" is the canonical composition: Triage queue logic + actions + intelligence panels rendered inside Focus's anchored core + canvas.
+### 3.26.11 Focus Primitive Types
 
-**Triage primitive (Phase 5)** ships the queue logic, action handlers, snooze infrastructure, AI question panels. **Focus primitive (Phase A)** ships the anchored core + canvas + push-back scale + return pill. **Triage Focus** is the composition.
+The Focus primitive (Phase A foundation, ARCHITECTURE_MIGRATION.md) generalizes to four canonical types, each distinguished by lifecycle trigger, participant pattern, outcome flow, and core element catalog. The Focus shell is shared across types; the type determines the rest.
 
-#### 3.26.11.1 Why migrate
+**Pre-canon framing replaced**: prior canon framed Phase 5 Triage as a separate primitive composing inside Focus ("Triage Focus = Phase 5 Triage primitive composing inside Phase A Focus primitive"). The post-canon framing is "Decision Focus with triage core element" — triage is a work-surface shape (core element catalog citizen of Decision Focus type), not a separate primitive. Phase 5 implementation (existing task_triage + ss_cert_triage queues) remains valid; framing re-canonicalizes without code change.
 
-Pre-W-4b Triage renders as a dedicated route (`/triage/:queueId`) at `pages/triage/TriagePage.tsx` (Phase 5). The page surface is a fine starting point but limits triage to a navigation context — user has to leave their current work to enter triage.
+#### 3.26.11.1 The Four Focus Types
 
-Triage Focus inverts: user opens Triage Focus from anywhere (command bar, briefing link, anomaly notification) and the Focus modal materializes over their current context. Push-back scale signals "your work is still here, you'll come back to it." Return pill on dismiss confirms the connection.
+| Axis | Decision | Coordination | Execution | Review |
+|---|---|---|---|---|
+| Lifecycle trigger | User intent ("I need to decide X") | External event / scheduled time / threshold crossed / manual declaration | Task assigned to executor | Artifact ready for judgment |
+| Participant pattern | Single decider (occasionally small reviewing group) | Multi-participant by structural definition; cross-tenant common | Single executor (or small parallel team) | Reviewer + optional creator for revision |
+| Outcome | State change committed on entity | Coordinated action complete / reverted / escalated | Task complete; artifacts produced | Approve / reject / request-revisions |
+| Auto-closure | Decision committed | Event completion OR dormancy timeout | Task completion | Artifact judgment recorded |
+| Core element catalog | kanban · triage · single-record · comparison | real-time-thread · scheduled-coordination · threshold-watch | task-list · single-task · batch-execution | artifact-review · comparative-review · sequential-review |
 
-This matches PLATFORM_INTERACTION_MODEL.md Tony Stark / Jarvis interaction language: triage as a summoned-and-dismissable session, not a navigation destination.
+**The pattern**: Focus type determines lifecycle + participant + outcome semantics; core element determines the work-surface shape rendered inside the Focus shell. A Decision Focus with kanban core element renders the funeral scheduling kanban; a Decision Focus with triage core element renders the reconciliation triage queue. Same Focus shell, different core element catalog citizen.
 
-#### 3.26.11.2 Triage Focus shape
+**Core element catalog discipline**: each Focus type has a discrete core element catalog. The catalog is per-Focus-type; citizens currently unique across types but cross-type sharing permitted when architectural fit warrants. If a future template requires a Decision-Focus core element to also serve a Coordination-Focus template, cross-type sharing is canonically permitted via explicit declaration in both type catalogs. Speculative cross-type catalog sharing not built per §3.26.7.5 canonical-quality discipline.
 
-Focus core (anchored modal per Phase A):
-- Triage queue header (queue name + count + remaining count)
-- Current item display (display_component per Phase 5 Triage queue config)
-- Action palette (configured actions per Phase 5 + keyboard shortcuts)
-- Flow controls (snooze / skip / next / previous)
+**The four-type canon is locked. Do not collapse**: each axis row distinguishes types. Decision and Review have different participant patterns (decider vs reviewer), outcome semantics (state change vs artifact judgment), magic-link relevance (rare vs frequent), and revision semantics (none vs request-revisions branch). Coordination is structurally multi-participant; the others are not. Execution is task-bounded; the others are not.
 
-Focus canvas (peripheral widgets per Phase A):
-- Context panels (related entities, AI question, document preview, communication thread, saved view — per Phase 5 context_panel_config)
-- Embedded actions (Playwright scripts, workflow triggers — per Phase 5 embedded_action_config)
-- Collaboration panel (audit log, replay — Phase 5 stub, Phase W-4b activates)
+#### 3.26.11.2 Decision Focus
 
-#### 3.26.11.3 Migration sequence (steps 12-14 of §3.26.6.4)
+**Lifecycle**: User opens the Focus to commit a decision. Decision is committed via core-element interaction (drag delivery, accept anomaly, approve transfer, choose between options). Focus closes on commitment OR on user dismiss. State change persists on the entity; auto-recorded in audit history.
 
-| Step | Migration | Existing surface |
+**Participant pattern**: Typically single decider. Some Decision Focuses have a small reviewing group (collaborative kanban reorganization) but the decision verb is single-actor.
+
+**Core element catalog (canonical)**:
+- **kanban** — multi-record deciding within a structured column-shape; drag between columns commits state. Today: Funeral Scheduling Focus. Future: weekly capacity planning, route balancing.
+- **triage** — queue-shaped sequential decision flow; one record at a time, accept/reject/skip, advance. Today: Phase 5 task_triage and ss_cert_triage queues (re-frame from "Triage primitive" to "Decision Focus with triage core element" per this §3.26.11 amendment). Future: cash receipts matching, expense categorization, anomaly resolution.
+- **single-record** — deep dive on one record, decide its fate. Today: case detail decisions, sales-order approval. Native shape rather than queue or kanban.
+- **comparison** — side-by-side N-record evaluation to choose between options. Today: not yet shipped. Future: vendor bid comparison, route option ranking, candidate selection.
+
+**Cross-tenant scope**: typically intra-tenant. Decision Focus operates on tenant's own state.
+
+**Triage primitive amendment (load-bearing)**: pre-amendment phrasing was "Phase 5 Triage primitive composing inside Phase A Focus primitive." Post-amendment phrasing: "Decision Focus with triage core element." Triage is a work-surface shape, not a separate primitive. Phase W-4b migrations of anomalies / approvals / tasks queues (steps 12-14 per §3.26.6.4) land as additional Decision Focus templates with triage core element.
+
+#### 3.26.11.3 Coordination Focus
+
+**Lifecycle**: Triggered by one of four events:
+- **Event** — external event creates the coordination need ("FH Hopkins booked the Smith service for Thursday")
+- **Time** — scheduled coordination period ("weekly mold-changeover Sunday morning")
+- **Threshold** — metric crossed an action threshold ("AP aging exceeded 30 days for 5 vendors")
+- **Manual** — operator declares a coordination period ("we need a war room for the Anderson quality issue")
+
+Coordination period runs until coordinated work completes (template-defined criteria) OR a dormancy threshold elapses (no activity for X hours/days → auto-closure prompt).
+
+**Participant pattern**: Multi-participant by structural definition. Cross-tenant participation common (joint FH+manufacturer Coordination Focus for a service). Roles routed per-organization. SMS-only participants supported via single-thread routing per §3.26.11.8. Magic-link participants supported per §3.26.11.9.
+
+**Core element catalog (canonical)**:
+- **real-time-thread** — live thread-style coordination, chat-shaped. Future: war-room rapid-response, joint-tenant service-day coordination, quality-issue escalation.
+- **scheduled-coordination** — calendar-anchored coordination period with structured agenda. Future: weekly mold-changeover, monthly close coordination, periodic safety check-in.
+- **threshold-watch** — metric-monitored coordination period with intervention affordance. Future: anomaly response, AP aging escalation, equipment-maintenance threshold response.
+
+**Templates** (canonical scope; specific templates ship in Phase W-4b+):
+- **load** — single-load coordination (one delivery day, one or more drivers + foreman + office). Sub-Focus child of Job per §3.26.11.6.
+- **job** — full-service coordination spanning multiple loads (FH service from booking through delivery + invoicing). Parent of N Load Focuses.
+- **pour-week** — weekly production coordination (production manager + drivers + office for the week's pour schedule).
+- **mold-changeover** — equipment changeover coordination (shop foreman + production + maintenance).
+- **quality-issue** — rapid-response war room (variable participants per issue scope).
+
+Each template selects a default core element + participant routing pattern + lifecycle trigger preset + sub-Focus hierarchy declaration.
+
+**Cross-tenant scope**: most common cross-tenant Focus type. Joint Coordination Focuses span tenant boundaries with consent model per §3.26.11.10.
+
+#### 3.26.11.4 Execution Focus
+
+**Lifecycle**: Task assigned → executor executes → completion logged. Closes on task completion (last item if list-shape; outcome recorded if single-shape; batch summary if batch-shape).
+
+**Participant pattern**: Single executor (driver running a route, designer producing a proof, accountant categorizing expenses). Small parallel teams supported when N executors work the same batch in parallel.
+
+**Core element catalog (canonical)**:
+- **task-list** — sequential ordered tasks, mark-done as you go. Today: Driver Console route screen (re-frames as Execution Focus with task-list core element). Future: end-of-day driver checklists, period-close task sequences.
+- **single-task** — single sustained task with deep focus shell. Today: Order Station "process this order" deep work (re-frames as single-task Execution Focus). Future: Scribe arrangement-call processing, single-document drafting.
+- **batch-execution** — apply same operation to N items. Today: monthly statement run (re-frames as batch-execution Execution Focus). Future: bulk PDF regeneration, batch invoice send, batch GL classification.
+
+**Cross-tenant scope**: typically intra-tenant. Executor is the tenant's user; artifacts deliver to other tenants via Communications layer (§3.26.9), not via shared Execution Focus.
+
+#### 3.26.11.5 Review Focus
+
+**Lifecycle**: Artifact ready → reviewer judges → outcome recorded. Closes on artifact judgment.
+
+**Participant pattern**: Reviewer + optional creator (creator only summoned if revisions requested). External-reviewer participants supported via magic-link per §3.26.11.9 — Review Focus is the canonical magic-link-heavy Focus type.
+
+**Outcome**: approve / reject / request-revisions. Audit-logged with reviewer attribution. Revision-request branches reopen the Focus pending revised artifact arrival + judgment re-recorded.
+
+**Core element catalog (canonical)**:
+- **artifact-review** — single artifact (PDF, draft document, generated content). Today: token-based proof approval (`/proof-approval/{token}`, 72-hour expiry). Future: statement approval, contract review, generated-content review.
+- **comparative-review** — review N items in sequence with consistent verdict structure. Future: batch quality control walk-through, periodic compliance audit.
+- **sequential-review** — multi-step review chain where each step gates the next (proof → compliance check → final sign-off). Today: urn engraving two-gate flow (re-frames as sequential-review Review Focus). Future: multi-stage approval workflows.
+
+**Cross-tenant scope**: can span when artifact crosses tenant boundary (FH reviews proof produced by manufacturer). Magic-link is the typical cross-tenant Review Focus pattern — external reviewer with scoped access via §3.26.11.9.
+
+**Distinct from Decision Focus**: Review Focus judges completed artifacts (static content); Decision Focus commits state changes on live operations. Different participant patterns, different outcome semantics, different magic-link relevance, different revision semantics. Four types canonical; do not collapse.
+
+#### 3.26.11.6 Sub-Focus Hierarchy
+
+**Pattern**: Coordination Focuses (and other types per template declaration) can contain child Focuses as part of their core element. Job Coordination Focus contains N Load Coordination Focuses. Parent Focus surfaces children's state in its rendering; child Focuses are independently summonable + closable.
+
+**Per-template declaration**: templates declare whether they support sub-Focuses, which types they contain, and scope-elevation rules. Sub-Focus capability is canonical platform feature; per-template usage governs which Focuses participate in hierarchy.
+
+**Canonical semantics** (apply when template declares sub-Focus support):
+- **Cascade closure** — closing parent closes children
+- **Independent closure** — closing child does NOT close parent
+- **Scope inheritance** — parent participants get child status passively (child Focus status snapshot surfaces in parent's core element rendering)
+- **Child participant scope-limited** — child participants don't see parent unless template explicitly elevates
+- **Cross-type sub-Focus is canonically permitted but not canonically required.** Templates declare cross-type sub-Focus support explicitly when concrete need emerges. Speculative cross-type sub-Focus support not built per §3.26.7.5 canonical-quality discipline. Coordination Focus parent → Coordination Focus child is the only canonical sub-Focus pattern initially shipped; other combinations canonicalize as concrete templates require them.
+
+**Containment model**: child is a real Focus instance, not a sub-render. Parent's core element renders child Focus references (status snapshot + summon affordance). Parent's audit log includes child Focus state transitions; child's audit log is independent. Closing parent triggers cascade closure of children with proper audit trail on each.
+
+**Cross-tenant scope can differ per level**: Job spans tenant boundary (manufacturer + FH); specific Load might be intra-tenant (manufacturer-only operations). Cross-tenant masking inherits per §3.25.x at each level independently.
+
+#### 3.26.11.7 Notification Routing
+
+Hybrid three-layer routing per (role × Focus type × event):
+
+**Layer 1 — Deterministic baseline (template-registered)**: Templates ship event → role default routes at Focus template registration time. Decision Focus template "anomaly resolution" specifies `anomaly_resolved → route to anomaly's caller-module subscribers`. Coordination Focus "Job" template specifies `FH confirmed delivery → route to driver, foreman, office`. This layer handles common events fast/cheap/reliably with no Intelligence dependency. **Storage**: in-code template registration (template-defined event-to-role routes); no per-tenant amendment.
+
+**Layer 2 — Intelligence-learned per-tenant amendments**: Intelligence learns tenant-specific deviations (stored as deterministic rules, NOT re-inferred per event). Tenant declares "we route equipment_maintenance events to the foreman, not the office" once → Layer 2 stores the amendment → subsequent events use the amended route. Amendments are reviewable in tenant settings; tenant admins can edit. **Storage**: tenant-scoped operational config — per-tenant routing amendments stored as deterministic rules. Concrete shape canonicalizes when first amendment storage need lands (Phase W-4b email primitive); shape will follow existing canonical patterns (`Company.settings_json` JSONB column for low-volume amendments, OR dedicated `notification_routing_amendments` table for queryable per-(role, focus_type, event) lookup, mirroring `user_space_affinity` Phase 8e.1 pattern). **Storage is operational config, NOT managed prompt registry** — managed prompt registry holds Layer 3 fallback prompts only.
+
+**Layer 3 — Prompt-tier fallback for novel events**: Events not in template baseline + no learned amendment fall through to Claude Haiku-tier inference. **Registered managed prompt**: `notification.focus.{focus_type}.route` per Intelligence backbone managed-prompt registry (this is a prompt definition — input template fed to Claude — not operational config). Inference output may seed a Layer-2 amendment if tenant confirms the routing.
+
+**Performance discipline**: Layer 1 covers ~95% of production events. Layer 2 covers tenant-specific known deviations. Layer 3 reserved for genuine novelty.
+
+**Implementation sequencing**: Phase W-4b email primitive ships Layer 1 deterministic baselines + Layer 3 fallback managed prompts. Layer 2 tenant operational config storage canonicalizes when first amendment storage need lands — likely Phase W-4b mid-stream when concrete amendment use cases emerge from production tenants.
+
+#### 3.26.11.8 SMS Thread Routing
+
+Layered four-level inbound SMS routing per (participant phone number × active Focus contexts):
+
+**Layer 1 — Most recent active Focus (~80% default)**: Inbound SMS routes to the most recently active Focus involving the participant. Most natural mapping; matches operator mental model. **Storage**: derived at routing time from existing Focus instance state; no dedicated storage.
+
+**Layer 2 — Intent classification (ambiguous cases)**: Multiple plausible active Focus contexts → Claude Haiku-tier intent classification on SMS body. **Registered managed prompt**: `sms.routing.intent_classifier` per Intelligence backbone managed-prompt registry (prompt definition; not operational config). Inputs include SMS body + active Focus context vocabularies; output is highest-score Focus.
+
+**Layer 3 — Operator inbox escalation**: Classification confidence below threshold → SMS lands in operator inbox with "context unclear" affordance. Operator manually routes; route choice seeds Layer 4 learning. **Storage**: derived at escalation time; operator's manual route selection writes to Layer 4 pattern store.
+
+**Layer 4 — Intelligence learning per participant**: Intelligence learns participant routing patterns over time. Driver Mike's pattern: he texts "running late" 80% of the time → bias toward load Focus. Patterns improve Layer 2 classification accuracy. **Storage**: tenant-scoped operational data store — per-participant learned routing patterns. Concrete shape canonicalizes when first SMS routing need lands (Phase W-4b SMS primitive); shape follows existing canonical learned-data patterns (mirrors `user_space_affinity` Phase 8e.1 reference — composite-key table on `(participant_phone, target_type, target_id)` with visit_count + last_visited_at). **Storage is learned operational data, NOT managed prompt registry** — managed prompt registry holds Layer 2 classifier prompt + Layer 3 escalation prompts only.
+
+**Architectural primitive**: SMS thread is top-level inbox primitive (Phase W-4b SMS implementation owns the thread). Focus is metadata attribution on each message. Inbound SMS resolution: thread → Layer 1-4 → Focus context → route into Focus event log. Outbound SMS from any Focus the participant is in goes through the same thread (single thread per phone number; humans manage threads-per-person, not threads-per-platform-context).
+
+**Architectural separation discipline**: managed prompt registry (`intelligence_prompts` table) holds **prompt definitions** — input templates fed to Claude. Operational config (`Company.settings_json` JSONB + dedicated tables for queryable lookups) holds **deterministic rules + learned patterns** — data Intelligence reads to inform routing decisions. The separation matters because prompt definitions evolve via prompt-version flow (admin reviewability + experiment infrastructure); operational config evolves via tenant-config flow (per-tenant runtime mutation + audit). Conflating them creates governance + lifecycle confusion. Layer 1 canonical storage canonicalizes alongside Phase W-4b email/SMS primitives when concrete need lands.
+
+#### 3.26.11.9 Magic-Link Participant Scope
+
+External participants who shouldn't have full platform access get magic-link URLs scoped to ONE Focus. URL carries cryptographic token; expires; scope is read+contribute within that single Focus only. Pattern existing today: token-based proof approval (`/proof-approval/{token}`, 72-hour expiry, no auth). Generalized: same pattern extends to any Focus type per template declaration.
+
+**Default scope** (per Focus template registration):
+- **Focus thread** — all messages within the Focus
+- **Focus core element rendering** — kanban / triage / list / artifact / etc.
+- **Focus-relevant entities** — deliveries, contacts, artifacts surfaced inside the Focus
+- **Cross-tenant entities masked per §3.25.x** — Hopkins data follows Hopkins masking; Sunnycrest data follows Sunnycrest masking; magic-link participant inherits per-tenant masking based on their tenant origin
+
+**Cannot see** (default lockdown):
+- **Platform navigation** — locked to Focus
+- **Other Focuses** — even ones they would otherwise have access to
+- **Internal-only entities** — not surfaced in the Focus
+- **Other participants beyond Focus thread** — no platform directory; participant identities limited to those in the Focus thread
+
+**Per-template declaration**:
+- Templates declare which entity-types are visible in magic-link scope (per Focus type, per template instance)
+- Templates can mark Focus content as **internal-only** — not surfaced to magic-link participants (e.g., internal pricing notes on a joint Coordination Focus)
+- Templates declare scope-elevation conditions — when does magic-link participant get expanded view (rare; reserved for explicit need)
+
+**Cross-tenant masking inheritance**: §3.25.x cross-tenant masking flows automatically. Magic-link participant doesn't see what their tenant's masking rules hide regardless of whether the Focus surfaces it. Hopkins FH director magic-linked into a Sunnycrest Coordination Focus sees Sunnycrest data per Sunnycrest's outbound masking rules + Hopkins's inbound visibility preferences.
+
+**Tenant tightening**: tenants can declare per-template additional restrictions beyond the canonical default. Default safe (operationally relevant content; not internal everything); tenants can tighten further if regulatory or competitive concerns warrant.
+
+#### 3.26.11.10 Cross-Tenant Focus Scope
+
+Consent-based shared visibility per Focus instance. Both tenants opt in (one initiates; the other accepts). Cross-tenant Focuses inherit Communications-layer cross-tenant discipline (§3.26.9): per-side participant routing; per-side audit logs converged at the Focus level; SMS/email integration crosses tenant boundary cleanly.
+
+**Most common cross-tenant type**: Coordination Focus (joint service-day coordination, joint quality response). Decision Focus + Execution Focus typically intra-tenant (decision/execution acts on tenant's own state). Review Focus can span (FH reviews proof produced by manufacturer); magic-link is typical cross-tenant Review Focus pattern.
+
+**Consent model**:
+- Initiator tenant creates Focus with cross-tenant scope declared at template instantiation
+- Initiator nominates target tenant + target tenant's representative role
+- Target tenant receives consent request via Communications-layer notification
+- Target tenant accepts → Focus becomes shared instance; participants from both sides routed per-tenant
+- Either tenant can revoke at any time → Focus marked closed for revoking tenant; other tenant sees terminal state but cannot contribute further
+
+**Cross-tenant participant routing**: each tenant's participants follow that tenant's role-based routing rules (§3.26.11.7). Driver-side notifications stay per-tenant. Joint events (mark service complete) propagate to both sides per each tenant's routing.
+
+**Per-side audit logs**: each tenant has its own audit trail of the Focus. Joint events appear in both. Tenant-side-only events (e.g., internal commentary marked internal-only per §3.26.11.9 magic-link rules) appear only in the originating side's log.
+
+#### 3.26.11.11 Auto-Closure Semantics
+
+Per-type auto-closure trigger:
+
+**Decision Focus**: Auto-closes on decision committed. State change persists on entity; Focus instance retained for audit. Re-opening allowed for historical reference; new contributions create a new Focus instance. Dormancy timeout NOT applicable — Decision Focus is user-initiated short-lived intent.
+
+**Coordination Focus**: Auto-closes on event completion (template-defined "complete" criteria) OR dormancy timeout (configurable per template; default 72 hours of no activity). Template declares completion semantics — Job template's "complete" means all loads delivered + invoiced; mold-changeover template's "complete" means changeover verified + production resumed.
+
+**Execution Focus**: Auto-closes on task completion. Last item done on task-list; outcome recorded on single-task; batch summary committed on batch-execution. No dormancy timeout — incomplete tasks indicate work pending, not Focus dormant.
+
+**Review Focus**: Auto-closes on artifact judgment recorded (approve / reject / revision-request committed). Revision-request branches: Focus stays open until revised artifact arrives + judgment re-recorded. No dormancy timeout — pending review is operationally relevant.
+
+**All types**: auto-closure is "soft" — Focus marked closed but instance persists for audit. Re-opening is allowed for historical reference; new contributions go to a new Focus instance per audit-log integrity.
+
+### 3.26.12 Pulse Scope Architecture
+
+#### 3.26.12.1 Pulse Scope — fractal primitive
+
+**Pulse is a fractal primitive.** The same Pulse architecture (layered attention model + Pattern A/B/C composition + chrome budget + viewport-fit math + intelligence layer + composition cache) renders at multiple scopes. Home Pulse is the default-scope instance; scoped Pulses are scope-parameterized instances of the same primitive.
+
+**The architectural framing — Pulse is the primitive; scope is the parameter**:
+- **Home Pulse** = broadest scope (tenant + user role default-scope; rendered at `/home`)
+- **Operation Pulse** = one operational area scope (e.g., Redi-Rock production this week)
+- **Customer Pulse** = one customer-relationship scope (e.g., Hopkins recent activity + open AR + active cases)
+- **Period Pulse** = one time-window scope (e.g., this week's deliveries + cases + outstanding + anomalies)
+
+Same visual primitive across all scopes. Same composition sources. Same intelligence narrative pattern. Same chrome budget math. The single delta is a scope parameter threaded through the composition engine: layer service queries gain an optional scope filter; widget data sources accept scope context; intelligence patterns scope-parameterize.
+
+**Single canon, not parallel primitives**: Pulse is the primitive; scope is its parameter. The single primitive simplifies render-stack canon (§3.26.13), visual canon (§13), composition canon (§3.26.12.3), and persistence canon (§3.26.12.4) by unifying around one architectural shape.
+
+**The architectural framing — what scoped Pulse is**:
+- A **Pulse instance** with non-default scope parameter
+- **Summoned via command bar** ("Hopkins", "this week", "Redi-Rock") — §3.26.13 canon details summoning + render stack
+- **Materializes into spatial workspace** alongside command bar (§3.26.13 canon)
+- **Reconstructed from current operational data when summoned** — composition template is persistent (per §3.26.12.4 Workshop-housed customization); data is live
+- **Dismissable** — no persistence after dismissal beyond template (next summon reconstructs against current data)
+- **Composes with other summoned objects** — Focuses, entity cards, other scoped Pulses coexist in spatial workspace
+
+**The architectural framing — what scoped Pulse is NOT**:
+- Not a persistent navigation destination (Spaces are; scoped Pulse instances aren't)
+- Not a new primitive (it's Pulse parameterized; not a third class)
+- Not bounded by a decision/coordination/execution/review verb (Focuses are; scoped Pulses aren't — they remain the monitoring primitive)
+- Not the data source itself (widgets + saved views + entity cards + intelligence patterns are; Pulse orchestrates them at scope)
+
+**Sunnycrest canonical Home Pulse composition** (§13.8.1 State B per Phase W-4a Step 6 canon) is the reference rendering for **default-scope Pulse**. Scoped Pulses inherit the visual canon directly — Pattern 2 chrome, layered attention model, brass-thread divider, intelligence stream synthesis, viewport-fit math. Single visual system spans all scopes; tablet-scale rendering for summoned scoped Pulses operates within existing §13.3.4 viewport-fit math at smaller cell-count (per §3.26.13.5a tablet-tier viewport-fit math integration).
+
+#### 3.26.12.2 Scope Catalog
+
+**Three canonical Pulse scopes** initially shipped per §3.26.7.5 canonical-quality discipline (concrete-need-emerges before catalog expansion):
+
+| Scope | Orchestration Axis | Common composition (illustrative) |
 |---|---|---|
-| 12 | Anomalies → Triage Focus | Per-anomaly review via `agent_anomalies` (Phase 8b cash receipts model + W-3a anomalies widget) — already production-ready data |
-| 13 | Approvals → Triage Focus | Phase 8b/8c approval review (currently `/agents/:id/review` page) |
-| 14 | Tasks → Triage Focus | Phase 5 task triage already at `/triage/task_triage` — straightforward composition migration |
+| **Operation** | An operational area | line status + active work + bottlenecks + driver/equipment assignment + intelligence pattern ("production is 12% above last week") |
+| **Customer** | A specific customer entity | entity card + recent activity + open AR + active cases + communications + intelligence pattern ("Hopkins typically books 2 services/week; this week is 3 — above norm") |
+| **Period** | A time window | deliveries + cases + invoiced + outstanding + anomalies in period + intelligence pattern ("this week's revenue tracking 8% below prior quarter pace") |
 
-Each migration: extend Triage queue config + register as Focus content type + verify keyboard parity + verify action palette parity + ship coexist-with-legacy (existing Phase 5 `/triage/:queueId` route stays alive one release for user-flow rollout window).
+**Person, Location, Material scopes deferred** per §3.26.7.5: defer until concrete need emerges from Phase W-4b implementation or production tenant signal. Speculative catalog expansion produces canon that retires when patterns prove out differently than anticipated. Three-scope canon today; six-scope canon when concrete patterns warrant.
 
-#### 3.26.11.4 Triage primitive composability with Focus
+**Per-scope composition shape** canonicalizes per template (§3.26.12.4 persistence model). Each scope has a default platform template; tenants extend via Workshop-authored saved Pulse templates.
 
-Phase A Session 2 introduced the Focus mode dispatcher (`mode-dispatcher.tsx`) routing to per-mode core renderers. Triage Focus adds a new core mode `"triage"`:
+**Scope-axis distinction is canonical**: each scope orchestrates around a distinct entity or window. Composition is scope-determined; data is summon-time-resolved. The three scopes span the canonical operational-visibility-axis surface for Phase W-4b emergence; new scopes canonicalize when concrete need lands.
 
-```typescript
-type CoreMode = "kanban" | "singleRecord" | "editCanvas" | "triageQueue" | "matrix" | "triage"
+**Cross-tenant scope**: scoped Pulses can compose cross-tenant entities (Customer Pulse for Hopkins surfaces both manufacturer's view of Hopkins AND Hopkins's authenticated visibility, masked per §3.25.x). Cross-tenant masking flows automatically per source. Detail at §3.26.12.8.
+
+#### 3.26.12.3 Composition Sources
+
+Scoped Pulses compose existing primitives at scope; they do not replace them.
+
+**Canonical composition sources** (a Pulse instance at any scope orchestrates N of these):
+- **Entity cards** — single-record summary tablets for the orchestration entity (and related entities)
+- **Widgets** — Phase W-3 catalog citizens (today, anomalies, recent_activity, line_status, vault_schedule, ancillary_pool, urn_catalog_status, briefing, saved_view, operator_profile)
+- **Saved views** — Phase 2 entity-typed list/table/kanban/calendar/cards/chart/stat instances scoped to the orchestration scope
+- **Activity timeline** — V-1c CRM activity feed scoped to orchestration entity / period
+- **Intelligence patterns** — Claude-Haiku-tier surfaced narrative patterns scoped to orchestration scope
+- **Communications threads** — relevant email/SMS/in-platform messages (Phase W-4b) scoped to orchestration entity / period
+- **Sub-Focus references** — read-only references to active Focuses involving the orchestration scope (Customer Pulse for Hopkins surfaces "active Coordination Focus: Smith service Thursday" without summoning the Focus itself)
+
+**Slot mapping per scope template**: each scope template declares slot mapping (which sources fill which positions in the rendered Pulse instance). Customer Pulse template slot mapping (illustrative): top-left = entity card; top-right = open AR widget; bottom-left = activity timeline; bottom-right = saved view "Cases for this customer". Slot mapping is template-defined + per-tenant-overridable via Workshop per §3.26.12.4.
+
+**Existing primitive canon stays intact**:
+- **Phase W-3 widget catalog stays valid** — widgets continue to render in Home Pulse, Spaces sidebar, dashboard surfaces, AND scoped Pulse instances. Widget composition shape (§12.6 workspace-core canon, §13.4.1 surface-aware density tiers) unchanged. The `supported_surfaces` declaration includes `pulse_grid` regardless of scope — scope is composition parameter, not surface variant. **No supported_surfaces extension needed**: a widget that renders in Home Pulse renders in scoped Pulse instances by inheritance.
+- **Phase 2 saved views stay valid** — saved views continue to render in `/saved-views`, dashboards, AND scoped Pulse instances. Saved view per-entity primitive canon unchanged. Cross-tenant masking from §3.25.x flows into scoped Pulses automatically.
+- **Phase V-1c CRM activity feed stays valid** — activity feed continues to render in CRM detail pages AND scoped Pulse instances. Tenant-scoped query unchanged; scope-filter is parameter on top.
+
+**No drift between widgets and Pulse**: widgets are per-source data tablets; Pulse (at any scope) orchestrates multiple widgets. A widget renders inside a Pulse instance as a slot citizen, not as the entire Pulse.
+
+#### 3.26.12.4 Persistence Model
+
+Hybrid model — composition templates persistent (Workshop-housed); data ephemeral.
+
+**Three persistence layers**:
+
+**Layer A — Composition templates (persistent; Workshop-housed)**:
+- **Platform-templated**: each of the three Pulse scopes has a default platform template (slot mapping + composition source declarations + intelligence pattern definitions). Platform templates ship pre-built; tenants inherit them automatically. Stored in-code (matches Phase 5 platform_defaults pattern + Phase 6 briefing template pattern).
+- **User-authored saved Pulse templates**: tenants customize Pulse templates per scope via Workshop. **Workshop is the canonical authoring surface for Pulse customization per §3.26.x to be canonicalized in Session 1.5**. Templates stored as VaultItems with `item_type="pulse_template"` and `metadata_json.pulse_template_config` (matches Phase 2 saved views storage pattern — `vault_items.metadata_json.saved_view_config` per CLAUDE.md §14 Phase 2 canon). Visibility levels mirror Phase 2 saved views (private / role_shared / user_shared / tenant_public).
+
+**Layer B — Per-summoning composition resolution (ephemeral)**:
+- When user summons "Customer Hopkins" via command bar, platform resolves: orchestration scope (Customer = Hopkins) + composition template (Customer Pulse default OR user-authored saved Pulse template if tenant has one) + data fetch per source (entity card data, widget data, saved view results, activity feed, intelligence narrative, etc.)
+- Resolution is per-summon; no persistent state across summon-dismiss cycles
+- Composition resolution time budget: target p50 < 500ms (parallels saved-view-execute budget). Budget canonicalizes when first scoped Pulse implementation lands.
+
+**Layer C — Live data (ephemeral)**:
+- Data inside the scoped Pulse is live — widgets fetch from their data endpoints, saved views execute, activity feeds query, intelligence prompts fire
+- No data caching specific to scoped Pulse surface — each source has its own caching/refresh discipline
+- Dismissal disposes of data state; next summon reconstructs
+
+**Storage + sharing semantics per source**:
+
+| Source | Storage | Sharing | Cross-tenant |
+|---|---|---|---|
+| Composition template (platform) | In-code | All tenants inherit | N/A |
+| Composition template (user-authored, Workshop) | `vault_items` with `item_type="pulse_template"` | Phase 2 visibility levels + Workshop network library publishing | Cross-tenant via §3.25.x + Workshop network library per §3.26.x to be canonicalized in Session 1.5 |
+| Widget data | Widget service | Per-widget caching | Per-widget tenant scope |
+| Saved view results | Phase 2 executor | Owner + visibility levels | Phase 2 cross-tenant masking |
+| Activity feed | V-1c CRM | Tenant-scoped | Cross-tenant per share |
+| Intelligence narrative | Per-summon AI call | Tenant-scoped | Cross-tenant via §3.26.9 |
+| Communications threads | Phase W-4b | Cross-tenant per consent | Per §3.26.9 |
+| Sub-Focus references | Focus registry | Per Focus participant scope | Per §3.26.11.10 |
+
+**No new schema for scoped Pulse itself** (Layer A + B): user-authored Pulse templates reuse `vault_items` storage; per-summoning resolution is in-memory. New schema lands when first concrete scoped Pulse implementation requires it (Phase W-4b+ depending on email primitive surface needs).
+
+**Workshop relationship** (forward-flag): user-authored Pulse template authoring lives in Workshop per §3.26.x to be canonicalized in Session 1.5. Workshop provides version history + staging + collaborative editing + network library publishing + intelligence-suggested customizations across all template types including Pulse scope templates.
+
+#### 3.26.12.5 Briefings ↔ Pulse Scope relationship
+
+Briefings stay distinct primitive; Briefing ≠ scoped Pulse.
+
+**Distinction**:
+- **Briefing** is a temporally-triggered narrative primitive (§3.26.10): morning/evening narrative synthesis with three-state machine (queued → generating → generated), narrative-shaped output, per-user delivery via Pattern C composition
+- **Scoped Pulse** is a user-summoned instance of Pulse primitive (§3.26.12): summoned via command bar, orchestrates around scope axis, no temporal trigger, no narrative-as-output
+
+**Different primitives with different verbs** (Briefing is platform-pushed; scoped Pulse is user-summoned). Different canon sections.
+
+**Compositional relationship — Briefing renderers may compose scoped-Pulse-shape content**:
+- Briefing structured-sections rendering (§3.26.10) may include scoped-Pulse-shape compositions as one mode (e.g., "Today's customers" section renders mini-Customer-Pulses for top 3 customers needing attention)
+- Briefing AS A WHOLE is not a scoped Pulse — it's a narrative surface with structured sections; scoped-Pulse-shape compositions may render INSIDE briefing sections as composed citizens
+- Same pattern as widgets rendering inside both dashboard AND Pulse layer — same primitive, multiple compositional homes
+
+**Forward implications**:
+- Briefing temporal trigger remains canonical (15-min sweep + per-user time preferences per §3.26.10)
+- Scoped Pulse summoning remains user-initiated via command bar
+- Both can coexist on the same surface (Briefing piece in Home Pulse layers + summoned scoped Pulse in spatial workspace simultaneously)
+
+#### 3.26.12.6 Saved Views ↔ Pulse Scope relationship
+
+Saved views remain per-entity primitive; scoped Pulses compose them at scope.
+
+**Distinction**:
+- **Saved view** is a per-entity-typed primitive (§3.25.x): list/table/kanban/calendar/cards/chart/stat presentation of a single entity type with filter + sort + grouping. Entity-typed (`fh_case`, `sales_order`, `invoice`, etc.). Cross-tenant masking per `permissions.cross_tenant_field_visibility` whitelist.
+- **Scoped Pulse** is a multi-source orchestration instance: composes N saved views + N widgets + entity cards + activity feed + intelligence narrative under one composition shell at scope.
+
+**Composition relationship**:
+- Scoped Pulse instances **compose** saved views as slot citizens — a Customer Pulse's "Open invoices" slot renders the saved view "Outstanding invoices for this customer" filtered to the orchestration entity
+- Saved view canon (§3.25.x) unchanged — per-entity primitive, owner + visibility levels, cross-tenant masking
+- Saved view CAN render outside any Pulse instance (in `/saved-views`, in dashboards, in Pulse via Phase W-3b `saved_view` widget) — scoped Pulse is one of multiple consumer surfaces
+
+**Cross-tenant masking inheritance**: when scoped Pulse composes a cross-tenant saved view (e.g., Customer Hopkins Pulse surfaces saved view "Cross-tenant invoices for this customer"), §3.25.x masking flows through automatically. Pulse shell does not modify masking; each composed source applies its own masking discipline at render time.
+
+**Workshop relationship** (forward-flag): saved views customizable via existing `/saved-views` builder (Phase 2 canon). Workshop becomes the canonical Workshop surface that includes saved-view authoring among template types per §3.26.x to be canonicalized in Session 1.5.
+
+#### 3.26.12.7 Widget catalog ↔ Pulse Scope relationship
+
+Widgets remain per-source data primitive; scoped Pulses orchestrate them at scope.
+
+**Distinction**:
+- **Widget** is a per-source data tablet (§12.6 workspace-core canon for some, §3.25 catalog for others): renders one source (Delivery rows, anomalies queue, recent activity feed, line status aggregation) in a single tablet shape
+- **Scoped Pulse** is a multi-source orchestration instance: composes N widgets as slot citizens around a scope axis
+
+**Composition relationship**:
+- Scoped Pulse instances compose widgets as slot citizens — a Period Pulse for "this week" might compose widget `today` (Glance variant) + widget `anomalies` (Brief variant) + widget `line_status` (Brief variant) under a period-axis Pulse instance
+- Widget canon (§12.6 + §12.6a + §13.4.1) unchanged — per-source surface, surface-aware compaction (Phase W-4a Step 6 canon), bounded interactions per §12.6a
+- Widget CAN render outside any scoped Pulse instance (in Home Pulse layers, in dashboards, in Spaces sidebar) — scoped Pulse is one of multiple consumer surfaces
+
+**Surface declaration UNCHANGED**: widgets do NOT need a new `"scoped_pulse"` supported surface declaration. The `pulse_grid` surface canonical declaration covers all Pulse scopes — scope is composition parameter, not surface variant. A widget that supports `pulse_grid` renders in Home Pulse AND scoped Pulse instances by inheritance. Phase W-3 widget catalog declarations stay intact verbatim.
+
+**Phase W-3 widget catalog stays intact**: 10 Pulse-eligible widgets continue to render. No supported_surfaces amendment needed; scope is composition parameter inherited at render time. Forward implementation: widget data services accept scope context as optional parameter; data sources filter by scope when present.
+
+**No widget-vs-Pulse drift**: clear distinction stated in canon — widgets are per-source data; Pulse (at any scope) is multi-source orchestration; widgets render inside Pulse instances as slot citizens; Pulse shell does NOT replace widget primitive.
+
+**Workshop relationship** (forward-flag): widget catalog customization (per-tenant widget overrides, custom widget templates) via Workshop per §3.26.x to be canonicalized in Session 1.5.
+
+#### 3.26.12.8 Cross-Tenant Pulse Scope
+
+**Cross-tenant scoped Pulses** compose cross-tenant data through existing §3.25.x masking + §3.26.9 communications visibility per source.
+
+**Common cross-tenant scoped Pulse cases**:
+- **Customer Pulse for cross-tenant customer** — Sunnycrest summons "Customer Hopkins" Pulse; Hopkins is a CRM customer + linked tenant per V-1c CRM cross-tenant. Composed sources include Hopkins's communications (via §3.26.9), Hopkins's recent activity (via V-1c), saved views with cross-tenant masking applied (via §3.25.x).
+- **Operation Pulse spanning cross-tenant operations** — "Joint pour-week with Hopkins" Operation Pulse surfaces this manufacturer's pour schedule + Hopkins's pickup commitments via shared Coordination Focus reference (§3.26.11.10).
+
+**Masking inheritance**: each composed source applies its own cross-tenant masking discipline at render time. Pulse shell does not modify masking. Hopkins's view of "their" Customer Pulse (if Hopkins as a tenant summons "Customer Sunnycrest") would surface different fields per Sunnycrest's outbound masking + Hopkins's inbound visibility preferences.
+
+**Consent model**: cross-tenant scoped Pulses inherit cross-tenant consent from underlying primitives. No separate Pulse-level consent — if user can see the underlying data via existing primitives (saved views, communications, Coordination Focuses), the Pulse instance composes it. If access denied at any source, that slot renders empty (or omits per template declaration).
+
+### 3.26.13 Command Bar Architecture
+
+#### 3.26.13.1 Command Bar elevated as universal summoning verb
+
+**The Command Bar is the canonical summoning verb for the platform.** Most platform surface area is summonable through the Command Bar. Spaces persist (rare); Pulse renders fractally at scope; Focuses are bounded work surfaces; Entities are records. The Command Bar reaches all of them.
+
+**Architectural framing — what the Command Bar summons**:
+- **Entities** — record cards (a contact, a sales order, a case)
+- **Scoped Pulses** — Pulse instances at non-default scope per §3.26.12 (Customer Pulse for Hopkins, Period Pulse for this week, Operation Pulse for Redi-Rock)
+- **Focuses** — Decision/Coordination/Execution/Review Focus instances per §3.26.11 (existing Focuses by reference; new Focuses by template instantiation)
+- **Communications** — relevant email/SMS/in-platform threads (Phase W-4b)
+- **Workshop** — Workshop home or specific Workshop authoring surfaces (per §3.26.x to be canonicalized in Session 1.5)
+- **Actions** — existing canon (create entity, navigate, trigger workflow per Phase 1 Command Bar canon)
+- **Saved views** — Phase 2 saved view instances
+- **Briefings** — pull current briefing or generate-on-demand (Phase 6 canon)
+
+**Forcing function on Command Bar maturity**: every summon type must be handled gracefully. The Command Bar is the unified entry point; if it can't handle a summon shape, the summon shape doesn't exist as a first-class platform concept. This forcing function disciplines the addition of new platform surfaces — the question "how does Command Bar summon this?" is asked at canonicalization time, not after.
+
+**Spaces are NOT summoned through Command Bar** (architectural exception): Spaces are tenant homes (rare; persistent navigation destinations). Per Phase A canon discipline ("Spaces are where you live"), Spaces are entered via canonical entry paths (DotNav, ⌘+digit shortcuts, role-based defaults) — not summoned for momentary attention. Workshop is a Space but is exception-summonable via ⌘K → Workshop entry path because Workshop authoring is craft work, not workflow inhabitation.
+
+#### 3.26.13.2 Summon Types Catalog
+
+**Canonical summon-type catalog** (per §3.26.13.1):
+
+| Summon Type | Materialization | Persistence after dismiss |
+|---|---|---|
+| Entity | Entity card tablet | Entity itself persists (always); summoning state ephemeral |
+| Scoped Pulse | Pulse tablet at scope per §3.26.12 | Composition template persistent (Workshop); summoning state ephemeral |
+| Focus (existing) | Focus instance summoned to spatial workspace | Focus instance persists per Phase A Session 4 canon; summoning state ephemeral |
+| Focus (new instantiation) | New Focus from template | Focus instance persists once instantiated; summoning state ephemeral |
+| Communications | Thread tablet | Thread persists (always); summoning state ephemeral |
+| Workshop | Workshop home or specific authoring surface (Session 1.5 canon) | Workshop space persists (always); summoning state ephemeral |
+| Action | Action execution (existing Phase 1 canon) | Action effects persist; action summon UI ephemeral |
+| Saved view | Saved view rendering tablet | Saved view persists (always); summoning state ephemeral |
+| Briefing | Current briefing tablet (or generate-on-demand) | Briefing instance persists per Phase 6 canon; summoning state ephemeral |
+
+**Common pattern**: the SUMMONED OBJECT persists per its own primitive's canon; the SUMMONING STATE (spatial workspace tablet positioning, command-bar-session) is ephemeral. Dismissing the Command Bar disposes of presentation state; underlying instances persist according to their primitive canon.
+
+**Type-discriminator at summon time**: Command Bar resolves summon type by query shape + matched candidates + intelligence-driven scoring. "Hopkins" might resolve to Customer Hopkins entity card OR Customer Pulse for Hopkins — Command Bar surfaces both as candidates; user disambiguates. Default behavior: most-recently-summoned-type-by-this-user as tiebreaker; intelligence learns per-user disambiguation patterns over time.
+
+#### 3.26.13.3 Natural-Language Summoning Grammar
+
+Command Bar accepts natural-language phrases; intent classifier + entity resolver per Phase 1 canon extended for Phase B reframe + new summon types:
+
+**Canonical NL summon shapes**:
+- **Entity name** — "Hopkins" / "Smith case" / "PO 1234" → entity candidates
+- **Entity name + relationship** — "Hopkins recent activity" / "Smith communications" → scoped Pulse OR communications candidates
+- **Time-window phrase** — "this week" / "last month" / "today" → Period Pulse for window
+- **Operational-area phrase** — "Redi-Rock" / "production this week" / "vault scheduling" → Operation Pulse for area (when matched against tenant's product lines + active Operations)
+- **Action verb** — "create order" / "send email" / "approve invoice" → action invocation per Phase 1 canon
+- **Workshop phrase** — "workshop" / "edit pulse template" / "customize workflow" → Workshop summons per §3.26.x to be canonicalized in Session 1.5
+- **Recent/frequent intelligence shortcuts** — "what I was just looking at" / "yesterday's coordination" → intelligence-surfaced recent context
+
+**Disambiguation discipline**: when a query matches multiple summon types (e.g., "Hopkins" = entity OR scoped Pulse), Command Bar surfaces a typed candidate list ("Customer Hopkins" entity card · "Customer Hopkins Pulse" scoped Pulse · "Customer Hopkins recent emails" communications). User selects; selection updates the recently-summoned-type tiebreaker.
+
+**Performance discipline**: NL summon resolution operates within Phase 1 Command Bar performance budget (p50 < 100ms / p99 < 300ms). Adding new summon types must not regress this budget. Intelligence-driven autocomplete (§3.26.13.4) operates as parallel resolver path, not blocking critical path.
+
+#### 3.26.13.4 Intelligence-Driven Autocomplete
+
+**Three-layer Command Bar autocomplete** (extends Phase 1 + Phase 8e.1 affinity canon):
+
+**Layer 1 — Recent + frequent (deterministic)**: Phase 8e.1 affinity rules apply — recently summoned + frequently summoned objects rank high. Storage: existing `user_space_affinity` table generalized to summon affinities (column name canonicalizes when first scoped Pulse summon ships; affinity store remains tenant-scoped operational data per existing canon).
+
+**Layer 2 — Intelligence-suggested patterns**: Claude-Haiku-tier surfaces summons relevant to current context (time of day, current Pulse layer state, active Focuses, recent activity). Registered managed prompt: `command_bar.intelligence.suggested_summons`. Per-summon execution; output cached for ~30s per command bar session.
+
+**Layer 3 — Workshop-authored shortcuts**: tenants author custom summon shortcuts via Workshop (per §3.26.x to be canonicalized in Session 1.5). Custom shortcuts ("EOD", "morning state", "Anderson coordination") surface in autocomplete with tenant-specific naming. Stored as VaultItems with `item_type="command_bar_shortcut"` (matches Phase 2 saved views storage pattern); visibility levels per Phase 2 canon.
+
+**Performance**: Layer 1 deterministic + Layer 3 in-tenant shortcuts resolve within Phase 1 Command Bar budget. Layer 2 Intelligence-suggestions render asynchronously into the autocomplete list as they arrive; do not block critical-path completion of typed query.
+
+#### 3.26.13.5 Spatial Workspace — render-stack canon
+
+Spatial workspace is the area around the command bar when invoked. Transient; command-bar-bound; not a persistent overlay primitive.
+
+**Render-stack canon** (uniform for all summon types):
+
+```
+LAYER (back to front)
+─────────────────────────────────────────────────────────────
+1. Underlying page                        (foundation; unchanged)
+   • Could be Home Pulse at /home
+   • Could be Spaces sidebar + content page
+   • Could be a Focus already open (modal-overlay Focus)
+
+2. Command bar invocation backdrop        (when ⌘K active)
+   • Subtle dim of underlying page
+   • backdrop-filter: blur for depth signal per Pattern 1 canon
+   • Click-outside dismisses spatial workspace + command bar
+
+3. Summoned object tablets               (when ⌘K active + objects summoned)
+   • Each summoned object materializes as tablet
+   • Free-form arrangement in spatial workspace area
+   • Pattern 1 (frosted-glass tablet) chrome per §11
+   • Multiple tablets coexist
+
+4. Command bar input + autocomplete      (foreground; always when ⌘K active)
+   • Visually anchored top-center (default position)
+   • Autocomplete list extends below input
+   • Always interactable while ⌘K active
+─────────────────────────────────────────────────────────────
 ```
 
-The new `"triage"` mode dispatches to `TriageCore` component (shipped W-4b step 12 alongside anomalies migration). Mode dispatcher's exhaustive-record TypeScript check forces every CoreMode to have a renderer at compile.
+**Invocation lifecycle**:
+1. **⌘K invoked** → backdrop applies; command bar input renders foreground
+2. **Type query** → autocomplete renders Layer-1+2+3 candidates
+3. **Select candidate** → object materializes as tablet in spatial workspace area; command bar input remains active
+4. **Type next query** → next candidate selectable; next tablet materializes
+5. **⌘K dismissed** → all tablets dispose; backdrop clears; underlying page restored
 
-**Distinction from existing `triageQueue` mode**: `triageQueue` was a Phase A Session 2 stub. Phase W-4b's `triage` mode is the production-ready implementation; `triageQueue` stub is retired or merged.
+**Multi-object composition**: tablets coexist within spatial workspace. Default arrangement: cascade with offset (first tablet center; subsequent tablets cascade with offset; user drags to free-form position). Tablets do NOT stack-block command bar input (command bar always foreground).
 
-#### 3.26.11.5 D-decisions resolved at canonicalization
+**No persistent spatial workspace state**: dismissing command bar disposes of all summoned tablet positioning + composition. Re-invoking ⌘K returns empty spatial workspace; user re-summons. Tablets summoned in prior command-bar sessions are NOT remembered (spatial workspace is transient surface).
 
-| D | Decision | Resolved |
-|---|---|---|
-| D-W4B-1 | MVP scope cuts | NO MVP cuts. Full 16-step sequence ships at canonical quality per §3.26.7.5 |
-| D-W4B-2 | Layer 1 email inbound architecture | Per-tenant SES/Mailgun inbound webhook + tenant-routing OR IMAP polling — decision per implementation phase. NO platform-managed-inbox stopgap (that was an MVP cut now retired with §3.26.7.5) |
-| D-W4B-3 | Briefing scheduler architecture | Phase 6 scheduler infrastructure consumed; new content-builder added. Three-state machine layered on Phase 6's binary unread/read |
-| D-W4B-4 | Triage Focus shape canonicalization | New `"triage"` core mode in Focus mode dispatcher; renders queue config from Phase 5 Triage primitive infrastructure inside Focus anchored core + canvas |
+**Underlying page interaction**: when ⌘K active + tablets present, underlying page is dimmed but visible. User cannot interact with underlying page until ⌘K dismissed (backdrop blocks interaction). Click-outside-of-tablets-and-command-bar = dismiss-everything (matches modal Dialog dismiss-on-backdrop-click canon).
+
+**Command bar position discipline**: TOP-CENTER ANCHOR. Command bar persists foreground for entire ⌘K-active session. Predictable command bar position is operator muscle memory; dynamic positioning would break it. Tablets arrange around fixed command bar; command bar doesn't move. Dismissal via ⌘K toggle off OR Esc with no active autocomplete.
+
+#### 3.26.13.5a Tablet-tier viewport-fit math integration
+
+**Viewport-fit math (§13.3.4 per Phase W-4a Step 6 canon) operates against the TABLET'S OWN DIMENSIONS for summoned scoped Pulse tablets, not against the underlying viewport.**
+
+**The discipline**: when a scoped Pulse summons as a spatial workspace tablet (e.g., 600×400px tablet inside a 1440×900px viewport), the §13.3.4 viewport-fit math runs against the TABLET cell (600×400) — not the viewport (1440×900). Density-tier dispatch (default ≥121px / compact 101-120 / ultra-compact 80-100 per §13.4.1 canon) reads the tablet's cell-height; tier-three threshold (cell-height < 80px → scroll mode per Phase W-4a Step 6 canon Commit 3) reads the tablet's cell-height.
+
+**Why this canonicalization matters**:
+- A 600×400 tablet in a 1440×900 viewport otherwise inherits desktop-tier density (the underlying viewport is desktop). But the tablet's actual rendering cell-count is much smaller; widgets need compact-tier rendering to fit.
+- Without this canonicalization, tablet-scale Pulse renders at desktop-tier density → widgets overflow tablet cell → broken layout.
+- With this canonicalization, tablet-scale Pulse inherits tablet-tier density (or even mobile-tier scroll mode at very small tablet dimensions) → widgets render at appropriate density → layout works.
+
+**Implementation pattern** (forward-flag for Phase W-4b/W-5 implementation): viewport-fit math hook accepts an optional `containerRect` parameter; defaults to viewport. Spatial workspace tablet wraps its rendered scoped Pulse in a container that supplies its own dimensions to the hook. Tablet rendering operates against container dimensions; viewport unchanged.
+
+**Compatibility with Phase W-4a Step 6 canon**: existing Home Pulse rendering at default-scope (`/home`) uses viewport dimensions per existing canon — unchanged. Only spatial-workspace-tablet-rendered scoped Pulse instances substitute container dimensions. Single canon discipline; both rendering paths share the same viewport-fit math, parameterized differently per render context.
+
+**Visual canon §13 update**: §13.3.4 prose extends with "tablet-rendered Pulse uses tablet container dimensions instead of viewport dimensions" canonicalization. Pre-amendment §13.3.4 implicitly assumed full-viewport Pulse rendering; post-amendment makes the parameterization explicit. See DESIGN_LANGUAGE §13.10.
+
+#### 3.26.13.6 Multi-Object Composition in Spatial Workspace
+
+**Canonical multi-object composition pattern**: user can summon N objects within a single command bar session. All N tablets coexist in spatial workspace until command bar dismissed.
+
+**Common multi-object patterns**:
+- **Customer Pulse + relevant Focus** — "Hopkins" → Customer Pulse + summon "active Coordination Focus: Smith service" → both tablets coexist; user reads both contexts simultaneously
+- **Period Pulse + entity drill-in** — "this week" → Period Pulse + summon specific case entity card (clicked from Period Pulse activity feed) → entity card materializes alongside; user reviews case detail without leaving Period Pulse
+- **Comparison summons** — "Hopkins" + "Riverside" → both Customer Pulses coexist; user compares two customers side-by-side
+
+**Tablet arrangement**:
+- **Default cascade**: each new tablet offsets from prior by ~30px both axes (matches macOS window-cascade convention)
+- **User drag-to-position**: tablet drag re-positions within spatial workspace (handled by tablet drag handle — Pattern 1 canon)
+- **No magnetic snapping** (initial canon — speculative arrangement intelligence per §3.26.7.5; canonicalize when concrete operator pattern emerges)
+- **Tablet z-order**: most-recently-interacted tablet front; click-tablet brings front
+
+**Dismissal per-tablet**:
+- Tablet close button (Pattern 1 chrome dismissal control) → tablet disposes; other tablets remain
+- Other tablets stay in spatial workspace; command bar remains active for further summons
+
+**Dismissal all-at-once**:
+- ⌘K toggle off (or Esc with no active autocomplete) → all tablets dispose; backdrop clears
+
+#### 3.26.13.7 Pulse-launched vs Command-bar-summoned Focus paths
+
+Per Phase A Session 4 canon (Focus persistence) + Phase C uniform render-stack: same Focus instance materializes via two summoning paths with different render presentation.
+
+**Path A — Pulse-launched Focus (modal-overlay)** (existing Phase A canon):
+- User clicks Focus reference inside Home Pulse layer (anomaly intelligence stream surfaces "active Coordination Focus: Smith service")
+- Focus opens as **modal-overlay** per Phase A canon — full-page Focus shell over current page
+- Focus consumes full viewport; Pulse layer dismisses to background
+- Dismissal returns to Pulse with Focus state persisted (Phase A Session 4 canon)
+
+**Path B — Command-bar-summoned Focus (spatial workspace tablet)** (new §3.26.13 canon):
+- User invokes ⌘K → types/voice "active Coordination Focus: Smith service" (or autocomplete-selects from Layer 2 Intelligence-suggested)
+- Focus materializes as **spatial workspace tablet** per §3.26.13.5
+- Tablet renders Focus core element + thread at tablet-scale (subset of full-Focus rendering)
+- Tablet coexists with other summoned objects in spatial workspace
+- Dismissal disposes tablet; Focus state persists per Phase A Session 4 canon
+
+**Coherence across paths**: same Focus instance regardless of path. State changes committed via Path A or Path B persist to same instance. Audit log unified per Focus instance. Switching path during a single Focus interaction (start in Path B as tablet → user wants full screen → expand to Path A modal-overlay) is canonical via "expand to full-page" affordance on tablet (Pattern 1 chrome action).
+
+**When to use which path**: Pulse-launched Focus (Path A) for sustained work — operator wants full-screen Focus presentation. Command-bar-summoned Focus (Path B) for quick context check + multi-object composition (Focus alongside other summoned tablets). Both paths canonical; user choice per workflow.
+
+#### 3.26.13.8 Visual Canon (§13 Updates)
+
+§3.26.13 visual canon updates to DESIGN_LANGUAGE §13 Spaces and Pulse Visual System (canonicalized in DESIGN_LANGUAGE §13.10):
+
+**Spatial Workspace visual treatment** (DESIGN_LANGUAGE §13.10.1):
+- Backdrop: `bg-black/40` (matches existing Dialog backdrop per Phase 8e.2 canon) + `backdrop-filter: blur(8px)` for depth signal per Pattern 1 frosted-glass framing
+- Command bar invocation: existing Phase 1 Command Bar visual canon + elevation increment (`shadow-level-3` when ⌘K active vs `shadow-level-2` baseline)
+- Tablet rendering: Pattern 1 frosted-glass tablet chrome per §11 (rounded-none, bg-surface-elevated/85, supports-[backdrop-filter]:backdrop-blur-sm, shadow-[var(--shadow-widget-tablet)])
+- Tablet entry/exit: `data-open:animate-in zoom-in-95` + `data-closed:animate-out fade-out` per overlay-family canon (Aesthetic Arc Session 2 + Phase A Session 1)
+- Multi-tablet z-order signal: most-recently-interacted tablet `shadow-level-3`; background tablets `shadow-level-2`
+
+**Pulse-at-scope rendering parity** (DESIGN_LANGUAGE §13.10.2; extends Phase W-4a Step 6 canon):
+- Sunnycrest canonical Home Pulse composition (§13.8.1 State B) is the reference for default-scope Pulse
+- Scoped Pulse tablet rendering inherits §13.3 visual canon at smaller cell-count (viewport-fit math operates at tablet-scale per §13.3.4 + §3.26.13.5a)
+- Pattern A/B/C composition rules apply at any scope (existing canon unchanged)
+- Brass-thread divider, intelligence stream synthesis, layered attention model — identical at all scopes
+
+**Visual language consistency across summon types** (DESIGN_LANGUAGE §13.10.3):
+- All summoned tablets share Pattern 1 chrome family (frosted-glass surface + Pattern 1 transform per Aesthetic Arc Session 4.8 canon)
+- Object-type discrimination via tablet header eyebrow ("ANCILLARY POOL" vs "CUSTOMER" vs "PERIOD" vs "FOCUS: Coordination") + tablet content shape
+- Visual palette: terracotta accent flows uniformly per Aesthetic Arc Session 2 single-value cross-mode rule
+- Surface elevation: tablets at `shadow-widget-tablet` token; underlying page at `shadow-level-1`/baseline
+
+**§13.3.4 viewport-fit math parameterization** (DESIGN_LANGUAGE §13.10.4): viewport-fit math accepts container dimensions instead of viewport dimensions when scoped Pulse renders inside a spatial workspace tablet. Default-scope Home Pulse rendering at `/home` uses viewport (existing canon); spatial-workspace-tablet rendering uses tablet container dimensions. Single canon discipline, parameterized per render context. Implementation lands when first scoped Pulse summon ships (Phase W-4b+).
+
+**Workshop summoning visual treatment** (forward-flag): Workshop summons render with same spatial workspace canon; specific Workshop visual canon canonicalizes alongside Workshop primitive in Session 1.5.
+
+#### 3.26.13.9 Workshop Relationship (forward-flag)
+
+**Workshop summoning canonical entry path**: ⌘K → "Workshop" navigates to Workshop Space. Workshop is the architectural exception to "Spaces aren't summoned via Command Bar" rule (§3.26.13.1) because Workshop is craft-work surface, not workflow-inhabitation surface — operators reach for Workshop momentarily for customization, not as persistent navigation home.
+
+**Three Workshop integration points** in Command Bar architecture (per §3.26.x to be canonicalized in Session 1.5):
+1. **Workshop is summonable**: ⌘K → "Workshop" / "edit pulse template" / "customize workflow" routes to Workshop summons per §3.26.13.2 catalog
+2. **Custom summon shortcuts authored in Workshop**: tenants author Layer-3 Command Bar shortcuts via Workshop authoring surface (Layer 3 Command Bar autocomplete per §3.26.13.4)
+3. **Intelligence-suggested customization patterns surface in Workshop**: Layer-2 Intelligence-suggested summons that prove useful become Workshop-suggested shortcuts ("we noticed you summon 'this week' frequently; want to add a ⌘+W shortcut?")
+
+Workshop primitive canon canonicalizes these integration points in Session 1.5. §3.26.13 ships Command Bar architecture + spatial workspace render-stack at canonical-quality independent of Workshop; Workshop integration layers cleanly post-Session-1.5 without §3.26.13 retrofit.
 
 ---
 

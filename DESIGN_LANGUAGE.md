@@ -4772,15 +4772,160 @@ These 5 viewports × 2 modes are the **calibration anchors** for subsequent Puls
 - **Section 12.5**: surface composition rules (`pulse_grid` is the surface declaration consulted by Pulse's intelligent selection).
 - **Section 12.6a**: Widget Interactivity Discipline applies inside Pulse — bounded interactions per piece; heavy decisions route to Focus.
 - **Section 12.10**: reference implementations (the 14 canonical widgets) compose into Pulse via §13.4.1 sizing rules.
+- **Section 13.10 (Spatial Workspace + Pulse-at-Scope Visual Canon)**: visual canon for command-bar-summoned scoped Pulse + multi-object spatial workspace + tablet-tier viewport-fit math parameterization (Phase C canon, May 2026).
 - **Section 14 (Communications Layer Visual Canon)**: per-primitive widget shapes for the four Layer 1 communication primitives (email/sms/phone/messaging) inside Pattern C composition.
 - **Section 15 (Briefing Visual System)**: three-state machine visual treatment + per-state typography + per-state composition for morning + evening briefings.
-- **Section 16 (Triage Focus Visual System)**: visual canon for Triage primitive composing inside Focus primitive (Phase W-4b steps 12–14).
+- **Section 16 (Triage Focus Visual System)**: visual canon for triage core element composing inside Decision Focus type (Phase W-4b steps 12–14; per §3.26.11 amendment "Decision Focus with triage core element").
 - **BRIDGEABLE_MASTER.md §3.26**: parent canon for Spaces taxonomy + Pulse architecture + onboarding model + implementation sequencing.
 - **BRIDGEABLE_MASTER.md §3.26.9**: Communications Layer Architecture (companion canon to Section 14 below).
 - **BRIDGEABLE_MASTER.md §3.26.10**: Briefings Architecture (companion canon to Section 15 below).
-- **BRIDGEABLE_MASTER.md §3.26.11**: Triage Focus Canonical Pattern (companion canon to Section 16 below).
+- **BRIDGEABLE_MASTER.md §3.26.11**: Focus Primitive Types (companion canon to Section 16 below; four Focus types — Decision/Coordination/Execution/Review — with core element catalog per type).
+- **BRIDGEABLE_MASTER.md §3.26.12**: Pulse Scope Architecture (fractal-Pulse canon — companion canon to Section 13.10 below).
+- **BRIDGEABLE_MASTER.md §3.26.13**: Command Bar Architecture (companion canon to Section 13.10 below).
 - **PLATFORM_INTERACTION_MODEL.md** "Tony Stark / Jarvis interaction model": Pulse is the most direct realization of the summon/arrange/park/dismiss interaction primitives at platform scale.
 - **AESTHETIC_ARC.md** Spaces and Pulse Architecture Canon Session entry: arc context.
+
+### 13.10 Spatial Workspace + Pulse-at-Scope Visual Canon
+
+Phase C canon (May 2026, Session 1) — visual treatment for Command Bar elevation + spatial workspace + scoped Pulse rendering at tablet scale. Companion to BRIDGEABLE_MASTER §3.26.13 (architectural canon).
+
+**Established alongside Phase B fractal-Pulse reframe + Phase C Command Bar elevation**: Pulse renders at multiple scopes (Home Pulse default-scope at `/home` + scoped Pulse instances summoned via command bar materializing as spatial workspace tablets). Single visual system spans all scopes; tablet-scale rendering inherits §13.3 + §13.4 visual canon at smaller cell-count.
+
+#### 13.10.1 Spatial workspace visual treatment
+
+Spatial workspace is the area around the command bar when invoked. Transient; command-bar-bound; dismissed when command bar dismissed.
+
+**Backdrop discipline**:
+- `bg-black/40` (matches existing Dialog backdrop per Phase 8e.2 canon)
+- `backdrop-filter: blur(8px)` for depth signal per Pattern 1 frosted-glass framing
+- Backdrop appears on ⌘K invocation; clears on ⌘K dismissal
+
+**Command bar visual emphasis when invoked**:
+- Existing Phase 1 Command Bar visual canon preserved
+- Elevation increment: `shadow-level-3` when ⌘K active vs `shadow-level-2` baseline
+- Position: TOP-CENTER ANCHOR throughout entire ⌘K-active session
+- Command bar persists foreground when tablets summoned
+
+**Tablet rendering (Pattern 1 frosted-glass tablet chrome)**:
+- `rounded-none` (Aesthetic Arc Session 4.8 sharp-corner canon)
+- `bg-surface-elevated/85`
+- `supports-[backdrop-filter]:backdrop-blur-sm`
+- `shadow-[var(--shadow-widget-tablet)]` (composite atmospheric shadow per §11 Pattern 1)
+- Pattern 1 transform per Aesthetic Arc Session 4.8 (`var(--widget-tablet-transform)`)
+
+**Tablet entry/exit animation**:
+- Entry: `data-open:animate-in zoom-in-95` per overlay-family canon (Aesthetic Arc Session 2 + Phase A Session 1)
+- Exit: `data-closed:animate-out fade-out`
+- Duration: `var(--duration-arrive)` enter / `var(--duration-settle)` exit
+- Easing: `var(--ease-settle)` enter / `var(--ease-gentle)` exit
+
+**Multi-tablet z-order signal**:
+- Most-recently-interacted tablet: `shadow-level-3` (lifted)
+- Background tablets: `shadow-level-2` (resting)
+- Click-tablet brings front; updates shadow level
+
+**Underlying page treatment when overlay active**:
+- Dimmed but visible per backdrop discipline
+- Click-outside-of-tablets-and-command-bar dismisses everything (matches modal Dialog dismiss-on-backdrop-click canon)
+- No interaction with underlying page until ⌘K dismissed
+
+#### 13.10.2 Pulse-at-scope rendering parity
+
+Scoped Pulse tablets inherit §13 visual canon directly — no parallel visual system.
+
+**Reference rendering**:
+- Sunnycrest canonical Home Pulse composition (§13.8.1 State B per Phase W-4a Step 6 canon) is the reference for default-scope Pulse
+- Scoped Pulse tablet rendering inherits §13.3 visual canon at smaller cell-count
+- Viewport-fit math operates at tablet-scale per §13.3.4 + §13.10.4
+
+**Visual elements preserved at all scopes**:
+- Pattern 2 chrome (rounded-[2px] + bg-surface-elevated + border-border-subtle + shadow-level-1 per Phase W-4a Step 5 canon)
+- Layered attention model (Communications / Operational / Anomaly / Activity layer order per §3.26.9.2)
+- Brass-thread divider above Operational layer (per §13.3.2)
+- Intelligence stream synthesis (per §13.4.2)
+- Pattern A/B/C composition rules (per §11)
+- Container-query density tiers (default / compact / ultra-compact per §13.4.1)
+- Empty-slot filter + agency-dictated error surface (per §13.4.3)
+
+**Visual canon discipline**: a scoped Pulse tablet at 600×400px renders the SAME visual primitives as a full-viewport Home Pulse, just at smaller cell-count. Pattern 2 chrome retained per piece; brass-thread divider retained between layers; intelligence stream rendering retained. Operators recognize the Pulse shape across scopes.
+
+**Pattern A/B/C composition rules apply at any scope** (existing canon unchanged): scoped Pulses use the same composition patterns as Home Pulse — Pattern A widgets-only (Operational), Pattern B stream-only (Anomaly), Pattern C stream + supporting widgets (Communications, when scope includes communications signals).
+
+#### 13.10.3 Visual language consistency across summon types
+
+All summoned tablets (entity cards, scoped Pulses, Focuses, communications, Workshop, etc.) share Pattern 1 chrome family for visual consistency.
+
+**Shared tablet chrome family**:
+- Pattern 1 frosted-glass surface per §11 (rounded-none, bg-surface-elevated/85, backdrop-blur-sm, shadow-widget-tablet)
+- Pattern 1 transform per Aesthetic Arc Session 4.8 (`var(--widget-tablet-transform)`)
+- Same dismissal control + drag handle position
+- Same entry/exit animation pattern
+- Same elevation tier (shadow-widget-tablet token)
+
+**Object-type discrimination** (within shared chrome):
+- Tablet header eyebrow text discriminates type ("ANCILLARY POOL" vs "CUSTOMER" vs "PERIOD" vs "FOCUS: Coordination")
+- Tablet content shape discriminates further (kanban vs triage queue vs entity card row layout vs thread view)
+- No chrome-level discrimination — type is signaled by content, not by tablet shell
+
+**Visual palette discipline**:
+- Terracotta accent flows uniformly per Aesthetic Arc Session 2 single-value cross-mode rule
+- All tablets use accent for primary actions, accent-subtle for active states, accent-muted for hover backgrounds
+- Per-object-type accent variation forbidden (e.g., Customer tablets must NOT use a different accent from Period tablets)
+
+**Surface elevation tier**:
+- Tablets: `shadow-widget-tablet` (composite atmospheric shadow — higher tier than card-level shadow-level-1)
+- Underlying page: `shadow-level-1` / baseline (cards, lists, primary surfaces)
+- Spatial workspace backdrop: dim layer (no shadow tokens)
+
+**Why consistency matters**: spatial workspace composition (multi-object) requires visual rhythm. Consistent tablet chrome across summon types lets operators scan multi-tablet compositions quickly — type is content-cue, not shell-cue. Inconsistent chrome would force per-tablet identification overhead.
+
+#### 13.10.4 §13.3.4 viewport-fit math parameterization
+
+Phase C canon extends §13.3.4 (Phase W-4a Step 6 viewport-fit math) with container-dimensions parameterization.
+
+**Pre-Phase-C convention** (implicit): §13.3.4 viewport-fit math uses underlying viewport (window.innerWidth × window.innerHeight) for chrome budget + cell-height + density-tier dispatch.
+
+**Post-Phase-C canon** (explicit): viewport-fit math accepts container dimensions instead of viewport dimensions when scoped Pulse renders inside a spatial workspace tablet.
+
+**The parameterization**:
+- **Default-scope Home Pulse** (rendered at `/home`): viewport-fit math operates against `window.innerWidth × window.innerHeight` — existing canon, unchanged.
+- **Scoped Pulse rendered as spatial workspace tablet**: viewport-fit math operates against the **tablet's own dimensions** (e.g., 600×400px container regardless of underlying viewport size).
+
+**Why this canonicalization matters**:
+- A 600×400 tablet inside a 1440×900 viewport otherwise inherits desktop-tier density (the underlying viewport is desktop). The tablet's actual rendering cell-count is much smaller; widgets need compact-tier rendering to fit.
+- Without this canonicalization, tablet-scale Pulse renders at desktop-tier density → widgets overflow tablet cell → broken layout.
+- With this canonicalization, tablet-scale Pulse inherits tablet-tier density (or even mobile-tier scroll mode at very small tablet dimensions) → widgets render at appropriate density → layout works.
+
+**Density-tier dispatch at tablet scale**:
+- Tablet `cell-height ≥ 121px` → default density (full Brief content)
+- Tablet `cell-height 101-120px` → compact density (header + footer only)
+- Tablet `cell-height 80-100px` → ultra-compact density (single-line dense)
+- Tablet `cell-height < 80px` → tier-three threshold breach → scroll mode (per Phase W-4a Step 6 Commit 3 canon)
+
+**Implementation pattern** (forward-flag for Phase W-4b/W-5 implementation):
+- Viewport-fit math hook accepts an optional `containerRect` parameter; defaults to viewport dimensions
+- Spatial workspace tablet wraps its rendered scoped Pulse in a container that supplies its own dimensions to the hook
+- Tablet rendering operates against container dimensions; viewport unchanged
+
+**Compatibility with Phase W-4a Step 6 canon**:
+- Existing Home Pulse rendering at default-scope (`/home`) uses viewport dimensions per existing canon — unchanged
+- Only spatial-workspace-tablet-rendered scoped Pulse instances substitute container dimensions
+- Single canon discipline; both rendering paths share the same viewport-fit math, parameterized differently per render context
+
+**Visual continuity**: this parameterization is invisible to operators. They see the same Pulse shape at any scope; the math just parameterizes per render context to keep widgets at appropriate density. Pulse "looks like Pulse" whether rendered at 1440×900 viewport or 600×400 tablet.
+
+#### 13.10.5 Cross-references
+
+- **§11 Pattern 1**: tablet chrome family (frosted-glass surface + transform + shadow composition)
+- **§13.3 Pulse Tetris Composition**: reference visual canon scoped Pulse inherits at tablet scale
+- **§13.3.4 Viewport-Fit Math**: parent math parameterized per §13.10.4
+- **§13.4.1 Pinable Widget Pieces**: density-tier dispatch operates at tablet cell-height per §13.10.4
+- **§13.4.3 Agency-Dictated Error Surface**: empty-slot filter operates uniformly at any Pulse scope
+- **§13.8.1 Sunnycrest canonical Home Pulse composition (State B)**: reference rendering for default-scope; scoped Pulses inherit
+- **BRIDGEABLE_MASTER §3.26.11**: Focus Primitive Types (companion canon — Focus types whose tablets compose alongside scoped Pulse tablets in spatial workspace)
+- **BRIDGEABLE_MASTER §3.26.12**: Pulse Scope Architecture (fractal-Pulse canon — architectural companion to this section)
+- **BRIDGEABLE_MASTER §3.26.13**: Command Bar Architecture (architectural canon for Command Bar elevation + spatial workspace render-stack)
+- **AESTHETIC_ARC.md** Session 1 entry: arc context for Phase A + Phase B + Phase C canon work
 
 ---
 

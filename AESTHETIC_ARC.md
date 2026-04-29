@@ -1227,6 +1227,78 @@ There is no circular dependency: the arcs compose. Either arc can ship any phase
 
 ---
 
+## Session 1 — Focus + Pulse Scope + Command Bar Canon (canon locked, 2026-05-05)
+
+Pure architectural canon session. NO CODE this session. Three architectural areas canonicalized as load-bearing foundation for Phase W-4b email primitive design (Session 2) + Phase W-4b implementation. Total ~5 hours conversational/architectural work; canon doc batch write at session close.
+
+### Phase A — Focus Primitive Types
+
+§3.26.11 expanded from "Triage Focus Canonical Pattern" to comprehensive "Focus Primitive Types" canon. Four canonical Focus types — **Decision / Coordination / Execution / Review** — distinguished by lifecycle trigger + participant pattern + outcome flow + core element catalog. 13 unique core element catalog citizens across types. Sub-Focus hierarchy as canonical platform feature with per-template declaration + cascade closure semantics. Notification routing as hybrid 3-layer (deterministic baseline template-registered + Intelligence-learned per-tenant amendments stored as tenant operational config + prompt-tier fallback for novel events). SMS thread routing as 4-layer (most-recent-active-Focus default + intent classification + operator escalation + Intelligence learning). Magic-link participant scope as template-declared with §3.25.x cross-tenant masking inheritance + tenant-tightening affordance. Cross-tenant Focus scope as consent-based per §3.26.9 inheritance. Per-type auto-closure semantics. **Triage-as-core-element-not-primitive resolution**: §3.26.11 amended from "Phase 5 Triage primitive composing inside Focus" to "Decision Focus with triage core element"; Phase 5 task_triage + ss_cert_triage queues re-frame without code change. Core element catalog discipline canonicalized: per-Focus-type catalogs; cross-type sharing permitted when architectural fit warrants but not built speculatively.
+
+### Phase B — Pulse Scope Architecture (fractal-Pulse reframe)
+
+§3.26.12 introduced as "Pulse Scope Architecture" canon. **Pulse is fractal primitive** — same architecture (Pattern A/B/C composition + chrome budget + viewport-fit math + intelligence layer + composition cache) renders at multiple scopes. Home Pulse = default-scope instance; scoped Pulses = scope-parameterized instances of same primitive. Three canonical scopes: **Operation + Customer + Period** (Person + Location + Material deferred per §3.26.7.5 until concrete need emerges). Reframe collapses pre-draft "Overview Primitive" to single Pulse primitive with scope parameter — single render-stack canon, single visual canon, single intelligence integration, single storage model. Composition sources canonicalized (entity cards + widgets + saved views + activity timeline + intelligence patterns + communications + sub-Focus references); scope is composition parameter, not surface variant. **No widget supported_surfaces extension needed** (`pulse_grid` covers all scopes by inheritance). Persistence model: composition templates persistent (Workshop-housed per Session 1.5); data ephemeral. **Mid-session reframe discipline**: pre-draft canon was treating Overview as third class of summonable surface parallel to Pulse; user-surfaced fractal-Pulse insight collapsed framing mid-flight rather than locking wrong-architecture canon (matches §3.26.7.5 canonical-quality discipline). CONCERN 1 (Briefings ↔ Pulse Scope distinct primitives), CONCERN 2 (Saved Views composed inside scoped Pulses; not replaced), CONCERN 4 (hybrid persistence), CONCERN 6 (widget catalog stays intact + composes into scoped Pulses) all resolved.
+
+### Phase C — Command Bar Architecture + Spatial Workspace
+
+§3.26.13 introduced. **Command Bar elevated to universal summoning verb** handling 8 summon types (entities + scoped Pulses + Focuses + communications + Workshop + actions + saved views + briefings). Forcing function on Command Bar maturity — every summon type must be handled gracefully. Spaces are NOT summoned (architectural exception); Workshop is exception-summonable as canonical craft-work surface. Natural-language summoning grammar extended with type-discriminator candidates. Intelligence-driven autocomplete as 3-layer hybrid (recent+frequent + Intelligence-suggested + Workshop-authored shortcuts). **Spatial workspace canonicalized** as transient command-bar-bound surface (NOT persistent overlay primitive per CONCERN 5 pre-resolution). Render-stack: underlying page foundation → backdrop dim + blur on ⌘K → command bar input foreground + summoned tablets in spatial workspace area → ⌘K exit disposes everything; underlying page restored. Multi-object composition canonical (cascade default + drag-to-position; no magnetic snapping per §3.26.7.5). **Pulse-launched Focus** (modal-overlay, Phase A canon) vs **Command-bar-summoned Focus** (spatial workspace tablet, Phase C canon) — same instance, coherent state, both paths canonical. **Tablet-tier viewport-fit math canonicalization** (§3.26.13.5a + DESIGN_LANGUAGE §13.10.4): scoped Pulse rendering inside spatial workspace tablet uses tablet container dimensions instead of underlying viewport for §13.3.4 density-tier dispatch. Single canon discipline; both rendering paths share viewport-fit math, parameterized per render context. Prevents broken-layout failure mode in implementation when scoped Pulse renders at smaller dimensions than viewport.
+
+### Architectural model post-Session-1
+
+**5 primitives + fractal Pulse + universal Command Bar + Workshop (Session 1.5)**:
+- Spaces (rare — tenant homes; Workshop; cross-tenant collaboration; custom user-authored)
+- Focuses (typed — bounded work surfaces with core element catalog per type)
+- Pulse (fractal — Home + scoped instances; same primitive at multiple scopes)
+- Entities (everywhere — summonable record cards)
+- Communications (flow through unified inbox)
+- Command Bar (universal summoning verb handling all summon types)
+- Workshop (Space — customization home; templates-as-data discipline; network library — Session 1.5)
+
+Architectural elegance achievement: every customizable surface unifies under existing primitive framework; no speculative parallel primitives. Workshop primitive emergence flagged for Session 1.5 dedicated session (~3-4h) before Session 2 (Email primitive canon) per Option B sequencing per canonical-quality discipline.
+
+### Mid-session canon-discipline lessons
+
+**Mid-session reframe disciplines validated**: Phase B "Overview Primitive" framing architecturally collapsed to "Pulse at scope" mid-flight; reframe applied to drafted prose rather than locking wrong-architecture canon. Matches §3.26.7.5 canonical-quality discipline — better to canonicalize correct architecture than to lock convenient-but-wrong framing.
+
+**Mid-session primitive emergence scope discipline**: Workshop primitive emergence surfaced during Phase B Q1-Q4 deliberation. User direction Option B chosen (dedicate Session 1.5 rather than tail-end Phase D expansion). Preserves Phase A + B + C rigor at full depth; Session 1.5 lands at canonical quality matching prior phases.
+
+**Sub-primitive optional refinement integrated**: §3.26.11 prose nuance noting "core element catalog is per-Focus-type; citizens currently unique across types but cross-type sharing permitted when architectural fit warrants" — prevents future architectural drift if Decision Focus and Coordination Focus future templates require shared catalog citizens.
+
+### Canon doc updates this session
+
+**BRIDGEABLE_MASTER**:
+- §3.26.6.4 line-item replacements (3 lines: "Triage Focus migration" → "Decision Focus with triage core element migration")
+- §3.26.9.7 cross-reference parenthetical (Triage Focus colloquial = Decision Focus with triage core element canonical)
+- §3.26.10 cross-reference touch (briefing structured-sections may compose scoped-Pulse-shape mini-compositions)
+- §3.26.11 full rewrite as "Focus Primitive Types" — 11 subsections covering 4 Focus types + sub-Focus hierarchy + notification routing + SMS thread routing + magic-link scope + cross-tenant scope + auto-closure semantics
+- §3.26.12 NEW (Pulse Scope Architecture — 8 subsections covering fractal-Pulse framing + scope catalog + composition sources + persistence model + Briefings/SavedViews/Widgets relationships + cross-tenant scope)
+- §3.26.13 NEW (Command Bar Architecture — 9 subsections covering Command Bar elevation + summon types + NL grammar + Intelligence autocomplete + spatial workspace render-stack + tablet-tier viewport-fit math + multi-object composition + Pulse-launched-vs-command-bar-summoned Focus paths + Workshop forward-flag)
+
+**DESIGN_LANGUAGE**:
+- §13.9 cross-references extended with §3.26.12 + §3.26.13 + §13.10 references
+- §13.10 NEW (Spatial Workspace + Pulse-at-Scope Visual Canon — 5 subsections covering spatial workspace visual treatment + Pulse-at-scope rendering parity + visual language consistency across summon types + viewport-fit math parameterization + cross-references)
+
+**No code shipped.** Architecturally locked foundation for Phase W-4b email primitive design + implementation; Workshop canon (Session 1.5) lands next; email canon (Session 2) designs against settled Focus + Pulse + Command Bar + Workshop foundation.
+
+### Forward implications
+
+**Sequencing forward**:
+- Session 1.5 (Workshop primitive canon, ~3-4h) — templates-as-data discipline + network library + intelligence-suggested customizations
+- Session 2 (Email primitive canon, ~3-4h) — designs against settled Focus + Pulse + Command Bar + Workshop foundation
+- Phase W-4b implementation begins after canon foundation locks
+
+Total canon work before email primitive: ~11-13h. Architecturally justified per §3.26.7.5 ("MVP cuts compound as debt"); Layer 1 implementation ships against locked architecture rather than amended-mid-implementation foundation.
+
+**Cross-arc check at Phase II Batch 1c-i / Aesthetic Arc Sessions 5-6 boundary**: Session 1 canon does NOT introduce motion patterns Aesthetic Arc Session 5 needs to absorb. Spatial workspace tablet animation inherits overlay-family canon (Aesthetic Arc Session 2); scoped Pulse rendering inherits §13.3 visual canon. No new motion vocabulary needed. Both arcs run in parallel per existing cross-arc integration rule.
+
+**Discipline lock summary**:
+
+> "Build at canonical quality. Demo timelines don't drive architecture. Platform completeness compounds across years; cuts compound as technical debt. Phase W-4b ships when complete; September Wilbert demo shows whatever's complete at that point. Honest checkpoint over over-promised demo."
+
+This discipline becomes the cross-arc anchor for Workshop canon (Session 1.5) + Email canon (Session 2) + Phase W-4b implementation.
+
+---
+
 ## Phase W-4b Canon Expansion Session (canon locked, 2026-05-04)
 
 **Canon-only session. No code shipped.** User-directed expansion of Phase W-4b architecture + canonical-quality discipline lock. Closes the W-4b scope question opened during the Step 6 viewport-responsive canon session (which resolved the Pulse rendering substrate; this session resolves what content composes onto that substrate).
