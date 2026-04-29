@@ -11,7 +11,7 @@ export type ProviderType = "gmail" | "msgraph" | "imap" | "transactional";
 
 export type AccessLevel = "read" | "read_write" | "admin";
 
-export type SyncStatus = "pending" | "syncing" | "synced" | "error";
+export type SyncStatusEnum = "pending" | "syncing" | "synced" | "error";
 
 export interface EmailAccount {
   id: string;
@@ -25,7 +25,11 @@ export interface EmailAccount {
   reply_to_override: string | null;
   is_active: boolean;
   is_default: boolean;
-  sync_status: SyncStatus | null;
+  sync_status: string | null;
+  last_credential_op?: string | null;
+  last_credential_op_at?: string | null;
+  backfill_status?: string;
+  backfill_progress_pct?: number;
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
@@ -73,4 +77,38 @@ export interface UpdateAccountRequest {
 export interface OAuthAuthorizeUrlResponse {
   authorize_url: string;
   state: string;
+}
+
+export interface OAuthCallbackRequest {
+  provider_type: "gmail" | "msgraph";
+  code: string;
+  state: string;
+  redirect_uri: string;
+  account_id?: string | null;
+  email_address?: string | null;
+  display_name?: string | null;
+  account_type?: AccountType;
+}
+
+export interface OAuthCallbackResponse {
+  account_id: string;
+  email_address: string;
+  backfill_status: string;
+  backfill_progress_pct: number;
+}
+
+export interface SyncStatus {
+  account_id: string;
+  sync_status: string;
+  sync_error_message: string | null;
+  consecutive_error_count: number;
+  last_sync_at: string | null;
+  sync_in_progress: boolean;
+  backfill_status: string;
+  backfill_progress_pct: number;
+  backfill_started_at: string | null;
+  backfill_completed_at: string | null;
+  last_credential_op: string | null;
+  last_credential_op_at: string | null;
+  token_expires_at: string | null;
 }

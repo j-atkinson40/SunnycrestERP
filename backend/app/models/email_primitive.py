@@ -118,6 +118,41 @@ class EmailAccount(Base):
     is_default: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    # Step 2 — encrypted credential storage. Fernet-encrypted JSON blob
+    # containing access_token / refresh_token / token_expiry (OAuth) OR
+    # imap_password (IMAP). Encrypted under the platform-wide
+    # CREDENTIAL_ENCRYPTION_KEY env var per the existing canon discipline
+    # in app/services/credential_service.py. Per-row tenant isolation via
+    # the tenant_id FK; NULL until first successful OAuth/credential
+    # capture.
+    encrypted_credentials: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_credential_op: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    last_credential_op_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Step 2 — initial backfill tracking (per §3.26.15.4).
+    backfill_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=30
+    )
+    backfill_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="not_started"
+    )
+    backfill_progress_pct: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    backfill_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    backfill_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -224,6 +259,19 @@ class EmailAccountSyncState(Base):
         String(16), nullable=False, default="pending"
     )
     sync_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Step 2 additions — circuit-breaker counter + provider-agnostic
+    # cursor + sync mutex. last_provider_cursor supersedes the per-
+    # provider cursor columns above (which stay for backward-compat
+    # but become advisory; new code reads from last_provider_cursor).
+    consecutive_error_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    last_provider_cursor: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    sync_in_progress: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     subscription_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -883,6 +931,42 @@ class EmailThreadLabel(Base):
 # ─────────────────────────────────────────────────────────────────────
 # 17. EmailAuditLog — per-tenant email-action audit log (§3.26.15.8)
 # ─────────────────────────────────────────────────────────────────────
+
+
+class OAuthStateNonce(Base):
+    """Short-lived signed-state record for OAuth CSRF protection.
+
+    Step 2 issues a row at OAuth flow start (per ``GET /email-accounts/
+    oauth/{provider}/authorize-url``) with a 10-minute expiry. The
+    callback handler validates the nonce + tenant/user/provider match
+    before exchanging the authorization code. Single-use:
+    ``consumed_at`` flips to non-NULL on first successful validation.
+
+    Pattern matches existing CSRF discipline elsewhere in the codebase
+    (signing tokens, portal recovery tokens) — short-lived, single-use,
+    scoped to the originating user.
+    """
+
+    __tablename__ = "oauth_state_nonces"
+
+    nonce: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class EmailAuditLog(Base):

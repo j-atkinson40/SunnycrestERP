@@ -319,6 +319,7 @@ from app.models.email_primitive import (
     EmailThreadStatus,
     InternalComment,
     MessageParticipant,
+    OAuthStateNonce,
     UserMessageRead,
 )
 from app.models.platform_incident import PlatformIncident
@@ -679,6 +680,7 @@ __all__ = [
     "EmailLabel",
     "EmailThreadLabel",
     "EmailAuditLog",
+    "OAuthStateNonce",
     "PlatformIncident",
     "PlatformNotification",
     "TenantHealthScore",

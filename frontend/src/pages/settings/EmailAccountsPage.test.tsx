@@ -154,15 +154,18 @@ describe("EmailAccountsPage", () => {
     expect(screen.getByLabelText(/smtp server/i)).toBeInTheDocument();
   });
 
-  it("selecting Gmail kicks off OAuth flow", async () => {
+  it("selecting Gmail kicks off OAuth flow after email entered", async () => {
+    // Step 2 changed the flow: clicking Gmail goes to config step
+    // (to capture email_address for pre-flight metadata stash); user
+    // then clicks "Continue to Gmail sign-in" which kicks off OAuth.
     const user = userEvent.setup();
     mockListAccounts.mockResolvedValue([]);
     mockGetOAuthAuthorizeUrl.mockResolvedValue({
-      authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=REPLACE_IN_STEP_2",
+      authorize_url:
+        "https://accounts.google.com/o/oauth2/v2/auth?client_id=REPLACE_IN_STEP_2",
       state: "abc123",
     });
 
-    // Stub window.location.href assignment so the test doesn't navigate.
     const originalLocation = window.location;
     Object.defineProperty(window, "location", {
       writable: true,
@@ -176,6 +179,17 @@ describe("EmailAccountsPage", () => {
     await user.click(connectBtns[0]);
     await user.click(await screen.findByTestId("provider-gmail"));
 
+    // Step 2: fill in email_address before OAuth kicks off.
+    await user.type(
+      await screen.findByLabelText(/display name/i),
+      "Sales",
+    );
+    await user.type(
+      screen.getByLabelText(/email address/i),
+      "sales@example.com",
+    );
+    await user.click(screen.getByTestId("submit-oauth-connect"));
+
     await waitFor(() => {
       expect(mockGetOAuthAuthorizeUrl).toHaveBeenCalledWith(
         "gmail",
@@ -183,7 +197,6 @@ describe("EmailAccountsPage", () => {
       );
     });
 
-    // Restore window.location
     Object.defineProperty(window, "location", {
       writable: true,
       value: originalLocation,

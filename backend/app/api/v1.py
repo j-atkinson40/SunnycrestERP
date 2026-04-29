@@ -20,6 +20,7 @@ from app.api.routes import (
     portal,
     portal_admin,
     email_accounts,
+    email_webhooks,
     tasks,
     triage,
     ai_settings,
@@ -222,6 +223,14 @@ v1_router.include_router(portal.router, prefix="/portal", tags=["Portal"])
 # vs fire-and-forget transactional send). See app.services.email package.
 v1_router.include_router(
     email_accounts.router, prefix="/email-accounts", tags=["Email Accounts"]
+)
+# Email Primitive — Phase W-4b Layer 1 Step 2 webhook endpoints.
+# PUBLIC routes (no Bearer auth) authenticated via per-provider
+# signature verification (Gmail Pub/Sub JWT + MS Graph clientState).
+v1_router.include_router(
+    email_webhooks.router,
+    prefix="/email/webhooks",
+    tags=["Email Webhooks"],
 )
 # NL Creation — Phase 4 of UI/UX Arc. Natural language creation w/ live overlay.
 v1_router.include_router(

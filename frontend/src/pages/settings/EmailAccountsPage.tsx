@@ -20,13 +20,14 @@ import {
   Mail,
   MoreHorizontal,
   Plus,
+  RefreshCw,
   ShieldCheck,
   Trash2,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Alert } from "@/components/ui/alert";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -72,8 +73,10 @@ import {
   listAccounts,
   listProviders,
   revokeAccess,
+  syncNow,
   updateAccount,
 } from "@/services/email-account-service";
+import { setPendingConnect } from "./EmailOAuthCallback";
 import type {
   AccessLevel,
   AccountType,
@@ -144,8 +147,9 @@ export default function EmailAccountsPage() {
       </header>
 
       {error && (
-        <Alert variant="error" title="Couldn't load email accounts">
-          {error}
+        <Alert variant="error">
+          <AlertTitle>Couldn't load email accounts</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
@@ -193,6 +197,17 @@ export default function EmailAccountsPage() {
                       <div className="text-body-sm text-content-muted">
                         {acc.email_address}
                       </div>
+                      {/* Step 2 — credential status sub-row. Surfaces
+                       OAuth-completed vs pending state so admins see
+                       which accounts have credentials persisted vs
+                       awaiting OAuth completion. */}
+                      {acc.last_credential_op && (
+                        <div className="text-caption text-content-subtle font-plex-mono mt-0.5">
+                          credentials: {acc.last_credential_op}
+                          {acc.last_credential_op_at &&
+                            ` · ${new Date(acc.last_credential_op_at).toLocaleDateString()}`}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-body-sm">
                       {PROVIDER_LABEL[acc.provider_type] ?? acc.provider_type}
@@ -221,6 +236,25 @@ export default function EmailAccountsPage() {
                           }
                         />
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={async () => {
+                              try {
+                                await syncNow(acc.id);
+                                toast.success("Sync queued");
+                                reload();
+                              } catch (e) {
+                                toast.error(
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Sync failed",
+                                );
+                              }
+                            }}
+                            data-testid={`sync-now-${acc.id}`}
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Sync now
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onSelect={() => setAccessDialogAccount(acc)}
                           >
@@ -386,14 +420,33 @@ function ConnectAccountDialog({
     setSubmitting(false);
   }
 
-  async function handleOAuthConnect(p: ProviderType) {
+  async function handleOAuthConnect(p: "gmail" | "msgraph") {
+    // Step 2 OAuth flow:
+    //   1. User MUST supply email_address + display_name first so we
+    //      can stash pre-flight metadata for the callback to use.
+    //   2. We issue an authorize URL (backend stamps a CSRF state nonce
+    //      in oauth_state_nonces).
+    //   3. We localStorage-stash the pre-flight metadata.
+    //   4. We navigate to the provider's consent screen.
+    //   5. Provider redirects back to /settings/email/oauth-callback
+    //      which POSTs the code+state to /oauth/callback for exchange.
+    if (!emailAddress.trim()) {
+      toast.error(
+        "Enter the email address first so we know which account you " +
+          "are connecting.",
+      );
+      return;
+    }
     try {
       const redirectUri = `${window.location.origin}/settings/email/oauth-callback`;
       const { authorize_url } = await getOAuthAuthorizeUrl(p, redirectUri);
-      // Step 1 stub returns placeholder URL with REPLACE_IN_STEP_2 —
-      // navigate anyway so the redirect-flow shape is verifiable.
-      // Step 2 wires real client credentials so the consent screen
-      // actually appears.
+      setPendingConnect({
+        provider_type: p,
+        email_address: emailAddress.trim().toLowerCase(),
+        display_name: displayName.trim() || emailAddress.trim(),
+        account_type: accountType,
+        redirect_uri: redirectUri,
+      });
       window.location.href = authorize_url;
     } catch (e) {
       toast.error(
@@ -470,14 +523,12 @@ function ConnectAccountDialog({
                 className="w-full justify-start text-left h-auto py-3"
                 onClick={() => {
                   setProviderType(p.provider_type);
-                  if (
-                    p.provider_type === "gmail" ||
-                    p.provider_type === "msgraph"
-                  ) {
-                    handleOAuthConnect(p.provider_type);
-                  } else {
-                    setStep("config");
-                  }
+                  // ALL providers go through the config step now —
+                  // even OAuth providers need email_address + display_name
+                  // captured first so the post-redirect callback knows
+                  // which account is being connected (Step 2 pre-flight
+                  // metadata stash).
+                  setStep("config");
                 }}
                 data-testid={`provider-${p.provider_type}`}
               >
@@ -597,11 +648,14 @@ function ConnectAccountDialog({
             )}
 
             {providerType === "transactional" && (
-              <Alert variant="info" title="Outbound only">
-                Transactional accounts route through the platform's
-                existing email infrastructure (Resend). They cannot
-                receive replies into the Bridgeable inbox. Use Gmail
-                or Microsoft 365 for two-way conversations.
+              <Alert variant="info">
+                <AlertTitle>Outbound only</AlertTitle>
+                <AlertDescription>
+                  Transactional accounts route through the platform's
+                  existing email infrastructure (Resend). They cannot
+                  receive replies into the Bridgeable inbox. Use Gmail
+                  or Microsoft 365 for two-way conversations.
+                </AlertDescription>
               </Alert>
             )}
           </div>
@@ -616,13 +670,23 @@ function ConnectAccountDialog({
               >
                 Back
               </Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={submitting || !displayName || !emailAddress}
-                data-testid="submit-create-account"
-              >
-                Create account
-              </Button>
+              {providerType === "gmail" || providerType === "msgraph" ? (
+                <Button
+                  onClick={() => handleOAuthConnect(providerType)}
+                  disabled={!emailAddress.trim()}
+                  data-testid="submit-oauth-connect"
+                >
+                  Continue to {PROVIDER_LABEL[providerType]} sign-in
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSubmit}
+                  disabled={submitting || !displayName || !emailAddress}
+                  data-testid="submit-create-account"
+                >
+                  Create account
+                </Button>
+              )}
             </>
           )}
         </DialogFooter>

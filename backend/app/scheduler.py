@@ -726,6 +726,42 @@ def register_all_jobs():
         misfire_grace_time=900,
     )
 
+    # ── Email Primitive Phase W-4b Layer 1 Step 2 sweeps ────────────
+    # Polling-only IMAP sync per Step 2 canon clarification (canon
+    # §3.26.15.4 "polling 5-min fallback"). Long-lived IMAP IDLE
+    # connections deferred to Step 2.1 / Step 4 when inbox UI surfaces
+    # real-time freshness pressure.
+    from app.services.email.sweeps import (
+        email_imap_polling_sweep,
+        email_subscription_renewal_sweep,
+        email_token_refresh_sweep,
+    )
+
+    scheduler.add_job(
+        email_imap_polling_sweep,
+        CronTrigger(minute="*/5"),
+        id="email_imap_polling_sweep",
+        name="email_imap_polling_sweep",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        email_token_refresh_sweep,
+        CronTrigger(minute=7),  # hourly at :07
+        id="email_token_refresh_sweep",
+        name="email_token_refresh_sweep",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        email_subscription_renewal_sweep,
+        CronTrigger(minute=23),  # hourly at :23
+        id="email_subscription_renewal_sweep",
+        name="email_subscription_renewal_sweep",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     logger.info(f"Registered {len(scheduler.get_jobs())} scheduled jobs")
 
 

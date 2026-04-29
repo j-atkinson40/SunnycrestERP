@@ -11,7 +11,10 @@ import type {
   EmailAccount,
   EmailAccountAccess,
   OAuthAuthorizeUrlResponse,
+  OAuthCallbackRequest,
+  OAuthCallbackResponse,
   ProviderInfo,
+  SyncStatus,
   UpdateAccountRequest,
   AccessLevel,
   ProviderType,
@@ -107,6 +110,30 @@ export async function getOAuthAuthorizeUrl(
   const r = await apiClient.get<OAuthAuthorizeUrlResponse>(
     `${BASE}/oauth/${providerType}/authorize-url`,
     { params: { redirect_uri: redirectUri } },
+  );
+  return r.data;
+}
+
+export async function postOAuthCallback(
+  request: OAuthCallbackRequest,
+): Promise<OAuthCallbackResponse> {
+  const r = await apiClient.post<OAuthCallbackResponse>(
+    `${BASE}/oauth/callback`,
+    request,
+  );
+  return r.data;
+}
+
+export async function getSyncStatus(accountId: string): Promise<SyncStatus> {
+  const r = await apiClient.get<SyncStatus>(`${BASE}/${accountId}/sync-status`);
+  return r.data;
+}
+
+export async function syncNow(
+  accountId: string,
+): Promise<Record<string, string>> {
+  const r = await apiClient.post<Record<string, string>>(
+    `${BASE}/${accountId}/sync-now`,
   );
   return r.data;
 }
